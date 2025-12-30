@@ -8,11 +8,29 @@
 import Foundation
 import SpotiflyRust
 
+/// Queue item metadata
+struct QueueItem: Sendable, Identifiable {
+    let id: String // uri
+    let uri: String
+    let trackName: String
+    let artistName: String
+    let albumArtURL: String
+    let durationMs: UInt32
+
+    var durationFormatted: String {
+        let totalSeconds = Int(durationMs / 1000)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
 /// Errors that can occur during playback
 enum SpotifyPlayerError: Error, LocalizedError, Sendable {
     case initializationFailed
     case playbackFailed
     case notInitialized
+    case queueFetchFailed
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +40,8 @@ enum SpotifyPlayerError: Error, LocalizedError, Sendable {
             "Failed to play track"
         case .notInitialized:
             "Player not initialized"
+        case .queueFetchFailed:
+            "Failed to fetch queue"
         }
     }
 }
@@ -163,5 +183,43 @@ enum SpotifyPlayer {
     /// Cleans up player resources.
     static func cleanup() {
         spotifly_cleanup_player()
+    }
+
+    /// Fetches all queue items.
+    static func getAllQueueItems() throws -> [QueueItem] {
+        guard let cStr = spotifly_get_all_queue_items() else {
+            throw SpotifyPlayerError.queueFetchFailed
+        }
+        defer { spotifly_free_string(cStr) }
+
+        let jsonString = String(cString: cStr)
+        guard let jsonData = jsonString.data(using: .utf8) else {
+            throw SpotifyPlayerError.queueFetchFailed
+        }
+
+        // Parse JSON manually since we're getting snake_case from Rust
+        guard let jsonArray = try? JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]] else {
+            throw SpotifyPlayerError.queueFetchFailed
+        }
+
+        return jsonArray.compactMap { item in
+            guard let uri = item["uri"] as? String,
+                  let trackName = item["track_name"] as? String,
+                  let artistName = item["artist_name"] as? String,
+                  let albumArtURL = item["album_art_url"] as? String,
+                  let durationMs = item["duration_ms"] as? UInt32
+            else {
+                return nil
+            }
+
+            return QueueItem(
+                id: uri,
+                uri: uri,
+                trackName: trackName,
+                artistName: artistName,
+                albumArtURL: albumArtURL,
+                durationMs: durationMs,
+            )
+        }
     }
 }

@@ -12,6 +12,7 @@ enum NavigationItem: Hashable, Identifiable {
     case playlists
     case albums
     case artists
+    case queue
 
     var id: Self { self }
 
@@ -25,6 +26,8 @@ enum NavigationItem: Hashable, Identifiable {
             "Albums"
         case .artists:
             "Artists"
+        case .queue:
+            "Queue"
         }
     }
 
@@ -38,6 +41,8 @@ enum NavigationItem: Hashable, Identifiable {
             "square.stack.fill"
         case .artists:
             "person.2.fill"
+        case .queue:
+            "list.bullet"
         }
     }
 }
@@ -49,7 +54,7 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $selection) {
             Section {
-                ForEach([NavigationItem.startpage, NavigationItem.playlists, NavigationItem.albums, NavigationItem.artists]) { item in
+                ForEach([NavigationItem.startpage, NavigationItem.queue]) { item in
                     NavigationLink(value: item) {
                         Label(item.title, systemImage: item.icon)
                     }
@@ -62,6 +67,14 @@ struct SidebarView: View {
                         .font(.headline)
                 }
                 .padding(.bottom, 8)
+            }
+
+            Section("Library") {
+                ForEach([NavigationItem.playlists, NavigationItem.albums, NavigationItem.artists]) { item in
+                    NavigationLink(value: item) {
+                        Label(item.title, systemImage: item.icon)
+                    }
+                }
             }
 
             Section {

@@ -108,6 +108,11 @@ char* spotifly_get_queue_uri(size_t index);
 /// Returns 0 if index is out of bounds.
 uint32_t spotifly_get_queue_duration_ms(size_t index);
 
+/// Returns all queue items as a JSON string.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL on error.
+char* spotifly_get_all_queue_items(void);
+
 /// Cleans up the player resources.
 void spotifly_cleanup_player(void);
 
