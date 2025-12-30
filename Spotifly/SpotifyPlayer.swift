@@ -147,6 +147,11 @@ enum SpotifyPlayer {
         return String(cString: cStr)
     }
 
+    /// Returns the track duration in milliseconds at the given index.
+    static func queueDurationMs(at index: Int) -> UInt32 {
+        spotifly_get_queue_duration_ms(index)
+    }
+
     /// Cleans up player resources.
     static func cleanup() {
         spotifly_cleanup_player()
