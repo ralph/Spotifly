@@ -105,8 +105,12 @@ async fn perform_oauth(client_id: &str, redirect_uri: &str) -> Result<OAuthResul
         "user-read-currently-playing",
     ];
 
+    // Load HTML from external file at compile time
+    let success_message = include_str!("oauth_success.html");
+
     let client = OAuthClientBuilder::new(client_id, redirect_uri, scopes)
         .open_in_browser()
+        .with_custom_message(success_message)
         .build()?;
 
     let token = client.get_access_token()?;
