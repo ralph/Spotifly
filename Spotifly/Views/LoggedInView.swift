@@ -14,6 +14,8 @@ struct LoggedInView: View {
     @State private var trackViewModel = TrackLookupViewModel()
     @State private var playbackViewModel = PlaybackViewModel()
     @State private var playlistsViewModel = PlaylistsViewModel()
+    @State private var albumsViewModel = AlbumsViewModel()
+    @State private var artistsViewModel = ArtistsViewModel()
     @State private var selectedNavigationItem: NavigationItem? = .startpage
 
     var body: some View {
@@ -40,6 +42,22 @@ struct LoggedInView: View {
                         playbackViewModel: playbackViewModel,
                     )
                     .navigationTitle("Playlists")
+
+                case .albums:
+                    AlbumsListView(
+                        authResult: authResult,
+                        albumsViewModel: albumsViewModel,
+                        playbackViewModel: playbackViewModel,
+                    )
+                    .navigationTitle("Albums")
+
+                case .artists:
+                    ArtistsListView(
+                        authResult: authResult,
+                        artistsViewModel: artistsViewModel,
+                        playbackViewModel: playbackViewModel,
+                    )
+                    .navigationTitle("Artists")
 
                 case .none:
                     Text("Select an item from the sidebar")

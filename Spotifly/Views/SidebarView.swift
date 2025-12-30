@@ -10,6 +10,8 @@ import SwiftUI
 enum NavigationItem: Hashable, Identifiable {
     case startpage
     case playlists
+    case albums
+    case artists
 
     var id: Self { self }
 
@@ -19,6 +21,10 @@ enum NavigationItem: Hashable, Identifiable {
             "Startpage"
         case .playlists:
             "Playlists"
+        case .albums:
+            "Albums"
+        case .artists:
+            "Artists"
         }
     }
 
@@ -28,6 +34,10 @@ enum NavigationItem: Hashable, Identifiable {
             "house.fill"
         case .playlists:
             "music.note.list"
+        case .albums:
+            "square.stack.fill"
+        case .artists:
+            "person.2.fill"
         }
     }
 }
@@ -39,7 +49,7 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $selection) {
             Section {
-                ForEach([NavigationItem.startpage, NavigationItem.playlists]) { item in
+                ForEach([NavigationItem.startpage, NavigationItem.playlists, NavigationItem.albums, NavigationItem.artists]) { item in
                     NavigationLink(value: item) {
                         Label(item.title, systemImage: item.icon)
                     }
