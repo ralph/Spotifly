@@ -10,45 +10,45 @@ import Security
 
 /// Manages secure storage of authentication tokens in the Keychain
 enum KeychainManager {
-    
     private static let service = "com.spotifly.oauth"
     private static let accessTokenKey = "spotify_access_token"
     private static let refreshTokenKey = "spotify_refresh_token"
     private static let expiresAtKey = "spotify_expires_at"
-    
+
     // MARK: - Public API
-    
+
     /// Saves the OAuth result to the keychain
     static func saveAuthResult(_ result: SpotifyAuthResult) throws {
         // Calculate absolute expiration time
         let expiresAt = Date().addingTimeInterval(TimeInterval(result.expiresIn))
-        
+
         try save(key: accessTokenKey, data: result.accessToken.data(using: .utf8)!)
-        
+
         if let refreshToken = result.refreshToken {
             try save(key: refreshTokenKey, data: refreshToken.data(using: .utf8)!)
         }
-        
+
         // Store expiration as ISO8601 string
         let formatter = ISO8601DateFormatter()
         let expiresAtString = formatter.string(from: expiresAt)
         try save(key: expiresAtKey, data: expiresAtString.data(using: .utf8)!)
     }
-    
+
     /// Loads the OAuth result from the keychain, returns nil if not found or expired
     static func loadAuthResult() -> SpotifyAuthResult? {
         guard let accessTokenData = load(key: accessTokenKey),
               let accessToken = String(data: accessTokenData, encoding: .utf8),
               let expiresAtData = load(key: expiresAtKey),
-              let expiresAtString = String(data: expiresAtData, encoding: .utf8) else {
+              let expiresAtString = String(data: expiresAtData, encoding: .utf8)
+        else {
             return nil
         }
-        
+
         let formatter = ISO8601DateFormatter()
         guard let expiresAt = formatter.date(from: expiresAtString) else {
             return nil
         }
-        
+
         // Check if token is expired
         let now = Date()
         guard expiresAt > now else {
@@ -56,82 +56,82 @@ enum KeychainManager {
             clearAuthResult()
             return nil
         }
-        
+
         // Calculate remaining seconds
         let expiresIn = UInt64(expiresAt.timeIntervalSince(now))
-        
+
         // Load optional refresh token
         var refreshToken: String? = nil
         if let refreshTokenData = load(key: refreshTokenKey) {
             refreshToken = String(data: refreshTokenData, encoding: .utf8)
         }
-        
+
         return SpotifyAuthResult(
             accessToken: accessToken,
             refreshToken: refreshToken,
-            expiresIn: expiresIn
+            expiresIn: expiresIn,
         )
     }
-    
+
     /// Clears all stored OAuth data from the keychain
     static func clearAuthResult() {
         delete(key: accessTokenKey)
         delete(key: refreshTokenKey)
         delete(key: expiresAtKey)
     }
-    
+
     /// Checks if a valid (non-expired) auth result exists
     static var hasValidAuthResult: Bool {
         loadAuthResult() != nil
     }
-    
+
     // MARK: - Private Keychain Operations
-    
+
     private static func save(key: String, data: Data) throws {
         // Delete any existing item first
         delete(key: key)
-        
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
-        
+
         let status = SecItemAdd(query as CFDictionary, nil)
-        
+
         guard status == errSecSuccess else {
             throw KeychainError.saveFailed(status)
         }
     }
-    
+
     private static func load(key: String) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
         ]
-        
+
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
+
         guard status == errSecSuccess else {
             return nil
         }
-        
+
         return result as? Data
     }
-    
+
     private static func delete(key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: key,
         ]
-        
+
         SecItemDelete(query as CFDictionary)
     }
 }
@@ -139,11 +139,11 @@ enum KeychainManager {
 /// Errors that can occur during keychain operations
 enum KeychainError: Error, LocalizedError {
     case saveFailed(OSStatus)
-    
+
     var errorDescription: String? {
         switch self {
-        case .saveFailed(let status):
-            return "Failed to save to keychain: \(status)"
+        case let .saveFailed(status):
+            "Failed to save to keychain: \(status)"
         }
     }
 }
