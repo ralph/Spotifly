@@ -12,6 +12,7 @@ struct LoggedInView: View {
     let onLogout: () -> Void
 
     @State private var trackViewModel = TrackLookupViewModel()
+    @State private var playbackViewModel = PlaybackViewModel()
 
     var body: some View {
         VStack(spacing: 20) {
@@ -28,6 +29,7 @@ struct LoggedInView: View {
                 Spacer()
 
                 Button("Logout", role: .destructive) {
+                    playbackViewModel.stop()
                     onLogout()
                 }
                 .buttonStyle(.bordered)
@@ -79,7 +81,11 @@ struct LoggedInView: View {
                 ProgressView("Loading track info...")
                 Spacer()
             } else if let track = trackViewModel.trackMetadata {
-                TrackInfoView(track: track)
+                TrackInfoView(
+                    track: track,
+                    accessToken: authResult.accessToken,
+                    playbackViewModel: playbackViewModel,
+                )
             } else {
                 Spacer()
                 VStack(spacing: 8) {

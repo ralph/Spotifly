@@ -37,6 +37,37 @@ void spotifly_clear_oauth_result(void);
 /// Frees a C string allocated by this library.
 void spotifly_free_string(char* s);
 
+// ============================================================================
+// Playback functions
+// ============================================================================
+
+/// Initializes the player with the given access token.
+/// Must be called before play/pause operations.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_init_player(const char* access_token);
+
+/// Plays a track by its Spotify URI (e.g., "spotify:track:4iV5W9uYEdYUVa79Axb7Rh").
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_play_track(const char* track_uri);
+
+/// Pauses playback.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_pause(void);
+
+/// Resumes playback.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_resume(void);
+
+/// Stops playback completely.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_stop(void);
+
+/// Returns 1 if currently playing, 0 otherwise.
+int32_t spotifly_is_playing(void);
+
+/// Cleans up the player resources.
+void spotifly_cleanup_player(void);
+
 #ifdef __cplusplus
 }
 #endif
