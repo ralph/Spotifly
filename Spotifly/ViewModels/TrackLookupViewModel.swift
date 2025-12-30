@@ -10,41 +10,43 @@ import SwiftUI
 @MainActor
 @Observable
 final class TrackLookupViewModel {
-    var trackURI: String = ""
+    var spotifyURI: String = ""
     var isLoading = false
     var trackMetadata: TrackMetadata?
     var errorMessage: String?
 
     func clearInput() {
-        trackURI = ""
+        spotifyURI = ""
         trackMetadata = nil
         errorMessage = nil
     }
 
     func lookupTrack(accessToken: String) {
-        guard !trackURI.isEmpty else {
-            errorMessage = "Please enter a Spotify track URI"
+        guard !spotifyURI.isEmpty else {
+            errorMessage = "Please enter a Spotify URI or URL"
             return
         }
 
-        guard let trackId = SpotifyAPI.parseTrackURI(trackURI) else {
-            errorMessage = "Invalid Spotify URI format. Use spotify:track:ID or a Spotify URL"
-            return
-        }
+        // Try to parse as track URI for metadata lookup
+        if let trackId = SpotifyAPI.parseTrackURI(spotifyURI) {
+            isLoading = true
+            errorMessage = nil
+            trackMetadata = nil
 
-        isLoading = true
-        errorMessage = nil
-        trackMetadata = nil
-
-        Task {
-            do {
-                let metadata = try await SpotifyAPI.fetchTrackMetadata(trackId: trackId, accessToken: accessToken)
-                self.trackMetadata = metadata
-                self.isLoading = false
-            } catch {
-                self.errorMessage = error.localizedDescription
-                self.isLoading = false
+            Task {
+                do {
+                    let metadata = try await SpotifyAPI.fetchTrackMetadata(trackId: trackId, accessToken: accessToken)
+                    self.trackMetadata = metadata
+                    self.isLoading = false
+                } catch {
+                    self.errorMessage = error.localizedDescription
+                    self.isLoading = false
+                }
             }
+        } else {
+            // For non-track URIs (album/playlist/artist), we won't fetch metadata
+            // but we'll allow playback
+            trackMetadata = nil
         }
     }
 }

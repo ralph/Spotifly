@@ -38,16 +38,20 @@ struct LoggedInView: View {
 
             Divider()
 
-            // Track URI Input
+            // Spotify URI Input
             VStack(alignment: .leading, spacing: 8) {
-                Text("Look up a track")
+                Text("Play Spotify Content")
                     .font(.headline)
 
                 HStack {
-                    TextField("spotify:track:... or Spotify URL", text: $trackViewModel.trackURI)
+                    TextField("Spotify URI or URL (track/album/playlist/artist)", text: $trackViewModel.spotifyURI)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit {
-                            trackViewModel.lookupTrack(accessToken: authResult.accessToken)
+                            if !trackViewModel.spotifyURI.isEmpty {
+                                Task {
+                                    await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: authResult.accessToken)
+                                }
+                            }
                         }
 
                     Button {
@@ -57,17 +61,19 @@ struct LoggedInView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .disabled(trackViewModel.trackURI.isEmpty)
+                    .disabled(trackViewModel.spotifyURI.isEmpty)
 
-                    Button("Submit") {
-                        trackViewModel.lookupTrack(accessToken: authResult.accessToken)
+                    Button("Play") {
+                        Task {
+                            await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: authResult.accessToken)
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
-                    .disabled(trackViewModel.trackURI.isEmpty || trackViewModel.isLoading)
+                    .disabled(trackViewModel.spotifyURI.isEmpty || playbackViewModel.isLoading)
                 }
 
-                if let error = trackViewModel.errorMessage {
+                if let error = playbackViewModel.errorMessage {
                     Text(error)
                         .foregroundStyle(.red)
                         .font(.caption)
@@ -75,7 +81,71 @@ struct LoggedInView: View {
             }
             .padding(.horizontal)
 
-            // Track Info Display
+            // Playback Controls
+            if playbackViewModel.queueLength > 0 {
+                VStack(spacing: 12) {
+                    // Queue info
+                    HStack {
+                        Text("Queue:")
+                            .font(.headline)
+                        Text("\(playbackViewModel.currentIndex + 1) of \(playbackViewModel.queueLength)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        if let trackName = playbackViewModel.getQueueTrackName(at: playbackViewModel.currentIndex) {
+                            Text("•")
+                                .foregroundStyle(.secondary)
+                            Text(trackName)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    // Navigation buttons
+                    HStack(spacing: 20) {
+                        Button {
+                            playbackViewModel.previous()
+                        } label: {
+                            Image(systemName: "backward.fill")
+                                .font(.title2)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!playbackViewModel.hasPrevious)
+
+                        Button {
+                            if playbackViewModel.isPlaying {
+                                SpotifyPlayer.pause()
+                                playbackViewModel.isPlaying = false
+                            } else {
+                                SpotifyPlayer.resume()
+                                playbackViewModel.isPlaying = true
+                            }
+                        } label: {
+                            Image(systemName: playbackViewModel.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.title2)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+
+                        Button {
+                            playbackViewModel.next()
+                        } label: {
+                            Image(systemName: "forward.fill")
+                                .font(.title2)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!playbackViewModel.hasNext)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(8)
+                .padding(.horizontal)
+            }
+
+            // Track Info Display (optional, only for tracks)
             if trackViewModel.isLoading {
                 Spacer()
                 ProgressView("Loading track info...")
@@ -92,8 +162,12 @@ struct LoggedInView: View {
                     Image(systemName: "music.note.list")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("Enter a Spotify track URI to see track details")
+                    Text("Enter a Spotify URI or URL to start playback")
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Text("Supports tracks, albums, playlists, and artists")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
                 }
                 Spacer()
             }

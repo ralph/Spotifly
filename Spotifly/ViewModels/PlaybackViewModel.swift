@@ -14,6 +14,8 @@ final class PlaybackViewModel {
     var isLoading = false
     var currentTrackId: String?
     var errorMessage: String?
+    var queueLength: Int = 0
+    var currentIndex: Int = 0
     private var isInitialized = false
 
     func initializeIfNeeded(accessToken: String) async {
@@ -29,7 +31,7 @@ final class PlaybackViewModel {
         isLoading = false
     }
 
-    func playTrack(trackId: String, accessToken: String) async {
+    func play(uriOrUrl: String, accessToken: String) async {
         // Initialize if needed
         if !isInitialized {
             await initializeIfNeeded(accessToken: accessToken)
@@ -44,14 +46,19 @@ final class PlaybackViewModel {
         errorMessage = nil
 
         do {
-            try await SpotifyPlayer.playTrack(trackId: trackId)
-            currentTrackId = trackId
+            try await SpotifyPlayer.play(uriOrUrl: uriOrUrl)
+            currentTrackId = uriOrUrl
             isPlaying = true
+            updateQueueState()
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLoading = false
+    }
+
+    func playTrack(trackId: String, accessToken: String) async {
+        await play(uriOrUrl: "spotify:track:\(trackId)", accessToken: accessToken)
     }
 
     func togglePlayPause(trackId: String, accessToken: String) async {
@@ -77,5 +84,46 @@ final class PlaybackViewModel {
 
     func updatePlayingState() {
         isPlaying = SpotifyPlayer.isPlaying
+    }
+
+    func updateQueueState() {
+        queueLength = SpotifyPlayer.queueLength
+        currentIndex = SpotifyPlayer.currentIndex
+    }
+
+    func next() {
+        do {
+            try SpotifyPlayer.next()
+            isPlaying = true
+            updateQueueState()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func previous() {
+        do {
+            try SpotifyPlayer.previous()
+            isPlaying = true
+            updateQueueState()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func getQueueTrackName(at index: Int) -> String? {
+        SpotifyPlayer.queueTrackName(at: index)
+    }
+
+    func getQueueArtistName(at index: Int) -> String? {
+        SpotifyPlayer.queueArtistName(at: index)
+    }
+
+    var hasNext: Bool {
+        currentIndex + 1 < queueLength
+    }
+
+    var hasPrevious: Bool {
+        currentIndex > 0
     }
 }

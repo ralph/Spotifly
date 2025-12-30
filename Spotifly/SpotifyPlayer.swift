@@ -43,19 +43,26 @@ enum SpotifyPlayer {
         }
     }
 
-    /// Plays a track by its Spotify track ID.
+    /// Plays content by its Spotify URI or URL.
+    /// Supports tracks, albums, playlists, and artists.
     @SpotifyAuthActor
-    static func playTrack(trackId: String) async throws {
-        let trackUri = "spotify:track:\(trackId)"
+    static func play(uriOrUrl: String) async throws {
         let result = await Task.detached {
-            trackUri.withCString { uriPtr in
-                spotifly_play_track(uriPtr)
+            uriOrUrl.withCString { ptr in
+                spotifly_play_track(ptr)
             }
         }.value
 
         guard result == 0 else {
             throw SpotifyPlayerError.playbackFailed
         }
+    }
+
+    /// Plays a track by its Spotify track ID.
+    @SpotifyAuthActor
+    static func playTrack(trackId: String) async throws {
+        let trackUri = "spotify:track:\(trackId)"
+        try await play(uriOrUrl: trackUri)
     }
 
     /// Pauses playback.
@@ -76,6 +83,68 @@ enum SpotifyPlayer {
     /// Returns whether the player is currently playing.
     static var isPlaying: Bool {
         spotifly_is_playing() == 1
+    }
+
+    /// Skips to the next track in the queue.
+    static func next() throws {
+        let result = spotifly_next()
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
+    /// Skips to the previous track in the queue.
+    static func previous() throws {
+        let result = spotifly_previous()
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
+    /// Returns the number of tracks in the queue.
+    static var queueLength: Int {
+        spotifly_get_queue_length()
+    }
+
+    /// Returns the current track index in the queue (0-based).
+    static var currentIndex: Int {
+        spotifly_get_current_index()
+    }
+
+    /// Returns the track name at the given index in the queue.
+    static func queueTrackName(at index: Int) -> String? {
+        guard let cStr = spotifly_get_queue_track_name(index) else {
+            return nil
+        }
+        defer { spotifly_free_string(cStr) }
+        return String(cString: cStr)
+    }
+
+    /// Returns the artist name at the given index in the queue.
+    static func queueArtistName(at index: Int) -> String? {
+        guard let cStr = spotifly_get_queue_artist_name(index) else {
+            return nil
+        }
+        defer { spotifly_free_string(cStr) }
+        return String(cString: cStr)
+    }
+
+    /// Returns the album art URL at the given index in the queue.
+    static func queueAlbumArtUrl(at index: Int) -> String? {
+        guard let cStr = spotifly_get_queue_album_art_url(index) else {
+            return nil
+        }
+        defer { spotifly_free_string(cStr) }
+        return String(cString: cStr)
+    }
+
+    /// Returns the URI at the given index in the queue.
+    static func queueUri(at index: Int) -> String? {
+        guard let cStr = spotifly_get_queue_uri(index) else {
+            return nil
+        }
+        defer { spotifly_free_string(cStr) }
+        return String(cString: cStr)
     }
 
     /// Cleans up player resources.
