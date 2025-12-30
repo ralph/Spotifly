@@ -346,6 +346,28 @@ final class PlaybackViewModel {
     }
 
     private func updatePosition() {
+        // Check if track changed (auto-advance)
+        let rustCurrentIndex = SpotifyPlayer.currentIndex
+        if rustCurrentIndex != currentIndex {
+            // Track changed due to auto-advance
+            currentIndex = rustCurrentIndex
+            isPlaying = SpotifyPlayer.isPlaying
+            playbackStartTime = isPlaying ? Date() : nil
+            updateQueueState()
+            return
+        }
+
+        // Sync playing state with Rust
+        let rustIsPlaying = SpotifyPlayer.isPlaying
+        if rustIsPlaying != isPlaying {
+            isPlaying = rustIsPlaying
+            if isPlaying {
+                playbackStartTime = Date().addingTimeInterval(-Double(currentPositionMs) / 1000.0)
+            } else {
+                playbackStartTime = nil
+            }
+        }
+
         guard isPlaying, let startTime = playbackStartTime else {
             return
         }
