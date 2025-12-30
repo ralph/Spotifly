@@ -47,7 +47,7 @@ struct OAuthResult {
     scopes: Vec<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize)]
 struct QueueItem {
     uri: String,
     track_name: String,
@@ -940,6 +940,25 @@ pub extern "C" fn spotifly_get_queue_duration_ms(index: usize) -> u32 {
         return 0;
     }
     queue_guard[index].duration_ms
+}
+
+/// Returns all queue items as a JSON string.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL on error.
+#[no_mangle]
+pub extern "C" fn spotifly_get_all_queue_items() -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+
+    // Serialize the entire queue to JSON
+    match serde_json::to_string(&*queue_guard) {
+        Ok(json_string) => {
+            match CString::new(json_string) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        Err(_) => ptr::null_mut(),
+    }
 }
 
 /// Cleans up the player resources.

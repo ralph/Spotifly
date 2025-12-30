@@ -16,6 +16,7 @@ struct LoggedInView: View {
     @State private var playlistsViewModel = PlaylistsViewModel()
     @State private var albumsViewModel = AlbumsViewModel()
     @State private var artistsViewModel = ArtistsViewModel()
+    @State private var queueViewModel = QueueViewModel()
     @State private var selectedNavigationItem: NavigationItem? = .startpage
 
     var body: some View {
@@ -59,6 +60,14 @@ struct LoggedInView: View {
                             playbackViewModel: playbackViewModel,
                         )
                         .navigationTitle("Artists")
+
+                    case .queue:
+                        QueueListView(
+                            authResult: authResult,
+                            queueViewModel: queueViewModel,
+                            playbackViewModel: playbackViewModel,
+                        )
+                        .navigationTitle("Queue")
 
                     case .none:
                         Text("Select an item from the sidebar")
