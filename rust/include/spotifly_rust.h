@@ -78,6 +78,10 @@ int32_t spotifly_previous(void);
 /// Returns 0 on success, -1 on error.
 int32_t spotifly_seek(uint32_t position_ms);
 
+/// Jumps to a specific track in the queue by index and starts playing.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_jump_to_index(size_t index);
+
 /// Returns the number of tracks in the queue.
 size_t spotifly_get_queue_length(void);
 

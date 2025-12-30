@@ -49,9 +49,10 @@ struct QueueListView: View {
                             QueueItemRow(
                                 item: item,
                                 index: index,
+                                currentIndex: queueViewModel.currentIndex,
                                 isCurrentTrack: index == queueViewModel.currentIndex,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken,
+                                accessToken: authResult.accessToken
                             )
 
                             if index < queueViewModel.queueItems.count - 1 {
@@ -75,9 +76,14 @@ struct QueueListView: View {
 struct QueueItemRow: View {
     let item: QueueItem
     let index: Int
+    let currentIndex: Int
     let isCurrentTrack: Bool
     @Bindable var playbackViewModel: PlaybackViewModel
     let accessToken: String
+
+    private var isPlayedTrack: Bool {
+        index < currentIndex
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -152,9 +158,15 @@ struct QueueItemRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(isCurrentTrack ? Color.green.opacity(0.1) : Color.clear)
+        .opacity(isPlayedTrack ? 0.5 : 1.0)
         .contentShape(Rectangle())
-        .onTapGesture {
-            // TODO: Jump to track in queue
+        .onTapGesture(count: 2) {
+            do {
+                try SpotifyPlayer.jumpToIndex(index)
+                playbackViewModel.updateQueueState()
+            } catch {
+                playbackViewModel.errorMessage = error.localizedDescription
+            }
         }
     }
 }
