@@ -35,9 +35,13 @@ enum SpotifyAuth {
     /// - Throws: SpotifyAuthError if authentication fails
     @SpotifyAuthActor
     static func authenticate() async throws -> SpotifyAuthResult {
+        // Capture config values before entering detached task
+        let clientId = SpotifyConfig.clientId
+        let redirectUri = SpotifyConfig.redirectUri
+
         // Run the OAuth flow on a background thread since it blocks
         let result = await Task.detached {
-            spotifly_start_oauth()
+            spotifly_start_oauth(clientId, redirectUri)
         }.value
 
         guard result == 0 else {

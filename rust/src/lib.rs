@@ -1,15 +1,10 @@
 use librespot_oauth::{OAuthClientBuilder, OAuthError};
 use once_cell::sync::Lazy;
-use std::ffi::{c_char, CString};
+use std::ffi::{c_char, CStr, CString};
 use std::ptr;
 use std::sync::Mutex;
 use std::time::Instant;
 use tokio::runtime::Runtime;
-
-// Spotify's official client ID used by librespot
-const SPOTIFY_CLIENT_ID: &str = "65b708073fc0480ea92a077233ca87bd";
-// The redirect URI registered with Spotify for the librespot client ID
-const REDIRECT_URI: &str = "http://127.0.0.1:8888/login";
 
 // Global tokio runtime for async operations
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -33,10 +28,40 @@ struct OAuthResult {
 /// Initiates the Spotify OAuth flow. Opens the browser for user authentication.
 /// Returns 0 on success, -1 on error.
 /// After successful authentication, use spotifly_get_access_token() to retrieve the token.
+///
+/// # Parameters
+/// - client_id: Spotify API client ID as a C string
+/// - redirect_uri: OAuth redirect URI as a C string
 #[no_mangle]
-pub extern "C" fn spotifly_start_oauth() -> i32 {
+pub extern "C" fn spotifly_start_oauth(client_id: *const c_char, redirect_uri: *const c_char) -> i32 {
+    // Validate and convert C strings to Rust strings
+    if client_id.is_null() || redirect_uri.is_null() {
+        eprintln!("OAuth error: client_id or redirect_uri is null");
+        return -1;
+    }
+
+    let client_id_str = unsafe {
+        match CStr::from_ptr(client_id).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("OAuth error: invalid client_id string");
+                return -1;
+            }
+        }
+    };
+
+    let redirect_uri_str = unsafe {
+        match CStr::from_ptr(redirect_uri).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("OAuth error: invalid redirect_uri string");
+                return -1;
+            }
+        }
+    };
+
     let result = RUNTIME.block_on(async {
-        perform_oauth().await
+        perform_oauth(&client_id_str, &redirect_uri_str).await
     });
 
     match result {
@@ -52,7 +77,7 @@ pub extern "C" fn spotifly_start_oauth() -> i32 {
     }
 }
 
-async fn perform_oauth() -> Result<OAuthResult, OAuthError> {
+async fn perform_oauth(client_id: &str, redirect_uri: &str) -> Result<OAuthResult, OAuthError> {
     let scopes = vec![
         "user-read-private",
         "user-read-email",
@@ -62,7 +87,7 @@ async fn perform_oauth() -> Result<OAuthResult, OAuthError> {
         "user-read-currently-playing",
     ];
 
-    let client = OAuthClientBuilder::new(SPOTIFY_CLIENT_ID, REDIRECT_URI, scopes)
+    let client = OAuthClientBuilder::new(client_id, redirect_uri, scopes)
         .open_in_browser()
         .build()?;
 

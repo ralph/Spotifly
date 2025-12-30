@@ -10,7 +10,10 @@ extern "C" {
 /// Initiates the Spotify OAuth flow. Opens the browser for user authentication.
 /// Returns 0 on success, -1 on error.
 /// After successful authentication, use spotifly_get_access_token() to retrieve the token.
-int32_t spotifly_start_oauth(void);
+///
+/// @param client_id Spotify API client ID as a C string
+/// @param redirect_uri OAuth redirect URI as a C string
+int32_t spotifly_start_oauth(const char* client_id, const char* redirect_uri);
 
 /// Returns the access token as a C string. Caller must free the string with spotifly_free_string().
 /// Returns NULL if no token is available.
