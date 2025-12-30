@@ -49,10 +49,10 @@ struct QueueListView: View {
                             QueueItemRow(
                                 item: item,
                                 index: index,
-                                currentIndex: queueViewModel.currentIndex,
-                                isCurrentTrack: index == queueViewModel.currentIndex,
+                                currentIndex: playbackViewModel.currentIndex,
+                                isCurrentTrack: index == playbackViewModel.currentIndex,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken
+                                accessToken: authResult.accessToken,
                             )
 
                             if index < queueViewModel.queueItems.count - 1 {
