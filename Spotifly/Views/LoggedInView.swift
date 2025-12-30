@@ -19,52 +19,60 @@ struct LoggedInView: View {
     @State private var selectedNavigationItem: NavigationItem? = .startpage
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView(selection: $selectedNavigationItem, onLogout: {
-                playbackViewModel.stop()
-                onLogout()
-            })
-        } detail: {
-            Group {
-                switch selectedNavigationItem {
-                case .startpage:
-                    StartpageView(
-                        authResult: authResult,
-                        trackViewModel: trackViewModel,
-                        playbackViewModel: playbackViewModel,
-                    )
-                    .navigationTitle("Startpage")
+        VStack(spacing: 0) {
+            NavigationSplitView {
+                SidebarView(selection: $selectedNavigationItem, onLogout: {
+                    playbackViewModel.stop()
+                    onLogout()
+                })
+            } detail: {
+                Group {
+                    switch selectedNavigationItem {
+                    case .startpage:
+                        StartpageView(
+                            authResult: authResult,
+                            trackViewModel: trackViewModel,
+                            playbackViewModel: playbackViewModel,
+                        )
+                        .navigationTitle("Startpage")
 
-                case .playlists:
-                    PlaylistsListView(
-                        authResult: authResult,
-                        playlistsViewModel: playlistsViewModel,
-                        playbackViewModel: playbackViewModel,
-                    )
-                    .navigationTitle("Playlists")
+                    case .playlists:
+                        PlaylistsListView(
+                            authResult: authResult,
+                            playlistsViewModel: playlistsViewModel,
+                            playbackViewModel: playbackViewModel,
+                        )
+                        .navigationTitle("Playlists")
 
-                case .albums:
-                    AlbumsListView(
-                        authResult: authResult,
-                        albumsViewModel: albumsViewModel,
-                        playbackViewModel: playbackViewModel,
-                    )
-                    .navigationTitle("Albums")
+                    case .albums:
+                        AlbumsListView(
+                            authResult: authResult,
+                            albumsViewModel: albumsViewModel,
+                            playbackViewModel: playbackViewModel,
+                        )
+                        .navigationTitle("Albums")
 
-                case .artists:
-                    ArtistsListView(
-                        authResult: authResult,
-                        artistsViewModel: artistsViewModel,
-                        playbackViewModel: playbackViewModel,
-                    )
-                    .navigationTitle("Artists")
+                    case .artists:
+                        ArtistsListView(
+                            authResult: authResult,
+                            artistsViewModel: artistsViewModel,
+                            playbackViewModel: playbackViewModel,
+                        )
+                        .navigationTitle("Artists")
 
-                case .none:
-                    Text("Select an item from the sidebar")
-                        .foregroundStyle(.secondary)
+                    case .none:
+                        Text("Select an item from the sidebar")
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .playbackShortcuts(playbackViewModel: playbackViewModel)
             }
-            .playbackShortcuts(playbackViewModel: playbackViewModel)
+
+            // Now Playing Bar (always visible at bottom)
+            NowPlayingBarView(
+                authResult: authResult,
+                playbackViewModel: playbackViewModel,
+            )
         }
     }
 }
