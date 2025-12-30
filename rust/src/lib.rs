@@ -832,6 +832,24 @@ pub extern "C" fn spotifly_previous() -> i32 {
     }
 }
 
+/// Seeks to the given position in milliseconds.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
+    let player_guard = PLAYER.lock().unwrap();
+    let player = match player_guard.as_ref() {
+        Some(p) => Arc::clone(p),
+        None => {
+            eprintln!("Seek error: player not initialized");
+            return -1;
+        }
+    };
+    drop(player_guard);
+
+    player.seek(position_ms);
+    0
+}
+
 /// Returns the number of tracks in the queue.
 #[no_mangle]
 pub extern "C" fn spotifly_get_queue_length() -> usize {

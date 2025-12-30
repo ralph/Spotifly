@@ -189,7 +189,7 @@ final class PlaybackViewModel {
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.isEnabled = true
-        commandCenter.changePlaybackPositionCommand.isEnabled = false
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
 
         // Play command
         commandCenter.playCommand.addTarget { [weak self] _ in
@@ -259,6 +259,31 @@ final class PlaybackViewModel {
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 self?.previous()
+            }
+            return .success
+        }
+
+        // Seek command
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            Task { @MainActor in
+                guard let self else { return }
+                guard let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
+
+                let positionMs = UInt32(seekEvent.positionTime * 1000)
+
+                do {
+                    try SpotifyPlayer.seek(positionMs: positionMs)
+                    self.currentPositionMs = positionMs
+
+                    // Update playback start time to maintain sync
+                    if self.isPlaying {
+                        self.playbackStartTime = Date().addingTimeInterval(-Double(positionMs) / 1000.0)
+                    }
+
+                    self.updateNowPlayingInfo()
+                } catch {
+                    self.errorMessage = error.localizedDescription
+                }
             }
             return .success
         }
