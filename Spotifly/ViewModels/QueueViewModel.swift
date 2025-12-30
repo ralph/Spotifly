@@ -11,7 +11,6 @@ import SwiftUI
 @Observable
 final class QueueViewModel {
     var queueItems: [QueueItem] = []
-    var currentIndex: Int = 0
     var errorMessage: String?
 
     func loadQueue() {
@@ -19,7 +18,6 @@ final class QueueViewModel {
 
         do {
             queueItems = try SpotifyPlayer.getAllQueueItems()
-            currentIndex = SpotifyPlayer.currentIndex
         } catch {
             errorMessage = error.localizedDescription
         }
