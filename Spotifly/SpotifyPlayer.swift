@@ -101,6 +101,14 @@ enum SpotifyPlayer {
         }
     }
 
+    /// Seeks to the given position in milliseconds.
+    static func seek(positionMs: UInt32) throws {
+        let result = spotifly_seek(positionMs)
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
     /// Returns the number of tracks in the queue.
     static var queueLength: Int {
         spotifly_get_queue_length()

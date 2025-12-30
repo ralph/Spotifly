@@ -97,13 +97,14 @@ struct LoggedInView: View {
                         // Album art thumbnail
                         if let artURL = playbackViewModel.currentAlbumArtURL,
                            !artURL.isEmpty,
-                           let url = URL(string: artURL) {
+                           let url = URL(string: artURL)
+                        {
                             AsyncImage(url: url) { phase in
                                 switch phase {
                                 case .empty:
                                     ProgressView()
                                         .frame(width: 60, height: 60)
-                                case .success(let image):
+                                case let .success(image):
                                     image
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
@@ -154,15 +155,23 @@ struct LoggedInView: View {
                             value: Binding(
                                 get: { Double(playbackViewModel.currentPositionMs) },
                                 set: { newValue in
-                                    // TODO: Implement seeking in Rust
-                                    // For now, just update the position locally
-                                    playbackViewModel.currentPositionMs = UInt32(newValue)
-                                    if playbackViewModel.isPlaying {
-                                        playbackViewModel.playbackStartTime = Date().addingTimeInterval(-Double(newValue) / 1000.0)
+                                    let positionMs = UInt32(newValue)
+                                    do {
+                                        try SpotifyPlayer.seek(positionMs: positionMs)
+                                        playbackViewModel.currentPositionMs = positionMs
+
+                                        // Update playback start time to maintain sync
+                                        if playbackViewModel.isPlaying {
+                                            playbackViewModel.playbackStartTime = Date().addingTimeInterval(-Double(positionMs) / 1000.0)
+                                        }
+
+                                        playbackViewModel.updateNowPlayingInfo()
+                                    } catch {
+                                        playbackViewModel.errorMessage = error.localizedDescription
                                     }
-                                }
+                                },
                             ),
-                            in: 0...Double(max(playbackViewModel.trackDurationMs, 1))
+                            in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
                         )
                         .tint(.green)
 

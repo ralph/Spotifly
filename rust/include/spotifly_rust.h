@@ -74,6 +74,10 @@ int32_t spotifly_next(void);
 /// Returns 0 on success, -1 on error or if at start of queue.
 int32_t spotifly_previous(void);
 
+/// Seeks to the given position in milliseconds.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_seek(uint32_t position_ms);
+
 /// Returns the number of tracks in the queue.
 size_t spotifly_get_queue_length(void);
 
