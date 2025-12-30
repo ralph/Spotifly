@@ -282,6 +282,10 @@ async fn perform_oauth(client_id: &str, redirect_uri: &str) -> Result<OAuthResul
         "user-read-playback-state",
         "user-modify-playback-state",
         "user-read-currently-playing",
+        "playlist-read-private",
+        "playlist-read-collaborative",
+        "user-library-read",      // Access saved albums, tracks
+        "user-follow-read",        // Access followed artists
     ];
 
     // Load HTML from external file at compile time
