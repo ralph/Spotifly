@@ -854,6 +854,50 @@ pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
     0
 }
 
+/// Jumps to a specific track in the queue by index and starts playing.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_jump_to_index(index: usize) -> i32 {
+    let queue_guard = QUEUE.lock().unwrap();
+
+    if index >= queue_guard.len() {
+        eprintln!("Jump error: index {} out of bounds (queue length: {})", index, queue_guard.len());
+        drop(queue_guard);
+        return -1;
+    }
+
+    let target_track = queue_guard[index].clone();
+    drop(queue_guard);
+
+    CURRENT_INDEX.store(index, Ordering::SeqCst);
+
+    let player_guard = PLAYER.lock().unwrap();
+    let player = match player_guard.as_ref() {
+        Some(p) => Arc::clone(p),
+        None => {
+            eprintln!("Jump error: player not initialized");
+            return -1;
+        }
+    };
+    drop(player_guard);
+
+    let result = RUNTIME.block_on(async {
+        parse_spotify_uri(&target_track.uri)
+    });
+
+    match result {
+        Ok(uri) => {
+            player.load(uri, true, 0);
+            IS_PLAYING.store(true, Ordering::SeqCst);
+            0
+        }
+        Err(e) => {
+            eprintln!("Jump error: {}", e);
+            -1
+        }
+    }
+}
+
 /// Returns the number of tracks in the queue.
 #[no_mangle]
 pub extern "C" fn spotifly_get_queue_length() -> usize {

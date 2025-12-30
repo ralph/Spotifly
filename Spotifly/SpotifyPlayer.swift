@@ -129,6 +129,14 @@ enum SpotifyPlayer {
         }
     }
 
+    /// Jumps to a specific track in the queue by index and starts playing.
+    static func jumpToIndex(_ index: Int) throws {
+        let result = spotifly_jump_to_index(index)
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
     /// Returns the number of tracks in the queue.
     static var queueLength: Int {
         spotifly_get_queue_length()
