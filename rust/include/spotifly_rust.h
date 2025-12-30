@@ -100,6 +100,10 @@ char* spotifly_get_queue_album_art_url(size_t index);
 /// Returns NULL if index is out of bounds.
 char* spotifly_get_queue_uri(size_t index);
 
+/// Returns the track duration in milliseconds at the given index.
+/// Returns 0 if index is out of bounds.
+uint32_t spotifly_get_queue_duration_ms(size_t index);
+
 /// Cleans up the player resources.
 void spotifly_cleanup_player(void);
 

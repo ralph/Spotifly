@@ -53,6 +53,7 @@ struct QueueItem {
     track_name: String,
     artist_name: String,
     album_art_url: String,
+    duration_ms: u32,
 }
 
 // Helper function to convert URL to URI
@@ -99,10 +100,16 @@ fn parse_spotify_uri(uri_str: &str) -> Result<SpotifyUri, String> {
 }
 
 // Helper function to extract album art URL from track
-fn get_album_art_url(_track: &Track) -> String {
-    // Album art URL can be fetched from Spotify Web API if needed
-    // For now, return empty string as the metadata doesn't include covers
-    String::new()
+fn get_album_art_url(track: &Track) -> String {
+    // Try to get largest album cover from track metadata
+    track.album.covers.iter()
+        .max_by_key(|img| img.width * img.height)
+        .and_then(|img| {
+            img.id.to_base16().ok().map(|file_id_hex| {
+                format!("https://i.scdn.co/image/{}", file_id_hex)
+            })
+        })
+        .unwrap_or_default()
 }
 
 // Load album tracks into queue
@@ -126,12 +133,14 @@ async fn load_album(session: &Session, album_uri: SpotifyUri) -> Result<Vec<Queu
                 .collect::<Vec<_>>()
                 .join(", ");
             let album_art_url = get_album_art_url(&track);
+            let duration_ms = track.duration as u32;
 
             queue_items.push(QueueItem {
                 uri: track_uri.to_string(),
                 track_name,
                 artist_name,
                 album_art_url,
+                duration_ms,
             });
         }
     }
@@ -159,12 +168,14 @@ async fn load_playlist(session: &Session, playlist_uri: SpotifyUri) -> Result<Ve
                     .collect::<Vec<_>>()
                     .join(", ");
                 let album_art_url = get_album_art_url(&track);
+                let duration_ms = track.duration as u32;
 
                 queue_items.push(QueueItem {
                     uri: track_uri.to_string(),
                     track_name,
                     artist_name,
                     album_art_url,
+                    duration_ms,
                 });
             }
         }
@@ -196,12 +207,14 @@ async fn load_artist(session: &Session, artist_uri: SpotifyUri) -> Result<Vec<Qu
                 .collect::<Vec<_>>()
                 .join(", ");
             let album_art_url = get_album_art_url(&track);
+            let duration_ms = track.duration as u32;
 
             queue_items.push(QueueItem {
                 uri: track_uri.to_string(),
                 track_name,
                 artist_name,
                 album_art_url,
+                duration_ms,
             });
         }
     }
@@ -570,16 +583,19 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
                     .map_err(|e| format!("Failed to load track: {:?}", e))?;
 
                 let track_name = track.name.clone();
-                let artist_name = track.artists.first()
+                let artist_name = track.artists.iter()
                     .map(|a| a.name.clone())
-                    .unwrap_or_default();
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 let album_art_url = get_album_art_url(&track);
+                let duration_ms = track.duration as u32;
 
                 let queue_item = QueueItem {
                     uri: uri_str.clone(),
                     track_name,
                     artist_name,
                     album_art_url,
+                    duration_ms,
                 };
 
                 let mut queue_guard = QUEUE.lock().unwrap();
@@ -891,6 +907,17 @@ pub extern "C" fn spotifly_get_queue_uri(index: usize) -> *mut c_char {
         Ok(cstr) => cstr.into_raw(),
         Err(_) => ptr::null_mut(),
     }
+}
+
+/// Returns the track duration in milliseconds at the given index.
+/// Returns 0 if index is out of bounds.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_duration_ms(index: usize) -> u32 {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return 0;
+    }
+    queue_guard[index].duration_ms
 }
 
 /// Cleans up the player resources.

@@ -117,10 +117,18 @@ struct LoggedInView: View {
                             if playbackViewModel.isPlaying {
                                 SpotifyPlayer.pause()
                                 playbackViewModel.isPlaying = false
+                                playbackViewModel.playbackStartTime = nil
                             } else {
                                 SpotifyPlayer.resume()
                                 playbackViewModel.isPlaying = true
+                                // Adjust start time based on current position
+                                if playbackViewModel.currentPositionMs > 0 {
+                                    playbackViewModel.playbackStartTime = Date().addingTimeInterval(-Double(playbackViewModel.currentPositionMs) / 1000.0)
+                                } else {
+                                    playbackViewModel.playbackStartTime = Date()
+                                }
                             }
+                            playbackViewModel.updateNowPlayingInfo()
                         } label: {
                             Image(systemName: playbackViewModel.isPlaying ? "pause.fill" : "play.fill")
                                 .font(.title2)
@@ -173,5 +181,6 @@ struct LoggedInView: View {
             }
         }
         .padding()
+        .playbackShortcuts(playbackViewModel: playbackViewModel)
     }
 }

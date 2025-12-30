@@ -7,6 +7,8 @@
 
 import SwiftUI
 
+import MediaPlayer
+
 @MainActor
 @Observable
 final class PlaybackViewModel {
@@ -16,7 +18,33 @@ final class PlaybackViewModel {
     var errorMessage: String?
     var queueLength: Int = 0
     var currentIndex: Int = 0
+
+    // Track metadata for Now Playing
+    var currentTrackName: String?
+    var currentArtistName: String?
+    var currentAlbumArtURL: String?
+    var trackDurationMs: UInt32 = 0
+    var currentPositionMs: UInt32 = 0
+
     private var isInitialized = false
+    private var lastAlbumArtURL: String?
+    var playbackStartTime: Date? // Internal for pause/resume handling
+    private var positionTimer: Timer?
+
+    init() {
+        setupRemoteCommandCenter()
+
+        // Set initial Now Playing info to claim media controls
+        var initialInfo: [String: Any] = [:]
+        initialInfo[MPMediaItemPropertyTitle] = "Spotifly"
+        initialInfo[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = initialInfo
+
+        // Start position update timer
+        startPositionTimer()
+    }
+
+    // Timer will be automatically invalidated when the object is deallocated
 
     func initializeIfNeeded(accessToken: String) async {
         guard !isInitialized else { return }
@@ -49,6 +77,7 @@ final class PlaybackViewModel {
             try await SpotifyPlayer.play(uriOrUrl: uriOrUrl)
             currentTrackId = uriOrUrl
             isPlaying = true
+            playbackStartTime = Date()
             updateQueueState()
         } catch {
             errorMessage = error.localizedDescription
@@ -89,13 +118,32 @@ final class PlaybackViewModel {
     func updateQueueState() {
         queueLength = SpotifyPlayer.queueLength
         currentIndex = SpotifyPlayer.currentIndex
+
+        // Update current track metadata
+        if queueLength > 0, currentIndex < queueLength {
+            currentTrackName = SpotifyPlayer.queueTrackName(at: currentIndex)
+            currentArtistName = SpotifyPlayer.queueArtistName(at: currentIndex)
+            currentAlbumArtURL = SpotifyPlayer.queueAlbumArtUrl(at: currentIndex)
+            trackDurationMs = SpotifyPlayer.queueDurationMs(at: currentIndex)
+
+            // Reset position tracking for new track
+            currentPositionMs = 0
+            if isPlaying {
+                playbackStartTime = Date()
+            }
+
+            updateNowPlayingInfo()
+        }
     }
 
     func next() {
         do {
             try SpotifyPlayer.next()
             isPlaying = true
+            currentPositionMs = 0
+            playbackStartTime = Date()
             updateQueueState()
+            updateNowPlayingInfo()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -105,7 +153,10 @@ final class PlaybackViewModel {
         do {
             try SpotifyPlayer.previous()
             isPlaying = true
+            currentPositionMs = 0
+            playbackStartTime = Date()
             updateQueueState()
+            updateNowPlayingInfo()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -125,5 +176,162 @@ final class PlaybackViewModel {
 
     var hasPrevious: Bool {
         currentIndex > 0
+    }
+
+    // MARK: - Media Keys & Now Playing
+
+    private func setupRemoteCommandCenter() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        // Enable commands
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.isEnabled = false
+
+        // Play command
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if !self.isPlaying {
+                    SpotifyPlayer.resume()
+                    self.isPlaying = true
+                    // Adjust start time based on current position
+                    if self.currentPositionMs > 0 {
+                        self.playbackStartTime = Date().addingTimeInterval(-Double(self.currentPositionMs) / 1000.0)
+                    } else {
+                        self.playbackStartTime = Date()
+                    }
+                    self.updateNowPlayingInfo()
+                }
+            }
+            return .success
+        }
+
+        // Pause command
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.isPlaying {
+                    SpotifyPlayer.pause()
+                    self.isPlaying = false
+                    self.playbackStartTime = nil
+                    self.updateNowPlayingInfo()
+                }
+            }
+            return .success
+        }
+
+        // Toggle play/pause command
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.isPlaying {
+                    SpotifyPlayer.pause()
+                    self.isPlaying = false
+                    self.playbackStartTime = nil
+                } else {
+                    SpotifyPlayer.resume()
+                    self.isPlaying = true
+                    // Adjust start time based on current position
+                    if self.currentPositionMs > 0 {
+                        self.playbackStartTime = Date().addingTimeInterval(-Double(self.currentPositionMs) / 1000.0)
+                    } else {
+                        self.playbackStartTime = Date()
+                    }
+                }
+                self.updateNowPlayingInfo()
+            }
+            return .success
+        }
+
+        // Next track command
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.next()
+            }
+            return .success
+        }
+
+        // Previous track command
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.previous()
+            }
+            return .success
+        }
+    }
+
+    func updateNowPlayingInfo() {
+        var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+
+        if let trackName = currentTrackName {
+            nowPlayingInfo[MPMediaItemPropertyTitle] = trackName
+        }
+
+        if let artistName = currentArtistName {
+            nowPlayingInfo[MPMediaItemPropertyArtist] = artistName
+        }
+
+        // Duration and position
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = Double(trackDurationMs) / 1000.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(currentPositionMs) / 1000.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+
+        // Update Now Playing (preserves existing artwork)
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+
+        // Album art - only download if URL changed
+        if let artURL = currentAlbumArtURL, artURL != lastAlbumArtURL, !artURL.isEmpty, let url = URL(string: artURL) {
+            lastAlbumArtURL = artURL
+
+            // Download album art asynchronously
+            Task {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    guard let image = NSImage(data: data) else { return }
+
+                    // Update Now Playing on main actor
+                    await MainActor.run {
+                        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                        // Mark closure as @Sendable to fix crash - MPNowPlayingInfoCenter executes
+                        // the closure on an internal dispatch queue, not on MainActor
+                        info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in
+                            image
+                        }
+                        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                    }
+                } catch {
+                    // Ignore album art download failures
+                }
+            }
+        }
+    }
+
+    // MARK: - Position Tracking
+
+    private func startPositionTimer() {
+        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updatePosition()
+            }
+        }
+    }
+
+    private func updatePosition() {
+        guard isPlaying, let startTime = playbackStartTime else {
+            return
+        }
+
+        let elapsed = Date().timeIntervalSince(startTime)
+        let positionMs = UInt32(elapsed * 1000)
+
+        // Clamp to duration
+        currentPositionMs = min(positionMs, trackDurationMs)
+
+        // Update Now Playing info periodically
+        updateNowPlayingInfo()
     }
 }
