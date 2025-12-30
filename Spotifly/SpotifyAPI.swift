@@ -25,6 +25,26 @@ struct TrackMetadata: Sendable {
     }
 }
 
+/// Simplified playlist metadata from Spotify
+struct PlaylistSimplified: Sendable, Identifiable {
+    let id: String
+    let name: String
+    let description: String?
+    let imageURL: URL?
+    let trackCount: Int
+    let uri: String
+    let isPublic: Bool
+    let ownerName: String
+}
+
+/// Response wrapper for playlists endpoint
+struct PlaylistsResponse: Sendable {
+    let playlists: [PlaylistSimplified]
+    let total: Int
+    let hasMore: Bool
+    let nextOffset: Int?
+}
+
 /// Errors from Spotify API
 enum SpotifyAPIError: Error, LocalizedError {
     case invalidURI
@@ -170,6 +190,108 @@ enum SpotifyAPI {
             albumImageURL: albumImageURL,
             durationMs: durationMs,
             previewURL: previewURL,
+        )
+    }
+
+    /// Fetches user's playlists from Spotify Web API
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - limit: Number of playlists to fetch (max 50)
+    ///   - offset: Offset for pagination
+    static func fetchUserPlaylists(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> PlaylistsResponse {
+        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw SpotifyAPIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+
+        // Parse JSON response
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        guard let items = json["items"] as? [[String: Any]],
+              let total = json["total"] as? Int
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        let playlists = items.compactMap { item -> PlaylistSimplified? in
+            guard let id = item["id"] as? String,
+                  let name = item["name"] as? String,
+                  let uri = item["uri"] as? String,
+                  let tracks = item["tracks"] as? [String: Any],
+                  let trackCount = tracks["total"] as? Int,
+                  let owner = item["owner"] as? [String: Any],
+                  let ownerName = owner["display_name"] as? String
+            else {
+                return nil
+            }
+
+            let description = item["description"] as? String
+            let isPublic = item["public"] as? Bool ?? false
+
+            var imageURL: URL?
+            if let images = item["images"] as? [[String: Any]],
+               let firstImage = images.first,
+               let urlString = firstImage["url"] as? String
+            {
+                imageURL = URL(string: urlString)
+            }
+
+            return PlaylistSimplified(
+                id: id,
+                name: name,
+                description: description,
+                imageURL: imageURL,
+                trackCount: trackCount,
+                uri: uri,
+                isPublic: isPublic,
+                ownerName: ownerName,
+            )
+        }
+
+        let next = json["next"] as? String
+        let hasMore = next != nil
+        let nextOffset = hasMore ? offset + limit : nil
+
+        return PlaylistsResponse(
+            playlists: playlists,
+            total: total,
+            hasMore: hasMore,
+            nextOffset: nextOffset,
         )
     }
 }
