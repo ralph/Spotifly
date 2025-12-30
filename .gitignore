@@ -1,0 +1,29 @@
+# Xcode
+*.xcuserstate
+*.xcworkspacedata
+xcuserdata/
+DerivedData/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Build artifacts
+build/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Rust (also in rust/.gitignore but here for completeness)
+rust/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
