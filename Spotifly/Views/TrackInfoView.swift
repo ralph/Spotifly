@@ -9,6 +9,8 @@ import SwiftUI
 
 struct TrackInfoView: View {
     let track: TrackMetadata
+    let accessToken: String
+    @Bindable var playbackViewModel: PlaybackViewModel
 
     var body: some View {
         VStack(spacing: 16) {
@@ -35,6 +37,33 @@ struct TrackInfoView: View {
                 @unknown default:
                     EmptyView()
                 }
+            }
+
+            // Play/Pause button
+            Button {
+                Task {
+                    await playbackViewModel.togglePlayPause(trackId: track.id, accessToken: accessToken)
+                }
+            } label: {
+                Group {
+                    if playbackViewModel.isLoading {
+                        ProgressView()
+                            .controlSize(.regular)
+                    } else {
+                        Image(systemName: isCurrentTrackPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 50))
+                    }
+                }
+                .frame(width: 60, height: 60)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.green)
+            .disabled(playbackViewModel.isLoading)
+
+            if let error = playbackViewModel.errorMessage {
+                Text(error)
+                    .foregroundStyle(.red)
+                    .font(.caption)
             }
 
             // Track info
@@ -81,5 +110,9 @@ struct TrackInfoView: View {
             }
         }
         .padding()
+    }
+
+    private var isCurrentTrackPlaying: Bool {
+        playbackViewModel.isPlaying && playbackViewModel.currentTrackId == track.id
     }
 }
