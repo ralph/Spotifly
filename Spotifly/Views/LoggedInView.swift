@@ -14,6 +14,14 @@ struct LoggedInView: View {
     @State private var trackViewModel = TrackLookupViewModel()
     @State private var playbackViewModel = PlaybackViewModel()
 
+    // Helper function for time formatting
+    private func formatTime(_ milliseconds: UInt32) -> String {
+        let totalSeconds = Int(milliseconds / 1000)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
     var body: some View {
         VStack(spacing: 20) {
             // Header
@@ -81,28 +89,98 @@ struct LoggedInView: View {
             }
             .padding(.horizontal)
 
-            // Playback Controls
+            // Now Playing / Playback Controls
             if playbackViewModel.queueLength > 0 {
-                VStack(spacing: 12) {
-                    // Queue info
-                    HStack {
-                        Text("Queue:")
-                            .font(.headline)
-                        Text("\(playbackViewModel.currentIndex + 1) of \(playbackViewModel.queueLength)")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                VStack(spacing: 16) {
+                    // Current track info with album art
+                    HStack(spacing: 16) {
+                        // Album art thumbnail
+                        if let artURL = playbackViewModel.currentAlbumArtURL,
+                           !artURL.isEmpty,
+                           let url = URL(string: artURL) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .empty:
+                                    ProgressView()
+                                        .frame(width: 60, height: 60)
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 60, height: 60)
+                                        .cornerRadius(6)
+                                case .failure:
+                                    Image(systemName: "music.note")
+                                        .font(.title2)
+                                        .frame(width: 60, height: 60)
+                                        .background(Color.gray.opacity(0.2))
+                                        .cornerRadius(6)
+                                @unknown default:
+                                    EmptyView()
+                                }
+                            }
+                        } else {
+                            Image(systemName: "music.note")
+                                .font(.title2)
+                                .frame(width: 60, height: 60)
+                                .background(Color.gray.opacity(0.2))
+                                .cornerRadius(6)
+                        }
 
-                        if let trackName = playbackViewModel.getQueueTrackName(at: playbackViewModel.currentIndex) {
-                            Text("•")
+                        // Track metadata
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let trackName = playbackViewModel.currentTrackName {
+                                Text(trackName)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                            }
+                            if let artistName = playbackViewModel.currentArtistName {
+                                Text(artistName)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            // Queue position
+                            Text("\(playbackViewModel.currentIndex + 1) of \(playbackViewModel.queueLength)")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text(trackName)
-                                .font(.subheadline)
+                        }
+                        Spacer()
+                    }
+
+                    // Seek bar
+                    VStack(spacing: 4) {
+                        Slider(
+                            value: Binding(
+                                get: { Double(playbackViewModel.currentPositionMs) },
+                                set: { newValue in
+                                    // TODO: Implement seeking in Rust
+                                    // For now, just update the position locally
+                                    playbackViewModel.currentPositionMs = UInt32(newValue)
+                                    if playbackViewModel.isPlaying {
+                                        playbackViewModel.playbackStartTime = Date().addingTimeInterval(-Double(newValue) / 1000.0)
+                                    }
+                                }
+                            ),
+                            in: 0...Double(max(playbackViewModel.trackDurationMs, 1))
+                        )
+                        .tint(.green)
+
+                        // Time labels
+                        HStack {
+                            Text(formatTime(playbackViewModel.currentPositionMs))
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .monospacedDigit()
+                            Spacer()
+                            Text(formatTime(playbackViewModel.trackDurationMs))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
                         }
                     }
 
-                    // Navigation buttons
+                    // Playback controls
                     HStack(spacing: 20) {
                         Button {
                             playbackViewModel.previous()
@@ -146,10 +224,9 @@ struct LoggedInView: View {
                         .disabled(!playbackViewModel.hasNext)
                     }
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+                .padding()
                 .background(Color.gray.opacity(0.1))
-                .cornerRadius(8)
+                .cornerRadius(12)
                 .padding(.horizontal)
             }
 
