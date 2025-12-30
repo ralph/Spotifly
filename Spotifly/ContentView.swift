@@ -13,6 +13,20 @@ final class AuthViewModel {
     var isAuthenticating = false
     var authResult: SpotifyAuthResult?
     var errorMessage: String?
+    var isLoading = true
+    
+    init() {
+        // Try to load existing auth from keychain on init
+        loadFromKeychain()
+    }
+    
+    func loadFromKeychain() {
+        isLoading = true
+        if let savedResult = KeychainManager.loadAuthResult() {
+            authResult = savedResult
+        }
+        isLoading = false
+    }
     
     func startOAuth() {
         isAuthenticating = true
@@ -23,6 +37,13 @@ final class AuthViewModel {
                 let result = try await SpotifyAuth.authenticate()
                 self.authResult = result
                 self.isAuthenticating = false
+                
+                // Save to keychain
+                do {
+                    try KeychainManager.saveAuthResult(result)
+                } catch {
+                    print("Failed to save to keychain: \(error)")
+                }
             } catch {
                 self.errorMessage = "Authentication failed: \(error.localizedDescription)"
                 self.isAuthenticating = false
@@ -32,6 +53,7 @@ final class AuthViewModel {
     
     func logout() {
         SpotifyAuth.clearAuthResult()
+        KeychainManager.clearAuthResult()
         authResult = nil
     }
 }
@@ -40,6 +62,18 @@ struct ContentView: View {
     @State private var viewModel = AuthViewModel()
     
     var body: some View {
+        Group {
+            if viewModel.isLoading {
+                ProgressView("Loading...")
+            } else {
+                mainContent
+            }
+        }
+        .padding(40)
+    }
+    
+    @ViewBuilder
+    private var mainContent: some View {
         VStack(spacing: 20) {
             Image(systemName: "music.note.list")
                 .imageScale(.large)
@@ -105,7 +139,6 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(40)
     }
 }
 

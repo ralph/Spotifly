@@ -1,636 +1,636 @@
 // !$*UTF8*$!
 {
-    archiveVersion = 1;
-    classes = {
-    };
-    objectVersion = 77;
-    objects = {
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
 
 /* Begin PBXContainerItemProxy section */
-        CAA7B2662F04363900E959B5 /* PBXContainerItemProxy */ = {
-            isa = PBXContainerItemProxy;
-            containerPortal = CAA7B2502F04363800E959B5 /* Project object */;
-            proxyType = 1;
-            remoteGlobalIDString = CAA7B2572F04363800E959B5;
-            remoteInfo = Spotifly;
-        };
-        CAA7B2702F04363900E959B5 /* PBXContainerItemProxy */ = {
-            isa = PBXContainerItemProxy;
-            containerPortal = CAA7B2502F04363800E959B5 /* Project object */;
-            proxyType = 1;
-            remoteGlobalIDString = CAA7B2572F04363800E959B5;
-            remoteInfo = Spotifly;
-        };
+		CAA7B2662F04363900E959B5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CAA7B2502F04363800E959B5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CAA7B2572F04363800E959B5;
+			remoteInfo = Spotifly;
+		};
+		CAA7B2702F04363900E959B5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CAA7B2502F04363800E959B5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CAA7B2572F04363800E959B5;
+			remoteInfo = Spotifly;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-        CAA7B2582F04363800E959B5 /* Spotifly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spotifly.app; sourceTree = BUILT_PRODUCTS_DIR; };
-        CAA7B2652F04363900E959B5 /* SpotiflyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotiflyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-        CAA7B26F2F04363900E959B5 /* SpotiflyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotiflyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CAA7B2582F04363800E959B5 /* Spotifly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spotifly.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CAA7B2652F04363900E959B5 /* SpotiflyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotiflyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CAA7B26F2F04363900E959B5 /* SpotiflyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotiflyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-        CAA7B25A2F04363800E959B5 /* Spotifly */ = {
-            isa = PBXFileSystemSynchronizedRootGroup;
-            path = Spotifly;
-            sourceTree = "<group>";
-        };
-        CAA7B2682F04363900E959B5 /* SpotiflyTests */ = {
-            isa = PBXFileSystemSynchronizedRootGroup;
-            path = SpotiflyTests;
-            sourceTree = "<group>";
-        };
-        CAA7B2722F04363900E959B5 /* SpotiflyUITests */ = {
-            isa = PBXFileSystemSynchronizedRootGroup;
-            path = SpotiflyUITests;
-            sourceTree = "<group>";
-        };
+		CAA7B25A2F04363800E959B5 /* Spotifly */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Spotifly;
+			sourceTree = "<group>";
+		};
+		CAA7B2682F04363900E959B5 /* SpotiflyTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SpotiflyTests;
+			sourceTree = "<group>";
+		};
+		CAA7B2722F04363900E959B5 /* SpotiflyUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SpotiflyUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-        CAA7B2552F04363800E959B5 /* Frameworks */ = {
-            isa = PBXFrameworksBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
-        CAA7B2622F04363900E959B5 /* Frameworks */ = {
-            isa = PBXFrameworksBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
-        CAA7B26C2F04363900E959B5 /* Frameworks */ = {
-            isa = PBXFrameworksBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
+		CAA7B2552F04363800E959B5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAA7B2622F04363900E959B5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAA7B26C2F04363900E959B5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-        CAA7B24F2F04363800E959B5 = {
-            isa = PBXGroup;
-            children = (
-                CAA7B25A2F04363800E959B5 /* Spotifly */,
-                CAA7B2682F04363900E959B5 /* SpotiflyTests */,
-                CAA7B2722F04363900E959B5 /* SpotiflyUITests */,
-                CAA7B2592F04363800E959B5 /* Products */,
-            );
-            sourceTree = "<group>";
-        };
-        CAA7B2592F04363800E959B5 /* Products */ = {
-            isa = PBXGroup;
-            children = (
-                CAA7B2582F04363800E959B5 /* Spotifly.app */,
-                CAA7B2652F04363900E959B5 /* SpotiflyTests.xctest */,
-                CAA7B26F2F04363900E959B5 /* SpotiflyUITests.xctest */,
-            );
-            name = Products;
-            sourceTree = "<group>";
-        };
+		CAA7B24F2F04363800E959B5 = {
+			isa = PBXGroup;
+			children = (
+				CAA7B25A2F04363800E959B5 /* Spotifly */,
+				CAA7B2682F04363900E959B5 /* SpotiflyTests */,
+				CAA7B2722F04363900E959B5 /* SpotiflyUITests */,
+				CAA7B2592F04363800E959B5 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CAA7B2592F04363800E959B5 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CAA7B2582F04363800E959B5 /* Spotifly.app */,
+				CAA7B2652F04363900E959B5 /* SpotiflyTests.xctest */,
+				CAA7B26F2F04363900E959B5 /* SpotiflyUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-        CAA7B2572F04363800E959B5 /* Spotifly */ = {
-            isa = PBXNativeTarget;
-            buildConfigurationList = CAA7B2792F04363900E959B5 /* Build configuration list for PBXNativeTarget "Spotifly" */;
-            buildPhases = (
-                CAA7B2542F04363800E959B5 /* Sources */,
-                CAA7B2552F04363800E959B5 /* Frameworks */,
-                CAA7B2562F04363800E959B5 /* Resources */,
-            );
-            buildRules = (
-            );
-            dependencies = (
-            );
-            fileSystemSynchronizedGroups = (
-                CAA7B25A2F04363800E959B5 /* Spotifly */,
-            );
-            name = Spotifly;
-            packageProductDependencies = (
-            );
-            productName = Spotifly;
-            productReference = CAA7B2582F04363800E959B5 /* Spotifly.app */;
-            productType = "com.apple.product-type.application";
-        };
-        CAA7B2642F04363900E959B5 /* SpotiflyTests */ = {
-            isa = PBXNativeTarget;
-            buildConfigurationList = CAA7B27C2F04363900E959B5 /* Build configuration list for PBXNativeTarget "SpotiflyTests" */;
-            buildPhases = (
-                CAA7B2612F04363900E959B5 /* Sources */,
-                CAA7B2622F04363900E959B5 /* Frameworks */,
-                CAA7B2632F04363900E959B5 /* Resources */,
-            );
-            buildRules = (
-            );
-            dependencies = (
-                CAA7B2672F04363900E959B5 /* PBXTargetDependency */,
-            );
-            fileSystemSynchronizedGroups = (
-                CAA7B2682F04363900E959B5 /* SpotiflyTests */,
-            );
-            name = SpotiflyTests;
-            packageProductDependencies = (
-            );
-            productName = SpotiflyTests;
-            productReference = CAA7B2652F04363900E959B5 /* SpotiflyTests.xctest */;
-            productType = "com.apple.product-type.bundle.unit-test";
-        };
-        CAA7B26E2F04363900E959B5 /* SpotiflyUITests */ = {
-            isa = PBXNativeTarget;
-            buildConfigurationList = CAA7B27F2F04363900E959B5 /* Build configuration list for PBXNativeTarget "SpotiflyUITests" */;
-            buildPhases = (
-                CAA7B26B2F04363900E959B5 /* Sources */,
-                CAA7B26C2F04363900E959B5 /* Frameworks */,
-                CAA7B26D2F04363900E959B5 /* Resources */,
-            );
-            buildRules = (
-            );
-            dependencies = (
-                CAA7B2712F04363900E959B5 /* PBXTargetDependency */,
-            );
-            fileSystemSynchronizedGroups = (
-                CAA7B2722F04363900E959B5 /* SpotiflyUITests */,
-            );
-            name = SpotiflyUITests;
-            packageProductDependencies = (
-            );
-            productName = SpotiflyUITests;
-            productReference = CAA7B26F2F04363900E959B5 /* SpotiflyUITests.xctest */;
-            productType = "com.apple.product-type.bundle.ui-testing";
-        };
+		CAA7B2572F04363800E959B5 /* Spotifly */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CAA7B2792F04363900E959B5 /* Build configuration list for PBXNativeTarget "Spotifly" */;
+			buildPhases = (
+				CAA7B2542F04363800E959B5 /* Sources */,
+				CAA7B2552F04363800E959B5 /* Frameworks */,
+				CAA7B2562F04363800E959B5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CAA7B25A2F04363800E959B5 /* Spotifly */,
+			);
+			name = Spotifly;
+			packageProductDependencies = (
+			);
+			productName = Spotifly;
+			productReference = CAA7B2582F04363800E959B5 /* Spotifly.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CAA7B2642F04363900E959B5 /* SpotiflyTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CAA7B27C2F04363900E959B5 /* Build configuration list for PBXNativeTarget "SpotiflyTests" */;
+			buildPhases = (
+				CAA7B2612F04363900E959B5 /* Sources */,
+				CAA7B2622F04363900E959B5 /* Frameworks */,
+				CAA7B2632F04363900E959B5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CAA7B2672F04363900E959B5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CAA7B2682F04363900E959B5 /* SpotiflyTests */,
+			);
+			name = SpotiflyTests;
+			packageProductDependencies = (
+			);
+			productName = SpotiflyTests;
+			productReference = CAA7B2652F04363900E959B5 /* SpotiflyTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		CAA7B26E2F04363900E959B5 /* SpotiflyUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CAA7B27F2F04363900E959B5 /* Build configuration list for PBXNativeTarget "SpotiflyUITests" */;
+			buildPhases = (
+				CAA7B26B2F04363900E959B5 /* Sources */,
+				CAA7B26C2F04363900E959B5 /* Frameworks */,
+				CAA7B26D2F04363900E959B5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CAA7B2712F04363900E959B5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CAA7B2722F04363900E959B5 /* SpotiflyUITests */,
+			);
+			name = SpotiflyUITests;
+			packageProductDependencies = (
+			);
+			productName = SpotiflyUITests;
+			productReference = CAA7B26F2F04363900E959B5 /* SpotiflyUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-        CAA7B2502F04363800E959B5 /* Project object */ = {
-            isa = PBXProject;
-            attributes = {
-                BuildIndependentTargetsInParallel = 1;
-                LastSwiftUpdateCheck = 2620;
-                LastUpgradeCheck = 2620;
-                TargetAttributes = {
-                    CAA7B2572F04363800E959B5 = {
-                        CreatedOnToolsVersion = 26.2;
-                    };
-                    CAA7B2642F04363900E959B5 = {
-                        CreatedOnToolsVersion = 26.2;
-                        TestTargetID = CAA7B2572F04363800E959B5;
-                    };
-                    CAA7B26E2F04363900E959B5 = {
-                        CreatedOnToolsVersion = 26.2;
-                        TestTargetID = CAA7B2572F04363800E959B5;
-                    };
-                };
-            };
-            buildConfigurationList = CAA7B2532F04363800E959B5 /* Build configuration list for PBXProject "Spotifly" */;
-            developmentRegion = en;
-            hasScannedForEncodings = 0;
-            knownRegions = (
-                en,
-                Base,
-            );
-            mainGroup = CAA7B24F2F04363800E959B5;
-            minimizedProjectReferenceProxies = 1;
-            preferredProjectObjectVersion = 77;
-            productRefGroup = CAA7B2592F04363800E959B5 /* Products */;
-            projectDirPath = "";
-            projectRoot = "";
-            targets = (
-                CAA7B2572F04363800E959B5 /* Spotifly */,
-                CAA7B2642F04363900E959B5 /* SpotiflyTests */,
-                CAA7B26E2F04363900E959B5 /* SpotiflyUITests */,
-            );
-        };
+		CAA7B2502F04363800E959B5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					CAA7B2572F04363800E959B5 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					CAA7B2642F04363900E959B5 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = CAA7B2572F04363800E959B5;
+					};
+					CAA7B26E2F04363900E959B5 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = CAA7B2572F04363800E959B5;
+					};
+				};
+			};
+			buildConfigurationList = CAA7B2532F04363800E959B5 /* Build configuration list for PBXProject "Spotifly" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = CAA7B24F2F04363800E959B5;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = CAA7B2592F04363800E959B5 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CAA7B2572F04363800E959B5 /* Spotifly */,
+				CAA7B2642F04363900E959B5 /* SpotiflyTests */,
+				CAA7B26E2F04363900E959B5 /* SpotiflyUITests */,
+			);
+		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-        CAA7B2562F04363800E959B5 /* Resources */ = {
-            isa = PBXResourcesBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
-        CAA7B2632F04363900E959B5 /* Resources */ = {
-            isa = PBXResourcesBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
-        CAA7B26D2F04363900E959B5 /* Resources */ = {
-            isa = PBXResourcesBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
+		CAA7B2562F04363800E959B5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAA7B2632F04363900E959B5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAA7B26D2F04363900E959B5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-        CAA7B2542F04363800E959B5 /* Sources */ = {
-            isa = PBXSourcesBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
-        CAA7B2612F04363900E959B5 /* Sources */ = {
-            isa = PBXSourcesBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
-        CAA7B26B2F04363900E959B5 /* Sources */ = {
-            isa = PBXSourcesBuildPhase;
-            buildActionMask = 2147483647;
-            files = (
-            );
-            runOnlyForDeploymentPostprocessing = 0;
-        };
+		CAA7B2542F04363800E959B5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAA7B2612F04363900E959B5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAA7B26B2F04363900E959B5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-        CAA7B2672F04363900E959B5 /* PBXTargetDependency */ = {
-            isa = PBXTargetDependency;
-            target = CAA7B2572F04363800E959B5 /* Spotifly */;
-            targetProxy = CAA7B2662F04363900E959B5 /* PBXContainerItemProxy */;
-        };
-        CAA7B2712F04363900E959B5 /* PBXTargetDependency */ = {
-            isa = PBXTargetDependency;
-            target = CAA7B2572F04363800E959B5 /* Spotifly */;
-            targetProxy = CAA7B2702F04363900E959B5 /* PBXContainerItemProxy */;
-        };
+		CAA7B2672F04363900E959B5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CAA7B2572F04363800E959B5 /* Spotifly */;
+			targetProxy = CAA7B2662F04363900E959B5 /* PBXContainerItemProxy */;
+		};
+		CAA7B2712F04363900E959B5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CAA7B2572F04363800E959B5 /* Spotifly */;
+			targetProxy = CAA7B2702F04363900E959B5 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-        CAA7B2772F04363900E959B5 /* Debug */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                ALWAYS_SEARCH_USER_PATHS = NO;
-                ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-                CLANG_ANALYZER_NONNULL = YES;
-                CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-                CLANG_ENABLE_MODULES = YES;
-                CLANG_ENABLE_OBJC_ARC = YES;
-                CLANG_ENABLE_OBJC_WEAK = YES;
-                CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-                CLANG_WARN_BOOL_CONVERSION = YES;
-                CLANG_WARN_COMMA = YES;
-                CLANG_WARN_CONSTANT_CONVERSION = YES;
-                CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-                CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-                CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-                CLANG_WARN_EMPTY_BODY = YES;
-                CLANG_WARN_ENUM_CONVERSION = YES;
-                CLANG_WARN_INFINITE_RECURSION = YES;
-                CLANG_WARN_INT_CONVERSION = YES;
-                CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-                CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-                CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-                CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-                CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-                CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-                CLANG_WARN_STRICT_PROTOTYPES = YES;
-                CLANG_WARN_SUSPICIOUS_MOVE = YES;
-                CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-                CLANG_WARN_UNREACHABLE_CODE = YES;
-                CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-                COPY_PHASE_STRIP = NO;
-                DEBUG_INFORMATION_FORMAT = dwarf;
-                DEVELOPMENT_TEAM = 89S4HZY343;
-                ENABLE_STRICT_OBJC_MSGSEND = YES;
-                ENABLE_TESTABILITY = YES;
-                ENABLE_USER_SCRIPT_SANDBOXING = YES;
-                GCC_C_LANGUAGE_STANDARD = gnu17;
-                GCC_DYNAMIC_NO_PIC = NO;
-                GCC_NO_COMMON_BLOCKS = YES;
-                GCC_OPTIMIZATION_LEVEL = 0;
-                GCC_PREPROCESSOR_DEFINITIONS = (
-                    "DEBUG=1",
-                    "$(inherited)",
-                );
-                GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-                GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-                GCC_WARN_UNDECLARED_SELECTOR = YES;
-                GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-                GCC_WARN_UNUSED_FUNCTION = YES;
-                GCC_WARN_UNUSED_VARIABLE = YES;
-                LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-                MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
-                MTL_FAST_MATH = YES;
-                ONLY_ACTIVE_ARCH = YES;
-                SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
-                SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-            };
-            name = Debug;
-        };
-        CAA7B2782F04363900E959B5 /* Release */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                ALWAYS_SEARCH_USER_PATHS = NO;
-                ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-                CLANG_ANALYZER_NONNULL = YES;
-                CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-                CLANG_ENABLE_MODULES = YES;
-                CLANG_ENABLE_OBJC_ARC = YES;
-                CLANG_ENABLE_OBJC_WEAK = YES;
-                CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-                CLANG_WARN_BOOL_CONVERSION = YES;
-                CLANG_WARN_COMMA = YES;
-                CLANG_WARN_CONSTANT_CONVERSION = YES;
-                CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-                CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-                CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-                CLANG_WARN_EMPTY_BODY = YES;
-                CLANG_WARN_ENUM_CONVERSION = YES;
-                CLANG_WARN_INFINITE_RECURSION = YES;
-                CLANG_WARN_INT_CONVERSION = YES;
-                CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-                CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-                CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-                CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-                CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-                CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-                CLANG_WARN_STRICT_PROTOTYPES = YES;
-                CLANG_WARN_SUSPICIOUS_MOVE = YES;
-                CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-                CLANG_WARN_UNREACHABLE_CODE = YES;
-                CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-                COPY_PHASE_STRIP = NO;
-                DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-                DEVELOPMENT_TEAM = 89S4HZY343;
-                ENABLE_NS_ASSERTIONS = NO;
-                ENABLE_STRICT_OBJC_MSGSEND = YES;
-                ENABLE_USER_SCRIPT_SANDBOXING = YES;
-                GCC_C_LANGUAGE_STANDARD = gnu17;
-                GCC_NO_COMMON_BLOCKS = YES;
-                GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-                GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-                GCC_WARN_UNDECLARED_SELECTOR = YES;
-                GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-                GCC_WARN_UNUSED_FUNCTION = YES;
-                GCC_WARN_UNUSED_VARIABLE = YES;
-                LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-                MTL_ENABLE_DEBUG_INFO = NO;
-                MTL_FAST_MATH = YES;
-                SWIFT_COMPILATION_MODE = wholemodule;
-            };
-            name = Release;
-        };
-        CAA7B27A2F04363900E959B5 /* Debug */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-                ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-                CODE_SIGN_ENTITLEMENTS = Spotifly/Spotifly.entitlements;
-                CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 1;
-                DEVELOPMENT_TEAM = 89S4HZY343;
-                ENABLE_APP_SANDBOX = YES;
-                ENABLE_HARDENED_RUNTIME = YES;
-                ENABLE_PREVIEWS = YES;
-                ENABLE_USER_SELECTED_FILES = readonly;
-                GENERATE_INFOPLIST_FILE = YES;
-                "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-                "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
-                "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
-                "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-                "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-                "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
-                "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
-                "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-                INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-                INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-                IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-                LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-                "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-                LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/build/rust/lib";
-                MACOSX_DEPLOYMENT_TARGET = 26.2;
-                MARKETING_VERSION = 1.0;
-                OTHER_LDFLAGS = (
-                    "-lspotifly_rust",
-                    "-framework",
-                    SystemConfiguration,
-                    "-framework",
-                    Security,
-                    "-framework",
-                    CoreFoundation,
-                );
-                PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
-                PRODUCT_NAME = "$(TARGET_NAME)";
-                REGISTER_APP_GROUPS = YES;
-                SDKROOT = auto;
-                STRING_CATALOG_GENERATE_SYMBOLS = YES;
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
-                SWIFT_APPROACHABLE_CONCURRENCY = YES;
-                SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-                SWIFT_EMIT_LOC_STRINGS = YES;
-                SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/build/rust/include";
-                SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-                SWIFT_VERSION = 6.0;
-                TARGETED_DEVICE_FAMILY = "1,2,7";
-                TVOS_DEPLOYMENT_TARGET = 26.0;
-                WATCHOS_DEPLOYMENT_TARGET = 26.0;
-                XROS_DEPLOYMENT_TARGET = 26.2;
-            };
-            name = Debug;
-        };
-        CAA7B27B2F04363900E959B5 /* Release */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-                ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-                CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 1;
-                DEVELOPMENT_TEAM = 89S4HZY343;
-                ENABLE_APP_SANDBOX = YES;
-                ENABLE_HARDENED_RUNTIME = YES;
-                ENABLE_PREVIEWS = YES;
-                ENABLE_USER_SELECTED_FILES = readonly;
-                GENERATE_INFOPLIST_FILE = YES;
-                "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-                "INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
-                "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
-                "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-                "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-                "INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
-                "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
-                "INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-                INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-                INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-                IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-                LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-                "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-                MACOSX_DEPLOYMENT_TARGET = 26.2;
-                MARKETING_VERSION = 1.0;
-                PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
-                PRODUCT_NAME = "$(TARGET_NAME)";
-                REGISTER_APP_GROUPS = YES;
-                SDKROOT = auto;
-                STRING_CATALOG_GENERATE_SYMBOLS = YES;
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
-                SWIFT_APPROACHABLE_CONCURRENCY = YES;
-                SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-                SWIFT_EMIT_LOC_STRINGS = YES;
-                SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-                SWIFT_VERSION = 6.0;
-                TARGETED_DEVICE_FAMILY = "1,2,7";
-                TVOS_DEPLOYMENT_TARGET = 26.0;
-                WATCHOS_DEPLOYMENT_TARGET = 26.0;
-                XROS_DEPLOYMENT_TARGET = 26.2;
-            };
-            name = Release;
-        };
-        CAA7B27D2F04363900E959B5 /* Debug */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                BUNDLE_LOADER = "$(TEST_HOST)";
-                CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 1;
-                DEVELOPMENT_TEAM = 89S4HZY343;
-                GENERATE_INFOPLIST_FILE = YES;
-                IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-                MACOSX_DEPLOYMENT_TARGET = 26.2;
-                MARKETING_VERSION = 1.0;
-                PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyTests;
-                PRODUCT_NAME = "$(TARGET_NAME)";
-                SDKROOT = auto;
-                STRING_CATALOG_GENERATE_SYMBOLS = NO;
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
-                SWIFT_APPROACHABLE_CONCURRENCY = YES;
-                SWIFT_EMIT_LOC_STRINGS = NO;
-                SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-                SWIFT_VERSION = 5.0;
-                TARGETED_DEVICE_FAMILY = "1,2,7";
-                TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Spotifly.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Spotifly";
-                XROS_DEPLOYMENT_TARGET = 26.2;
-            };
-            name = Debug;
-        };
-        CAA7B27E2F04363900E959B5 /* Release */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                BUNDLE_LOADER = "$(TEST_HOST)";
-                CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 1;
-                DEVELOPMENT_TEAM = 89S4HZY343;
-                GENERATE_INFOPLIST_FILE = YES;
-                IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-                MACOSX_DEPLOYMENT_TARGET = 26.2;
-                MARKETING_VERSION = 1.0;
-                PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyTests;
-                PRODUCT_NAME = "$(TARGET_NAME)";
-                SDKROOT = auto;
-                STRING_CATALOG_GENERATE_SYMBOLS = NO;
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
-                SWIFT_APPROACHABLE_CONCURRENCY = YES;
-                SWIFT_EMIT_LOC_STRINGS = NO;
-                SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-                SWIFT_VERSION = 5.0;
-                TARGETED_DEVICE_FAMILY = "1,2,7";
-                TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Spotifly.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Spotifly";
-                XROS_DEPLOYMENT_TARGET = 26.2;
-            };
-            name = Release;
-        };
-        CAA7B2802F04363900E959B5 /* Debug */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 1;
-                DEVELOPMENT_TEAM = 89S4HZY343;
-                GENERATE_INFOPLIST_FILE = YES;
-                IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-                MACOSX_DEPLOYMENT_TARGET = 26.2;
-                MARKETING_VERSION = 1.0;
-                PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyUITests;
-                PRODUCT_NAME = "$(TARGET_NAME)";
-                SDKROOT = auto;
-                STRING_CATALOG_GENERATE_SYMBOLS = NO;
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
-                SWIFT_APPROACHABLE_CONCURRENCY = YES;
-                SWIFT_EMIT_LOC_STRINGS = NO;
-                SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-                SWIFT_VERSION = 5.0;
-                TARGETED_DEVICE_FAMILY = "1,2,7";
-                TEST_TARGET_NAME = Spotifly;
-                XROS_DEPLOYMENT_TARGET = 26.2;
-            };
-            name = Debug;
-        };
-        CAA7B2812F04363900E959B5 /* Release */ = {
-            isa = XCBuildConfiguration;
-            buildSettings = {
-                CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 1;
-                DEVELOPMENT_TEAM = 89S4HZY343;
-                GENERATE_INFOPLIST_FILE = YES;
-                IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-                MACOSX_DEPLOYMENT_TARGET = 26.2;
-                MARKETING_VERSION = 1.0;
-                PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyUITests;
-                PRODUCT_NAME = "$(TARGET_NAME)";
-                SDKROOT = auto;
-                STRING_CATALOG_GENERATE_SYMBOLS = NO;
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
-                SWIFT_APPROACHABLE_CONCURRENCY = YES;
-                SWIFT_EMIT_LOC_STRINGS = NO;
-                SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-                SWIFT_VERSION = 5.0;
-                TARGETED_DEVICE_FAMILY = "1,2,7";
-                TEST_TARGET_NAME = Spotifly;
-                XROS_DEPLOYMENT_TARGET = 26.2;
-            };
-            name = Release;
-        };
+		CAA7B2772F04363900E959B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 89S4HZY343;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		CAA7B2782F04363900E959B5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 89S4HZY343;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		CAA7B27A2F04363900E959B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Spotifly/Spotifly.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 89S4HZY343;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/build/rust/lib";
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/build/rust/include";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		CAA7B27B2F04363900E959B5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 89S4HZY343;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		CAA7B27D2F04363900E959B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 89S4HZY343;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Spotifly.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Spotifly";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		CAA7B27E2F04363900E959B5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 89S4HZY343;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Spotifly.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Spotifly";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		CAA7B2802F04363900E959B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 89S4HZY343;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_TARGET_NAME = Spotifly;
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		CAA7B2812F04363900E959B5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 89S4HZY343;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_TARGET_NAME = Spotifly;
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-        CAA7B2532F04363800E959B5 /* Build configuration list for PBXProject "Spotifly" */ = {
-            isa = XCConfigurationList;
-            buildConfigurations = (
-                CAA7B2772F04363900E959B5 /* Debug */,
-                CAA7B2782F04363900E959B5 /* Release */,
-            );
-            defaultConfigurationIsVisible = 0;
-            defaultConfigurationName = Release;
-        };
-        CAA7B2792F04363900E959B5 /* Build configuration list for PBXNativeTarget "Spotifly" */ = {
-            isa = XCConfigurationList;
-            buildConfigurations = (
-                CAA7B27A2F04363900E959B5 /* Debug */,
-                CAA7B27B2F04363900E959B5 /* Release */,
-            );
-            defaultConfigurationIsVisible = 0;
-            defaultConfigurationName = Release;
-        };
-        CAA7B27C2F04363900E959B5 /* Build configuration list for PBXNativeTarget "SpotiflyTests" */ = {
-            isa = XCConfigurationList;
-            buildConfigurations = (
-                CAA7B27D2F04363900E959B5 /* Debug */,
-                CAA7B27E2F04363900E959B5 /* Release */,
-            );
-            defaultConfigurationIsVisible = 0;
-            defaultConfigurationName = Release;
-        };
-        CAA7B27F2F04363900E959B5 /* Build configuration list for PBXNativeTarget "SpotiflyUITests" */ = {
-            isa = XCConfigurationList;
-            buildConfigurations = (
-                CAA7B2802F04363900E959B5 /* Debug */,
-                CAA7B2812F04363900E959B5 /* Release */,
-            );
-            defaultConfigurationIsVisible = 0;
-            defaultConfigurationName = Release;
-        };
+		CAA7B2532F04363800E959B5 /* Build configuration list for PBXProject "Spotifly" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CAA7B2772F04363900E959B5 /* Debug */,
+				CAA7B2782F04363900E959B5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CAA7B2792F04363900E959B5 /* Build configuration list for PBXNativeTarget "Spotifly" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CAA7B27A2F04363900E959B5 /* Debug */,
+				CAA7B27B2F04363900E959B5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CAA7B27C2F04363900E959B5 /* Build configuration list for PBXNativeTarget "SpotiflyTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CAA7B27D2F04363900E959B5 /* Debug */,
+				CAA7B27E2F04363900E959B5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CAA7B27F2F04363900E959B5 /* Build configuration list for PBXNativeTarget "SpotiflyUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CAA7B2802F04363900E959B5 /* Debug */,
+				CAA7B2812F04363900E959B5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
-    };
-    rootObject = CAA7B2502F04363800E959B5 /* Project object */;
+	};
+	rootObject = CAA7B2502F04363800E959B5 /* Project object */;
 }
