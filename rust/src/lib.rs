@@ -8,7 +8,8 @@ use tokio::runtime::Runtime;
 
 // Spotify's official client ID used by librespot
 const SPOTIFY_CLIENT_ID: &str = "65b708073fc0480ea92a077233ca87bd";
-const REDIRECT_URI: &str = "http://127.0.0.1:8888/callback";
+// The redirect URI registered with Spotify for the librespot client ID
+const REDIRECT_URI: &str = "http://127.0.0.1:8888/login";
 
 // Global tokio runtime for async operations
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -61,7 +62,9 @@ async fn perform_oauth() -> Result<OAuthResult, OAuthError> {
         "user-read-currently-playing",
     ];
 
-    let client = OAuthClientBuilder::new(SPOTIFY_CLIENT_ID, REDIRECT_URI, scopes).build()?;
+    let client = OAuthClientBuilder::new(SPOTIFY_CLIENT_ID, REDIRECT_URI, scopes)
+        .open_in_browser()
+        .build()?;
 
     let token = client.get_access_token()?;
 
