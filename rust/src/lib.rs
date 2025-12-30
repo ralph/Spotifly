@@ -1,8 +1,8 @@
 use librespot_core::session::Session;
 use librespot_core::SessionConfig;
 use librespot_core::cache::Cache;
-use librespot_core::spotify_id::SpotifyId;
 use librespot_core::SpotifyUri;
+use librespot_metadata::{Album, Artist, Metadata, Playlist, Track};
 use librespot_oauth::{OAuthClientBuilder, OAuthError};
 use librespot_playback::audio_backend;
 use librespot_playback::config::{AudioFormat, PlayerConfig};
@@ -12,7 +12,7 @@ use librespot_playback::player::{Player, PlayerEvent};
 use once_cell::sync::Lazy;
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::runtime::Runtime;
@@ -35,12 +35,178 @@ static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
 
+// Queue state
+static QUEUE: Lazy<Mutex<Vec<QueueItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static CURRENT_INDEX: AtomicUsize = AtomicUsize::new(0);
+
 struct OAuthResult {
     access_token: String,
     refresh_token: Option<String>,
     expires_in: u64,
     #[allow(dead_code)]
     scopes: Vec<String>,
+}
+
+#[derive(Clone)]
+struct QueueItem {
+    uri: String,
+    track_name: String,
+    artist_name: String,
+    album_art_url: String,
+}
+
+// Helper function to convert URL to URI
+fn url_to_uri(input: &str) -> String {
+    // If already a URI, return as-is
+    if input.starts_with("spotify:") {
+        return input.to_string();
+    }
+
+    // If it's a URL, parse it
+    if input.starts_with("http://") || input.starts_with("https://") {
+        if let Some(marker_pos) = input.find("open.spotify.com/") {
+            let after_marker = &input[marker_pos + "open.spotify.com/".len()..];
+            let parts: Vec<&str> = after_marker.split('/').collect();
+
+            // Filter out locale prefixes like "intl-de"
+            let filtered: Vec<&str> = parts.iter()
+                .filter(|p| !p.starts_with("intl-"))
+                .copied()
+                .collect();
+
+            if filtered.len() >= 2 {
+                let content_type = filtered[0];
+                let mut id = filtered[1];
+
+                // Remove query parameters
+                if let Some(query_pos) = id.find('?') {
+                    id = &id[..query_pos];
+                }
+
+                return format!("spotify:{}:{}", content_type, id);
+            }
+        }
+    }
+
+    // Return original if can't parse
+    input.to_string()
+}
+
+// Helper function to parse Spotify URI from string
+fn parse_spotify_uri(uri_str: &str) -> Result<SpotifyUri, String> {
+    SpotifyUri::from_uri(uri_str)
+        .map_err(|e| format!("Invalid Spotify URI: {:?}", e))
+}
+
+// Helper function to extract album art URL from track
+fn get_album_art_url(_track: &Track) -> String {
+    // Album art URL can be fetched from Spotify Web API if needed
+    // For now, return empty string as the metadata doesn't include covers
+    String::new()
+}
+
+// Load album tracks into queue
+async fn load_album(session: &Session, album_uri: SpotifyUri) -> Result<Vec<QueueItem>, String> {
+    let album = Album::get(session, &album_uri).await
+        .map_err(|e| format!("Failed to load album: {:?}", e))?;
+
+    let mut queue_items = Vec::new();
+
+    // Get track URIs from album
+    let track_uris: Vec<SpotifyUri> = album.tracks()
+        .cloned()
+        .collect();
+
+    // Fetch metadata for each track
+    for track_uri in track_uris {
+        if let Ok(track) = Track::get(session, &track_uri).await {
+            let track_name = track.name.clone();
+            let artist_name = track.artists.iter()
+                .map(|a| a.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let album_art_url = get_album_art_url(&track);
+
+            queue_items.push(QueueItem {
+                uri: track_uri.to_string(),
+                track_name,
+                artist_name,
+                album_art_url,
+            });
+        }
+    }
+
+    Ok(queue_items)
+}
+
+// Load playlist tracks into queue
+async fn load_playlist(session: &Session, playlist_uri: SpotifyUri) -> Result<Vec<QueueItem>, String> {
+    let playlist = Playlist::get(session, &playlist_uri).await
+        .map_err(|e| format!("Failed to load playlist: {:?}", e))?;
+
+    let mut queue_items = Vec::new();
+
+    for item_uri in playlist.tracks() {
+        // Only handle track URIs, skip episodes
+        if matches!(item_uri, SpotifyUri::Track { .. }) {
+            let track_uri = item_uri.clone();
+
+            // Fetch track metadata
+            if let Ok(track) = Track::get(session, &track_uri).await {
+                let track_name = track.name.clone();
+                let artist_name = track.artists.iter()
+                    .map(|a| a.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let album_art_url = get_album_art_url(&track);
+
+                queue_items.push(QueueItem {
+                    uri: track_uri.to_string(),
+                    track_name,
+                    artist_name,
+                    album_art_url,
+                });
+            }
+        }
+    }
+
+    Ok(queue_items)
+}
+
+// Load artist top tracks into queue
+async fn load_artist(session: &Session, artist_uri: SpotifyUri) -> Result<Vec<QueueItem>, String> {
+    let artist = Artist::get(session, &artist_uri).await
+        .map_err(|e| format!("Failed to load artist: {:?}", e))?;
+
+    let mut queue_items = Vec::new();
+
+    // Get top tracks - artist.top_tracks is a CountryTopTracks iterator
+    // Each item has a tracks field which is Tracks(Vec<SpotifyUri>), access with .0
+    let track_uris: Vec<SpotifyUri> = artist.top_tracks
+        .iter()
+        .flat_map(|top_track| top_track.tracks.0.clone())
+        .collect();
+
+    // Fetch metadata for each track
+    for track_uri in track_uris {
+        if let Ok(track) = Track::get(session, &track_uri).await {
+            let track_name = track.name.clone();
+            let artist_name = track.artists.iter()
+                .map(|a| a.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let album_art_url = get_album_art_url(&track);
+
+            queue_items.push(QueueItem {
+                uri: track_uri.to_string(),
+                track_name,
+                artist_name,
+                album_art_url,
+            });
+        }
+    }
+
+    Ok(queue_items)
 }
 
 /// Initiates the Spotify OAuth flow. Opens the browser for user authentication.
@@ -307,6 +473,22 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                         }
                         Some(PlayerEvent::EndOfTrack { .. }) => {
                             IS_PLAYING.store(false, Ordering::SeqCst);
+                            // Auto-advance to next track if available
+                            let queue_guard = QUEUE.lock().unwrap();
+                            let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
+                            if current_idx + 1 < queue_guard.len() {
+                                let next_track = queue_guard[current_idx + 1].clone();
+                                drop(queue_guard);
+                                CURRENT_INDEX.store(current_idx + 1, Ordering::SeqCst);
+
+                                // Parse and load next track
+                                if let Ok(spotify_uri) = parse_spotify_uri(&next_track.uri) {
+                                    player_clone.load(spotify_uri, true, 0);
+                                    IS_PLAYING.store(true, Ordering::SeqCst);
+                                }
+                            } else {
+                                drop(queue_guard);
+                            }
                         }
                         None => break,
                         _ => {}
@@ -334,31 +516,28 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Plays a track by its Spotify URI (e.g., "spotify:track:4iV5W9uYEdYUVa79Axb7Rh").
+/// Plays content by its Spotify URI or URL.
+/// Supports tracks, albums, playlists, and artists.
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
-pub extern "C" fn spotifly_play_track(track_uri: *const c_char) -> i32 {
-    if track_uri.is_null() {
-        eprintln!("Play error: track_uri is null");
+pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
+    if uri_or_url.is_null() {
+        eprintln!("Play error: uri_or_url is null");
         return -1;
     }
 
-    let uri_str = unsafe {
-        match CStr::from_ptr(track_uri).to_str() {
+    let input_str = unsafe {
+        match CStr::from_ptr(uri_or_url).to_str() {
             Ok(s) => s.to_string(),
             Err(_) => {
-                eprintln!("Play error: invalid track_uri string");
+                eprintln!("Play error: invalid uri_or_url string");
                 return -1;
             }
         }
     };
 
-    // Parse the track ID from URI
-    let track_id = if uri_str.starts_with("spotify:track:") {
-        uri_str.strip_prefix("spotify:track:").unwrap().to_string()
-    } else {
-        uri_str.clone()
-    };
+    // Convert URL to URI if needed
+    let uri_str = url_to_uri(&input_str);
 
     let player_guard = PLAYER.lock().unwrap();
     let player = match player_guard.as_ref() {
@@ -370,13 +549,109 @@ pub extern "C" fn spotifly_play_track(track_uri: *const c_char) -> i32 {
     };
     drop(player_guard);
 
-    let result: Result<(), String> = RUNTIME.block_on(async {
-        let spotify_id = SpotifyId::from_base62(&track_id)
-            .map_err(|e| format!("Invalid track ID: {:?}", e))?;
-        
-        let track_uri = SpotifyUri::Track { id: spotify_id };
+    let session_guard = SESSION.lock().unwrap();
+    let session = match session_guard.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            eprintln!("Play error: session not initialized");
+            return -1;
+        }
+    };
+    drop(session_guard);
 
-        player.load(track_uri, true, 0);
+    let result: Result<(), String> = RUNTIME.block_on(async {
+        // Parse the URI to determine type
+        let spotify_uri = parse_spotify_uri(&uri_str)?;
+
+        match spotify_uri {
+            SpotifyUri::Track { .. } => {
+                // Single track - create queue with one item
+                let track = Track::get(&session, &spotify_uri).await
+                    .map_err(|e| format!("Failed to load track: {:?}", e))?;
+
+                let track_name = track.name.clone();
+                let artist_name = track.artists.first()
+                    .map(|a| a.name.clone())
+                    .unwrap_or_default();
+                let album_art_url = get_album_art_url(&track);
+
+                let queue_item = QueueItem {
+                    uri: uri_str.clone(),
+                    track_name,
+                    artist_name,
+                    album_art_url,
+                };
+
+                let mut queue_guard = QUEUE.lock().unwrap();
+                queue_guard.clear();
+                queue_guard.push(queue_item);
+                drop(queue_guard);
+
+                CURRENT_INDEX.store(0, Ordering::SeqCst);
+                player.load(spotify_uri, true, 0);
+            }
+            SpotifyUri::Album { .. } => {
+                // Load album tracks
+                let queue_items = load_album(&session, spotify_uri.clone()).await?;
+
+                if queue_items.is_empty() {
+                    return Err("Album has no tracks".to_string());
+                }
+
+                let mut queue_guard = QUEUE.lock().unwrap();
+                queue_guard.clear();
+                queue_guard.extend(queue_items);
+                drop(queue_guard);
+
+                CURRENT_INDEX.store(0, Ordering::SeqCst);
+
+                // Load first track
+                let first_uri = parse_spotify_uri(&QUEUE.lock().unwrap()[0].uri)?;
+                player.load(first_uri, true, 0);
+            }
+            SpotifyUri::Playlist { .. } => {
+                // Load playlist tracks
+                let queue_items = load_playlist(&session, spotify_uri.clone()).await?;
+
+                if queue_items.is_empty() {
+                    return Err("Playlist has no tracks".to_string());
+                }
+
+                let mut queue_guard = QUEUE.lock().unwrap();
+                queue_guard.clear();
+                queue_guard.extend(queue_items);
+                drop(queue_guard);
+
+                CURRENT_INDEX.store(0, Ordering::SeqCst);
+
+                // Load first track
+                let first_uri = parse_spotify_uri(&QUEUE.lock().unwrap()[0].uri)?;
+                player.load(first_uri, true, 0);
+            }
+            SpotifyUri::Artist { .. } => {
+                // Load artist top tracks
+                let queue_items = load_artist(&session, spotify_uri.clone()).await?;
+
+                if queue_items.is_empty() {
+                    return Err("Artist has no top tracks".to_string());
+                }
+
+                let mut queue_guard = QUEUE.lock().unwrap();
+                queue_guard.clear();
+                queue_guard.extend(queue_items);
+                drop(queue_guard);
+
+                CURRENT_INDEX.store(0, Ordering::SeqCst);
+
+                // Load first track
+                let first_uri = parse_spotify_uri(&QUEUE.lock().unwrap()[0].uri)?;
+                player.load(first_uri, true, 0);
+            }
+            _ => {
+                return Err(format!("Unsupported URI type: {}", uri_str));
+            }
+        }
+
         Ok(())
     });
 
@@ -450,6 +725,172 @@ pub extern "C" fn spotifly_stop() -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_is_playing() -> i32 {
     if IS_PLAYING.load(Ordering::SeqCst) { 1 } else { 0 }
+}
+
+/// Skips to the next track in the queue.
+/// Returns 0 on success, -1 on error or if at end of queue.
+#[no_mangle]
+pub extern "C" fn spotifly_next() -> i32 {
+    let queue_guard = QUEUE.lock().unwrap();
+    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
+
+    if current_idx + 1 >= queue_guard.len() {
+        drop(queue_guard);
+        eprintln!("Next error: already at last track");
+        return -1;
+    }
+
+    let next_track = queue_guard[current_idx + 1].clone();
+    drop(queue_guard);
+
+    CURRENT_INDEX.store(current_idx + 1, Ordering::SeqCst);
+
+    let player_guard = PLAYER.lock().unwrap();
+    let player = match player_guard.as_ref() {
+        Some(p) => Arc::clone(p),
+        None => {
+            eprintln!("Next error: player not initialized");
+            return -1;
+        }
+    };
+    drop(player_guard);
+
+    let result = RUNTIME.block_on(async {
+        parse_spotify_uri(&next_track.uri)
+    });
+
+    match result {
+        Ok(uri) => {
+            player.load(uri, true, 0);
+            IS_PLAYING.store(true, Ordering::SeqCst);
+            0
+        }
+        Err(e) => {
+            eprintln!("Next error: {}", e);
+            -1
+        }
+    }
+}
+
+/// Skips to the previous track in the queue.
+/// Returns 0 on success, -1 on error or if at start of queue.
+#[no_mangle]
+pub extern "C" fn spotifly_previous() -> i32 {
+    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
+
+    if current_idx == 0 {
+        eprintln!("Previous error: already at first track");
+        return -1;
+    }
+
+    let queue_guard = QUEUE.lock().unwrap();
+    let prev_track = queue_guard[current_idx - 1].clone();
+    drop(queue_guard);
+
+    CURRENT_INDEX.store(current_idx - 1, Ordering::SeqCst);
+
+    let player_guard = PLAYER.lock().unwrap();
+    let player = match player_guard.as_ref() {
+        Some(p) => Arc::clone(p),
+        None => {
+            eprintln!("Previous error: player not initialized");
+            return -1;
+        }
+    };
+    drop(player_guard);
+
+    let result = RUNTIME.block_on(async {
+        parse_spotify_uri(&prev_track.uri)
+    });
+
+    match result {
+        Ok(uri) => {
+            player.load(uri, true, 0);
+            IS_PLAYING.store(true, Ordering::SeqCst);
+            0
+        }
+        Err(e) => {
+            eprintln!("Previous error: {}", e);
+            -1
+        }
+    }
+}
+
+/// Returns the number of tracks in the queue.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_length() -> usize {
+    let queue_guard = QUEUE.lock().unwrap();
+    queue_guard.len()
+}
+
+/// Returns the current track index in the queue (0-based).
+#[no_mangle]
+pub extern "C" fn spotifly_get_current_index() -> usize {
+    CURRENT_INDEX.load(Ordering::SeqCst)
+}
+
+/// Returns the track name at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_track_name(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match CString::new(queue_guard[index].track_name.clone()) {
+        Ok(cstr) => cstr.into_raw(),
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Returns the artist name at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_artist_name(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match CString::new(queue_guard[index].artist_name.clone()) {
+        Ok(cstr) => cstr.into_raw(),
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Returns the album art URL at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_album_art_url(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match CString::new(queue_guard[index].album_art_url.clone()) {
+        Ok(cstr) => cstr.into_raw(),
+        Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Returns the URI at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_uri(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match CString::new(queue_guard[index].uri.clone()) {
+        Ok(cstr) => cstr.into_raw(),
+        Err(_) => ptr::null_mut(),
+    }
 }
 
 /// Cleans up the player resources.

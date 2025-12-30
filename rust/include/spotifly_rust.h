@@ -46,9 +46,10 @@ void spotifly_free_string(char* s);
 /// Returns 0 on success, -1 on error.
 int32_t spotifly_init_player(const char* access_token);
 
-/// Plays a track by its Spotify URI (e.g., "spotify:track:4iV5W9uYEdYUVa79Axb7Rh").
+/// Plays content by its Spotify URI or URL.
+/// Supports tracks, albums, playlists, and artists.
 /// Returns 0 on success, -1 on error.
-int32_t spotifly_play_track(const char* track_uri);
+int32_t spotifly_play_track(const char* uri_or_url);
 
 /// Pauses playback.
 /// Returns 0 on success, -1 on error.
@@ -64,6 +65,40 @@ int32_t spotifly_stop(void);
 
 /// Returns 1 if currently playing, 0 otherwise.
 int32_t spotifly_is_playing(void);
+
+/// Skips to the next track in the queue.
+/// Returns 0 on success, -1 on error or if at end of queue.
+int32_t spotifly_next(void);
+
+/// Skips to the previous track in the queue.
+/// Returns 0 on success, -1 on error or if at start of queue.
+int32_t spotifly_previous(void);
+
+/// Returns the number of tracks in the queue.
+size_t spotifly_get_queue_length(void);
+
+/// Returns the current track index in the queue (0-based).
+size_t spotifly_get_current_index(void);
+
+/// Returns the track name at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds.
+char* spotifly_get_queue_track_name(size_t index);
+
+/// Returns the artist name at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds.
+char* spotifly_get_queue_artist_name(size_t index);
+
+/// Returns the album art URL at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds.
+char* spotifly_get_queue_album_art_url(size_t index);
+
+/// Returns the URI at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds.
+char* spotifly_get_queue_uri(size_t index);
 
 /// Cleans up the player resources.
 void spotifly_cleanup_player(void);
