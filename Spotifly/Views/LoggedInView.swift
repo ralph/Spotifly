@@ -24,6 +24,7 @@ struct LoggedInView: View {
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var isMiniPlayerMode = false
     @State private var searchText = ""
+    @State private var searchFieldFocused = false
 
     // Selection state for detail views
     @State private var selectedAlbum: AlbumSimplified?
@@ -70,7 +71,7 @@ struct LoggedInView: View {
                         detailView()
                     }
                     .navigationSplitViewStyle(.automatic)
-                    .searchable(text: $searchText)
+                    .searchable(text: $searchText, isPresented: $searchFieldFocused)
                     .onSubmit(of: .search) {
                         Task {
                             await searchViewModel.search(accessToken: authResult.accessToken, query: searchText)
@@ -95,7 +96,7 @@ struct LoggedInView: View {
                         contentView()
                     }
                     .navigationSplitViewStyle(.automatic)
-                    .searchable(text: $searchText)
+                    .searchable(text: $searchText, isPresented: $searchFieldFocused)
                     .onSubmit(of: .search) {
                         Task {
                             await searchViewModel.search(accessToken: authResult.accessToken, query: searchText)
@@ -122,6 +123,7 @@ struct LoggedInView: View {
                 isMiniPlayerMode: $isMiniPlayerMode,
             )
         }
+        .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .onChange(of: isMiniPlayerMode) { _, newValue in
             resizeWindow(miniMode: newValue)
         }

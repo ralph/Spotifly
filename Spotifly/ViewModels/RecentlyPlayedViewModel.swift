@@ -32,8 +32,16 @@ final class RecentlyPlayedViewModel {
     var recentItems: [RecentItem] = []  // Mixed albums, artists, playlists
     var isLoading = false
     var errorMessage: String?
+    private var hasLoadedInitially = false
 
     func loadRecentlyPlayed(accessToken: String) async {
+        // Only load automatically on first call
+        guard !hasLoadedInitially else { return }
+        hasLoadedInitially = true
+        await refresh(accessToken: accessToken)
+    }
+
+    func refresh(accessToken: String) async {
         isLoading = true
         errorMessage = nil
 
