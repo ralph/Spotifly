@@ -256,4 +256,16 @@ enum SpotifyPlayer {
             )
         }
     }
+
+    /// Sets the playback volume (0.0 - 1.0).
+    static func setVolume(_ volume: Double) {
+        let volumeU16 = UInt16(max(0, min(1, volume)) * 65535.0)
+        spotifly_set_volume(volumeU16)
+    }
+
+    /// Gets the current playback volume (0.0 - 1.0).
+    static func getVolume() -> Double {
+        let volumeU16 = spotifly_get_volume()
+        return Double(volumeU16) / 65535.0
+    }
 }

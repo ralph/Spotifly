@@ -26,6 +26,14 @@ final class PlaybackViewModel {
     var trackDurationMs: UInt32 = 0
     var currentPositionMs: UInt32 = 0
 
+    // Volume (0.0 - 1.0)
+    var volume: Double = 0.5 {
+        didSet {
+            SpotifyPlayer.setVolume(volume)
+            saveVolume()
+        }
+    }
+
     private var isInitialized = false
     private var lastAlbumArtURL: String?
     var playbackStartTime: Date? // Internal for pause/resume handling
@@ -33,6 +41,9 @@ final class PlaybackViewModel {
 
     init() {
         setupRemoteCommandCenter()
+
+        // Load saved volume
+        loadVolume()
 
         // Set initial Now Playing info to claim media controls
         var initialInfo: [String: Any] = [:]
@@ -412,5 +423,23 @@ final class PlaybackViewModel {
 
         // Update Now Playing info periodically
         updateNowPlayingInfo()
+    }
+
+    // MARK: - Volume Persistence
+
+    private func loadVolume() {
+        let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
+        if savedVolume > 0 {
+            volume = savedVolume
+        } else {
+            // Default volume if not saved
+            volume = 0.5
+        }
+        // Apply to player immediately
+        SpotifyPlayer.setVolume(volume)
+    }
+
+    private func saveVolume() {
+        UserDefaults.standard.set(volume, forKey: "playbackVolume")
     }
 }
