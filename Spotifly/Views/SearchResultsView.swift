@@ -90,7 +90,7 @@ struct SearchResultsView: View {
             // Albums section
             if !searchResults.albums.isEmpty {
                 Section("Albums") {
-                    ForEach(searchResults.albums) { album in
+                    ForEach(searchViewModel.expandedAlbums ? searchResults.albums : Array(searchResults.albums.prefix(10))) { album in
                         Button {
                             searchViewModel.selectAlbum(album)
                         } label: {
@@ -140,13 +140,29 @@ struct SearchResultsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+
+                    if searchResults.albums.count > 10 {
+                        Button {
+                            searchViewModel.expandedAlbums.toggle()
+                        } label: {
+                            HStack {
+                                Text(searchViewModel.expandedAlbums ? "Show less" : "Show more")
+                                    .font(.subheadline)
+                                Spacer()
+                                Image(systemName: searchViewModel.expandedAlbums ? "chevron.up" : "chevron.down")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(.blue)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
 
             // Artists section
             if !searchResults.artists.isEmpty {
                 Section("Artists") {
-                    ForEach(searchResults.artists) { artist in
+                    ForEach(searchViewModel.expandedArtists ? searchResults.artists : Array(searchResults.artists.prefix(10))) { artist in
                         Button {
                             searchViewModel.selectArtist(artist)
                         } label: {
@@ -199,13 +215,29 @@ struct SearchResultsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+
+                    if searchResults.artists.count > 10 {
+                        Button {
+                            searchViewModel.expandedArtists.toggle()
+                        } label: {
+                            HStack {
+                                Text(searchViewModel.expandedArtists ? "Show less" : "Show more")
+                                    .font(.subheadline)
+                                Spacer()
+                                Image(systemName: searchViewModel.expandedArtists ? "chevron.up" : "chevron.down")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(.blue)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
 
             // Playlists section
             if !searchResults.playlists.isEmpty {
                 Section("Playlists") {
-                    ForEach(searchResults.playlists) { playlist in
+                    ForEach(searchViewModel.expandedPlaylists ? searchResults.playlists : Array(searchResults.playlists.prefix(10))) { playlist in
                         Button {
                             searchViewModel.selectPlaylist(playlist)
                         } label: {
@@ -255,6 +287,22 @@ struct SearchResultsView: View {
 
                                 Spacer()
                             }
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if searchResults.playlists.count > 10 {
+                        Button {
+                            searchViewModel.expandedPlaylists.toggle()
+                        } label: {
+                            HStack {
+                                Text(searchViewModel.expandedPlaylists ? "Show less" : "Show more")
+                                    .font(.subheadline)
+                                Spacer()
+                                Image(systemName: searchViewModel.expandedPlaylists ? "chevron.up" : "chevron.down")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(.blue)
                         }
                         .buttonStyle(.plain)
                     }
