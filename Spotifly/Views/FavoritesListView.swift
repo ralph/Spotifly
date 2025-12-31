@@ -56,6 +56,7 @@ struct FavoritesListView: View {
                         ForEach(favoritesViewModel.tracks) { track in
                             FavoriteTrackRow(
                                 track: track,
+                                favoritesViewModel: favoritesViewModel,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: authResult.accessToken,
                             )
@@ -89,6 +90,7 @@ struct FavoritesListView: View {
 
 struct FavoriteTrackRow: View {
     let track: SavedTrack
+    @Bindable var favoritesViewModel: FavoritesViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
     let accessToken: String
 
@@ -150,6 +152,18 @@ struct FavoriteTrackRow: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
 
+            // Unfavorite button
+            Button {
+                Task {
+                    await favoritesViewModel.unfavoriteTrack(trackId: track.id, accessToken: accessToken)
+                }
+            } label: {
+                Image(systemName: "heart.fill")
+                    .font(.title3)
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+
             // Play button
             Button {
                 Task {
@@ -167,6 +181,12 @@ struct FavoriteTrackRow: View {
         .padding(.vertical, 8)
         .background(Color.gray.opacity(0.05))
         .cornerRadius(6)
+        .onTapGesture(count: 2) {
+            // Double-click to play
+            Task {
+                await playbackViewModel.play(uriOrUrl: track.uri, accessToken: accessToken)
+            }
+        }
     }
 
     private func formatDuration(_ ms: Int) -> String {
