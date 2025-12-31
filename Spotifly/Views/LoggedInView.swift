@@ -127,7 +127,15 @@ struct LoggedInView: View {
                     Group {
                         if selectedNavigationItem == .searchResults {
                             // When viewing search results: show search result details
-                            if let selectedTrack = searchViewModel.selectedTrack {
+                            if searchViewModel.showingAllTracks,
+                               let searchResults = searchViewModel.searchResults
+                            {
+                                SearchTracksDetailView(
+                                    tracks: searchResults.tracks,
+                                    authResult: authResult,
+                                    playbackViewModel: playbackViewModel
+                                )
+                            } else if let selectedTrack = searchViewModel.selectedTrack {
                                 TrackDetailView(
                                     track: selectedTrack,
                                     authResult: authResult,

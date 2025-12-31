@@ -16,7 +16,7 @@ struct SearchResultsView: View {
             // Tracks section
             if !searchResults.tracks.isEmpty {
                 Section("Tracks") {
-                    ForEach(searchResults.tracks) { track in
+                    ForEach(searchResults.tracks.prefix(5)) { track in
                         Button {
                             searchViewModel.selectTrack(track)
                         } label: {
@@ -65,6 +65,22 @@ struct SearchResultsView: View {
                                     .foregroundStyle(.secondary)
                                     .monospacedDigit()
                             }
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if searchResults.tracks.count > 5 {
+                        Button {
+                            searchViewModel.showAllTracks()
+                        } label: {
+                            HStack {
+                                Text("Show all \(searchResults.tracks.count) tracks")
+                                    .font(.subheadline)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(.blue)
                         }
                         .buttonStyle(.plain)
                     }
