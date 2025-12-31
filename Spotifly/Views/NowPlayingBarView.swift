@@ -27,12 +27,14 @@ struct NowPlayingBarView: View {
 
                 GeometryReader { geometry in
                     let isCompact = geometry.size.width < 750
+                    let isVeryNarrow = geometry.size.width < 600
 
                     if isCompact {
                         // Compact layout: progress bar at bottom
                         VStack(spacing: 8) {
-                            compactTopRow
+                            compactTopRow(showVolume: !isVeryNarrow)
                             progressBar
+                                .padding(.horizontal, 8)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
@@ -51,7 +53,7 @@ struct NowPlayingBarView: View {
 
     // MARK: - Compact Layout
 
-    private var compactTopRow: some View {
+    private func compactTopRow(showVolume: Bool) -> some View {
         HStack(spacing: 12) {
             albumArt(size: 40)
 
@@ -70,7 +72,9 @@ struct NowPlayingBarView: View {
 
             miniPlayerToggle
 
-            volumeControl
+            if showVolume {
+                volumeControl
+            }
         }
     }
 
