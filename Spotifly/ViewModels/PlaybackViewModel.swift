@@ -441,7 +441,7 @@ final class PlaybackViewModel {
         do {
             isCurrentTrackFavorited = try await SpotifyAPI.checkSavedTrack(
                 accessToken: accessToken,
-                trackId: trackId
+                trackId: trackId,
             )
         } catch {
             print("Error checking favorite status: \(error)")
@@ -468,7 +468,7 @@ final class PlaybackViewModel {
     }
 
     private func extractTrackId(from uri: String?) -> String? {
-        guard let uri = uri else { return nil }
+        guard let uri else { return nil }
 
         // URI format: spotify:track:TRACK_ID
         let components = uri.split(separator: ":")

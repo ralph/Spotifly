@@ -96,7 +96,8 @@ enum SpotifyPlayer {
         // Convert array to JSON
         let encoder = JSONEncoder()
         guard let jsonData = try? encoder.encode(trackUris),
-              let jsonString = String(data: jsonData, encoding: .utf8) else {
+              let jsonString = String(data: jsonData, encoding: .utf8)
+        else {
             throw SpotifyPlayerError.playbackFailed
         }
 
