@@ -28,4 +28,6 @@ rust/target/
 *.swp
 *.swo
 
+.envrc
+
 plans.md
