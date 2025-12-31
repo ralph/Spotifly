@@ -666,6 +666,102 @@ enum SpotifyAPI {
         )
     }
 
+    /// Saves a track to user's library (favorites)
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - trackId: The Spotify ID of the track to save
+    static func saveTrack(accessToken: String, trackId: String) async throws {
+        let urlString = "\(baseURL)/me/tracks"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Create request body
+        let body = ["ids": [trackId]]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw SpotifyAPIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 201:
+            // Success - track saved
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Checks if a track is saved in user's library
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - trackId: The Spotify ID of the track to check
+    /// - Returns: True if track is saved, false otherwise
+    static func checkSavedTrack(accessToken: String, trackId: String) async throws -> Bool {
+        let urlString = "\(baseURL)/me/tracks/contains?ids=\(trackId)"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw SpotifyAPIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            // Parse JSON response - returns array of booleans
+            guard let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [Bool],
+                  let isSaved = jsonArray.first
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+            return isSaved
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
     /// Removes a track from user's saved tracks (unfavorites)
     /// - Parameters:
     ///   - accessToken: Spotify access token

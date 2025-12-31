@@ -63,6 +63,8 @@ struct NowPlayingBarView: View {
 
             Spacer()
 
+            favoriteButton
+
             queuePosition
 
             volumeControl
@@ -121,6 +123,8 @@ struct NowPlayingBarView: View {
                     .monospacedDigit()
                     .frame(width: 40, alignment: .leading)
             }
+
+            favoriteButton
 
             queuePosition
 
@@ -269,6 +273,23 @@ struct NowPlayingBarView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .frame(width: 50, alignment: .trailing)
+    }
+
+    private var favoriteButton: some View {
+        Button {
+            Task {
+                await playbackViewModel.toggleCurrentTrackFavorite(accessToken: authResult.accessToken)
+            }
+        } label: {
+            Image(systemName: playbackViewModel.isCurrentTrackFavorited ? "heart.fill" : "heart")
+                .font(.body)
+                .foregroundStyle(playbackViewModel.isCurrentTrackFavorited ? .red : .secondary)
+        }
+        .buttonStyle(.plain)
+        .task(id: playbackViewModel.currentTrackId) {
+            // Check favorite status when track changes
+            await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: authResult.accessToken)
+        }
     }
 
     private var volumeControl: some View {

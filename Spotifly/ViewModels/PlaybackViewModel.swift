@@ -34,6 +34,9 @@ final class PlaybackViewModel {
         }
     }
 
+    // Favorite status of currently playing track
+    var isCurrentTrackFavorited = false
+
     private var isInitialized = false
     private var lastAlbumArtURL: String?
     var playbackStartTime: Date? // Internal for pause/resume handling
@@ -90,6 +93,7 @@ final class PlaybackViewModel {
             isPlaying = true
             playbackStartTime = Date()
             updateQueueState()
+            await checkCurrentTrackFavoriteStatus(accessToken: accessToken)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -126,6 +130,7 @@ final class PlaybackViewModel {
             isPlaying = true
             playbackStartTime = Date()
             updateQueueState()
+            await checkCurrentTrackFavoriteStatus(accessToken: accessToken)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -423,6 +428,55 @@ final class PlaybackViewModel {
 
         // Update Now Playing info periodically
         updateNowPlayingInfo()
+    }
+
+    // MARK: - Favorite Management
+
+    func checkCurrentTrackFavoriteStatus(accessToken: String) async {
+        guard let trackId = extractTrackId(from: currentTrackId) else {
+            isCurrentTrackFavorited = false
+            return
+        }
+
+        do {
+            isCurrentTrackFavorited = try await SpotifyAPI.checkSavedTrack(
+                accessToken: accessToken,
+                trackId: trackId
+            )
+        } catch {
+            print("Error checking favorite status: \(error)")
+            isCurrentTrackFavorited = false
+        }
+    }
+
+    func toggleCurrentTrackFavorite(accessToken: String) async {
+        guard let trackId = extractTrackId(from: currentTrackId) else {
+            return
+        }
+
+        do {
+            if isCurrentTrackFavorited {
+                try await SpotifyAPI.removeSavedTrack(accessToken: accessToken, trackId: trackId)
+                isCurrentTrackFavorited = false
+            } else {
+                try await SpotifyAPI.saveTrack(accessToken: accessToken, trackId: trackId)
+                isCurrentTrackFavorited = true
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func extractTrackId(from uri: String?) -> String? {
+        guard let uri = uri else { return nil }
+
+        // URI format: spotify:track:TRACK_ID
+        let components = uri.split(separator: ":")
+        guard components.count >= 3, components[0] == "spotify", components[1] == "track" else {
+            return nil
+        }
+
+        return String(components[2])
     }
 
     // MARK: - Volume Persistence
