@@ -9,6 +9,7 @@ import SwiftUI
 
 enum NavigationItem: Hashable, Identifiable {
     case startpage
+    case favorites
     case playlists
     case albums
     case artists
@@ -20,6 +21,8 @@ enum NavigationItem: Hashable, Identifiable {
         switch self {
         case .startpage:
             "Startpage"
+        case .favorites:
+            "Favorites"
         case .playlists:
             "Playlists"
         case .albums:
@@ -35,6 +38,8 @@ enum NavigationItem: Hashable, Identifiable {
         switch self {
         case .startpage:
             "house.fill"
+        case .favorites:
+            "heart.fill"
         case .playlists:
             "music.note.list"
         case .albums:
@@ -70,7 +75,7 @@ struct SidebarView: View {
             }
 
             Section("Library") {
-                ForEach([NavigationItem.playlists, NavigationItem.albums, NavigationItem.artists]) { item in
+                ForEach([NavigationItem.favorites, NavigationItem.playlists, NavigationItem.albums, NavigationItem.artists]) { item in
                     NavigationLink(value: item) {
                         Label(item.title, systemImage: item.icon)
                     }

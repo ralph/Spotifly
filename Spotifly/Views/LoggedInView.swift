@@ -13,6 +13,7 @@ struct LoggedInView: View {
 
     @State private var trackViewModel = TrackLookupViewModel()
     @State private var playbackViewModel = PlaybackViewModel()
+    @State private var favoritesViewModel = FavoritesViewModel()
     @State private var playlistsViewModel = PlaylistsViewModel()
     @State private var albumsViewModel = AlbumsViewModel()
     @State private var artistsViewModel = ArtistsViewModel()
@@ -36,6 +37,14 @@ struct LoggedInView: View {
                             playbackViewModel: playbackViewModel,
                         )
                         .navigationTitle("Startpage")
+
+                    case .favorites:
+                        FavoritesListView(
+                            authResult: authResult,
+                            favoritesViewModel: favoritesViewModel,
+                            playbackViewModel: playbackViewModel,
+                        )
+                        .navigationTitle("Favorites")
 
                     case .playlists:
                         PlaylistsListView(
