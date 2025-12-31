@@ -10,5 +10,10 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<key>com.apple.security.temporary-exception.network.inbound-connection</key>
+	<array>
+		<string>localhost</string>
+		<string>127.0.0.1</string>
+	</array>
 </dict>
 </plist>
