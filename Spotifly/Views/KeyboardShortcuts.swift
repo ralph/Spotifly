@@ -21,6 +21,26 @@ extension View {
             LibraryNavigationShortcutsView(selection: selection),
         )
     }
+
+    /// Adds startpage-specific keyboard shortcuts (refresh)
+    func startpageShortcuts(
+        recentlyPlayedViewModel: RecentlyPlayedViewModel,
+        authResult: SpotifyAuthResult,
+    ) -> some View {
+        background(
+            StartpageShortcutsView(
+                recentlyPlayedViewModel: recentlyPlayedViewModel,
+                authResult: authResult,
+            ),
+        )
+    }
+
+    /// Adds search keyboard shortcuts (focus)
+    func searchShortcuts(searchFieldFocused: Binding<Bool>) -> some View {
+        background(
+            SearchShortcutsView(searchFieldFocused: searchFieldFocused),
+        )
+    }
 }
 
 private struct PlaybackShortcutsView: View {
@@ -86,6 +106,41 @@ private struct LibraryNavigationShortcutsView: View {
                 selection = .artists
             }
             .keyboardShortcut("4", modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+    }
+}
+
+private struct StartpageShortcutsView: View {
+    @Bindable var recentlyPlayedViewModel: RecentlyPlayedViewModel
+    let authResult: SpotifyAuthResult
+
+    var body: some View {
+        Group {
+            // Cmd+R - Refresh recently played
+            Button("") {
+                Task {
+                    await recentlyPlayedViewModel.refresh(accessToken: authResult.accessToken)
+                }
+            }
+            .keyboardShortcut("r", modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+    }
+}
+
+private struct SearchShortcutsView: View {
+    @Binding var searchFieldFocused: Bool
+
+    var body: some View {
+        Group {
+            // Cmd+F - Focus search field
+            Button("") {
+                searchFieldFocused = true
+            }
+            .keyboardShortcut("f", modifiers: .command)
         }
         .frame(width: 0, height: 0)
         .opacity(0)

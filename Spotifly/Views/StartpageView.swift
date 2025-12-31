@@ -90,6 +90,9 @@ struct StartpageView: View {
                             RecentTracksSection(
                                 tracks: Array(recentlyPlayedViewModel.recentTracks.prefix(5)),
                                 showingAllTracks: $showingAllRecentTracks,
+                                selectedRecentAlbum: $selectedRecentAlbum,
+                                selectedRecentArtist: $selectedRecentArtist,
+                                selectedRecentPlaylist: $selectedRecentPlaylist,
                                 authResult: authResult,
                                 playbackViewModel: playbackViewModel,
                             )
@@ -102,6 +105,7 @@ struct StartpageView: View {
                                 selectedAlbum: $selectedRecentAlbum,
                                 selectedArtist: $selectedRecentArtist,
                                 selectedPlaylist: $selectedRecentPlaylist,
+                                showingAllTracks: $showingAllRecentTracks,
                             )
                         }
                     }
@@ -170,6 +174,10 @@ struct StartpageView: View {
         .task {
             await recentlyPlayedViewModel.loadRecentlyPlayed(accessToken: authResult.accessToken)
         }
+        .startpageShortcuts(
+            recentlyPlayedViewModel: recentlyPlayedViewModel,
+            authResult: authResult,
+        )
     }
 
     private var appVersion: String {
@@ -190,6 +198,9 @@ struct StartpageView: View {
 struct RecentTracksSection: View {
     let tracks: [SearchTrack]
     @Binding var showingAllTracks: Bool
+    @Binding var selectedRecentAlbum: SearchAlbum?
+    @Binding var selectedRecentArtist: SearchArtist?
+    @Binding var selectedRecentPlaylist: SearchPlaylist?
     let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
 
@@ -223,6 +234,9 @@ struct RecentTracksSection: View {
                 // Show more button
                 Button {
                     showingAllTracks = true
+                    selectedRecentAlbum = nil
+                    selectedRecentArtist = nil
+                    selectedRecentPlaylist = nil
                 } label: {
                     HStack {
                         Text("recently_played.show_more")
@@ -248,6 +262,7 @@ struct RecentContentSection: View {
     @Binding var selectedAlbum: SearchAlbum?
     @Binding var selectedArtist: SearchArtist?
     @Binding var selectedPlaylist: SearchPlaylist?
+    @Binding var showingAllTracks: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -312,6 +327,9 @@ struct RecentContentSection: View {
                             }
                             .onTapGesture {
                                 selectedAlbum = album
+                                selectedArtist = nil
+                                selectedPlaylist = nil
+                                showingAllTracks = false
                             }
 
                         case .artist(let artist):
@@ -333,6 +351,9 @@ struct RecentContentSection: View {
                             }
                             .onTapGesture {
                                 selectedArtist = artist
+                                selectedAlbum = nil
+                                selectedPlaylist = nil
+                                showingAllTracks = false
                             }
 
                         case .playlist(let playlist):
@@ -382,6 +403,9 @@ struct RecentContentSection: View {
                             }
                             .onTapGesture {
                                 selectedPlaylist = playlist
+                                selectedAlbum = nil
+                                selectedArtist = nil
+                                showingAllTracks = false
                             }
                         }
                     }
