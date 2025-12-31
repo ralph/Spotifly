@@ -104,7 +104,14 @@ struct LoggedInView: View {
     }
 
     private func resizeWindow(miniMode: Bool) {
-        // Use the window state manager for reliable window access
-        WindowStateManager.shared.setMiniPlayerMode(miniMode)
+        guard let window = NSApp.mainWindow ?? NSApp.windows.first else { return }
+
+        if miniMode {
+            // Mini mode: resize to compact size
+            window.setContentSize(NSSize(width: 600, height: 120))
+        } else {
+            // Normal mode: resize to default size
+            window.setContentSize(NSSize(width: 800, height: 600))
+        }
     }
 }

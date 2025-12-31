@@ -23,7 +23,10 @@ struct NowPlayingBarView: View {
     var body: some View {
         if playbackViewModel.queueLength > 0 {
             VStack(spacing: 0) {
-                Divider()
+                // Only show divider when not in mini player mode
+                if !isMiniPlayerMode {
+                    Divider()
+                }
 
                 GeometryReader { geometry in
                     let isCompact = geometry.size.width < 750
