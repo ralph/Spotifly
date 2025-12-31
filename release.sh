@@ -132,11 +132,33 @@ echo -e "${GREEN}Latest release updated${NC}"
 echo ""
 echo -e "Download URL: https://github.com/ralph/homebrew-spotifly/releases/download/v${VERSION}/${ZIP_NAME}"
 echo -e "Latest URL: https://github.com/ralph/homebrew-spotifly/releases/download/latest/Spotifly-latest.zip"
-echo ""
-echo -e "${YELLOW}Next steps:${NC}"
-echo "1. Update the Homebrew Cask formula in homebrew-spotifly repository"
-echo "2. Update the SHA256 hash to: ${SHA256}"
-echo "3. Update the version to: ${VERSION}"
+
+# Update Homebrew Cask formula
+echo -e "\n${YELLOW}Updating Homebrew Cask formula...${NC}"
+
+HOMEBREW_TAP_DIR="$HOME/code/spotifly/homebrew-spotifly"
+CASK_FILE="${HOMEBREW_TAP_DIR}/Casks/spotifly.rb"
+
+if [ -d "$HOMEBREW_TAP_DIR" ] && [ -f "$CASK_FILE" ]; then
+    # Update version and SHA256 in the Cask formula
+    sed -i '' "s/version \".*\"/version \"${VERSION}\"/" "$CASK_FILE"
+    sed -i '' "s/sha256 \".*\"/sha256 \"${SHA256}\"/" "$CASK_FILE"
+
+    # Commit and push changes
+    cd "$HOMEBREW_TAP_DIR"
+    git add Casks/spotifly.rb
+    git commit -m "Update Spotifly to version ${VERSION}"
+    git push
+
+    echo -e "${GREEN}Homebrew formula updated and pushed!${NC}"
+    cd "$OLDPWD"
+else
+    echo -e "${YELLOW}Homebrew tap directory not found at ${HOMEBREW_TAP_DIR}${NC}"
+    echo -e "${YELLOW}Manual update required:${NC}"
+    echo "1. Update the Homebrew Cask formula in homebrew-spotifly repository"
+    echo "2. Update the SHA256 hash to: ${SHA256}"
+    echo "3. Update the version to: ${VERSION}"
+fi
 
 # Clean up
 rm -f "${ZIP_NAME}" "Spotifly-latest.zip"

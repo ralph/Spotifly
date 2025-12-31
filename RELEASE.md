@@ -57,21 +57,15 @@ The script will then:
 - Upload to GitHub Releases in the `ralph/homebrew-spotifly` repository
 - Tag as both `v{VERSION}` and `latest`
 - Calculate SHA256 hash for Homebrew formula
+- **Automatically update the Homebrew Cask formula** with the new version and SHA256
+- Commit and push the formula changes to the homebrew-spotifly repository
 
-### 5. Update Homebrew Formula
+### 5. Done!
 
-The script will output the SHA256 hash. You need to:
-
-1. Go to the `ralph/homebrew-spotifly` repository
-2. Edit `Casks/spotifly.rb`
-3. Update the `version` to match your release (e.g., `"1.0"`)
-4. Update the `sha256` to the hash printed by the script
-5. Commit and push:
+The release is complete and published. The Homebrew formula is automatically updated, so users can install immediately:
 
 ```bash
-git add Casks/spotifly.rb
-git commit -m "Update to version 1.0"
-git push
+brew upgrade ralph/spotifly/spotifly
 ```
 
 ## What Gets Released?
@@ -84,10 +78,10 @@ git push
 
 ## Verification
 
-After updating the Homebrew formula, you can test installation:
+The Homebrew formula is automatically updated by the release script. You can verify the release:
 
 ```bash
-brew reinstall ralph/spotifly/spotifly
+brew upgrade ralph/spotifly/spotifly
 ```
 
 Or for new installations:
