@@ -27,3 +27,5 @@ rust/target/
 .vscode/
 *.swp
 *.swo
+
+plans.md
