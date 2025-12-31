@@ -5,6 +5,7 @@ This document describes how to create and publish a new release of Spotifly.
 ## Prerequisites
 
 - Xcode installed and working
+- **Apple Developer account** (paid, $99/year) configured in Xcode
 - GitHub CLI (`gh`) installed and authenticated
 - Write access to the `ralph/homebrew-spotifly` repository
 
@@ -36,45 +37,76 @@ git commit -m "Prepare for v1.0 release"
 ./release.sh
 ```
 
-The script will:
-1. Check the current version from your Xcode project
-2. Verify that this version hasn't been released yet
-3. **Pause and ask you to create an Archive in Xcode**
+The script will guide you through the entire process with interactive prompts.
 
-### 4. Create Archive in Xcode
+### 4. Follow the Interactive Steps
 
-When the script prompts you:
+The script will pause at each step and provide clear instructions:
 
-1. Switch to Xcode
-2. Go to **Product → Archive**
-3. Wait for the archive to complete (this builds an optimized Release configuration)
-4. When the Organizer window opens, just **close it** (do NOT export)
-5. Switch back to Terminal and press **Enter**
+#### Step 1: Create Archive
+- In Xcode, go to **Product → Archive**
+- Wait for the archive to complete
+- Keep the Organizer window open
 
-The script will then:
-- Find your archived app
-- Create a ZIP file
-- Upload to GitHub Releases in the `ralph/homebrew-spotifly` repository
-- Tag as both `v{VERSION}` and `latest`
-- Calculate SHA256 hash for Homebrew formula
-- **Automatically update the Homebrew Cask formula** with the new version and SHA256
-- Commit and push the formula changes to the homebrew-spotifly repository
+#### Step 2: Validate Archive
+- In the Organizer, click **Validate App**
+- Choose **Developer ID**
+- Wait for validation to complete
+- Ensure validation passes
 
-### 5. Done!
+#### Step 3: Distribute and Notarize
+- Click **Distribute App**
+- Choose **Developer ID**
+- Choose **Upload** (sends to Apple for notarization)
+- Wait 2-5 minutes for notarization to complete
 
-The release is complete and published. The Homebrew formula is automatically updated, so users can install immediately:
+#### Step 4: Export Notarized App
+- Click **Distribute App** again
+- Choose **Developer ID**
+- Choose **Export** (NOT Upload this time)
+- Export to `~/Desktop/Spotifly-Export`
+
+### 5. Automatic Completion
+
+After you export the notarized app, the script automatically:
+- Verifies the app is properly signed and notarized
+- Creates a ZIP file
+- Uploads to GitHub Releases in the `ralph/homebrew-spotifly` repository
+- Tags as both `v{VERSION}` and `latest`
+- Updates the Homebrew Cask formula with the new version and SHA256
+- Commits and pushes the formula changes
+
+### 6. Done!
+
+The release is complete and published. Users can install immediately:
 
 ```bash
 brew upgrade ralph/spotifly/spotifly
 ```
 
+Or for new installations:
+
+```bash
+brew install ralph/spotifly/spotifly
+```
+
 ## What Gets Released?
 
 - **Archived app**: Optimized for Release (Product → Archive uses Release configuration)
-- **Code signing**: Disabled for maximum compatibility
+- **Code signing**: Signed with Developer ID Application certificate
+- **Notarization**: Notarized by Apple (no Gatekeeper warnings!)
 - **Optimizations**: Full compiler optimizations enabled
-- **ZIP file**: Contains `Spotifly.app` bundle
+- **Architecture**: arm64 only (Apple Silicon)
+- **ZIP file**: Contains notarized `Spotifly.app` bundle
 - **Location**: `ralph/homebrew-spotifly` releases (NOT the source code repo)
+
+## Replacing an Existing Release
+
+If you need to replace an existing release (e.g., to fix signing issues):
+
+1. Run `./release.sh` as normal
+2. When prompted that the release already exists, type `y` to replace it
+3. The script will delete the old release and create a new one with the same version
 
 ## Verification
 
@@ -93,33 +125,57 @@ brew install ralph/spotifly/spotifly
 ## Troubleshooting
 
 **"Release v1.0 already exists"**
-- Update the version number in Xcode before releasing
+- The script will ask if you want to replace it
+- Type `y` to replace, or `n` to abort and update the version number
 
-**"No archives found"**
-- Make sure you completed the Archive step in Xcode
-- Check ~/Library/Developer/Xcode/Archives for recent archives
+**Validation failed: "LSApplicationCategoryType"**
+- This is already configured in the project (set to `public.app-category.music`)
+- If you see this error, the Xcode project may need to be updated
 
-**"Built app not found"**
-- The archive may have failed
-- Check Xcode for build errors
-- Ensure all dependencies (Rust library) are built
+**Notarization takes too long**
+- Notarization usually takes 2-5 minutes
+- You can check status at https://developer.apple.com/account
+- If it fails, check the email associated with your Apple Developer account for details
+
+**"Exported app not found"**
+- Make sure you exported to `~/Desktop/Spotifly-Export`
+- The script looks for `Spotifly.app` in this exact location
+
+**Verification failed**
+- The script verifies the app is properly notarized using `spctl`
+- If verification fails, you can choose to continue anyway
+- Check that your Developer ID certificate is valid in Xcode preferences
 
 ## Build Configuration Details
 
-### Archive Settings
+### Release Settings
 
-Xcode Archive automatically uses:
-- **Configuration**: Release
+The Release configuration includes:
 - **Optimization Level**: `-O` (Optimize for Speed)
-- **Debug Info**: Included (for crash reports)
-- **Assertions**: Disabled
 - **Whole Module Optimization**: Enabled
+- **Architecture**: arm64 only (Apple Silicon)
+- **Code Signing**: Automatic with Developer ID
+- **Hardened Runtime**: Enabled
+- **App Sandbox**: Enabled
 
-### Code Signing
+### Code Signing and Notarization
 
-The script disables code signing (`CODE_SIGN_IDENTITY=""`) to:
-- Avoid signing certificate requirements for users
-- Allow installation without notarization
-- Maximum compatibility across systems
+The app is:
+1. **Signed** with your Developer ID Application certificate
+2. **Notarized** by Apple's notary service
+3. **Verified** with `spctl` before upload
 
-Note: Users may need to allow the app in System Settings → Privacy & Security on first launch.
+This ensures users don't see Gatekeeper warnings when opening the app.
+
+### Rust Library Integration
+
+The app links against a Rust library (`libspotifly_rust.a`) that must be:
+- Compiled for arm64 architecture
+- Located at `build/rust/lib/libspotifly_rust.a`
+- Built before creating the Archive
+
+## Notes
+
+- The release script expects the homebrew-spotifly repository at `~/code/spotifly/homebrew-spotifly`
+- Exported apps are saved to `~/Desktop/Spotifly-Export` and cleaned up after upload
+- Both the source repo and homebrew-spotifly repo must have clean working directories
