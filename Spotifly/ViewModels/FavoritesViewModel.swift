@@ -68,4 +68,16 @@ final class FavoritesViewModel {
         hasMore = false
         await loadTracks(accessToken: accessToken)
     }
+
+    func unfavoriteTrack(trackId: String, accessToken: String) async {
+        do {
+            try await SpotifyAPI.removeSavedTrack(accessToken: accessToken, trackId: trackId)
+
+            // Remove the track from the local list
+            tracks.removeAll { $0.id == trackId }
+            totalTracks -= 1
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }

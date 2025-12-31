@@ -284,7 +284,8 @@ async fn perform_oauth(client_id: &str, redirect_uri: &str) -> Result<OAuthResul
         "user-read-currently-playing",
         "playlist-read-private",
         "playlist-read-collaborative",
-        "user-library-read",      // Access saved albums, tracks
+        "user-library-read",       // Access saved albums, tracks
+        "user-library-modify",     // Manage saved albums, tracks
         "user-follow-read",        // Access followed artists
     ];
 
@@ -457,6 +458,7 @@ async fn perform_token_refresh(
         "playlist-read-private",
         "playlist-read-collaborative",
         "user-library-read",
+        "user-library-modify",
         "user-follow-read",
     ];
 
