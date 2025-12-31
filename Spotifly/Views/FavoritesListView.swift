@@ -53,9 +53,11 @@ struct FavoritesListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(favoritesViewModel.tracks) { track in
+                        ForEach(Array(favoritesViewModel.tracks.enumerated()), id: \.element.id) { index, track in
                             FavoriteTrackRow(
                                 track: track,
+                                trackIndex: index,
+                                allTracks: favoritesViewModel.tracks,
                                 favoritesViewModel: favoritesViewModel,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: authResult.accessToken,
@@ -90,6 +92,8 @@ struct FavoritesListView: View {
 
 struct FavoriteTrackRow: View {
     let track: SavedTrack
+    let trackIndex: Int
+    let allTracks: [SavedTrack]
     @Bindable var favoritesViewModel: FavoritesViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
     let accessToken: String
@@ -167,7 +171,7 @@ struct FavoriteTrackRow: View {
             // Play button
             Button {
                 Task {
-                    await playbackViewModel.play(uriOrUrl: track.uri, accessToken: accessToken)
+                    playTrackAndFollowing()
                 }
             } label: {
                 Image(systemName: "play.circle.fill")
@@ -182,10 +186,18 @@ struct FavoriteTrackRow: View {
         .background(Color.gray.opacity(0.05))
         .cornerRadius(6)
         .onTapGesture(count: 2) {
-            // Double-click to play
-            Task {
-                await playbackViewModel.play(uriOrUrl: track.uri, accessToken: accessToken)
-            }
+            // Double-click to play this track and all following
+            playTrackAndFollowing()
+        }
+    }
+
+    private func playTrackAndFollowing() {
+        // Get all track URIs from current track onwards
+        let tracksToPlay = Array(allTracks[trackIndex...])
+        let urisToPlay = tracksToPlay.map { $0.uri }
+
+        Task {
+            await playbackViewModel.playTracks(urisToPlay, accessToken: accessToken)
         }
     }
 

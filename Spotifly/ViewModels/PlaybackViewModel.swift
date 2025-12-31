@@ -90,6 +90,38 @@ final class PlaybackViewModel {
         await play(uriOrUrl: "spotify:track:\(trackId)", accessToken: accessToken)
     }
 
+    func playTracks(_ trackUris: [String], accessToken: String) async {
+        // Initialize if needed
+        if !isInitialized {
+            await initializeIfNeeded(accessToken: accessToken)
+        }
+
+        guard isInitialized else {
+            errorMessage = "Player not initialized"
+            return
+        }
+
+        guard !trackUris.isEmpty else {
+            errorMessage = "No tracks to play"
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            try await SpotifyPlayer.playTracks(trackUris)
+            currentTrackId = trackUris[0]
+            isPlaying = true
+            playbackStartTime = Date()
+            updateQueueState()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+
     func togglePlayPause(trackId: String, accessToken: String) async {
         if isPlaying, currentTrackId == trackId {
             // Pause current track

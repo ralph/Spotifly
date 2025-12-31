@@ -54,6 +54,12 @@ void spotifly_free_string(char* s);
 /// Returns 0 on success, -1 on error.
 int32_t spotifly_init_player(const char* access_token);
 
+/// Plays multiple tracks in sequence.
+/// Returns 0 on success, -1 on error.
+///
+/// @param track_uris_json JSON array of track URIs as a C string
+int32_t spotifly_play_tracks(const char* track_uris_json);
+
 /// Plays content by its Spotify URI or URL.
 /// Supports tracks, albums, playlists, and artists.
 /// Returns 0 on success, -1 on error.
