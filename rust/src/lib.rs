@@ -40,6 +40,22 @@ static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::n
 static QUEUE: Lazy<Mutex<Vec<QueueItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static CURRENT_INDEX: AtomicUsize = AtomicUsize::new(0);
 
+// OAuth scopes - centralized to avoid duplication
+const OAUTH_SCOPES: &[&str] = &[
+    "user-read-private",
+    "user-read-email",
+    "streaming",
+    "user-read-playback-state",
+    "user-modify-playback-state",
+    "user-read-currently-playing",
+    "playlist-read-private",
+    "playlist-read-collaborative",
+    "user-library-read",       // Access saved albums, tracks
+    "user-library-modify",     // Manage saved albums, tracks
+    "user-follow-read",        // Access followed artists
+    "user-read-recently-played", // Access recently played tracks
+];
+
 struct OAuthResult {
     access_token: String,
     refresh_token: Option<String>,
@@ -276,20 +292,7 @@ pub extern "C" fn spotifly_start_oauth(client_id: *const c_char, redirect_uri: *
 }
 
 async fn perform_oauth(client_id: &str, redirect_uri: &str) -> Result<OAuthResult, OAuthError> {
-    let scopes = vec![
-        "user-read-private",
-        "user-read-email",
-        "streaming",
-        "user-read-playback-state",
-        "user-modify-playback-state",
-        "user-read-currently-playing",
-        "playlist-read-private",
-        "playlist-read-collaborative",
-        "user-library-read",       // Access saved albums, tracks
-        "user-library-modify",     // Manage saved albums, tracks
-        "user-follow-read",        // Access followed artists
-        "user-read-recently-played", // Access recently played tracks
-    ];
+    let scopes = OAUTH_SCOPES.to_vec();
 
     // Load HTML from external file at compile time
     let success_message = include_str!("oauth_success.html");
@@ -450,20 +453,7 @@ async fn perform_token_refresh(
     redirect_uri: &str,
     refresh_token: &str,
 ) -> Result<OAuthResult, OAuthError> {
-    let scopes = vec![
-        "user-read-private",
-        "user-read-email",
-        "streaming",
-        "user-read-playback-state",
-        "user-modify-playback-state",
-        "user-read-currently-playing",
-        "playlist-read-private",
-        "playlist-read-collaborative",
-        "user-library-read",
-        "user-library-modify",
-        "user-follow-read",
-        "user-read-recently-played",
-    ];
+    let scopes = OAUTH_SCOPES.to_vec();
 
     let client = OAuthClientBuilder::new(client_id, redirect_uri, scopes)
         .build()?;
