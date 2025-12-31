@@ -5,8 +5,8 @@
 //  Startpage with playback controls and track lookup
 //
 
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct StartpageView: View {
     let authResult: SpotifyAuthResult
@@ -272,7 +272,7 @@ struct RecentAlbumsSection: View {
                                             .overlay(
                                                 Image(systemName: "music.note")
                                                     .font(.system(size: 40))
-                                                    .foregroundStyle(.secondary)
+                                                    .foregroundStyle(.secondary),
                                             )
                                     @unknown default:
                                         EmptyView()
@@ -285,7 +285,7 @@ struct RecentAlbumsSection: View {
                                     .overlay(
                                         Image(systemName: "music.note")
                                             .font(.system(size: 40))
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(.secondary),
                                     )
                             }
 
@@ -386,7 +386,7 @@ struct RecentPlaylistsSection: View {
                                             .overlay(
                                                 Image(systemName: "music.note.list")
                                                     .font(.system(size: 40))
-                                                    .foregroundStyle(.secondary)
+                                                    .foregroundStyle(.secondary),
                                             )
                                     @unknown default:
                                         EmptyView()
@@ -399,7 +399,7 @@ struct RecentPlaylistsSection: View {
                                     .overlay(
                                         Image(systemName: "music.note.list")
                                             .font(.system(size: 40))
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(.secondary),
                                     )
                             }
 
