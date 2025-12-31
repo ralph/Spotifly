@@ -98,12 +98,6 @@ struct LoggedInView: View {
                 isMiniPlayerMode: $isMiniPlayerMode
             )
         }
-        .frame(
-            minWidth: isMiniPlayerMode ? 400 : 500,
-            idealWidth: isMiniPlayerMode ? 400 : 800,
-            maxWidth: isMiniPlayerMode ? 400 : .infinity,
-            minHeight: isMiniPlayerMode ? 66 : 400
-        )
         .onChange(of: isMiniPlayerMode) { _, newValue in
             resizeWindow(miniMode: newValue)
         }
@@ -113,14 +107,26 @@ struct LoggedInView: View {
         guard let window = NSApplication.shared.windows.first else { return }
 
         if miniMode {
-            // Mini mode: shrink to compact width
-            let newSize = NSSize(width: 400, height: 66)
-            window.setContentSize(newSize)
+            // Mini mode: fixed size to show all controls
+            let miniSize = NSSize(width: 600, height: 120)
+
+            // Set exact size constraints
+            window.minSize = miniSize
+            window.maxSize = miniSize
+            window.setContentSize(miniSize)
+
+            // Remove resizable to prevent user from changing size
             window.styleMask.remove(.resizable)
         } else {
-            // Restore mode: return to normal size
-            let newSize = NSSize(width: 800, height: 600)
-            window.setContentSize(newSize)
+            // Restore mode: return to normal size with flexible constraints
+            let normalSize = NSSize(width: 800, height: 600)
+
+            // Restore flexible size constraints
+            window.minSize = NSSize(width: 500, height: 400)
+            window.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            window.setContentSize(normalSize)
+
+            // Re-enable resizing
             window.styleMask.insert(.resizable)
         }
     }

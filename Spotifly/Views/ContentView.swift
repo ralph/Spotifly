@@ -14,13 +14,14 @@ struct ContentView: View {
         Group {
             if viewModel.isLoading {
                 ProgressView("Loading...")
+                    .frame(minWidth: 500, minHeight: 400)
             } else if let authResult = viewModel.authResult {
                 LoggedInView(authResult: authResult, onLogout: { viewModel.logout() })
             } else {
                 loginView
+                    .frame(minWidth: 500, minHeight: 400)
             }
         }
-        .frame(minWidth: 500, minHeight: 400)
     }
 
     @ViewBuilder
