@@ -127,6 +127,12 @@ struct StartpageView: View {
                         versionTapCount += 1
                         if versionTapCount >= 7 {
                             showTokenInfo = true
+                            // Auto-hide after 10 seconds
+                            Task {
+                                try? await Task.sleep(for: .seconds(10))
+                                showTokenInfo = false
+                                versionTapCount = 0
+                            }
                         }
                     } label: {
                         Text("Version \(appVersion)")
