@@ -516,7 +516,8 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - playlistId: Playlist ID
     static func fetchPlaylistDetails(accessToken: String, playlistId: String) async throws -> SearchPlaylist {
-        let urlString = "\(baseURL)/playlists/\(playlistId)"
+        // Add fields parameter to request only what we need, and market=from_token for region-specific playlists
+        let urlString = "\(baseURL)/playlists/\(playlistId)?fields=id,name,description,images,tracks.total,uri,public,owner.display_name&market=from_token"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
