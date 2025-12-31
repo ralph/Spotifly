@@ -104,30 +104,7 @@ struct LoggedInView: View {
     }
 
     private func resizeWindow(miniMode: Bool) {
-        guard let window = NSApplication.shared.windows.first else { return }
-
-        if miniMode {
-            // Mini mode: fixed size to show all controls
-            let miniSize = NSSize(width: 600, height: 120)
-
-            // Set exact size constraints
-            window.minSize = miniSize
-            window.maxSize = miniSize
-            window.setContentSize(miniSize)
-
-            // Remove resizable to prevent user from changing size
-            window.styleMask.remove(.resizable)
-        } else {
-            // Restore mode: return to normal size with flexible constraints
-            let normalSize = NSSize(width: 800, height: 600)
-
-            // Restore flexible size constraints
-            window.minSize = NSSize(width: 500, height: 400)
-            window.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-            window.setContentSize(normalSize)
-
-            // Re-enable resizing
-            window.styleMask.insert(.resizable)
-        }
+        // Use the window state manager for reliable window access
+        WindowStateManager.shared.setMiniPlayerMode(miniMode)
     }
 }
