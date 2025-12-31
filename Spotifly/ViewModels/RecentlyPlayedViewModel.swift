@@ -131,7 +131,6 @@ final class RecentlyPlayedViewModel {
 
             // Insert playlists in the correct order
             var finalItems: [RecentItem] = []
-            var playlistIndex = 0
 
             for item in response.items {
                 guard let context = item.context else { continue }
