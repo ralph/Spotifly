@@ -84,6 +84,7 @@ struct LoggedInView: View {
                     }
                 }
                 .playbackShortcuts(playbackViewModel: playbackViewModel)
+                .libraryNavigationShortcuts(selection: $selectedNavigationItem)
             }
 
             // Now Playing Bar (always visible at bottom)
