@@ -12,6 +12,8 @@ struct NowPlayingBarView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     @Binding var isMiniPlayerMode: Bool
 
+    @State private var barHeight: CGFloat = 66
+
     // Helper function for time formatting
     private func formatTime(_ milliseconds: UInt32) -> String {
         let totalSeconds = Int(milliseconds / 1000)
@@ -31,26 +33,35 @@ struct NowPlayingBarView: View {
                 GeometryReader { geometry in
                     let isCompact = geometry.size.width < 750
                     let isVeryNarrow = geometry.size.width < 600
+                    let calculatedHeight: CGFloat = (isCompact && !isMiniPlayerMode) ? 90 : 66
 
-                    if isCompact {
-                        // Compact layout: progress bar at bottom
-                        VStack(spacing: 8) {
-                            compactTopRow(showVolume: !isVeryNarrow)
-                            progressBar
-                                .padding(.horizontal, 8)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, isMiniPlayerMode ? 4 : 8)
-                        .padding(.bottom, 8)
-                    } else {
-                        // Wide layout: original layout
-                        wideLayout
+                    Group {
+                        if isCompact {
+                            // Compact layout: progress bar at bottom
+                            VStack(spacing: 8) {
+                                compactTopRow(showVolume: !isVeryNarrow)
+                                progressBar
+                                    .padding(.horizontal, 8)
+                            }
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.top, isMiniPlayerMode ? 4 : 8)
+                            .padding(.bottom, 8)
+                        } else {
+                            // Wide layout: original layout
+                            wideLayout
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                        }
+                    }
+                    .onAppear {
+                        barHeight = calculatedHeight
+                    }
+                    .onChange(of: calculatedHeight) { _, newValue in
+                        barHeight = newValue
                     }
                 }
                 .background(Color(NSColor.controlBackgroundColor))
-                .frame(height: isMiniPlayerMode ? 66 : 90)
+                .frame(height: barHeight)
             }
         }
     }
