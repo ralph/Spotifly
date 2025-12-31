@@ -95,7 +95,7 @@ struct LoggedInView: View {
             NowPlayingBarView(
                 authResult: authResult,
                 playbackViewModel: playbackViewModel,
-                isMiniPlayerMode: $isMiniPlayerMode
+                isMiniPlayerMode: $isMiniPlayerMode,
             )
         }
         .onChange(of: isMiniPlayerMode) { _, newValue in

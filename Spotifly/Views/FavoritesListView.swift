@@ -194,7 +194,7 @@ struct FavoriteTrackRow: View {
     private func playTrackAndFollowing() {
         // Get all track URIs from current track onwards
         let tracksToPlay = Array(allTracks[trackIndex...])
-        let urisToPlay = tracksToPlay.map { $0.uri }
+        let urisToPlay = tracksToPlay.map(\.uri)
 
         Task {
             await playbackViewModel.playTracks(urisToPlay, accessToken: accessToken)
