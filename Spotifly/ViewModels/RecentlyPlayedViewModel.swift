@@ -97,27 +97,21 @@ final class RecentlyPlayedViewModel {
             }
 
             // Fetch playlist details concurrently and filter out empty playlists
-            print("DEBUG: Fetching \(uniquePlaylistIds.count) unique playlists concurrently")
             let fetchedPlaylists = await withTaskGroup(of: SearchPlaylist?.self) { group in
                 for playlistId in uniquePlaylistIds {
                     group.addTask {
-                        print("DEBUG: Fetching playlist \(playlistId)")
                         do {
                             let playlist = try await SpotifyAPI.fetchPlaylistDetails(
                                 accessToken: accessToken,
                                 playlistId: playlistId
                             )
-                            print("DEBUG: Playlist \(playlistId) fetched: \(playlist.name), tracks: \(playlist.trackCount)")
                             // Only include playlists with at least one track
                             if playlist.trackCount > 0 {
-                                print("DEBUG: Playlist \(playlistId) added to list")
                                 return playlist
                             } else {
-                                print("DEBUG: Playlist \(playlistId) skipped (0 tracks)")
                                 return nil
                             }
                         } catch {
-                            print("DEBUG: Failed to fetch playlist \(playlistId): \(error)")
                             // Skip playlists that can't be fetched (might be private or deleted)
                             return nil
                         }
@@ -133,7 +127,6 @@ final class RecentlyPlayedViewModel {
                 }
                 return results
             }
-            print("DEBUG: Total playlists to display: \(fetchedPlaylists.count)")
             recentPlaylists = fetchedPlaylists
 
         } catch {

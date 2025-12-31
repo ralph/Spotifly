@@ -1,0 +1,2148 @@
+{
+  "items" : [ {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/7x5rK9BClDQ8wmCkYAGsQp"
+          },
+          "href" : "https://api.spotify.com/v1/artists/7x5rK9BClDQ8wmCkYAGsQp",
+          "id" : "7x5rK9BClDQ8wmCkYAGsQp",
+          "name" : "Paolo Nutini",
+          "type" : "artist",
+          "uri" : "spotify:artist:7x5rK9BClDQ8wmCkYAGsQp"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/6L2FiSnFMisCgbhbag4KTl"
+        },
+        "href" : "https://api.spotify.com/v1/albums/6L2FiSnFMisCgbhbag4KTl",
+        "id" : "6L2FiSnFMisCgbhbag4KTl",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273280a44b1caee9f2109602c41",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02280a44b1caee9f2109602c41",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851280a44b1caee9f2109602c41",
+          "width" : 64
+        } ],
+        "name" : "These Streets",
+        "release_date" : "2007-01-30",
+        "release_date_precision" : "day",
+        "total_tracks" : 10,
+        "type" : "album",
+        "uri" : "spotify:album:6L2FiSnFMisCgbhbag4KTl"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/7x5rK9BClDQ8wmCkYAGsQp"
+        },
+        "href" : "https://api.spotify.com/v1/artists/7x5rK9BClDQ8wmCkYAGsQp",
+        "id" : "7x5rK9BClDQ8wmCkYAGsQp",
+        "name" : "Paolo Nutini",
+        "type" : "artist",
+        "uri" : "spotify:artist:7x5rK9BClDQ8wmCkYAGsQp"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 207133,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "GBAHS0600226"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/3G3GZnfjmypPEdkItAofp8"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/3G3GZnfjmypPEdkItAofp8",
+      "id" : "3G3GZnfjmypPEdkItAofp8",
+      "is_local" : false,
+      "name" : "Jenny Don't Be Hasty",
+      "popularity" : 63,
+      "preview_url" : null,
+      "track_number" : 1,
+      "type" : "track",
+      "uri" : "spotify:track:3G3GZnfjmypPEdkItAofp8"
+    },
+    "played_at" : "2025-12-31T13:32:28.795Z",
+    "context" : {
+      "type" : "playlist",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/playlist/2oAQEAfyiPzDyDhCgsSVhC"
+      },
+      "href" : "https://api.spotify.com/v1/playlists/2oAQEAfyiPzDyDhCgsSVhC",
+      "uri" : "spotify:playlist:2oAQEAfyiPzDyDhCgsSVhC"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/4gzpq5DPGxSnKTe4SA8HAU"
+          },
+          "href" : "https://api.spotify.com/v1/artists/4gzpq5DPGxSnKTe4SA8HAU",
+          "id" : "4gzpq5DPGxSnKTe4SA8HAU",
+          "name" : "Coldplay",
+          "type" : "artist",
+          "uri" : "spotify:artist:4gzpq5DPGxSnKTe4SA8HAU"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/2G4AUqfwxcV1UdQjm2ouYr"
+        },
+        "href" : "https://api.spotify.com/v1/albums/2G4AUqfwxcV1UdQjm2ouYr",
+        "id" : "2G4AUqfwxcV1UdQjm2ouYr",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273e5a95573f1b91234630fd2cf",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02e5a95573f1b91234630fd2cf",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851e5a95573f1b91234630fd2cf",
+          "width" : 64
+        } ],
+        "name" : "Ghost Stories",
+        "release_date" : "2014-05-16",
+        "release_date_precision" : "day",
+        "total_tracks" : 9,
+        "type" : "album",
+        "uri" : "spotify:album:2G4AUqfwxcV1UdQjm2ouYr"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/4gzpq5DPGxSnKTe4SA8HAU"
+        },
+        "href" : "https://api.spotify.com/v1/artists/4gzpq5DPGxSnKTe4SA8HAU",
+        "id" : "4gzpq5DPGxSnKTe4SA8HAU",
+        "name" : "Coldplay",
+        "type" : "artist",
+        "uri" : "spotify:artist:4gzpq5DPGxSnKTe4SA8HAU"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 267866,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "GBAYE1400217"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/0FDzzruyVECATHXKHFs9eJ"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/0FDzzruyVECATHXKHFs9eJ",
+      "id" : "0FDzzruyVECATHXKHFs9eJ",
+      "is_local" : false,
+      "name" : "A Sky Full of Stars",
+      "popularity" : 85,
+      "preview_url" : null,
+      "track_number" : 8,
+      "type" : "track",
+      "uri" : "spotify:track:0FDzzruyVECATHXKHFs9eJ"
+    },
+    "played_at" : "2025-12-30T22:20:24.059Z",
+    "context" : {
+      "type" : "playlist",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/playlist/37i9dQZF1DX4Y4RhrZqHhr"
+      },
+      "href" : "https://api.spotify.com/v1/playlists/37i9dQZF1DX4Y4RhrZqHhr",
+      "uri" : "spotify:playlist:37i9dQZF1DX4Y4RhrZqHhr"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 292506,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935769"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/6ivLu0vllV1dKbUHKFG9WM"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/6ivLu0vllV1dKbUHKFG9WM",
+      "id" : "6ivLu0vllV1dKbUHKFG9WM",
+      "is_local" : false,
+      "name" : "Kapitel 25.2 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 28,
+      "preview_url" : null,
+      "track_number" : 16,
+      "type" : "track",
+      "uri" : "spotify:track:6ivLu0vllV1dKbUHKFG9WM"
+    },
+    "played_at" : "2025-12-30T10:20:25.401Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 198873,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935768"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/1xOCWqT1ORPyNnMqzsDAv6"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/1xOCWqT1ORPyNnMqzsDAv6",
+      "id" : "1xOCWqT1ORPyNnMqzsDAv6",
+      "is_local" : false,
+      "name" : "Kapitel 23.2 & Kapitel 24 & Kapitel 25.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 28,
+      "preview_url" : null,
+      "track_number" : 15,
+      "type" : "track",
+      "uri" : "spotify:track:1xOCWqT1ORPyNnMqzsDAv6"
+    },
+    "played_at" : "2025-12-29T11:53:28.751Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 189133,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935767"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/1xR5m3ETH073WLGbsUqPDH"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/1xR5m3ETH073WLGbsUqPDH",
+      "id" : "1xR5m3ETH073WLGbsUqPDH",
+      "is_local" : false,
+      "name" : "Kapitel 21.2 & Kapitel 22 & Kapitel 23.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 29,
+      "preview_url" : null,
+      "track_number" : 14,
+      "type" : "track",
+      "uri" : "spotify:track:1xR5m3ETH073WLGbsUqPDH"
+    },
+    "played_at" : "2025-12-29T11:50:10.053Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 215040,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935766"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/5uyYwdVkEQ2UrISs0fgkPx"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/5uyYwdVkEQ2UrISs0fgkPx",
+      "id" : "5uyYwdVkEQ2UrISs0fgkPx",
+      "is_local" : false,
+      "name" : "Kapitel 19.2 & Kapitel 20 & Kapitel 21.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 29,
+      "preview_url" : null,
+      "track_number" : 13,
+      "type" : "track",
+      "uri" : "spotify:track:5uyYwdVkEQ2UrISs0fgkPx"
+    },
+    "played_at" : "2025-12-29T11:47:01.351Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 208473,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935765"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/0FH5Hap0s8fu0z1IxjoJT0"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/0FH5Hap0s8fu0z1IxjoJT0",
+      "id" : "0FH5Hap0s8fu0z1IxjoJT0",
+      "is_local" : false,
+      "name" : "Kapitel 18.2 & Kapitel 19.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 30,
+      "preview_url" : null,
+      "track_number" : 12,
+      "type" : "track",
+      "uri" : "spotify:track:0FH5Hap0s8fu0z1IxjoJT0"
+    },
+    "played_at" : "2025-12-29T11:43:25.484Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 204020,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935764"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/3vIaik5CNwk9B8hXAyO5mL"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/3vIaik5CNwk9B8hXAyO5mL",
+      "id" : "3vIaik5CNwk9B8hXAyO5mL",
+      "is_local" : false,
+      "name" : "Kapitel 17.2 & Kapitel 18.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 29,
+      "preview_url" : null,
+      "track_number" : 11,
+      "type" : "track",
+      "uri" : "spotify:track:3vIaik5CNwk9B8hXAyO5mL"
+    },
+    "played_at" : "2025-12-29T11:40:25.661Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 185093,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935763"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/5x4xBDrzhOi1mB4J5k2IDQ"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/5x4xBDrzhOi1mB4J5k2IDQ",
+      "id" : "5x4xBDrzhOi1mB4J5k2IDQ",
+      "is_local" : false,
+      "name" : "Kapitel 15.2 & Kapitel 16 & Kapitel 17.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 29,
+      "preview_url" : null,
+      "track_number" : 10,
+      "type" : "track",
+      "uri" : "spotify:track:5x4xBDrzhOi1mB4J5k2IDQ"
+    },
+    "played_at" : "2025-12-29T11:36:33.492Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 196900,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935762"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/5GUmrTxOtGsrrDqMzsbbnT"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/5GUmrTxOtGsrrDqMzsbbnT",
+      "id" : "5GUmrTxOtGsrrDqMzsbbnT",
+      "is_local" : false,
+      "name" : "Kapitel 13.2 & Kapitel 14 & Kapitel 15.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 30,
+      "preview_url" : null,
+      "track_number" : 9,
+      "type" : "track",
+      "uri" : "spotify:track:5GUmrTxOtGsrrDqMzsbbnT"
+    },
+    "played_at" : "2025-12-29T11:33:57.897Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 215826,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935761"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/5xJNMzhQlznJUMbIwFQLS5"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/5xJNMzhQlznJUMbIwFQLS5",
+      "id" : "5xJNMzhQlznJUMbIwFQLS5",
+      "is_local" : false,
+      "name" : "Kapitel 12.2 & Kapitel 13.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 30,
+      "preview_url" : null,
+      "track_number" : 8,
+      "type" : "track",
+      "uri" : "spotify:track:5xJNMzhQlznJUMbIwFQLS5"
+    },
+    "played_at" : "2025-12-29T11:29:16.285Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 192666,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935760"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/59kp2WtIA68lZc9A8cn67k"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/59kp2WtIA68lZc9A8cn67k",
+      "id" : "59kp2WtIA68lZc9A8cn67k",
+      "is_local" : false,
+      "name" : "Kapitel 10.2 & Kapitel 11 & Kapitel 12.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 30,
+      "preview_url" : null,
+      "track_number" : 7,
+      "type" : "track",
+      "uri" : "spotify:track:59kp2WtIA68lZc9A8cn67k"
+    },
+    "played_at" : "2025-12-29T11:25:35.130Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 225460,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935759"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/7a34NK9eIxS7Nb0UEJE08J"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/7a34NK9eIxS7Nb0UEJE08J",
+      "id" : "7a34NK9eIxS7Nb0UEJE08J",
+      "is_local" : false,
+      "name" : "Kapitel 8.2 & Kapitel 9 & Kapitel 10.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 30,
+      "preview_url" : null,
+      "track_number" : 6,
+      "type" : "track",
+      "uri" : "spotify:track:7a34NK9eIxS7Nb0UEJE08J"
+    },
+    "played_at" : "2025-12-29T11:22:20.598Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 186219,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935758"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/7zayP5ORY4i1qqalPHzfIh"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/7zayP5ORY4i1qqalPHzfIh",
+      "id" : "7zayP5ORY4i1qqalPHzfIh",
+      "is_local" : false,
+      "name" : "Kapitel 7.2 & Kapitel 8.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 30,
+      "preview_url" : null,
+      "track_number" : 5,
+      "type" : "track",
+      "uri" : "spotify:track:7zayP5ORY4i1qqalPHzfIh"
+    },
+    "played_at" : "2025-12-29T11:18:36.772Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 201153,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935757"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/3PEM9IhP0PVyLPRZViu00D"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/3PEM9IhP0PVyLPRZViu00D",
+      "id" : "3PEM9IhP0PVyLPRZViu00D",
+      "is_local" : false,
+      "name" : "Kapitel 6.2 & Kapitel 7.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 30,
+      "preview_url" : null,
+      "track_number" : 4,
+      "type" : "track",
+      "uri" : "spotify:track:3PEM9IhP0PVyLPRZViu00D"
+    },
+    "played_at" : "2025-12-29T11:15:27.595Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 204573,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935756"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/5KHF6XhRguSUd1NJIjS4Tv"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/5KHF6XhRguSUd1NJIjS4Tv",
+      "id" : "5KHF6XhRguSUd1NJIjS4Tv",
+      "is_local" : false,
+      "name" : "Kapitel 5.2 & Kapitel 6.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 30,
+      "preview_url" : null,
+      "track_number" : 3,
+      "type" : "track",
+      "uri" : "spotify:track:5KHF6XhRguSUd1NJIjS4Tv"
+    },
+    "played_at" : "2025-12-29T11:12:08.777Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "album",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+          "id" : "2G50OTOFPIR57gZ59mFnNR",
+          "name" : "Mein Lotta-Leben",
+          "type" : "artist",
+          "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+          },
+          "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+          "id" : "04h9RpCIARtKlHV7ijIN3v",
+          "name" : "Alice Pantermüller",
+          "type" : "artist",
+          "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+          },
+          "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+          "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+          "name" : "Katinka Kultscher",
+          "type" : "artist",
+          "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+        },
+        "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+        "id" : "1nfUVwSfQE5eBB8Y18ZJUS",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273082d419fb3da236fd9159e14",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02082d419fb3da236fd9159e14",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851082d419fb3da236fd9159e14",
+          "width" : 64
+        } ],
+        "name" : "Mein Lotta-Leben. Süßer die Esel nie singen",
+        "release_date" : "2016-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 16,
+        "type" : "album",
+        "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2G50OTOFPIR57gZ59mFnNR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2G50OTOFPIR57gZ59mFnNR",
+        "id" : "2G50OTOFPIR57gZ59mFnNR",
+        "name" : "Mein Lotta-Leben",
+        "type" : "artist",
+        "uri" : "spotify:artist:2G50OTOFPIR57gZ59mFnNR"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/04h9RpCIARtKlHV7ijIN3v"
+        },
+        "href" : "https://api.spotify.com/v1/artists/04h9RpCIARtKlHV7ijIN3v",
+        "id" : "04h9RpCIARtKlHV7ijIN3v",
+        "name" : "Alice Pantermüller",
+        "type" : "artist",
+        "uri" : "spotify:artist:04h9RpCIARtKlHV7ijIN3v"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/2m1cHYL8xw6ngAjbmi8nHG"
+        },
+        "href" : "https://api.spotify.com/v1/artists/2m1cHYL8xw6ngAjbmi8nHG",
+        "id" : "2m1cHYL8xw6ngAjbmi8nHG",
+        "name" : "Katinka Kultscher",
+        "type" : "artist",
+        "uri" : "spotify:artist:2m1cHYL8xw6ngAjbmi8nHG"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 187280,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "DEXR10935755"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/3fJWCIWB28liAbcPpRUEPB"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/3fJWCIWB28liAbcPpRUEPB",
+      "id" : "3fJWCIWB28liAbcPpRUEPB",
+      "is_local" : false,
+      "name" : "Kapitel 3.2 & Kapitel 4 & Kapitel 5.1 - Mein Lotta-Leben. Süßer die Esel nie singen",
+      "popularity" : 31,
+      "preview_url" : null,
+      "track_number" : 2,
+      "type" : "track",
+      "uri" : "spotify:track:3fJWCIWB28liAbcPpRUEPB"
+    },
+    "played_at" : "2025-12-29T11:08:41.548Z",
+    "context" : {
+      "type" : "album",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/album/1nfUVwSfQE5eBB8Y18ZJUS"
+      },
+      "href" : "https://api.spotify.com/v1/albums/1nfUVwSfQE5eBB8Y18ZJUS",
+      "uri" : "spotify:album:1nfUVwSfQE5eBB8Y18ZJUS"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "single",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/6eUKZXaKkcviH0Ku9w2n3V"
+          },
+          "href" : "https://api.spotify.com/v1/artists/6eUKZXaKkcviH0Ku9w2n3V",
+          "id" : "6eUKZXaKkcviH0Ku9w2n3V",
+          "name" : "Ed Sheeran",
+          "type" : "artist",
+          "uri" : "spotify:artist:6eUKZXaKkcviH0Ku9w2n3V"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/3HcgqKuPvj9ZpqLCny0GWg"
+        },
+        "href" : "https://api.spotify.com/v1/albums/3HcgqKuPvj9ZpqLCny0GWg",
+        "id" : "3HcgqKuPvj9ZpqLCny0GWg",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b2738c5e02d9f4bfa29203cd3310",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e028c5e02d9f4bfa29203cd3310",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d000048518c5e02d9f4bfa29203cd3310",
+          "width" : 64
+        } ],
+        "name" : "Under the Tree (from “That Christmas”)",
+        "release_date" : "2024-11-26",
+        "release_date_precision" : "day",
+        "total_tracks" : 1,
+        "type" : "album",
+        "uri" : "spotify:album:3HcgqKuPvj9ZpqLCny0GWg"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/6eUKZXaKkcviH0Ku9w2n3V"
+        },
+        "href" : "https://api.spotify.com/v1/artists/6eUKZXaKkcviH0Ku9w2n3V",
+        "id" : "6eUKZXaKkcviH0Ku9w2n3V",
+        "name" : "Ed Sheeran",
+        "type" : "artist",
+        "uri" : "spotify:artist:6eUKZXaKkcviH0Ku9w2n3V"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 242826,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "US38Y2426830"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/3emyfamOMxgrus8oZQh6Mx"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/3emyfamOMxgrus8oZQh6Mx",
+      "id" : "3emyfamOMxgrus8oZQh6Mx",
+      "is_local" : false,
+      "name" : "Under the Tree (from “That Christmas”)",
+      "popularity" : 82,
+      "preview_url" : null,
+      "track_number" : 1,
+      "type" : "track",
+      "uri" : "spotify:track:3emyfamOMxgrus8oZQh6Mx"
+    },
+    "played_at" : "2025-12-22T13:16:11.786Z",
+    "context" : {
+      "type" : "playlist",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/playlist/37i9dQZF1DX3h1vasAdBTc"
+      },
+      "href" : "https://api.spotify.com/v1/playlists/37i9dQZF1DX3h1vasAdBTc",
+      "uri" : "spotify:playlist:37i9dQZF1DX3h1vasAdBTc"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "single",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/5Pwc4xIPtQLFEnJriah9YJ"
+          },
+          "href" : "https://api.spotify.com/v1/artists/5Pwc4xIPtQLFEnJriah9YJ",
+          "id" : "5Pwc4xIPtQLFEnJriah9YJ",
+          "name" : "OneRepublic",
+          "type" : "artist",
+          "uri" : "spotify:artist:5Pwc4xIPtQLFEnJriah9YJ"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/2hhMU1z6iEq0UxYMBdp9xp"
+        },
+        "href" : "https://api.spotify.com/v1/albums/2hhMU1z6iEq0UxYMBdp9xp",
+        "id" : "2hhMU1z6iEq0UxYMBdp9xp",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b2737861237400b8efe4fac0b4c6",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e027861237400b8efe4fac0b4c6",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d000048517861237400b8efe4fac0b4c6",
+          "width" : 64
+        } ],
+        "name" : "Dear Santa",
+        "release_date" : "2023-10-20",
+        "release_date_precision" : "day",
+        "total_tracks" : 2,
+        "type" : "album",
+        "uri" : "spotify:album:2hhMU1z6iEq0UxYMBdp9xp"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/5Pwc4xIPtQLFEnJriah9YJ"
+        },
+        "href" : "https://api.spotify.com/v1/artists/5Pwc4xIPtQLFEnJriah9YJ",
+        "id" : "5Pwc4xIPtQLFEnJriah9YJ",
+        "name" : "OneRepublic",
+        "type" : "artist",
+        "uri" : "spotify:artist:5Pwc4xIPtQLFEnJriah9YJ"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 169732,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "USUM72313745"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/5zqzV32ifPJ9XhqfyjYrBy"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/5zqzV32ifPJ9XhqfyjYrBy",
+      "id" : "5zqzV32ifPJ9XhqfyjYrBy",
+      "is_local" : false,
+      "name" : "Dear Santa",
+      "popularity" : 77,
+      "preview_url" : null,
+      "track_number" : 1,
+      "type" : "track",
+      "uri" : "spotify:track:5zqzV32ifPJ9XhqfyjYrBy"
+    },
+    "played_at" : "2025-12-21T16:19:21.890Z",
+    "context" : {
+      "type" : "playlist",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/playlist/37i9dQZF1DX3h1vasAdBTc"
+      },
+      "href" : "https://api.spotify.com/v1/playlists/37i9dQZF1DX3h1vasAdBTc",
+      "uri" : "spotify:playlist:37i9dQZF1DX3h1vasAdBTc"
+    }
+  }, {
+    "track" : {
+      "album" : {
+        "album_type" : "single",
+        "artists" : [ {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/3BmGtnKgCSGYIUhmivXKWX"
+          },
+          "href" : "https://api.spotify.com/v1/artists/3BmGtnKgCSGYIUhmivXKWX",
+          "id" : "3BmGtnKgCSGYIUhmivXKWX",
+          "name" : "Kelly Clarkson",
+          "type" : "artist",
+          "uri" : "spotify:artist:3BmGtnKgCSGYIUhmivXKWX"
+        }, {
+          "external_urls" : {
+            "spotify" : "https://open.spotify.com/artist/66CXWjxzNUsdJxJ2JdwvnR"
+          },
+          "href" : "https://api.spotify.com/v1/artists/66CXWjxzNUsdJxJ2JdwvnR",
+          "id" : "66CXWjxzNUsdJxJ2JdwvnR",
+          "name" : "Ariana Grande",
+          "type" : "artist",
+          "uri" : "spotify:artist:66CXWjxzNUsdJxJ2JdwvnR"
+        } ],
+        "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/album/5RNKudvhTz6IX57BupmjeD"
+        },
+        "href" : "https://api.spotify.com/v1/albums/5RNKudvhTz6IX57BupmjeD",
+        "id" : "5RNKudvhTz6IX57BupmjeD",
+        "images" : [ {
+          "height" : 640,
+          "url" : "https://i.scdn.co/image/ab67616d0000b273d33d459f99f410c7a64ddaf2",
+          "width" : 640
+        }, {
+          "height" : 300,
+          "url" : "https://i.scdn.co/image/ab67616d00001e02d33d459f99f410c7a64ddaf2",
+          "width" : 300
+        }, {
+          "height" : 64,
+          "url" : "https://i.scdn.co/image/ab67616d00004851d33d459f99f410c7a64ddaf2",
+          "width" : 64
+        } ],
+        "name" : "Santa, Can’t You Hear Me",
+        "release_date" : "2021-10-14",
+        "release_date_precision" : "day",
+        "total_tracks" : 1,
+        "type" : "album",
+        "uri" : "spotify:album:5RNKudvhTz6IX57BupmjeD"
+      },
+      "artists" : [ {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/3BmGtnKgCSGYIUhmivXKWX"
+        },
+        "href" : "https://api.spotify.com/v1/artists/3BmGtnKgCSGYIUhmivXKWX",
+        "id" : "3BmGtnKgCSGYIUhmivXKWX",
+        "name" : "Kelly Clarkson",
+        "type" : "artist",
+        "uri" : "spotify:artist:3BmGtnKgCSGYIUhmivXKWX"
+      }, {
+        "external_urls" : {
+          "spotify" : "https://open.spotify.com/artist/66CXWjxzNUsdJxJ2JdwvnR"
+        },
+        "href" : "https://api.spotify.com/v1/artists/66CXWjxzNUsdJxJ2JdwvnR",
+        "id" : "66CXWjxzNUsdJxJ2JdwvnR",
+        "name" : "Ariana Grande",
+        "type" : "artist",
+        "uri" : "spotify:artist:66CXWjxzNUsdJxJ2JdwvnR"
+      } ],
+      "available_markets" : [ "AR", "AU", "AT", "BE", "BO", "BR", "BG", "CA", "CL", "CO", "CR", "CY", "CZ", "DK", "DO", "DE", "EC", "EE", "SV", "FI", "FR", "GR", "GT", "HN", "HK", "HU", "IS", "IE", "IT", "LV", "LT", "LU", "MY", "MT", "MX", "NL", "NZ", "NI", "NO", "PA", "PY", "PE", "PH", "PL", "PT", "SG", "SK", "ES", "SE", "CH", "TW", "TR", "UY", "US", "GB", "AD", "LI", "MC", "ID", "JP", "TH", "VN", "RO", "IL", "ZA", "SA", "AE", "BH", "QA", "OM", "KW", "EG", "MA", "DZ", "TN", "LB", "JO", "PS", "IN", "BY", "KZ", "MD", "UA", "AL", "BA", "HR", "ME", "MK", "RS", "SI", "KR", "BD", "PK", "LK", "GH", "KE", "NG", "TZ", "UG", "AG", "AM", "BS", "BB", "BZ", "BT", "BW", "BF", "CV", "CW", "DM", "FJ", "GM", "GE", "GD", "GW", "GY", "HT", "JM", "KI", "LS", "LR", "MW", "MV", "ML", "MH", "FM", "NA", "NR", "NE", "PW", "PG", "PR", "WS", "SM", "ST", "SN", "SC", "SL", "SB", "KN", "LC", "VC", "SR", "TL", "TO", "TT", "TV", "VU", "AZ", "BN", "BI", "KH", "CM", "TD", "KM", "GQ", "SZ", "GA", "GN", "KG", "LA", "MO", "MR", "MN", "NP", "RW", "TG", "UZ", "ZW", "BJ", "MG", "MU", "MZ", "AO", "CI", "DJ", "ZM", "CD", "CG", "IQ", "LY", "TJ", "VE", "ET", "XK" ],
+      "disc_number" : 1,
+      "duration_ms" : 242644,
+      "explicit" : false,
+      "external_ids" : {
+        "isrc" : "USAT22104760"
+      },
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/track/7B9SFykXtlvM2YCjKwyULL"
+      },
+      "href" : "https://api.spotify.com/v1/tracks/7B9SFykXtlvM2YCjKwyULL",
+      "id" : "7B9SFykXtlvM2YCjKwyULL",
+      "is_local" : false,
+      "name" : "Santa, Can’t You Hear Me",
+      "popularity" : 75,
+      "preview_url" : null,
+      "track_number" : 1,
+      "type" : "track",
+      "uri" : "spotify:track:7B9SFykXtlvM2YCjKwyULL"
+    },
+    "played_at" : "2025-12-21T14:16:43.920Z",
+    "context" : {
+      "type" : "playlist",
+      "external_urls" : {
+        "spotify" : "https://open.spotify.com/playlist/37i9dQZF1DX3h1vasAdBTc"
+      },
+      "href" : "https://api.spotify.com/v1/playlists/37i9dQZF1DX3h1vasAdBTc",
+      "uri" : "spotify:playlist:37i9dQZF1DX3h1vasAdBTc"
+    }
+  } ],
+  "next" : "https://api.spotify.com/v1/me/player/recently-played?before=1766326603920",
+  "cursors" : {
+    "after" : "1767187948795",
+    "before" : "1766326603920"
+  },
+  "limit" : 20,
+  "href" : "https://api.spotify.com/v1/me/player/recently-played"
+}
