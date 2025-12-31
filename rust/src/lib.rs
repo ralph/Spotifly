@@ -639,6 +639,126 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Plays multiple tracks in sequence.
+/// Returns 0 on success, -1 on error.
+///
+/// # Parameters
+/// - track_uris_json: JSON array of track URIs as a C string (e.g., "[\"spotify:track:xxx\", \"spotify:track:yyy\"]")
+#[no_mangle]
+pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
+    if track_uris_json.is_null() {
+        eprintln!("Play tracks error: track_uris_json is null");
+        return -1;
+    }
+
+    let track_uris_str = unsafe {
+        match CStr::from_ptr(track_uris_json).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Play tracks error: invalid track_uris_json string");
+                return -1;
+            }
+        }
+    };
+
+    // Parse JSON array of track URIs
+    let track_uris: Vec<String> = match serde_json::from_str(&track_uris_str) {
+        Ok(uris) => uris,
+        Err(e) => {
+            eprintln!("Play tracks error: failed to parse JSON: {:?}", e);
+            return -1;
+        }
+    };
+
+    if track_uris.is_empty() {
+        eprintln!("Play tracks error: empty track URIs array");
+        return -1;
+    }
+
+    let player_guard = PLAYER.lock().unwrap();
+    let player = match player_guard.as_ref() {
+        Some(p) => Arc::clone(p),
+        None => {
+            eprintln!("Play tracks error: player not initialized");
+            return -1;
+        }
+    };
+    drop(player_guard);
+
+    let session_guard = SESSION.lock().unwrap();
+    let session = match session_guard.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            eprintln!("Play tracks error: session not initialized");
+            return -1;
+        }
+    };
+    drop(session_guard);
+
+    let result: Result<(), String> = RUNTIME.block_on(async {
+        let mut queue_items = Vec::new();
+
+        // Load metadata for all tracks
+        for uri_str in &track_uris {
+            let spotify_uri = parse_spotify_uri(uri_str)?;
+
+            match spotify_uri {
+                SpotifyUri::Track { .. } => {
+                    let track = Track::get(&session, &spotify_uri).await
+                        .map_err(|e| format!("Failed to load track {}: {:?}", uri_str, e))?;
+
+                    let track_name = track.name.clone();
+                    let artist_name = track.artists.iter()
+                        .map(|a| a.name.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let album_art_url = get_album_art_url(&track);
+                    let duration_ms = track.duration as u32;
+
+                    let queue_item = QueueItem {
+                        uri: uri_str.clone(),
+                        track_name,
+                        artist_name,
+                        album_art_url,
+                        duration_ms,
+                    };
+
+                    queue_items.push(queue_item);
+                }
+                _ => {
+                    return Err(format!("Invalid track URI: {}", uri_str));
+                }
+            }
+        }
+
+        if queue_items.is_empty() {
+            return Err("No valid tracks loaded".to_string());
+        }
+
+        // Update queue
+        let mut queue_guard = QUEUE.lock().unwrap();
+        queue_guard.clear();
+        queue_guard.extend(queue_items);
+        drop(queue_guard);
+
+        CURRENT_INDEX.store(0, Ordering::SeqCst);
+
+        // Load and play first track
+        let first_uri = parse_spotify_uri(&track_uris[0])?;
+        player.load(first_uri, true, 0);
+
+        Ok(())
+    });
+
+    match result {
+        Ok(_) => 0,
+        Err(e) => {
+            eprintln!("Play tracks error: {}", e);
+            -1
+        }
+    }
+}
+
 /// Plays content by its Spotify URI or URL.
 /// Supports tracks, albums, playlists, and artists.
 /// Returns 0 on success, -1 on error.

@@ -85,6 +85,32 @@ enum SpotifyPlayer {
         try await play(uriOrUrl: trackUri)
     }
 
+    /// Plays multiple tracks in sequence.
+    /// - Parameter trackUris: Array of Spotify track URIs
+    @SpotifyAuthActor
+    static func playTracks(_ trackUris: [String]) async throws {
+        guard !trackUris.isEmpty else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+
+        // Convert array to JSON
+        let encoder = JSONEncoder()
+        guard let jsonData = try? encoder.encode(trackUris),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+
+        let result = await Task.detached {
+            jsonString.withCString { ptr in
+                spotifly_play_tracks(ptr)
+            }
+        }.value
+
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
     /// Pauses playback.
     static func pause() {
         spotifly_pause()
