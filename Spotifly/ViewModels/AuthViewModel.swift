@@ -22,10 +22,19 @@ final class AuthViewModel {
 
     func loadFromKeychain() {
         isLoading = true
-        if let savedResult = KeychainManager.loadAuthResult() {
-            authResult = savedResult
+        Task {
+            // Attempt to load and refresh if needed
+            if let savedResult = await KeychainManager.loadAuthResultWithRefresh() {
+                await MainActor.run {
+                    self.authResult = savedResult
+                    self.isLoading = false
+                }
+            } else {
+                await MainActor.run {
+                    self.isLoading = false
+                }
+            }
         }
-        isLoading = false
     }
 
     func startOAuth() {
