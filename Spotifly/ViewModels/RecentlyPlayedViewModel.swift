@@ -88,29 +88,32 @@ final class RecentlyPlayedViewModel {
             }
 
             // Process playlists from context
-            var uniquePlaylists: [String: String] = [:] // id: uri
+            var uniquePlaylistIds: Set<String> = []
             for item in response.items {
                 if let context = item.context, context.type == "playlist" {
                     let playlistId = extractId(from: context.uri)
-                    if uniquePlaylists[playlistId] == nil {
-                        uniquePlaylists[playlistId] = context.uri
-                    }
+                    uniquePlaylistIds.insert(playlistId)
                 }
             }
 
-            // For playlists, we'll need to fetch more info later
-            // For now, just store minimal info
-            recentPlaylists = uniquePlaylists.map { id, uri in
-                SearchPlaylist(
-                    id: id,
-                    name: "Playlist", // Will be updated when needed
-                    uri: uri,
-                    description: nil,
-                    imageURL: nil,
-                    trackCount: 0,
-                    ownerName: "",
-                )
+            // Fetch playlist details and filter out empty playlists
+            var fetchedPlaylists: [SearchPlaylist] = []
+            for playlistId in uniquePlaylistIds {
+                do {
+                    let playlist = try await SpotifyAPI.fetchPlaylistDetails(
+                        accessToken: accessToken,
+                        playlistId: playlistId
+                    )
+                    // Only include playlists with at least one track
+                    if playlist.trackCount > 0 {
+                        fetchedPlaylists.append(playlist)
+                    }
+                } catch {
+                    // Skip playlists that can't be fetched (might be private or deleted)
+                    continue
+                }
             }
+            recentPlaylists = fetchedPlaylists
 
         } catch {
             errorMessage = error.localizedDescription

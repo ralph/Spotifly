@@ -511,6 +511,86 @@ enum SpotifyAPI {
         )
     }
 
+    /// Fetches a single playlist's details from Spotify Web API
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: Playlist ID
+    static func fetchPlaylistDetails(accessToken: String, playlistId: String) async throws -> SearchPlaylist {
+        let urlString = "\(baseURL)/playlists/\(playlistId)"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw SpotifyAPIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+
+        // Parse JSON response
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        guard let id = json["id"] as? String,
+              let name = json["name"] as? String,
+              let uri = json["uri"] as? String,
+              let tracks = json["tracks"] as? [String: Any],
+              let trackCount = tracks["total"] as? Int,
+              let owner = json["owner"] as? [String: Any],
+              let ownerName = owner["display_name"] as? String
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        let description = json["description"] as? String
+
+        var imageURL: URL?
+        if let images = json["images"] as? [[String: Any]],
+           let firstImage = images.first,
+           let urlString = firstImage["url"] as? String
+        {
+            imageURL = URL(string: urlString)
+        }
+
+        return SearchPlaylist(
+            id: id,
+            name: name,
+            uri: uri,
+            description: description,
+            imageURL: imageURL,
+            trackCount: trackCount,
+            ownerName: ownerName
+        )
+    }
+
     /// Fetches user's saved albums from Spotify Web API
     /// - Parameters:
     ///   - accessToken: Spotify access token
