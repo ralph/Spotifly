@@ -86,7 +86,7 @@ struct AlbumDetailView: View {
                 if isLoading {
                     ProgressView("Loading tracks...")
                         .padding()
-                } else if let errorMessage = errorMessage {
+                } else if let errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(.red)
                         .padding()
@@ -97,12 +97,12 @@ struct AlbumDetailView: View {
                                 track: track.toTrackRowData(),
                                 showTrackNumber: true,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                                playbackViewModel: playbackViewModel
+                                playbackViewModel: playbackViewModel,
                             ) {
                                 Task {
                                     await playbackViewModel.play(
                                         uriOrUrl: track.uri,
-                                        accessToken: authResult.accessToken
+                                        accessToken: authResult.accessToken,
                                     )
                                 }
                             }
@@ -133,7 +133,7 @@ struct AlbumDetailView: View {
         do {
             tracks = try await SpotifyAPI.fetchAlbumTracks(
                 accessToken: authResult.accessToken,
-                albumId: album.id
+                albumId: album.id,
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -146,7 +146,7 @@ struct AlbumDetailView: View {
         Task {
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: authResult.accessToken
+                accessToken: authResult.accessToken,
             )
         }
     }

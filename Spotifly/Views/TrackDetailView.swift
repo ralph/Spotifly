@@ -74,7 +74,7 @@ struct TrackDetailView: View {
                 Task {
                     await playbackViewModel.play(
                         uriOrUrl: track.uri,
-                        accessToken: authResult.accessToken
+                        accessToken: authResult.accessToken,
                     )
                 }
             } label: {

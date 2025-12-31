@@ -52,12 +52,12 @@ struct SearchTracksDetailView: View {
                             track: track.toTrackRowData(),
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                            playbackViewModel: playbackViewModel
+                            playbackViewModel: playbackViewModel,
                         ) {
                             Task {
                                 await playbackViewModel.play(
                                     uriOrUrl: track.uri,
-                                    accessToken: authResult.accessToken
+                                    accessToken: authResult.accessToken,
                                 )
                             }
                         }
@@ -79,7 +79,7 @@ struct SearchTracksDetailView: View {
         Task {
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: authResult.accessToken
+                accessToken: authResult.accessToken,
             )
         }
     }

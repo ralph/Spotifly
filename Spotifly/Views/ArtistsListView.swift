@@ -59,7 +59,7 @@ struct ArtistsListView: View {
                                 artist: artist,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: authResult.accessToken,
-                                selectedArtist: $selectedArtist
+                                selectedArtist: $selectedArtist,
                             )
                         }
 

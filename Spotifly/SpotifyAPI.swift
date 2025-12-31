@@ -165,13 +165,13 @@ struct SearchAlbum: Sendable, Identifiable {
     }
 
     init(from album: AlbumSimplified) {
-        self.id = album.id
-        self.name = album.name
-        self.uri = album.uri
-        self.artistName = album.artistName
-        self.imageURL = album.imageURL
-        self.totalTracks = album.trackCount
-        self.releaseDate = album.releaseDate
+        id = album.id
+        name = album.name
+        uri = album.uri
+        artistName = album.artistName
+        imageURL = album.imageURL
+        totalTracks = album.trackCount
+        releaseDate = album.releaseDate
     }
 }
 
@@ -194,12 +194,12 @@ struct SearchArtist: Sendable, Identifiable {
     }
 
     init(from artist: ArtistSimplified) {
-        self.id = artist.id
-        self.name = artist.name
-        self.uri = artist.uri
-        self.imageURL = artist.imageURL
-        self.genres = artist.genres
-        self.followers = artist.followers
+        id = artist.id
+        name = artist.name
+        uri = artist.uri
+        imageURL = artist.imageURL
+        genres = artist.genres
+        followers = artist.followers
     }
 }
 
@@ -224,13 +224,13 @@ struct SearchPlaylist: Sendable, Identifiable {
     }
 
     init(from playlist: PlaylistSimplified) {
-        self.id = playlist.id
-        self.name = playlist.name
-        self.uri = playlist.uri
-        self.description = playlist.description
-        self.imageURL = playlist.imageURL
-        self.trackCount = playlist.trackCount
-        self.ownerName = playlist.ownerName
+        id = playlist.id
+        name = playlist.name
+        uri = playlist.uri
+        description = playlist.description
+        imageURL = playlist.imageURL
+        trackCount = playlist.trackCount
+        ownerName = playlist.ownerName
     }
 }
 
@@ -240,6 +240,25 @@ struct SearchResults: Sendable {
     let albums: [SearchAlbum]
     let artists: [SearchArtist]
     let playlists: [SearchPlaylist]
+}
+
+/// Recently played context
+struct PlaybackContext: Sendable {
+    let type: String // "album", "playlist", "artist"
+    let uri: String
+}
+
+/// Recently played item
+struct RecentlyPlayedItem: Sendable, Identifiable {
+    let id: String // Use played_at as ID since tracks can be played multiple times
+    let track: SearchTrack
+    let playedAt: String
+    let context: PlaybackContext?
+}
+
+/// Recently played response wrapper
+struct RecentlyPlayedResponse: Sendable {
+    let items: [RecentlyPlayedItem]
 }
 
 /// Errors from Spotify API
@@ -995,12 +1014,11 @@ enum SpotifyAPI {
                     uri: uri,
                     artistName: artistName,
                     durationMs: durationMs,
-                    trackNumber: trackNumber
+                    trackNumber: trackNumber,
                 )
             }
 
             return tracks
-
         case 401:
             throw SpotifyAPIError.unauthorized
         case 404:
@@ -1071,12 +1089,11 @@ enum SpotifyAPI {
                     albumName: albumName,
                     imageURL: imageURL,
                     durationMs: durationMs,
-                    addedAt: addedAt
+                    addedAt: addedAt,
                 )
             }
 
             return tracks
-
         case 401:
             throw SpotifyAPIError.unauthorized
         case 404:
@@ -1145,12 +1162,11 @@ enum SpotifyAPI {
                     artistName: artistName,
                     albumName: albumName,
                     imageURL: imageURL,
-                    durationMs: durationMs
+                    durationMs: durationMs,
                 )
             }
 
             return topTracks
-
         case 401:
             throw SpotifyAPIError.unauthorized
         case 404:
@@ -1173,7 +1189,7 @@ enum SpotifyAPI {
         accessToken: String,
         query: String,
         types: [SearchType] = [.track, .album, .artist, .playlist],
-        limit: Int = 20
+        limit: Int = 20,
     ) async throws -> SearchResults {
         let typesParam = types.map(\.rawValue).joined(separator: ",")
         let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
@@ -1230,7 +1246,7 @@ enum SpotifyAPI {
                         artistName: artistName,
                         albumName: albumName,
                         imageURL: imageURL,
-                        durationMs: durationMs
+                        durationMs: durationMs,
                     )
                 }
             }
@@ -1261,7 +1277,7 @@ enum SpotifyAPI {
                         artistName: artistName,
                         imageURL: imageURL,
                         totalTracks: totalTracks,
-                        releaseDate: releaseDate
+                        releaseDate: releaseDate,
                     )
                 }
             }
@@ -1290,7 +1306,7 @@ enum SpotifyAPI {
                         uri: uri,
                         imageURL: imageURL,
                         genres: genres,
-                        followers: followers
+                        followers: followers,
                     )
                 }
             }
@@ -1324,7 +1340,7 @@ enum SpotifyAPI {
                         description: description,
                         imageURL: imageURL,
                         trackCount: trackCount,
-                        ownerName: ownerName
+                        ownerName: ownerName,
                     )
                 }
             }
@@ -1333,11 +1349,104 @@ enum SpotifyAPI {
                 tracks: tracks,
                 albums: albums,
                 artists: artists,
-                playlists: playlists
+                playlists: playlists,
             )
 
         case 401:
             throw SpotifyAPIError.unauthorized
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    // MARK: - Recently Played
+
+    /// Fetches recently played tracks
+    static func fetchRecentlyPlayed(
+        accessToken: String,
+        limit: Int = 50,
+    ) async throws -> RecentlyPlayedResponse {
+        let urlString = "\(baseURL)/me/player/recently-played?limit=\(limit)"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            guard let itemsArray = json["items"] as? [[String: Any]] else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            let items = itemsArray.compactMap { item -> RecentlyPlayedItem? in
+                guard let trackData = item["track"] as? [String: Any],
+                      let trackId = trackData["id"] as? String,
+                      let trackName = trackData["name"] as? String,
+                      let trackUri = trackData["uri"] as? String,
+                      let durationMs = trackData["duration_ms"] as? Int,
+                      let playedAt = item["played_at"] as? String
+                else {
+                    return nil
+                }
+
+                let artistName = (trackData["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
+                let albumName = (trackData["album"] as? [String: Any])?["name"] as? String ?? ""
+                let albumImages = (trackData["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                let imageURLString = albumImages?.first?["url"] as? String
+                let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                let track = SearchTrack(
+                    id: trackId,
+                    name: trackName,
+                    uri: trackUri,
+                    artistName: artistName,
+                    albumName: albumName,
+                    imageURL: imageURL,
+                    durationMs: durationMs,
+                )
+
+                // Parse context if available
+                var context: PlaybackContext? = nil
+                if let contextData = item["context"] as? [String: Any],
+                   let contextType = contextData["type"] as? String,
+                   let contextUri = contextData["uri"] as? String
+                {
+                    context = PlaybackContext(type: contextType, uri: contextUri)
+                }
+
+                return RecentlyPlayedItem(
+                    id: playedAt, // Use playedAt as unique ID
+                    track: track,
+                    playedAt: playedAt,
+                    context: context,
+                )
+            }
+
+            return RecentlyPlayedResponse(items: items)
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
         default:
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let error = errorJson["error"] as? [String: Any],

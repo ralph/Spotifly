@@ -59,7 +59,7 @@ struct PlaylistsListView: View {
                                 playlist: playlist,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: authResult.accessToken,
-                                selectedPlaylist: $selectedPlaylist
+                                selectedPlaylist: $selectedPlaylist,
                             )
                         }
 

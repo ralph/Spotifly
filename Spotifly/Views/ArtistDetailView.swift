@@ -87,7 +87,7 @@ struct ArtistDetailView: View {
                 if isLoading {
                     ProgressView("Loading top tracks...")
                         .padding()
-                } else if let errorMessage = errorMessage {
+                } else if let errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(.red)
                         .padding()
@@ -103,12 +103,12 @@ struct ArtistDetailView: View {
                                     track: track.toTrackRowData(),
                                     index: index,
                                     currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                                    playbackViewModel: playbackViewModel
+                                    playbackViewModel: playbackViewModel,
                                 ) {
                                     Task {
                                         await playbackViewModel.play(
                                             uriOrUrl: track.uri,
-                                            accessToken: authResult.accessToken
+                                            accessToken: authResult.accessToken,
                                         )
                                     }
                                 }
@@ -140,7 +140,7 @@ struct ArtistDetailView: View {
         do {
             topTracks = try await SpotifyAPI.fetchArtistTopTracks(
                 accessToken: authResult.accessToken,
-                artistId: artist.id
+                artistId: artist.id,
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -153,18 +153,18 @@ struct ArtistDetailView: View {
         Task {
             await playbackViewModel.playTracks(
                 topTracks.map(\.uri),
-                accessToken: authResult.accessToken
+                accessToken: authResult.accessToken,
             )
         }
     }
 
     private func formatFollowers(_ count: Int) -> String {
         if count >= 1_000_000 {
-            return String(format: "%.1fM", Double(count) / 1_000_000.0)
+            String(format: "%.1fM", Double(count) / 1_000_000.0)
         } else if count >= 1000 {
-            return String(format: "%.1fK", Double(count) / 1000.0)
+            String(format: "%.1fK", Double(count) / 1000.0)
         } else {
-            return "\(count)"
+            "\(count)"
         }
     }
 }

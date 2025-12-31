@@ -15,7 +15,7 @@ struct TrackRowData: Identifiable {
     let artistName: String
     let albumArtURL: String?
     let durationMs: Int
-    let trackNumber: Int?  // Optional - only shown in album views
+    let trackNumber: Int? // Optional - only shown in album views
 
     var durationFormatted: String {
         let totalSeconds = durationMs / 1000
@@ -28,10 +28,10 @@ struct TrackRowData: Identifiable {
 /// Reusable track row view
 struct TrackRow: View {
     let track: TrackRowData
-    let showTrackNumber: Bool  // Show track number instead of index
-    let index: Int?  // Optional index for queue
+    let showTrackNumber: Bool // Show track number instead of index
+    let index: Int? // Optional index for queue
     let isCurrentTrack: Bool
-    let isPlayedTrack: Bool  // For queue - tracks that have already played
+    let isPlayedTrack: Bool // For queue - tracks that have already played
     @Bindable var playbackViewModel: PlaybackViewModel
     let onDoubleTap: () -> Void
 
@@ -42,13 +42,13 @@ struct TrackRow: View {
         currentlyPlayingURI: String?,
         currentIndex: Int? = nil,
         playbackViewModel: PlaybackViewModel,
-        onDoubleTap: @escaping () -> Void
+        onDoubleTap: @escaping () -> Void,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
         self.index = index
-        self.isCurrentTrack = currentlyPlayingURI == track.uri
-        self.isPlayedTrack = if let index = index, let currentIndex = currentIndex {
+        isCurrentTrack = currentlyPlayingURI == track.uri
+        isPlayedTrack = if let index, let currentIndex {
             index < currentIndex
         } else {
             false
@@ -70,7 +70,7 @@ struct TrackRow: View {
                     Text("\(trackNumber)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else if let index = index {
+                } else if let index {
                     Text("\(index + 1)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -150,7 +150,7 @@ extension QueueItem {
             artistName: artistName,
             albumArtURL: albumArtURL,
             durationMs: Int(durationMs),
-            trackNumber: nil
+            trackNumber: nil,
         )
     }
 }
@@ -162,9 +162,9 @@ extension AlbumTrack {
             uri: uri,
             name: name,
             artistName: artistName,
-            albumArtURL: nil,  // Album tracks don't have individual art
+            albumArtURL: nil, // Album tracks don't have individual art
             durationMs: durationMs,
-            trackNumber: trackNumber
+            trackNumber: trackNumber,
         )
     }
 }
@@ -178,7 +178,7 @@ extension PlaylistTrack {
             artistName: artistName,
             albumArtURL: imageURL?.absoluteString,
             durationMs: durationMs,
-            trackNumber: nil
+            trackNumber: nil,
         )
     }
 }
@@ -192,7 +192,7 @@ extension SearchTrack {
             artistName: artistName,
             albumArtURL: imageURL?.absoluteString,
             durationMs: durationMs,
-            trackNumber: nil
+            trackNumber: nil,
         )
     }
 }
