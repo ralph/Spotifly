@@ -38,7 +38,7 @@ final class SearchViewModel {
                 accessToken: accessToken,
                 query: query,
                 types: [.track, .album, .artist, .playlist],
-                limit: 20
+                limit: 20,
             )
 
             searchResults = results

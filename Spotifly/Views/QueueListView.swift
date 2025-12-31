@@ -51,7 +51,7 @@ struct QueueListView: View {
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 currentIndex: playbackViewModel.currentIndex,
-                                playbackViewModel: playbackViewModel
+                                playbackViewModel: playbackViewModel,
                             ) {
                                 do {
                                     try SpotifyPlayer.jumpToIndex(index)
