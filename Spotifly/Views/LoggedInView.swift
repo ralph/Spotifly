@@ -35,10 +35,33 @@ struct LoggedInView: View {
     @State private var selectedRecentArtist: SearchArtist?
     @State private var selectedRecentPlaylist: SearchPlaylist?
 
+    // Column visibility - hide detail when nothing is selected
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    // Computed property to check if a detail should be shown
+    private var hasDetailToShow: Bool {
+        switch selectedNavigationItem {
+        case .albums:
+            return selectedAlbum != nil
+        case .artists:
+            return selectedArtist != nil
+        case .playlists:
+            return selectedPlaylist != nil
+        case .startpage:
+            return selectedRecentAlbum != nil || selectedRecentArtist != nil || selectedRecentPlaylist != nil
+        case .searchResults:
+            return searchViewModel.selectedTrack != nil || searchViewModel.selectedAlbum != nil ||
+                   searchViewModel.selectedArtist != nil || searchViewModel.selectedPlaylist != nil ||
+                   searchViewModel.showingAllTracks
+        default:
+            return false
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if !isMiniPlayerMode {
-                NavigationSplitView {
+                NavigationSplitView(columnVisibility: $columnVisibility) {
                     // Sidebar
                     SidebarView(
                         selection: $selectedNavigationItem,
@@ -242,6 +265,9 @@ struct LoggedInView: View {
                             }
                         }
                     }
+                }
+                .onChange(of: hasDetailToShow) { _, newValue in
+                    columnVisibility = newValue ? .all : .doubleColumn
                 }
                 .searchable(text: $searchText)
                 .onSubmit(of: .search) {
