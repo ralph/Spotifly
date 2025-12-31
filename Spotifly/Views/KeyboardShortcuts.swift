@@ -14,6 +14,13 @@ extension View {
             PlaybackShortcutsView(playbackViewModel: playbackViewModel),
         )
     }
+
+    /// Adds library navigation keyboard shortcuts
+    func libraryNavigationShortcuts(selection: Binding<NavigationItem?>) -> some View {
+        background(
+            LibraryNavigationShortcutsView(selection: selection),
+        )
+    }
 }
 
 private struct PlaybackShortcutsView: View {
@@ -45,6 +52,40 @@ private struct PlaybackShortcutsView: View {
                 playbackViewModel.previous()
             }
             .keyboardShortcut(.leftArrow, modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+    }
+}
+
+private struct LibraryNavigationShortcutsView: View {
+    @Binding var selection: NavigationItem?
+
+    var body: some View {
+        Group {
+            // Cmd+1 - Favorites
+            Button("") {
+                selection = .favorites
+            }
+            .keyboardShortcut("1", modifiers: .command)
+
+            // Cmd+2 - Playlists
+            Button("") {
+                selection = .playlists
+            }
+            .keyboardShortcut("2", modifiers: .command)
+
+            // Cmd+3 - Albums
+            Button("") {
+                selection = .albums
+            }
+            .keyboardShortcut("3", modifiers: .command)
+
+            // Cmd+4 - Artists
+            Button("") {
+                selection = .artists
+            }
+            .keyboardShortcut("4", modifiers: .command)
         }
         .frame(width: 0, height: 0)
         .opacity(0)
