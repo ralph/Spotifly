@@ -34,6 +34,14 @@ int32_t spotifly_has_oauth_result(void);
 /// Clears the stored OAuth result.
 void spotifly_clear_oauth_result(void);
 
+/// Refreshes the access token using a refresh token.
+/// Returns 0 on success, -1 on error.
+///
+/// @param client_id Spotify API client ID as a C string
+/// @param redirect_uri OAuth redirect URI as a C string
+/// @param refresh_token The refresh token as a C string
+int32_t spotifly_refresh_access_token(const char* client_id, const char* redirect_uri, const char* refresh_token);
+
 /// Frees a C string allocated by this library.
 void spotifly_free_string(char* s);
 

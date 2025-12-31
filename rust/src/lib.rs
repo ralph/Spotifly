@@ -376,6 +376,110 @@ pub extern "C" fn spotifly_clear_oauth_result() {
     *guard = None;
 }
 
+/// Refreshes the access token using a refresh token.
+/// Returns 0 on success, -1 on error.
+///
+/// # Parameters
+/// - client_id: Spotify API client ID as a C string
+/// - redirect_uri: OAuth redirect URI as a C string
+/// - refresh_token: The refresh token as a C string
+#[no_mangle]
+pub extern "C" fn spotifly_refresh_access_token(
+    client_id: *const c_char,
+    redirect_uri: *const c_char,
+    refresh_token: *const c_char,
+) -> i32 {
+    // Validate and convert C strings to Rust strings
+    if client_id.is_null() || redirect_uri.is_null() || refresh_token.is_null() {
+        eprintln!("Token refresh error: client_id, redirect_uri, or refresh_token is null");
+        return -1;
+    }
+
+    let client_id_str = unsafe {
+        match CStr::from_ptr(client_id).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Token refresh error: invalid client_id string");
+                return -1;
+            }
+        }
+    };
+
+    let redirect_uri_str = unsafe {
+        match CStr::from_ptr(redirect_uri).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Token refresh error: invalid redirect_uri string");
+                return -1;
+            }
+        }
+    };
+
+    let refresh_token_str = unsafe {
+        match CStr::from_ptr(refresh_token).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Token refresh error: invalid refresh_token string");
+                return -1;
+            }
+        }
+    };
+
+    let result = RUNTIME.block_on(async {
+        perform_token_refresh(&client_id_str, &redirect_uri_str, &refresh_token_str).await
+    });
+
+    match result {
+        Ok(oauth_result) => {
+            let mut guard = OAUTH_RESULT.lock().unwrap();
+            *guard = Some(oauth_result);
+            0
+        }
+        Err(e) => {
+            eprintln!("Token refresh error: {:?}", e);
+            -1
+        }
+    }
+}
+
+async fn perform_token_refresh(
+    client_id: &str,
+    redirect_uri: &str,
+    refresh_token: &str,
+) -> Result<OAuthResult, OAuthError> {
+    let scopes = vec![
+        "user-read-private",
+        "user-read-email",
+        "streaming",
+        "user-read-playback-state",
+        "user-modify-playback-state",
+        "user-read-currently-playing",
+        "playlist-read-private",
+        "playlist-read-collaborative",
+        "user-library-read",
+        "user-follow-read",
+    ];
+
+    let client = OAuthClientBuilder::new(client_id, redirect_uri, scopes)
+        .build()?;
+
+    let token = client.refresh_token(refresh_token)?;
+
+    let now = Instant::now();
+    let expires_in_secs = if token.expires_at > now {
+        token.expires_at.duration_since(now).as_secs()
+    } else {
+        0
+    };
+
+    Ok(OAuthResult {
+        access_token: token.access_token,
+        refresh_token: Some(token.refresh_token),
+        expires_in: expires_in_secs,
+        scopes: token.scopes,
+    })
+}
+
 /// Frees a C string allocated by this library.
 #[no_mangle]
 pub extern "C" fn spotifly_free_string(s: *mut c_char) {

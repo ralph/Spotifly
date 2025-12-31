@@ -35,6 +35,7 @@ enum KeychainManager {
     }
 
     /// Loads the OAuth result from the keychain, returns nil if not found or expired
+    /// Note: This method does NOT attempt to refresh expired tokens. Use loadAuthResultWithRefresh() for that.
     static func loadAuthResult() -> SpotifyAuthResult? {
         guard let accessTokenData = load(key: accessTokenKey),
               let accessToken = String(data: accessTokenData, encoding: .utf8),
@@ -49,16 +50,9 @@ enum KeychainManager {
             return nil
         }
 
-        // Check if token is expired
-        let now = Date()
-        guard expiresAt > now else {
-            // Token expired, clear it
-            clearAuthResult()
-            return nil
-        }
-
         // Calculate remaining seconds
-        let expiresIn = UInt64(expiresAt.timeIntervalSince(now))
+        let now = Date()
+        let expiresIn = UInt64(max(0, expiresAt.timeIntervalSince(now)))
 
         // Load optional refresh token
         var refreshToken: String? = nil
@@ -71,6 +65,37 @@ enum KeychainManager {
             refreshToken: refreshToken,
             expiresIn: expiresIn,
         )
+    }
+
+    /// Loads the OAuth result from the keychain and attempts to refresh if expired
+    /// - Returns: A valid auth result, or nil if unable to load/refresh
+    static func loadAuthResultWithRefresh() async -> SpotifyAuthResult? {
+        guard let result = loadAuthResult() else {
+            return nil
+        }
+
+        // Check if token is expired or expiring soon (within 5 minutes)
+        let isExpired = result.expiresIn < 300 // 5 minutes
+
+        if isExpired, let refreshToken = result.refreshToken {
+            // Attempt to refresh the token
+            do {
+                let newResult = try await SpotifyAuth.refreshAccessToken(refreshToken: refreshToken)
+
+                // Save the new result to keychain
+                try saveAuthResult(newResult)
+
+                return newResult
+            } catch {
+                print("Failed to refresh token: \(error)")
+                // If refresh fails, clear the stored credentials
+                clearAuthResult()
+                return nil
+            }
+        }
+
+        // Token is still valid
+        return result
     }
 
     /// Clears all stored OAuth data from the keychain
