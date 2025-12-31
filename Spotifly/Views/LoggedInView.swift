@@ -19,6 +19,7 @@ struct LoggedInView: View {
     @State private var albumsViewModel = AlbumsViewModel()
     @State private var artistsViewModel = ArtistsViewModel()
     @State private var queueViewModel = QueueViewModel()
+    @State private var searchViewModel = SearchViewModel()
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var isMiniPlayerMode = false
     @State private var searchText = ""
@@ -27,70 +28,127 @@ struct LoggedInView: View {
         VStack(spacing: 0) {
             if !isMiniPlayerMode {
                 NavigationSplitView {
+                    // Sidebar
                     SidebarView(selection: $selectedNavigationItem, onLogout: {
                         playbackViewModel.stop()
                         onLogout()
                     })
-                } detail: {
-                    Group {
-                        switch selectedNavigationItem {
-                        case .startpage:
-                            StartpageView(
-                                authResult: authResult,
-                                trackViewModel: trackViewModel,
-                                playbackViewModel: playbackViewModel,
-                            )
-                            .navigationTitle("Startpage")
+                } content: {
+                    // Content column: search results or main views
+                    if let searchResults = searchViewModel.searchResults {
+                        // Show search results when searching
+                        SearchResultsView(
+                            searchResults: searchResults,
+                            searchViewModel: searchViewModel,
+                        )
+                        .navigationTitle("Search Results")
+                    } else {
+                        // Show main views when not searching
+                        Group {
+                            switch selectedNavigationItem {
+                            case .startpage:
+                                StartpageView(
+                                    authResult: authResult,
+                                    trackViewModel: trackViewModel,
+                                    playbackViewModel: playbackViewModel,
+                                )
+                                .navigationTitle("Startpage")
 
-                        case .favorites:
-                            FavoritesListView(
-                                authResult: authResult,
-                                favoritesViewModel: favoritesViewModel,
-                                playbackViewModel: playbackViewModel,
-                            )
-                            .navigationTitle("Favorites")
+                            case .favorites:
+                                FavoritesListView(
+                                    authResult: authResult,
+                                    favoritesViewModel: favoritesViewModel,
+                                    playbackViewModel: playbackViewModel,
+                                )
+                                .navigationTitle("Favorites")
 
-                        case .playlists:
-                            PlaylistsListView(
-                                authResult: authResult,
-                                playlistsViewModel: playlistsViewModel,
-                                playbackViewModel: playbackViewModel,
-                            )
-                            .navigationTitle("Playlists")
+                            case .playlists:
+                                PlaylistsListView(
+                                    authResult: authResult,
+                                    playlistsViewModel: playlistsViewModel,
+                                    playbackViewModel: playbackViewModel,
+                                )
+                                .navigationTitle("Playlists")
 
-                        case .albums:
-                            AlbumsListView(
-                                authResult: authResult,
-                                albumsViewModel: albumsViewModel,
-                                playbackViewModel: playbackViewModel,
-                            )
-                            .navigationTitle("Albums")
+                            case .albums:
+                                AlbumsListView(
+                                    authResult: authResult,
+                                    albumsViewModel: albumsViewModel,
+                                    playbackViewModel: playbackViewModel,
+                                )
+                                .navigationTitle("Albums")
 
-                        case .artists:
-                            ArtistsListView(
-                                authResult: authResult,
-                                artistsViewModel: artistsViewModel,
-                                playbackViewModel: playbackViewModel,
-                            )
-                            .navigationTitle("Artists")
+                            case .artists:
+                                ArtistsListView(
+                                    authResult: authResult,
+                                    artistsViewModel: artistsViewModel,
+                                    playbackViewModel: playbackViewModel,
+                                )
+                                .navigationTitle("Artists")
 
-                        case .queue:
-                            QueueListView(
-                                authResult: authResult,
-                                queueViewModel: queueViewModel,
-                                playbackViewModel: playbackViewModel,
-                            )
-                            .navigationTitle("Queue")
+                            case .queue:
+                                QueueListView(
+                                    authResult: authResult,
+                                    queueViewModel: queueViewModel,
+                                    playbackViewModel: playbackViewModel,
+                                )
+                                .navigationTitle("Queue")
 
-                        case .none:
-                            Text("Select an item from the sidebar")
-                                .foregroundStyle(.secondary)
+                            case .none:
+                                Text("Select an item from the sidebar")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .playbackShortcuts(playbackViewModel: playbackViewModel)
+                        .libraryNavigationShortcuts(selection: $selectedNavigationItem)
                     }
-                    .playbackShortcuts(playbackViewModel: playbackViewModel)
-                    .libraryNavigationShortcuts(selection: $selectedNavigationItem)
+                } detail: {
+                    // Detail column: show details for selected search result
+                    if let selectedTrack = searchViewModel.selectedTrack {
+                        // Single track: show track info with play button
+                        TrackDetailView(
+                            track: selectedTrack,
+                            authResult: authResult,
+                            playbackViewModel: playbackViewModel,
+                        )
+                    } else if let selectedAlbum = searchViewModel.selectedAlbum {
+                        // Album: show album details with track list
+                        AlbumDetailView(
+                            album: selectedAlbum,
+                            authResult: authResult,
+                            playbackViewModel: playbackViewModel,
+                        )
+                    } else if let selectedArtist = searchViewModel.selectedArtist {
+                        // Artist: show artist details with top tracks
+                        ArtistDetailView(
+                            artist: selectedArtist,
+                            authResult: authResult,
+                            playbackViewModel: playbackViewModel,
+                        )
+                    } else if let selectedPlaylist = searchViewModel.selectedPlaylist {
+                        // Playlist: show playlist details with track list
+                        PlaylistDetailView(
+                            playlist: selectedPlaylist,
+                            authResult: authResult,
+                            playbackViewModel: playbackViewModel,
+                        )
+                    } else {
+                        // No selection: show placeholder
+                        Text("Select a search result to see details")
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .searchable(text: $searchText)
+                .onSubmit(of: .search) {
+                    Task {
+                        await searchViewModel.search(accessToken: authResult.accessToken, query: searchText)
+                    }
+                }
+                .onChange(of: searchText) { _, newValue in
+                    if newValue.isEmpty {
+                        searchViewModel.clearSearch()
+                    }
+                }
             }
 
             // Now Playing Bar (always visible at bottom)
