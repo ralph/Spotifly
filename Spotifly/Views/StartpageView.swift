@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct StartpageView: View {
     let authResult: SpotifyAuthResult
@@ -15,6 +16,9 @@ struct StartpageView: View {
     @Binding var selectedRecentAlbum: SearchAlbum?
     @Binding var selectedRecentArtist: SearchArtist?
     @Binding var selectedRecentPlaylist: SearchPlaylist?
+
+    @State private var versionTapCount = 0
+    @State private var showTokenInfo = false
 
     var body: some View {
         ScrollView {
@@ -114,11 +118,76 @@ struct StartpageView: View {
                         }
                     }
                 }
+
+                // Version Section
+                VStack(spacing: 12) {
+                    Divider()
+
+                    Button {
+                        versionTapCount += 1
+                        if versionTapCount >= 7 {
+                            showTokenInfo = true
+                        }
+                    } label: {
+                        Text("Version \(appVersion)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+
+                    if showTokenInfo {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("OAuth Access Token")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+
+                            HStack(spacing: 8) {
+                                Text(authResult.accessToken)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .textSelection(.enabled)
+
+                                Button {
+                                    copyTokenToClipboard()
+                                } label: {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.caption)
+                                }
+                                .buttonStyle(.bordered)
+                                .help("Copy token to clipboard")
+                            }
+
+                            Text("Tap count: \(versionTapCount)")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding()
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(8)
+                        .padding(.horizontal)
+                    }
+                }
+                .padding(.bottom)
             }
         }
         .task {
             await recentlyPlayedViewModel.loadRecentlyPlayed(accessToken: authResult.accessToken)
         }
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
+        return "\(version) (\(build))"
+    }
+
+    private func copyTokenToClipboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(authResult.accessToken, forType: .string)
     }
 }
 
