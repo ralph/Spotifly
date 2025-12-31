@@ -7,13 +7,29 @@
 
 import SwiftUI
 
+// Mixed type for recently played albums, artists, and playlists
+enum RecentItem: Identifiable {
+    case album(SearchAlbum)
+    case artist(SearchArtist)
+    case playlist(SearchPlaylist)
+
+    var id: String {
+        switch self {
+        case .album(let album): return "album_\(album.id)"
+        case .artist(let artist): return "artist_\(artist.id)"
+        case .playlist(let playlist): return "playlist_\(playlist.id)"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class RecentlyPlayedViewModel {
+    // Configuration
+    private let recentlyPlayedLimit = 30  // Easy to adjust for experimentation
+
     var recentTracks: [SearchTrack] = []
-    var recentAlbums: [SearchAlbum] = []
-    var recentArtists: [SearchArtist] = []
-    var recentPlaylists: [SearchPlaylist] = []
+    var recentItems: [RecentItem] = []  // Mixed albums, artists, playlists
     var isLoading = false
     var errorMessage: String?
 
@@ -22,112 +38,129 @@ final class RecentlyPlayedViewModel {
         errorMessage = nil
 
         do {
-            let response = try await SpotifyAPI.fetchRecentlyPlayed(accessToken: accessToken, limit: 50)
+            let response = try await SpotifyAPI.fetchRecentlyPlayed(accessToken: accessToken, limit: recentlyPlayedLimit)
 
-            // Process tracks - get top 10 unique tracks
+            // Process tracks - keep all unique tracks
             var uniqueTracks: [String: SearchTrack] = [:]
             for item in response.items {
                 if uniqueTracks[item.track.id] == nil {
                     uniqueTracks[item.track.id] = item.track
                 }
             }
-            recentTracks = Array(uniqueTracks.values.prefix(10))
+            recentTracks = Array(uniqueTracks.values)
 
-            // Process albums from context
-            var uniqueAlbums: [String: (uri: String, name: String, artistName: String, imageURL: URL?)] = [:]
+            // Process mixed items (albums, artists, playlists) in order of appearance
+            var seenIds: Set<String> = []
+            var mixedItems: [RecentItem] = []
+            var playlistIdsToFetch: [String] = []
+
             for item in response.items {
-                if let context = item.context, context.type == "album" {
-                    let albumId = extractId(from: context.uri)
-                    if uniqueAlbums[albumId] == nil {
-                        uniqueAlbums[albumId] = (
-                            uri: context.uri,
-                            name: item.track.albumName,
-                            artistName: item.track.artistName,
-                            imageURL: item.track.imageURL,
-                        )
-                    }
+                guard let context = item.context else { continue }
+
+                let itemId = extractId(from: context.uri)
+                guard !seenIds.contains(itemId) else { continue }
+                seenIds.insert(itemId)
+
+                switch context.type {
+                case "album":
+                    let album = SearchAlbum(
+                        id: itemId,
+                        name: item.track.albumName,
+                        uri: context.uri,
+                        artistName: item.track.artistName,
+                        imageURL: item.track.imageURL,
+                        totalTracks: 0,
+                        releaseDate: ""
+                    )
+                    mixedItems.append(.album(album))
+
+                case "artist":
+                    let artist = SearchArtist(
+                        id: itemId,
+                        name: item.track.artistName,
+                        uri: context.uri,
+                        imageURL: nil,
+                        genres: [],
+                        followers: 0
+                    )
+                    mixedItems.append(.artist(artist))
+
+                case "playlist":
+                    playlistIdsToFetch.append(itemId)
+
+                default:
+                    break
                 }
             }
 
-            // Convert to SearchAlbum
-            recentAlbums = uniqueAlbums.map { id, info in
-                SearchAlbum(
-                    id: id,
-                    name: info.name,
-                    uri: info.uri,
-                    artistName: info.artistName,
-                    imageURL: info.imageURL,
-                    totalTracks: 0,
-                    releaseDate: "",
-                )
-            }
-
-            // Process artists from context
-            var uniqueArtists: [String: (uri: String, name: String)] = [:]
-            for item in response.items {
-                if let context = item.context, context.type == "artist" {
-                    let artistId = extractId(from: context.uri)
-                    if uniqueArtists[artistId] == nil {
-                        uniqueArtists[artistId] = (
-                            uri: context.uri,
-                            name: item.track.artistName,
-                        )
-                    }
-                }
-            }
-
-            recentArtists = uniqueArtists.map { id, info in
-                SearchArtist(
-                    id: id,
-                    name: info.name,
-                    uri: info.uri,
-                    imageURL: nil,
-                    genres: [],
-                    followers: 0,
-                )
-            }
-
-            // Process playlists from context
-            var uniquePlaylistIds: Set<String> = []
-            for item in response.items {
-                if let context = item.context, context.type == "playlist" {
-                    let playlistId = extractId(from: context.uri)
-                    uniquePlaylistIds.insert(playlistId)
-                }
-            }
-
-            // Fetch playlist details concurrently and filter out empty playlists
-            let fetchedPlaylists = await withTaskGroup(of: SearchPlaylist?.self) { group in
-                for playlistId in uniquePlaylistIds {
+            // Fetch playlist details concurrently
+            let fetchedPlaylists = await withTaskGroup(of: (id: String, playlist: SearchPlaylist?).self) { group in
+                for playlistId in playlistIdsToFetch {
                     group.addTask {
                         do {
                             let playlist = try await SpotifyAPI.fetchPlaylistDetails(
                                 accessToken: accessToken,
-                                playlistId: playlistId,
+                                playlistId: playlistId
                             )
-                            // Only include playlists with at least one track
                             if playlist.trackCount > 0 {
-                                return playlist
-                            } else {
-                                return nil
+                                return (playlistId, playlist)
                             }
                         } catch {
-                            // Skip playlists that can't be fetched (might be private or deleted)
-                            return nil
+                            // Skip playlists that can't be fetched
                         }
+                        return (playlistId, nil)
                     }
                 }
 
-                // Collect all non-nil results
-                var results: [SearchPlaylist] = []
-                for await playlist in group {
-                    if let playlist {
-                        results.append(playlist)
+                var results: [String: SearchPlaylist] = [:]
+                for await (id, playlist) in group {
+                    if let playlist = playlist {
+                        results[id] = playlist
                     }
                 }
                 return results
             }
-            recentPlaylists = fetchedPlaylists
+
+            // Insert playlists in the correct order
+            var finalItems: [RecentItem] = []
+            var playlistIndex = 0
+
+            for item in response.items {
+                guard let context = item.context else { continue }
+                let itemId = extractId(from: context.uri)
+
+                if context.type == "playlist", let playlist = fetchedPlaylists[itemId] {
+                    // Check if we've already added this playlist
+                    let alreadyAdded = finalItems.contains { recentItem in
+                        if case .playlist(let p) = recentItem, p.id == playlist.id {
+                            return true
+                        }
+                        return false
+                    }
+
+                    if !alreadyAdded {
+                        finalItems.append(.playlist(playlist))
+                    }
+                } else if context.type != "playlist" {
+                    // Add non-playlist item if not already added
+                    let matchingItem = mixedItems.first { recentItem in
+                        switch recentItem {
+                        case .album(let album): return album.id == itemId
+                        case .artist(let artist): return artist.id == itemId
+                        case .playlist: return false
+                        }
+                    }
+
+                    if let matchingItem = matchingItem {
+                        let alreadyAdded = finalItems.contains { $0.id == matchingItem.id }
+                        if !alreadyAdded {
+                            finalItems.append(matchingItem)
+                        }
+                    }
+                }
+            }
+
+            recentItems = finalItems
 
         } catch {
             errorMessage = error.localizedDescription

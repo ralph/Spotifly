@@ -75,9 +75,8 @@
 
 /* Recently Played */
 "recently_played.tracks" = "Kürzlich gespielte Tracks";
-"recently_played.albums" = "Kürzlich gespielte Alben";
-"recently_played.artists" = "Kürzlich gespielte Künstler";
-"recently_played.playlists" = "Kürzlich gespielte Playlists";
+"recently_played.content" = "Kürzlich gespielt";
+"recently_played.show_more" = "Mehr anzeigen…";
 
 /* Sections */
 "section.tracks" = "Tracks";

@@ -34,6 +34,7 @@ struct LoggedInView: View {
     @State private var selectedRecentAlbum: SearchAlbum?
     @State private var selectedRecentArtist: SearchArtist?
     @State private var selectedRecentPlaylist: SearchPlaylist?
+    @State private var showingAllRecentTracks = false
 
     // Determines if we need three-column layout (when something is selected)
     private var needsThreeColumnLayout: Bool {
@@ -45,7 +46,7 @@ struct LoggedInView: View {
         case .playlists:
             selectedPlaylist != nil
         case .startpage:
-            selectedRecentAlbum != nil || selectedRecentArtist != nil || selectedRecentPlaylist != nil
+            selectedRecentAlbum != nil || selectedRecentArtist != nil || selectedRecentPlaylist != nil || showingAllRecentTracks
         case .searchResults:
             searchViewModel.selectedTrack != nil || searchViewModel.selectedAlbum != nil ||
                 searchViewModel.selectedArtist != nil || searchViewModel.selectedPlaylist != nil ||
@@ -177,6 +178,7 @@ struct LoggedInView: View {
                             selectedRecentAlbum: $selectedRecentAlbum,
                             selectedRecentArtist: $selectedRecentArtist,
                             selectedRecentPlaylist: $selectedRecentPlaylist,
+                            showingAllRecentTracks: $showingAllRecentTracks,
                         )
                         .navigationTitle("nav.startpage")
 
@@ -320,7 +322,13 @@ struct LoggedInView: View {
 
                 case .startpage:
                     // Show details for recently played selections
-                    if let selectedAlbum = selectedRecentAlbum {
+                    if showingAllRecentTracks {
+                        RecentTracksDetailView(
+                            tracks: recentlyPlayedViewModel.recentTracks,
+                            authResult: authResult,
+                            playbackViewModel: playbackViewModel,
+                        )
+                    } else if let selectedAlbum = selectedRecentAlbum {
                         AlbumDetailView(
                             album: selectedAlbum,
                             authResult: authResult,
