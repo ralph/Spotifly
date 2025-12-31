@@ -103,6 +103,65 @@ struct SavedTracksResponse: Sendable {
     let nextOffset: Int?
 }
 
+/// Search result type
+enum SearchType: String, Sendable {
+    case track
+    case album
+    case artist
+    case playlist
+}
+
+/// Track search result
+struct SearchTrack: Sendable, Identifiable {
+    let id: String
+    let name: String
+    let uri: String
+    let artistName: String
+    let albumName: String
+    let imageURL: URL?
+    let durationMs: Int
+}
+
+/// Album search result
+struct SearchAlbum: Sendable, Identifiable {
+    let id: String
+    let name: String
+    let uri: String
+    let artistName: String
+    let imageURL: URL?
+    let totalTracks: Int
+    let releaseDate: String
+}
+
+/// Artist search result
+struct SearchArtist: Sendable, Identifiable {
+    let id: String
+    let name: String
+    let uri: String
+    let imageURL: URL?
+    let genres: [String]
+    let followers: Int
+}
+
+/// Playlist search result
+struct SearchPlaylist: Sendable, Identifiable {
+    let id: String
+    let name: String
+    let uri: String
+    let description: String?
+    let imageURL: URL?
+    let trackCount: Int
+    let ownerName: String
+}
+
+/// Search results wrapper
+struct SearchResults: Sendable {
+    let tracks: [SearchTrack]
+    let albums: [SearchAlbum]
+    let artists: [SearchArtist]
+    let playlists: [SearchPlaylist]
+}
+
 /// Errors from Spotify API
 enum SpotifyAPIError: Error, LocalizedError {
     case invalidURI
@@ -797,6 +856,186 @@ enum SpotifyAPI {
             throw SpotifyAPIError.unauthorized
         case 404:
             throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    // MARK: - Search
+
+    /// Performs a search across Spotify's catalog
+    static func search(
+        accessToken: String,
+        query: String,
+        types: [SearchType] = [.track, .album, .artist, .playlist],
+        limit: Int = 20
+    ) async throws -> SearchResults {
+        let typesParam = types.map(\.rawValue).joined(separator: ",")
+        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+
+        let urlString = "\(baseURL)/search?q=\(encodedQuery)&type=\(typesParam)&limit=\(limit)"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            var tracks: [SearchTrack] = []
+            var albums: [SearchAlbum] = []
+            var artists: [SearchArtist] = []
+            var playlists: [SearchPlaylist] = []
+
+            // Parse tracks
+            if let tracksObj = json["tracks"] as? [String: Any],
+               let items = tracksObj["items"] as? [[String: Any]]
+            {
+                tracks = items.compactMap { item in
+                    guard let id = item["id"] as? String,
+                          let name = item["name"] as? String,
+                          let uri = item["uri"] as? String,
+                          let durationMs = item["duration_ms"] as? Int
+                    else {
+                        return nil
+                    }
+
+                    let artistName = (item["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
+                    let albumName = (item["album"] as? [String: Any])?["name"] as? String ?? ""
+                    let albumImages = (item["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                    let imageURLString = albumImages?.first?["url"] as? String
+                    let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                    return SearchTrack(
+                        id: id,
+                        name: name,
+                        uri: uri,
+                        artistName: artistName,
+                        albumName: albumName,
+                        imageURL: imageURL,
+                        durationMs: durationMs
+                    )
+                }
+            }
+
+            // Parse albums
+            if let albumsObj = json["albums"] as? [String: Any],
+               let items = albumsObj["items"] as? [[String: Any]]
+            {
+                albums = items.compactMap { item in
+                    guard let id = item["id"] as? String,
+                          let name = item["name"] as? String,
+                          let uri = item["uri"] as? String
+                    else {
+                        return nil
+                    }
+
+                    let artistName = (item["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
+                    let totalTracks = item["total_tracks"] as? Int ?? 0
+                    let releaseDate = item["release_date"] as? String ?? ""
+                    let images = item["images"] as? [[String: Any]]
+                    let imageURLString = images?.first?["url"] as? String
+                    let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                    return SearchAlbum(
+                        id: id,
+                        name: name,
+                        uri: uri,
+                        artistName: artistName,
+                        imageURL: imageURL,
+                        totalTracks: totalTracks,
+                        releaseDate: releaseDate
+                    )
+                }
+            }
+
+            // Parse artists
+            if let artistsObj = json["artists"] as? [String: Any],
+               let items = artistsObj["items"] as? [[String: Any]]
+            {
+                artists = items.compactMap { item in
+                    guard let id = item["id"] as? String,
+                          let name = item["name"] as? String,
+                          let uri = item["uri"] as? String
+                    else {
+                        return nil
+                    }
+
+                    let genres = item["genres"] as? [String] ?? []
+                    let images = item["images"] as? [[String: Any]]
+                    let imageURLString = images?.first?["url"] as? String
+                    let imageURL = imageURLString.flatMap { URL(string: $0) }
+                    let followers = (item["followers"] as? [String: Any])?["total"] as? Int ?? 0
+
+                    return SearchArtist(
+                        id: id,
+                        name: name,
+                        uri: uri,
+                        imageURL: imageURL,
+                        genres: genres,
+                        followers: followers
+                    )
+                }
+            }
+
+            // Parse playlists
+            if let playlistsObj = json["playlists"] as? [String: Any],
+               let items = playlistsObj["items"] as? [[String: Any]]
+            {
+                playlists = items.compactMap { item in
+                    guard let id = item["id"] as? String,
+                          let name = item["name"] as? String,
+                          let uri = item["uri"] as? String
+                    else {
+                        return nil
+                    }
+
+                    let description = item["description"] as? String
+                    let images = item["images"] as? [[String: Any]]
+                    let imageURLString = images?.first?["url"] as? String
+                    let imageURL = imageURLString.flatMap { URL(string: $0) }
+                    let trackCount = (item["tracks"] as? [String: Any])?["total"] as? Int ?? 0
+                    let ownerName = (item["owner"] as? [String: Any])?["display_name"] as? String ?? "Unknown"
+
+                    return SearchPlaylist(
+                        id: id,
+                        name: name,
+                        uri: uri,
+                        description: description,
+                        imageURL: imageURL,
+                        trackCount: trackCount,
+                        ownerName: ownerName
+                    )
+                }
+            }
+
+            return SearchResults(
+                tracks: tracks,
+                albums: albums,
+                artists: artists,
+                playlists: playlists
+            )
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
         default:
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let error = errorJson["error"] as? [String: Any],
