@@ -291,14 +291,42 @@ struct RecentPlaylistsSection: View {
                 HStack(spacing: 12) {
                     ForEach(playlists) { playlist in
                         VStack(spacing: 8) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 120, height: 120)
-                                .overlay(
-                                    Image(systemName: "music.note.list")
-                                        .font(.system(size: 40))
-                                        .foregroundStyle(.secondary),
-                                )
+                            if let imageURL = playlist.imageURL {
+                                AsyncImage(url: imageURL) { phase in
+                                    switch phase {
+                                    case .empty:
+                                        ProgressView()
+                                            .frame(width: 120, height: 120)
+                                    case let .success(image):
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 120, height: 120)
+                                            .cornerRadius(4)
+                                            .shadow(radius: 2)
+                                    case .failure:
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color.gray.opacity(0.2))
+                                            .frame(width: 120, height: 120)
+                                            .overlay(
+                                                Image(systemName: "music.note.list")
+                                                    .font(.system(size: 40))
+                                                    .foregroundStyle(.secondary)
+                                            )
+                                    @unknown default:
+                                        EmptyView()
+                                    }
+                                }
+                            } else {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(width: 120, height: 120)
+                                    .overlay(
+                                        Image(systemName: "music.note.list")
+                                            .font(.system(size: 40))
+                                            .foregroundStyle(.secondary)
+                                    )
+                            }
 
                             Text(playlist.name)
                                 .font(.caption)
