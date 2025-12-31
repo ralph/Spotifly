@@ -32,6 +32,7 @@ static OAUTH_RESULT: Lazy<Mutex<Option<OAuthResult>>> = Lazy::new(|| Mutex::new(
 // Player state
 static PLAYER: Lazy<Mutex<Option<Arc<Player>>>> = Lazy::new(|| Mutex::new(None));
 static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
+static MIXER: Lazy<Mutex<Option<Arc<SoftMixer>>>> = Lazy::new(|| Mutex::new(None));
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
 
@@ -552,15 +553,21 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 
     // Create mixer
     let mixer_config = MixerConfig::default();
-    let mixer = SoftMixer::open(mixer_config)
-        .map_err(|e| format!("Mixer error: {}", e))?;
+    let mixer = Arc::new(SoftMixer::open(mixer_config)
+        .map_err(|e| format!("Mixer error: {}", e))?);
+
+    // Store mixer globally
+    {
+        let mut mixer_guard = MIXER.lock().unwrap();
+        *mixer_guard = Some(Arc::clone(&mixer));
+    }
 
     // Create player
     let player_config = PlayerConfig::default();
     let audio_format = AudioFormat::default();
-    
+
     let backend = audio_backend::find(None).ok_or("No audio backend found")?;
-    
+
     let player = Player::new(
         player_config,
         session.clone(),
@@ -1254,6 +1261,12 @@ pub extern "C" fn spotifly_cleanup_player() {
         *session_guard = None;
     }
 
+    // Clear mixer
+    {
+        let mut mixer_guard = MIXER.lock().unwrap();
+        *mixer_guard = None;
+    }
+
     // Clear event sender
     {
         let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
@@ -1261,4 +1274,35 @@ pub extern "C" fn spotifly_cleanup_player() {
     }
 
     IS_PLAYING.store(false, Ordering::SeqCst);
+}
+
+/// Sets the playback volume (0-65535).
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
+    let mixer_guard = MIXER.lock().unwrap();
+    match mixer_guard.as_ref() {
+        Some(mixer) => {
+            mixer.set_volume(volume);
+            0
+        }
+        None => {
+            eprintln!("Set volume error: mixer not initialized");
+            -1
+        }
+    }
+}
+
+/// Gets the current playback volume (0-65535).
+/// Returns the volume on success, 0 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_get_volume() -> u16 {
+    let mixer_guard = MIXER.lock().unwrap();
+    match mixer_guard.as_ref() {
+        Some(mixer) => mixer.volume(),
+        None => {
+            eprintln!("Get volume error: mixer not initialized");
+            0
+        }
+    }
 }

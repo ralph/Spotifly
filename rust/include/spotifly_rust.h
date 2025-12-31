@@ -134,6 +134,16 @@ char* spotifly_get_all_queue_items(void);
 /// Cleans up the player resources.
 void spotifly_cleanup_player(void);
 
+/// Sets the playback volume (0-65535).
+/// Returns 0 on success, -1 on error.
+///
+/// @param volume Volume level (0 = muted, 65535 = max)
+int32_t spotifly_set_volume(uint16_t volume);
+
+/// Gets the current playback volume (0-65535).
+/// Returns the volume on success, 0 on error.
+uint16_t spotifly_get_volume(void);
+
 #ifdef __cplusplus
 }
 #endif

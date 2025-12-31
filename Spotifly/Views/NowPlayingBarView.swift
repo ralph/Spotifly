@@ -166,6 +166,20 @@ struct NowPlayingBarView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(width: 50, alignment: .trailing)
+
+                    // Volume control
+                    HStack(spacing: 6) {
+                        Image(systemName: playbackViewModel.volume == 0 ? "speaker.fill" : playbackViewModel.volume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Slider(
+                            value: $playbackViewModel.volume,
+                            in: 0 ... 1,
+                        )
+                        .tint(.green)
+                        .frame(width: 80)
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
