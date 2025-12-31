@@ -64,6 +64,7 @@ struct LoggedInView: View {
                         sidebarView()
                     } content: {
                         contentView()
+                            .navigationSplitViewColumnWidth(min: 300, ideal: 450, max: 600)
                     } detail: {
                         detailView()
                     }
