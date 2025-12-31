@@ -1,20 +1,19 @@
 #!/bin/bash
 
 # Spotifly Release Script
-# Creates an optimized build and publishes it to GitHub Releases
+# Creates a notarized build and publishes it to GitHub Releases
 #
 # USAGE:
 #   1. Update version in Xcode project settings (MARKETING_VERSION)
 #   2. Run: ./release.sh
-#   3. When prompted, create an Archive in Xcode (Product → Archive)
-#   4. Press Enter to continue - script will package and upload
+#   3. Follow the interactive prompts for Archive, Notarization, and Export
 #
 # REQUIREMENTS:
-#   - Xcode installed
+#   - Xcode installed with Apple Developer account configured
 #   - GitHub CLI (gh) installed and authenticated
 #   - Write access to ralph/homebrew-spotifly repository
 #
-# The archived build is optimized (Release configuration) and ready for distribution.
+# The build is signed with Developer ID and notarized by Apple.
 
 set -e  # Exit on error
 
@@ -22,6 +21,7 @@ set -e  # Exit on error
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}Spotifly Release Script${NC}"
@@ -35,59 +35,123 @@ VERSION="${MARKETING_VERSION}"
 echo -e "\n${YELLOW}Current version: ${VERSION}${NC}"
 
 # Check if this version already exists as a release
-if gh release view "v${VERSION}" &> /dev/null; then
-    echo -e "${RED}Error: Release v${VERSION} already exists!${NC}"
-    echo "Please update the version in your Xcode project before releasing."
-    exit 1
+REPLACE_EXISTING=false
+if gh release view "v${VERSION}" --repo ralph/homebrew-spotifly &> /dev/null; then
+    echo -e "${YELLOW}Warning: Release v${VERSION} already exists!${NC}"
+    read -p "Do you want to replace it? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        REPLACE_EXISTING=true
+        echo -e "${YELLOW}Will replace existing release v${VERSION}${NC}"
+    else
+        echo -e "${RED}Aborted. Please update the version in Xcode before releasing.${NC}"
+        exit 1
+    fi
 fi
 
-echo -e "\n${YELLOW}=== MANUAL BUILD REQUIRED ===${NC}"
+# Export location for the notarized app
+EXPORT_DIR="$HOME/Desktop/Spotifly-Export"
+
+echo -e "\n${BLUE}════════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}  STEP 1: CREATE ARCHIVE${NC}"
+echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
 echo -e "Please follow these steps in Xcode:"
 echo -e "  1. Open Xcode if not already open"
 echo -e "  2. Go to ${GREEN}Product → Archive${NC}"
 echo -e "  3. Wait for the archive to complete"
-echo -e "  4. ${GREEN}Do NOT export${NC} - just close the Organizer window"
+echo -e "  4. The ${GREEN}Organizer${NC} window will open - ${YELLOW}keep it open${NC}"
 echo -e "  5. Press ${GREEN}Enter${NC} here to continue\n"
 
-read -p "Press Enter when Archive is complete..."
+read -p "Press Enter when Archive is complete and Organizer is open..."
 
-echo -e "\n${GREEN}Looking for archived app...${NC}"
+echo -e "\n${BLUE}════════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}  STEP 2: VALIDATE ARCHIVE${NC}"
+echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
+echo -e "In the Xcode Organizer window:"
+echo -e "  1. Select your latest archive (should be at the top)"
+echo -e "  2. Click ${GREEN}Validate App${NC}"
+echo -e "  3. Choose ${GREEN}Developer ID${NC}"
+echo -e "  4. Click ${GREEN}Next${NC} through the dialogs"
+echo -e "  5. Wait for validation to complete"
+echo -e "  6. Ensure you see ${GREEN}'Your app successfully passed all validation checks'${NC}"
+echo -e "  7. Press ${GREEN}Enter${NC} here to continue\n"
 
-# Find the most recent archive
-ARCHIVES_PATH="$HOME/Library/Developer/Xcode/Archives"
-LATEST_ARCHIVE=$(find "$ARCHIVES_PATH" -name "*.xcarchive" -type d -print0 2>/dev/null | xargs -0 ls -td 2>/dev/null | head -1)
+read -p "Press Enter when validation is complete..."
 
-if [ -z "$LATEST_ARCHIVE" ]; then
-    echo -e "${RED}Error: No archives found${NC}"
-    echo "Please make sure you archived the app in Xcode (Product → Archive)"
-    exit 1
-fi
+echo -e "\n${BLUE}════════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}  STEP 3: DISTRIBUTE AND NOTARIZE${NC}"
+echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
+echo -e "In the Xcode Organizer window:"
+echo -e "  1. Click ${GREEN}Distribute App${NC}"
+echo -e "  2. Choose ${GREEN}Developer ID${NC}"
+echo -e "  3. Choose ${GREEN}Upload${NC} (this sends your app to Apple for notarization)"
+echo -e "  4. Click ${GREEN}Next${NC} through the dialogs"
+echo -e "  5. Wait for the upload to complete"
+echo -e "  6. ${YELLOW}Wait for notarization${NC} - this usually takes 2-5 minutes"
+echo -e "     (You'll see a progress indicator, then a success message)"
+echo -e "  7. Press ${GREEN}Enter${NC} here when you see the notarization success message\n"
 
-echo -e "${GREEN}Found archive: $(basename "$LATEST_ARCHIVE")${NC}"
+read -p "Press Enter when notarization is complete..."
 
-# Find the app in the archive
-APP_PATH="${LATEST_ARCHIVE}/Products/Applications/Spotifly.app"
+echo -e "\n${BLUE}════════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}  STEP 4: EXPORT NOTARIZED APP${NC}"
+echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
+echo -e "In the Xcode Organizer window:"
+echo -e "  1. Click ${GREEN}Distribute App${NC} again"
+echo -e "  2. Choose ${GREEN}Developer ID${NC}"
+echo -e "  3. Choose ${GREEN}Export${NC} (NOT Upload this time)"
+echo -e "  4. Click ${GREEN}Next${NC} through the dialogs"
+echo -e "  5. When asked where to export, choose: ${GREEN}${EXPORT_DIR}${NC}"
+echo -e "     (Create this folder if it doesn't exist)"
+echo -e "  6. Click ${GREEN}Export${NC}"
+echo -e "  7. Press ${GREEN}Enter${NC} here when export is complete\n"
+
+read -p "Press Enter when export is complete..."
+
+# Find the exported app
+APP_PATH="${EXPORT_DIR}/Spotifly.app"
 
 if [ ! -d "$APP_PATH" ]; then
-    echo -e "${RED}Error: Built app not found at ${APP_PATH}${NC}"
+    echo -e "${RED}Error: Exported app not found at ${APP_PATH}${NC}"
+    echo "Please make sure you exported to the correct location."
     exit 1
 fi
 
-echo -e "${GREEN}Build successful!${NC}"
+echo -e "\n${GREEN}Found exported app!${NC}"
+
+# Verify it's notarized
+echo -e "\n${YELLOW}Verifying notarization...${NC}"
+if spctl -a -vv "$APP_PATH" 2>&1 | grep -q "accepted"; then
+    echo -e "${GREEN}✓ App is properly signed and notarized${NC}"
+else
+    echo -e "${YELLOW}Warning: Could not verify notarization${NC}"
+    read -p "Continue anyway? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 1
+    fi
+fi
 
 # Create zip archive
 ZIP_NAME="Spotifly-${VERSION}.zip"
 echo -e "\n${YELLOW}Creating archive: ${ZIP_NAME}${NC}"
 
-# Create zip from the app location
-ARCHIVE_DIR=$(dirname "${APP_PATH}")
-cd "${ARCHIVE_DIR}"
+cd "$EXPORT_DIR"
 zip -r -q "${OLDPWD}/${ZIP_NAME}" Spotifly.app
 cd "${OLDPWD}"
 
 # Calculate SHA256 for Homebrew formula
 SHA256=$(shasum -a 256 "${ZIP_NAME}" | awk '{print $1}')
 echo -e "${GREEN}SHA256: ${SHA256}${NC}"
+
+# Delete existing release if replacing
+if [ "$REPLACE_EXISTING" = true ]; then
+    echo -e "\n${YELLOW}Deleting existing release v${VERSION}...${NC}"
+    gh release delete "v${VERSION}" --yes --repo ralph/homebrew-spotifly 2>/dev/null || true
+    # Also delete the tag
+    git push --delete origin "v${VERSION}" --repo ralph/homebrew-spotifly 2>/dev/null || true
+fi
 
 # Create GitHub release
 echo -e "\n${YELLOW}Creating GitHub release v${VERSION}...${NC}"
@@ -100,6 +164,8 @@ gh release create "v${VERSION}" \
 Download and install:
 - **Homebrew (recommended)**: \`brew install ralph/spotifly/spotifly\`
 - **Manual**: Download Spotifly-${VERSION}.zip, extract, and move to Applications
+
+**Note:** This version is signed and notarized with Apple Developer ID. No Gatekeeper warnings!
 
 Built with [Claude Code](https://claude.com/claude-code)" \
     --repo ralph/homebrew-spotifly
@@ -163,4 +229,10 @@ fi
 # Clean up
 rm -f "${ZIP_NAME}" "Spotifly-latest.zip"
 
-echo -e "\n${GREEN}Done!${NC}"
+echo -e "\n${GREEN}✓ Release complete!${NC}"
+echo -e "\nUsers can now install with:"
+echo -e "  ${GREEN}brew upgrade ralph/spotifly/spotifly${NC}"
+echo ""
+echo -e "Or for new installations:"
+echo -e "  ${GREEN}brew install ralph/spotifly/spotifly${NC}"
+echo ""
