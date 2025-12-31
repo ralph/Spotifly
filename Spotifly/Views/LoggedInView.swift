@@ -34,87 +34,99 @@ struct LoggedInView: View {
             if !isMiniPlayerMode {
                 NavigationSplitView {
                     // Sidebar
-                    SidebarView(selection: $selectedNavigationItem, onLogout: {
-                        playbackViewModel.stop()
-                        onLogout()
-                    })
+                    SidebarView(
+                        selection: $selectedNavigationItem,
+                        onLogout: {
+                            playbackViewModel.stop()
+                            onLogout()
+                        },
+                        hasSearchResults: searchViewModel.searchResults != nil
+                    )
                 } content: {
-                    // Content column: search results or main views
-                    if let searchResults = searchViewModel.searchResults {
-                        // Show search results when searching
-                        SearchResultsView(
-                            searchResults: searchResults,
-                            searchViewModel: searchViewModel,
-                        )
-                        .navigationTitle("Search Results")
-                    } else {
-                        // Show main views when not searching
-                        Group {
-                            switch selectedNavigationItem {
-                            case .startpage:
-                                StartpageView(
-                                    authResult: authResult,
-                                    trackViewModel: trackViewModel,
-                                    playbackViewModel: playbackViewModel,
-                                )
-                                .navigationTitle("Startpage")
+                    // Content column: show view based on selected navigation item
+                    Group {
+                        if selectedNavigationItem == .searchResults,
+                           let searchResults = searchViewModel.searchResults
+                        {
+                            // Show search results when Search Results is selected
+                            SearchResultsView(
+                                searchResults: searchResults,
+                                searchViewModel: searchViewModel
+                            )
+                            .navigationTitle("Search Results")
+                        } else {
+                            // Show main views for other sections
+                            Group {
+                                switch selectedNavigationItem {
+                                case .startpage:
+                                    StartpageView(
+                                        authResult: authResult,
+                                        trackViewModel: trackViewModel,
+                                        playbackViewModel: playbackViewModel
+                                    )
+                                    .navigationTitle("Startpage")
 
-                            case .favorites:
-                                FavoritesListView(
-                                    authResult: authResult,
-                                    favoritesViewModel: favoritesViewModel,
-                                    playbackViewModel: playbackViewModel,
-                                )
-                                .navigationTitle("Favorites")
+                                case .favorites:
+                                    FavoritesListView(
+                                        authResult: authResult,
+                                        favoritesViewModel: favoritesViewModel,
+                                        playbackViewModel: playbackViewModel
+                                    )
+                                    .navigationTitle("Favorites")
 
-                            case .playlists:
-                                PlaylistsListView(
-                                    authResult: authResult,
-                                    playlistsViewModel: playlistsViewModel,
-                                    playbackViewModel: playbackViewModel,
-                                    selectedPlaylist: $selectedPlaylist
-                                )
-                                .navigationTitle("Playlists")
+                                case .playlists:
+                                    PlaylistsListView(
+                                        authResult: authResult,
+                                        playlistsViewModel: playlistsViewModel,
+                                        playbackViewModel: playbackViewModel,
+                                        selectedPlaylist: $selectedPlaylist
+                                    )
+                                    .navigationTitle("Playlists")
 
-                            case .albums:
-                                AlbumsListView(
-                                    authResult: authResult,
-                                    albumsViewModel: albumsViewModel,
-                                    playbackViewModel: playbackViewModel,
-                                    selectedAlbum: $selectedAlbum
-                                )
-                                .navigationTitle("Albums")
+                                case .albums:
+                                    AlbumsListView(
+                                        authResult: authResult,
+                                        albumsViewModel: albumsViewModel,
+                                        playbackViewModel: playbackViewModel,
+                                        selectedAlbum: $selectedAlbum
+                                    )
+                                    .navigationTitle("Albums")
 
-                            case .artists:
-                                ArtistsListView(
-                                    authResult: authResult,
-                                    artistsViewModel: artistsViewModel,
-                                    playbackViewModel: playbackViewModel,
-                                    selectedArtist: $selectedArtist
-                                )
-                                .navigationTitle("Artists")
+                                case .artists:
+                                    ArtistsListView(
+                                        authResult: authResult,
+                                        artistsViewModel: artistsViewModel,
+                                        playbackViewModel: playbackViewModel,
+                                        selectedArtist: $selectedArtist
+                                    )
+                                    .navigationTitle("Artists")
 
-                            case .queue:
-                                QueueListView(
-                                    authResult: authResult,
-                                    queueViewModel: queueViewModel,
-                                    playbackViewModel: playbackViewModel,
-                                )
-                                .navigationTitle("Queue")
+                                case .queue:
+                                    QueueListView(
+                                        authResult: authResult,
+                                        queueViewModel: queueViewModel,
+                                        playbackViewModel: playbackViewModel
+                                    )
+                                    .navigationTitle("Queue")
 
-                            case .none:
-                                Text("Select an item from the sidebar")
-                                    .foregroundStyle(.secondary)
+                                case .searchResults:
+                                    // Handled in outer if statement
+                                    EmptyView()
+
+                                case .none:
+                                    Text("Select an item from the sidebar")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            .playbackShortcuts(playbackViewModel: playbackViewModel)
+                            .libraryNavigationShortcuts(selection: $selectedNavigationItem)
                         }
-                        .playbackShortcuts(playbackViewModel: playbackViewModel)
-                        .libraryNavigationShortcuts(selection: $selectedNavigationItem)
                     }
                 } detail: {
                     // Detail column: show details based on context
                     Group {
-                        if searchViewModel.searchResults != nil {
-                            // When searching: show search result details
+                        if selectedNavigationItem == .searchResults {
+                            // When viewing search results: show search result details
                             if let selectedTrack = searchViewModel.selectedTrack {
                                 TrackDetailView(
                                     track: selectedTrack,
@@ -193,11 +205,19 @@ struct LoggedInView: View {
                 .onSubmit(of: .search) {
                     Task {
                         await searchViewModel.search(accessToken: authResult.accessToken, query: searchText)
+                        // Automatically select search results section when search is performed
+                        if searchViewModel.searchResults != nil {
+                            selectedNavigationItem = .searchResults
+                        }
                     }
                 }
                 .onChange(of: searchText) { _, newValue in
                     if newValue.isEmpty {
                         searchViewModel.clearSearch()
+                        // Return to previous section when search is cleared
+                        if selectedNavigationItem == .searchResults {
+                            selectedNavigationItem = .startpage
+                        }
                     }
                 }
             }
