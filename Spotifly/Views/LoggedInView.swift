@@ -266,6 +266,10 @@ struct LoggedInView: View {
                         }
                     }
                 }
+                .onAppear {
+                    // Set initial column visibility based on whether there's a detail to show
+                    columnVisibility = hasDetailToShow ? .all : .doubleColumn
+                }
                 .onChange(of: hasDetailToShow) { _, newValue in
                     columnVisibility = newValue ? .all : .doubleColumn
                 }
