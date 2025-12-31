@@ -50,7 +50,7 @@ struct NowPlayingBarView: View {
                     }
                 }
                 .background(Color(NSColor.controlBackgroundColor))
-                .frame(height: 66) // Fixed height
+                .frame(height: isMiniPlayerMode ? 66 : 90)
             }
         }
     }
