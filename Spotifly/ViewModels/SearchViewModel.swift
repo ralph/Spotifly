@@ -17,6 +17,7 @@ final class SearchViewModel {
     var selectedAlbum: SearchAlbum?
     var selectedArtist: SearchArtist?
     var selectedPlaylist: SearchPlaylist?
+    var showingAllTracks = false
 
     func search(accessToken: String, query: String) async {
         guard !query.isEmpty else {
@@ -52,7 +53,16 @@ final class SearchViewModel {
         selectedAlbum = nil
         selectedArtist = nil
         selectedPlaylist = nil
+        showingAllTracks = false
         errorMessage = nil
+    }
+
+    func showAllTracks() {
+        showingAllTracks = true
+        selectedTrack = nil
+        selectedAlbum = nil
+        selectedArtist = nil
+        selectedPlaylist = nil
     }
 
     func selectTrack(_ track: SearchTrack) {
@@ -60,6 +70,7 @@ final class SearchViewModel {
         selectedAlbum = nil
         selectedArtist = nil
         selectedPlaylist = nil
+        showingAllTracks = false
     }
 
     func selectAlbum(_ album: SearchAlbum) {
@@ -67,6 +78,7 @@ final class SearchViewModel {
         selectedTrack = nil
         selectedArtist = nil
         selectedPlaylist = nil
+        showingAllTracks = false
     }
 
     func selectArtist(_ artist: SearchArtist) {
@@ -74,6 +86,7 @@ final class SearchViewModel {
         selectedTrack = nil
         selectedAlbum = nil
         selectedPlaylist = nil
+        showingAllTracks = false
     }
 
     func selectPlaylist(_ playlist: SearchPlaylist) {
@@ -81,5 +94,6 @@ final class SearchViewModel {
         selectedTrack = nil
         selectedAlbum = nil
         selectedArtist = nil
+        showingAllTracks = false
     }
 }
