@@ -22,11 +22,11 @@ struct SearchTracksDetailView: View {
                             .font(.system(size: 60))
                             .foregroundStyle(.green)
 
-                        Text("All Tracks")
+                        Text("section.all_tracks")
                             .font(.title)
                             .fontWeight(.bold)
 
-                        Text("\(tracks.count) tracks")
+                        Text(String(format: String(localized: "metadata.tracks"), tracks.count))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -35,7 +35,7 @@ struct SearchTracksDetailView: View {
                     Button {
                         playAllTracks()
                     } label: {
-                        Label("Play Tracks", systemImage: "play.fill")
+                        Label("playback.play_tracks", systemImage: "play.fill")
                             .font(.headline)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 12)

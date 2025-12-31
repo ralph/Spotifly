@@ -78,7 +78,7 @@ struct TrackDetailView: View {
                     )
                 }
             } label: {
-                Label("Play Track", systemImage: "play.fill")
+                Label("playback.play_track", systemImage: "play.fill")
                     .font(.headline)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)

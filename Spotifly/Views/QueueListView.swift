@@ -19,12 +19,12 @@ struct QueueListView: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("Failed to load queue")
+                    Text("error.load_queue")
                         .font(.headline)
                     Text(error)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("Try Again") {
+                    Button("action.try_again") {
                         queueViewModel.loadQueue()
                     }
                     .buttonStyle(.borderedProminent)
@@ -35,9 +35,9 @@ struct QueueListView: View {
                     Image(systemName: "list.bullet")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("Queue is empty")
+                    Text("empty.queue_empty")
                         .font(.headline)
-                    Text("Play a track, album, playlist, or artist to see the queue")
+                    Text("empty.queue_empty.description")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }

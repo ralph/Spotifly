@@ -18,7 +18,7 @@ struct AlbumsListView: View {
             if albumsViewModel.isLoading, albumsViewModel.albums.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
-                    Text("Loading albums...")
+                    Text("loading.albums")
                         .foregroundStyle(.secondary)
                 }
             } else if let error = albumsViewModel.errorMessage, albumsViewModel.albums.isEmpty {
@@ -26,12 +26,12 @@ struct AlbumsListView: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("Failed to load albums")
+                    Text("error.load_albums")
                         .font(.headline)
                     Text(error)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("Try Again") {
+                    Button("action.try_again") {
                         Task {
                             await albumsViewModel.loadAlbums(accessToken: authResult.accessToken)
                         }
@@ -44,9 +44,9 @@ struct AlbumsListView: View {
                     Image(systemName: "square.stack")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("No saved albums")
+                    Text("empty.no_albums")
                         .font(.headline)
-                    Text("Save albums in the Spotify app")
+                    Text("empty.no_albums.description")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -140,18 +140,18 @@ struct AlbumRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 8) {
-                    Text("\(album.trackCount) tracks")
+                    Text(String(format: String(localized: "metadata.tracks"), album.trackCount))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Text("•")
+                    Text("metadata.separator")
                         .foregroundStyle(.secondary)
 
                     Text(album.releaseDate.prefix(4))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Text("•")
+                    Text("metadata.separator")
                         .foregroundStyle(.secondary)
 
                     Text(album.albumType.capitalized)

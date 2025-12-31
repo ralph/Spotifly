@@ -90,7 +90,7 @@ struct TrackInfoView: View {
             // Track ID for reference
             GroupBox {
                 HStack {
-                    Text("Track ID:")
+                    Text("track.id_label")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(track.id)
@@ -105,7 +105,7 @@ struct TrackInfoView: View {
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
-                    .help("Copy track URI")
+                    .help("action.copy_track_uri")
                 }
             }
         }

@@ -18,7 +18,7 @@ struct PlaylistsListView: View {
             if playlistsViewModel.isLoading, playlistsViewModel.playlists.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
-                    Text("Loading playlists...")
+                    Text("loading.playlists")
                         .foregroundStyle(.secondary)
                 }
             } else if let error = playlistsViewModel.errorMessage, playlistsViewModel.playlists.isEmpty {
@@ -26,12 +26,12 @@ struct PlaylistsListView: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("Failed to load playlists")
+                    Text("error.load_playlists")
                         .font(.headline)
                     Text(error)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("Try Again") {
+                    Button("action.try_again") {
                         Task {
                             await playlistsViewModel.loadPlaylists(accessToken: authResult.accessToken)
                         }
@@ -44,9 +44,9 @@ struct PlaylistsListView: View {
                     Image(systemName: "music.note.list")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("No playlists found")
+                    Text("empty.no_playlists")
                         .font(.headline)
-                    Text("Create playlists in the Spotify app")
+                    Text("empty.no_playlists.description")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -142,11 +142,11 @@ struct PlaylistRow: View {
                 }
 
                 HStack(spacing: 8) {
-                    Text("\(playlist.trackCount) tracks")
+                    Text(String(format: String(localized: "metadata.tracks"), playlist.trackCount))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Text("•")
+                    Text("metadata.separator")
                         .foregroundStyle(.secondary)
 
                     Text(playlist.ownerName)

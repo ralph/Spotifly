@@ -18,7 +18,7 @@ struct ArtistsListView: View {
             if artistsViewModel.isLoading, artistsViewModel.artists.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
-                    Text("Loading artists...")
+                    Text("loading.artists")
                         .foregroundStyle(.secondary)
                 }
             } else if let error = artistsViewModel.errorMessage, artistsViewModel.artists.isEmpty {
@@ -26,12 +26,12 @@ struct ArtistsListView: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("Failed to load artists")
+                    Text("error.load_artists")
                         .font(.headline)
                     Text(error)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("Try Again") {
+                    Button("action.try_again") {
                         Task {
                             await artistsViewModel.loadArtists(accessToken: authResult.accessToken)
                         }
@@ -44,9 +44,9 @@ struct ArtistsListView: View {
                     Image(systemName: "person.2")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("No followed artists")
+                    Text("empty.no_artists")
                         .font(.headline)
-                    Text("Follow artists in the Spotify app")
+                    Text("empty.no_artists.description")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -137,7 +137,7 @@ struct ArtistRow: View {
                         .lineLimit(1)
                 }
 
-                Text("\(formatFollowers(artist.followers)) followers")
+                Text(String(format: String(localized: "metadata.followers"), formatFollowers(artist.followers)))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

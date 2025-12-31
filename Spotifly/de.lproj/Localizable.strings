@@ -1,0 +1,105 @@
+/* App */
+"app.name" = "Spotifly";
+
+/* Authentication */
+"auth.connect.description" = "Verbinde deinen Spotify-Account, um zu beginnen";
+"auth.connect.button" = "Mit Spotify verbinden";
+"auth.authenticating" = "Authentifiziere...";
+"auth.loading" = "Lädt...";
+"auth.logout" = "Abmelden";
+
+/* Navigation */
+"nav.startpage" = "Startseite";
+"nav.search_results" = "Suchergebnisse";
+"nav.favorites" = "Favoriten";
+"nav.playlists" = "Playlists";
+"nav.albums" = "Alben";
+"nav.artists" = "Künstler";
+"nav.queue" = "Warteschlange";
+"nav.library" = "Bibliothek";
+
+/* Common Actions */
+"action.play" = "Abspielen";
+"action.try_again" = "Erneut versuchen";
+"action.show_more" = "Mehr anzeigen";
+"action.show_less" = "Weniger anzeigen";
+"action.copy_token" = "Token in Zwischenablage kopieren";
+"action.copy_track_uri" = "Track-URI kopieren";
+
+/* Playback */
+"playback.play_album" = "Album abspielen";
+"playback.play_playlist" = "Playlist abspielen";
+"playback.play_track" = "Track abspielen";
+"playback.play_top_tracks" = "Top-Tracks abspielen";
+"playback.play_tracks" = "Tracks abspielen";
+"playback.play_content" = "Spotify-Inhalt abspielen";
+"playback.uri_placeholder" = "Spotify-URI oder URL";
+
+/* Mini Player */
+"mini_player.enter" = "Mini-Player-Modus aktivieren";
+"mini_player.restore" = "Vollständiges Fenster wiederherstellen";
+
+/* Loading States */
+"loading.favorites" = "Lade Favoriten...";
+"loading.playlists" = "Lade Playlists...";
+"loading.albums" = "Lade Alben...";
+"loading.artists" = "Lade Künstler...";
+"loading.tracks" = "Lade Tracks...";
+"loading.top_tracks" = "Lade Top-Tracks...";
+"loading.recently_played" = "Lade kürzlich gespielt...";
+
+/* Error Messages */
+"error.load_favorites" = "Laden der Favoriten fehlgeschlagen";
+"error.load_playlists" = "Laden der Playlists fehlgeschlagen";
+"error.load_albums" = "Laden der Alben fehlgeschlagen";
+"error.load_artists" = "Laden der Künstler fehlgeschlagen";
+"error.load_queue" = "Laden der Warteschlange fehlgeschlagen";
+"error.load_recently_played" = "Laden von \"Kürzlich gespielt\" fehlgeschlagen: %@";
+
+/* Empty States */
+"empty.select_item" = "Wähle ein Element aus der Seitenleiste";
+"empty.select_search_result" = "Wähle ein Suchergebnis für Details";
+"empty.select_album" = "Wähle ein Album für Details";
+"empty.select_artist" = "Wähle einen Künstler für Details";
+"empty.select_playlist" = "Wähle eine Playlist für Details";
+"empty.no_favorites" = "Noch keine Favoriten";
+"empty.no_favorites.description" = "Markiere Songs in der Spotify-App als \"Gefällt mir\", um sie hier zu sehen";
+"empty.no_playlists" = "Keine Playlists gefunden";
+"empty.no_playlists.description" = "Erstelle Playlists in der Spotify-App";
+"empty.no_albums" = "Keine gespeicherten Alben";
+"empty.no_albums.description" = "Speichere Alben in der Spotify-App";
+"empty.no_artists" = "Keine gefolgten Künstler";
+"empty.no_artists.description" = "Folge Künstlern in der Spotify-App";
+"empty.queue_empty" = "Warteschlange ist leer";
+"empty.queue_empty.description" = "Spiele einen Track, Album, Playlist oder Künstler ab, um die Warteschlange zu sehen";
+
+/* Recently Played */
+"recently_played.tracks" = "Kürzlich gespielte Tracks";
+"recently_played.albums" = "Kürzlich gespielte Alben";
+"recently_played.artists" = "Kürzlich gespielte Künstler";
+"recently_played.playlists" = "Kürzlich gespielte Playlists";
+
+/* Sections */
+"section.tracks" = "Tracks";
+"section.albums" = "Alben";
+"section.artists" = "Künstler";
+"section.playlists" = "Playlists";
+"section.top_tracks" = "Top-Tracks";
+"section.all_tracks" = "Alle Tracks";
+
+/* Metadata */
+"metadata.tracks" = "%d Tracks";
+"metadata.followers" = "%@ Follower";
+"metadata.by_owner" = "Von %@";
+"metadata.separator" = "•";
+
+/* Version Info */
+"version.label" = "Version %@ (%@)";
+"version.oauth_token" = "OAuth-Zugriffstoken";
+"version.tap_count" = "Anzahl Klicks: %d";
+
+/* Track Info */
+"track.id_label" = "Track-ID:";
+
+/* Show All Button */
+"show_all.tracks" = "Alle %d Tracks anzeigen";
