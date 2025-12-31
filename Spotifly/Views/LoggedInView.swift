@@ -21,6 +21,7 @@ struct LoggedInView: View {
     @State private var queueViewModel = QueueViewModel()
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var isMiniPlayerMode = false
+    @State private var searchText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -89,6 +90,7 @@ struct LoggedInView: View {
                     .playbackShortcuts(playbackViewModel: playbackViewModel)
                     .libraryNavigationShortcuts(selection: $selectedNavigationItem)
                 }
+                .searchable(text: $searchText)
             }
 
             // Now Playing Bar (always visible at bottom)
