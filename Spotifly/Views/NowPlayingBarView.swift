@@ -10,6 +10,7 @@ import SwiftUI
 struct NowPlayingBarView: View {
     let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Binding var isMiniPlayerMode: Bool
 
     // Helper function for time formatting
     private func formatTime(_ milliseconds: UInt32) -> String {
@@ -66,6 +67,8 @@ struct NowPlayingBarView: View {
             favoriteButton
 
             queuePosition
+
+            miniPlayerToggle
 
             volumeControl
         }
@@ -127,6 +130,8 @@ struct NowPlayingBarView: View {
             favoriteButton
 
             queuePosition
+
+            miniPlayerToggle
 
             volumeControl
         }
@@ -305,5 +310,19 @@ struct NowPlayingBarView: View {
             .tint(.green)
             .frame(width: 80)
         }
+    }
+
+    private var miniPlayerToggle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isMiniPlayerMode.toggle()
+            }
+        } label: {
+            Image(systemName: isMiniPlayerMode ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(isMiniPlayerMode ? "Restore full window" : "Enter mini player mode")
     }
 }
