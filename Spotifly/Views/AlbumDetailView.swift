@@ -93,31 +93,12 @@ struct AlbumDetailView: View {
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(tracks) { track in
-                            HStack(spacing: 12) {
-                                Text("\(track.trackNumber)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 30, alignment: .trailing)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(track.name)
-                                        .font(.subheadline)
-                                    Text(track.artistName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
-
-                                Text(formatDuration(track.durationMs))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal)
-                            .contentShape(Rectangle())
-                            .onTapGesture(count: 2) {
+                            TrackRow(
+                                track: track.toTrackRowData(),
+                                showTrackNumber: true,
+                                currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+                                playbackViewModel: playbackViewModel
+                            ) {
                                 Task {
                                     await playbackViewModel.play(
                                         uriOrUrl: track.uri,
@@ -168,12 +149,5 @@ struct AlbumDetailView: View {
                 accessToken: authResult.accessToken
             )
         }
-    }
-
-    private func formatDuration(_ milliseconds: Int) -> String {
-        let totalSeconds = milliseconds / 1000
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }
