@@ -34,7 +34,7 @@ final class RecentlyPlayedViewModel {
             recentTracks = Array(uniqueTracks.values.prefix(10))
 
             // Process albums from context
-            var uniqueAlbums: [String: (uri: String, name: String, artistName: String)] = [:]
+            var uniqueAlbums: [String: (uri: String, name: String, artistName: String, imageURL: URL?)] = [:]
             for item in response.items {
                 if let context = item.context, context.type == "album" {
                     let albumId = extractId(from: context.uri)
@@ -43,19 +43,20 @@ final class RecentlyPlayedViewModel {
                             uri: context.uri,
                             name: item.track.albumName,
                             artistName: item.track.artistName,
+                            imageURL: item.track.imageURL,
                         )
                     }
                 }
             }
 
-            // Convert to SearchAlbum (we'll need to fetch full details later)
+            // Convert to SearchAlbum
             recentAlbums = uniqueAlbums.map { id, info in
                 SearchAlbum(
                     id: id,
                     name: info.name,
                     uri: info.uri,
                     artistName: info.artistName,
-                    imageURL: nil, // Will be filled when clicked
+                    imageURL: info.imageURL,
                     totalTracks: 0,
                     releaseDate: "",
                 )
