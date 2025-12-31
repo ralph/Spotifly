@@ -9,6 +9,7 @@ import SwiftUI
 
 enum NavigationItem: Hashable, Identifiable {
     case startpage
+    case searchResults
     case favorites
     case playlists
     case albums
@@ -21,6 +22,8 @@ enum NavigationItem: Hashable, Identifiable {
         switch self {
         case .startpage:
             "Startpage"
+        case .searchResults:
+            "Search Results"
         case .favorites:
             "Favorites"
         case .playlists:
@@ -38,6 +41,8 @@ enum NavigationItem: Hashable, Identifiable {
         switch self {
         case .startpage:
             "house.fill"
+        case .searchResults:
+            "magnifyingglass"
         case .favorites:
             "heart.fill"
         case .playlists:
@@ -55,6 +60,7 @@ enum NavigationItem: Hashable, Identifiable {
 struct SidebarView: View {
     @Binding var selection: NavigationItem?
     let onLogout: () -> Void
+    var hasSearchResults: Bool = false
 
     var body: some View {
         List(selection: $selection) {
@@ -72,6 +78,14 @@ struct SidebarView: View {
                         .font(.headline)
                 }
                 .padding(.bottom, 8)
+            }
+
+            if hasSearchResults {
+                Section {
+                    NavigationLink(value: NavigationItem.searchResults) {
+                        Label("Search Results", systemImage: "magnifyingglass")
+                    }
+                }
             }
 
             Section("Library") {
