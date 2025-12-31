@@ -25,11 +25,11 @@ struct StartpageView: View {
             VStack(alignment: .leading, spacing: 24) {
                 // Compact Spotify URI Input
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Play Spotify Content")
+                    Text("playback.play_content")
                         .font(.headline)
 
                     HStack(spacing: 8) {
-                        TextField("Spotify URI or URL", text: $trackViewModel.spotifyURI)
+                        TextField("playback.uri_placeholder", text: $trackViewModel.spotifyURI)
                             .textFieldStyle(.roundedBorder)
                             .onSubmit {
                                 if !trackViewModel.spotifyURI.isEmpty {
@@ -49,7 +49,7 @@ struct StartpageView: View {
                             .buttonStyle(.plain)
                         }
 
-                        Button("Play") {
+                        Button("action.play") {
                             Task {
                                 await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: authResult.accessToken)
                             }
@@ -74,12 +74,12 @@ struct StartpageView: View {
                 if recentlyPlayedViewModel.isLoading {
                     HStack {
                         Spacer()
-                        ProgressView("Loading recently played...")
+                        ProgressView("loading.recently_played")
                         Spacer()
                     }
                     .padding()
                 } else if let error = recentlyPlayedViewModel.errorMessage {
-                    Text("Failed to load recently played: \(error)")
+                    Text(String(format: String(localized: "error.load_recently_played"), error))
                         .foregroundStyle(.red)
                         .padding()
                 } else {
@@ -135,7 +135,7 @@ struct StartpageView: View {
                             }
                         }
                     } label: {
-                        Text("Version \(appVersion)")
+                        Text(String(format: String(localized: "version.label"), appVersion.split(separator: " ").first.map(String.init) ?? "", appVersion.split(separator: " ").last?.replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "") ?? ""))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -144,7 +144,7 @@ struct StartpageView: View {
 
                     if showTokenInfo {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("OAuth Access Token")
+                            Text("version.oauth_token")
                                 .font(.caption)
                                 .fontWeight(.semibold)
 
@@ -163,10 +163,10 @@ struct StartpageView: View {
                                         .font(.caption)
                                 }
                                 .buttonStyle(.bordered)
-                                .help("Copy token to clipboard")
+                                .help("action.copy_token")
                             }
 
-                            Text("Tap count: \(versionTapCount)")
+                            Text(String(format: String(localized: "version.tap_count"), versionTapCount))
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
@@ -206,7 +206,7 @@ struct RecentTracksSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recently Played Tracks")
+            Text("recently_played.tracks")
                 .font(.headline)
                 .padding(.horizontal)
 
@@ -244,7 +244,7 @@ struct RecentAlbumsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recently Played Albums")
+            Text("recently_played.albums")
                 .font(.headline)
                 .padding(.horizontal)
 
@@ -318,7 +318,7 @@ struct RecentArtistsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recently Played Artists")
+            Text("recently_played.artists")
                 .font(.headline)
                 .padding(.horizontal)
 
@@ -358,7 +358,7 @@ struct RecentPlaylistsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Recently Played Playlists")
+            Text("recently_played.playlists")
                 .font(.headline)
                 .padding(.horizontal)
 

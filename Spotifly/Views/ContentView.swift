@@ -13,7 +13,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if viewModel.isLoading {
-                ProgressView("Loading...")
+                ProgressView(String(localized: "auth.loading"))
                     .frame(minWidth: 500, minHeight: 400)
             } else if let authResult = viewModel.authResult {
                 LoggedInView(authResult: authResult, onLogout: { viewModel.logout() })
@@ -32,11 +32,11 @@ struct ContentView: View {
                 .font(.system(size: 60))
                 .foregroundStyle(.green)
 
-            Text("Spotifly")
+            Text("app.name")
                 .font(.largeTitle)
                 .fontWeight(.bold)
 
-            Text("Connect your Spotify account to get started")
+            Text("auth.connect.description")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
@@ -49,7 +49,7 @@ struct ContentView: View {
                             .progressViewStyle(.circular)
                             .scaleEffect(0.8)
                     }
-                    Text(viewModel.isAuthenticating ? "Authenticating..." : "Connect with Spotify")
+                    Text(viewModel.isAuthenticating ? "auth.authenticating" : "auth.connect.button")
                 }
                 .frame(minWidth: 200)
             }

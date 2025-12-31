@@ -15,7 +15,7 @@ struct SearchResultsView: View {
         List {
             // Tracks section
             if !searchResults.tracks.isEmpty {
-                Section("Tracks") {
+                Section {
                     ForEach(searchResults.tracks.prefix(5)) { track in
                         Button {
                             searchViewModel.selectTrack(track)
@@ -74,7 +74,7 @@ struct SearchResultsView: View {
                             searchViewModel.showAllTracks()
                         } label: {
                             HStack {
-                                Text("Show all \(searchResults.tracks.count) tracks")
+                                Text(String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
                                     .font(.subheadline)
                                 Spacer()
                                 Image(systemName: "chevron.right")
@@ -84,12 +84,14 @@ struct SearchResultsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                } header: {
+                    Text("section.tracks")
                 }
             }
 
             // Albums section
             if !searchResults.albums.isEmpty {
-                Section("Albums") {
+                Section {
                     ForEach(searchViewModel.expandedAlbums ? searchResults.albums : Array(searchResults.albums.prefix(10))) { album in
                         Button {
                             searchViewModel.selectAlbum(album)
@@ -130,9 +132,17 @@ struct SearchResultsView: View {
                                     Text(album.artistName)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                    Text("\(album.totalTracks) tracks • \(album.releaseDate)")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
+                                    HStack(spacing: 4) {
+                                        Text(String(format: String(localized: "metadata.tracks"), album.totalTracks))
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                        Text("metadata.separator")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                        Text(album.releaseDate)
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
                                 }
 
                                 Spacer()
@@ -146,7 +156,7 @@ struct SearchResultsView: View {
                             searchViewModel.expandedAlbums.toggle()
                         } label: {
                             HStack {
-                                Text(searchViewModel.expandedAlbums ? "Show less" : "Show more")
+                                Text(searchViewModel.expandedAlbums ? "action.show_less" : "action.show_more")
                                     .font(.subheadline)
                                 Spacer()
                                 Image(systemName: searchViewModel.expandedAlbums ? "chevron.up" : "chevron.down")
@@ -156,12 +166,14 @@ struct SearchResultsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                } header: {
+                    Text("section.albums")
                 }
             }
 
             // Artists section
             if !searchResults.artists.isEmpty {
-                Section("Artists") {
+                Section {
                     ForEach(searchViewModel.expandedArtists ? searchResults.artists : Array(searchResults.artists.prefix(10))) { artist in
                         Button {
                             searchViewModel.selectArtist(artist)
@@ -205,7 +217,7 @@ struct SearchResultsView: View {
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
                                     }
-                                    Text("\(formatFollowers(artist.followers)) followers")
+                                    Text(String(format: String(localized: "metadata.followers"), formatFollowers(artist.followers)))
                                         .font(.caption2)
                                         .foregroundStyle(.tertiary)
                                 }
@@ -221,7 +233,7 @@ struct SearchResultsView: View {
                             searchViewModel.expandedArtists.toggle()
                         } label: {
                             HStack {
-                                Text(searchViewModel.expandedArtists ? "Show less" : "Show more")
+                                Text(searchViewModel.expandedArtists ? "action.show_less" : "action.show_more")
                                     .font(.subheadline)
                                 Spacer()
                                 Image(systemName: searchViewModel.expandedArtists ? "chevron.up" : "chevron.down")
@@ -231,12 +243,14 @@ struct SearchResultsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                } header: {
+                    Text("section.artists")
                 }
             }
 
             // Playlists section
             if !searchResults.playlists.isEmpty {
-                Section("Playlists") {
+                Section {
                     ForEach(searchViewModel.expandedPlaylists ? searchResults.playlists : Array(searchResults.playlists.prefix(10))) { playlist in
                         Button {
                             searchViewModel.selectPlaylist(playlist)
@@ -280,9 +294,17 @@ struct SearchResultsView: View {
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
                                     }
-                                    Text("By \(playlist.ownerName) • \(playlist.trackCount) tracks")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
+                                    HStack(spacing: 4) {
+                                        Text(String(format: String(localized: "metadata.by_owner"), playlist.ownerName))
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                        Text("metadata.separator")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                        Text(String(format: String(localized: "metadata.tracks"), playlist.trackCount))
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
                                 }
 
                                 Spacer()
@@ -296,7 +318,7 @@ struct SearchResultsView: View {
                             searchViewModel.expandedPlaylists.toggle()
                         } label: {
                             HStack {
-                                Text(searchViewModel.expandedPlaylists ? "Show less" : "Show more")
+                                Text(searchViewModel.expandedPlaylists ? "action.show_less" : "action.show_more")
                                     .font(.subheadline)
                                 Spacer()
                                 Image(systemName: searchViewModel.expandedPlaylists ? "chevron.up" : "chevron.down")
@@ -306,6 +328,8 @@ struct SearchResultsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                } header: {
+                    Text("section.playlists")
                 }
             }
         }

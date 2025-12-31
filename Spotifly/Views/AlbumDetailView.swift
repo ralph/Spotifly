@@ -62,16 +62,24 @@ struct AlbumDetailView: View {
                             .font(.title3)
                             .foregroundStyle(.secondary)
 
-                        Text("\(album.totalTracks) tracks • \(album.releaseDate)")
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
+                        HStack(spacing: 4) {
+                            Text(String(format: String(localized: "metadata.tracks"), album.totalTracks))
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                            Text("metadata.separator")
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                            Text(album.releaseDate)
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
 
                     // Play All button
                     Button {
                         playAllTracks()
                     } label: {
-                        Label("Play Album", systemImage: "play.fill")
+                        Label("playback.play_album", systemImage: "play.fill")
                             .font(.headline)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 12)
@@ -84,7 +92,7 @@ struct AlbumDetailView: View {
 
                 // Track list
                 if isLoading {
-                    ProgressView("Loading tracks...")
+                    ProgressView("loading.tracks")
                         .padding()
                 } else if let errorMessage {
                     Text(errorMessage)

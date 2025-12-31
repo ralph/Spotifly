@@ -17,7 +17,7 @@ struct FavoritesListView: View {
             if favoritesViewModel.isLoading, favoritesViewModel.tracks.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
-                    Text("Loading favorites...")
+                    Text("loading.favorites")
                         .foregroundStyle(.secondary)
                 }
             } else if let error = favoritesViewModel.errorMessage, favoritesViewModel.tracks.isEmpty {
@@ -25,12 +25,12 @@ struct FavoritesListView: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("Failed to load favorites")
+                    Text("error.load_favorites")
                         .font(.headline)
                     Text(error)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("Try Again") {
+                    Button("action.try_again") {
                         Task {
                             await favoritesViewModel.loadTracks(accessToken: authResult.accessToken)
                         }
@@ -43,9 +43,9 @@ struct FavoritesListView: View {
                     Image(systemName: "heart")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
-                    Text("No favorites yet")
+                    Text("empty.no_favorites")
                         .font(.headline)
-                    Text("Like songs in the Spotify app to see them here")
+                    Text("empty.no_favorites.description")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }

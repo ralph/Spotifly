@@ -21,19 +21,19 @@ enum NavigationItem: Hashable, Identifiable {
     var title: String {
         switch self {
         case .startpage:
-            "Startpage"
+            String(localized: "nav.startpage")
         case .searchResults:
-            "Search Results"
+            String(localized: "nav.search_results")
         case .favorites:
-            "Favorites"
+            String(localized: "nav.favorites")
         case .playlists:
-            "Playlists"
+            String(localized: "nav.playlists")
         case .albums:
-            "Albums"
+            String(localized: "nav.albums")
         case .artists:
-            "Artists"
+            String(localized: "nav.artists")
         case .queue:
-            "Queue"
+            String(localized: "nav.queue")
         }
     }
 
@@ -74,7 +74,7 @@ struct SidebarView: View {
                 HStack {
                     Image(systemName: "music.note.list")
                         .foregroundStyle(.green)
-                    Text("Spotifly")
+                    Text("app.name")
                         .font(.headline)
                 }
                 .padding(.bottom, 8)
@@ -83,26 +83,28 @@ struct SidebarView: View {
             if hasSearchResults {
                 Section {
                     NavigationLink(value: NavigationItem.searchResults) {
-                        Label("Search Results", systemImage: "magnifyingglass")
-                    }
-                }
-            }
-
-            Section("Library") {
-                ForEach([NavigationItem.favorites, NavigationItem.playlists, NavigationItem.albums, NavigationItem.artists]) { item in
-                    NavigationLink(value: item) {
-                        Label(item.title, systemImage: item.icon)
+                        Label(String(localized: "nav.search_results"), systemImage: "magnifyingglass")
                     }
                 }
             }
 
             Section {
+                ForEach([NavigationItem.favorites, NavigationItem.playlists, NavigationItem.albums, NavigationItem.artists]) { item in
+                    NavigationLink(value: item) {
+                        Label(item.title, systemImage: item.icon)
+                    }
+                }
+            } header: {
+                Text("nav.library")
+            }
+
+            Section {
                 Button(action: onLogout) {
-                    Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
+                    Label("auth.logout", systemImage: "rectangle.portrait.and.arrow.right")
                         .foregroundStyle(.red)
                 }
             }
         }
-        .navigationTitle("Spotifly")
+        .navigationTitle("app.name")
     }
 }

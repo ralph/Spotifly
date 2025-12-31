@@ -66,16 +66,24 @@ struct PlaylistDetailView: View {
                                 .lineLimit(2)
                         }
 
-                        Text("By \(playlist.ownerName) • \(playlist.trackCount) tracks")
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
+                        HStack(spacing: 4) {
+                            Text(String(format: String(localized: "metadata.by_owner"), playlist.ownerName))
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                            Text("metadata.separator")
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                            Text(String(format: String(localized: "metadata.tracks"), playlist.trackCount))
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
 
                     // Play All button
                     Button {
                         playAllTracks()
                     } label: {
-                        Label("Play Playlist", systemImage: "play.fill")
+                        Label("playback.play_playlist", systemImage: "play.fill")
                             .font(.headline)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 12)
@@ -88,7 +96,7 @@ struct PlaylistDetailView: View {
 
                 // Track list
                 if isLoading {
-                    ProgressView("Loading tracks...")
+                    ProgressView("loading.tracks")
                         .padding()
                 } else if let errorMessage {
                     Text(errorMessage)

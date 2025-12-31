@@ -63,7 +63,7 @@ struct ArtistDetailView: View {
                                 .multilineTextAlignment(.center)
                         }
 
-                        Text("\(formatFollowers(artist.followers)) followers")
+                        Text(String(format: String(localized: "metadata.followers"), formatFollowers(artist.followers)))
                             .font(.subheadline)
                             .foregroundStyle(.tertiary)
                     }
@@ -72,7 +72,7 @@ struct ArtistDetailView: View {
                     Button {
                         playAllTopTracks()
                     } label: {
-                        Label("Play Top Tracks", systemImage: "play.fill")
+                        Label("playback.play_top_tracks", systemImage: "play.fill")
                             .font(.headline)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 12)
@@ -85,7 +85,7 @@ struct ArtistDetailView: View {
 
                 // Top Tracks
                 if isLoading {
-                    ProgressView("Loading top tracks...")
+                    ProgressView("loading.top_tracks")
                         .padding()
                 } else if let errorMessage {
                     Text(errorMessage)
@@ -93,7 +93,7 @@ struct ArtistDetailView: View {
                         .padding()
                 } else if !topTracks.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Top Tracks")
+                        Text("section.top_tracks")
                             .font(.headline)
                             .padding(.horizontal)
 

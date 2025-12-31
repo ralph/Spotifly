@@ -163,7 +163,7 @@ struct LoggedInView: View {
                     searchResults: searchResults,
                     searchViewModel: searchViewModel,
                 )
-                .navigationTitle("Search Results")
+                .navigationTitle("nav.search_results")
             } else {
                 // Show main views for other sections
                 Group {
@@ -178,7 +178,7 @@ struct LoggedInView: View {
                             selectedRecentArtist: $selectedRecentArtist,
                             selectedRecentPlaylist: $selectedRecentPlaylist,
                         )
-                        .navigationTitle("Startpage")
+                        .navigationTitle("nav.startpage")
 
                     case .favorites:
                         FavoritesListView(
@@ -186,7 +186,7 @@ struct LoggedInView: View {
                             favoritesViewModel: favoritesViewModel,
                             playbackViewModel: playbackViewModel,
                         )
-                        .navigationTitle("Favorites")
+                        .navigationTitle("nav.favorites")
 
                     case .playlists:
                         PlaylistsListView(
@@ -195,7 +195,7 @@ struct LoggedInView: View {
                             playbackViewModel: playbackViewModel,
                             selectedPlaylist: $selectedPlaylist,
                         )
-                        .navigationTitle("Playlists")
+                        .navigationTitle("nav.playlists")
 
                     case .albums:
                         AlbumsListView(
@@ -204,7 +204,7 @@ struct LoggedInView: View {
                             playbackViewModel: playbackViewModel,
                             selectedAlbum: $selectedAlbum,
                         )
-                        .navigationTitle("Albums")
+                        .navigationTitle("nav.albums")
 
                     case .artists:
                         ArtistsListView(
@@ -213,7 +213,7 @@ struct LoggedInView: View {
                             playbackViewModel: playbackViewModel,
                             selectedArtist: $selectedArtist,
                         )
-                        .navigationTitle("Artists")
+                        .navigationTitle("nav.artists")
 
                     case .queue:
                         QueueListView(
@@ -221,14 +221,14 @@ struct LoggedInView: View {
                             queueViewModel: queueViewModel,
                             playbackViewModel: playbackViewModel,
                         )
-                        .navigationTitle("Queue")
+                        .navigationTitle("nav.queue")
 
                     case .searchResults:
                         // Handled in outer if statement
                         EmptyView()
 
                     case .none:
-                        Text("Select an item from the sidebar")
+                        Text("empty.select_item")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -276,7 +276,7 @@ struct LoggedInView: View {
                         playbackViewModel: playbackViewModel,
                     )
                 } else {
-                    Text("Select a search result to see details")
+                    Text("empty.select_search_result")
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -290,7 +290,7 @@ struct LoggedInView: View {
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
-                        Text("Select an album to see details")
+                        Text("empty.select_album")
                             .foregroundStyle(.secondary)
                     }
 
@@ -302,7 +302,7 @@ struct LoggedInView: View {
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
-                        Text("Select an artist to see details")
+                        Text("empty.select_artist")
                             .foregroundStyle(.secondary)
                     }
 
@@ -314,7 +314,7 @@ struct LoggedInView: View {
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
-                        Text("Select a playlist to see details")
+                        Text("empty.select_playlist")
                             .foregroundStyle(.secondary)
                     }
 

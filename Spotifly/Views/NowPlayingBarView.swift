@@ -342,6 +342,6 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .help(isMiniPlayerMode ? "Restore full window" : "Enter mini player mode")
+        .help(isMiniPlayerMode ? "mini_player.restore" : "mini_player.enter")
     }
 }
