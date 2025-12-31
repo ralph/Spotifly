@@ -31,30 +31,26 @@ struct NowPlayingBarView: View {
                 GeometryReader { geometry in
                     let isCompact = geometry.size.width < 750
                     let isVeryNarrow = geometry.size.width < 600
-                    // Height: 66px for mini or wide mode, 90px for compact non-mini
-                    let barHeight: CGFloat = (isCompact && !isMiniPlayerMode) ? 90 : 66
 
-                    Group {
-                        if isCompact {
-                            // Compact layout: progress bar at bottom
-                            VStack(spacing: 8) {
-                                compactTopRow(showVolume: !isVeryNarrow)
-                                progressBar
-                                    .padding(.horizontal, 8)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.top, isMiniPlayerMode ? 4 : 8)
-                            .padding(.bottom, 8)
-                        } else {
-                            // Wide layout: original layout
-                            wideLayout
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
+                    if isCompact {
+                        // Compact layout: progress bar at bottom
+                        VStack(spacing: 8) {
+                            compactTopRow(showVolume: !isVeryNarrow)
+                            progressBar
+                                .padding(.horizontal, 8)
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, isMiniPlayerMode ? 4 : 8)
+                        .padding(.bottom, 8)
+                    } else {
+                        // Wide layout: original layout
+                        wideLayout
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                     }
-                    .frame(height: barHeight)
                 }
                 .background(Color(NSColor.controlBackgroundColor))
+                .frame(height: isMiniPlayerMode ? 66 : 90)
             }
         }
     }
