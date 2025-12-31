@@ -24,6 +24,11 @@ struct LoggedInView: View {
     @State private var isMiniPlayerMode = false
     @State private var searchText = ""
 
+    // Selection state for detail views
+    @State private var selectedAlbum: AlbumSimplified?
+    @State private var selectedArtist: ArtistSimplified?
+    @State private var selectedPlaylist: PlaylistSimplified?
+
     var body: some View {
         VStack(spacing: 0) {
             if !isMiniPlayerMode {
@@ -67,6 +72,7 @@ struct LoggedInView: View {
                                     authResult: authResult,
                                     playlistsViewModel: playlistsViewModel,
                                     playbackViewModel: playbackViewModel,
+                                    selectedPlaylist: $selectedPlaylist
                                 )
                                 .navigationTitle("Playlists")
 
@@ -75,6 +81,7 @@ struct LoggedInView: View {
                                     authResult: authResult,
                                     albumsViewModel: albumsViewModel,
                                     playbackViewModel: playbackViewModel,
+                                    selectedAlbum: $selectedAlbum
                                 )
                                 .navigationTitle("Albums")
 
@@ -83,6 +90,7 @@ struct LoggedInView: View {
                                     authResult: authResult,
                                     artistsViewModel: artistsViewModel,
                                     playbackViewModel: playbackViewModel,
+                                    selectedArtist: $selectedArtist
                                 )
                                 .navigationTitle("Artists")
 
@@ -103,39 +111,82 @@ struct LoggedInView: View {
                         .libraryNavigationShortcuts(selection: $selectedNavigationItem)
                     }
                 } detail: {
-                    // Detail column: show details for selected search result
-                    if let selectedTrack = searchViewModel.selectedTrack {
-                        // Single track: show track info with play button
-                        TrackDetailView(
-                            track: selectedTrack,
-                            authResult: authResult,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else if let selectedAlbum = searchViewModel.selectedAlbum {
-                        // Album: show album details with track list
-                        AlbumDetailView(
-                            album: selectedAlbum,
-                            authResult: authResult,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else if let selectedArtist = searchViewModel.selectedArtist {
-                        // Artist: show artist details with top tracks
-                        ArtistDetailView(
-                            artist: selectedArtist,
-                            authResult: authResult,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else if let selectedPlaylist = searchViewModel.selectedPlaylist {
-                        // Playlist: show playlist details with track list
-                        PlaylistDetailView(
-                            playlist: selectedPlaylist,
-                            authResult: authResult,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else {
-                        // No selection: show placeholder
-                        Text("Select a search result to see details")
-                            .foregroundStyle(.secondary)
+                    // Detail column: show details based on context
+                    Group {
+                        if searchViewModel.searchResults != nil {
+                            // When searching: show search result details
+                            if let selectedTrack = searchViewModel.selectedTrack {
+                                TrackDetailView(
+                                    track: selectedTrack,
+                                    authResult: authResult,
+                                    playbackViewModel: playbackViewModel
+                                )
+                            } else if let selectedAlbum = searchViewModel.selectedAlbum {
+                                AlbumDetailView(
+                                    album: selectedAlbum,
+                                    authResult: authResult,
+                                    playbackViewModel: playbackViewModel
+                                )
+                            } else if let selectedArtist = searchViewModel.selectedArtist {
+                                ArtistDetailView(
+                                    artist: selectedArtist,
+                                    authResult: authResult,
+                                    playbackViewModel: playbackViewModel
+                                )
+                            } else if let selectedPlaylist = searchViewModel.selectedPlaylist {
+                                PlaylistDetailView(
+                                    playlist: selectedPlaylist,
+                                    authResult: authResult,
+                                    playbackViewModel: playbackViewModel
+                                )
+                            } else {
+                                Text("Select a search result to see details")
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            // When not searching: show details for library selections
+                            switch selectedNavigationItem {
+                            case .albums:
+                                if let selectedAlbum = selectedAlbum {
+                                    AlbumDetailView(
+                                        album: SearchAlbum(from: selectedAlbum),
+                                        authResult: authResult,
+                                        playbackViewModel: playbackViewModel
+                                    )
+                                } else {
+                                    Text("Select an album to see details")
+                                        .foregroundStyle(.secondary)
+                                }
+
+                            case .artists:
+                                if let selectedArtist = selectedArtist {
+                                    ArtistDetailView(
+                                        artist: SearchArtist(from: selectedArtist),
+                                        authResult: authResult,
+                                        playbackViewModel: playbackViewModel
+                                    )
+                                } else {
+                                    Text("Select an artist to see details")
+                                        .foregroundStyle(.secondary)
+                                }
+
+                            case .playlists:
+                                if let selectedPlaylist = selectedPlaylist {
+                                    PlaylistDetailView(
+                                        playlist: SearchPlaylist(from: selectedPlaylist),
+                                        authResult: authResult,
+                                        playbackViewModel: playbackViewModel
+                                    )
+                                } else {
+                                    Text("Select a playlist to see details")
+                                        .foregroundStyle(.secondary)
+                                }
+
+                            default:
+                                // For Favorites, Queue, Startpage, etc.: no detail view
+                                EmptyView()
+                            }
+                        }
                     }
                 }
                 .searchable(text: $searchText)

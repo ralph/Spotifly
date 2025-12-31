@@ -11,6 +11,7 @@ struct ArtistsListView: View {
     let authResult: SpotifyAuthResult
     @Bindable var artistsViewModel: ArtistsViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Binding var selectedArtist: ArtistSimplified?
 
     var body: some View {
         Group {
@@ -58,6 +59,7 @@ struct ArtistsListView: View {
                                 artist: artist,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: authResult.accessToken,
+                                selectedArtist: $selectedArtist
                             )
                         }
 
@@ -91,6 +93,7 @@ struct ArtistRow: View {
     let artist: ArtistSimplified
     @Bindable var playbackViewModel: PlaybackViewModel
     let accessToken: String
+    @Binding var selectedArtist: ArtistSimplified?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -157,6 +160,10 @@ struct ArtistRow: View {
         .padding()
         .background(Color.gray.opacity(0.05))
         .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedArtist = artist
+        }
     }
 
     private func formatFollowers(_ count: Int) -> String {

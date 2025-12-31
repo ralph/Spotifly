@@ -11,6 +11,7 @@ struct PlaylistsListView: View {
     let authResult: SpotifyAuthResult
     @Bindable var playlistsViewModel: PlaylistsViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Binding var selectedPlaylist: PlaylistSimplified?
 
     var body: some View {
         Group {
@@ -58,6 +59,7 @@ struct PlaylistsListView: View {
                                 playlist: playlist,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: authResult.accessToken,
+                                selectedPlaylist: $selectedPlaylist
                             )
                         }
 
@@ -91,6 +93,7 @@ struct PlaylistRow: View {
     let playlist: PlaylistSimplified
     @Bindable var playbackViewModel: PlaybackViewModel
     let accessToken: String
+    @Binding var selectedPlaylist: PlaylistSimplified?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -170,5 +173,9 @@ struct PlaylistRow: View {
         .padding()
         .background(Color.gray.opacity(0.05))
         .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedPlaylist = playlist
+        }
     }
 }

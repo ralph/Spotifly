@@ -153,6 +153,26 @@ struct SearchAlbum: Sendable, Identifiable {
     let imageURL: URL?
     let totalTracks: Int
     let releaseDate: String
+
+    init(id: String, name: String, uri: String, artistName: String, imageURL: URL?, totalTracks: Int, releaseDate: String) {
+        self.id = id
+        self.name = name
+        self.uri = uri
+        self.artistName = artistName
+        self.imageURL = imageURL
+        self.totalTracks = totalTracks
+        self.releaseDate = releaseDate
+    }
+
+    init(from album: AlbumSimplified) {
+        self.id = album.id
+        self.name = album.name
+        self.uri = album.uri
+        self.artistName = album.artistName
+        self.imageURL = album.imageURL
+        self.totalTracks = album.trackCount
+        self.releaseDate = album.releaseDate
+    }
 }
 
 /// Artist search result
@@ -163,6 +183,24 @@ struct SearchArtist: Sendable, Identifiable {
     let imageURL: URL?
     let genres: [String]
     let followers: Int
+
+    init(id: String, name: String, uri: String, imageURL: URL?, genres: [String], followers: Int) {
+        self.id = id
+        self.name = name
+        self.uri = uri
+        self.imageURL = imageURL
+        self.genres = genres
+        self.followers = followers
+    }
+
+    init(from artist: ArtistSimplified) {
+        self.id = artist.id
+        self.name = artist.name
+        self.uri = artist.uri
+        self.imageURL = artist.imageURL
+        self.genres = artist.genres
+        self.followers = artist.followers
+    }
 }
 
 /// Playlist search result
@@ -174,6 +212,26 @@ struct SearchPlaylist: Sendable, Identifiable {
     let imageURL: URL?
     let trackCount: Int
     let ownerName: String
+
+    init(id: String, name: String, uri: String, description: String?, imageURL: URL?, trackCount: Int, ownerName: String) {
+        self.id = id
+        self.name = name
+        self.uri = uri
+        self.description = description
+        self.imageURL = imageURL
+        self.trackCount = trackCount
+        self.ownerName = ownerName
+    }
+
+    init(from playlist: PlaylistSimplified) {
+        self.id = playlist.id
+        self.name = playlist.name
+        self.uri = playlist.uri
+        self.description = playlist.description
+        self.imageURL = playlist.imageURL
+        self.trackCount = playlist.trackCount
+        self.ownerName = playlist.ownerName
+    }
 }
 
 /// Search results wrapper
