@@ -288,6 +288,7 @@ async fn perform_oauth(client_id: &str, redirect_uri: &str) -> Result<OAuthResul
         "user-library-read",       // Access saved albums, tracks
         "user-library-modify",     // Manage saved albums, tracks
         "user-follow-read",        // Access followed artists
+        "user-read-recently-played", // Access recently played tracks
     ];
 
     // Load HTML from external file at compile time
@@ -461,6 +462,7 @@ async fn perform_token_refresh(
         "user-library-read",
         "user-library-modify",
         "user-follow-read",
+        "user-read-recently-played",
     ];
 
     let client = OAuthClientBuilder::new(client_id, redirect_uri, scopes)
