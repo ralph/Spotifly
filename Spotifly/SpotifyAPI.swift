@@ -588,7 +588,7 @@ enum SpotifyAPI {
             description: description,
             imageURL: imageURL,
             trackCount: trackCount,
-            ownerName: ownerName
+            ownerName: ownerName,
         )
     }
 

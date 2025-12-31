@@ -103,7 +103,7 @@ final class RecentlyPlayedViewModel {
                         do {
                             let playlist = try await SpotifyAPI.fetchPlaylistDetails(
                                 accessToken: accessToken,
-                                playlistId: playlistId
+                                playlistId: playlistId,
                             )
                             // Only include playlists with at least one track
                             if playlist.trackCount > 0 {
@@ -121,7 +121,7 @@ final class RecentlyPlayedViewModel {
                 // Collect all non-nil results
                 var results: [SearchPlaylist] = []
                 for await playlist in group {
-                    if let playlist = playlist {
+                    if let playlist {
                         results.append(playlist)
                     }
                 }

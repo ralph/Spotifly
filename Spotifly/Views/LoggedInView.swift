@@ -39,19 +39,19 @@ struct LoggedInView: View {
     private var needsThreeColumnLayout: Bool {
         switch selectedNavigationItem {
         case .albums:
-            return selectedAlbum != nil
+            selectedAlbum != nil
         case .artists:
-            return selectedArtist != nil
+            selectedArtist != nil
         case .playlists:
-            return selectedPlaylist != nil
+            selectedPlaylist != nil
         case .startpage:
-            return selectedRecentAlbum != nil || selectedRecentArtist != nil || selectedRecentPlaylist != nil
+            selectedRecentAlbum != nil || selectedRecentArtist != nil || selectedRecentPlaylist != nil
         case .searchResults:
-            return searchViewModel.selectedTrack != nil || searchViewModel.selectedAlbum != nil ||
-                   searchViewModel.selectedArtist != nil || searchViewModel.selectedPlaylist != nil ||
-                   searchViewModel.showingAllTracks
+            searchViewModel.selectedTrack != nil || searchViewModel.selectedAlbum != nil ||
+                searchViewModel.selectedArtist != nil || searchViewModel.selectedPlaylist != nil ||
+                searchViewModel.showingAllTracks
         default:
-            return false
+            false
         }
     }
 
@@ -148,7 +148,7 @@ struct LoggedInView: View {
                 playbackViewModel.stop()
                 onLogout()
             },
-            hasSearchResults: searchViewModel.searchResults != nil
+            hasSearchResults: searchViewModel.searchResults != nil,
         )
     }
 
@@ -161,7 +161,7 @@ struct LoggedInView: View {
                 // Show search results when Search Results is selected
                 SearchResultsView(
                     searchResults: searchResults,
-                    searchViewModel: searchViewModel
+                    searchViewModel: searchViewModel,
                 )
                 .navigationTitle("Search Results")
             } else {
@@ -176,7 +176,7 @@ struct LoggedInView: View {
                             recentlyPlayedViewModel: recentlyPlayedViewModel,
                             selectedRecentAlbum: $selectedRecentAlbum,
                             selectedRecentArtist: $selectedRecentArtist,
-                            selectedRecentPlaylist: $selectedRecentPlaylist
+                            selectedRecentPlaylist: $selectedRecentPlaylist,
                         )
                         .navigationTitle("Startpage")
 
@@ -184,7 +184,7 @@ struct LoggedInView: View {
                         FavoritesListView(
                             authResult: authResult,
                             favoritesViewModel: favoritesViewModel,
-                            playbackViewModel: playbackViewModel
+                            playbackViewModel: playbackViewModel,
                         )
                         .navigationTitle("Favorites")
 
@@ -193,7 +193,7 @@ struct LoggedInView: View {
                             authResult: authResult,
                             playlistsViewModel: playlistsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedPlaylist: $selectedPlaylist
+                            selectedPlaylist: $selectedPlaylist,
                         )
                         .navigationTitle("Playlists")
 
@@ -202,7 +202,7 @@ struct LoggedInView: View {
                             authResult: authResult,
                             albumsViewModel: albumsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedAlbum: $selectedAlbum
+                            selectedAlbum: $selectedAlbum,
                         )
                         .navigationTitle("Albums")
 
@@ -211,7 +211,7 @@ struct LoggedInView: View {
                             authResult: authResult,
                             artistsViewModel: artistsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedArtist: $selectedArtist
+                            selectedArtist: $selectedArtist,
                         )
                         .navigationTitle("Artists")
 
@@ -219,7 +219,7 @@ struct LoggedInView: View {
                         QueueListView(
                             authResult: authResult,
                             queueViewModel: queueViewModel,
-                            playbackViewModel: playbackViewModel
+                            playbackViewModel: playbackViewModel,
                         )
                         .navigationTitle("Queue")
 
@@ -249,31 +249,31 @@ struct LoggedInView: View {
                     SearchTracksDetailView(
                         tracks: searchResults.tracks,
                         authResult: authResult,
-                        playbackViewModel: playbackViewModel
+                        playbackViewModel: playbackViewModel,
                     )
                 } else if let selectedTrack = searchViewModel.selectedTrack {
                     TrackDetailView(
                         track: selectedTrack,
                         authResult: authResult,
-                        playbackViewModel: playbackViewModel
+                        playbackViewModel: playbackViewModel,
                     )
                 } else if let selectedAlbum = searchViewModel.selectedAlbum {
                     AlbumDetailView(
                         album: selectedAlbum,
                         authResult: authResult,
-                        playbackViewModel: playbackViewModel
+                        playbackViewModel: playbackViewModel,
                     )
                 } else if let selectedArtist = searchViewModel.selectedArtist {
                     ArtistDetailView(
                         artist: selectedArtist,
                         authResult: authResult,
-                        playbackViewModel: playbackViewModel
+                        playbackViewModel: playbackViewModel,
                     )
                 } else if let selectedPlaylist = searchViewModel.selectedPlaylist {
                     PlaylistDetailView(
                         playlist: selectedPlaylist,
                         authResult: authResult,
-                        playbackViewModel: playbackViewModel
+                        playbackViewModel: playbackViewModel,
                     )
                 } else {
                     Text("Select a search result to see details")
@@ -287,7 +287,7 @@ struct LoggedInView: View {
                         AlbumDetailView(
                             album: SearchAlbum(from: selectedAlbum),
                             authResult: authResult,
-                            playbackViewModel: playbackViewModel
+                            playbackViewModel: playbackViewModel,
                         )
                     } else {
                         Text("Select an album to see details")
@@ -299,7 +299,7 @@ struct LoggedInView: View {
                         ArtistDetailView(
                             artist: SearchArtist(from: selectedArtist),
                             authResult: authResult,
-                            playbackViewModel: playbackViewModel
+                            playbackViewModel: playbackViewModel,
                         )
                     } else {
                         Text("Select an artist to see details")
@@ -311,7 +311,7 @@ struct LoggedInView: View {
                         PlaylistDetailView(
                             playlist: SearchPlaylist(from: selectedPlaylist),
                             authResult: authResult,
-                            playbackViewModel: playbackViewModel
+                            playbackViewModel: playbackViewModel,
                         )
                     } else {
                         Text("Select a playlist to see details")
@@ -324,19 +324,19 @@ struct LoggedInView: View {
                         AlbumDetailView(
                             album: selectedAlbum,
                             authResult: authResult,
-                            playbackViewModel: playbackViewModel
+                            playbackViewModel: playbackViewModel,
                         )
                     } else if let selectedArtist = selectedRecentArtist {
                         ArtistDetailView(
                             artist: selectedArtist,
                             authResult: authResult,
-                            playbackViewModel: playbackViewModel
+                            playbackViewModel: playbackViewModel,
                         )
                     } else if let selectedPlaylist = selectedRecentPlaylist {
                         PlaylistDetailView(
                             playlist: selectedPlaylist,
                             authResult: authResult,
-                            playbackViewModel: playbackViewModel
+                            playbackViewModel: playbackViewModel,
                         )
                     } else {
                         EmptyView()
