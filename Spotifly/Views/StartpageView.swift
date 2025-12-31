@@ -274,7 +274,7 @@ struct RecentContentSection: View {
                 HStack(spacing: 12) {
                     ForEach(items) { item in
                         switch item {
-                        case .album(let album):
+                        case let .album(album):
                             VStack(spacing: 8) {
                                 if let imageURL = album.imageURL {
                                     AsyncImage(url: imageURL) { phase in
@@ -332,7 +332,7 @@ struct RecentContentSection: View {
                                 showingAllTracks = false
                             }
 
-                        case .artist(let artist):
+                        case let .artist(artist):
                             VStack(spacing: 8) {
                                 Circle()
                                     .fill(Color.gray.opacity(0.2))
@@ -356,7 +356,7 @@ struct RecentContentSection: View {
                                 showingAllTracks = false
                             }
 
-                        case .playlist(let playlist):
+                        case let .playlist(playlist):
                             VStack(spacing: 8) {
                                 if let imageURL = playlist.imageURL {
                                     AsyncImage(url: imageURL) { phase in

@@ -15,9 +15,9 @@ enum RecentItem: Identifiable {
 
     var id: String {
         switch self {
-        case .album(let album): return "album_\(album.id)"
-        case .artist(let artist): return "artist_\(artist.id)"
-        case .playlist(let playlist): return "playlist_\(playlist.id)"
+        case let .album(album): "album_\(album.id)"
+        case let .artist(artist): "artist_\(artist.id)"
+        case let .playlist(playlist): "playlist_\(playlist.id)"
         }
     }
 }
@@ -26,10 +26,10 @@ enum RecentItem: Identifiable {
 @Observable
 final class RecentlyPlayedViewModel {
     // Configuration
-    private let recentlyPlayedLimit = 30  // Easy to adjust for experimentation
+    private let recentlyPlayedLimit = 30 // Easy to adjust for experimentation
 
     var recentTracks: [SearchTrack] = []
-    var recentItems: [RecentItem] = []  // Mixed albums, artists, playlists
+    var recentItems: [RecentItem] = [] // Mixed albums, artists, playlists
     var isLoading = false
     var errorMessage: String?
     private var hasLoadedInitially = false
@@ -78,7 +78,7 @@ final class RecentlyPlayedViewModel {
                         artistName: item.track.artistName,
                         imageURL: item.track.imageURL,
                         totalTracks: 0,
-                        releaseDate: ""
+                        releaseDate: "",
                     )
                     mixedItems.append(.album(album))
 
@@ -89,7 +89,7 @@ final class RecentlyPlayedViewModel {
                         uri: context.uri,
                         imageURL: nil,
                         genres: [],
-                        followers: 0
+                        followers: 0,
                     )
                     mixedItems.append(.artist(artist))
 
@@ -108,7 +108,7 @@ final class RecentlyPlayedViewModel {
                         do {
                             let playlist = try await SpotifyAPI.fetchPlaylistDetails(
                                 accessToken: accessToken,
-                                playlistId: playlistId
+                                playlistId: playlistId,
                             )
                             if playlist.trackCount > 0 {
                                 return (playlistId, playlist)
@@ -122,7 +122,7 @@ final class RecentlyPlayedViewModel {
 
                 var results: [String: SearchPlaylist] = [:]
                 for await (id, playlist) in group {
-                    if let playlist = playlist {
+                    if let playlist {
                         results[id] = playlist
                     }
                 }
@@ -139,7 +139,7 @@ final class RecentlyPlayedViewModel {
                 if context.type == "playlist", let playlist = fetchedPlaylists[itemId] {
                     // Check if we've already added this playlist
                     let alreadyAdded = finalItems.contains { recentItem in
-                        if case .playlist(let p) = recentItem, p.id == playlist.id {
+                        if case let .playlist(p) = recentItem, p.id == playlist.id {
                             return true
                         }
                         return false
@@ -152,13 +152,13 @@ final class RecentlyPlayedViewModel {
                     // Add non-playlist item if not already added
                     let matchingItem = mixedItems.first { recentItem in
                         switch recentItem {
-                        case .album(let album): return album.id == itemId
-                        case .artist(let artist): return artist.id == itemId
-                        case .playlist: return false
+                        case let .album(album): album.id == itemId
+                        case let .artist(artist): artist.id == itemId
+                        case .playlist: false
                         }
                     }
 
-                    if let matchingItem = matchingItem {
+                    if let matchingItem {
                         let alreadyAdded = finalItems.contains { $0.id == matchingItem.id }
                         if !alreadyAdded {
                             finalItems.append(matchingItem)
