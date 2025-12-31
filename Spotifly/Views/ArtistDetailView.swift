@@ -99,59 +99,12 @@ struct ArtistDetailView: View {
 
                         VStack(alignment: .leading, spacing: 0) {
                             ForEach(Array(topTracks.enumerated()), id: \.element.id) { index, track in
-                                HStack(spacing: 12) {
-                                    Text("\(index + 1)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 30, alignment: .trailing)
-
-                                    if let imageURL = track.imageURL {
-                                        AsyncImage(url: imageURL) { phase in
-                                            switch phase {
-                                            case .empty:
-                                                ProgressView()
-                                                    .frame(width: 40, height: 40)
-                                            case let .success(image):
-                                                image
-                                                    .resizable()
-                                                    .aspectRatio(contentMode: .fill)
-                                                    .frame(width: 40, height: 40)
-                                                    .cornerRadius(4)
-                                            case .failure:
-                                                Image(systemName: "music.note")
-                                                    .frame(width: 40, height: 40)
-                                                    .background(Color.gray.opacity(0.2))
-                                                    .cornerRadius(4)
-                                            @unknown default:
-                                                EmptyView()
-                                            }
-                                        }
-                                    } else {
-                                        Image(systemName: "music.note")
-                                            .frame(width: 40, height: 40)
-                                            .background(Color.gray.opacity(0.2))
-                                            .cornerRadius(4)
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(track.name)
-                                            .font(.subheadline)
-                                        Text(track.albumName)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    Text(formatDuration(track.durationMs))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .monospacedDigit()
-                                }
-                                .padding(.vertical, 8)
-                                .padding(.horizontal)
-                                .contentShape(Rectangle())
-                                .onTapGesture(count: 2) {
+                                TrackRow(
+                                    track: track.toTrackRowData(),
+                                    index: index,
+                                    currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+                                    playbackViewModel: playbackViewModel
+                                ) {
                                     Task {
                                         await playbackViewModel.play(
                                             uriOrUrl: track.uri,
@@ -203,13 +156,6 @@ struct ArtistDetailView: View {
                 accessToken: authResult.accessToken
             )
         }
-    }
-
-    private func formatDuration(_ milliseconds: Int) -> String {
-        let totalSeconds = milliseconds / 1000
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 
     private func formatFollowers(_ count: Int) -> String {

@@ -46,14 +46,20 @@ struct QueueListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(queueViewModel.queueItems.enumerated()), id: \.element.id) { index, item in
-                            QueueItemRow(
-                                item: item,
+                            TrackRow(
+                                track: item.toTrackRowData(),
                                 index: index,
+                                currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 currentIndex: playbackViewModel.currentIndex,
-                                isCurrentTrack: index == playbackViewModel.currentIndex,
-                                playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken,
-                            )
+                                playbackViewModel: playbackViewModel
+                            ) {
+                                do {
+                                    try SpotifyPlayer.jumpToIndex(index)
+                                    playbackViewModel.updateQueueState()
+                                } catch {
+                                    playbackViewModel.errorMessage = error.localizedDescription
+                                }
+                            }
 
                             if index < queueViewModel.queueItems.count - 1 {
                                 Divider()
@@ -69,104 +75,6 @@ struct QueueListView: View {
         }
         .task {
             queueViewModel.loadQueue()
-        }
-    }
-}
-
-struct QueueItemRow: View {
-    let item: QueueItem
-    let index: Int
-    let currentIndex: Int
-    let isCurrentTrack: Bool
-    @Bindable var playbackViewModel: PlaybackViewModel
-    let accessToken: String
-
-    private var isPlayedTrack: Bool {
-        index < currentIndex
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Track number or now playing indicator
-            ZStack {
-                if isCurrentTrack {
-                    Image(systemName: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                        .symbolEffect(.variableColor.iterative, isActive: playbackViewModel.isPlaying)
-                } else {
-                    Text("\(index + 1)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 30, alignment: .center)
-
-            // Album art
-            if !item.albumArtURL.isEmpty, let url = URL(string: item.albumArtURL) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .frame(width: 40, height: 40)
-                    case let .success(image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 40, height: 40)
-                            .cornerRadius(4)
-                    case .failure:
-                        Image(systemName: "music.note")
-                            .font(.caption)
-                            .frame(width: 40, height: 40)
-                            .background(Color.gray.opacity(0.2))
-                            .cornerRadius(4)
-                    @unknown default:
-                        EmptyView()
-                    }
-                }
-            } else {
-                Image(systemName: "music.note")
-                    .font(.caption)
-                    .frame(width: 40, height: 40)
-                    .background(Color.gray.opacity(0.2))
-                    .cornerRadius(4)
-            }
-
-            // Track info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.trackName)
-                    .font(.subheadline)
-                    .fontWeight(isCurrentTrack ? .semibold : .regular)
-                    .foregroundStyle(isCurrentTrack ? .green : .primary)
-                    .lineLimit(1)
-
-                Text(item.artistName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            // Duration
-            Text(item.durationFormatted)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(isCurrentTrack ? Color.green.opacity(0.1) : Color.clear)
-        .opacity(isPlayedTrack ? 0.5 : 1.0)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            do {
-                try SpotifyPlayer.jumpToIndex(index)
-                playbackViewModel.updateQueueState()
-            } catch {
-                playbackViewModel.errorMessage = error.localizedDescription
-            }
         }
     }
 }
