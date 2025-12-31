@@ -1297,8 +1297,11 @@ enum SpotifyAPI {
 
             // Parse playlists
             if let playlistsObj = json["playlists"] as? [String: Any],
-               let items = playlistsObj["items"] as? [[String: Any]]
+               let itemsArray = playlistsObj["items"] as? [Any]
             {
+                // Filter out NSNull values and cast to dictionaries
+                let items = itemsArray.compactMap { $0 as? [String: Any] }
+
                 playlists = items.compactMap { item in
                     guard let id = item["id"] as? String,
                           let name = item["name"] as? String,
