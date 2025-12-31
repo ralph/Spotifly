@@ -21,7 +21,8 @@ final class PlaybackViewModel {
 
     /// Returns the URI of the currently playing track
     var currentlyPlayingURI: String? {
-        SpotifyPlayer.queueUri(at: currentIndex)
+        // Try to get URI from queue first, fallback to currentTrackId for single tracks
+        SpotifyPlayer.queueUri(at: currentIndex) ?? currentTrackId
     }
 
     // Track metadata for Now Playing
