@@ -8,7 +8,6 @@ name = "spotifly_rust"
 crate-type = ["staticlib"]
 
 [dependencies]
-librespot-oauth = "0.8"
 librespot-core = "0.8"
 librespot-metadata = "0.8"
 librespot-playback = "0.8"
