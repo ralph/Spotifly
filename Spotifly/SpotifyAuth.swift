@@ -189,7 +189,7 @@ enum SpotifyAuth {
             throw SpotifyAuthError.authenticationFailed
         }
         #else
-        guard let windowScene = await UIApplication.shared.connectedScenes.first as? UIWindowScene,
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let anchor = windowScene.windows.first else {
             throw SpotifyAuthError.authenticationFailed
         }
