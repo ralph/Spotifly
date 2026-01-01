@@ -104,38 +104,53 @@ private final class AuthenticationSession: NSObject, ASWebAuthenticationPresenta
     }
 }
 
+/// Token response from Spotify API
+private struct TokenResponse: Decodable, Sendable {
+    let access_token: String
+    let refresh_token: String?
+    let expires_in: Int
+    let token_type: String
+    let scope: String?
+}
+
 /// Swift implementation of Spotify OAuth using ASWebAuthenticationSession with PKCE
 enum SpotifyAuth {
     // MARK: - PKCE Helper Functions
 
-    /// Generates a random code verifier for PKCE
-    private static func generateCodeVerifier() -> String {
-        var bytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return Data(bytes).base64EncodedString()
+    /// Converts data to base64url encoding (RFC 4648)
+    private static func base64URLEncode(_ data: Data) -> String {
+        data.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
     }
 
+    /// Generates a random code verifier for PKCE
+    private static func generateCodeVerifier() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return base64URLEncode(Data(bytes))
+    }
+
     /// Generates a code challenge from the code verifier using SHA256
     private static func generateCodeChallenge(from verifier: String) -> String {
-        let data = Data(verifier.utf8)
-        let hash = SHA256.hash(data: data)
-        return Data(hash).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+        let hash = SHA256.hash(data: Data(verifier.utf8))
+        return base64URLEncode(Data(hash))
     }
 
     /// Generates a random state parameter for OAuth
     private static func generateState() -> String {
         var bytes = [UInt8](repeating: 0, count: 16)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return Data(bytes).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+        return base64URLEncode(Data(bytes))
+    }
+
+    /// Encodes a dictionary as URL form data
+    private static func formURLEncode(_ parameters: [String: String]) -> Data? {
+        parameters
+            .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
+            .joined(separator: "&")
+            .data(using: .utf8)
     }
 
     // MARK: - Public API
@@ -211,18 +226,13 @@ enum SpotifyAuth {
         var request = URLRequest(url: tokenURL)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
-        let body = [
+        request.httpBody = formURLEncode([
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": SpotifyConfig.redirectUri,
             "client_id": SpotifyConfig.clientId,
             "code_verifier": codeVerifier,
-        ]
-
-        request.httpBody = body.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
-            .joined(separator: "&")
-            .data(using: .utf8)
+        ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -240,23 +250,17 @@ enum SpotifyAuth {
     /// - Parameter refreshToken: The refresh token to use
     /// - Returns: The new authentication result containing fresh tokens
     /// - Throws: SpotifyAuthError if refresh fails
-    @MainActor
     static func refreshAccessToken(refreshToken: String) async throws -> SpotifyAuthResult {
         let tokenURL = URL(string: "https://accounts.spotify.com/api/token")!
 
         var request = URLRequest(url: tokenURL)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
-        let body = [
+        request.httpBody = formURLEncode([
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
             "client_id": SpotifyConfig.clientId,
-        ]
-
-        request.httpBody = body.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
-            .joined(separator: "&")
-            .data(using: .utf8)
+        ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -271,16 +275,7 @@ enum SpotifyAuth {
 
     /// Parses the token response from Spotify
     private static func parseTokenResponse(data: Data) throws -> SpotifyAuthResult {
-        struct TokenResponse: Decodable {
-            let access_token: String
-            let refresh_token: String?
-            let expires_in: Int
-            let token_type: String
-            let scope: String?
-        }
-
-        let decoder = JSONDecoder()
-        let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
+        let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
 
         return SpotifyAuthResult(
             accessToken: tokenResponse.access_token,
