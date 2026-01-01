@@ -6,6 +6,11 @@
 //
 
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct NowPlayingBarView: View {
     let authResult: SpotifyAuthResult
@@ -60,7 +65,11 @@ struct NowPlayingBarView: View {
                         barHeight = newValue
                     }
                 }
-                .background(Color(NSColor.controlBackgroundColor))
+                #if os(macOS)
+            .background(Color(NSColor.controlBackgroundColor))
+            #else
+            .background(Color(UIColor.secondarySystemBackground))
+            #endif
                 .frame(height: barHeight)
             }
         }

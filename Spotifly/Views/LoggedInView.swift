@@ -5,7 +5,9 @@
 //  Created by Ralph von der Heyden on 30.12.25.
 //
 
+#if canImport(AppKit)
 import AppKit
+#endif
 import SwiftUI
 
 struct LoggedInView: View {
@@ -126,11 +128,14 @@ struct LoggedInView: View {
         }
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .onChange(of: isMiniPlayerMode) { _, newValue in
+            #if os(macOS)
             resizeWindow(miniMode: newValue)
+            #endif
         }
         .environment(devicesViewModel)
     }
 
+    #if os(macOS)
     private func resizeWindow(miniMode: Bool) {
         guard let window = NSApp.mainWindow ?? NSApp.windows.first else { return }
 
@@ -142,6 +147,7 @@ struct LoggedInView: View {
             window.setContentSize(NSSize(width: 800, height: 600))
         }
     }
+    #endif
 
     // MARK: - View Builders
 

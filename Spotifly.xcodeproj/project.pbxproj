@@ -445,12 +445,32 @@
 					Security,
 					"-framework",
 					CoreFoundation,
+				);
+				"OTHER_LDFLAGS[sdk=macosx*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
 					"-framework",
 					AudioToolbox,
 					"-framework",
 					AudioUnit,
 					"-framework",
 					CoreAudio,
+				);
+				"OTHER_LDFLAGS[sdk=iphone*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					AVFAudio,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -512,12 +532,32 @@
 					Security,
 					"-framework",
 					CoreFoundation,
+				);
+				"OTHER_LDFLAGS[sdk=macosx*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
 					"-framework",
 					AudioToolbox,
 					"-framework",
 					AudioUnit,
 					"-framework",
 					CoreAudio,
+				);
+				"OTHER_LDFLAGS[sdk=iphone*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					AVFAudio,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";

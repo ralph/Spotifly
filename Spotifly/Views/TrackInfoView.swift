@@ -5,6 +5,11 @@
 //  Created by Ralph von der Heyden on 30.12.25.
 //
 
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import SwiftUI
 
 struct TrackInfoView: View {
@@ -98,8 +103,12 @@ struct TrackInfoView: View {
                         .monospaced()
 
                     Button {
+                        #if os(macOS)
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString("spotify:track:\(track.id)", forType: .string)
+                        #else
+                        UIPasteboard.general.string = "spotify:track:\(track.id)"
+                        #endif
                     } label: {
                         Image(systemName: "doc.on.doc")
                             .font(.caption)
