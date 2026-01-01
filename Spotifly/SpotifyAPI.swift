@@ -261,6 +261,22 @@ struct RecentlyPlayedResponse: Sendable {
     let items: [RecentlyPlayedItem]
 }
 
+/// Spotify Connect device
+struct SpotifyDevice: Sendable, Identifiable {
+    let id: String
+    let name: String
+    let type: String // "Computer", "Smartphone", "Speaker", etc.
+    let isActive: Bool
+    let isPrivateSession: Bool
+    let isRestricted: Bool
+    let volumePercent: Int?
+}
+
+/// Devices response wrapper
+struct DevicesResponse: Sendable {
+    let devices: [SpotifyDevice]
+}
+
 /// Errors from Spotify API
 enum SpotifyAPIError: Error, LocalizedError {
     case invalidURI
@@ -1528,6 +1544,124 @@ enum SpotifyAPI {
         case 401:
             throw SpotifyAPIError.unauthorized
 
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    // MARK: - Spotify Connect (Devices)
+
+    /// Fetches available Spotify Connect devices
+    static func fetchAvailableDevices(accessToken: String) async throws -> DevicesResponse {
+        let urlString = "\(baseURL)/me/player/devices"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let devicesArray = json["devices"] as? [[String: Any]]
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            let devices = devicesArray.compactMap { deviceData -> SpotifyDevice? in
+                guard let id = deviceData["id"] as? String,
+                      let name = deviceData["name"] as? String,
+                      let type = deviceData["type"] as? String,
+                      let isActive = deviceData["is_active"] as? Bool,
+                      let isPrivateSession = deviceData["is_private_session"] as? Bool,
+                      let isRestricted = deviceData["is_restricted"] as? Bool
+                else {
+                    return nil
+                }
+
+                let volumePercent = deviceData["volume_percent"] as? Int
+
+                return SpotifyDevice(
+                    id: id,
+                    name: name,
+                    type: type,
+                    isActive: isActive,
+                    isPrivateSession: isPrivateSession,
+                    isRestricted: isRestricted,
+                    volumePercent: volumePercent
+                )
+            }
+
+            return DevicesResponse(devices: devices)
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Transfers playback to a different device
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - deviceId: The device ID to transfer playback to
+    ///   - play: Whether to start playing on the new device (default: true)
+    static func transferPlayback(accessToken: String, deviceId: String, play: Bool = true) async throws {
+        let urlString = "\(baseURL)/me/player"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Create request body
+        let body: [String: Any] = [
+            "device_ids": [deviceId],
+            "play": play,
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 204:
+            // Success - playback transferred
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 403:
+            throw SpotifyAPIError.apiError("Device is restricted and cannot accept playback")
+        case 404:
+            throw SpotifyAPIError.notFound
         default:
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let error = errorJson["error"] as? [String: Any],

@@ -16,6 +16,7 @@
 "nav.albums" = "Alben";
 "nav.artists" = "Künstler";
 "nav.queue" = "Warteschlange";
+"nav.devices" = "Geräte";
 "nav.library" = "Bibliothek";
 
 /* Common Actions */
@@ -102,3 +103,12 @@
 
 /* Show All Button */
 "show_all.tracks" = "Alle %d Tracks anzeigen";
+
+/* Devices (Spotify Connect) */
+"devices.title" = "Verfügbare Geräte";
+"devices.active" = "Aktiv";
+"devices.empty" = "Keine Geräte gefunden";
+"devices.empty_hint" = "Öffne Spotify auf einem anderen Gerät, um es hier zu sehen";
+"devices.error.not_logged_in" = "Nicht angemeldet";
+"devices.error.failed_to_load" = "Geräte konnten nicht geladen werden";
+"devices.error.failed_to_transfer" = "Wiedergabe konnte nicht übertragen werden";
