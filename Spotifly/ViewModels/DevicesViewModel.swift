@@ -46,19 +46,19 @@ final class DevicesViewModel {
     func deviceIcon(for type: String) -> String {
         switch type.lowercased() {
         case "computer":
-            return "desktopcomputer"
+            "desktopcomputer"
         case "smartphone":
-            return "iphone"
+            "iphone"
         case "speaker":
-            return "hifispeaker"
+            "hifispeaker"
         case "tv":
-            return "tv"
+            "tv"
         case "avr", "stb":
-            return "appletv"
+            "appletv"
         case "automobile":
-            return "car"
+            "car"
         default:
-            return "speaker.wave.2"
+            "speaker.wave.2"
         }
     }
 }
