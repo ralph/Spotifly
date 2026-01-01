@@ -15,6 +15,7 @@ enum NavigationItem: Hashable, Identifiable {
     case albums
     case artists
     case queue
+    case devices
 
     var id: Self { self }
 
@@ -34,6 +35,8 @@ enum NavigationItem: Hashable, Identifiable {
             String(localized: "nav.artists")
         case .queue:
             String(localized: "nav.queue")
+        case .devices:
+            String(localized: "nav.devices")
         }
     }
 
@@ -53,6 +56,8 @@ enum NavigationItem: Hashable, Identifiable {
             "person.2.fill"
         case .queue:
             "list.bullet"
+        case .devices:
+            "hifispeaker.2.fill"
         }
     }
 }
@@ -65,7 +70,7 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $selection) {
             Section {
-                ForEach([NavigationItem.startpage, NavigationItem.queue]) { item in
+                ForEach([NavigationItem.startpage, NavigationItem.queue, NavigationItem.devices]) { item in
                     NavigationLink(value: item) {
                         Label(item.title, systemImage: item.icon)
                     }

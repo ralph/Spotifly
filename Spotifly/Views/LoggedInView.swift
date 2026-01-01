@@ -21,6 +21,7 @@ struct LoggedInView: View {
     @State private var queueViewModel = QueueViewModel()
     @State private var searchViewModel = SearchViewModel()
     @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
+    @State private var devicesViewModel = DevicesViewModel()
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var isMiniPlayerMode = false
     @State private var searchText = ""
@@ -127,6 +128,7 @@ struct LoggedInView: View {
         .onChange(of: isMiniPlayerMode) { _, newValue in
             resizeWindow(miniMode: newValue)
         }
+        .environment(devicesViewModel)
     }
 
     private func resizeWindow(miniMode: Bool) {
@@ -226,6 +228,10 @@ struct LoggedInView: View {
                             playbackViewModel: playbackViewModel,
                         )
                         .navigationTitle("nav.queue")
+
+                    case .devices:
+                        DevicesView(authResult: authResult)
+                            .navigationTitle("nav.devices")
 
                     case .searchResults:
                         // Handled in outer if statement
