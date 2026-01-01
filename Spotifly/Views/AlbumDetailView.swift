@@ -16,6 +16,19 @@ struct AlbumDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    private var totalDuration: String {
+        let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
+        let totalSeconds = totalMs / 1000
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+
+        if hours > 0 {
+            return String(format: "%d hr %d min", hours, minutes)
+        } else {
+            return String(format: "%d min", minutes)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -66,6 +79,14 @@ struct AlbumDetailView: View {
                             Text(String(format: String(localized: "metadata.tracks"), album.totalTracks))
                                 .font(.subheadline)
                                 .foregroundStyle(.tertiary)
+                            if !tracks.isEmpty {
+                                Text("metadata.separator")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.tertiary)
+                                Text(totalDuration)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.tertiary)
+                            }
                             Text("metadata.separator")
                                 .font(.subheadline)
                                 .foregroundStyle(.tertiary)
@@ -100,7 +121,7 @@ struct AlbumDetailView: View {
                         .padding()
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(tracks) { track in
+                        ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
                             TrackRow(
                                 track: track.toTrackRowData(),
                                 showTrackNumber: true,
@@ -115,7 +136,7 @@ struct AlbumDetailView: View {
                                 }
                             }
 
-                            if track.id != tracks.last?.id {
+                            if index < tracks.count - 1 {
                                 Divider()
                                     .padding(.leading, 54)
                             }
@@ -127,14 +148,14 @@ struct AlbumDetailView: View {
                 }
             }
         }
-        .task {
+        .task(id: album.id) {
             await loadTracks()
         }
     }
 
     private func loadTracks() async {
-        guard tracks.isEmpty else { return }
-
+        // Clear old tracks when loading new album
+        tracks = []
         isLoading = true
         errorMessage = nil
 

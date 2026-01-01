@@ -61,6 +61,7 @@ final class RecentlyPlayedViewModel {
             var seenIds: Set<String> = []
             var mixedItems: [RecentItem] = []
             var playlistIdsToFetch: [String] = []
+            var albumIdsToFetch: [String] = []
 
             for item in response.items {
                 guard let context = item.context else { continue }
@@ -71,16 +72,7 @@ final class RecentlyPlayedViewModel {
 
                 switch context.type {
                 case "album":
-                    let album = SearchAlbum(
-                        id: itemId,
-                        name: item.track.albumName,
-                        uri: context.uri,
-                        artistName: item.track.artistName,
-                        imageURL: item.track.imageURL,
-                        totalTracks: 0,
-                        releaseDate: "",
-                    )
-                    mixedItems.append(.album(album))
+                    albumIdsToFetch.append(itemId)
 
                 case "artist":
                     let artist = SearchArtist(
@@ -99,6 +91,32 @@ final class RecentlyPlayedViewModel {
                 default:
                     break
                 }
+            }
+
+            // Fetch album details concurrently
+            let fetchedAlbums = await withTaskGroup(of: (id: String, album: SearchAlbum?).self) { group in
+                for albumId in albumIdsToFetch {
+                    group.addTask {
+                        do {
+                            let albumDetails = try await SpotifyAPI.fetchAlbumDetails(
+                                accessToken: accessToken,
+                                albumId: albumId,
+                            )
+                            return (albumId, albumDetails)
+                        } catch {
+                            // Skip albums that can't be fetched
+                        }
+                        return (albumId, nil)
+                    }
+                }
+
+                var results: [String: SearchAlbum] = [:]
+                for await (id, album) in group {
+                    if let album {
+                        results[id] = album
+                    }
+                }
+                return results
             }
 
             // Fetch playlist details concurrently
@@ -129,14 +147,26 @@ final class RecentlyPlayedViewModel {
                 return results
             }
 
-            // Insert playlists in the correct order
+            // Insert albums, playlists, and artists in the correct order
             var finalItems: [RecentItem] = []
 
             for item in response.items {
                 guard let context = item.context else { continue }
                 let itemId = extractId(from: context.uri)
 
-                if context.type == "playlist", let playlist = fetchedPlaylists[itemId] {
+                if context.type == "album", let album = fetchedAlbums[itemId] {
+                    // Check if we've already added this album
+                    let alreadyAdded = finalItems.contains { recentItem in
+                        if case let .album(a) = recentItem, a.id == album.id {
+                            return true
+                        }
+                        return false
+                    }
+
+                    if !alreadyAdded {
+                        finalItems.append(.album(album))
+                    }
+                } else if context.type == "playlist", let playlist = fetchedPlaylists[itemId] {
                     // Check if we've already added this playlist
                     let alreadyAdded = finalItems.contains { recentItem in
                         if case let .playlist(p) = recentItem, p.id == playlist.id {
@@ -148,14 +178,13 @@ final class RecentlyPlayedViewModel {
                     if !alreadyAdded {
                         finalItems.append(.playlist(playlist))
                     }
-                } else if context.type != "playlist" {
-                    // Add non-playlist item if not already added
+                } else if context.type == "artist" {
+                    // Add artist if not already added
                     let matchingItem = mixedItems.first { recentItem in
-                        switch recentItem {
-                        case let .album(album): album.id == itemId
-                        case let .artist(artist): artist.id == itemId
-                        case .playlist: false
+                        if case let .artist(artist) = recentItem, artist.id == itemId {
+                            return true
                         }
+                        return false
                     }
 
                     if let matchingItem {

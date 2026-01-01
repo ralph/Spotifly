@@ -608,6 +608,85 @@ enum SpotifyAPI {
         )
     }
 
+    /// Fetches a single album's details from Spotify Web API
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - albumId: Album ID
+    static func fetchAlbumDetails(accessToken: String, albumId: String) async throws -> SearchAlbum {
+        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(name),images"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw SpotifyAPIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+
+        // Parse JSON response
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        guard let id = json["id"] as? String,
+              let name = json["name"] as? String,
+              let uri = json["uri"] as? String,
+              let totalTracks = json["total_tracks"] as? Int,
+              let releaseDate = json["release_date"] as? String,
+              let artists = json["artists"] as? [[String: Any]]
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        let artistName = artists.first?["name"] as? String ?? "Unknown Artist"
+
+        var imageURL: URL?
+        if let images = json["images"] as? [[String: Any]],
+           let firstImage = images.first,
+           let urlString = firstImage["url"] as? String
+        {
+            imageURL = URL(string: urlString)
+        }
+
+        return SearchAlbum(
+            id: id,
+            name: name,
+            uri: uri,
+            artistName: artistName,
+            imageURL: imageURL,
+            totalTracks: totalTracks,
+            releaseDate: releaseDate,
+        )
+    }
+
     /// Fetches user's saved albums from Spotify Web API
     /// - Parameters:
     ///   - accessToken: Spotify access token
@@ -1470,7 +1549,7 @@ enum SpotifyAPI {
         accessToken: String,
         limit: Int = 50,
     ) async throws -> RecentlyPlayedResponse {
-        let urlString = "\(baseURL)/me/player/recently-played?limit=\(limit)&fields=items(track(id,name,uri,duration_ms,artists(name),album(name,images)),played_at,context(type,uri))"
+        let urlString = "\(baseURL)/me/player/recently-played?limit=\(limit)"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1602,7 +1681,7 @@ enum SpotifyAPI {
                     isActive: isActive,
                     isPrivateSession: isPrivateSession,
                     isRestricted: isRestricted,
-                    volumePercent: volumePercent
+                    volumePercent: volumePercent,
                 )
             }
 

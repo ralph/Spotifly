@@ -16,6 +16,19 @@ struct PlaylistDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    private var totalDuration: String {
+        let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
+        let totalSeconds = totalMs / 1000
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+
+        if hours > 0 {
+            return String(format: "%d hr %d min", hours, minutes)
+        } else {
+            return String(format: "%d min", minutes)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -76,6 +89,14 @@ struct PlaylistDetailView: View {
                             Text(String(format: String(localized: "metadata.tracks"), playlist.trackCount))
                                 .font(.subheadline)
                                 .foregroundStyle(.tertiary)
+                            if !tracks.isEmpty {
+                                Text("metadata.separator")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.tertiary)
+                                Text(totalDuration)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
 
@@ -104,7 +125,7 @@ struct PlaylistDetailView: View {
                         .padding()
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                        ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
                             TrackRow(
                                 track: track.toTrackRowData(),
                                 index: index,
@@ -119,7 +140,7 @@ struct PlaylistDetailView: View {
                                 }
                             }
 
-                            if track.id != tracks.last?.id {
+                            if index < tracks.count - 1 {
                                 Divider()
                                     .padding(.leading, 94)
                             }
@@ -131,14 +152,14 @@ struct PlaylistDetailView: View {
                 }
             }
         }
-        .task {
+        .task(id: playlist.id) {
             await loadTracks()
         }
     }
 
     private func loadTracks() async {
-        guard tracks.isEmpty else { return }
-
+        // Clear old tracks when loading new playlist
+        tracks = []
         isLoading = true
         errorMessage = nil
 
