@@ -8,6 +8,9 @@
 import AuthenticationServices
 import CryptoKit
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Actor that manages Spotify authentication and player operations
 @globalActor
@@ -181,9 +184,16 @@ enum SpotifyAuth {
         }
 
         // Get the presentation anchor
+        #if os(macOS)
         guard let anchor = NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first else {
             throw SpotifyAuthError.authenticationFailed
         }
+        #else
+        guard let windowScene = await UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let anchor = windowScene.windows.first else {
+            throw SpotifyAuthError.authenticationFailed
+        }
+        #endif
 
         // Create session manager and start auth
         let authSession = AuthenticationSession(anchor: anchor)

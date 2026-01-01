@@ -6,7 +6,11 @@
 //
 
 import SwiftUI
-
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import MediaPlayer
 
 @MainActor
@@ -370,16 +374,20 @@ final class PlaybackViewModel {
             Task {
                 do {
                     let (data, _) = try await URLSession.shared.data(from: url)
+                    #if os(macOS)
                     guard let image = NSImage(data: data) else { return }
+                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    #else
+                    guard let image = UIImage(data: data) else { return }
+                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    #endif
 
                     // Update Now Playing on main actor
                     await MainActor.run {
                         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
                         // Mark closure as @Sendable to fix crash - MPNowPlayingInfoCenter executes
                         // the closure on an internal dispatch queue, not on MainActor
-                        info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in
-                            image
-                        }
+                        info[MPMediaItemPropertyArtwork] = artwork
                         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
                     }
                 } catch {
