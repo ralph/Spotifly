@@ -7,10 +7,10 @@
 //  To get your own credentials:
 //  1. Go to https://developer.spotify.com/dashboard
 //  2. Create a new app
-//  3. Add "http://127.0.0.1:8888/login" as a Redirect URI in the app settings
-//  4. Set environment variables in Xcode:
+//  3. Add "de.rvdh.spotifly://callback" as a Redirect URI in the app settings
+//  4. Set environment variable in Xcode:
 //     - Edit Scheme > Run > Arguments > Environment Variables
-//     - Add: SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI
+//     - Add: SPOTIFY_CLIENT_ID
 //
 
 import Foundation
@@ -35,19 +35,25 @@ enum SpotifyConfig: Sendable {
         return value
     }()
 
-    /// Your Spotify App Client Secret (from SPOTIFY_CLIENT_SECRET environment variable)
-    nonisolated static let clientSecret: String = {
-        guard let value = ProcessInfo.processInfo.environment["SPOTIFY_CLIENT_SECRET"] else {
-            fatalError("Missing required environment variable: SPOTIFY_CLIENT_SECRET")
-        }
-        return value
-    }()
+    /// Redirect URI for OAuth callback
+    nonisolated static let redirectUri = "de.rvdh.spotifly://callback"
 
-    /// Redirect URI (from SPOTIFY_REDIRECT_URI environment variable)
-    nonisolated static let redirectUri: String = {
-        guard let value = ProcessInfo.processInfo.environment["SPOTIFY_REDIRECT_URI"] else {
-            fatalError("Missing required environment variable: SPOTIFY_REDIRECT_URI")
-        }
-        return value
-    }()
+    /// URL scheme for the callback (extracted from redirectUri)
+    nonisolated static let callbackURLScheme = "de.rvdh.spotifly"
+
+    /// OAuth scopes required by the app
+    nonisolated static let scopes: [String] = [
+        "user-read-private",
+        "user-read-email",
+        "streaming",
+        "user-read-playback-state",
+        "user-modify-playback-state",
+        "user-read-currently-playing",
+        "playlist-read-private",
+        "playlist-read-collaborative",
+        "user-library-read",
+        "user-library-modify",
+        "user-follow-read",
+        "user-read-recently-played",
+    ]
 }
