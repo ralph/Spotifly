@@ -58,49 +58,33 @@ enum SpotifyAuthError: Error, Sendable, LocalizedError {
 /// Helper class to manage the auth session and its delegate
 private final class AuthenticationSession: NSObject, ASWebAuthenticationPresentationContextProviding, @unchecked Sendable {
     private let anchor: ASPresentationAnchor
-    private nonisolated(unsafe) var session: ASWebAuthenticationSession?
-    private nonisolated(unsafe) var continuation: CheckedContinuation<URL, Error>?
 
     init(anchor: ASPresentationAnchor) {
         self.anchor = anchor
     }
 
     nonisolated func authenticate(url: URL, callbackURLScheme: String) async throws -> URL {
-        // Must be called from main actor but method itself is nonisolated
         await MainActor.run {
             precondition(Thread.isMainThread, "ASWebAuthenticationSession must start on main thread")
         }
 
-        // Sendable wrapper for the continuation box
-        final class ContinuationBox: @unchecked Sendable {
-            var continuation: CheckedContinuation<URL, Error>?
-        }
-
-        let box = ContinuationBox()
-
         return try await withCheckedThrowingContinuation { continuation in
-            box.continuation = continuation
-
             // Create completion handler in nonisolated context to avoid isolation checking
             let completionHandler: @Sendable (URL?, Error?) -> Void = { callbackURL, error in
-                // Access continuation safely
-                guard let cont = box.continuation else { return }
-                box.continuation = nil
-
                 if let error {
                     if let asError = error as? ASWebAuthenticationSessionError, asError.code == .canceledLogin {
-                        cont.resume(throwing: SpotifyAuthError.userCancelled)
+                        continuation.resume(throwing: SpotifyAuthError.userCancelled)
                     } else {
-                        cont.resume(throwing: error)
+                        continuation.resume(throwing: error)
                     }
                 } else if let callbackURL {
-                    cont.resume(returning: callbackURL)
+                    continuation.resume(returning: callbackURL)
                 } else {
-                    cont.resume(throwing: SpotifyAuthError.invalidCallbackURL)
+                    continuation.resume(throwing: SpotifyAuthError.invalidCallbackURL)
                 }
             }
 
-            // We know we're on main thread, use assumeIsolated to access MainActor state
+            // Access MainActor-isolated self to configure session
             MainActor.assumeIsolated {
                 let session = ASWebAuthenticationSession(
                     url: url,
@@ -110,7 +94,6 @@ private final class AuthenticationSession: NSObject, ASWebAuthenticationPresenta
 
                 session.presentationContextProvider = self
                 session.prefersEphemeralWebBrowserSession = false
-                self.session = session
                 session.start()
             }
         }
