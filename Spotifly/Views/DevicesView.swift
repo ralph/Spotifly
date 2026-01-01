@@ -36,7 +36,7 @@ struct DevicesView: View {
             if viewModel.isLoading {
                 Spacer()
                 ProgressView()
-                    .scaleEffect(1.2)
+                    .controlSize(.large)
                 Spacer()
             } else if let errorMessage = viewModel.errorMessage {
                 Spacer()
