@@ -30,7 +30,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		CAA7B2FF2F04363800E959B5 /* Exceptions for "Spotifly" */ = {
+		CAA7B2FF2F04363800E959B5 /* Exceptions for "Spotifly" folder in "Spotifly" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -43,7 +43,7 @@
 		CAA7B25A2F04363800E959B5 /* Spotifly */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				CAA7B2FF2F04363800E959B5 /* Exceptions for "Spotifly" */,
+				CAA7B2FF2F04363800E959B5 /* Exceptions for "Spotifly" folder in "Spotifly" target */,
 			);
 			path = Spotifly;
 			sourceTree = "<group>";
@@ -112,7 +112,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = CAA7B2792F04363900E959B5 /* Build configuration list for PBXNativeTarget "Spotifly" */;
 			buildPhases = (
-				CAA7B2D4D7409B09984F4FA8 /* ShellScript */,
+				CAA7B2D4D7409B09984F4FA8 /* Build Rust Library */,
 				CAA7B2542F04363800E959B5 /* Sources */,
 				CAA7B2552F04363800E959B5 /* Frameworks */,
 				CAA7B2562F04363800E959B5 /* Resources */,
@@ -246,31 +246,8 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXSourcesBuildPhase section */
-		CAA7B2542F04363800E959B5 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CAA7B2612F04363900E959B5 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		CAA7B26B2F04363900E959B5 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXSourcesBuildPhase section */
 /* Begin PBXShellScriptBuildPhase section */
-	CAA7B2D4D7409B09984F4FA8 /* ShellScript */ = {
+		CAA7B2D4D7409B09984F4FA8 /* Build Rust Library */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -297,6 +274,29 @@
 		};
 /* End PBXShellScriptBuildPhase section */
 
+/* Begin PBXSourcesBuildPhase section */
+		CAA7B2542F04363800E959B5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAA7B2612F04363900E959B5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CAA7B26B2F04363900E959B5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		CAA7B2672F04363900E959B5 /* PBXTargetDependency */ = {
@@ -475,6 +475,17 @@
 					"-framework",
 					CoreFoundation,
 				);
+				"OTHER_LDFLAGS[sdk=iphone*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					AVFAudio,
+				);
 				"OTHER_LDFLAGS[sdk=macosx*]" = (
 					"-lspotifly_rust",
 					"-framework",
@@ -489,17 +500,6 @@
 					AudioUnit,
 					"-framework",
 					CoreAudio,
-				);
-				"OTHER_LDFLAGS[sdk=iphone*]" = (
-					"-lspotifly_rust",
-					"-framework",
-					SystemConfiguration,
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
-					"-framework",
-					AVFAudio,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -562,6 +562,17 @@
 					"-framework",
 					CoreFoundation,
 				);
+				"OTHER_LDFLAGS[sdk=iphone*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					AVFAudio,
+				);
 				"OTHER_LDFLAGS[sdk=macosx*]" = (
 					"-lspotifly_rust",
 					"-framework",
@@ -576,17 +587,6 @@
 					AudioUnit,
 					"-framework",
 					CoreAudio,
-				);
-				"OTHER_LDFLAGS[sdk=iphone*]" = (
-					"-lspotifly_rust",
-					"-framework",
-					SystemConfiguration,
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
-					"-framework",
-					AVFAudio,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
