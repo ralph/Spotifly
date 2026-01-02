@@ -112,6 +112,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = CAA7B2792F04363900E959B5 /* Build configuration list for PBXNativeTarget "Spotifly" */;
 			buildPhases = (
+				CAA7B2D4D7409B09984F4FA8 /* ShellScript */,
 				CAA7B2542F04363800E959B5 /* Sources */,
 				CAA7B2552F04363800E959B5 /* Frameworks */,
 				CAA7B2562F04363800E959B5 /* Resources */,
@@ -268,6 +269,34 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+/* Begin PBXShellScriptBuildPhase section */
+	CAA7B2D4D7409B09984F4FA8 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/rust/Cargo.toml",
+				"$(SRCROOT)/rust/Cargo.lock",
+				"$(SRCROOT)/rust/build.sh",
+				"$(SRCROOT)/rust/src",
+			);
+			name = "Build Rust Library";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(PROJECT_DIR)/build/rust/lib/libspotifly_rust.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "cd \"$PROJECT_DIR/rust\"\nexport PATH=\"$HOME/.cargo/bin:$PATH\"\n./build.sh\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 
 /* Begin PBXTargetDependency section */
 		CAA7B2672F04363900E959B5 /* PBXTargetDependency */ = {
@@ -323,7 +352,7 @@
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -387,7 +416,7 @@
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -445,12 +474,32 @@
 					Security,
 					"-framework",
 					CoreFoundation,
+				);
+				"OTHER_LDFLAGS[sdk=macosx*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
 					"-framework",
 					AudioToolbox,
 					"-framework",
 					AudioUnit,
 					"-framework",
 					CoreAudio,
+				);
+				"OTHER_LDFLAGS[sdk=iphone*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					AVFAudio,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -512,12 +561,32 @@
 					Security,
 					"-framework",
 					CoreFoundation,
+				);
+				"OTHER_LDFLAGS[sdk=macosx*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
 					"-framework",
 					AudioToolbox,
 					"-framework",
 					AudioUnit,
 					"-framework",
 					CoreAudio,
+				);
+				"OTHER_LDFLAGS[sdk=iphone*]" = (
+					"-lspotifly_rust",
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					AVFAudio,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
