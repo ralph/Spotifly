@@ -334,14 +334,42 @@ struct RecentContentSection: View {
 
                         case let .artist(artist):
                             VStack(spacing: 8) {
-                                Circle()
-                                    .fill(Color.gray.opacity(0.2))
-                                    .frame(width: 120, height: 120)
-                                    .overlay(
-                                        Image(systemName: "person.circle.fill")
-                                            .font(.system(size: 60))
-                                            .foregroundStyle(.secondary),
-                                    )
+                                if let imageURL = artist.imageURL {
+                                    AsyncImage(url: imageURL) { phase in
+                                        switch phase {
+                                        case .empty:
+                                            ProgressView()
+                                                .frame(width: 120, height: 120)
+                                        case let .success(image):
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 120, height: 120)
+                                                .clipShape(Circle())
+                                                .shadow(radius: 2)
+                                        case .failure:
+                                            Circle()
+                                                .fill(Color.gray.opacity(0.2))
+                                                .frame(width: 120, height: 120)
+                                                .overlay(
+                                                    Image(systemName: "person.circle.fill")
+                                                        .font(.system(size: 60))
+                                                        .foregroundStyle(.secondary),
+                                                )
+                                        @unknown default:
+                                            EmptyView()
+                                        }
+                                    }
+                                } else {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.2))
+                                        .frame(width: 120, height: 120)
+                                        .overlay(
+                                            Image(systemName: "person.circle.fill")
+                                                .font(.system(size: 60))
+                                                .foregroundStyle(.secondary),
+                                        )
+                                }
 
                                 Text(artist.name)
                                     .font(.caption)
