@@ -12,6 +12,8 @@ struct NowPlayingBarView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     @ObservedObject var windowState: WindowState
 
+    @State private var barHeight: CGFloat = 66
+
     // Helper function for time formatting
     private func formatTime(_ milliseconds: UInt32) -> String {
         let totalSeconds = Int(milliseconds / 1000)
@@ -31,7 +33,7 @@ struct NowPlayingBarView: View {
                 GeometryReader { geometry in
                     let isCompact = geometry.size.width < 750
                     let isVeryNarrow = geometry.size.width < 600
-                    let barHeight: CGFloat = (isCompact && !windowState.isMiniPlayerMode) ? 90 : 66
+                    let calculatedHeight: CGFloat = (isCompact && !windowState.isMiniPlayerMode) ? 90 : 66
 
                     Group {
                         if isCompact {
@@ -51,9 +53,15 @@ struct NowPlayingBarView: View {
                                 .padding(.vertical, 8)
                         }
                     }
-                    .frame(height: barHeight)
+                    .onAppear {
+                        barHeight = calculatedHeight
+                    }
+                    .onChange(of: calculatedHeight) { _, newValue in
+                        barHeight = newValue
+                    }
                 }
                 .background(Color(NSColor.controlBackgroundColor))
+                .frame(height: barHeight)
             }
         }
     }
