@@ -59,7 +59,6 @@ final class RecentlyPlayedViewModel {
 
             // Process mixed items (albums, artists, playlists) in order of appearance
             var seenIds: Set<String> = []
-            var mixedItems: [RecentItem] = []
             var playlistIdsToFetch: [String] = []
             var albumIdsToFetch: [String] = []
             var artistIdsToFetch: [String] = []
