@@ -12,6 +12,8 @@ struct LoggedInView: View {
     let authResult: SpotifyAuthResult
     let onLogout: () -> Void
 
+    @EnvironmentObject var windowState: WindowState
+
     @State private var trackViewModel = TrackLookupViewModel()
     @State private var playbackViewModel = PlaybackViewModel()
     @State private var favoritesViewModel = FavoritesViewModel()
@@ -23,7 +25,6 @@ struct LoggedInView: View {
     @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
     @State private var devicesViewModel = DevicesViewModel()
     @State private var selectedNavigationItem: NavigationItem? = .startpage
-    @State private var isMiniPlayerMode = false
     @State private var searchText = ""
     @State private var searchFieldFocused = false
 
@@ -60,7 +61,7 @@ struct LoggedInView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !isMiniPlayerMode {
+            if !windowState.isMiniPlayerMode {
                 if needsThreeColumnLayout {
                     // Three-column layout: sidebar + content + detail
                     NavigationSplitView {
@@ -121,26 +122,11 @@ struct LoggedInView: View {
             NowPlayingBarView(
                 authResult: authResult,
                 playbackViewModel: playbackViewModel,
-                isMiniPlayerMode: $isMiniPlayerMode,
+                windowState: windowState,
             )
         }
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
-        .onChange(of: isMiniPlayerMode) { _, newValue in
-            resizeWindow(miniMode: newValue)
-        }
         .environment(devicesViewModel)
-    }
-
-    private func resizeWindow(miniMode: Bool) {
-        guard let window = NSApp.mainWindow ?? NSApp.windows.first else { return }
-
-        if miniMode {
-            // Mini mode: resize to compact size
-            window.setContentSize(NSSize(width: 600, height: 120))
-        } else {
-            // Normal mode: resize to default size
-            window.setContentSize(NSSize(width: 800, height: 600))
-        }
     }
 
     // MARK: - View Builders

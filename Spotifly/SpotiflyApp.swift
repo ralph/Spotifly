@@ -10,6 +10,8 @@ import SwiftUI
 
 @main
 struct SpotiflyApp: App {
+    @StateObject private var windowState = WindowState()
+
     init() {
         // Set activation policy to regular to support media keys
         NSApplication.shared.setActivationPolicy(.regular)
@@ -18,6 +20,8 @@ struct SpotiflyApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(windowState)
         }
+        .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
     }
 }
