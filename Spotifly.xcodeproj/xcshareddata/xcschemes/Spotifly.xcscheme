@@ -74,23 +74,6 @@
             ReferencedContainer = "container:Spotifly.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <EnvironmentVariables>
-         <EnvironmentVariable
-            key = "SPOTIFY_CLIENT_ID"
-            value = "REDACTED"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "SPOTIFY_CLIENT_SECRET"
-            value = "e90bc6821050464c8cac13a98391f9fd"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "SPOTIFY_REDIRECT_URI"
-            value = "http://127.0.0.1:8888/login"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

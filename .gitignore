@@ -29,5 +29,6 @@ rust/target/
 *.swo
 
 .envrc
+Secrets.xcconfig
 
 plans.md

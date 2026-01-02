@@ -8,7 +8,8 @@
 //  1. Go to https://developer.spotify.com/dashboard
 //  2. Create a new app
 //  3. Add "de.rvdh.spotifly://callback" as a Redirect URI in the app settings
-//  4. Set environment variable in Xcode:
+//  4. Add your Client ID to Info.plist with key "SpotifyClientID"
+//     OR set environment variable in Xcode for development:
 //     - Edit Scheme > Run > Arguments > Environment Variables
 //     - Add: SPOTIFY_CLIENT_ID
 //
@@ -27,12 +28,21 @@ enum SpotifyConfigError: Error, LocalizedError {
 }
 
 enum SpotifyConfig: Sendable {
-    /// Your Spotify App Client ID (from SPOTIFY_CLIENT_ID environment variable)
+    /// Your Spotify App Client ID (from Info.plist or SPOTIFY_CLIENT_ID environment variable)
     nonisolated static let clientId: String = {
-        guard let value = ProcessInfo.processInfo.environment["SPOTIFY_CLIENT_ID"] else {
-            fatalError("Missing required environment variable: SPOTIFY_CLIENT_ID")
+        // First try to read from Info.plist (for release builds)
+        if let infoPlistValue = Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String,
+           !infoPlistValue.isEmpty
+        {
+            return infoPlistValue
         }
-        return value
+
+        // Fall back to environment variable (for development)
+        if let envValue = ProcessInfo.processInfo.environment["SPOTIFY_CLIENT_ID"] {
+            return envValue
+        }
+
+        fatalError("Missing Spotify Client ID. Add SpotifyClientID to Info.plist or set SPOTIFY_CLIENT_ID environment variable.")
     }()
 
     /// Redirect URI for OAuth callback
