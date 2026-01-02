@@ -15,7 +15,7 @@ import UIKit
 struct NowPlayingBarView: View {
     let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Binding var isMiniPlayerMode: Bool
+    @ObservedObject var windowState: WindowState
 
     @State private var barHeight: CGFloat = 66
 
@@ -31,14 +31,14 @@ struct NowPlayingBarView: View {
         if playbackViewModel.queueLength > 0 {
             VStack(spacing: 0) {
                 // Only show divider when not in mini player mode
-                if !isMiniPlayerMode {
+                if !windowState.isMiniPlayerMode {
                     Divider()
                 }
 
                 GeometryReader { geometry in
                     let isCompact = geometry.size.width < 750
                     let isVeryNarrow = geometry.size.width < 600
-                    let calculatedHeight: CGFloat = (isCompact && !isMiniPlayerMode) ? 90 : 66
+                    let calculatedHeight: CGFloat = (isCompact && !windowState.isMiniPlayerMode) ? 90 : 66
 
                     Group {
                         if isCompact {
@@ -49,7 +49,7 @@ struct NowPlayingBarView: View {
                                     .padding(.horizontal, 8)
                             }
                             .padding(.horizontal, 16)
-                            .padding(.top, isMiniPlayerMode ? 4 : 8)
+                            .padding(.top, windowState.isMiniPlayerMode ? 4 : 8)
                             .padding(.bottom, 8)
                         } else {
                             // Wide layout: original layout
@@ -343,14 +343,14 @@ struct NowPlayingBarView: View {
     private var miniPlayerToggle: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
-                isMiniPlayerMode.toggle()
+                windowState.toggleMiniPlayerMode()
             }
         } label: {
-            Image(systemName: isMiniPlayerMode ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
+            Image(systemName: windowState.isMiniPlayerMode ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .help(isMiniPlayerMode ? "mini_player.restore" : "mini_player.enter")
+        .help(windowState.isMiniPlayerMode ? "mini_player.restore" : "mini_player.enter")
     }
 }

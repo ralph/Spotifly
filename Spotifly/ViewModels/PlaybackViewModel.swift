@@ -39,7 +39,10 @@ final class PlaybackViewModel {
     // Volume (0.0 - 1.0)
     var volume: Double = 0.5 {
         didSet {
-            SpotifyPlayer.setVolume(volume)
+            // Only apply volume if player is initialized (mixer is ready)
+            if isInitialized {
+                SpotifyPlayer.setVolume(volume)
+            }
             saveVolume()
         }
     }
@@ -55,8 +58,12 @@ final class PlaybackViewModel {
     init() {
         setupRemoteCommandCenter()
 
-        // Load saved volume
-        loadVolume()
+        // Load saved volume (but don't apply it yet - mixer isn't initialized)
+        let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
+        if savedVolume > 0 {
+            volume = savedVolume
+        }
+        // Volume will be applied when playback starts
 
         // Set initial Now Playing info to claim media controls
         var initialInfo: [String: Any] = [:]
@@ -99,11 +106,7 @@ final class PlaybackViewModel {
 
         do {
             try await SpotifyPlayer.play(uriOrUrl: uriOrUrl)
-            currentTrackId = uriOrUrl
-            isPlaying = true
-            playbackStartTime = Date()
-            updateQueueState()
-            await checkCurrentTrackFavoriteStatus(accessToken: accessToken)
+            await handlePlaybackStarted(trackId: uriOrUrl, accessToken: accessToken)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -136,16 +139,25 @@ final class PlaybackViewModel {
 
         do {
             try await SpotifyPlayer.playTracks(trackUris)
-            currentTrackId = trackUris[0]
-            isPlaying = true
-            playbackStartTime = Date()
-            updateQueueState()
-            await checkCurrentTrackFavoriteStatus(accessToken: accessToken)
+            await handlePlaybackStarted(trackId: trackUris[0], accessToken: accessToken)
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLoading = false
+    }
+
+    // MARK: - Playback State Helpers
+
+    /// Common setup after playback has started
+    private func handlePlaybackStarted(trackId: String, accessToken: String) async {
+        currentTrackId = trackId
+        isPlaying = true
+        playbackStartTime = Date()
+        // Apply volume after playback starts (mixer is now initialized)
+        SpotifyPlayer.setVolume(volume)
+        updateQueueState()
+        await checkCurrentTrackFavoriteStatus(accessToken: accessToken)
     }
 
     func togglePlayPause(trackId: String, accessToken: String) async {
@@ -494,18 +506,6 @@ final class PlaybackViewModel {
     }
 
     // MARK: - Volume Persistence
-
-    private func loadVolume() {
-        let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
-        if savedVolume > 0 {
-            volume = savedVolume
-        } else {
-            // Default volume if not saved
-            volume = 0.5
-        }
-        // Apply to player immediately
-        SpotifyPlayer.setVolume(volume)
-    }
 
     private func saveVolume() {
         UserDefaults.standard.set(volume, forKey: "playbackVolume")
