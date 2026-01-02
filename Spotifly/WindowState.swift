@@ -38,9 +38,7 @@ class WindowState: ObservableObject {
         isMiniPlayerMode = true
 
         // Give SwiftUI a chance to update the view hierarchy
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-
+        DispatchQueue.main.async {
             // Remove resizable style
             window.styleMask.remove(.resizable)
 
