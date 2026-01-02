@@ -32,7 +32,8 @@ enum SpotifyConfig: Sendable {
     nonisolated static let clientId: String = {
         // First try to read from Info.plist (for release builds)
         if let infoPlistValue = Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String,
-           !infoPlistValue.isEmpty {
+           !infoPlistValue.isEmpty
+        {
             return infoPlistValue
         }
 
