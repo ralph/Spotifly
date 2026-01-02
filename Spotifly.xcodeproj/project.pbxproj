@@ -116,6 +116,7 @@
 				CAA7B2542F04363800E959B5 /* Sources */,
 				CAA7B2552F04363800E959B5 /* Frameworks */,
 				CAA7B2562F04363800E959B5 /* Resources */,
+				CAA7B2E5E8509C1AA95E5FB9 /* Inject Environment Variables */,
 			);
 			buildRules = (
 			);
@@ -270,6 +271,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "cd \"$PROJECT_DIR/rust\"\nexport PATH=\"$HOME/.cargo/bin:$PATH\"\n./build.sh\n";
+			showEnvVarsInLog = 0;
+		};
+		CAA7B2E5E8509C1AA95E5FB9 /* Inject Environment Variables */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Inject Environment Variables";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$PROJECT_DIR/Scripts/inject-env-to-plist.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
