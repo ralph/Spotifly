@@ -71,6 +71,12 @@ final class PlaybackViewModel {
         initialInfo[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = initialInfo
 
+        // Set up audio session for iOS/iPadOS
+        AudioSessionManager.shared.setupAudioSession()
+
+        // Set up audio interruption handling
+        setupAudioInterruptionHandling()
+
         // Start position update timer
         startPositionTimer()
     }
@@ -503,6 +509,72 @@ final class PlaybackViewModel {
         }
 
         return String(components[2])
+    }
+
+    // MARK: - Audio Interruption Handling
+
+    private func setupAudioInterruptionHandling() {
+        #if os(iOS)
+        // Handle audio interruptions (phone calls, etc.)
+        NotificationCenter.default.addObserver(
+            forName: .audioInterruptionBegan,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // Pause playback when interrupted
+                if self.isPlaying {
+                    SpotifyPlayer.pause()
+                    self.isPlaying = false
+                    self.playbackStartTime = nil
+                    self.updateNowPlayingInfo()
+                }
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .audioInterruptionEnded,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            // Extract userInfo before Task to avoid data race
+            let shouldResume = notification.userInfo?["shouldResume"] as? Bool ?? false
+
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // Optionally resume playback when interruption ends
+                if shouldResume {
+                    // Auto-resume only if the system recommends it
+                    // User can manually resume if they prefer
+                    print("Audio interruption ended - can resume playback")
+                }
+            }
+        }
+
+        // Handle route changes (headphones unplugged, etc.)
+        NotificationCenter.default.addObserver(
+            forName: .audioRouteChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            // Extract userInfo before Task to avoid data race
+            let shouldPause = notification.userInfo?["shouldPause"] as? Bool ?? false
+
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if shouldPause {
+                    // Pause when headphones are unplugged
+                    if self.isPlaying {
+                        SpotifyPlayer.pause()
+                        self.isPlaying = false
+                        self.playbackStartTime = nil
+                        self.updateNowPlayingInfo()
+                    }
+                }
+            }
+        }
+        #endif
     }
 
     // MARK: - Volume Persistence
