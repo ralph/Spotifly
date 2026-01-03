@@ -297,6 +297,9 @@ struct TrackRow: View {
 
         Task {
             do {
+                // Ensure player is initialized (needed for radio API)
+                await playbackViewModel.initializeIfNeeded(accessToken: accessToken)
+
                 // Use librespot's internal radio API
                 let radioTrackUris = try SpotifyPlayer.getRadioTracks(trackUri: track.uri)
 
