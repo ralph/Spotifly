@@ -122,9 +122,19 @@ final class NavigationCoordinator {
     /// Pending navigation request (observed by LoggedInView)
     var pendingNavigationItem: NavigationItem?
 
+    /// Pending playlist to show in detail view
+    var pendingPlaylist: SearchPlaylist?
+
     /// Navigate to the queue
     func navigateToQueue() {
         pendingNavigationItem = .queue
+        navigationVersion += 1
+    }
+
+    /// Navigate to a playlist detail view
+    func navigateToPlaylist(_ playlist: SearchPlaylist) {
+        pendingPlaylist = playlist
+        pendingNavigationItem = .playlists
         navigationVersion += 1
     }
 }

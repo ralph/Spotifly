@@ -53,7 +53,7 @@ struct LoggedInView: View {
         case .artists:
             selectedArtist != nil
         case .playlists:
-            selectedPlaylist != nil
+            selectedPlaylist != nil || navigationCoordinator.pendingPlaylist != nil
         case .startpage:
             // Only show all recent tracks uses three-column on startpage
             showingAllRecentTracks
@@ -151,11 +151,37 @@ struct LoggedInView: View {
                     navigationCoordinator.clearArtistContext()
                 }
             }
+
+            // Clear pending playlist when navigating away from playlists
+            if oldValue == .playlists, newValue != .playlists {
+                navigationCoordinator.pendingPlaylist = nil
+            }
+        }
+        .onChange(of: selectedPlaylist?.id) { _, newValue in
+            // Clear pending playlist when user selects a playlist from the list
+            if newValue != nil {
+                navigationCoordinator.pendingPlaylist = nil
+            }
         }
     }
 
     /// Handle navigation from the NavigationCoordinator
     private func handleNavigation() {
+        // Handle pending playlist navigation
+        if let pendingPlaylist = navigationCoordinator.pendingPlaylist {
+            // Clear other selections
+            selectedAlbum = nil
+            selectedArtist = nil
+            selectedPlaylist = nil
+            showingAllRecentTracks = false
+            searchViewModel.clearSelection()
+
+            selectedNavigationItem = .playlists
+            // The playlist will be shown via navigationCoordinator.pendingPlaylist
+            // It stays set until user selects something else
+            return
+        }
+
         // Handle pending direct navigation (e.g., navigate to queue)
         if let pendingItem = navigationCoordinator.pendingNavigationItem {
             selectedNavigationItem = pendingItem
@@ -352,7 +378,12 @@ struct LoggedInView: View {
                     }
 
                 case .playlists:
-                    if let selectedPlaylist {
+                    if let pendingPlaylist = navigationCoordinator.pendingPlaylist {
+                        PlaylistDetailView(
+                            playlist: pendingPlaylist,
+                            playbackViewModel: playbackViewModel,
+                        )
+                    } else if let selectedPlaylist {
                         PlaylistDetailView(
                             playlist: SearchPlaylist(from: selectedPlaylist),
                             playbackViewModel: playbackViewModel,

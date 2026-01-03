@@ -267,8 +267,7 @@ struct RecentContentSection: View {
 
                         case let .playlist(playlist):
                             RecentPlaylistCard(playlist: playlist) {
-                                // Playlists don't have artist context, just play them
-                                // TODO: Could add playlist detail view navigation
+                                navigationCoordinator.navigateToPlaylist(playlist)
                             }
                         }
                     }
