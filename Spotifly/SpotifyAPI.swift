@@ -1527,7 +1527,8 @@ enum SpotifyAPI {
     ///   - artistId: The Spotify ID of the artist
     static func fetchArtistTopTracks(accessToken: String, artistId: String) async throws -> [SearchTrack] {
         // Use US market by default (required parameter)
-        let urlString = "\(baseURL)/artists/\(artistId)/top-tracks?market=US&fields=tracks(id,name,uri,duration_ms,artists(name),album(name,images))"
+        // Note: top-tracks endpoint doesn't support fields parameter, returns full track objects
+        let urlString = "\(baseURL)/artists/\(artistId)/top-tracks?market=US"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1588,6 +1589,86 @@ enum SpotifyAPI {
             }
 
             return topTracks
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    // MARK: - Artist Albums
+
+    /// Fetches albums for a specific artist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - artistId: The Spotify ID of the artist
+    ///   - limit: Maximum number of albums to return (default 50)
+    /// - Returns: Array of albums by the artist
+    static func fetchArtistAlbums(
+        accessToken: String,
+        artistId: String,
+        limit: Int = 50
+    ) async throws -> [SearchAlbum] {
+        let urlString = "\(baseURL)/artists/\(artistId)/albums?include_groups=album,single&market=US&limit=\(limit)"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let items = json["items"] as? [[String: Any]]
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            let albums = items.compactMap { item -> SearchAlbum? in
+                guard let id = item["id"] as? String,
+                      let name = item["name"] as? String,
+                      let uri = item["uri"] as? String,
+                      let totalTracks = item["total_tracks"] as? Int,
+                      let releaseDate = item["release_date"] as? String
+                else {
+                    return nil
+                }
+
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+
+                let images = item["images"] as? [[String: Any]]
+                let imageURLString = images?.first?["url"] as? String
+                let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                return SearchAlbum(
+                    id: id,
+                    name: name,
+                    uri: uri,
+                    artistName: artistName,
+                    imageURL: imageURL,
+                    totalTracks: totalTracks,
+                    releaseDate: releaseDate,
+                )
+            }
+
+            return albums
         case 401:
             throw SpotifyAPIError.unauthorized
         case 404:

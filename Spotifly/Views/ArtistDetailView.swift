@@ -11,10 +11,14 @@ struct ArtistDetailView: View {
     let artist: SearchArtist
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     @State private var topTracks: [SearchTrack] = []
+    @State private var albums: [SearchAlbum] = []
     @State private var isLoading = false
+    @State private var isLoadingAlbums = false
     @State private var errorMessage: String?
+    @State private var showAllAlbums = false
 
     var body: some View {
         ScrollView {
@@ -118,10 +122,111 @@ struct ArtistDetailView: View {
                         .padding(.horizontal)
                     }
                 }
+
+                // Albums Section
+                if isLoadingAlbums {
+                    ProgressView("loading.albums")
+                        .padding()
+                } else if !albums.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("section.albums")
+                                .font(.headline)
+
+                            Spacer()
+
+                            if albums.count > 5 {
+                                Button(showAllAlbums ? "Show Less" : "Show All (\(albums.count))") {
+                                    withAnimation {
+                                        showAllAlbums.toggle()
+                                    }
+                                }
+                                .font(.subheadline)
+                                .foregroundStyle(.green)
+                            }
+                        }
+                        .padding(.horizontal)
+
+                        let displayedAlbums = showAllAlbums ? albums : Array(albums.prefix(5))
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 180), spacing: 16)], spacing: 16) {
+                            ForEach(displayedAlbums) { album in
+                                AlbumCard(album: album) {
+                                    navigationCoordinator.navigateToAlbum(
+                                        albumId: album.id,
+                                        accessToken: session.accessToken,
+                                    )
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
             }
+            .padding(.bottom, 24)
         }
         .task {
             await loadTopTracks()
+            await loadAlbums()
+        }
+    }
+
+    /// A card view for displaying an album in the grid
+    private struct AlbumCard: View {
+        let album: SearchAlbum
+        let onTap: () -> Void
+
+        var body: some View {
+            Button(action: onTap) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let imageURL = album.imageURL {
+                        AsyncImage(url: imageURL) { phase in
+                            switch phase {
+                            case .empty:
+                                ProgressView()
+                                    .frame(width: 150, height: 150)
+                            case let .success(image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 150, height: 150)
+                                    .cornerRadius(8)
+                            case .failure:
+                                albumPlaceholder
+                            @unknown default:
+                                EmptyView()
+                            }
+                        }
+                    } else {
+                        albumPlaceholder
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(album.name)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+
+                        Text(formatReleaseYear(album.releaseDate))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+
+        private var albumPlaceholder: some View {
+            Image(systemName: "music.note")
+                .font(.system(size: 40))
+                .foregroundStyle(.gray)
+                .frame(width: 150, height: 150)
+                .background(Color.gray.opacity(0.2))
+                .cornerRadius(8)
+        }
+
+        private func formatReleaseYear(_ dateString: String) -> String {
+            // Release date can be "2023", "2023-05", or "2023-05-15"
+            String(dateString.prefix(4))
         }
     }
 
@@ -141,6 +246,23 @@ struct ArtistDetailView: View {
         }
 
         isLoading = false
+    }
+
+    private func loadAlbums() async {
+        guard albums.isEmpty else { return }
+
+        isLoadingAlbums = true
+
+        do {
+            albums = try await SpotifyAPI.fetchArtistAlbums(
+                accessToken: session.accessToken,
+                artistId: artist.id,
+            )
+        } catch {
+            // Silently fail for albums - not critical
+        }
+
+        isLoadingAlbums = false
     }
 
     private func playAllTopTracks() {
