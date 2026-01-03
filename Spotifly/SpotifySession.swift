@@ -23,9 +23,9 @@ final class SpotifySession {
     private(set) var expiresIn: UInt64
 
     init(authResult: SpotifyAuthResult) {
-        self.accessToken = authResult.accessToken
-        self.refreshToken = authResult.refreshToken
-        self.expiresIn = authResult.expiresIn
+        accessToken = authResult.accessToken
+        refreshToken = authResult.refreshToken
+        expiresIn = authResult.expiresIn
     }
 
     /// Update the session with new auth result (e.g., after token refresh)

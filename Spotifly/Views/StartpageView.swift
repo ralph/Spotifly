@@ -164,7 +164,7 @@ struct StartpageView: View {
             await recentlyPlayedViewModel.loadRecentlyPlayed(accessToken: session.accessToken)
         }
         .startpageShortcuts(
-            recentlyPlayedViewModel: recentlyPlayedViewModel
+            recentlyPlayedViewModel: recentlyPlayedViewModel,
         )
     }
 

@@ -24,11 +24,11 @@ extension View {
 
     /// Adds startpage-specific keyboard shortcuts (refresh)
     func startpageShortcuts(
-        recentlyPlayedViewModel: RecentlyPlayedViewModel
+        recentlyPlayedViewModel: RecentlyPlayedViewModel,
     ) -> some View {
         background(
             StartpageShortcutsView(
-                recentlyPlayedViewModel: recentlyPlayedViewModel
+                recentlyPlayedViewModel: recentlyPlayedViewModel,
             ),
         )
     }

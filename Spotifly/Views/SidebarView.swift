@@ -28,7 +28,7 @@ enum NavigationItem: Hashable, Identifiable {
         case .artists: "artists"
         case .queue: "queue"
         case .devices: "devices"
-        case .artistContext(let name): "artistContext:\(name)"
+        case let .artistContext(name): "artistContext:\(name)"
         }
     }
 
@@ -50,7 +50,7 @@ enum NavigationItem: Hashable, Identifiable {
             String(localized: "nav.queue")
         case .devices:
             String(localized: "nav.devices")
-        case .artistContext(let artistName):
+        case let .artistContext(artistName):
             artistName
         }
     }
@@ -83,7 +83,7 @@ struct SidebarView: View {
     @Binding var selection: NavigationItem?
     let onLogout: () -> Void
     var hasSearchResults: Bool = false
-    var artistContextItem: NavigationItem? = nil // Dynamic artist context item
+    var artistContextItem: NavigationItem? // Dynamic artist context item
 
     var body: some View {
         List(selection: $selection) {

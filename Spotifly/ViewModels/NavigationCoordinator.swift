@@ -46,7 +46,7 @@ final class NavigationCoordinator {
             do {
                 let artist = try await SpotifyAPI.fetchArtistDetails(
                     accessToken: accessToken,
-                    artistId: artistId
+                    artistId: artistId,
                 )
                 currentArtist = artist
                 currentAlbum = nil
@@ -67,7 +67,7 @@ final class NavigationCoordinator {
             do {
                 let album = try await SpotifyAPI.fetchAlbumDetails(
                     accessToken: accessToken,
-                    albumId: albumId
+                    albumId: albumId,
                 )
 
                 // Also fetch the artist if we don't have them or it's a different artist
@@ -75,7 +75,7 @@ final class NavigationCoordinator {
                 if let artistId, currentArtist?.id != artistId {
                     let artist = try await SpotifyAPI.fetchArtistDetails(
                         accessToken: accessToken,
-                        artistId: artistId
+                        artistId: artistId,
                     )
                     currentArtist = artist
                 } else if currentArtist == nil {
@@ -84,7 +84,7 @@ final class NavigationCoordinator {
                     if let artistId = album.artistId {
                         let artist = try await SpotifyAPI.fetchArtistDetails(
                             accessToken: accessToken,
-                            artistId: artistId
+                            artistId: artistId,
                         )
                         currentArtist = artist
                     }

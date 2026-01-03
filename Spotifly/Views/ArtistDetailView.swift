@@ -154,7 +154,7 @@ struct ArtistDetailView: View {
                             ForEach(displayedAlbums) { album in
                                 AlbumCard(
                                     album: album,
-                                    isCurrentAlbum: album.id == navigationCoordinator.currentAlbum?.id
+                                    isCurrentAlbum: album.id == navigationCoordinator.currentAlbum?.id,
                                 ) {
                                     // Use efficient method since we already have the artist
                                     navigationCoordinator.navigateToAlbum(album, artist: artist)
@@ -215,7 +215,7 @@ struct ArtistDetailView: View {
                                     .cornerRadius(8)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color.green, lineWidth: isCurrentAlbum ? 3 : 0)
+                                            .stroke(Color.green, lineWidth: isCurrentAlbum ? 3 : 0),
                                     )
                             case .failure:
                                 albumPlaceholder
@@ -252,7 +252,7 @@ struct ArtistDetailView: View {
                 .cornerRadius(8)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.green, lineWidth: isCurrentAlbum ? 3 : 0)
+                        .stroke(Color.green, lineWidth: isCurrentAlbum ? 3 : 0),
                 )
         }
 

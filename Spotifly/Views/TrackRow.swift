@@ -188,7 +188,7 @@ struct TrackRow: View {
                     if let artistId = track.artistId, let accessToken {
                         navigationCoordinator.navigateToArtist(
                             artistId: artistId,
-                            accessToken: accessToken
+                            accessToken: accessToken,
                         )
                     }
                 } label: {
@@ -200,7 +200,7 @@ struct TrackRow: View {
                     if let albumId = track.albumId, let accessToken {
                         navigationCoordinator.navigateToAlbum(
                             albumId: albumId,
-                            accessToken: accessToken
+                            accessToken: accessToken,
                         )
                     }
                 } label: {

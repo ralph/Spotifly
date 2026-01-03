@@ -219,7 +219,7 @@ struct SearchAlbum: Sendable, Identifiable {
         totalTracks = album.trackCount
         releaseDate = album.releaseDate
         self.totalDurationMs = totalDurationMs
-        self.externalUrl = nil // AlbumSimplified doesn't have externalUrl
+        externalUrl = nil // AlbumSimplified doesn't have externalUrl
     }
 
     var formattedDuration: String? {
@@ -1628,7 +1628,7 @@ enum SpotifyAPI {
     static func fetchArtistAlbums(
         accessToken: String,
         artistId: String,
-        limit: Int = 50
+        limit: Int = 50,
     ) async throws -> [SearchAlbum] {
         let urlString = "\(baseURL)/artists/\(artistId)/albums?include_groups=album,single&market=US&limit=\(limit)"
 
@@ -1708,7 +1708,7 @@ enum SpotifyAPI {
     static func fetchRecommendations(
         accessToken: String,
         seedTrackId: String,
-        limit: Int = 50
+        limit: Int = 50,
     ) async throws -> [SearchTrack] {
         let urlString = "\(baseURL)/recommendations?seed_tracks=\(seedTrackId)&limit=\(limit)"
 

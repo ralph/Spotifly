@@ -30,8 +30,9 @@ struct LoggedInView: View {
     init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
         self.authResult = authResult
         self.onLogout = onLogout
-        self._session = State(initialValue: SpotifySession(authResult: authResult))
+        _session = State(initialValue: SpotifySession(authResult: authResult))
     }
+
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var searchText = ""
     @State private var searchFieldFocused = false
