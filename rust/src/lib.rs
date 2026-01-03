@@ -965,6 +965,83 @@ pub extern "C" fn spotifly_get_all_queue_items() -> *mut c_char {
     }
 }
 
+/// Adds a track to the end of the current queue without clearing it.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_add_to_queue(track_uri: *const c_char) -> i32 {
+    if track_uri.is_null() {
+        eprintln!("Add to queue error: track_uri is null");
+        return -1;
+    }
+
+    let uri_str = unsafe {
+        match CStr::from_ptr(track_uri).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Add to queue error: invalid track_uri string");
+                return -1;
+            }
+        }
+    };
+
+    let session_guard = SESSION.lock().unwrap();
+    let session = match session_guard.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            eprintln!("Add to queue error: session not initialized");
+            return -1;
+        }
+    };
+    drop(session_guard);
+
+    let result: Result<(), String> = RUNTIME.block_on(async {
+        // Parse the URI
+        let spotify_uri = parse_spotify_uri(&uri_str)?;
+
+        // Only support tracks for add to queue
+        match spotify_uri {
+            SpotifyUri::Track { .. } => {
+                let track = Track::get(&session, &spotify_uri).await
+                    .map_err(|e| format!("Failed to load track: {:?}", e))?;
+
+                let track_name = track.name.clone();
+                let artist_name = track.artists.iter()
+                    .map(|a| a.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let album_art_url = get_album_art_url(&track);
+                let duration_ms = track.duration as u32;
+
+                let queue_item = QueueItem {
+                    uri: uri_str.clone(),
+                    track_name,
+                    artist_name,
+                    album_art_url,
+                    duration_ms,
+                };
+
+                // Add to queue instead of replacing
+                let mut queue_guard = QUEUE.lock().unwrap();
+                queue_guard.push(queue_item);
+                drop(queue_guard);
+
+                Ok(())
+            }
+            _ => {
+                Err(format!("Only track URIs are supported for add to queue: {}", uri_str))
+            }
+        }
+    });
+
+    match result {
+        Ok(_) => 0,
+        Err(e) => {
+            eprintln!("Add to queue error: {}", e);
+            -1
+        }
+    }
+}
+
 /// Cleans up the player resources.
 #[no_mangle]
 pub extern "C" fn spotifly_cleanup_player() {

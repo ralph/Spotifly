@@ -34,6 +34,7 @@ struct TrackRow: View {
     let isPlayedTrack: Bool // For queue - tracks that have already played
     @Bindable var playbackViewModel: PlaybackViewModel
     let onDoubleTap: () -> Void
+    let onAddToQueue: (() -> Void)? // Optional callback for adding to queue
 
     init(
         track: TrackRowData,
@@ -43,6 +44,7 @@ struct TrackRow: View {
         currentIndex: Int? = nil,
         playbackViewModel: PlaybackViewModel,
         onDoubleTap: @escaping () -> Void,
+        onAddToQueue: (() -> Void)? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -55,6 +57,7 @@ struct TrackRow: View {
         }
         self.playbackViewModel = playbackViewModel
         self.onDoubleTap = onDoubleTap
+        self.onAddToQueue = onAddToQueue
     }
 
     var body: some View {
@@ -131,10 +134,11 @@ struct TrackRow: View {
             // Context menu
             Menu {
                 Button {
-                    // TODO: Add to queue
+                    onAddToQueue?()
                 } label: {
                     Label("Add to Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
                 }
+                .disabled(onAddToQueue == nil)
 
                 Button {
                     // TODO: Start song radio

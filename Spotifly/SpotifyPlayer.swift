@@ -258,6 +258,20 @@ enum SpotifyPlayer {
         }
     }
 
+    /// Adds a track to the end of the current queue without clearing it.
+    @SpotifyAuthActor
+    static func addToQueue(trackUri: String) async throws {
+        let result = await Task.detached {
+            trackUri.withCString { ptr in
+                spotifly_add_to_queue(ptr)
+            }
+        }.value
+
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
     /// Sets the playback volume (0.0 - 1.0).
     static func setVolume(_ volume: Double) {
         let volumeU16 = UInt16(max(0, min(1, volume)) * 65535.0)

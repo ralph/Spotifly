@@ -143,6 +143,28 @@ final class PlaybackViewModel {
         isLoading = false
     }
 
+    func addToQueue(trackUri: String, accessToken: String) async {
+        // Initialize if needed
+        if !isInitialized {
+            await initializeIfNeeded(accessToken: accessToken)
+        }
+
+        guard isInitialized else {
+            errorMessage = "Player not initialized"
+            return
+        }
+
+        errorMessage = nil
+
+        do {
+            try await SpotifyPlayer.addToQueue(trackUri: trackUri)
+            // Update queue state to reflect the change
+            updateQueueState()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Playback State Helpers
 
     /// Common setup after playback has started

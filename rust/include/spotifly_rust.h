@@ -96,6 +96,12 @@ uint32_t spotifly_get_queue_duration_ms(size_t index);
 /// Returns NULL on error.
 char* spotifly_get_all_queue_items(void);
 
+/// Adds a track to the end of the current queue without clearing it.
+/// Returns 0 on success, -1 on error.
+///
+/// @param track_uri Spotify track URI (e.g., "spotify:track:xxx")
+int32_t spotifly_add_to_queue(const char* track_uri);
+
 /// Cleans up the player resources.
 void spotifly_cleanup_player(void);
 
