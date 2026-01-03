@@ -102,6 +102,13 @@ char* spotifly_get_all_queue_items(void);
 /// @param track_uri Spotify track URI (e.g., "spotify:track:xxx")
 int32_t spotifly_add_to_queue(const char* track_uri);
 
+/// Adds a track to play next (after the currently playing track).
+/// If nothing is playing, adds it to the queue.
+/// Returns 0 on success, -1 on error.
+///
+/// @param track_uri Spotify track URI (e.g., "spotify:track:xxx")
+int32_t spotifly_add_next_to_queue(const char* track_uri);
+
 /// Cleans up the player resources.
 void spotifly_cleanup_player(void);
 

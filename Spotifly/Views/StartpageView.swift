@@ -233,6 +233,14 @@ struct RecentTracksSection: View {
                                 )
                             }
                         },
+                        onPlayNext: {
+                            Task {
+                                await playbackViewModel.playNext(
+                                    trackUri: track.uri,
+                                    accessToken: authResult.accessToken,
+                                )
+                            }
+                        },
                     )
 
                     if track.id != tracks.last?.id {

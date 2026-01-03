@@ -35,6 +35,7 @@ struct TrackRow: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     let onDoubleTap: () -> Void
     let onAddToQueue: (() -> Void)? // Optional callback for adding to queue
+    let onPlayNext: (() -> Void)? // Optional callback for playing next
 
     init(
         track: TrackRowData,
@@ -45,6 +46,7 @@ struct TrackRow: View {
         playbackViewModel: PlaybackViewModel,
         onDoubleTap: @escaping () -> Void,
         onAddToQueue: (() -> Void)? = nil,
+        onPlayNext: (() -> Void)? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -58,6 +60,7 @@ struct TrackRow: View {
         self.playbackViewModel = playbackViewModel
         self.onDoubleTap = onDoubleTap
         self.onAddToQueue = onAddToQueue
+        self.onPlayNext = onPlayNext
     }
 
     var body: some View {
@@ -134,9 +137,16 @@ struct TrackRow: View {
             // Context menu
             Menu {
                 Button {
+                    onPlayNext?()
+                } label: {
+                    Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                .disabled(onPlayNext == nil)
+
+                Button {
                     onAddToQueue?()
                 } label: {
-                    Label("Add to Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    Label("Add to Queue", systemImage: "text.append")
                 }
                 .disabled(onAddToQueue == nil)
 
