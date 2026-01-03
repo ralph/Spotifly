@@ -127,6 +127,9 @@ struct LoggedInView: View {
                 windowState: windowState
             )
         }
+        #if !os(macOS)
+        .ignoresSafeArea(.all, edges: .bottom)
+        #endif
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .environment(devicesViewModel)
         #if !os(macOS)
