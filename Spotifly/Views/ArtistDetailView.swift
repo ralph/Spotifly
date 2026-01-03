@@ -101,8 +101,9 @@ struct ArtistDetailView: View {
                             .font(.headline)
                             .padding(.horizontal)
 
+                        let displayedTracks = Array(topTracks.prefix(5))
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(topTracks.enumerated()), id: \.element.id) { index, track in
+                            ForEach(Array(displayedTracks.enumerated()), id: \.element.id) { index, track in
                                 TrackRow(
                                     track: track.toTrackRowData(),
                                     index: index,
@@ -111,7 +112,7 @@ struct ArtistDetailView: View {
                                     accessToken: session.accessToken,
                                 )
 
-                                if track.id != topTracks.last?.id {
+                                if track.id != displayedTracks.last?.id {
                                     Divider()
                                         .padding(.leading, 94)
                                 }
@@ -147,10 +148,14 @@ struct ArtistDetailView: View {
                         }
                         .padding(.horizontal)
 
-                        let displayedAlbums = showAllAlbums ? albums : Array(albums.prefix(5))
+                        let sortedAlbums = sortedAlbumsWithCurrentFirst
+                        let displayedAlbums = showAllAlbums ? sortedAlbums : Array(sortedAlbums.prefix(5))
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 180), spacing: 16)], spacing: 16) {
                             ForEach(displayedAlbums) { album in
-                                AlbumCard(album: album) {
+                                AlbumCard(
+                                    album: album,
+                                    isCurrentAlbum: album.id == navigationCoordinator.currentAlbum?.id
+                                ) {
                                     // Use efficient method since we already have the artist
                                     navigationCoordinator.navigateToAlbum(album, artist: artist)
                                 }
@@ -168,9 +173,23 @@ struct ArtistDetailView: View {
         }
     }
 
+    /// Albums sorted with current album first (if any)
+    private var sortedAlbumsWithCurrentFirst: [SearchAlbum] {
+        guard let currentAlbumId = navigationCoordinator.currentAlbum?.id else {
+            return albums
+        }
+        var sorted = albums
+        if let index = sorted.firstIndex(where: { $0.id == currentAlbumId }) {
+            let current = sorted.remove(at: index)
+            sorted.insert(current, at: 0)
+        }
+        return sorted
+    }
+
     /// A card view for displaying an album in the grid
     private struct AlbumCard: View {
         let album: SearchAlbum
+        let isCurrentAlbum: Bool
         let onTap: () -> Void
 
         var body: some View {
@@ -188,6 +207,10 @@ struct ArtistDetailView: View {
                                     .aspectRatio(contentMode: .fill)
                                     .frame(width: 150, height: 150)
                                     .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.green, lineWidth: isCurrentAlbum ? 3 : 0)
+                                    )
                             case .failure:
                                 albumPlaceholder
                             @unknown default:
@@ -203,6 +226,7 @@ struct ArtistDetailView: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .lineLimit(1)
+                            .foregroundStyle(isCurrentAlbum ? .green : .primary)
 
                         Text(formatReleaseYear(album.releaseDate))
                             .font(.caption)
@@ -220,6 +244,10 @@ struct ArtistDetailView: View {
                 .frame(width: 150, height: 150)
                 .background(Color.gray.opacity(0.2))
                 .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.green, lineWidth: isCurrentAlbum ? 3 : 0)
+                )
         }
 
         private func formatReleaseYear(_ dateString: String) -> String {
