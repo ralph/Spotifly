@@ -7,19 +7,15 @@
 
 import SwiftUI
 
-/// Navigation destination types
-enum NavigationDestination {
-    case album(SearchAlbum)
-    case artist(SearchArtist)
-    case playlist(SearchPlaylist)
-}
-
 /// Centralized navigation coordinator that can be accessed from anywhere in the app
 @MainActor
 @Observable
 final class NavigationCoordinator {
-    /// The pending navigation destination (observed by LoggedInView)
-    var pendingDestination: NavigationDestination?
+    /// Current artist context (shown in sidebar when viewing artist/album)
+    var currentArtist: SearchArtist?
+
+    /// Currently selected album within artist context
+    var selectedAlbum: SearchAlbum?
 
     /// Counter that increments when navigation is requested (for onChange detection)
     var navigationVersion = 0
@@ -30,27 +26,18 @@ final class NavigationCoordinator {
     /// Error message if navigation fails
     var errorMessage: String?
 
-    /// Navigate to an album by ID
-    func navigateToAlbum(albumId: String, accessToken: String) {
-        isLoading = true
-        errorMessage = nil
-
-        Task {
-            do {
-                let album = try await SpotifyAPI.fetchAlbumDetails(
-                    accessToken: accessToken,
-                    albumId: albumId
-                )
-                pendingDestination = .album(album)
-                navigationVersion += 1
-            } catch {
-                errorMessage = "Failed to load album: \(error.localizedDescription)"
-            }
-            isLoading = false
-        }
+    /// Whether we're in artist context mode
+    var isInArtistContext: Bool {
+        currentArtist != nil
     }
 
-    /// Navigate to an artist by ID
+    /// The navigation item for the sidebar
+    var artistContextItem: NavigationItem? {
+        guard let artist = currentArtist else { return nil }
+        return .artistContext(artistName: artist.name)
+    }
+
+    /// Navigate to an artist by ID (opens artist section)
     func navigateToArtist(artistId: String, accessToken: String) {
         isLoading = true
         errorMessage = nil
@@ -61,7 +48,8 @@ final class NavigationCoordinator {
                     accessToken: accessToken,
                     artistId: artistId
                 )
-                pendingDestination = .artist(artist)
+                currentArtist = artist
+                selectedAlbum = nil
                 navigationVersion += 1
             } catch {
                 errorMessage = "Failed to load artist: \(error.localizedDescription)"
@@ -70,28 +58,62 @@ final class NavigationCoordinator {
         }
     }
 
-    /// Navigate to a playlist by ID
-    func navigateToPlaylist(playlistId: String, accessToken: String) {
+    /// Navigate to an album by ID (opens album within artist context)
+    func navigateToAlbum(albumId: String, accessToken: String) {
         isLoading = true
         errorMessage = nil
 
         Task {
             do {
-                let playlist = try await SpotifyAPI.fetchPlaylistDetails(
+                let album = try await SpotifyAPI.fetchAlbumDetails(
                     accessToken: accessToken,
-                    playlistId: playlistId
+                    albumId: albumId
                 )
-                pendingDestination = .playlist(playlist)
+
+                // Also fetch the artist if we don't have them or it's a different artist
+                let artistId = album.artistId ?? (album.artistName.isEmpty ? nil : nil)
+                if let artistId, currentArtist?.id != artistId {
+                    let artist = try await SpotifyAPI.fetchArtistDetails(
+                        accessToken: accessToken,
+                        artistId: artistId
+                    )
+                    currentArtist = artist
+                } else if currentArtist == nil {
+                    // Create a minimal artist from album info if we can't fetch
+                    // This shouldn't happen often, but handles edge cases
+                    if let artistId = album.artistId {
+                        let artist = try await SpotifyAPI.fetchArtistDetails(
+                            accessToken: accessToken,
+                            artistId: artistId
+                        )
+                        currentArtist = artist
+                    }
+                }
+
+                selectedAlbum = album
                 navigationVersion += 1
             } catch {
-                errorMessage = "Failed to load playlist: \(error.localizedDescription)"
+                errorMessage = "Failed to load album: \(error.localizedDescription)"
             }
             isLoading = false
         }
     }
 
-    /// Clear the pending destination (called after navigation is handled)
-    func clearDestination() {
-        pendingDestination = nil
+    /// Navigate to an album with a known artist (more efficient, avoids extra API call)
+    func navigateToAlbum(_ album: SearchAlbum, artist: SearchArtist) {
+        currentArtist = artist
+        selectedAlbum = album
+        navigationVersion += 1
+    }
+
+    /// Clear the artist context (called when switching away from artist section)
+    func clearArtistContext() {
+        currentArtist = nil
+        selectedAlbum = nil
+    }
+
+    /// Clear just the selected album (stay in artist context)
+    func clearSelectedAlbum() {
+        selectedAlbum = nil
     }
 }

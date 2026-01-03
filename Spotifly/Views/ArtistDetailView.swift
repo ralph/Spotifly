@@ -151,10 +151,8 @@ struct ArtistDetailView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 180), spacing: 16)], spacing: 16) {
                             ForEach(displayedAlbums) { album in
                                 AlbumCard(album: album) {
-                                    navigationCoordinator.navigateToAlbum(
-                                        albumId: album.id,
-                                        accessToken: session.accessToken,
-                                    )
+                                    // Use efficient method since we already have the artist
+                                    navigationCoordinator.navigateToAlbum(album, artist: artist)
                                 }
                             }
                         }

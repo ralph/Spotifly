@@ -189,16 +189,18 @@ struct SearchAlbum: Sendable, Identifiable {
     let name: String
     let uri: String
     let artistName: String
+    let artistId: String?
     let imageURL: URL?
     let totalTracks: Int
     let releaseDate: String
     let totalDurationMs: Int?
 
-    init(id: String, name: String, uri: String, artistName: String, imageURL: URL?, totalTracks: Int, releaseDate: String, totalDurationMs: Int? = nil) {
+    init(id: String, name: String, uri: String, artistName: String, artistId: String? = nil, imageURL: URL?, totalTracks: Int, releaseDate: String, totalDurationMs: Int? = nil) {
         self.id = id
         self.name = name
         self.uri = uri
         self.artistName = artistName
+        self.artistId = artistId
         self.imageURL = imageURL
         self.totalTracks = totalTracks
         self.releaseDate = releaseDate
@@ -210,6 +212,7 @@ struct SearchAlbum: Sendable, Identifiable {
         name = album.name
         uri = album.uri
         artistName = album.artistName
+        artistId = nil // AlbumSimplified doesn't have artistId
         imageURL = album.imageURL
         totalTracks = album.trackCount
         releaseDate = album.releaseDate
@@ -718,7 +721,7 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - albumId: Album ID
     static func fetchAlbumDetails(accessToken: String, albumId: String) async throws -> SearchAlbum {
-        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(name),images,tracks(items(duration_ms))"
+        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(id,name),images,tracks(items(duration_ms))"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -772,6 +775,7 @@ enum SpotifyAPI {
         }
 
         let artistName = artists.first?["name"] as? String ?? "Unknown Artist"
+        let artistId = artists.first?["id"] as? String
 
         var imageURL: URL?
         if let images = json["images"] as? [[String: Any]],
@@ -797,6 +801,7 @@ enum SpotifyAPI {
             name: name,
             uri: uri,
             artistName: artistName,
+            artistId: artistId,
             imageURL: imageURL,
             totalTracks: totalTracks,
             releaseDate: releaseDate,

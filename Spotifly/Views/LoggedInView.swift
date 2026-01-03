@@ -36,15 +36,12 @@ struct LoggedInView: View {
     @State private var searchText = ""
     @State private var searchFieldFocused = false
 
-    // Selection state for detail views
+    // Selection state for library detail views
     @State private var selectedAlbum: AlbumSimplified?
     @State private var selectedArtist: ArtistSimplified?
     @State private var selectedPlaylist: PlaylistSimplified?
 
-    // Selection state for recently played items from startpage
-    @State private var selectedRecentAlbum: SearchAlbum?
-    @State private var selectedRecentArtist: SearchArtist?
-    @State private var selectedRecentPlaylist: SearchPlaylist?
+    // Selection state for startpage "show all recent tracks"
     @State private var showingAllRecentTracks = false
 
     // Determines if we need three-column layout (when something is selected)
@@ -57,11 +54,15 @@ struct LoggedInView: View {
         case .playlists:
             selectedPlaylist != nil
         case .startpage:
-            selectedRecentAlbum != nil || selectedRecentArtist != nil || selectedRecentPlaylist != nil || showingAllRecentTracks
+            // Only show all recent tracks uses three-column on startpage
+            showingAllRecentTracks
         case .searchResults:
             searchViewModel.selectedTrack != nil || searchViewModel.selectedAlbum != nil ||
                 searchViewModel.selectedArtist != nil || searchViewModel.selectedPlaylist != nil ||
                 searchViewModel.showingAllTracks
+        case .artistContext:
+            // Artist context is always three-column
+            true
         default:
             false
         }
@@ -137,38 +138,36 @@ struct LoggedInView: View {
         .environment(devicesViewModel)
         .environment(navigationCoordinator)
         .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
-            handleNavigationDestination(navigationCoordinator.pendingDestination)
+            handleArtistNavigation()
+        }
+        .onChange(of: selectedNavigationItem) { oldValue, newValue in
+            // Clear artist context when navigating away from artist section
+            if case .artistContext = oldValue {
+                if case .artistContext = newValue {
+                    // Staying in artist context, don't clear
+                } else {
+                    // Navigating away, clear the context
+                    navigationCoordinator.clearArtistContext()
+                }
+            }
         }
     }
 
-    /// Handle navigation from the NavigationCoordinator
-    private func handleNavigationDestination(_ destination: NavigationDestination?) {
-        guard let destination else { return }
+    /// Handle navigation from the NavigationCoordinator (artist/album context)
+    private func handleArtistNavigation() {
+        guard navigationCoordinator.isInArtistContext else { return }
 
         // Clear other selections to avoid conflicts
         selectedAlbum = nil
         selectedArtist = nil
         selectedPlaylist = nil
-        selectedRecentAlbum = nil
-        selectedRecentArtist = nil
-        selectedRecentPlaylist = nil
         showingAllRecentTracks = false
         searchViewModel.clearSelection()
 
-        // Navigate to the startpage section and set the appropriate selection
-        selectedNavigationItem = .startpage
-
-        switch destination {
-        case .album(let album):
-            selectedRecentAlbum = album
-        case .artist(let artist):
-            selectedRecentArtist = artist
-        case .playlist(let playlist):
-            selectedRecentPlaylist = playlist
+        // Navigate to the artist context section
+        if let artistItem = navigationCoordinator.artistContextItem {
+            selectedNavigationItem = artistItem
         }
-
-        // Clear the pending destination
-        navigationCoordinator.clearDestination()
     }
 
     // MARK: - View Builders
@@ -182,6 +181,7 @@ struct LoggedInView: View {
                 onLogout()
             },
             hasSearchResults: searchViewModel.searchResults != nil,
+            artistContextItem: navigationCoordinator.artistContextItem,
         )
     }
 
@@ -206,9 +206,6 @@ struct LoggedInView: View {
                             trackViewModel: trackViewModel,
                             playbackViewModel: playbackViewModel,
                             recentlyPlayedViewModel: recentlyPlayedViewModel,
-                            selectedRecentAlbum: $selectedRecentAlbum,
-                            selectedRecentArtist: $selectedRecentArtist,
-                            selectedRecentPlaylist: $selectedRecentPlaylist,
                             showingAllRecentTracks: $showingAllRecentTracks,
                         )
                         .navigationTitle("nav.startpage")
@@ -258,6 +255,18 @@ struct LoggedInView: View {
                     case .searchResults:
                         // Handled in outer if statement
                         EmptyView()
+
+                    case .artistContext:
+                        // Artist context view: shows artist with top tracks and albums
+                        if let artist = navigationCoordinator.currentArtist {
+                            ArtistDetailView(
+                                artist: artist,
+                                playbackViewModel: playbackViewModel,
+                            )
+                            .navigationTitle(artist.name)
+                        } else {
+                            ProgressView()
+                        }
 
                     case .none:
                         Text("empty.select_item")
@@ -343,29 +352,27 @@ struct LoggedInView: View {
                     }
 
                 case .startpage:
-                    // Show details for recently played selections
+                    // Show all recent tracks detail if selected
                     if showingAllRecentTracks {
                         RecentTracksDetailView(
                             tracks: recentlyPlayedViewModel.recentTracks,
                             playbackViewModel: playbackViewModel,
                         )
-                    } else if let selectedAlbum = selectedRecentAlbum {
+                    } else {
+                        EmptyView()
+                    }
+
+                case .artistContext:
+                    // Show album detail if one is selected, otherwise show albums grid
+                    if let album = navigationCoordinator.selectedAlbum {
                         AlbumDetailView(
-                            album: selectedAlbum,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else if let selectedArtist = selectedRecentArtist {
-                        ArtistDetailView(
-                            artist: selectedArtist,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else if let selectedPlaylist = selectedRecentPlaylist {
-                        PlaylistDetailView(
-                            playlist: selectedPlaylist,
+                            album: album,
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
-                        EmptyView()
+                        // Show placeholder or albums list when no album selected
+                        Text("empty.select_album")
+                            .foregroundStyle(.secondary)
                     }
 
                 default:

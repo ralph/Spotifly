@@ -13,9 +13,6 @@ struct StartpageView: View {
     @Bindable var trackViewModel: TrackLookupViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
     @Bindable var recentlyPlayedViewModel: RecentlyPlayedViewModel
-    @Binding var selectedRecentAlbum: SearchAlbum?
-    @Binding var selectedRecentArtist: SearchArtist?
-    @Binding var selectedRecentPlaylist: SearchPlaylist?
     @Binding var showingAllRecentTracks: Bool
 
     @State private var versionTapCount = 0
@@ -98,10 +95,6 @@ struct StartpageView: View {
                         if !recentlyPlayedViewModel.recentItems.isEmpty {
                             RecentContentSection(
                                 items: recentlyPlayedViewModel.recentItems,
-                                selectedAlbum: $selectedRecentAlbum,
-                                selectedArtist: $selectedRecentArtist,
-                                selectedPlaylist: $selectedRecentPlaylist,
-                                showingAllTracks: $showingAllRecentTracks,
                             )
                         }
                     }
@@ -243,10 +236,8 @@ struct RecentTracksSection: View {
 
 struct RecentContentSection: View {
     let items: [RecentItem]
-    @Binding var selectedAlbum: SearchAlbum?
-    @Binding var selectedArtist: SearchArtist?
-    @Binding var selectedPlaylist: SearchPlaylist?
-    @Binding var showingAllTracks: Bool
+    @Environment(SpotifySession.self) private var session
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -259,165 +250,25 @@ struct RecentContentSection: View {
                     ForEach(items) { item in
                         switch item {
                         case let .album(album):
-                            VStack(spacing: 8) {
-                                if let imageURL = album.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 120, height: 120)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 120, height: 120)
-                                                .cornerRadius(4)
-                                                .shadow(radius: 2)
-                                        case .failure:
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Color.gray.opacity(0.2))
-                                                .frame(width: 120, height: 120)
-                                                .overlay(
-                                                    Image(systemName: "music.note")
-                                                        .font(.system(size: 40))
-                                                        .foregroundStyle(.secondary),
-                                                )
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(width: 120, height: 120)
-                                        .overlay(
-                                            Image(systemName: "music.note")
-                                                .font(.system(size: 40))
-                                                .foregroundStyle(.secondary),
-                                        )
-                                }
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(album.name)
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .lineLimit(2)
-                                    Text(album.artistName)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                .frame(width: 120, alignment: .leading)
-                            }
-                            .onTapGesture {
-                                selectedAlbum = album
-                                selectedArtist = nil
-                                selectedPlaylist = nil
-                                showingAllTracks = false
+                            RecentAlbumCard(album: album) {
+                                navigationCoordinator.navigateToAlbum(
+                                    albumId: album.id,
+                                    accessToken: session.accessToken,
+                                )
                             }
 
                         case let .artist(artist):
-                            VStack(spacing: 8) {
-                                if let imageURL = artist.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 120, height: 120)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 120, height: 120)
-                                                .clipShape(Circle())
-                                                .shadow(radius: 2)
-                                        case .failure:
-                                            Circle()
-                                                .fill(Color.gray.opacity(0.2))
-                                                .frame(width: 120, height: 120)
-                                                .overlay(
-                                                    Image(systemName: "person.circle.fill")
-                                                        .font(.system(size: 60))
-                                                        .foregroundStyle(.secondary),
-                                                )
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    Circle()
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(width: 120, height: 120)
-                                        .overlay(
-                                            Image(systemName: "person.circle.fill")
-                                                .font(.system(size: 60))
-                                                .foregroundStyle(.secondary),
-                                        )
-                                }
-
-                                Text(artist.name)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .lineLimit(2)
-                                    .frame(width: 120, alignment: .center)
-                            }
-                            .onTapGesture {
-                                selectedArtist = artist
-                                selectedAlbum = nil
-                                selectedPlaylist = nil
-                                showingAllTracks = false
+                            RecentArtistCard(artist: artist) {
+                                navigationCoordinator.navigateToArtist(
+                                    artistId: artist.id,
+                                    accessToken: session.accessToken,
+                                )
                             }
 
                         case let .playlist(playlist):
-                            VStack(spacing: 8) {
-                                if let imageURL = playlist.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 120, height: 120)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 120, height: 120)
-                                                .cornerRadius(4)
-                                                .shadow(radius: 2)
-                                        case .failure:
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Color.gray.opacity(0.2))
-                                                .frame(width: 120, height: 120)
-                                                .overlay(
-                                                    Image(systemName: "music.note.list")
-                                                        .font(.system(size: 40))
-                                                        .foregroundStyle(.secondary),
-                                                )
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(width: 120, height: 120)
-                                        .overlay(
-                                            Image(systemName: "music.note.list")
-                                                .font(.system(size: 40))
-                                                .foregroundStyle(.secondary),
-                                        )
-                                }
-
-                                Text(playlist.name)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .lineLimit(2)
-                                    .frame(width: 120, alignment: .leading)
-                            }
-                            .onTapGesture {
-                                selectedPlaylist = playlist
-                                selectedAlbum = nil
-                                selectedArtist = nil
-                                showingAllTracks = false
+                            RecentPlaylistCard(playlist: playlist) {
+                                // Playlists don't have artist context, just play them
+                                // TODO: Could add playlist detail view navigation
                             }
                         }
                     }
@@ -425,5 +276,169 @@ struct RecentContentSection: View {
                 .padding(.horizontal)
             }
         }
+    }
+}
+
+// MARK: - Recent Item Cards
+
+private struct RecentAlbumCard: View {
+    let album: SearchAlbum
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                if let imageURL = album.imageURL {
+                    AsyncImage(url: imageURL) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                                .frame(width: 120, height: 120)
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 120, height: 120)
+                                .cornerRadius(4)
+                                .shadow(radius: 2)
+                        case .failure:
+                            albumPlaceholder
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                } else {
+                    albumPlaceholder
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(album.name)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(2)
+                    Text(album.artistName)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(width: 120, alignment: .leading)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var albumPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.gray.opacity(0.2))
+            .frame(width: 120, height: 120)
+            .overlay(
+                Image(systemName: "music.note")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary),
+            )
+    }
+}
+
+private struct RecentArtistCard: View {
+    let artist: SearchArtist
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                if let imageURL = artist.imageURL {
+                    AsyncImage(url: imageURL) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                                .frame(width: 120, height: 120)
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                                .shadow(radius: 2)
+                        case .failure:
+                            artistPlaceholder
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                } else {
+                    artistPlaceholder
+                }
+
+                Text(artist.name)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(2)
+                    .frame(width: 120, alignment: .center)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var artistPlaceholder: some View {
+        Circle()
+            .fill(Color.gray.opacity(0.2))
+            .frame(width: 120, height: 120)
+            .overlay(
+                Image(systemName: "person.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.secondary),
+            )
+    }
+}
+
+private struct RecentPlaylistCard: View {
+    let playlist: SearchPlaylist
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                if let imageURL = playlist.imageURL {
+                    AsyncImage(url: imageURL) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                                .frame(width: 120, height: 120)
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 120, height: 120)
+                                .cornerRadius(4)
+                                .shadow(radius: 2)
+                        case .failure:
+                            playlistPlaceholder
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                } else {
+                    playlistPlaceholder
+                }
+
+                Text(playlist.name)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(2)
+                    .frame(width: 120, alignment: .leading)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var playlistPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.gray.opacity(0.2))
+            .frame(width: 120, height: 120)
+            .overlay(
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary),
+            )
     }
 }
