@@ -28,6 +28,12 @@ struct TrackRowData: Identifiable {
     }
 }
 
+/// Double-tap behavior for TrackRow
+enum TrackRowDoubleTapBehavior {
+    case playTrack // Play just this track
+    case jumpToQueueIndex // Jump to this index in the queue (for QueueListView)
+}
+
 /// Reusable track row view
 struct TrackRow: View {
     let track: TrackRowData
@@ -36,11 +42,13 @@ struct TrackRow: View {
     let isCurrentTrack: Bool
     let isPlayedTrack: Bool // For queue - tracks that have already played
     @Bindable var playbackViewModel: PlaybackViewModel
-    let onDoubleTap: () -> Void
-    let onAddToQueue: (() -> Void)? // Optional callback for adding to queue
-    let onPlayNext: (() -> Void)? // Optional callback for playing next
-    let onGoToAlbum: (() -> Void)? // Optional callback for navigating to album
-    let onGoToArtist: (() -> Void)? // Optional callback for navigating to artist
+    let accessToken: String? // For playback and queue operations
+    let doubleTapBehavior: TrackRowDoubleTapBehavior
+    let onGoToAlbum: (() -> Void)? // Navigation callback (only for StartPage)
+    let onGoToArtist: (() -> Void)? // Navigation callback (only for StartPage)
+
+    @State private var isFavorited = false
+    @State private var isCheckingFavorite = false
 
     init(
         track: TrackRowData,
@@ -49,9 +57,8 @@ struct TrackRow: View {
         currentlyPlayingURI: String?,
         currentIndex: Int? = nil,
         playbackViewModel: PlaybackViewModel,
-        onDoubleTap: @escaping () -> Void,
-        onAddToQueue: (() -> Void)? = nil,
-        onPlayNext: (() -> Void)? = nil,
+        accessToken: String? = nil,
+        doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
         onGoToAlbum: (() -> Void)? = nil,
         onGoToArtist: (() -> Void)? = nil,
     ) {
@@ -65,9 +72,8 @@ struct TrackRow: View {
             false
         }
         self.playbackViewModel = playbackViewModel
-        self.onDoubleTap = onDoubleTap
-        self.onAddToQueue = onAddToQueue
-        self.onPlayNext = onPlayNext
+        self.accessToken = accessToken
+        self.doubleTapBehavior = doubleTapBehavior
         self.onGoToAlbum = onGoToAlbum
         self.onGoToArtist = onGoToArtist
     }
@@ -143,21 +149,35 @@ struct TrackRow: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
 
+            // Heart button (favorite status)
+            Button {
+                toggleFavorite()
+            } label: {
+                Image(systemName: isFavorited ? "heart.fill" : "heart")
+                    .font(.caption)
+                    .foregroundStyle(isFavorited ? .red : .secondary)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isCheckingFavorite || accessToken == nil)
+            .opacity(isCheckingFavorite ? 0.5 : 1.0)
+
             // Context menu
             Menu {
                 Button {
-                    onPlayNext?()
+                    playNext()
                 } label: {
                     Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                 }
-                .disabled(onPlayNext == nil)
+                .disabled(accessToken == nil)
 
                 Button {
-                    onAddToQueue?()
+                    addToQueue()
                 } label: {
                     Label("Add to Queue", systemImage: "text.append")
                 }
-                .disabled(onAddToQueue == nil)
+                .disabled(accessToken == nil)
 
                 Button {
                     // TODO: Start song radio
@@ -206,7 +226,10 @@ struct TrackRow: View {
         .opacity(isPlayedTrack ? 0.5 : 1.0)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            onDoubleTap()
+            handleDoubleTap()
+        }
+        .task {
+            await checkFavoriteStatus()
         }
     }
 
@@ -216,6 +239,96 @@ struct TrackRow: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(externalUrl, forType: .string)
+    }
+
+    private func handleDoubleTap() {
+        guard let accessToken else { return }
+
+        switch doubleTapBehavior {
+        case .playTrack:
+            Task {
+                await playbackViewModel.play(
+                    uriOrUrl: track.uri,
+                    accessToken: accessToken,
+                )
+            }
+        case .jumpToQueueIndex:
+            guard let index else { return }
+            do {
+                try SpotifyPlayer.jumpToIndex(index)
+                playbackViewModel.updateQueueState()
+            } catch {
+                playbackViewModel.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func playNext() {
+        guard let accessToken else { return }
+
+        Task {
+            await playbackViewModel.playNext(
+                trackUri: track.uri,
+                accessToken: accessToken,
+            )
+        }
+    }
+
+    private func addToQueue() {
+        guard let accessToken else { return }
+
+        Task {
+            await playbackViewModel.addToQueue(
+                trackUri: track.uri,
+                accessToken: accessToken,
+            )
+        }
+    }
+
+    private func toggleFavorite() {
+        guard let accessToken else { return }
+
+        Task {
+            isCheckingFavorite = true
+
+            do {
+                if isFavorited {
+                    try await SpotifyAPI.removeSavedTrack(
+                        accessToken: accessToken,
+                        trackId: track.id,
+                    )
+                    isFavorited = false
+                } else {
+                    try await SpotifyAPI.saveTrack(
+                        accessToken: accessToken,
+                        trackId: track.id,
+                    )
+                    isFavorited = true
+                }
+            } catch {
+                // Silently fail - revert state
+            }
+
+            isCheckingFavorite = false
+        }
+    }
+
+    private func checkFavoriteStatus() async {
+        guard let accessToken else { return }
+
+        isCheckingFavorite = true
+
+        do {
+            isFavorited = try await SpotifyAPI.checkSavedTrack(
+                accessToken: accessToken,
+                trackId: track.id,
+            )
+        } catch {
+            // Silently fail - just leave as unfavorited
+            isFavorited = false
+        }
+
+        isCheckingFavorite = false
     }
 }
 
@@ -285,6 +398,23 @@ extension SearchTrack {
             albumId: albumId,
             artistId: artistId,
             externalUrl: externalUrl,
+        )
+    }
+}
+
+extension SavedTrack {
+    func toTrackRowData() -> TrackRowData {
+        TrackRowData(
+            id: id,
+            uri: uri,
+            name: name,
+            artistName: artistName,
+            albumArtURL: imageURL?.absoluteString,
+            durationMs: durationMs,
+            trackNumber: nil,
+            albumId: nil,
+            artistId: nil,
+            externalUrl: nil,
         )
     }
 }

@@ -52,14 +52,9 @@ struct QueueListView: View {
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 currentIndex: playbackViewModel.currentIndex,
                                 playbackViewModel: playbackViewModel,
-                            ) {
-                                do {
-                                    try SpotifyPlayer.jumpToIndex(index)
-                                    playbackViewModel.updateQueueState()
-                                } catch {
-                                    playbackViewModel.errorMessage = error.localizedDescription
-                                }
-                            }
+                                accessToken: authResult.accessToken,
+                                doubleTapBehavior: .jumpToQueueIndex,
+                            )
 
                             if index < queueViewModel.queueItems.count - 1 {
                                 Divider()

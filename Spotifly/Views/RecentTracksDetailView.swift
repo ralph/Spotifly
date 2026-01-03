@@ -53,30 +53,7 @@ struct RecentTracksDetailView: View {
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
-                            onDoubleTap: {
-                                Task {
-                                    await playbackViewModel.play(
-                                        uriOrUrl: track.uri,
-                                        accessToken: authResult.accessToken,
-                                    )
-                                }
-                            },
-                            onAddToQueue: {
-                                Task {
-                                    await playbackViewModel.addToQueue(
-                                        trackUri: track.uri,
-                                        accessToken: authResult.accessToken,
-                                    )
-                                }
-                            },
-                            onPlayNext: {
-                                Task {
-                                    await playbackViewModel.playNext(
-                                        trackUri: track.uri,
-                                        accessToken: authResult.accessToken,
-                                    )
-                                }
-                            },
+                            accessToken: authResult.accessToken,
                         )
 
                         if track.id != tracks.last?.id {

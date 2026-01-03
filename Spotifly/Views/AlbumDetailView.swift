@@ -127,30 +127,7 @@ struct AlbumDetailView: View {
                                 showTrackNumber: true,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
-                                onDoubleTap: {
-                                    Task {
-                                        await playbackViewModel.play(
-                                            uriOrUrl: track.uri,
-                                            accessToken: authResult.accessToken,
-                                        )
-                                    }
-                                },
-                                onAddToQueue: {
-                                    Task {
-                                        await playbackViewModel.addToQueue(
-                                            trackUri: track.uri,
-                                            accessToken: authResult.accessToken,
-                                        )
-                                    }
-                                },
-                                onPlayNext: {
-                                    Task {
-                                        await playbackViewModel.playNext(
-                                            trackUri: track.uri,
-                                            accessToken: authResult.accessToken,
-                                        )
-                                    }
-                                },
+                                accessToken: authResult.accessToken,
                             )
 
                             if index < tracks.count - 1 {
