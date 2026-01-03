@@ -1761,6 +1761,13 @@ enum SpotifyAPI {
         case 401:
             throw SpotifyAPIError.unauthorized
         case 404:
+            // Try to get actual error message from Spotify
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError("Recommendations API: \(message)")
+            }
             throw SpotifyAPIError.notFound
         default:
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

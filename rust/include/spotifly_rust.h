@@ -112,6 +112,13 @@ int32_t spotifly_add_next_to_queue(const char* track_uri);
 /// Cleans up the player resources.
 void spotifly_cleanup_player(void);
 
+/// Gets radio tracks for a seed track and returns them as JSON.
+/// Returns a JSON array of track URIs, or NULL on error.
+/// Caller must free the string with spotifly_free_string().
+///
+/// @param track_uri Spotify track URI (e.g., "spotify:track:xxx")
+char* spotifly_get_radio_tracks(const char* track_uri);
+
 /// Sets the playback volume (0-65535).
 /// Returns 0 on success, -1 on error.
 ///

@@ -297,4 +297,27 @@ enum SpotifyPlayer {
         let volumeU16 = spotifly_get_volume()
         return Double(volumeU16) / 65535.0
     }
+
+    /// Gets radio track URIs for a seed track using librespot's internal API.
+    /// - Parameter trackUri: The Spotify track URI to use as seed
+    /// - Returns: Array of track URIs for the radio playlist
+    static func getRadioTracks(trackUri: String) throws -> [String] {
+        let cStr: UnsafeMutablePointer<CChar>? = trackUri.withCString { ptr in
+            spotifly_get_radio_tracks(ptr)
+        }
+
+        guard let cStr else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+        defer { spotifly_free_string(cStr) }
+
+        let jsonString = String(cString: cStr)
+        guard let jsonData = jsonString.data(using: .utf8),
+              let trackUris = try? JSONDecoder().decode([String].self, from: jsonData)
+        else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+
+        return trackUris
+    }
 }

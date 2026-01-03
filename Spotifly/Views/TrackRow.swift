@@ -297,28 +297,20 @@ struct TrackRow: View {
 
         Task {
             do {
-                // Extract track ID from URI if needed (e.g., "spotify:track:123" -> "123")
-                let trackId = if track.id.hasPrefix("spotify:track:") {
-                    String(track.id.dropFirst("spotify:track:".count))
-                } else {
-                    track.id
-                }
+                // Use librespot's internal radio API
+                let radioTrackUris = try SpotifyPlayer.getRadioTracks(trackUri: track.uri)
 
-                // Fetch recommendations based on the current track
-                let recommendedTracks = try await SpotifyAPI.fetchRecommendations(
-                    accessToken: accessToken,
-                    seedTrackId: trackId,
-                )
-
-                if !recommendedTracks.isEmpty {
-                    // Play the current track followed by recommendations
+                if !radioTrackUris.isEmpty {
+                    // Play the current track followed by radio tracks
                     var trackUris = [track.uri]
-                    trackUris.append(contentsOf: recommendedTracks.map(\.uri))
+                    trackUris.append(contentsOf: radioTrackUris)
 
                     await playbackViewModel.playTracks(
                         trackUris,
                         accessToken: accessToken,
                     )
+                } else {
+                    playbackViewModel.errorMessage = "No radio tracks found"
                 }
             } catch {
                 playbackViewModel.errorMessage = "Failed to start radio: \(error.localizedDescription)"

@@ -1129,6 +1129,90 @@ pub extern "C" fn spotifly_add_next_to_queue(track_uri: *const c_char) -> i32 {
     }
 }
 
+/// Gets radio tracks for a seed track and returns them as JSON.
+/// Returns a JSON array of track URIs, or NULL on error.
+/// Caller must free the string with spotifly_free_string().
+#[no_mangle]
+pub extern "C" fn spotifly_get_radio_tracks(track_uri: *const c_char) -> *mut c_char {
+    if track_uri.is_null() {
+        eprintln!("Get radio error: track_uri is null");
+        return ptr::null_mut();
+    }
+
+    let uri_str = unsafe {
+        match CStr::from_ptr(track_uri).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Get radio error: invalid track_uri string");
+                return ptr::null_mut();
+            }
+        }
+    };
+
+    let session_guard = SESSION.lock().unwrap();
+    let session = match session_guard.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            eprintln!("Get radio error: session not initialized");
+            return ptr::null_mut();
+        }
+    };
+    drop(session_guard);
+
+    let result: Result<Vec<String>, String> = RUNTIME.block_on(async {
+        // Parse the URI
+        let spotify_uri = parse_spotify_uri(&uri_str)?;
+
+        // Get radio tracks from Spotify
+        let response = session.spclient().get_radio_for_track(&spotify_uri).await
+            .map_err(|e| format!("Failed to get radio: {:?}", e))?;
+
+        // Parse the JSON response
+        let json: serde_json::Value = serde_json::from_slice(&response)
+            .map_err(|e| format!("Failed to parse radio response: {:?}", e))?;
+
+        // Extract track URIs from the response
+        // The response format is: { "mediaItems": [{ "uri": "spotify:track:xxx" }, ...] }
+        let track_uris: Vec<String> = json.get("mediaItems")
+            .and_then(|items| items.as_array())
+            .map(|items| {
+                items.iter()
+                    .filter_map(|item| {
+                        item.get("uri")
+                            .and_then(|u| u.as_str())
+                            .filter(|uri| uri.starts_with("spotify:track:"))
+                            .map(|s| s.to_string())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if track_uris.is_empty() {
+            return Err("No radio tracks found".to_string());
+        }
+
+        Ok(track_uris)
+    });
+
+    match result {
+        Ok(track_uris) => {
+            match serde_json::to_string(&track_uris) {
+                Ok(json_string) => {
+                    match CString::new(json_string) {
+                        Ok(cstr) => cstr.into_raw(),
+                        Err(_) => ptr::null_mut(),
+                    }
+                }
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        Err(e) => {
+            eprintln!("Get radio error: {}", e);
+            ptr::null_mut()
+        }
+    }
+}
+
 /// Cleans up the player resources.
 #[no_mangle]
 pub extern "C" fn spotifly_cleanup_player() {
