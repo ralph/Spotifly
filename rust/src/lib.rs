@@ -1171,24 +1171,29 @@ pub extern "C" fn spotifly_get_radio_tracks(track_uri: *const c_char) -> *mut c_
         let json: serde_json::Value = serde_json::from_slice(&response)
             .map_err(|e| format!("Failed to parse radio response: {:?}", e))?;
 
-        // Extract track URIs from the response
-        // The response format is: { "mediaItems": [{ "uri": "spotify:track:xxx" }, ...] }
-        let track_uris: Vec<String> = json.get("mediaItems")
+        // The API returns a playlist URI in mediaItems, not individual tracks
+        // Format: { "mediaItems": [{ "uri": "spotify:playlist:xxx" }] }
+        let playlist_uri = json.get("mediaItems")
             .and_then(|items| items.as_array())
-            .map(|items| {
-                items.iter()
-                    .filter_map(|item| {
-                        item.get("uri")
-                            .and_then(|u| u.as_str())
-                            .filter(|uri| uri.starts_with("spotify:track:"))
-                            .map(|s| s.to_string())
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("uri"))
+            .and_then(|u| u.as_str())
+            .filter(|uri| uri.starts_with("spotify:playlist:"))
+            .ok_or_else(|| "No radio playlist found in response".to_string())?;
+
+        // Parse the playlist URI
+        let playlist_spotify_uri = parse_spotify_uri(playlist_uri)?;
+
+        // Load the playlist tracks
+        let queue_items = load_playlist(&session, playlist_spotify_uri).await?;
+
+        // Extract just the track URIs
+        let track_uris: Vec<String> = queue_items.into_iter()
+            .map(|item| item.uri)
+            .collect();
 
         if track_uris.is_empty() {
-            return Err("No radio tracks found".to_string());
+            return Err("Radio playlist is empty".to_string());
         }
 
         Ok(track_uris)
