@@ -211,9 +211,10 @@ struct RecentTracksSection: View {
                 .padding(.horizontal)
 
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(tracks) { track in
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(
                         track: track.toTrackRowData(),
+                        index: index,
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                         playbackViewModel: playbackViewModel,
                     ) {
