@@ -364,7 +364,7 @@ struct LoggedInView: View {
 
                 case .artistContext:
                     // Show album detail if one is selected, otherwise show albums grid
-                    if let album = navigationCoordinator.selectedAlbum {
+                    if let album = navigationCoordinator.currentAlbum {
                         AlbumDetailView(
                             album: album,
                             playbackViewModel: playbackViewModel,

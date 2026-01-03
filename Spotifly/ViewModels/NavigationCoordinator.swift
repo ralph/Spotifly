@@ -14,8 +14,8 @@ final class NavigationCoordinator {
     /// Current artist context (shown in sidebar when viewing artist/album)
     var currentArtist: SearchArtist?
 
-    /// Currently selected album within artist context
-    var selectedAlbum: SearchAlbum?
+    /// Current album within artist context
+    var currentAlbum: SearchAlbum?
 
     /// Counter that increments when navigation is requested (for onChange detection)
     var navigationVersion = 0
@@ -49,7 +49,7 @@ final class NavigationCoordinator {
                     artistId: artistId
                 )
                 currentArtist = artist
-                selectedAlbum = nil
+                currentAlbum = nil
                 navigationVersion += 1
             } catch {
                 errorMessage = "Failed to load artist: \(error.localizedDescription)"
@@ -90,7 +90,7 @@ final class NavigationCoordinator {
                     }
                 }
 
-                selectedAlbum = album
+                currentAlbum = album
                 navigationVersion += 1
             } catch {
                 errorMessage = "Failed to load album: \(error.localizedDescription)"
@@ -102,18 +102,18 @@ final class NavigationCoordinator {
     /// Navigate to an album with a known artist (more efficient, avoids extra API call)
     func navigateToAlbum(_ album: SearchAlbum, artist: SearchArtist) {
         currentArtist = artist
-        selectedAlbum = album
+        currentAlbum = album
         navigationVersion += 1
     }
 
     /// Clear the artist context (called when switching away from artist section)
     func clearArtistContext() {
         currentArtist = nil
-        selectedAlbum = nil
+        currentAlbum = nil
     }
 
-    /// Clear just the selected album (stay in artist context)
-    func clearSelectedAlbum() {
-        selectedAlbum = nil
+    /// Clear just the current album (stay in artist context)
+    func clearCurrentAlbum() {
+        currentAlbum = nil
     }
 }
