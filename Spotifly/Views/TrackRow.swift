@@ -173,7 +173,7 @@ struct TrackRow: View {
                 Divider()
 
                 Button {
-                    // TODO: Copy to clipboard
+                    copyToClipboard()
                 } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -196,6 +196,33 @@ struct TrackRow: View {
         .onTapGesture(count: 2) {
             onDoubleTap()
         }
+    }
+
+    private func copyToClipboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+
+        // Convert Spotify URI to web URL
+        // spotify:track:xxxxx -> https://open.spotify.com/track/xxxxx
+        let webUrl = uriToWebUrl(track.uri)
+        pasteboard.setString(webUrl, forType: .string)
+    }
+
+    private func uriToWebUrl(_ uri: String) -> String {
+        // Parse spotify:type:id format
+        let components = uri.split(separator: ":")
+
+        guard components.count >= 3,
+              components[0] == "spotify"
+        else {
+            // If not a valid Spotify URI, return as-is
+            return uri
+        }
+
+        let contentType = components[1]
+        let id = components[2]
+
+        return "https://open.spotify.com/\(contentType)/\(id)"
     }
 }
 
