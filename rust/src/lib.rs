@@ -220,13 +220,27 @@ pub extern "C" fn spotifly_free_string(s: *mut c_char) {
     }
 }
 
-/// Initializes the player with the given access token.
+/// Initializes the player with the given access token and device information.
 /// Must be called before play/pause operations.
 /// Returns 0 on success, -1 on error.
+///
+/// # Parameters
+/// - access_token: OAuth access token
+/// - device_name: Device name (e.g., "iPhone 15 Pro")
+/// - device_type: Device type (0 = Computer/macOS, 1 = Smartphone/iOS)
 #[no_mangle]
-pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
+pub extern "C" fn spotifly_init_player(
+    access_token: *const c_char,
+    device_name: *const c_char,
+    device_type: i32,
+) -> i32 {
     if access_token.is_null() {
         eprintln!("Player init error: access_token is null");
+        return -1;
+    }
+
+    if device_name.is_null() {
+        eprintln!("Player init error: device_name is null");
         return -1;
     }
 
@@ -235,6 +249,16 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
             Ok(s) => s.to_string(),
             Err(_) => {
                 eprintln!("Player init error: invalid access_token string");
+                return -1;
+            }
+        }
+    };
+
+    let device_name_str = unsafe {
+        match CStr::from_ptr(device_name).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Player init error: invalid device_name string");
                 return -1;
             }
         }
@@ -250,7 +274,7 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
     }
 
     let result = RUNTIME.block_on(async {
-        init_player_async(&token_str).await
+        init_player_async(&token_str, &device_name_str, device_type).await
     });
 
     match result {
@@ -262,9 +286,13 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
     }
 }
 
-async fn init_player_async(access_token: &str) -> Result<(), String> {
+async fn init_player_async(access_token: &str, device_name: &str, device_type: i32) -> Result<(), String> {
+    // Create device ID with platform identifier
+    let platform_prefix = if device_type == 1 { "ios" } else { "macos" };
+    let device_id = format!("spotifly_{}_{}", platform_prefix, std::process::id());
+
     let session_config = SessionConfig {
-        device_id: format!("spotifly_{}", std::process::id()),
+        device_id,
         ..Default::default()
     };
 

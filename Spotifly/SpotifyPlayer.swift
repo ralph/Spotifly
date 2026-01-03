@@ -7,6 +7,9 @@
 
 import Foundation
 import SpotiflyRust
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Queue item metadata
 struct QueueItem: Sendable, Identifiable {
@@ -52,9 +55,26 @@ enum SpotifyPlayer {
     /// Must be called before any playback operations.
     @SpotifyAuthActor
     static func initialize(accessToken: String) async throws {
+        // Get device name and type based on platform
+        let deviceName: String
+        let deviceType: Int32
+
+        #if os(iOS)
+        deviceName = await MainActor.run {
+            UIDevice.current.name // e.g., "Ralph's iPhone"
+        }
+        deviceType = 1 // Smartphone
+        #else
+        // macOS
+        deviceName = Host.current().localizedName ?? "Mac"
+        deviceType = 0 // Computer
+        #endif
+
         let result = await Task.detached {
             accessToken.withCString { tokenPtr in
-                spotifly_init_player(tokenPtr)
+                deviceName.withCString { namePtr in
+                    spotifly_init_player(tokenPtr, namePtr, deviceType)
+                }
             }
         }.value
 
