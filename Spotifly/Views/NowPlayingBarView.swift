@@ -119,17 +119,10 @@ struct NowPlayingBarView: View {
                     value: Binding(
                         get: { Double(playbackViewModel.currentPositionMs) },
                         set: { newValue in
-                            let positionMs = UInt32(newValue)
-                            do {
-                                try SpotifyPlayer.seek(positionMs: positionMs)
-                                playbackViewModel.currentPositionMs = positionMs
-                                playbackViewModel.updateNowPlayingInfo()
-                            } catch {
-                                playbackViewModel.errorMessage = error.localizedDescription
-                            }
-                        }
+                            playbackViewModel.seek(to: UInt32(newValue))
+                        },
                     ),
-                    in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1))
+                    in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
                 )
                 .tint(.green)
                 .frame(width: 200)
@@ -255,17 +248,10 @@ struct NowPlayingBarView: View {
                 value: Binding(
                     get: { Double(playbackViewModel.currentPositionMs) },
                     set: { newValue in
-                        let positionMs = UInt32(newValue)
-                        do {
-                            try SpotifyPlayer.seek(positionMs: positionMs)
-                            playbackViewModel.currentPositionMs = positionMs
-                            playbackViewModel.updateNowPlayingInfo()
-                        } catch {
-                            playbackViewModel.errorMessage = error.localizedDescription
-                        }
-                    }
+                        playbackViewModel.seek(to: UInt32(newValue))
+                    },
                 ),
-                in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1))
+                in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
             )
             .tint(.green)
 

@@ -756,8 +756,9 @@ pub extern "C" fn spotifly_get_position_ms() -> u32 {
     if IS_PLAYING.load(Ordering::SeqCst) {
         let now = current_timestamp_ms();
         let elapsed_since_update = now.saturating_sub(stored_timestamp);
-        // Cap interpolation to avoid runaway if updates stop
-        let capped_elapsed = elapsed_since_update.min(1000) as u32;
+        // Cap interpolation at 5 seconds - librespot events can be delayed
+        // but if we haven't heard anything in 5s, something is wrong
+        let capped_elapsed = elapsed_since_update.min(5000) as u32;
         stored_position.saturating_add(capped_elapsed)
     } else {
         stored_position

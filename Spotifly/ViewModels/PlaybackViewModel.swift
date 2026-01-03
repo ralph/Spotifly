@@ -12,6 +12,9 @@ import MediaPlayer
 @MainActor
 @Observable
 final class PlaybackViewModel {
+    /// Shared singleton instance - ensures only one timer runs
+    static let shared = PlaybackViewModel()
+
     var isPlaying = false
     var isLoading = false
     var currentTrackId: String?
@@ -50,7 +53,7 @@ final class PlaybackViewModel {
     private var lastAlbumArtURL: String?
     private var positionTimer: Timer?
 
-    init() {
+    private init() {
         setupRemoteCommandCenter()
 
         // Load saved volume (but don't apply it yet - mixer isn't initialized)
@@ -69,8 +72,6 @@ final class PlaybackViewModel {
         // Start position update timer
         startPositionTimer()
     }
-
-    // Timer will be automatically invalidated when the object is deallocated
 
     func initializeIfNeeded(accessToken: String) async {
         guard !isInitialized else { return }
@@ -195,6 +196,7 @@ final class PlaybackViewModel {
         // Apply volume after playback starts (mixer is now initialized)
         SpotifyPlayer.setVolume(volume)
         updateQueueState()
+        syncPositionAnchor()
         await checkCurrentTrackFavoriteStatus(accessToken: accessToken)
     }
 
@@ -233,10 +235,7 @@ final class PlaybackViewModel {
             currentArtistName = SpotifyPlayer.queueArtistName(at: currentIndex)
             currentAlbumArtURL = SpotifyPlayer.queueAlbumArtUrl(at: currentIndex)
             trackDurationMs = SpotifyPlayer.queueDurationMs(at: currentIndex)
-
-            // Position will sync from Rust on next timer tick
-            currentPositionMs = 0
-
+            // Position is synced separately via syncPositionAnchor()
             updateNowPlayingInfo()
         }
     }
@@ -245,8 +244,8 @@ final class PlaybackViewModel {
         do {
             try SpotifyPlayer.next()
             isPlaying = true
-            currentPositionMs = 0
             updateQueueState()
+            syncPositionAnchor()
             updateNowPlayingInfo()
         } catch {
             errorMessage = error.localizedDescription
@@ -257,8 +256,21 @@ final class PlaybackViewModel {
         do {
             try SpotifyPlayer.previous()
             isPlaying = true
-            currentPositionMs = 0
             updateQueueState()
+            syncPositionAnchor()
+            updateNowPlayingInfo()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func seek(to positionMs: UInt32) {
+        do {
+            try SpotifyPlayer.seek(positionMs: positionMs)
+            // Update anchor for smooth interpolation from new position
+            positionAnchorMs = positionMs
+            positionAnchorTime = Date()
+            currentPositionMs = positionMs
             updateNowPlayingInfo()
         } catch {
             errorMessage = error.localizedDescription
@@ -363,23 +375,17 @@ final class PlaybackViewModel {
             Task { @MainActor in
                 guard let self else { return }
                 guard let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
-
                 let positionMs = UInt32(seekEvent.positionTime * 1000)
-
-                do {
-                    try SpotifyPlayer.seek(positionMs: positionMs)
-                    // Position will sync from Rust on next timer tick
-                    self.currentPositionMs = positionMs
-                    self.updateNowPlayingInfo()
-                } catch {
-                    self.errorMessage = error.localizedDescription
-                }
+                self.seek(to: positionMs)
             }
             return .success
         }
     }
 
     func updateNowPlayingInfo() {
+        // Don't update Now Playing with invalid data - causes --:-- display
+        guard trackDurationMs > 0 else { return }
+
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
 
         if let trackName = currentTrackName {
@@ -390,9 +396,10 @@ final class PlaybackViewModel {
             nowPlayingInfo[MPMediaItemPropertyArtist] = artistName
         }
 
-        // Duration and position
+        // Duration and position - ensure position doesn't exceed duration
+        let validPosition = min(currentPositionMs, trackDurationMs)
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = Double(trackDurationMs) / 1000.0
-        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(currentPositionMs) / 1000.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(validPosition) / 1000.0
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
 
         // Update Now Playing (preserves existing artwork)
@@ -429,6 +436,12 @@ final class PlaybackViewModel {
 
     private var nowPlayingUpdateCounter = 0
 
+    // Anchor-based position tracking for smooth UI interpolation
+    // (Similar to how macOS Media Center uses playbackRate for auto-increment)
+    private var positionAnchorMs: UInt32 = 0
+    private var positionAnchorTime: Date = .init()
+    private var lastRustPosition: UInt32 = 0
+
     private func startPositionTimer() {
         // Poll at 100ms for smooth seek bar updates
         positionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -436,6 +449,15 @@ final class PlaybackViewModel {
                 self?.updatePosition()
             }
         }
+    }
+
+    /// Sync position anchor with Rust - call after seek, play, resume, track change
+    private func syncPositionAnchor() {
+        let rustPosition = SpotifyPlayer.positionMs
+        positionAnchorMs = rustPosition
+        positionAnchorTime = Date()
+        lastRustPosition = rustPosition
+        currentPositionMs = rustPosition
     }
 
     private func updatePosition() {
@@ -446,6 +468,7 @@ final class PlaybackViewModel {
             currentIndex = rustCurrentIndex
             isPlaying = SpotifyPlayer.isPlaying
             updateQueueState()
+            syncPositionAnchor()
             return
         }
 
@@ -453,21 +476,37 @@ final class PlaybackViewModel {
         let rustIsPlaying = SpotifyPlayer.isPlaying
         if rustIsPlaying != isPlaying {
             isPlaying = rustIsPlaying
+            // Resync anchor on play/pause state change
+            syncPositionAnchor()
         }
 
-        // Get actual position from Rust player (updated every 200ms from librespot)
-        let actualPosition = SpotifyPlayer.positionMs
-
-        // Only update if position changed (avoids unnecessary redraws)
-        if actualPosition != currentPositionMs {
-            currentPositionMs = min(actualPosition, trackDurationMs)
+        // Compute position using anchor-based interpolation (smooth, never stalls)
+        if isPlaying {
+            let elapsedSeconds = max(0, Date().timeIntervalSince(positionAnchorTime))
+            let elapsedMs = UInt32(min(elapsedSeconds * 1000, Double(UInt32.max - 1)))
+            let interpolatedPosition = positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue
+            currentPositionMs = min(interpolatedPosition, trackDurationMs)
         }
 
-        // Update Now Playing info less frequently (every 500ms = every 5 ticks)
-        // to avoid overwhelming the system and causing flicker
+        // Periodically check Rust position for drift correction (every ~1 second)
         nowPlayingUpdateCounter += 1
-        if nowPlayingUpdateCounter >= 5 {
+        if nowPlayingUpdateCounter >= 10 {
             nowPlayingUpdateCounter = 0
+
+            // Get Rust's position and check for significant drift
+            let rustPosition = SpotifyPlayer.positionMs
+            if rustPosition != lastRustPosition {
+                // Rust has a new position - check if we've drifted
+                let drift = abs(Int32(rustPosition) - Int32(currentPositionMs))
+                if drift > 500 {
+                    // More than 500ms drift - resync anchor
+                    positionAnchorMs = rustPosition
+                    positionAnchorTime = Date()
+                    currentPositionMs = min(rustPosition, trackDurationMs)
+                }
+                lastRustPosition = rustPosition
+            }
+
             updateNowPlayingInfo()
         }
     }
