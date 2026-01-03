@@ -174,14 +174,20 @@ struct ArtistDetailView: View {
     }
 
     /// Albums sorted with current album first (if any)
+    /// If the current album isn't in the fetched list, prepend it
     private var sortedAlbumsWithCurrentFirst: [SearchAlbum] {
-        guard let currentAlbumId = navigationCoordinator.currentAlbum?.id else {
+        guard let currentAlbum = navigationCoordinator.currentAlbum else {
             return albums
         }
         var sorted = albums
-        if let index = sorted.firstIndex(where: { $0.id == currentAlbumId }) {
+        if let index = sorted.firstIndex(where: { $0.id == currentAlbum.id }) {
+            // Current album is in the list - move it to the top
             let current = sorted.remove(at: index)
             sorted.insert(current, at: 0)
+        } else {
+            // Current album not in list (e.g., single, EP, or not in first batch)
+            // Prepend it so it's always visible and highlighted
+            sorted.insert(currentAlbum, at: 0)
         }
         return sorted
     }
