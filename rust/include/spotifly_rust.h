@@ -114,9 +114,6 @@ int32_t spotifly_add_to_queue(const char* track_uri);
 /// @param track_uri Spotify track URI (e.g., "spotify:track:xxx")
 int32_t spotifly_add_next_to_queue(const char* track_uri);
 
-/// Cleans up the player resources.
-void spotifly_cleanup_player(void);
-
 /// Gets radio tracks for a seed track and returns them as JSON.
 /// Returns a JSON array of track URIs, or NULL on error.
 /// Caller must free the string with spotifly_free_string().
@@ -129,10 +126,6 @@ char* spotifly_get_radio_tracks(const char* track_uri);
 ///
 /// @param volume Volume level (0 = muted, 65535 = max)
 int32_t spotifly_set_volume(uint16_t volume);
-
-/// Gets the current playback volume (0-65535).
-/// Returns the volume on success, 0 on error.
-uint16_t spotifly_get_volume(void);
 
 #ifdef __cplusplus
 }

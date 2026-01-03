@@ -1275,44 +1275,6 @@ pub extern "C" fn spotifly_get_radio_tracks(track_uri: *const c_char) -> *mut c_
     }
 }
 
-/// Cleans up the player resources.
-#[no_mangle]
-pub extern "C" fn spotifly_cleanup_player() {
-    // Signal event listener to stop
-    {
-        let tx_guard = PLAYER_EVENT_TX.lock().unwrap();
-        if let Some(tx) = tx_guard.as_ref() {
-            let _ = tx.send(());
-        }
-    }
-
-    // Clear player
-    {
-        let mut player_guard = PLAYER.lock().unwrap();
-        *player_guard = None;
-    }
-
-    // Clear session
-    {
-        let mut session_guard = SESSION.lock().unwrap();
-        *session_guard = None;
-    }
-
-    // Clear mixer
-    {
-        let mut mixer_guard = MIXER.lock().unwrap();
-        *mixer_guard = None;
-    }
-
-    // Clear event sender
-    {
-        let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
-        *tx_guard = None;
-    }
-
-    IS_PLAYING.store(false, Ordering::SeqCst);
-}
-
 /// Sets the playback volume (0-65535).
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
@@ -1326,20 +1288,6 @@ pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
         None => {
             eprintln!("Set volume error: mixer not initialized");
             -1
-        }
-    }
-}
-
-/// Gets the current playback volume (0-65535).
-/// Returns the volume on success, 0 on error.
-#[no_mangle]
-pub extern "C" fn spotifly_get_volume() -> u16 {
-    let mixer_guard = MIXER.lock().unwrap();
-    match mixer_guard.as_ref() {
-        Some(mixer) => mixer.volume(),
-        None => {
-            eprintln!("Get volume error: mixer not initialized");
-            0
         }
     }
 }

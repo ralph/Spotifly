@@ -221,11 +221,6 @@ enum SpotifyPlayer {
         spotifly_get_queue_duration_ms(index)
     }
 
-    /// Cleans up player resources.
-    static func cleanup() {
-        spotifly_cleanup_player()
-    }
-
     /// Fetches all queue items.
     static func getAllQueueItems() throws -> [QueueItem] {
         guard let cStr = spotifly_get_all_queue_items() else {
@@ -296,12 +291,6 @@ enum SpotifyPlayer {
     static func setVolume(_ volume: Double) {
         let volumeU16 = UInt16(max(0, min(1, volume)) * 65535.0)
         spotifly_set_volume(volumeU16)
-    }
-
-    /// Gets the current playback volume (0.0 - 1.0).
-    static func getVolume() -> Double {
-        let volumeU16 = spotifly_get_volume()
-        return Double(volumeU16) / 65535.0
     }
 
     /// Gets radio track URIs for a seed track using librespot's internal API.
