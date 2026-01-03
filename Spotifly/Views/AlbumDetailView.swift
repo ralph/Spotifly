@@ -5,6 +5,7 @@
 //  Shows details for an album search result with track list
 //
 
+import AppKit
 import SwiftUI
 
 struct AlbumDetailView: View {
@@ -96,18 +97,53 @@ struct AlbumDetailView: View {
                         }
                     }
 
-                    // Play All button
-                    Button {
-                        playAllTracks()
-                    } label: {
-                        Label("playback.play_album", systemImage: "play.fill")
-                            .font(.headline)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
+                    // Play All button and menu
+                    HStack(spacing: 12) {
+                        Button {
+                            playAllTracks()
+                        } label: {
+                            Label("playback.play_album", systemImage: "play.fill")
+                                .font(.headline)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                        .disabled(tracks.isEmpty)
+
+                        // Context menu
+                        Menu {
+                            Button {
+                                playNext()
+                            } label: {
+                                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                            }
+                            .disabled(tracks.isEmpty)
+
+                            Button {
+                                addToQueue()
+                            } label: {
+                                Label("Add to Queue", systemImage: "text.append")
+                            }
+                            .disabled(tracks.isEmpty)
+
+                            Divider()
+
+                            Button {
+                                copyToClipboard()
+                            } label: {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+                            .disabled(album.externalUrl == nil)
+                        } label: {
+                            Image(systemName: "ellipsis.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .disabled(tracks.isEmpty)
                 }
                 .padding(.top, 24)
 
@@ -172,5 +208,35 @@ struct AlbumDetailView: View {
                 accessToken: session.accessToken,
             )
         }
+    }
+
+    private func playNext() {
+        Task {
+            for track in tracks.reversed() {
+                await playbackViewModel.playNext(
+                    trackUri: track.uri,
+                    accessToken: session.accessToken,
+                )
+            }
+        }
+    }
+
+    private func addToQueue() {
+        Task {
+            for track in tracks {
+                await playbackViewModel.addToQueue(
+                    trackUri: track.uri,
+                    accessToken: session.accessToken,
+                )
+            }
+        }
+    }
+
+    private func copyToClipboard() {
+        guard let externalUrl = album.externalUrl else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(externalUrl, forType: .string)
     }
 }

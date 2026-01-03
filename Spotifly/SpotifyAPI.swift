@@ -194,8 +194,9 @@ struct SearchAlbum: Sendable, Identifiable {
     let totalTracks: Int
     let releaseDate: String
     let totalDurationMs: Int?
+    let externalUrl: String?
 
-    init(id: String, name: String, uri: String, artistName: String, artistId: String? = nil, imageURL: URL?, totalTracks: Int, releaseDate: String, totalDurationMs: Int? = nil) {
+    init(id: String, name: String, uri: String, artistName: String, artistId: String? = nil, imageURL: URL?, totalTracks: Int, releaseDate: String, totalDurationMs: Int? = nil, externalUrl: String? = nil) {
         self.id = id
         self.name = name
         self.uri = uri
@@ -205,6 +206,7 @@ struct SearchAlbum: Sendable, Identifiable {
         self.totalTracks = totalTracks
         self.releaseDate = releaseDate
         self.totalDurationMs = totalDurationMs
+        self.externalUrl = externalUrl
     }
 
     init(from album: AlbumSimplified, totalDurationMs: Int? = nil) {
@@ -217,6 +219,7 @@ struct SearchAlbum: Sendable, Identifiable {
         totalTracks = album.trackCount
         releaseDate = album.releaseDate
         self.totalDurationMs = totalDurationMs
+        self.externalUrl = nil // AlbumSimplified doesn't have externalUrl
     }
 
     var formattedDuration: String? {
@@ -721,7 +724,7 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - albumId: Album ID
     static func fetchAlbumDetails(accessToken: String, albumId: String) async throws -> SearchAlbum {
-        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(id,name),images,tracks(items(duration_ms))"
+        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(id,name),images,tracks(items(duration_ms)),external_urls(spotify)"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -796,6 +799,10 @@ enum SpotifyAPI {
             }
         }
 
+        // Parse external URL
+        let externalUrls = json["external_urls"] as? [String: Any]
+        let externalUrl = externalUrls?["spotify"] as? String
+
         return SearchAlbum(
             id: id,
             name: name,
@@ -806,6 +813,7 @@ enum SpotifyAPI {
             totalTracks: totalTracks,
             releaseDate: releaseDate,
             totalDurationMs: totalDurationMs,
+            externalUrl: externalUrl,
         )
     }
 
