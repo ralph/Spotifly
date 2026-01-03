@@ -61,6 +61,9 @@ struct QueueItem {
     artist_name: String,
     album_art_url: String,
     duration_ms: u32,
+    album_id: Option<String>,
+    artist_id: Option<String>,
+    external_url: Option<String>,
 }
 
 // Helper function to convert URL to URI
@@ -119,6 +122,28 @@ fn get_album_art_url(track: &Track) -> String {
         .unwrap_or_default()
 }
 
+// Helper function to extract album ID from track
+fn get_album_id(track: &Track) -> Option<String> {
+    Some(track.album.id.to_base62().ok()?)
+}
+
+// Helper function to extract first artist ID from track
+fn get_artist_id(track: &Track) -> Option<String> {
+    track.artists.first()
+        .and_then(|a| a.id.to_base62().ok())
+}
+
+// Helper function to build external URL from track URI
+fn get_external_url(uri: &str) -> Option<String> {
+    // URI format: spotify:track:TRACKID
+    let parts: Vec<&str> = uri.split(':').collect();
+    if parts.len() == 3 && parts[1] == "track" {
+        Some(format!("https://open.spotify.com/track/{}", parts[2]))
+    } else {
+        None
+    }
+}
+
 // Load album tracks into queue
 async fn load_album(session: &Session, album_uri: SpotifyUri) -> Result<Vec<QueueItem>, String> {
     let album = Album::get(session, &album_uri).await
@@ -134,6 +159,7 @@ async fn load_album(session: &Session, album_uri: SpotifyUri) -> Result<Vec<Queu
     // Fetch metadata for each track
     for track_uri in track_uris {
         if let Ok(track) = Track::get(session, &track_uri).await {
+            let uri_str = track_uri.to_string();
             let track_name = track.name.clone();
             let artist_name = track.artists.iter()
                 .map(|a| a.name.clone())
@@ -143,11 +169,14 @@ async fn load_album(session: &Session, album_uri: SpotifyUri) -> Result<Vec<Queu
             let duration_ms = track.duration as u32;
 
             queue_items.push(QueueItem {
-                uri: track_uri.to_string(),
+                uri: uri_str.clone(),
                 track_name,
                 artist_name,
                 album_art_url,
                 duration_ms,
+                album_id: get_album_id(&track),
+                artist_id: get_artist_id(&track),
+                external_url: get_external_url(&uri_str),
             });
         }
     }
@@ -169,6 +198,7 @@ async fn load_playlist(session: &Session, playlist_uri: SpotifyUri) -> Result<Ve
 
             // Fetch track metadata
             if let Ok(track) = Track::get(session, &track_uri).await {
+                let uri_str = track_uri.to_string();
                 let track_name = track.name.clone();
                 let artist_name = track.artists.iter()
                     .map(|a| a.name.clone())
@@ -178,11 +208,14 @@ async fn load_playlist(session: &Session, playlist_uri: SpotifyUri) -> Result<Ve
                 let duration_ms = track.duration as u32;
 
                 queue_items.push(QueueItem {
-                    uri: track_uri.to_string(),
+                    uri: uri_str.clone(),
                     track_name,
                     artist_name,
                     album_art_url,
                     duration_ms,
+                    album_id: get_album_id(&track),
+                    artist_id: get_artist_id(&track),
+                    external_url: get_external_url(&uri_str),
                 });
             }
         }
@@ -208,6 +241,7 @@ async fn load_artist(session: &Session, artist_uri: SpotifyUri) -> Result<Vec<Qu
     // Fetch metadata for each track
     for track_uri in track_uris {
         if let Ok(track) = Track::get(session, &track_uri).await {
+            let uri_str = track_uri.to_string();
             let track_name = track.name.clone();
             let artist_name = track.artists.iter()
                 .map(|a| a.name.clone())
@@ -217,11 +251,14 @@ async fn load_artist(session: &Session, artist_uri: SpotifyUri) -> Result<Vec<Qu
             let duration_ms = track.duration as u32;
 
             queue_items.push(QueueItem {
-                uri: track_uri.to_string(),
+                uri: uri_str.clone(),
                 track_name,
                 artist_name,
                 album_art_url,
                 duration_ms,
+                album_id: get_album_id(&track),
+                artist_id: get_artist_id(&track),
+                external_url: get_external_url(&uri_str),
             });
         }
     }
@@ -488,6 +525,9 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
                         artist_name,
                         album_art_url,
                         duration_ms,
+                        album_id: get_album_id(&track),
+                        artist_id: get_artist_id(&track),
+                        external_url: get_external_url(&uri_str),
                     };
 
                     queue_items.push(queue_item);
@@ -593,6 +633,9 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
                     artist_name,
                     album_art_url,
                     duration_ms,
+                    album_id: get_album_id(&track),
+                    artist_id: get_artist_id(&track),
+                    external_url: get_external_url(&uri_str),
                 };
 
                 let mut queue_guard = QUEUE.lock().unwrap();
@@ -1004,6 +1047,69 @@ pub extern "C" fn spotifly_get_queue_duration_ms(index: usize) -> u32 {
     queue_guard[index].duration_ms
 }
 
+/// Gets the album ID for a queue item by index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds or album ID is not available.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_album_id(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match &queue_guard[index].album_id {
+        Some(album_id) => {
+            match CString::new(album_id.clone()) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+/// Gets the artist ID for a queue item by index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds or artist ID is not available.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_artist_id(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match &queue_guard[index].artist_id {
+        Some(artist_id) => {
+            match CString::new(artist_id.clone()) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+/// Gets the external URL for a queue item by index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds or external URL is not available.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_external_url(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match &queue_guard[index].external_url {
+        Some(external_url) => {
+            match CString::new(external_url.clone()) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        None => ptr::null_mut(),
+    }
+}
+
 /// Returns all queue items as a JSON string.
 /// Caller must free the string with spotifly_free_string().
 /// Returns NULL on error.
@@ -1076,6 +1182,9 @@ pub extern "C" fn spotifly_add_to_queue(track_uri: *const c_char) -> i32 {
                     artist_name,
                     album_art_url,
                     duration_ms,
+                    album_id: get_album_id(&track),
+                    artist_id: get_artist_id(&track),
+                    external_url: get_external_url(&uri_str),
                 };
 
                 // Add to queue instead of replacing
@@ -1154,6 +1263,9 @@ pub extern "C" fn spotifly_add_next_to_queue(track_uri: *const c_char) -> i32 {
                     artist_name,
                     album_art_url,
                     duration_ms,
+                    album_id: get_album_id(&track),
+                    artist_id: get_artist_id(&track),
+                    external_url: get_external_url(&uri_str),
                 };
 
                 // Insert after current index

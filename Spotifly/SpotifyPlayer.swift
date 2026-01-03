@@ -16,6 +16,9 @@ struct QueueItem: Sendable, Identifiable {
     let artistName: String
     let albumArtURL: String
     let durationMs: UInt32
+    let albumId: String?
+    let artistId: String?
+    let externalUrl: String?
 
     var durationFormatted: String {
         let totalSeconds = Int(durationMs / 1000)
@@ -248,6 +251,11 @@ enum SpotifyPlayer {
                 return nil
             }
 
+            // Optional fields for navigation
+            let albumId = item["album_id"] as? String
+            let artistId = item["artist_id"] as? String
+            let externalUrl = item["external_url"] as? String
+
             return QueueItem(
                 id: uri,
                 uri: uri,
@@ -255,6 +263,9 @@ enum SpotifyPlayer {
                 artistName: artistName,
                 albumArtURL: albumArtURL,
                 durationMs: durationMs,
+                albumId: albumId,
+                artistId: artistId,
+                externalUrl: externalUrl
             )
         }
     }

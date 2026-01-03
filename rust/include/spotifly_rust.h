@@ -96,6 +96,21 @@ char* spotifly_get_queue_uri(size_t index);
 /// Returns 0 if index is out of bounds.
 uint32_t spotifly_get_queue_duration_ms(size_t index);
 
+/// Returns the album ID at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds or album ID is not available.
+char* spotifly_get_queue_album_id(size_t index);
+
+/// Returns the artist ID at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds or artist ID is not available.
+char* spotifly_get_queue_artist_id(size_t index);
+
+/// Returns the external URL (Spotify web link) at the given index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds or external URL is not available.
+char* spotifly_get_queue_external_url(size_t index);
+
 /// Returns all queue items as a JSON string.
 /// Caller must free the string with spotifly_free_string().
 /// Returns NULL on error.

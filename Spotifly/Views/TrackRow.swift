@@ -386,9 +386,9 @@ extension QueueItem {
             albumArtURL: albumArtURL,
             durationMs: Int(durationMs),
             trackNumber: nil,
-            albumId: nil,
-            artistId: nil,
-            externalUrl: nil,
+            albumId: albumId,
+            artistId: artistId,
+            externalUrl: externalUrl
         )
     }
 }
