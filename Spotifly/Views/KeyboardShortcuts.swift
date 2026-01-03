@@ -43,6 +43,7 @@ extension View {
 
 private struct PlaybackShortcutsView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         Group {
@@ -70,6 +71,14 @@ private struct PlaybackShortcutsView: View {
                 playbackViewModel.previous()
             }
             .keyboardShortcut(.leftArrow, modifiers: .command)
+
+            // Cmd+L - Like/Unlike current track
+            Button("") {
+                Task {
+                    await playbackViewModel.toggleCurrentTrackFavorite(accessToken: session.accessToken)
+                }
+            }
+            .keyboardShortcut("l", modifiers: .command)
         }
         .frame(width: 0, height: 0)
         .opacity(0)

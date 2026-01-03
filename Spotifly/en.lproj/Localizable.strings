@@ -112,3 +112,17 @@
 "devices.error.not_logged_in" = "Not logged in";
 "devices.error.failed_to_load" = "Failed to load devices";
 "devices.error.failed_to_transfer" = "Failed to transfer playback";
+
+/* Menu Commands */
+"menu.playback" = "Playback";
+"menu.play_pause" = "Play / Pause";
+"menu.next_track" = "Next Track";
+"menu.previous_track" = "Previous Track";
+"menu.like_track" = "Like / Unlike Track";
+"menu.navigate" = "Navigate";
+"menu.favorites" = "Favorites";
+"menu.playlists" = "Playlists";
+"menu.albums" = "Albums";
+"menu.artists" = "Artists";
+"menu.search" = "Search";
+"menu.refresh" = "Refresh";

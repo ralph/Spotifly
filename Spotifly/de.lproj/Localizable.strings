@@ -112,3 +112,17 @@
 "devices.error.not_logged_in" = "Nicht angemeldet";
 "devices.error.failed_to_load" = "Geräte konnten nicht geladen werden";
 "devices.error.failed_to_transfer" = "Wiedergabe konnte nicht übertragen werden";
+
+/* Menu Commands */
+"menu.playback" = "Wiedergabe";
+"menu.play_pause" = "Abspielen / Pause";
+"menu.next_track" = "Nächster Track";
+"menu.previous_track" = "Vorheriger Track";
+"menu.like_track" = "Track liken / unliken";
+"menu.navigate" = "Navigation";
+"menu.favorites" = "Favoriten";
+"menu.playlists" = "Playlists";
+"menu.albums" = "Alben";
+"menu.artists" = "Künstler";
+"menu.search" = "Suchen";
+"menu.refresh" = "Aktualisieren";
