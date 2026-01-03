@@ -26,6 +26,8 @@ struct SpotiflyApp: App {
             ContentView()
                 .environmentObject(windowState)
         }
+        #if os(macOS)
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
+        #endif
     }
 }
