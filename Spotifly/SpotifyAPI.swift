@@ -591,7 +591,7 @@ enum SpotifyAPI {
                 uri: uri,
                 isPublic: isPublic,
                 ownerName: ownerName,
-                totalDurationMs: totalDurationMs
+                totalDurationMs: totalDurationMs,
             )
         }
 
@@ -701,7 +701,7 @@ enum SpotifyAPI {
             imageURL: imageURL,
             trackCount: trackCount,
             ownerName: ownerName,
-            totalDurationMs: totalDurationMs
+            totalDurationMs: totalDurationMs,
         )
     }
 
@@ -792,7 +792,7 @@ enum SpotifyAPI {
             imageURL: imageURL,
             totalTracks: totalTracks,
             releaseDate: releaseDate,
-            totalDurationMs: totalDurationMs
+            totalDurationMs: totalDurationMs,
         )
     }
 
@@ -973,7 +973,7 @@ enum SpotifyAPI {
                 uri: uri,
                 releaseDate: releaseDate,
                 albumType: albumType,
-                totalDurationMs: totalDurationMs
+                totalDurationMs: totalDurationMs,
             )
         }
 

@@ -293,6 +293,14 @@ final class PlaybackViewModel {
     private func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
+        // Remove any existing handlers to prevent duplicates
+        commandCenter.playCommand.removeTarget(nil)
+        commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+
         // Enable commands
         commandCenter.playCommand.isEnabled = true
         commandCenter.pauseCommand.isEnabled = true
@@ -359,17 +367,15 @@ final class PlaybackViewModel {
 
         // Next track command
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.next()
-            }
+            guard let self else { return .commandFailed }
+            next()
             return .success
         }
 
         // Previous track command
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.previous()
-            }
+            guard let self else { return .commandFailed }
+            previous()
             return .success
         }
 
