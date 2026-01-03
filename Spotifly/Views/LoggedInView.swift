@@ -61,8 +61,8 @@ struct LoggedInView: View {
                 searchViewModel.selectedArtist != nil || searchViewModel.selectedPlaylist != nil ||
                 searchViewModel.showingAllTracks
         case .artistContext:
-            // Artist context is always three-column
-            true
+            // Three-column only when an album is selected
+            navigationCoordinator.currentAlbum != nil
         default:
             false
         }
@@ -257,15 +257,17 @@ struct LoggedInView: View {
                         EmptyView()
 
                     case .artistContext:
-                        // Artist context view: shows artist with top tracks and albums
-                        if let artist = navigationCoordinator.currentArtist {
+                        // Content only shown in three-column mode (when album is selected)
+                        if navigationCoordinator.currentAlbum != nil,
+                           let artist = navigationCoordinator.currentArtist
+                        {
                             ArtistDetailView(
                                 artist: artist,
                                 playbackViewModel: playbackViewModel,
                             )
                             .navigationTitle(artist.name)
                         } else {
-                            ProgressView()
+                            EmptyView()
                         }
 
                     case .none:
@@ -363,16 +365,21 @@ struct LoggedInView: View {
                     }
 
                 case .artistContext:
-                    // Show album detail if one is selected, otherwise show albums grid
+                    // Two-column: artist in detail; Three-column: album in detail
                     if let album = navigationCoordinator.currentAlbum {
                         AlbumDetailView(
                             album: album,
                             playbackViewModel: playbackViewModel,
                         )
+                    } else if let artist = navigationCoordinator.currentArtist {
+                        // No album selected - show artist in detail (two-column mode)
+                        ArtistDetailView(
+                            artist: artist,
+                            playbackViewModel: playbackViewModel,
+                        )
+                        .navigationTitle(artist.name)
                     } else {
-                        // Show placeholder or albums list when no album selected
-                        Text("empty.select_album")
-                            .foregroundStyle(.secondary)
+                        ProgressView()
                     }
 
                 default:
