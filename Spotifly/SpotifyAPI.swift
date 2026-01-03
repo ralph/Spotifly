@@ -1603,6 +1603,95 @@ enum SpotifyAPI {
         }
     }
 
+    // MARK: - Recommendations (Radio)
+
+    /// Fetches track recommendations based on a seed track (for "Start Radio" feature)
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - seedTrackId: The Spotify ID of the seed track
+    ///   - limit: Number of tracks to return (default 50, max 100)
+    /// - Returns: Array of recommended tracks
+    static func fetchRecommendations(
+        accessToken: String,
+        seedTrackId: String,
+        limit: Int = 50
+    ) async throws -> [SearchTrack] {
+        let urlString = "\(baseURL)/recommendations?seed_tracks=\(seedTrackId)&limit=\(limit)"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tracks = json["tracks"] as? [[String: Any]]
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            let recommendedTracks = tracks.compactMap { item -> SearchTrack? in
+                guard let id = item["id"] as? String,
+                      let name = item["name"] as? String,
+                      let uri = item["uri"] as? String,
+                      let durationMs = item["duration_ms"] as? Int
+                else {
+                    return nil
+                }
+
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let albumData = item["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumId = albumData?["id"] as? String
+                let albumImages = albumData?["images"] as? [[String: Any]]
+                let imageURLString = albumImages?.first?["url"] as? String
+                let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                let externalUrls = item["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
+
+                return SearchTrack(
+                    id: id,
+                    name: name,
+                    uri: uri,
+                    artistName: artistName,
+                    albumName: albumName,
+                    imageURL: imageURL,
+                    durationMs: durationMs,
+                    albumId: albumId,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
+                )
+            }
+
+            return recommendedTracks
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
     // MARK: - Search
 
     /// Performs a search across Spotify's catalog

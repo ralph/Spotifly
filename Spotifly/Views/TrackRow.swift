@@ -176,10 +176,11 @@ struct TrackRow: View {
                 .disabled(accessToken == nil)
 
                 Button {
-                    // TODO: Start song radio
+                    startSongRadio()
                 } label: {
                     Label("Start Song Radio", systemImage: "antenna.radiowaves.left.and.right")
                 }
+                .disabled(accessToken == nil)
 
                 Divider()
 
@@ -288,6 +289,33 @@ struct TrackRow: View {
                 trackUri: track.uri,
                 accessToken: accessToken,
             )
+        }
+    }
+
+    private func startSongRadio() {
+        guard let accessToken else { return }
+
+        Task {
+            do {
+                // Fetch recommendations based on the current track
+                let recommendedTracks = try await SpotifyAPI.fetchRecommendations(
+                    accessToken: accessToken,
+                    seedTrackId: track.id,
+                )
+
+                if !recommendedTracks.isEmpty {
+                    // Play the current track followed by recommendations
+                    var trackUris = [track.uri]
+                    trackUris.append(contentsOf: recommendedTracks.map(\.uri))
+
+                    await playbackViewModel.playTracks(
+                        trackUris,
+                        accessToken: accessToken,
+                    )
+                }
+            } catch {
+                playbackViewModel.errorMessage = "Failed to start radio: \(error.localizedDescription)"
+            }
         }
     }
 
