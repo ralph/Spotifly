@@ -45,6 +45,11 @@ int32_t spotifly_stop(void);
 /// Returns 1 if currently playing, 0 otherwise.
 int32_t spotifly_is_playing(void);
 
+/// Returns the current playback position in milliseconds.
+/// If playing, interpolates from last known position.
+/// Returns 0 if not playing or no position available.
+uint32_t spotifly_get_position_ms(void);
+
 /// Skips to the next track in the queue.
 /// Returns 0 on success, -1 on error or if at end of queue.
 int32_t spotifly_next(void);

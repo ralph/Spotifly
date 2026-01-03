@@ -48,7 +48,6 @@ final class PlaybackViewModel {
 
     private var isInitialized = false
     private var lastAlbumArtURL: String?
-    var playbackStartTime: Date? // Internal for pause/resume handling
     private var positionTimer: Timer?
 
     init() {
@@ -193,7 +192,6 @@ final class PlaybackViewModel {
     private func handlePlaybackStarted(trackId: String, accessToken: String) async {
         currentTrackId = trackId
         isPlaying = true
-        playbackStartTime = Date()
         // Apply volume after playback starts (mixer is now initialized)
         SpotifyPlayer.setVolume(volume)
         updateQueueState()
@@ -236,11 +234,8 @@ final class PlaybackViewModel {
             currentAlbumArtURL = SpotifyPlayer.queueAlbumArtUrl(at: currentIndex)
             trackDurationMs = SpotifyPlayer.queueDurationMs(at: currentIndex)
 
-            // Reset position tracking for new track
+            // Position will sync from Rust on next timer tick
             currentPositionMs = 0
-            if isPlaying {
-                playbackStartTime = Date()
-            }
 
             updateNowPlayingInfo()
         }
@@ -251,7 +246,6 @@ final class PlaybackViewModel {
             try SpotifyPlayer.next()
             isPlaying = true
             currentPositionMs = 0
-            playbackStartTime = Date()
             updateQueueState()
             updateNowPlayingInfo()
         } catch {
@@ -264,7 +258,6 @@ final class PlaybackViewModel {
             try SpotifyPlayer.previous()
             isPlaying = true
             currentPositionMs = 0
-            playbackStartTime = Date()
             updateQueueState()
             updateNowPlayingInfo()
         } catch {
@@ -316,12 +309,6 @@ final class PlaybackViewModel {
                 if !self.isPlaying {
                     SpotifyPlayer.resume()
                     self.isPlaying = true
-                    // Adjust start time based on current position
-                    if self.currentPositionMs > 0 {
-                        self.playbackStartTime = Date().addingTimeInterval(-Double(self.currentPositionMs) / 1000.0)
-                    } else {
-                        self.playbackStartTime = Date()
-                    }
                     self.updateNowPlayingInfo()
                 }
             }
@@ -335,7 +322,6 @@ final class PlaybackViewModel {
                 if self.isPlaying {
                     SpotifyPlayer.pause()
                     self.isPlaying = false
-                    self.playbackStartTime = nil
                     self.updateNowPlayingInfo()
                 }
             }
@@ -349,16 +335,9 @@ final class PlaybackViewModel {
                 if self.isPlaying {
                     SpotifyPlayer.pause()
                     self.isPlaying = false
-                    self.playbackStartTime = nil
                 } else {
                     SpotifyPlayer.resume()
                     self.isPlaying = true
-                    // Adjust start time based on current position
-                    if self.currentPositionMs > 0 {
-                        self.playbackStartTime = Date().addingTimeInterval(-Double(self.currentPositionMs) / 1000.0)
-                    } else {
-                        self.playbackStartTime = Date()
-                    }
                 }
                 self.updateNowPlayingInfo()
             }
@@ -389,13 +368,8 @@ final class PlaybackViewModel {
 
                 do {
                     try SpotifyPlayer.seek(positionMs: positionMs)
+                    // Position will sync from Rust on next timer tick
                     self.currentPositionMs = positionMs
-
-                    // Update playback start time to maintain sync
-                    if self.isPlaying {
-                        self.playbackStartTime = Date().addingTimeInterval(-Double(positionMs) / 1000.0)
-                    }
-
                     self.updateNowPlayingInfo()
                 } catch {
                     self.errorMessage = error.localizedDescription
@@ -453,8 +427,11 @@ final class PlaybackViewModel {
 
     // MARK: - Position Tracking
 
+    private var nowPlayingUpdateCounter = 0
+
     private func startPositionTimer() {
-        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        // Poll at 100ms for smooth seek bar updates
+        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updatePosition()
             }
@@ -468,7 +445,6 @@ final class PlaybackViewModel {
             // Track changed due to auto-advance
             currentIndex = rustCurrentIndex
             isPlaying = SpotifyPlayer.isPlaying
-            playbackStartTime = isPlaying ? Date() : nil
             updateQueueState()
             return
         }
@@ -477,25 +453,23 @@ final class PlaybackViewModel {
         let rustIsPlaying = SpotifyPlayer.isPlaying
         if rustIsPlaying != isPlaying {
             isPlaying = rustIsPlaying
-            if isPlaying {
-                playbackStartTime = Date().addingTimeInterval(-Double(currentPositionMs) / 1000.0)
-            } else {
-                playbackStartTime = nil
-            }
         }
 
-        guard isPlaying, let startTime = playbackStartTime else {
-            return
+        // Get actual position from Rust player (updated every 200ms from librespot)
+        let actualPosition = SpotifyPlayer.positionMs
+
+        // Only update if position changed (avoids unnecessary redraws)
+        if actualPosition != currentPositionMs {
+            currentPositionMs = min(actualPosition, trackDurationMs)
         }
 
-        let elapsed = Date().timeIntervalSince(startTime)
-        let positionMs = UInt32(elapsed * 1000)
-
-        // Clamp to duration
-        currentPositionMs = min(positionMs, trackDurationMs)
-
-        // Update Now Playing info periodically
-        updateNowPlayingInfo()
+        // Update Now Playing info less frequently (every 500ms = every 5 ticks)
+        // to avoid overwhelming the system and causing flicker
+        nowPlayingUpdateCounter += 1
+        if nowPlayingUpdateCounter >= 5 {
+            nowPlayingUpdateCounter = 0
+            updateNowPlayingInfo()
+        }
     }
 
     // MARK: - Favorite Management

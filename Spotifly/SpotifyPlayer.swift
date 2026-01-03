@@ -132,6 +132,12 @@ enum SpotifyPlayer {
         spotifly_is_playing() == 1
     }
 
+    /// Returns the current playback position in milliseconds.
+    /// This is the actual position from the player, not an estimate.
+    static var positionMs: UInt32 {
+        spotifly_get_position_ms()
+    }
+
     /// Skips to the next track in the queue.
     static func next() throws {
         let result = spotifly_next()

@@ -11,8 +11,9 @@ use librespot_playback::player::{Player, PlayerEvent};
 use once_cell::sync::Lazy;
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
@@ -34,6 +35,24 @@ static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::n
 // Queue state
 static QUEUE: Lazy<Mutex<Vec<QueueItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static CURRENT_INDEX: AtomicUsize = AtomicUsize::new(0);
+
+// Position tracking - updated from player events
+static POSITION_MS: AtomicU32 = AtomicU32::new(0);
+static POSITION_TIMESTAMP_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Get current timestamp in milliseconds since UNIX epoch
+fn current_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis() as u64
+}
+
+/// Update position from player event
+fn update_position(position_ms: u32) {
+    POSITION_MS.store(position_ms, Ordering::SeqCst);
+    POSITION_TIMESTAMP_MS.store(current_timestamp_ms(), Ordering::SeqCst);
+}
 
 #[derive(Clone, serde::Serialize)]
 struct QueueItem {
@@ -289,8 +308,11 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         *mixer_guard = Some(Arc::clone(&mixer));
     }
 
-    // Create player
-    let player_config = PlayerConfig::default();
+    // Create player with position update interval for smooth seek bar
+    let player_config = PlayerConfig {
+        position_update_interval: Some(Duration::from_millis(200)),
+        ..PlayerConfig::default()
+    };
     let audio_format = AudioFormat::default();
 
     let backend = audio_backend::find(None).ok_or("No audio backend found")?;
@@ -319,17 +341,28 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                 }
                 event = event_channel.recv() => {
                     match event {
-                        Some(PlayerEvent::Playing { .. }) => {
+                        Some(PlayerEvent::Playing { position_ms, .. }) => {
                             IS_PLAYING.store(true, Ordering::SeqCst);
+                            update_position(position_ms);
                         }
-                        Some(PlayerEvent::Paused { .. }) => {
+                        Some(PlayerEvent::Paused { position_ms, .. }) => {
                             IS_PLAYING.store(false, Ordering::SeqCst);
+                            update_position(position_ms);
+                        }
+                        Some(PlayerEvent::PositionChanged { position_ms, .. }) => {
+                            // Periodic position update (every 200ms)
+                            update_position(position_ms);
+                        }
+                        Some(PlayerEvent::Seeked { position_ms, .. }) => {
+                            update_position(position_ms);
                         }
                         Some(PlayerEvent::Stopped { .. }) => {
                             IS_PLAYING.store(false, Ordering::SeqCst);
+                            update_position(0);
                         }
                         Some(PlayerEvent::EndOfTrack { .. }) => {
                             IS_PLAYING.store(false, Ordering::SeqCst);
+                            update_position(0);
                             // Auto-advance to next track if available
                             let queue_guard = QUEUE.lock().unwrap();
                             let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
@@ -705,6 +738,30 @@ pub extern "C" fn spotifly_stop() -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_is_playing() -> i32 {
     if IS_PLAYING.load(Ordering::SeqCst) { 1 } else { 0 }
+}
+
+/// Returns the current playback position in milliseconds.
+/// If playing, interpolates from last known position.
+/// Returns 0 if not playing or no position available.
+#[no_mangle]
+pub extern "C" fn spotifly_get_position_ms() -> u32 {
+    let stored_position = POSITION_MS.load(Ordering::SeqCst);
+    let stored_timestamp = POSITION_TIMESTAMP_MS.load(Ordering::SeqCst);
+
+    if stored_timestamp == 0 {
+        return 0;
+    }
+
+    // If playing, interpolate position from last update
+    if IS_PLAYING.load(Ordering::SeqCst) {
+        let now = current_timestamp_ms();
+        let elapsed_since_update = now.saturating_sub(stored_timestamp);
+        // Cap interpolation to avoid runaway if updates stop
+        let capped_elapsed = elapsed_since_update.min(1000) as u32;
+        stored_position.saturating_add(capped_elapsed)
+    } else {
+        stored_position
+    }
 }
 
 /// Skips to the next track in the queue.
