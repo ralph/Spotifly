@@ -257,17 +257,17 @@ struct LoggedInView: View {
                         EmptyView()
 
                     case .artistContext:
-                        // Content only shown in three-column mode (when album is selected)
-                        if navigationCoordinator.currentAlbum != nil,
-                           let artist = navigationCoordinator.currentArtist
-                        {
+                        // In two-column mode: this is shown as detail
+                        // In three-column mode: this is shown as content
+                        // Either way, show the artist
+                        if let artist = navigationCoordinator.currentArtist {
                             ArtistDetailView(
                                 artist: artist,
                                 playbackViewModel: playbackViewModel,
                             )
                             .navigationTitle(artist.name)
                         } else {
-                            EmptyView()
+                            ProgressView()
                         }
 
                     case .none:
@@ -365,21 +365,14 @@ struct LoggedInView: View {
                     }
 
                 case .artistContext:
-                    // Two-column: artist in detail; Three-column: album in detail
+                    // Only called in three-column mode (when album is selected)
                     if let album = navigationCoordinator.currentAlbum {
                         AlbumDetailView(
                             album: album,
                             playbackViewModel: playbackViewModel,
                         )
-                    } else if let artist = navigationCoordinator.currentArtist {
-                        // No album selected - show artist in detail (two-column mode)
-                        ArtistDetailView(
-                            artist: artist,
-                            playbackViewModel: playbackViewModel,
-                        )
-                        .navigationTitle(artist.name)
                     } else {
-                        ProgressView()
+                        EmptyView()
                     }
 
                 default:
