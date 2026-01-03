@@ -116,4 +116,15 @@ final class NavigationCoordinator {
     func clearCurrentAlbum() {
         currentAlbum = nil
     }
+
+    // MARK: - Direct Navigation
+
+    /// Pending navigation request (observed by LoggedInView)
+    var pendingNavigationItem: NavigationItem?
+
+    /// Navigate to the queue
+    func navigateToQueue() {
+        pendingNavigationItem = .queue
+        navigationVersion += 1
+    }
 }

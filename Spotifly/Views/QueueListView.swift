@@ -45,7 +45,7 @@ struct QueueListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(queueViewModel.queueItems.enumerated()), id: \.element.id) { index, item in
+                        ForEach(Array(queueViewModel.queueItems.enumerated()), id: \.offset) { index, item in
                             TrackRow(
                                 track: item.toTrackRowData(),
                                 index: index,

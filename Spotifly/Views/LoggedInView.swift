@@ -139,7 +139,7 @@ struct LoggedInView: View {
         .environment(devicesViewModel)
         .environment(navigationCoordinator)
         .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
-            handleArtistNavigation()
+            handleNavigation()
         }
         .onChange(of: selectedNavigationItem) { oldValue, newValue in
             // Clear artist context when navigating away from artist section
@@ -154,8 +154,16 @@ struct LoggedInView: View {
         }
     }
 
-    /// Handle navigation from the NavigationCoordinator (artist/album context)
-    private func handleArtistNavigation() {
+    /// Handle navigation from the NavigationCoordinator
+    private func handleNavigation() {
+        // Handle pending direct navigation (e.g., navigate to queue)
+        if let pendingItem = navigationCoordinator.pendingNavigationItem {
+            selectedNavigationItem = pendingItem
+            navigationCoordinator.pendingNavigationItem = nil
+            return
+        }
+
+        // Handle artist context navigation
         guard navigationCoordinator.isInArtistContext else { return }
 
         // Clear other selections to avoid conflicts

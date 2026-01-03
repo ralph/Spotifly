@@ -301,14 +301,20 @@ struct TrackRow: View {
                 let radioTrackUris = try SpotifyPlayer.getRadioTracks(trackUri: track.uri)
 
                 if !radioTrackUris.isEmpty {
+                    // Filter out the base track if it's already in the radio results
+                    let filteredRadioUris = radioTrackUris.filter { $0 != track.uri }
+
                     // Play the current track followed by radio tracks
                     var trackUris = [track.uri]
-                    trackUris.append(contentsOf: radioTrackUris)
+                    trackUris.append(contentsOf: filteredRadioUris)
 
                     await playbackViewModel.playTracks(
                         trackUris,
                         accessToken: accessToken,
                     )
+
+                    // Navigate to queue to show radio tracks
+                    navigationCoordinator.navigateToQueue()
                 } else {
                     playbackViewModel.errorMessage = "No radio tracks found"
                 }
