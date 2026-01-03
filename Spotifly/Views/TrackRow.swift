@@ -127,6 +127,52 @@ struct TrackRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
+
+            // Context menu
+            Menu {
+                Button {
+                    // TODO: Add to queue
+                } label: {
+                    Label("Add to Queue", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+
+                Button {
+                    // TODO: Start song radio
+                } label: {
+                    Label("Start Song Radio", systemImage: "antenna.radiowaves.left.and.right")
+                }
+
+                Divider()
+
+                Button {
+                    // TODO: Go to artist
+                } label: {
+                    Label("Go to Artist", systemImage: "person.circle")
+                }
+
+                Button {
+                    // TODO: Go to album
+                } label: {
+                    Label("Go to Album", systemImage: "square.stack")
+                }
+
+                Divider()
+
+                Button {
+                    // TODO: Copy to clipboard
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
