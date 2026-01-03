@@ -124,11 +124,19 @@ struct LoggedInView: View {
             NowPlayingBarView(
                 authResult: authResult,
                 playbackViewModel: playbackViewModel,
-                windowState: windowState,
+                windowState: windowState
             )
         }
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .environment(devicesViewModel)
+        #if !os(macOS)
+        .fullScreenCover(isPresented: $windowState.isMiniPlayerMode) {
+            FullScreenPlayerView(
+                authResult: authResult,
+                playbackViewModel: playbackViewModel
+            )
+        }
+        #endif
     }
 
     // MARK: - View Builders
