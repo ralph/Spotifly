@@ -5,9 +5,43 @@
 //  Created by Ralph von der Heyden on 30.12.25.
 //
 
+import QuartzCore
 import SwiftUI
 
 import MediaPlayer
+
+// MARK: - Drift Correction Timer
+
+/// Helper class for periodic drift correction (not UI updates)
+/// Uses a plain Thread with isCancelled check to avoid Swift concurrency issues
+private final class DriftCorrectionTimer {
+    private var thread: Thread?
+    static let checkNotification = Notification.Name("DriftCorrectionCheck")
+
+    func start() {
+        let notificationName = DriftCorrectionTimer.checkNotification
+        let thread = Thread {
+            while !Thread.current.isCancelled {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: notificationName, object: nil)
+                }
+                // Check drift every second (not 100ms - UI uses TimelineView now)
+                Thread.sleep(forTimeInterval: 1.0)
+            }
+        }
+        thread.name = "com.spotifly.drift-correction"
+        thread.qualityOfService = .utility
+        thread.start()
+        self.thread = thread
+    }
+
+    func stop() {
+        thread?.cancel()
+        thread = nil
+    }
+}
+
+// MARK: - Playback View Model
 
 @MainActor
 @Observable
@@ -51,7 +85,6 @@ final class PlaybackViewModel {
 
     private var isInitialized = false
     private var lastAlbumArtURL: String?
-    private var positionTimer: Timer?
 
     private init() {
         setupRemoteCommandCenter()
@@ -269,7 +302,7 @@ final class PlaybackViewModel {
             try SpotifyPlayer.seek(positionMs: positionMs)
             // Update anchor for smooth interpolation from new position
             positionAnchorMs = positionMs
-            positionAnchorTime = Date()
+            positionAnchorTime = CACurrentMediaTime()
             currentPositionMs = positionMs
             updateNowPlayingInfo()
         } catch {
@@ -434,37 +467,54 @@ final class PlaybackViewModel {
 
     // MARK: - Position Tracking
 
-    private var nowPlayingUpdateCounter = 0
-
-    // Anchor-based position tracking for smooth UI interpolation
-    // (Similar to how macOS Media Center uses playbackRate for auto-increment)
+    // Anchor-based position tracking using CACurrentMediaTime for precision
+    // UI reads interpolatedPositionMs (computed), not currentPositionMs directly
     private var positionAnchorMs: UInt32 = 0
-    private var positionAnchorTime: Date = .init()
+    private var positionAnchorTime: Double = CACurrentMediaTime()
     private var lastRustPosition: UInt32 = 0
+    private var driftCorrectionTimer: DriftCorrectionTimer?
+    private var driftObserver: NSObjectProtocol?
+
+    /// Computed position using anchor interpolation - UI should bind to this
+    /// Called by TimelineView on every frame for smooth updates
+    var interpolatedPositionMs: UInt32 {
+        guard isPlaying else { return currentPositionMs }
+        let elapsed = CACurrentMediaTime() - positionAnchorTime
+        let elapsedMs = UInt32(max(0, min(elapsed * 1000, Double(UInt32.max - 1))))
+        let interpolated = positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue
+        return min(interpolated, trackDurationMs)
+    }
 
     private func startPositionTimer() {
-        // Poll at 100ms for smooth seek bar updates
-        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.updatePosition()
-            }
+        let timer = DriftCorrectionTimer()
+
+        // Observe drift correction notifications
+        driftObserver = NotificationCenter.default.addObserver(
+            forName: DriftCorrectionTimer.checkNotification,
+            object: nil,
+            queue: .main,
+        ) { [weak self] _ in
+            self?.checkDriftAndSync()
         }
+
+        timer.start()
+        driftCorrectionTimer = timer
     }
 
     /// Sync position anchor with Rust - call after seek, play, resume, track change
     private func syncPositionAnchor() {
         let rustPosition = SpotifyPlayer.positionMs
         positionAnchorMs = rustPosition
-        positionAnchorTime = Date()
+        positionAnchorTime = CACurrentMediaTime()
         lastRustPosition = rustPosition
         currentPositionMs = rustPosition
     }
 
-    private func updatePosition() {
+    /// Called every second to check for drift and sync state
+    private func checkDriftAndSync() {
         // Check if track changed (auto-advance)
         let rustCurrentIndex = SpotifyPlayer.currentIndex
         if rustCurrentIndex != currentIndex {
-            // Track changed due to auto-advance
             currentIndex = rustCurrentIndex
             isPlaying = SpotifyPlayer.isPlaying
             updateQueueState()
@@ -476,39 +526,26 @@ final class PlaybackViewModel {
         let rustIsPlaying = SpotifyPlayer.isPlaying
         if rustIsPlaying != isPlaying {
             isPlaying = rustIsPlaying
-            // Resync anchor on play/pause state change
             syncPositionAnchor()
         }
 
-        // Compute position using anchor-based interpolation (smooth, never stalls)
-        if isPlaying {
-            let elapsedSeconds = max(0, Date().timeIntervalSince(positionAnchorTime))
-            let elapsedMs = UInt32(min(elapsedSeconds * 1000, Double(UInt32.max - 1)))
-            let interpolatedPosition = positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue
-            currentPositionMs = min(interpolatedPosition, trackDurationMs)
-        }
+        // Update currentPositionMs for non-TimelineView consumers
+        currentPositionMs = interpolatedPositionMs
 
-        // Periodically check Rust position for drift correction (every ~1 second)
-        nowPlayingUpdateCounter += 1
-        if nowPlayingUpdateCounter >= 10 {
-            nowPlayingUpdateCounter = 0
-
-            // Get Rust's position and check for significant drift
-            let rustPosition = SpotifyPlayer.positionMs
-            if rustPosition != lastRustPosition {
-                // Rust has a new position - check if we've drifted
-                let drift = abs(Int32(rustPosition) - Int32(currentPositionMs))
-                if drift > 500 {
-                    // More than 500ms drift - resync anchor
-                    positionAnchorMs = rustPosition
-                    positionAnchorTime = Date()
-                    currentPositionMs = min(rustPosition, trackDurationMs)
-                }
-                lastRustPosition = rustPosition
+        // Check for significant drift from Rust position
+        let rustPosition = SpotifyPlayer.positionMs
+        if rustPosition != lastRustPosition {
+            let drift = abs(Int32(rustPosition) - Int32(interpolatedPositionMs))
+            if drift > 500 {
+                // More than 500ms drift - resync anchor
+                positionAnchorMs = rustPosition
+                positionAnchorTime = CACurrentMediaTime()
+                currentPositionMs = min(rustPosition, trackDurationMs)
             }
-
-            updateNowPlayingInfo()
+            lastRustPosition = rustPosition
         }
+
+        updateNowPlayingInfo()
     }
 
     // MARK: - Favorite Management

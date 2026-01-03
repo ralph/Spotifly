@@ -16,7 +16,7 @@ struct LoggedInView: View {
 
     @State private var session: SpotifySession
     @State private var trackViewModel = TrackLookupViewModel()
-    private var playbackViewModel: PlaybackViewModel { PlaybackViewModel.shared }
+    private let playbackViewModel = PlaybackViewModel.shared
     @State private var favoritesViewModel = FavoritesViewModel()
     @State private var playlistsViewModel = PlaylistsViewModel()
     @State private var albumsViewModel = AlbumsViewModel()

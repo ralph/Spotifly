@@ -108,30 +108,33 @@ struct NowPlayingBarView: View {
 
             Spacer()
 
-            HStack(spacing: 8) {
-                Text(formatTime(playbackViewModel.currentPositionMs))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .frame(width: 40, alignment: .trailing)
+            // TimelineView updates at display refresh rate for smooth slider
+            TimelineView(.animation(minimumInterval: 0.033)) { _ in
+                HStack(spacing: 8) {
+                    Text(formatTime(playbackViewModel.interpolatedPositionMs))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .frame(width: 40, alignment: .trailing)
 
-                Slider(
-                    value: Binding(
-                        get: { Double(playbackViewModel.currentPositionMs) },
-                        set: { newValue in
-                            playbackViewModel.seek(to: UInt32(newValue))
-                        },
-                    ),
-                    in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
-                )
-                .tint(.green)
-                .frame(width: 200)
+                    Slider(
+                        value: Binding(
+                            get: { Double(playbackViewModel.interpolatedPositionMs) },
+                            set: { newValue in
+                                playbackViewModel.seek(to: UInt32(newValue))
+                            },
+                        ),
+                        in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
+                    )
+                    .tint(.green)
+                    .frame(width: 200)
 
-                Text(formatTime(playbackViewModel.trackDurationMs))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .frame(width: 40, alignment: .leading)
+                    Text(formatTime(playbackViewModel.trackDurationMs))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .frame(width: 40, alignment: .leading)
+                }
             }
 
             favoriteButton
@@ -238,27 +241,30 @@ struct NowPlayingBarView: View {
     }
 
     private var progressBar: some View {
-        HStack(spacing: 8) {
-            Text(formatTime(playbackViewModel.currentPositionMs))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+        // TimelineView updates at display refresh rate for smooth slider
+        TimelineView(.animation(minimumInterval: 0.033)) { _ in
+            HStack(spacing: 8) {
+                Text(formatTime(playbackViewModel.interpolatedPositionMs))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
 
-            Slider(
-                value: Binding(
-                    get: { Double(playbackViewModel.currentPositionMs) },
-                    set: { newValue in
-                        playbackViewModel.seek(to: UInt32(newValue))
-                    },
-                ),
-                in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
-            )
-            .tint(.green)
+                Slider(
+                    value: Binding(
+                        get: { Double(playbackViewModel.interpolatedPositionMs) },
+                        set: { newValue in
+                            playbackViewModel.seek(to: UInt32(newValue))
+                        },
+                    ),
+                    in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
+                )
+                .tint(.green)
 
-            Text(formatTime(playbackViewModel.trackDurationMs))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+                Text(formatTime(playbackViewModel.trackDurationMs))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
         }
     }
 
