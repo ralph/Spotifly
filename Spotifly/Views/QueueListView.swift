@@ -46,14 +46,19 @@ struct QueueListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(queueViewModel.queueItems.enumerated()), id: \.offset) { index, item in
+                            let trackData = item.toTrackRowData()
                             TrackRow(
-                                track: item.toTrackRowData(),
+                                track: trackData,
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 currentIndex: playbackViewModel.currentIndex,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: session.accessToken,
                                 doubleTapBehavior: .jumpToQueueIndex,
+                                initialFavorited: queueViewModel.isFavorited(trackId: trackData.trackId),
+                                onFavoriteChanged: { newValue in
+                                    queueViewModel.setFavorited(trackId: trackData.trackId, value: newValue)
+                                },
                             )
 
                             if index < queueViewModel.queueItems.count - 1 {
@@ -65,11 +70,13 @@ struct QueueListView: View {
                 }
                 .refreshable {
                     queueViewModel.refresh()
+                    await queueViewModel.loadFavorites(accessToken: session.accessToken)
                 }
             }
         }
         .task {
             queueViewModel.loadQueue()
+            await queueViewModel.loadFavorites(accessToken: session.accessToken)
         }
     }
 }

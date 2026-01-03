@@ -1255,46 +1255,72 @@ enum SpotifyAPI {
     ///   - trackId: The Spotify ID of the track to check
     /// - Returns: True if track is saved, false otherwise
     static func checkSavedTrack(accessToken: String, trackId: String) async throws -> Bool {
-        let urlString = "\(baseURL)/me/tracks/contains?ids=\(trackId)"
+        let result = try await checkSavedTracks(accessToken: accessToken, trackIds: [trackId])
+        return result[trackId] ?? false
+    }
 
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
+    /// Batch checks if multiple tracks are saved in user's library
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - trackIds: Array of Spotify track IDs to check (max 50 per request)
+    /// - Returns: Dictionary mapping track ID to saved status
+    static func checkSavedTracks(accessToken: String, trackIds: [String]) async throws -> [String: Bool] {
+        guard !trackIds.isEmpty else { return [:] }
 
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        // Spotify API allows max 50 IDs per request
+        let batchSize = 50
+        var results: [String: Bool] = [:]
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw SpotifyAPIError.networkError(error)
-        }
+        for batchStart in stride(from: 0, to: trackIds.count, by: batchSize) {
+            let batchEnd = min(batchStart + batchSize, trackIds.count)
+            let batch = Array(trackIds[batchStart ..< batchEnd])
+            let idsParam = batch.joined(separator: ",")
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
+            let urlString = "\(baseURL)/me/tracks/contains?ids=\(idsParam)"
 
-        switch httpResponse.statusCode {
-        case 200:
-            // Parse JSON response - returns array of booleans
-            guard let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [Bool],
-                  let isSaved = jsonArray.first
-            else {
+            guard let url = URL(string: urlString) else {
+                throw SpotifyAPIError.invalidURI
+            }
+
+            var request = URLRequest(url: url)
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await URLSession.shared.data(for: request)
+            } catch {
+                throw SpotifyAPIError.networkError(error)
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
                 throw SpotifyAPIError.invalidResponse
             }
-            return isSaved
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        default:
-            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = errorJson["error"] as? [String: Any],
-               let message = error["message"] as? String
-            {
-                throw SpotifyAPIError.apiError(message)
+
+            switch httpResponse.statusCode {
+            case 200:
+                guard let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [Bool],
+                      jsonArray.count == batch.count
+                else {
+                    throw SpotifyAPIError.invalidResponse
+                }
+                // Map results back to track IDs
+                for (index, trackId) in batch.enumerated() {
+                    results[trackId] = jsonArray[index]
+                }
+            case 401:
+                throw SpotifyAPIError.unauthorized
+            default:
+                if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let error = errorJson["error"] as? [String: Any],
+                   let message = error["message"] as? String
+                {
+                    throw SpotifyAPIError.apiError(message)
+                }
+                throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
             }
-            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
         }
+
+        return results
     }
 
     /// Removes a track from user's saved tracks (unfavorites)

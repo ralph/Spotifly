@@ -265,7 +265,7 @@ enum SpotifyPlayer {
                 durationMs: durationMs,
                 albumId: albumId,
                 artistId: artistId,
-                externalUrl: externalUrl
+                externalUrl: externalUrl,
             )
         }
     }

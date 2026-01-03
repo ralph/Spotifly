@@ -26,6 +26,15 @@ struct TrackRowData: Identifiable {
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+
+    /// Extracts the track ID for API calls (handles both plain IDs and URIs)
+    var trackId: String {
+        // If id looks like a URI (spotify:track:xxx), extract just the ID
+        if id.hasPrefix("spotify:track:") {
+            return String(id.dropFirst("spotify:track:".count))
+        }
+        return id
+    }
 }
 
 /// Double-tap behavior for TrackRow
@@ -44,11 +53,14 @@ struct TrackRow: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     let accessToken: String? // For playback and queue operations
     let doubleTapBehavior: TrackRowDoubleTapBehavior
+    let initialFavorited: Bool? // Pre-fetched favorite status (for batch efficiency)
+    let onFavoriteChanged: ((Bool) -> Void)? // Callback when favorite status changes
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     @State private var isFavorited = false
     @State private var isCheckingFavorite = false
+    @State private var hasLoadedInitialFavorite = false
 
     init(
         track: TrackRowData,
@@ -59,6 +71,8 @@ struct TrackRow: View {
         playbackViewModel: PlaybackViewModel,
         accessToken: String? = nil,
         doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
+        initialFavorited: Bool? = nil,
+        onFavoriteChanged: ((Bool) -> Void)? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -72,6 +86,8 @@ struct TrackRow: View {
         self.playbackViewModel = playbackViewModel
         self.accessToken = accessToken
         self.doubleTapBehavior = doubleTapBehavior
+        self.initialFavorited = initialFavorited
+        self.onFavoriteChanged = onFavoriteChanged
     }
 
     var body: some View {
@@ -236,7 +252,20 @@ struct TrackRow: View {
             handleDoubleTap()
         }
         .task {
-            await checkFavoriteStatus()
+            // Use pre-fetched value if available, otherwise fetch
+            if let initialFavorited, !hasLoadedInitialFavorite {
+                isFavorited = initialFavorited
+                hasLoadedInitialFavorite = true
+            } else if !hasLoadedInitialFavorite {
+                await checkFavoriteStatus()
+                hasLoadedInitialFavorite = true
+            }
+        }
+        .onChange(of: initialFavorited) { _, newValue in
+            // Update when parent's batch-fetched value changes
+            if let newValue {
+                isFavorited = newValue
+            }
         }
     }
 
@@ -337,15 +366,17 @@ struct TrackRow: View {
                 if isFavorited {
                     try await SpotifyAPI.removeSavedTrack(
                         accessToken: accessToken,
-                        trackId: track.id,
+                        trackId: track.trackId,
                     )
                     isFavorited = false
+                    onFavoriteChanged?(false)
                 } else {
                     try await SpotifyAPI.saveTrack(
                         accessToken: accessToken,
-                        trackId: track.id,
+                        trackId: track.trackId,
                     )
                     isFavorited = true
+                    onFavoriteChanged?(true)
                 }
             } catch {
                 // Silently fail - revert state
@@ -363,7 +394,7 @@ struct TrackRow: View {
         do {
             isFavorited = try await SpotifyAPI.checkSavedTrack(
                 accessToken: accessToken,
-                trackId: track.id,
+                trackId: track.trackId,
             )
         } catch {
             // Silently fail - just leave as unfavorited
@@ -388,7 +419,7 @@ extension QueueItem {
             trackNumber: nil,
             albumId: albumId,
             artistId: artistId,
-            externalUrl: externalUrl
+            externalUrl: externalUrl,
         )
     }
 }
