@@ -14,6 +14,7 @@ struct LoggedInView: View {
 
     @EnvironmentObject var windowState: WindowState
 
+    @State private var session: SpotifySession
     @State private var trackViewModel = TrackLookupViewModel()
     @State private var playbackViewModel = PlaybackViewModel()
     @State private var favoritesViewModel = FavoritesViewModel()
@@ -25,6 +26,12 @@ struct LoggedInView: View {
     @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
     @State private var devicesViewModel = DevicesViewModel()
     @State private var navigationCoordinator = NavigationCoordinator()
+
+    init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
+        self.authResult = authResult
+        self.onLogout = onLogout
+        self._session = State(initialValue: SpotifySession(authResult: authResult))
+    }
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var searchText = ""
     @State private var searchFieldFocused = false
@@ -121,12 +128,12 @@ struct LoggedInView: View {
 
             // Now Playing Bar (always visible at bottom)
             NowPlayingBarView(
-                authResult: authResult,
                 playbackViewModel: playbackViewModel,
                 windowState: windowState,
             )
         }
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
+        .environment(session)
         .environment(devicesViewModel)
         .environment(navigationCoordinator)
         .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
@@ -196,7 +203,6 @@ struct LoggedInView: View {
                     switch selectedNavigationItem {
                     case .startpage:
                         StartpageView(
-                            authResult: authResult,
                             trackViewModel: trackViewModel,
                             playbackViewModel: playbackViewModel,
                             recentlyPlayedViewModel: recentlyPlayedViewModel,
@@ -209,7 +215,6 @@ struct LoggedInView: View {
 
                     case .favorites:
                         FavoritesListView(
-                            authResult: authResult,
                             favoritesViewModel: favoritesViewModel,
                             playbackViewModel: playbackViewModel,
                         )
@@ -217,7 +222,6 @@ struct LoggedInView: View {
 
                     case .playlists:
                         PlaylistsListView(
-                            authResult: authResult,
                             playlistsViewModel: playlistsViewModel,
                             playbackViewModel: playbackViewModel,
                             selectedPlaylist: $selectedPlaylist,
@@ -226,7 +230,6 @@ struct LoggedInView: View {
 
                     case .albums:
                         AlbumsListView(
-                            authResult: authResult,
                             albumsViewModel: albumsViewModel,
                             playbackViewModel: playbackViewModel,
                             selectedAlbum: $selectedAlbum,
@@ -235,7 +238,6 @@ struct LoggedInView: View {
 
                     case .artists:
                         ArtistsListView(
-                            authResult: authResult,
                             artistsViewModel: artistsViewModel,
                             playbackViewModel: playbackViewModel,
                             selectedArtist: $selectedArtist,
@@ -244,14 +246,13 @@ struct LoggedInView: View {
 
                     case .queue:
                         QueueListView(
-                            authResult: authResult,
                             queueViewModel: queueViewModel,
                             playbackViewModel: playbackViewModel,
                         )
                         .navigationTitle("nav.queue")
 
                     case .devices:
-                        DevicesView(authResult: authResult)
+                        DevicesView()
                             .navigationTitle("nav.devices")
 
                     case .searchResults:
@@ -279,31 +280,26 @@ struct LoggedInView: View {
                 {
                     SearchTracksDetailView(
                         tracks: searchResults.tracks,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
                 } else if let selectedTrack = searchViewModel.selectedTrack {
                     TrackDetailView(
                         track: selectedTrack,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
                 } else if let selectedAlbum = searchViewModel.selectedAlbum {
                     AlbumDetailView(
                         album: selectedAlbum,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
                 } else if let selectedArtist = searchViewModel.selectedArtist {
                     ArtistDetailView(
                         artist: selectedArtist,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
                 } else if let selectedPlaylist = searchViewModel.selectedPlaylist {
                     PlaylistDetailView(
                         playlist: selectedPlaylist,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
                 } else {
@@ -317,7 +313,6 @@ struct LoggedInView: View {
                     if let selectedAlbum {
                         AlbumDetailView(
                             album: SearchAlbum(from: selectedAlbum),
-                            authResult: authResult,
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
@@ -329,7 +324,6 @@ struct LoggedInView: View {
                     if let selectedArtist {
                         ArtistDetailView(
                             artist: SearchArtist(from: selectedArtist),
-                            authResult: authResult,
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
@@ -341,7 +335,6 @@ struct LoggedInView: View {
                     if let selectedPlaylist {
                         PlaylistDetailView(
                             playlist: SearchPlaylist(from: selectedPlaylist),
-                            authResult: authResult,
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
@@ -354,25 +347,21 @@ struct LoggedInView: View {
                     if showingAllRecentTracks {
                         RecentTracksDetailView(
                             tracks: recentlyPlayedViewModel.recentTracks,
-                            authResult: authResult,
                             playbackViewModel: playbackViewModel,
                         )
                     } else if let selectedAlbum = selectedRecentAlbum {
                         AlbumDetailView(
                             album: selectedAlbum,
-                            authResult: authResult,
                             playbackViewModel: playbackViewModel,
                         )
                     } else if let selectedArtist = selectedRecentArtist {
                         ArtistDetailView(
                             artist: selectedArtist,
-                            authResult: authResult,
                             playbackViewModel: playbackViewModel,
                         )
                     } else if let selectedPlaylist = selectedRecentPlaylist {
                         PlaylistDetailView(
                             playlist: selectedPlaylist,
-                            authResult: authResult,
                             playbackViewModel: playbackViewModel,
                         )
                     } else {

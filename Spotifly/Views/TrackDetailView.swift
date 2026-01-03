@@ -9,8 +9,8 @@ import SwiftUI
 
 struct TrackDetailView: View {
     let track: SearchTrack
-    let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         VStack(spacing: 24) {
@@ -74,7 +74,7 @@ struct TrackDetailView: View {
                 Task {
                     await playbackViewModel.play(
                         uriOrUrl: track.uri,
-                        accessToken: authResult.accessToken,
+                        accessToken: session.accessToken,
                     )
                 }
             } label: {

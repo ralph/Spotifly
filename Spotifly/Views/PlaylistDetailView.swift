@@ -9,8 +9,8 @@ import SwiftUI
 
 struct PlaylistDetailView: View {
     let playlist: SearchPlaylist
-    let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
 
     @State private var tracks: [PlaylistTrack] = []
     @State private var isLoading = false
@@ -131,7 +131,7 @@ struct PlaylistDetailView: View {
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken,
+                                accessToken: session.accessToken,
                             )
 
                             if index < tracks.count - 1 {
@@ -159,7 +159,7 @@ struct PlaylistDetailView: View {
 
         do {
             tracks = try await SpotifyAPI.fetchPlaylistTracks(
-                accessToken: authResult.accessToken,
+                accessToken: session.accessToken,
                 playlistId: playlist.id,
             )
         } catch {
@@ -173,7 +173,7 @@ struct PlaylistDetailView: View {
         Task {
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: authResult.accessToken,
+                accessToken: session.accessToken,
             )
         }
     }

@@ -24,13 +24,11 @@ extension View {
 
     /// Adds startpage-specific keyboard shortcuts (refresh)
     func startpageShortcuts(
-        recentlyPlayedViewModel: RecentlyPlayedViewModel,
-        authResult: SpotifyAuthResult,
+        recentlyPlayedViewModel: RecentlyPlayedViewModel
     ) -> some View {
         background(
             StartpageShortcutsView(
-                recentlyPlayedViewModel: recentlyPlayedViewModel,
-                authResult: authResult,
+                recentlyPlayedViewModel: recentlyPlayedViewModel
             ),
         )
     }
@@ -114,14 +112,14 @@ private struct LibraryNavigationShortcutsView: View {
 
 private struct StartpageShortcutsView: View {
     @Bindable var recentlyPlayedViewModel: RecentlyPlayedViewModel
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         Group {
             // Cmd+R - Refresh recently played
             Button("") {
                 Task {
-                    await recentlyPlayedViewModel.refresh(accessToken: authResult.accessToken)
+                    await recentlyPlayedViewModel.refresh(accessToken: session.accessToken)
                 }
             }
             .keyboardShortcut("r", modifiers: .command)

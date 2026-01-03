@@ -9,7 +9,7 @@ import AppKit
 import SwiftUI
 
 struct StartpageView: View {
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
     @Bindable var trackViewModel: TrackLookupViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
     @Bindable var recentlyPlayedViewModel: RecentlyPlayedViewModel
@@ -35,7 +35,7 @@ struct StartpageView: View {
                             .onSubmit {
                                 if !trackViewModel.spotifyURI.isEmpty {
                                     Task {
-                                        await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: authResult.accessToken)
+                                        await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: session.accessToken)
                                     }
                                 }
                             }
@@ -52,7 +52,7 @@ struct StartpageView: View {
 
                         Button("action.play") {
                             Task {
-                                await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: authResult.accessToken)
+                                await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: session.accessToken)
                             }
                         }
                         .buttonStyle(.borderedProminent)
@@ -90,7 +90,6 @@ struct StartpageView: View {
                             RecentTracksSection(
                                 tracks: Array(recentlyPlayedViewModel.recentTracks.prefix(5)),
                                 showingAllTracks: $showingAllRecentTracks,
-                                authResult: authResult,
                                 playbackViewModel: playbackViewModel,
                             )
                         }
@@ -138,7 +137,7 @@ struct StartpageView: View {
                                 .fontWeight(.semibold)
 
                             HStack(spacing: 8) {
-                                Text(authResult.accessToken)
+                                Text(session.accessToken)
                                     .font(.system(.caption, design: .monospaced))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -169,11 +168,10 @@ struct StartpageView: View {
             }
         }
         .task {
-            await recentlyPlayedViewModel.loadRecentlyPlayed(accessToken: authResult.accessToken)
+            await recentlyPlayedViewModel.loadRecentlyPlayed(accessToken: session.accessToken)
         }
         .startpageShortcuts(
-            recentlyPlayedViewModel: recentlyPlayedViewModel,
-            authResult: authResult,
+            recentlyPlayedViewModel: recentlyPlayedViewModel
         )
     }
 
@@ -186,7 +184,7 @@ struct StartpageView: View {
     private func copyTokenToClipboard() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(authResult.accessToken, forType: .string)
+        pasteboard.setString(session.accessToken, forType: .string)
     }
 }
 
@@ -195,8 +193,8 @@ struct StartpageView: View {
 struct RecentTracksSection: View {
     let tracks: [SearchTrack]
     @Binding var showingAllTracks: Bool
-    let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -211,7 +209,7 @@ struct RecentTracksSection: View {
                         index: index,
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                         playbackViewModel: playbackViewModel,
-                        accessToken: authResult.accessToken,
+                        accessToken: session.accessToken,
                     )
 
                     if track.id != tracks.last?.id {

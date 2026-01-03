@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct DevicesView: View {
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
     @Environment(DevicesViewModel.self) private var viewModel
 
     var body: some View {
@@ -21,7 +21,7 @@ struct DevicesView: View {
                 Spacer()
                 Button {
                     Task {
-                        await viewModel.loadDevices(accessToken: authResult.accessToken)
+                        await viewModel.loadDevices(accessToken: session.accessToken)
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
@@ -66,14 +66,14 @@ struct DevicesView: View {
             } else {
                 List {
                     ForEach(viewModel.devices) { device in
-                        DeviceRow(device: device, viewModel: viewModel, authResult: authResult)
+                        DeviceRow(device: device, viewModel: viewModel)
                     }
                 }
                 .listStyle(.plain)
             }
         }
         .task {
-            await viewModel.loadDevices(accessToken: authResult.accessToken)
+            await viewModel.loadDevices(accessToken: session.accessToken)
         }
     }
 }
@@ -81,12 +81,12 @@ struct DevicesView: View {
 struct DeviceRow: View {
     let device: SpotifyDevice
     let viewModel: DevicesViewModel
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         Button {
             Task {
-                await viewModel.transferPlayback(to: device, accessToken: authResult.accessToken)
+                await viewModel.transferPlayback(to: device, accessToken: session.accessToken)
             }
         } label: {
             HStack(spacing: 12) {

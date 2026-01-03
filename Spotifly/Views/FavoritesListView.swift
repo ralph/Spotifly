@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct FavoritesListView: View {
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
     @Bindable var favoritesViewModel: FavoritesViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
 
@@ -32,7 +32,7 @@ struct FavoritesListView: View {
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
                         Task {
-                            await favoritesViewModel.loadTracks(accessToken: authResult.accessToken)
+                            await favoritesViewModel.loadTracks(accessToken: session.accessToken)
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -59,7 +59,7 @@ struct FavoritesListView: View {
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken,
+                                accessToken: session.accessToken,
                             )
 
                             if index < favoritesViewModel.tracks.count - 1 {
@@ -74,7 +74,7 @@ struct FavoritesListView: View {
                                 .padding()
                                 .onAppear {
                                     Task {
-                                        await favoritesViewModel.loadMoreIfNeeded(accessToken: authResult.accessToken)
+                                        await favoritesViewModel.loadMoreIfNeeded(accessToken: session.accessToken)
                                     }
                                 }
                         }
@@ -82,13 +82,13 @@ struct FavoritesListView: View {
                     .padding()
                 }
                 .refreshable {
-                    await favoritesViewModel.refresh(accessToken: authResult.accessToken)
+                    await favoritesViewModel.refresh(accessToken: session.accessToken)
                 }
             }
         }
         .task {
             if favoritesViewModel.tracks.isEmpty, !favoritesViewModel.isLoading {
-                await favoritesViewModel.loadTracks(accessToken: authResult.accessToken)
+                await favoritesViewModel.loadTracks(accessToken: session.accessToken)
             }
         }
     }

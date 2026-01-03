@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct AlbumsListView: View {
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
     @Bindable var albumsViewModel: AlbumsViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
     @Binding var selectedAlbum: AlbumSimplified?
@@ -33,7 +33,7 @@ struct AlbumsListView: View {
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
                         Task {
-                            await albumsViewModel.loadAlbums(accessToken: authResult.accessToken)
+                            await albumsViewModel.loadAlbums(accessToken: session.accessToken)
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -58,7 +58,6 @@ struct AlbumsListView: View {
                             AlbumRow(
                                 album: album,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken,
                                 selectedAlbum: $selectedAlbum,
                             )
                         }
@@ -69,7 +68,7 @@ struct AlbumsListView: View {
                                 .padding()
                                 .onAppear {
                                     Task {
-                                        await albumsViewModel.loadMoreIfNeeded(accessToken: authResult.accessToken)
+                                        await albumsViewModel.loadMoreIfNeeded(accessToken: session.accessToken)
                                     }
                                 }
                         }
@@ -77,13 +76,13 @@ struct AlbumsListView: View {
                     .padding()
                 }
                 .refreshable {
-                    await albumsViewModel.refresh(accessToken: authResult.accessToken)
+                    await albumsViewModel.refresh(accessToken: session.accessToken)
                 }
             }
         }
         .task {
             if albumsViewModel.albums.isEmpty, !albumsViewModel.isLoading {
-                await albumsViewModel.loadAlbums(accessToken: authResult.accessToken)
+                await albumsViewModel.loadAlbums(accessToken: session.accessToken)
             }
         }
     }
@@ -92,8 +91,8 @@ struct AlbumsListView: View {
 struct AlbumRow: View {
     let album: AlbumSimplified
     @Bindable var playbackViewModel: PlaybackViewModel
-    let accessToken: String
     @Binding var selectedAlbum: AlbumSimplified?
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         HStack(spacing: 12) {
@@ -174,7 +173,7 @@ struct AlbumRow: View {
             // Play button
             Button {
                 Task {
-                    await playbackViewModel.play(uriOrUrl: album.uri, accessToken: accessToken)
+                    await playbackViewModel.play(uriOrUrl: album.uri, accessToken: session.accessToken)
                 }
             } label: {
                 Image(systemName: "play.circle.fill")

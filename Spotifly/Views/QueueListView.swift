@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct QueueListView: View {
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
     @Bindable var queueViewModel: QueueViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
 
@@ -52,7 +52,7 @@ struct QueueListView: View {
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 currentIndex: playbackViewModel.currentIndex,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken,
+                                accessToken: session.accessToken,
                                 doubleTapBehavior: .jumpToQueueIndex,
                             )
 

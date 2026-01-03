@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct NowPlayingBarView: View {
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
     @Bindable var playbackViewModel: PlaybackViewModel
     @ObservedObject var windowState: WindowState
 
@@ -302,7 +302,7 @@ struct NowPlayingBarView: View {
     private var favoriteButton: some View {
         Button {
             Task {
-                await playbackViewModel.toggleCurrentTrackFavorite(accessToken: authResult.accessToken)
+                await playbackViewModel.toggleCurrentTrackFavorite(accessToken: session.accessToken)
             }
         } label: {
             Image(systemName: playbackViewModel.isCurrentTrackFavorited ? "heart.fill" : "heart")
@@ -312,7 +312,7 @@ struct NowPlayingBarView: View {
         .buttonStyle(.plain)
         .task(id: playbackViewModel.currentTrackId) {
             // Check favorite status when track changes
-            await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: authResult.accessToken)
+            await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: session.accessToken)
         }
     }
 

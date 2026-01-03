@@ -9,8 +9,8 @@ import SwiftUI
 
 struct SearchTracksDetailView: View {
     let tracks: [SearchTrack]
-    let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         ScrollView {
@@ -53,7 +53,7 @@ struct SearchTracksDetailView: View {
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
-                            accessToken: authResult.accessToken,
+                            accessToken: session.accessToken,
                         )
 
                         if track.id != tracks.last?.id {
@@ -73,7 +73,7 @@ struct SearchTracksDetailView: View {
         Task {
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: authResult.accessToken,
+                accessToken: session.accessToken,
             )
         }
     }
