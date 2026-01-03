@@ -7,6 +7,31 @@
 
 import Foundation
 
+// MARK: - Duration Formatting Protocol
+
+/// Protocol for types that have a total duration in milliseconds
+protocol DurationFormattable {
+    var totalDurationMs: Int? { get }
+}
+
+extension DurationFormattable {
+    /// Formats the total duration as "X hr Y min" or "Y min"
+    var formattedDuration: String? {
+        guard let totalDurationMs else { return nil }
+        let totalSeconds = totalDurationMs / 1000
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+
+        if hours > 0 {
+            return String(format: "%d hr %d min", hours, minutes)
+        } else {
+            return String(format: "%d min", minutes)
+        }
+    }
+}
+
+// MARK: - Track Metadata
+
 /// Track metadata from Spotify
 struct TrackMetadata: Sendable {
     let id: String
@@ -26,7 +51,7 @@ struct TrackMetadata: Sendable {
 }
 
 /// Simplified playlist metadata from Spotify
-struct PlaylistSimplified: Sendable, Identifiable {
+struct PlaylistSimplified: Sendable, Identifiable, DurationFormattable {
     let id: String
     let name: String
     let description: String?
@@ -36,19 +61,6 @@ struct PlaylistSimplified: Sendable, Identifiable {
     let isPublic: Bool
     let ownerName: String
     let totalDurationMs: Int?
-
-    var formattedDuration: String? {
-        guard let totalDurationMs else { return nil }
-        let totalSeconds = totalDurationMs / 1000
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-
-        if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
-        } else {
-            return String(format: "%d min", minutes)
-        }
-    }
 }
 
 /// Response wrapper for playlists endpoint
@@ -60,7 +72,7 @@ struct PlaylistsResponse: Sendable {
 }
 
 /// Simplified album metadata from Spotify
-struct AlbumSimplified: Sendable, Identifiable {
+struct AlbumSimplified: Sendable, Identifiable, DurationFormattable {
     let id: String
     let name: String
     let artistName: String
@@ -70,19 +82,6 @@ struct AlbumSimplified: Sendable, Identifiable {
     let releaseDate: String
     let albumType: String
     let totalDurationMs: Int?
-
-    var formattedDuration: String? {
-        guard let totalDurationMs else { return nil }
-        let totalSeconds = totalDurationMs / 1000
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-
-        if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
-        } else {
-            return String(format: "%d min", minutes)
-        }
-    }
 }
 
 /// Response wrapper for albums endpoint
@@ -184,7 +183,7 @@ struct SearchTrack: Sendable, Identifiable {
 }
 
 /// Album search result
-struct SearchAlbum: Sendable, Identifiable {
+struct SearchAlbum: Sendable, Identifiable, DurationFormattable {
     let id: String
     let name: String
     let uri: String
@@ -221,19 +220,6 @@ struct SearchAlbum: Sendable, Identifiable {
         self.totalDurationMs = totalDurationMs
         externalUrl = nil // AlbumSimplified doesn't have externalUrl
     }
-
-    var formattedDuration: String? {
-        guard let totalDurationMs else { return nil }
-        let totalSeconds = totalDurationMs / 1000
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-
-        if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
-        } else {
-            return String(format: "%d min", minutes)
-        }
-    }
 }
 
 /// Artist search result
@@ -265,7 +251,7 @@ struct SearchArtist: Sendable, Identifiable {
 }
 
 /// Playlist search result
-struct SearchPlaylist: Sendable, Identifiable {
+struct SearchPlaylist: Sendable, Identifiable, DurationFormattable {
     let id: String
     let name: String
     let uri: String
@@ -295,19 +281,6 @@ struct SearchPlaylist: Sendable, Identifiable {
         trackCount = playlist.trackCount
         ownerName = playlist.ownerName
         self.totalDurationMs = totalDurationMs
-    }
-
-    var formattedDuration: String? {
-        guard let totalDurationMs else { return nil }
-        let totalSeconds = totalDurationMs / 1000
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-
-        if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
-        } else {
-            return String(format: "%d min", minutes)
-        }
     }
 }
 
