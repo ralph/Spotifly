@@ -144,6 +144,15 @@ struct AlbumRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    if let duration = album.formattedDuration {
+                        Text("metadata.separator")
+                            .foregroundStyle(.secondary)
+
+                        Text(duration)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Text("metadata.separator")
                         .foregroundStyle(.secondary)
 

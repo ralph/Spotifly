@@ -146,6 +146,15 @@ struct PlaylistRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    if let duration = playlist.formattedDuration {
+                        Text("metadata.separator")
+                            .foregroundStyle(.secondary)
+
+                        Text(duration)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Text("metadata.separator")
                         .foregroundStyle(.secondary)
 

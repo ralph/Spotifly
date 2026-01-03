@@ -35,6 +35,20 @@ struct PlaylistSimplified: Sendable, Identifiable {
     let uri: String
     let isPublic: Bool
     let ownerName: String
+    let totalDurationMs: Int?
+
+    var formattedDuration: String? {
+        guard let totalDurationMs else { return nil }
+        let totalSeconds = totalDurationMs / 1000
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+
+        if hours > 0 {
+            return String(format: "%d hr %d min", hours, minutes)
+        } else {
+            return String(format: "%d min", minutes)
+        }
+    }
 }
 
 /// Response wrapper for playlists endpoint
@@ -55,6 +69,20 @@ struct AlbumSimplified: Sendable, Identifiable {
     let uri: String
     let releaseDate: String
     let albumType: String
+    let totalDurationMs: Int?
+
+    var formattedDuration: String? {
+        guard let totalDurationMs else { return nil }
+        let totalSeconds = totalDurationMs / 1000
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+
+        if hours > 0 {
+            return String(format: "%d hr %d min", hours, minutes)
+        } else {
+            return String(format: "%d min", minutes)
+        }
+    }
 }
 
 /// Response wrapper for albums endpoint
@@ -156,8 +184,9 @@ struct SearchAlbum: Sendable, Identifiable {
     let imageURL: URL?
     let totalTracks: Int
     let releaseDate: String
+    let totalDurationMs: Int?
 
-    init(id: String, name: String, uri: String, artistName: String, imageURL: URL?, totalTracks: Int, releaseDate: String) {
+    init(id: String, name: String, uri: String, artistName: String, imageURL: URL?, totalTracks: Int, releaseDate: String, totalDurationMs: Int? = nil) {
         self.id = id
         self.name = name
         self.uri = uri
@@ -165,9 +194,10 @@ struct SearchAlbum: Sendable, Identifiable {
         self.imageURL = imageURL
         self.totalTracks = totalTracks
         self.releaseDate = releaseDate
+        self.totalDurationMs = totalDurationMs
     }
 
-    init(from album: AlbumSimplified) {
+    init(from album: AlbumSimplified, totalDurationMs: Int? = nil) {
         id = album.id
         name = album.name
         uri = album.uri
@@ -175,6 +205,20 @@ struct SearchAlbum: Sendable, Identifiable {
         imageURL = album.imageURL
         totalTracks = album.trackCount
         releaseDate = album.releaseDate
+        self.totalDurationMs = totalDurationMs
+    }
+
+    var formattedDuration: String? {
+        guard let totalDurationMs else { return nil }
+        let totalSeconds = totalDurationMs / 1000
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+
+        if hours > 0 {
+            return String(format: "%d hr %d min", hours, minutes)
+        } else {
+            return String(format: "%d min", minutes)
+        }
     }
 }
 
@@ -215,8 +259,9 @@ struct SearchPlaylist: Sendable, Identifiable {
     let imageURL: URL?
     let trackCount: Int
     let ownerName: String
+    let totalDurationMs: Int?
 
-    init(id: String, name: String, uri: String, description: String?, imageURL: URL?, trackCount: Int, ownerName: String) {
+    init(id: String, name: String, uri: String, description: String?, imageURL: URL?, trackCount: Int, ownerName: String, totalDurationMs: Int? = nil) {
         self.id = id
         self.name = name
         self.uri = uri
@@ -224,9 +269,10 @@ struct SearchPlaylist: Sendable, Identifiable {
         self.imageURL = imageURL
         self.trackCount = trackCount
         self.ownerName = ownerName
+        self.totalDurationMs = totalDurationMs
     }
 
-    init(from playlist: PlaylistSimplified) {
+    init(from playlist: PlaylistSimplified, totalDurationMs: Int? = nil) {
         id = playlist.id
         name = playlist.name
         uri = playlist.uri
@@ -234,6 +280,20 @@ struct SearchPlaylist: Sendable, Identifiable {
         imageURL = playlist.imageURL
         trackCount = playlist.trackCount
         ownerName = playlist.ownerName
+        self.totalDurationMs = totalDurationMs
+    }
+
+    var formattedDuration: String? {
+        guard let totalDurationMs else { return nil }
+        let totalSeconds = totalDurationMs / 1000
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+
+        if hours > 0 {
+            return String(format: "%d hr %d min", hours, minutes)
+        } else {
+            return String(format: "%d min", minutes)
+        }
     }
 }
 
@@ -434,7 +494,7 @@ enum SpotifyAPI {
     ///   - limit: Number of playlists to fetch (max 50)
     ///   - offset: Offset for pagination
     static func fetchUserPlaylists(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> PlaylistsResponse {
-        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,tracks(total),public,owner(display_name)),total,next"
+        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,tracks(total,items(track(duration_ms))),public,owner(display_name)),total,next"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -506,6 +566,22 @@ enum SpotifyAPI {
                 imageURL = URL(string: urlString)
             }
 
+            // Calculate total duration from tracks
+            var totalDurationMs: Int?
+            if let items = tracks["items"] as? [[String: Any]] {
+                let durations = items.compactMap { item -> Int? in
+                    guard let track = item["track"] as? [String: Any],
+                          let duration = track["duration_ms"] as? Int
+                    else {
+                        return nil
+                    }
+                    return duration
+                }
+                if !durations.isEmpty {
+                    totalDurationMs = durations.reduce(0, +)
+                }
+            }
+
             return PlaylistSimplified(
                 id: id,
                 name: name,
@@ -515,6 +591,7 @@ enum SpotifyAPI {
                 uri: uri,
                 isPublic: isPublic,
                 ownerName: ownerName,
+                totalDurationMs: totalDurationMs
             )
         }
 
@@ -536,7 +613,7 @@ enum SpotifyAPI {
     ///   - playlistId: Playlist ID
     static func fetchPlaylistDetails(accessToken: String, playlistId: String) async throws -> SearchPlaylist {
         // Add fields parameter to request only what we need, and market=from_token for region-specific playlists
-        let urlString = "\(baseURL)/playlists/\(playlistId)?fields=id,name,description,images,tracks.total,uri,public,owner.display_name&market=from_token"
+        let urlString = "\(baseURL)/playlists/\(playlistId)?fields=id,name,description,images,tracks(total,items(track(duration_ms))),uri,public,owner.display_name&market=from_token"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -600,6 +677,22 @@ enum SpotifyAPI {
             imageURL = URL(string: urlString)
         }
 
+        // Calculate total duration from tracks
+        var totalDurationMs: Int?
+        if let items = tracks["items"] as? [[String: Any]] {
+            let durations = items.compactMap { item -> Int? in
+                guard let track = item["track"] as? [String: Any],
+                      let duration = track["duration_ms"] as? Int
+                else {
+                    return nil
+                }
+                return duration
+            }
+            if !durations.isEmpty {
+                totalDurationMs = durations.reduce(0, +)
+            }
+        }
+
         return SearchPlaylist(
             id: id,
             name: name,
@@ -608,6 +701,7 @@ enum SpotifyAPI {
             imageURL: imageURL,
             trackCount: trackCount,
             ownerName: ownerName,
+            totalDurationMs: totalDurationMs
         )
     }
 
@@ -616,7 +710,7 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - albumId: Album ID
     static func fetchAlbumDetails(accessToken: String, albumId: String) async throws -> SearchAlbum {
-        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(name),images"
+        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(name),images,tracks(items(duration_ms))"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -679,6 +773,17 @@ enum SpotifyAPI {
             imageURL = URL(string: urlString)
         }
 
+        // Calculate total duration from tracks
+        var totalDurationMs: Int?
+        if let tracksObj = json["tracks"] as? [String: Any],
+           let items = tracksObj["items"] as? [[String: Any]]
+        {
+            let durations = items.compactMap { $0["duration_ms"] as? Int }
+            if !durations.isEmpty {
+                totalDurationMs = durations.reduce(0, +)
+            }
+        }
+
         return SearchAlbum(
             id: id,
             name: name,
@@ -687,6 +792,7 @@ enum SpotifyAPI {
             imageURL: imageURL,
             totalTracks: totalTracks,
             releaseDate: releaseDate,
+            totalDurationMs: totalDurationMs
         )
     }
 
@@ -772,7 +878,7 @@ enum SpotifyAPI {
     ///   - limit: Number of albums to fetch (max 50)
     ///   - offset: Offset for pagination
     static func fetchUserAlbums(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> AlbumsResponse {
-        let urlString = "\(baseURL)/me/albums?limit=\(limit)&offset=\(offset)&fields=items(album(id,name,uri,total_tracks,release_date,album_type,artists(name),images)),total,next"
+        let urlString = "\(baseURL)/me/albums?limit=\(limit)&offset=\(offset)&fields=items(album(id,name,uri,total_tracks,release_date,album_type,artists(name),images,tracks(items(duration_ms)))),total,next"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -847,6 +953,17 @@ enum SpotifyAPI {
                 imageURL = URL(string: urlString)
             }
 
+            // Calculate total duration from tracks
+            var totalDurationMs: Int?
+            if let tracksObj = album["tracks"] as? [String: Any],
+               let items = tracksObj["items"] as? [[String: Any]]
+            {
+                let durations = items.compactMap { $0["duration_ms"] as? Int }
+                if !durations.isEmpty {
+                    totalDurationMs = durations.reduce(0, +)
+                }
+            }
+
             return AlbumSimplified(
                 id: id,
                 name: name,
@@ -856,6 +973,7 @@ enum SpotifyAPI {
                 uri: uri,
                 releaseDate: releaseDate,
                 albumType: albumType,
+                totalDurationMs: totalDurationMs
             )
         }
 

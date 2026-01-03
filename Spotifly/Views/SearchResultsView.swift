@@ -136,6 +136,14 @@ struct SearchResultsView: View {
                                         Text(String(format: String(localized: "metadata.tracks"), album.totalTracks))
                                             .font(.caption2)
                                             .foregroundStyle(.tertiary)
+                                        if let duration = album.formattedDuration {
+                                            Text("metadata.separator")
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                            Text(duration)
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                        }
                                         Text("metadata.separator")
                                             .font(.caption2)
                                             .foregroundStyle(.tertiary)
@@ -304,6 +312,14 @@ struct SearchResultsView: View {
                                         Text(String(format: String(localized: "metadata.tracks"), playlist.trackCount))
                                             .font(.caption2)
                                             .foregroundStyle(.tertiary)
+                                        if let duration = playlist.formattedDuration {
+                                            Text("metadata.separator")
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                            Text(duration)
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                        }
                                     }
                                 }
 
