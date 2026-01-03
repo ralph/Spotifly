@@ -16,6 +16,9 @@ struct TrackRowData: Identifiable {
     let albumArtURL: String?
     let durationMs: Int
     let trackNumber: Int? // Optional - only shown in album views
+    let albumId: String? // For navigation to album
+    let artistId: String? // For navigation to artist
+    let externalUrl: String? // Web URL for sharing
 
     var durationFormatted: String {
         let totalSeconds = durationMs / 1000
@@ -36,6 +39,8 @@ struct TrackRow: View {
     let onDoubleTap: () -> Void
     let onAddToQueue: (() -> Void)? // Optional callback for adding to queue
     let onPlayNext: (() -> Void)? // Optional callback for playing next
+    let onGoToAlbum: (() -> Void)? // Optional callback for navigating to album
+    let onGoToArtist: (() -> Void)? // Optional callback for navigating to artist
 
     init(
         track: TrackRowData,
@@ -47,6 +52,8 @@ struct TrackRow: View {
         onDoubleTap: @escaping () -> Void,
         onAddToQueue: (() -> Void)? = nil,
         onPlayNext: (() -> Void)? = nil,
+        onGoToAlbum: (() -> Void)? = nil,
+        onGoToArtist: (() -> Void)? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -61,6 +68,8 @@ struct TrackRow: View {
         self.onDoubleTap = onDoubleTap
         self.onAddToQueue = onAddToQueue
         self.onPlayNext = onPlayNext
+        self.onGoToAlbum = onGoToAlbum
+        self.onGoToArtist = onGoToArtist
     }
 
     var body: some View {
@@ -159,16 +168,18 @@ struct TrackRow: View {
                 Divider()
 
                 Button {
-                    // TODO: Go to artist
+                    onGoToArtist?()
                 } label: {
                     Label("Go to Artist", systemImage: "person.circle")
                 }
+                .disabled(onGoToArtist == nil)
 
                 Button {
-                    // TODO: Go to album
+                    onGoToAlbum?()
                 } label: {
                     Label("Go to Album", systemImage: "square.stack")
                 }
+                .disabled(onGoToAlbum == nil)
 
                 Divider()
 
@@ -177,6 +188,7 @@ struct TrackRow: View {
                 } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
+                .disabled(track.externalUrl == nil)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.caption)
@@ -199,30 +211,11 @@ struct TrackRow: View {
     }
 
     private func copyToClipboard() {
+        guard let externalUrl = track.externalUrl else { return }
+
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-
-        // Convert Spotify URI to web URL
-        // spotify:track:xxxxx -> https://open.spotify.com/track/xxxxx
-        let webUrl = uriToWebUrl(track.uri)
-        pasteboard.setString(webUrl, forType: .string)
-    }
-
-    private func uriToWebUrl(_ uri: String) -> String {
-        // Parse spotify:type:id format
-        let components = uri.split(separator: ":")
-
-        guard components.count >= 3,
-              components[0] == "spotify"
-        else {
-            // If not a valid Spotify URI, return as-is
-            return uri
-        }
-
-        let contentType = components[1]
-        let id = components[2]
-
-        return "https://open.spotify.com/\(contentType)/\(id)"
+        pasteboard.setString(externalUrl, forType: .string)
     }
 }
 
@@ -238,6 +231,9 @@ extension QueueItem {
             albumArtURL: albumArtURL,
             durationMs: Int(durationMs),
             trackNumber: nil,
+            albumId: nil,
+            artistId: nil,
+            externalUrl: nil,
         )
     }
 }
@@ -252,6 +248,9 @@ extension AlbumTrack {
             albumArtURL: nil, // Album tracks don't have individual art
             durationMs: durationMs,
             trackNumber: trackNumber,
+            albumId: nil,
+            artistId: nil,
+            externalUrl: nil,
         )
     }
 }
@@ -266,6 +265,9 @@ extension PlaylistTrack {
             albumArtURL: imageURL?.absoluteString,
             durationMs: durationMs,
             trackNumber: nil,
+            albumId: nil,
+            artistId: nil,
+            externalUrl: nil,
         )
     }
 }
@@ -280,6 +282,9 @@ extension SearchTrack {
             albumArtURL: imageURL?.absoluteString,
             durationMs: durationMs,
             trackNumber: nil,
+            albumId: albumId,
+            artistId: artistId,
+            externalUrl: externalUrl,
         )
     }
 }

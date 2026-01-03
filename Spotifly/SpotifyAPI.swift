@@ -142,6 +142,9 @@ struct SearchTrack: Sendable, Identifiable {
     let albumName: String
     let imageURL: URL?
     let durationMs: Int
+    let albumId: String?
+    let artistId: String?
+    let externalUrl: String? // Web URL from Spotify API
 }
 
 /// Album search result
@@ -1401,11 +1404,19 @@ enum SpotifyAPI {
                     return nil
                 }
 
-                let artistName = (item["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
-                let albumName = (item["album"] as? [String: Any])?["name"] as? String ?? ""
-                let albumImages = (item["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let albumData = item["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumId = albumData?["id"] as? String
+                let albumImages = albumData?["images"] as? [[String: Any]]
                 let imageURLString = albumImages?.first?["url"] as? String
                 let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                let externalUrls = item["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
 
                 return SearchTrack(
                     id: id,
@@ -1415,6 +1426,9 @@ enum SpotifyAPI {
                     albumName: albumName,
                     imageURL: imageURL,
                     durationMs: durationMs,
+                    albumId: albumId,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
                 )
             }
 
@@ -1485,11 +1499,19 @@ enum SpotifyAPI {
                         return nil
                     }
 
-                    let artistName = (item["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
-                    let albumName = (item["album"] as? [String: Any])?["name"] as? String ?? ""
-                    let albumImages = (item["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                    let artistsArray = item["artists"] as? [[String: Any]]
+                    let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                    let artistId = artistsArray?.first?["id"] as? String
+
+                    let albumData = item["album"] as? [String: Any]
+                    let albumName = albumData?["name"] as? String ?? ""
+                    let albumId = albumData?["id"] as? String
+                    let albumImages = albumData?["images"] as? [[String: Any]]
                     let imageURLString = albumImages?.first?["url"] as? String
                     let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                    let externalUrls = item["external_urls"] as? [String: Any]
+                    let externalUrl = externalUrls?["spotify"] as? String
 
                     return SearchTrack(
                         id: id,
@@ -1499,6 +1521,9 @@ enum SpotifyAPI {
                         albumName: albumName,
                         imageURL: imageURL,
                         durationMs: durationMs,
+                        albumId: albumId,
+                        artistId: artistId,
+                        externalUrl: externalUrl,
                     )
                 }
             }
@@ -1661,11 +1686,19 @@ enum SpotifyAPI {
                     return nil
                 }
 
-                let artistName = (trackData["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
-                let albumName = (trackData["album"] as? [String: Any])?["name"] as? String ?? ""
-                let albumImages = (trackData["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                let artistsArray = trackData["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let albumData = trackData["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumId = albumData?["id"] as? String
+                let albumImages = albumData?["images"] as? [[String: Any]]
                 let imageURLString = albumImages?.first?["url"] as? String
                 let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                let externalUrls = trackData["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
 
                 let track = SearchTrack(
                     id: trackId,
@@ -1675,6 +1708,9 @@ enum SpotifyAPI {
                     albumName: albumName,
                     imageURL: imageURL,
                     durationMs: durationMs,
+                    albumId: albumId,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
                 )
 
                 // Parse context if available

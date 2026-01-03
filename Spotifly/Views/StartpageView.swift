@@ -241,6 +241,36 @@ struct RecentTracksSection: View {
                                 )
                             }
                         },
+                        onGoToAlbum: track.albumId != nil ? {
+                            let albumId = track.albumId
+                            Task { @MainActor in
+                                guard let albumId else { return }
+                                do {
+                                    let album = try await SpotifyAPI.fetchAlbumDetails(
+                                        accessToken: authResult.accessToken,
+                                        albumId: albumId,
+                                    )
+                                    selectedRecentAlbum = album
+                                } catch {
+                                    print("Error fetching album details: \(error)")
+                                }
+                            }
+                        } : nil,
+                        onGoToArtist: track.artistId != nil ? {
+                            let artistId = track.artistId
+                            Task { @MainActor in
+                                guard let artistId else { return }
+                                do {
+                                    let artist = try await SpotifyAPI.fetchArtistDetails(
+                                        accessToken: authResult.accessToken,
+                                        artistId: artistId,
+                                    )
+                                    selectedRecentArtist = artist
+                                } catch {
+                                    print("Error fetching artist details: \(error)")
+                                }
+                            }
+                        } : nil,
                     )
 
                     if track.id != tracks.last?.id {
