@@ -121,6 +121,9 @@ struct SavedTrack: Sendable, Identifiable {
     let durationMs: Int
     let uri: String
     let addedAt: String
+    let albumId: String?
+    let artistId: String?
+    let externalUrl: String?
 }
 
 /// Response wrapper for saved tracks endpoint
@@ -139,6 +142,8 @@ struct AlbumTrack: Sendable, Identifiable {
     let artistName: String
     let durationMs: Int
     let trackNumber: Int
+    let artistId: String?
+    let externalUrl: String?
 }
 
 /// Playlist track (from playlist tracks endpoint)
@@ -151,6 +156,9 @@ struct PlaylistTrack: Sendable, Identifiable {
     let imageURL: URL?
     let durationMs: Int
     let addedAt: String
+    let albumId: String?
+    let artistId: String?
+    let externalUrl: String?
 }
 
 /// Search result type
@@ -1094,7 +1102,7 @@ enum SpotifyAPI {
     ///   - limit: Number of tracks to fetch (max 50)
     ///   - offset: Offset for pagination
     static func fetchUserSavedTracks(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> SavedTracksResponse {
-        let urlString = "\(baseURL)/me/tracks?limit=\(limit)&offset=\(offset)&fields=items(track(id,name,uri,duration_ms,artists(name),album(name,images)),added_at),total,next"
+        let urlString = "\(baseURL)/me/tracks?limit=\(limit)&offset=\(offset)&fields=items(track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify)),added_at),total,next"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1155,15 +1163,19 @@ enum SpotifyAPI {
             }
 
             var artistName = "Unknown Artist"
+            var artistId: String?
             if let artists = track["artists"] as? [[String: Any]] {
                 let artistNames = artists.compactMap { $0["name"] as? String }
                 artistName = artistNames.joined(separator: ", ")
+                artistId = artists.first?["id"] as? String
             }
 
             var albumName = "Unknown Album"
+            var albumId: String?
             var imageURL: URL?
             if let album = track["album"] as? [String: Any] {
                 albumName = album["name"] as? String ?? "Unknown Album"
+                albumId = album["id"] as? String
 
                 if let images = album["images"] as? [[String: Any]],
                    let firstImage = images.first,
@@ -1172,6 +1184,9 @@ enum SpotifyAPI {
                     imageURL = URL(string: urlString)
                 }
             }
+
+            let externalUrls = track["external_urls"] as? [String: Any]
+            let externalUrl = externalUrls?["spotify"] as? String
 
             return SavedTrack(
                 id: id,
@@ -1182,6 +1197,9 @@ enum SpotifyAPI {
                 durationMs: durationMs,
                 uri: uri,
                 addedAt: addedAt,
+                albumId: albumId,
+                artistId: artistId,
+                externalUrl: externalUrl,
             )
         }
 
@@ -1346,7 +1364,7 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - albumId: The Spotify ID of the album
     static func fetchAlbumTracks(accessToken: String, albumId: String) async throws -> [AlbumTrack] {
-        let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(name))"
+        let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(id,name),external_urls(spotify))"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1379,7 +1397,12 @@ enum SpotifyAPI {
                     return nil
                 }
 
-                let artistName = (item["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let externalUrls = item["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
 
                 return AlbumTrack(
                     id: id,
@@ -1388,6 +1411,8 @@ enum SpotifyAPI {
                     artistName: artistName,
                     durationMs: durationMs,
                     trackNumber: trackNumber,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
                 )
             }
 
@@ -1414,7 +1439,7 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - playlistId: The Spotify ID of the playlist
     static func fetchPlaylistTracks(accessToken: String, playlistId: String) async throws -> [PlaylistTrack] {
-        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks?limit=50&fields=items(track(id,name,uri,duration_ms,artists(name),album(name,images)),added_at)"
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks?limit=50&fields=items(track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify)),added_at)"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1447,11 +1472,20 @@ enum SpotifyAPI {
                     return nil
                 }
 
-                let artistName = (track["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
-                let albumName = (track["album"] as? [String: Any])?["name"] as? String ?? ""
-                let albumImages = (track["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                let artistsArray = track["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let albumData = track["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumId = albumData?["id"] as? String
+                let albumImages = albumData?["images"] as? [[String: Any]]
                 let imageURLString = albumImages?.first?["url"] as? String
                 let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                let externalUrls = track["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
+
                 let addedAt = item["added_at"] as? String ?? ""
 
                 return PlaylistTrack(
@@ -1463,6 +1497,9 @@ enum SpotifyAPI {
                     imageURL: imageURL,
                     durationMs: durationMs,
                     addedAt: addedAt,
+                    albumId: albumId,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
                 )
             }
 

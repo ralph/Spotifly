@@ -44,8 +44,8 @@ struct TrackRow: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     let accessToken: String? // For playback and queue operations
     let doubleTapBehavior: TrackRowDoubleTapBehavior
-    let onGoToAlbum: (() -> Void)? // Navigation callback (only for StartPage)
-    let onGoToArtist: (() -> Void)? // Navigation callback (only for StartPage)
+
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     @State private var isFavorited = false
     @State private var isCheckingFavorite = false
@@ -59,8 +59,6 @@ struct TrackRow: View {
         playbackViewModel: PlaybackViewModel,
         accessToken: String? = nil,
         doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
-        onGoToAlbum: (() -> Void)? = nil,
-        onGoToArtist: (() -> Void)? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -74,8 +72,6 @@ struct TrackRow: View {
         self.playbackViewModel = playbackViewModel
         self.accessToken = accessToken
         self.doubleTapBehavior = doubleTapBehavior
-        self.onGoToAlbum = onGoToAlbum
-        self.onGoToArtist = onGoToArtist
     }
 
     var body: some View {
@@ -188,18 +184,28 @@ struct TrackRow: View {
                 Divider()
 
                 Button {
-                    onGoToArtist?()
+                    if let artistId = track.artistId, let accessToken {
+                        navigationCoordinator.navigateToArtist(
+                            artistId: artistId,
+                            accessToken: accessToken
+                        )
+                    }
                 } label: {
                     Label("Go to Artist", systemImage: "person.circle")
                 }
-                .disabled(onGoToArtist == nil)
+                .disabled(track.artistId == nil || accessToken == nil)
 
                 Button {
-                    onGoToAlbum?()
+                    if let albumId = track.albumId, let accessToken {
+                        navigationCoordinator.navigateToAlbum(
+                            albumId: albumId,
+                            accessToken: accessToken
+                        )
+                    }
                 } label: {
                     Label("Go to Album", systemImage: "square.stack")
                 }
-                .disabled(onGoToAlbum == nil)
+                .disabled(track.albumId == nil || accessToken == nil)
 
                 Divider()
 
@@ -361,9 +367,9 @@ extension AlbumTrack {
             albumArtURL: nil, // Album tracks don't have individual art
             durationMs: durationMs,
             trackNumber: trackNumber,
-            albumId: nil,
-            artistId: nil,
-            externalUrl: nil,
+            albumId: nil, // Not needed - already viewing the album
+            artistId: artistId,
+            externalUrl: externalUrl,
         )
     }
 }
@@ -378,9 +384,9 @@ extension PlaylistTrack {
             albumArtURL: imageURL?.absoluteString,
             durationMs: durationMs,
             trackNumber: nil,
-            albumId: nil,
-            artistId: nil,
-            externalUrl: nil,
+            albumId: albumId,
+            artistId: artistId,
+            externalUrl: externalUrl,
         )
     }
 }
@@ -412,9 +418,9 @@ extension SavedTrack {
             albumArtURL: imageURL?.absoluteString,
             durationMs: durationMs,
             trackNumber: nil,
-            albumId: nil,
-            artistId: nil,
-            externalUrl: nil,
+            albumId: albumId,
+            artistId: artistId,
+            externalUrl: externalUrl,
         )
     }
 }

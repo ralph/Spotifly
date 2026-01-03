@@ -102,4 +102,12 @@ final class SearchViewModel {
         selectedArtist = nil
         showingAllTracks = false
     }
+
+    func clearSelection() {
+        selectedTrack = nil
+        selectedAlbum = nil
+        selectedArtist = nil
+        selectedPlaylist = nil
+        showingAllTracks = false
+    }
 }

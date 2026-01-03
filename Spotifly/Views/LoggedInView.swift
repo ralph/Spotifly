@@ -24,6 +24,7 @@ struct LoggedInView: View {
     @State private var searchViewModel = SearchViewModel()
     @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
     @State private var devicesViewModel = DevicesViewModel()
+    @State private var navigationCoordinator = NavigationCoordinator()
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var searchText = ""
     @State private var searchFieldFocused = false
@@ -127,6 +128,40 @@ struct LoggedInView: View {
         }
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .environment(devicesViewModel)
+        .environment(navigationCoordinator)
+        .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
+            handleNavigationDestination(navigationCoordinator.pendingDestination)
+        }
+    }
+
+    /// Handle navigation from the NavigationCoordinator
+    private func handleNavigationDestination(_ destination: NavigationDestination?) {
+        guard let destination else { return }
+
+        // Clear other selections to avoid conflicts
+        selectedAlbum = nil
+        selectedArtist = nil
+        selectedPlaylist = nil
+        selectedRecentAlbum = nil
+        selectedRecentArtist = nil
+        selectedRecentPlaylist = nil
+        showingAllRecentTracks = false
+        searchViewModel.clearSelection()
+
+        // Navigate to the startpage section and set the appropriate selection
+        selectedNavigationItem = .startpage
+
+        switch destination {
+        case .album(let album):
+            selectedRecentAlbum = album
+        case .artist(let artist):
+            selectedRecentArtist = artist
+        case .playlist(let playlist):
+            selectedRecentPlaylist = playlist
+        }
+
+        // Clear the pending destination
+        navigationCoordinator.clearDestination()
     }
 
     // MARK: - View Builders

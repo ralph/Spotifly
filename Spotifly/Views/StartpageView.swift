@@ -90,9 +90,6 @@ struct StartpageView: View {
                             RecentTracksSection(
                                 tracks: Array(recentlyPlayedViewModel.recentTracks.prefix(5)),
                                 showingAllTracks: $showingAllRecentTracks,
-                                selectedRecentAlbum: $selectedRecentAlbum,
-                                selectedRecentArtist: $selectedRecentArtist,
-                                selectedRecentPlaylist: $selectedRecentPlaylist,
                                 authResult: authResult,
                                 playbackViewModel: playbackViewModel,
                             )
@@ -198,9 +195,6 @@ struct StartpageView: View {
 struct RecentTracksSection: View {
     let tracks: [SearchTrack]
     @Binding var showingAllTracks: Bool
-    @Binding var selectedRecentAlbum: SearchAlbum?
-    @Binding var selectedRecentArtist: SearchArtist?
-    @Binding var selectedRecentPlaylist: SearchPlaylist?
     let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
 
@@ -218,36 +212,6 @@ struct RecentTracksSection: View {
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                         playbackViewModel: playbackViewModel,
                         accessToken: authResult.accessToken,
-                        onGoToAlbum: track.albumId != nil ? {
-                            let albumId = track.albumId
-                            Task { @MainActor in
-                                guard let albumId else { return }
-                                do {
-                                    let album = try await SpotifyAPI.fetchAlbumDetails(
-                                        accessToken: authResult.accessToken,
-                                        albumId: albumId,
-                                    )
-                                    selectedRecentAlbum = album
-                                } catch {
-                                    print("Error fetching album details: \(error)")
-                                }
-                            }
-                        } : nil,
-                        onGoToArtist: track.artistId != nil ? {
-                            let artistId = track.artistId
-                            Task { @MainActor in
-                                guard let artistId else { return }
-                                do {
-                                    let artist = try await SpotifyAPI.fetchArtistDetails(
-                                        accessToken: authResult.accessToken,
-                                        artistId: artistId,
-                                    )
-                                    selectedRecentArtist = artist
-                                } catch {
-                                    print("Error fetching artist details: \(error)")
-                                }
-                            }
-                        } : nil,
                     )
 
                     if track.id != tracks.last?.id {
@@ -259,9 +223,6 @@ struct RecentTracksSection: View {
                 // Show more button
                 Button {
                     showingAllTracks = true
-                    selectedRecentAlbum = nil
-                    selectedRecentArtist = nil
-                    selectedRecentPlaylist = nil
                 } label: {
                     HStack {
                         Text("recently_played.show_more")
