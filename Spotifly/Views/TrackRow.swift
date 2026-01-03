@@ -297,10 +297,17 @@ struct TrackRow: View {
 
         Task {
             do {
+                // Extract track ID from URI if needed (e.g., "spotify:track:123" -> "123")
+                let trackId = if track.id.hasPrefix("spotify:track:") {
+                    String(track.id.dropFirst("spotify:track:".count))
+                } else {
+                    track.id
+                }
+
                 // Fetch recommendations based on the current track
                 let recommendedTracks = try await SpotifyAPI.fetchRecommendations(
                     accessToken: accessToken,
-                    seedTrackId: track.id,
+                    seedTrackId: trackId,
                 )
 
                 if !recommendedTracks.isEmpty {
