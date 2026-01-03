@@ -131,14 +131,31 @@ struct PlaylistDetailView: View {
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
-                            ) {
-                                Task {
-                                    await playbackViewModel.play(
-                                        uriOrUrl: track.uri,
-                                        accessToken: authResult.accessToken,
-                                    )
-                                }
-                            }
+                                onDoubleTap: {
+                                    Task {
+                                        await playbackViewModel.play(
+                                            uriOrUrl: track.uri,
+                                            accessToken: authResult.accessToken,
+                                        )
+                                    }
+                                },
+                                onAddToQueue: {
+                                    Task {
+                                        await playbackViewModel.addToQueue(
+                                            trackUri: track.uri,
+                                            accessToken: authResult.accessToken,
+                                        )
+                                    }
+                                },
+                                onPlayNext: {
+                                    Task {
+                                        await playbackViewModel.playNext(
+                                            trackUri: track.uri,
+                                            accessToken: authResult.accessToken,
+                                        )
+                                    }
+                                },
+                            )
 
                             if index < tracks.count - 1 {
                                 Divider()
