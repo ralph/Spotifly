@@ -2596,4 +2596,185 @@ enum SpotifyAPI {
             throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
         }
     }
+
+    /// Removes tracks from a playlist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist
+    ///   - trackUris: Array of track URIs to remove
+    static func removeTracksFromPlaylist(
+        accessToken: String,
+        playlistId: String,
+        trackUris: [String],
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
+        #if DEBUG
+            apiLogger.debug("[DELETE] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Format: { "tracks": [{ "uri": "spotify:track:xxx" }, ...] }
+        let tracks = trackUris.map { ["uri": $0] }
+        let body: [String: Any] = ["tracks": tracks]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Reorders tracks in a playlist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist
+    ///   - rangeStart: The position of the first track to be reordered
+    ///   - insertBefore: The position where the tracks should be inserted
+    ///   - rangeLength: Number of tracks to reorder (default 1)
+    static func reorderPlaylistTracks(
+        accessToken: String,
+        playlistId: String,
+        rangeStart: Int,
+        insertBefore: Int,
+        rangeLength: Int = 1,
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "range_start": rangeStart,
+            "insert_before": insertBefore,
+            "range_length": rangeLength,
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 201:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Replaces all tracks in a playlist (used for reordering)
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist
+    ///   - trackUris: Array of track URIs in the desired order
+    static func replacePlaylistTracks(
+        accessToken: String,
+        playlistId: String,
+        trackUris: [String],
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["uris": trackUris]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 201:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
 }

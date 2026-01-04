@@ -126,3 +126,9 @@
 "menu.artists" = "Artists";
 "menu.search" = "Search";
 "menu.refresh" = "Refresh";
+
+/* Playlist Edit Mode */
+"playlist.edit" = "Edit";
+"playlist.edit.save" = "Save";
+"playlist.edit.cancel" = "Cancel";
+"playlist.edit.saving" = "Saving...";
