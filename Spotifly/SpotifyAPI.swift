@@ -2207,4 +2207,202 @@ enum SpotifyAPI {
             throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
         }
     }
+
+    // MARK: - Playlist Management
+
+    /// Gets the current user's Spotify user ID
+    /// - Parameter accessToken: Spotify access token
+    /// - Returns: The user's Spotify ID
+    static func getCurrentUserId(accessToken: String) async throws -> String {
+        let urlString = "\(baseURL)/me"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let userId = json["id"] as? String
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+            return userId
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Creates a new playlist for the user
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - userId: The user's Spotify ID
+    ///   - name: The name for the new playlist
+    ///   - description: Optional description for the playlist
+    ///   - isPublic: Whether the playlist should be public (default: false)
+    /// - Returns: The created playlist
+    static func createPlaylist(
+        accessToken: String,
+        userId: String,
+        name: String,
+        description: String? = nil,
+        isPublic: Bool = false,
+    ) async throws -> PlaylistSimplified {
+        let urlString = "\(baseURL)/users/\(userId)/playlists"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [
+            "name": name,
+            "public": isPublic,
+        ]
+        if let description {
+            body["description"] = description
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 201:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = json["id"] as? String,
+                  let name = json["name"] as? String,
+                  let uri = json["uri"] as? String
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            // Owner's display_name can be null, fall back to id
+            let ownerName: String
+            if let owner = json["owner"] as? [String: Any] {
+                ownerName = owner["display_name"] as? String ?? owner["id"] as? String ?? "Unknown"
+            } else {
+                ownerName = "Unknown"
+            }
+
+            let description = json["description"] as? String
+            let isPublic = json["public"] as? Bool ?? false
+
+            var imageURL: URL?
+            if let images = json["images"] as? [[String: Any]],
+               let firstImage = images.first,
+               let urlString = firstImage["url"] as? String
+            {
+                imageURL = URL(string: urlString)
+            }
+
+            return PlaylistSimplified(
+                id: id,
+                name: name,
+                description: description,
+                imageURL: imageURL,
+                trackCount: 0,
+                uri: uri,
+                isPublic: isPublic,
+                ownerName: ownerName,
+                totalDurationMs: nil,
+            )
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to create playlists for this user")
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Adds tracks to an existing playlist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist to add tracks to
+    ///   - trackUris: Array of Spotify track URIs (e.g., "spotify:track:xxx")
+    static func addTracksToPlaylist(
+        accessToken: String,
+        playlistId: String,
+        trackUris: [String],
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["uris": trackUris]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 201:
+            // Success - tracks added
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
 }

@@ -57,10 +57,15 @@ struct TrackRow: View {
     let onFavoriteChanged: ((Bool) -> Void)? // Callback when favorite status changes
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(PlaylistsViewModel.self) private var playlistsViewModel
+    @Environment(SpotifySession.self) private var session
 
     @State private var isFavorited = false
     @State private var isCheckingFavorite = false
     @State private var hasLoadedInitialFavorite = false
+    @State private var showNewPlaylistDialog = false
+    @State private var newPlaylistName = ""
+    @State private var isAddingToPlaylist = false
 
     init(
         track: TrackRowData,
@@ -200,6 +205,30 @@ struct TrackRow: View {
 
                 Divider()
 
+                // Playlist Management Section
+                Menu {
+                    Button {
+                        showNewPlaylistDialog = true
+                    } label: {
+                        Label("Add to New Playlist...", systemImage: "plus")
+                    }
+
+                    if !playlistsViewModel.playlists.isEmpty {
+                        Divider()
+
+                        ForEach(playlistsViewModel.playlists) { playlist in
+                            Button(playlist.name) {
+                                addToPlaylist(playlistId: playlist.id)
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Add to Playlist", systemImage: "music.note.list")
+                }
+                .disabled(accessToken == nil)
+
+                Divider()
+
                 Button {
                     if let artistId = track.artistId, let accessToken {
                         navigationCoordinator.navigateToArtist(
@@ -265,6 +294,25 @@ struct TrackRow: View {
             // Update when parent's batch-fetched value changes
             if let newValue {
                 isFavorited = newValue
+            }
+        }
+        .alert("New Playlist", isPresented: $showNewPlaylistDialog) {
+            TextField("Playlist name", text: $newPlaylistName)
+            Button("Cancel", role: .cancel) {
+                newPlaylistName = ""
+            }
+            Button("Create") {
+                createAndAddToPlaylist(name: newPlaylistName)
+                newPlaylistName = ""
+            }
+            .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
+        } message: {
+            Text("Enter a name for the new playlist")
+        }
+        .task {
+            // Load playlists if not already loaded
+            if playlistsViewModel.playlists.isEmpty, !playlistsViewModel.isLoading {
+                await playlistsViewModel.loadPlaylists(accessToken: session.accessToken)
             }
         }
     }
@@ -402,6 +450,58 @@ struct TrackRow: View {
         }
 
         isCheckingFavorite = false
+    }
+
+    private func addToPlaylist(playlistId: String) {
+        guard let accessToken else { return }
+
+        Task {
+            isAddingToPlaylist = true
+            do {
+                try await SpotifyAPI.addTracksToPlaylist(
+                    accessToken: accessToken,
+                    playlistId: playlistId,
+                    trackUris: [track.uri],
+                )
+            } catch {
+                playbackViewModel.errorMessage = "Failed to add to playlist: \(error.localizedDescription)"
+            }
+            isAddingToPlaylist = false
+        }
+    }
+
+    private func createAndAddToPlaylist(name: String) {
+        guard let accessToken else { return }
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty else { return }
+
+        Task {
+            isAddingToPlaylist = true
+            do {
+                // Get user ID first
+                let userId = try await SpotifyAPI.getCurrentUserId(accessToken: accessToken)
+
+                // Create the playlist
+                let newPlaylist = try await SpotifyAPI.createPlaylist(
+                    accessToken: accessToken,
+                    userId: userId,
+                    name: trimmedName,
+                )
+
+                // Add the track to the new playlist
+                try await SpotifyAPI.addTracksToPlaylist(
+                    accessToken: accessToken,
+                    playlistId: newPlaylist.id,
+                    trackUris: [track.uri],
+                )
+
+                // Refresh playlists to show the new one
+                await playlistsViewModel.refresh(accessToken: accessToken)
+            } catch {
+                playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
+            }
+            isAddingToPlaylist = false
+        }
     }
 }
 
