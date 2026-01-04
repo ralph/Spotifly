@@ -265,7 +265,7 @@ struct TrackRow: View {
             } label: {
                 Image(systemName: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
                     .font(.caption)
-                    .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
+                    .foregroundColor(showPlaylistAddedSuccess ? Color.green : Color.secondary)
                     .frame(width: 20, height: 20)
                     .contentShape(Rectangle())
                     .animation(.easeInOut(duration: 0.2), value: showPlaylistAddedSuccess)
