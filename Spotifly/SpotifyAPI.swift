@@ -6,6 +6,9 @@
 //
 
 import Foundation
+import os.log
+
+private let apiLogger = Logger(subsystem: "com.spotifly.app", category: "SpotifyAPI")
 
 // MARK: - Duration Formatting Protocol
 
@@ -389,6 +392,9 @@ enum SpotifyAPI {
     /// Fetches track metadata from Spotify Web API
     static func fetchTrackMetadata(trackId: String, accessToken: String) async throws -> TrackMetadata {
         let urlString = "\(baseURL)/tracks/\(trackId)?fields=id,name,duration_ms,artists(name),album(name,images),preview_url"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -483,6 +489,9 @@ enum SpotifyAPI {
     ///   - offset: Offset for pagination
     static func fetchUserPlaylists(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> PlaylistsResponse {
         let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,tracks(total,items(track(duration_ms))),public,owner(id,display_name)),total,next"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -604,6 +613,9 @@ enum SpotifyAPI {
     static func fetchPlaylistDetails(accessToken: String, playlistId: String) async throws -> SearchPlaylist {
         // Add fields parameter to request only what we need, and market=from_token for region-specific playlists
         let urlString = "\(baseURL)/playlists/\(playlistId)?fields=id,name,description,images,tracks(total,items(track(duration_ms))),uri,public,owner.display_name&market=from_token"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -701,6 +713,9 @@ enum SpotifyAPI {
     ///   - albumId: Album ID
     static func fetchAlbumDetails(accessToken: String, albumId: String) async throws -> SearchAlbum {
         let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(id,name),images,tracks(items(duration_ms)),external_urls(spotify)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -799,6 +814,9 @@ enum SpotifyAPI {
     ///   - artistId: Artist ID
     static func fetchArtistDetails(accessToken: String, artistId: String) async throws -> SearchArtist {
         let urlString = "\(baseURL)/artists/\(artistId)?fields=id,name,uri,genres,followers(total),images"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -876,6 +894,9 @@ enum SpotifyAPI {
     ///   - offset: Offset for pagination
     static func fetchUserAlbums(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> AlbumsResponse {
         let urlString = "\(baseURL)/me/albums?limit=\(limit)&offset=\(offset)&fields=items(album(id,name,uri,total_tracks,release_date,album_type,artists(name),images,tracks(items(duration_ms)))),total,next"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -996,6 +1017,9 @@ enum SpotifyAPI {
         if let after {
             urlString += "&after=\(after)"
         }
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1092,6 +1116,9 @@ enum SpotifyAPI {
     ///   - offset: Offset for pagination
     static func fetchUserSavedTracks(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> SavedTracksResponse {
         let urlString = "\(baseURL)/me/tracks?limit=\(limit)&offset=\(offset)&fields=items(track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify)),added_at),total,next"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1210,6 +1237,9 @@ enum SpotifyAPI {
     ///   - trackId: The Spotify ID of the track to save
     static func saveTrack(accessToken: String, trackId: String) async throws {
         let urlString = "\(baseURL)/me/tracks"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1280,6 +1310,9 @@ enum SpotifyAPI {
             let idsParam = batch.joined(separator: ",")
 
             let urlString = "\(baseURL)/me/tracks/contains?ids=\(idsParam)"
+            #if DEBUG
+                apiLogger.debug("[GET] \(urlString)")
+            #endif
 
             guard let url = URL(string: urlString) else {
                 throw SpotifyAPIError.invalidURI
@@ -1332,6 +1365,9 @@ enum SpotifyAPI {
     ///   - trackId: The Spotify ID of the track to remove
     static func removeSavedTrack(accessToken: String, trackId: String) async throws {
         let urlString = "\(baseURL)/me/tracks?ids=\(trackId)"
+        #if DEBUG
+            apiLogger.debug("[DELETE] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1380,6 +1416,9 @@ enum SpotifyAPI {
     ///   - albumId: The Spotify ID of the album
     static func fetchAlbumTracks(accessToken: String, albumId: String) async throws -> [AlbumTrack] {
         let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(id,name),external_urls(spotify))"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1455,6 +1494,9 @@ enum SpotifyAPI {
     ///   - playlistId: The Spotify ID of the playlist
     static func fetchPlaylistTracks(accessToken: String, playlistId: String) async throws -> [PlaylistTrack] {
         let urlString = "\(baseURL)/playlists/\(playlistId)/tracks?limit=50&fields=items(track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify)),added_at)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1544,6 +1586,9 @@ enum SpotifyAPI {
         // Use US market by default (required parameter)
         // Note: top-tracks endpoint doesn't support fields parameter, returns full track objects
         let urlString = "\(baseURL)/artists/\(artistId)/top-tracks?market=US"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1633,6 +1678,9 @@ enum SpotifyAPI {
         limit: Int = 50,
     ) async throws -> [SearchAlbum] {
         let urlString = "\(baseURL)/artists/\(artistId)/albums?include_groups=album,single&market=US&limit=\(limit)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1713,6 +1761,9 @@ enum SpotifyAPI {
         limit: Int = 50,
     ) async throws -> [SearchTrack] {
         let urlString = "\(baseURL)/recommendations?seed_tracks=\(seedTrackId)&limit=\(limit)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1808,6 +1859,9 @@ enum SpotifyAPI {
         let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
 
         let urlString = "\(baseURL)/search?q=\(encodedQuery)&type=\(typesParam)&limit=\(limit)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1998,6 +2052,9 @@ enum SpotifyAPI {
         limit: Int = 50,
     ) async throws -> RecentlyPlayedResponse {
         let urlString = "\(baseURL)/me/player/recently-played?limit=\(limit)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -2098,6 +2155,9 @@ enum SpotifyAPI {
     /// Fetches available Spotify Connect devices
     static func fetchAvailableDevices(accessToken: String) async throws -> DevicesResponse {
         let urlString = "\(baseURL)/me/player/devices"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -2167,6 +2227,9 @@ enum SpotifyAPI {
     ///   - play: Whether to start playing on the new device (default: true)
     static func transferPlayback(accessToken: String, deviceId: String, play: Bool = true) async throws {
         let urlString = "\(baseURL)/me/player"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -2218,6 +2281,9 @@ enum SpotifyAPI {
     /// - Returns: The user's Spotify ID
     static func getCurrentUserId(accessToken: String) async throws -> String {
         let urlString = "\(baseURL)/me"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -2271,6 +2337,9 @@ enum SpotifyAPI {
         isPublic: Bool = false,
     ) async throws -> PlaylistSimplified {
         let urlString = "\(baseURL)/users/\(userId)/playlists"
+        #if DEBUG
+            apiLogger.debug("[POST] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -2363,6 +2432,9 @@ enum SpotifyAPI {
         trackUris: [String],
     ) async throws {
         let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
+        #if DEBUG
+            apiLogger.debug("[POST] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
