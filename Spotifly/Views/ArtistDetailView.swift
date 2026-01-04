@@ -172,7 +172,7 @@ struct ArtistDetailView: View {
             }
             .padding(.bottom, 24)
         }
-        .task {
+        .task(id: artist.id) {
             await loadTopTracks()
             await loadAlbums()
         }
@@ -268,8 +268,9 @@ struct ArtistDetailView: View {
     }
 
     private func loadTopTracks() async {
-        guard topTracks.isEmpty else { return }
-
+        // Clear old data when loading new artist
+        topTracks = []
+        favoriteStatuses = [:]
         isLoading = true
         errorMessage = nil
 
@@ -295,8 +296,8 @@ struct ArtistDetailView: View {
     }
 
     private func loadAlbums() async {
-        guard albums.isEmpty else { return }
-
+        // Clear old data when loading new artist
+        albums = []
         isLoadingAlbums = true
 
         do {
