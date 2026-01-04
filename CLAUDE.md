@@ -12,3 +12,4 @@ Spotify client for macOS (and maybe later iPad and iOS).
 
 - Use Swift 6.2 strict concurrency features (`Sendable`, `@MainActor`, async/await)
 - No backwards compatibility needed - target only the latest OS versions
+- Format all Swift code with: `swiftformat --swiftversion 6.2 .`
