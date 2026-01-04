@@ -13,6 +13,8 @@ struct NowPlayingBarView: View {
     @ObservedObject var windowState: WindowState
 
     @State private var barHeight: CGFloat = 66
+    @State private var cachedAlbumArtImage: Image?
+    @State private var cachedAlbumArtURL: String?
 
     // Helper function for time formatting
     private func formatTime(_ milliseconds: UInt32) -> String {
@@ -63,6 +65,10 @@ struct NowPlayingBarView: View {
                 .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color(NSColor.controlBackgroundColor))
                 .frame(height: windowState.isMiniPlayerMode ? nil : barHeight)
                 .frame(maxHeight: windowState.isMiniPlayerMode ? .infinity : nil)
+            }
+            .task(id: playbackViewModel.currentTrackId) {
+                // Check favorite status when track changes
+                await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: session.accessToken)
             }
         }
     }
@@ -152,10 +158,20 @@ struct NowPlayingBarView: View {
 
     private func albumArt(size: CGFloat) -> some View {
         Group {
-            if let artURL = playbackViewModel.currentAlbumArtURL,
-               !artURL.isEmpty,
-               let url = URL(string: artURL)
+            if let cachedImage = cachedAlbumArtImage,
+               cachedAlbumArtURL == playbackViewModel.currentAlbumArtURL
             {
+                // Use cached image
+                cachedImage
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else if let artURL = playbackViewModel.currentAlbumArtURL,
+                      !artURL.isEmpty,
+                      let url = URL(string: artURL)
+            {
+                // Load new image
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
@@ -166,25 +182,29 @@ struct NowPlayingBarView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(width: size, height: size)
-                            .cornerRadius(4)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .onAppear {
+                                cachedAlbumArtImage = image
+                                cachedAlbumArtURL = artURL
+                            }
                     case .failure:
-                        Image(systemName: "music.note")
-                            .font(.title3)
-                            .frame(width: size, height: size)
-                            .background(Color.gray.opacity(0.2))
-                            .cornerRadius(4)
+                        placeholderAlbumArt(size: size)
                     @unknown default:
                         EmptyView()
                     }
                 }
             } else {
-                Image(systemName: "music.note")
-                    .font(.title3)
-                    .frame(width: size, height: size)
-                    .background(Color.gray.opacity(0.2))
-                    .cornerRadius(4)
+                placeholderAlbumArt(size: size)
             }
         }
+    }
+
+    private func placeholderAlbumArt(size: CGFloat) -> some View {
+        Image(systemName: "music.note")
+            .font(.title3)
+            .frame(width: size, height: size)
+            .background(Color.gray.opacity(0.2))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     private var trackInfo: some View {
@@ -287,10 +307,6 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(playbackViewModel.isCurrentTrackFavorited ? .red : .secondary)
         }
         .buttonStyle(.plain)
-        .task(id: playbackViewModel.currentTrackId) {
-            // Check favorite status when track changes
-            await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: session.accessToken)
-        }
     }
 
     private var volumeControl: some View {

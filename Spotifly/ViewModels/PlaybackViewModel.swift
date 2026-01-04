@@ -135,7 +135,7 @@ final class PlaybackViewModel {
 
         do {
             try await SpotifyPlayer.play(uriOrUrl: uriOrUrl)
-            await handlePlaybackStarted(trackId: uriOrUrl, accessToken: accessToken)
+            handlePlaybackStarted(trackId: uriOrUrl)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -168,7 +168,7 @@ final class PlaybackViewModel {
 
         do {
             try await SpotifyPlayer.playTracks(trackUris)
-            await handlePlaybackStarted(trackId: trackUris[0], accessToken: accessToken)
+            handlePlaybackStarted(trackId: trackUris[0])
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -223,14 +223,14 @@ final class PlaybackViewModel {
     // MARK: - Playback State Helpers
 
     /// Common setup after playback has started
-    private func handlePlaybackStarted(trackId: String, accessToken: String) async {
+    private func handlePlaybackStarted(trackId: String) {
         currentTrackId = trackId
         isPlaying = true
         // Apply volume after playback starts (mixer is now initialized)
         SpotifyPlayer.setVolume(volume)
         updateQueueState()
         syncPositionAnchor()
-        await checkCurrentTrackFavoriteStatus(accessToken: accessToken)
+        // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackId changes
     }
 
     func togglePlayPause(trackId: String, accessToken: String) async {
