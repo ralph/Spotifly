@@ -107,6 +107,7 @@
 /* Devices */
 "devices.title" = "Devices";
 "devices.active" = "Active";
+"devices.now_playing" = "Now Playing On";
 "devices.audio_output" = "Audio Output";
 "devices.airplay_select" = "AirPlay & Speakers";
 "devices.airplay_hint" = "Select where to play audio from your Mac";

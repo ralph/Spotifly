@@ -167,6 +167,10 @@ struct LoggedInView: View {
                 navigationCoordinator.pendingPlaylist = nil
             }
         }
+        .task {
+            // Check for active remote playback on launch
+            await playbackViewModel.checkAndSyncRemotePlayback(accessToken: session.accessToken)
+        }
     }
 
     /// Handle navigation from the NavigationCoordinator

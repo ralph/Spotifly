@@ -59,7 +59,16 @@ final class PlaybackViewModel {
     // Spotify Connect state
     var isSpotifyConnectActive = false
     var spotifyConnectDeviceId: String?
+    var spotifyConnectDeviceName: String?
     private var spotifyConnectAccessToken: String?
+    private var spotifyConnectSyncTask: Task<Void, Never>?
+
+    // Spotify Connect queue (from Web API)
+    var spotifyConnectQueue: [QueueTrack] = []
+
+    // Spotify Connect volume (0-100)
+    var spotifyConnectVolume: Double = 50
+    private var volumeUpdateTask: Task<Void, Never>?
 
     /// Returns the URI of the currently playing track
     var currentlyPlayingURI: String? {
@@ -348,20 +357,174 @@ final class PlaybackViewModel {
     // MARK: - Spotify Connect
 
     /// Activates Spotify Connect mode - playback controls will use Web API
-    func activateSpotifyConnect(deviceId: String, accessToken: String) {
+    func activateSpotifyConnect(deviceId: String, deviceName: String? = nil, accessToken: String) {
         isSpotifyConnectActive = true
         spotifyConnectDeviceId = deviceId
+        spotifyConnectDeviceName = deviceName
         spotifyConnectAccessToken = accessToken
 
         // Pause local playback
         SpotifyPlayer.pause()
+
+        // Start periodic sync
+        startSpotifyConnectSync()
     }
 
     /// Deactivates Spotify Connect mode - returns to local playback
     func deactivateSpotifyConnect() {
         isSpotifyConnectActive = false
         spotifyConnectDeviceId = nil
-        // Keep the access token for potential reactivation
+        spotifyConnectDeviceName = nil
+        spotifyConnectQueue = []
+
+        // Stop sync task
+        spotifyConnectSyncTask?.cancel()
+        spotifyConnectSyncTask = nil
+    }
+
+    /// Check if there's active remote playback and sync state
+    func checkAndSyncRemotePlayback(accessToken: String) async {
+        do {
+            guard let playbackState = try await SpotifyAPI.fetchPlaybackState(accessToken: accessToken) else {
+                // No active playback
+                if isSpotifyConnectActive {
+                    deactivateSpotifyConnect()
+                }
+                return
+            }
+
+            // Check if playback is on a remote device (not this app)
+            if let device = playbackState.device {
+                // If playing on a different device, activate Spotify Connect mode
+                let isRemoteDevice = !device.name.contains("Spotifly")
+
+                if isRemoteDevice && playbackState.isPlaying {
+                    // Activate Spotify Connect mode for the remote device
+                    if !isSpotifyConnectActive || spotifyConnectDeviceId != device.id {
+                        isSpotifyConnectActive = true
+                        spotifyConnectDeviceId = device.id
+                        spotifyConnectDeviceName = device.name
+                        spotifyConnectAccessToken = accessToken
+                    }
+
+                    // Sync volume
+                    if let volumePercent = device.volumePercent {
+                        spotifyConnectVolume = Double(volumePercent)
+                    }
+
+                    // Update playback state
+                    isPlaying = playbackState.isPlaying
+                    if let track = playbackState.currentTrack {
+                        currentTrackId = track.uri
+                        currentTrackName = track.name
+                        currentArtistName = track.artistName
+                        currentAlbumArtURL = track.imageURL?.absoluteString
+                        trackDurationMs = UInt32(track.durationMs)
+                        currentPositionMs = UInt32(playbackState.progressMs)
+                        positionAnchorMs = UInt32(playbackState.progressMs)
+                        positionAnchorTime = CACurrentMediaTime()
+                    }
+
+                    // Fetch queue
+                    await syncSpotifyConnectQueue(accessToken: accessToken)
+
+                    // Start sync if not already running
+                    if spotifyConnectSyncTask == nil {
+                        startSpotifyConnectSync()
+                    }
+
+                    updateNowPlayingInfo()
+                } else if !isRemoteDevice || !playbackState.isPlaying {
+                    // Playback stopped or transferred to this device
+                    if isSpotifyConnectActive && !playbackState.isPlaying {
+                        isPlaying = false
+                        updateNowPlayingInfo()
+                    }
+                }
+            }
+        } catch {
+            // Silently handle errors during sync
+        }
+    }
+
+    /// Sync queue from Spotify Connect
+    private func syncSpotifyConnectQueue(accessToken: String) async {
+        do {
+            let queueResponse = try await SpotifyAPI.fetchQueue(accessToken: accessToken)
+            spotifyConnectQueue = queueResponse.queue
+            queueLength = queueResponse.queue.count + (queueResponse.currentlyPlaying != nil ? 1 : 0)
+        } catch {
+            // Silently handle queue fetch errors
+        }
+    }
+
+    /// Start periodic sync for Spotify Connect state
+    private func startSpotifyConnectSync() {
+        spotifyConnectSyncTask?.cancel()
+
+        spotifyConnectSyncTask = Task {
+            while !Task.isCancelled && isSpotifyConnectActive {
+                guard let token = spotifyConnectAccessToken else { break }
+
+                await syncSpotifyConnectState(accessToken: token)
+
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    /// Sync current playback state from Spotify Connect
+    private func syncSpotifyConnectState(accessToken: String) async {
+        do {
+            guard let playbackState = try await SpotifyAPI.fetchPlaybackState(accessToken: accessToken) else {
+                // Playback stopped
+                isPlaying = false
+                updateNowPlayingInfo()
+                return
+            }
+
+            // Update playing state
+            let wasPlaying = isPlaying
+            isPlaying = playbackState.isPlaying
+
+            // Update track info if changed
+            if let track = playbackState.currentTrack {
+                let trackChanged = currentTrackId != track.uri
+
+                currentTrackId = track.uri
+                currentTrackName = track.name
+                currentArtistName = track.artistName
+                currentAlbumArtURL = track.imageURL?.absoluteString
+                trackDurationMs = UInt32(track.durationMs)
+
+                // Update position
+                currentPositionMs = UInt32(playbackState.progressMs)
+                if isPlaying {
+                    positionAnchorMs = UInt32(playbackState.progressMs)
+                    positionAnchorTime = CACurrentMediaTime()
+                }
+
+                // Refresh queue if track changed
+                if trackChanged {
+                    await syncSpotifyConnectQueue(accessToken: accessToken)
+                }
+            }
+
+            // Update device info and volume
+            if let device = playbackState.device {
+                spotifyConnectDeviceId = device.id
+                spotifyConnectDeviceName = device.name
+                if let volumePercent = device.volumePercent {
+                    spotifyConnectVolume = Double(volumePercent)
+                }
+            }
+
+            if wasPlaying != isPlaying || playbackState.currentTrack != nil {
+                updateNowPlayingInfo()
+            }
+        } catch {
+            // Silently handle sync errors
+        }
     }
 
     /// Pause playback (works for both local and Spotify Connect)
@@ -399,6 +562,26 @@ final class PlaybackViewModel {
             SpotifyPlayer.resume()
             isPlaying = true
             updateNowPlayingInfo()
+        }
+    }
+
+    /// Set volume for Spotify Connect device (debounced)
+    func setSpotifyConnectVolume(_ volume: Double) {
+        spotifyConnectVolume = volume
+
+        // Cancel any pending volume update
+        volumeUpdateTask?.cancel()
+
+        // Debounce volume updates
+        volumeUpdateTask = Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled, let token = spotifyConnectAccessToken else { return }
+
+            do {
+                try await SpotifyAPI.setVolume(accessToken: token, volumePercent: Int(volume))
+            } catch {
+                // Silently ignore volume errors
+            }
         }
     }
 
@@ -571,6 +754,8 @@ final class PlaybackViewModel {
     /// Called by TimelineView on every frame for smooth updates
     var interpolatedPositionMs: UInt32 {
         guard isPlaying else { return currentPositionMs }
+        guard trackDurationMs > 0 else { return 0 }
+
         let elapsed = CACurrentMediaTime() - positionAnchorTime
         let elapsedMs = UInt32(max(0, min(elapsed * 1000, Double(UInt32.max - 1))))
         let interpolated = positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue
@@ -606,6 +791,15 @@ final class PlaybackViewModel {
 
     /// Called every second to check for drift and sync state
     private func checkDriftAndSync() {
+        // Skip Rust-based sync when Spotify Connect is active
+        // (Spotify Connect uses its own sync via syncSpotifyConnectState)
+        guard !isSpotifyConnectActive else {
+            // Just update currentPositionMs for non-TimelineView consumers
+            currentPositionMs = interpolatedPositionMs
+            updateNowPlayingInfo()
+            return
+        }
+
         // Check if track changed (auto-advance)
         let rustCurrentIndex = SpotifyPlayer.currentIndex
         if rustCurrentIndex != currentIndex {

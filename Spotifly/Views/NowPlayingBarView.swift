@@ -22,8 +22,13 @@ struct NowPlayingBarView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
+    // Whether to show the now playing bar
+    private var shouldShowBar: Bool {
+        playbackViewModel.queueLength > 0 || playbackViewModel.isSpotifyConnectActive
+    }
+
     var body: some View {
-        if playbackViewModel.queueLength > 0 {
+        if shouldShowBar {
             VStack(spacing: 0) {
                 // Only show divider when not in mini player mode
                 if !windowState.isMiniPlayerMode {
@@ -200,6 +205,19 @@ struct NowPlayingBarView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            // Show device indicator when playing on Spotify Connect
+            if playbackViewModel.isSpotifyConnectActive,
+               let deviceName = playbackViewModel.spotifyConnectDeviceName
+            {
+                HStack(spacing: 4) {
+                    Image(systemName: "hifispeaker.fill")
+                        .font(.caption2)
+                    Text(deviceName)
+                        .font(.caption2)
+                }
+                .foregroundStyle(.green)
+                .lineLimit(1)
+            }
         }
     }
 
@@ -212,17 +230,14 @@ struct NowPlayingBarView: View {
                     .font(.body)
             }
             .buttonStyle(.plain)
-            .disabled(!playbackViewModel.hasPrevious)
+            .disabled(!playbackViewModel.hasPrevious && !playbackViewModel.isSpotifyConnectActive)
 
             Button {
                 if playbackViewModel.isPlaying {
-                    SpotifyPlayer.pause()
-                    playbackViewModel.isPlaying = false
+                    playbackViewModel.pause()
                 } else {
-                    SpotifyPlayer.resume()
-                    playbackViewModel.isPlaying = true
+                    playbackViewModel.resume()
                 }
-                playbackViewModel.updateNowPlayingInfo()
             } label: {
                 Image(systemName: playbackViewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.title2)
@@ -236,7 +251,7 @@ struct NowPlayingBarView: View {
                     .font(.body)
             }
             .buttonStyle(.plain)
-            .disabled(!playbackViewModel.hasNext)
+            .disabled(!playbackViewModel.hasNext && !playbackViewModel.isSpotifyConnectActive)
         }
     }
 
@@ -293,17 +308,52 @@ struct NowPlayingBarView: View {
     }
 
     private var volumeControl: some View {
-        HStack(spacing: 6) {
-            Image(systemName: playbackViewModel.volume == 0 ? "speaker.fill" : playbackViewModel.volume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        Group {
+            if playbackViewModel.isSpotifyConnectActive {
+                // Spotify Connect volume (0-100)
+                HStack(spacing: 6) {
+                    Image(systemName: volumeIconForSpotifyConnect)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-            Slider(
-                value: $playbackViewModel.volume,
-                in: 0 ... 1,
-            )
-            .tint(.green)
-            .frame(width: 80)
+                    Slider(
+                        value: Binding(
+                            get: { playbackViewModel.spotifyConnectVolume },
+                            set: { playbackViewModel.setSpotifyConnectVolume($0) }
+                        ),
+                        in: 0 ... 100
+                    )
+                    .tint(.green)
+                    .frame(width: 80)
+                }
+            } else {
+                // Local volume (0-1)
+                HStack(spacing: 6) {
+                    Image(systemName: playbackViewModel.volume == 0 ? "speaker.fill" : playbackViewModel.volume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Slider(
+                        value: $playbackViewModel.volume,
+                        in: 0 ... 1
+                    )
+                    .tint(.green)
+                    .frame(width: 80)
+                }
+            }
+        }
+    }
+
+    private var volumeIconForSpotifyConnect: String {
+        let volume = playbackViewModel.spotifyConnectVolume
+        if volume == 0 {
+            return "speaker.fill"
+        } else if volume < 33 {
+            return "speaker.wave.1.fill"
+        } else if volume < 66 {
+            return "speaker.wave.2.fill"
+        } else {
+            return "speaker.wave.3.fill"
         }
     }
 

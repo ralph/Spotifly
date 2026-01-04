@@ -1,3 +1,5 @@
+use librespot_connect::{ConnectConfig, Spirc};
+use librespot_core::config::DeviceType;
 use librespot_core::session::Session;
 use librespot_core::SessionConfig;
 use librespot_core::cache::Cache;
@@ -29,8 +31,12 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
 static PLAYER: Lazy<Mutex<Option<Arc<Player>>>> = Lazy::new(|| Mutex::new(None));
 static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
 static MIXER: Lazy<Mutex<Option<Arc<SoftMixer>>>> = Lazy::new(|| Mutex::new(None));
+static SPIRC: Lazy<Mutex<Option<Arc<Spirc>>>> = Lazy::new(|| Mutex::new(None));
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
+
+// Device name for Spotify Connect
+static DEVICE_NAME: &str = "Spotifly";
 
 // Queue state
 static QUEUE: Lazy<Mutex<Vec<QueueItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -326,13 +332,12 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 
     // Create session with access token
     let credentials = librespot_core::authentication::Credentials::with_access_token(access_token);
-    
+
     let cache = Cache::new(None::<std::path::PathBuf>, None, None, None)
         .map_err(|e| format!("Cache error: {}", e))?;
 
     let session = Session::new(session_config, Some(cache));
-    session.connect(credentials, true).await
-        .map_err(|e| format!("Session connect error: {}", e))?;
+    // Note: Don't connect here - Spirc::new() will handle the connection
 
     // Create mixer
     let mixer_config = MixerConfig::default();
@@ -426,6 +431,26 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         drop(player_clone);
     });
 
+    // Create Spirc (Spotify Connect) configuration
+    let connect_config = ConnectConfig {
+        name: DEVICE_NAME.to_string(),
+        device_type: DeviceType::Computer,
+        initial_volume: u16::MAX / 2, // 50% volume
+        ..Default::default()
+    };
+
+    // Create Spirc for Spotify Connect functionality
+    let (spirc, spirc_task) = Spirc::new(
+        connect_config,
+        session.clone(),
+        credentials,
+        Arc::clone(&player),
+        mixer.clone() as Arc<dyn Mixer>,
+    ).await.map_err(|e| format!("Spirc error: {}", e))?;
+
+    // Spawn Spirc background task
+    RUNTIME.spawn(spirc_task);
+
     // Store everything
     {
         let mut player_guard = PLAYER.lock().unwrap();
@@ -434,6 +459,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     {
         let mut session_guard = SESSION.lock().unwrap();
         *session_guard = Some(session);
+    }
+    {
+        let mut spirc_guard = SPIRC.lock().unwrap();
+        *spirc_guard = Some(Arc::new(spirc));
     }
     {
         let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();

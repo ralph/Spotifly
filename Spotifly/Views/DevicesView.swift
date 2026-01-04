@@ -34,6 +34,69 @@ struct DevicesView: View {
 
             // Content
             List {
+                // Active Device Section (if there is one)
+                if let activeDevice = viewModel.activeDevice {
+                    Section {
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Currently playing track (if available)
+                            if let track = viewModel.playbackState?.currentTrack {
+                                HStack(spacing: 12) {
+                                    // Album art
+                                    AsyncImage(url: track.imageURL) { image in
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                    } placeholder: {
+                                        Rectangle()
+                                            .fill(.quaternary)
+                                    }
+                                    .frame(width: 48, height: 48)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(track.name)
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .lineLimit(1)
+                                        Text(track.artistName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+
+                                    Spacer()
+
+                                    if viewModel.playbackState?.isPlaying == true {
+                                        Image(systemName: "waveform")
+                                            .foregroundStyle(.green)
+                                            .symbolEffect(.variableColor.iterative)
+                                    }
+                                }
+                            }
+
+                            // Device info
+                            HStack(spacing: 12) {
+                                Image(systemName: viewModel.deviceIcon(for: activeDevice.type))
+                                    .font(.title3)
+                                    .foregroundStyle(.green)
+                                    .frame(width: 24)
+
+                                Text(activeDevice.name)
+                                    .font(.subheadline)
+
+                                Spacer()
+
+                                Text(activeDevice.type)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    } header: {
+                        Text("devices.now_playing")
+                    }
+                }
+
                 #if os(macOS)
                 // AirPlay Section
                 Section {
@@ -179,3 +242,4 @@ struct DeviceRow: View {
         .opacity(device.isRestricted ? 0.5 : 1.0)
     }
 }
+

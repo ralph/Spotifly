@@ -14,17 +14,32 @@ final class DevicesViewModel {
     var isLoading = false
     var errorMessage: String?
 
+    // Playback state
+    var playbackState: PlaybackState?
+    var activeDevice: SpotifyDevice? {
+        playbackState?.device ?? devices.first(where: { $0.isActive })
+    }
+
     func loadDevices(accessToken: String) async {
         isLoading = true
         errorMessage = nil
 
+        // Fetch devices and playback state separately so one failure doesn't block the other
         do {
-            let response = try await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken)
-            devices = response.devices
+            let devicesResponse = try await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken)
+            self.devices = devicesResponse.devices
         } catch let error as SpotifyAPIError {
             errorMessage = error.localizedDescription
         } catch {
             errorMessage = String(localized: "devices.error.failed_to_load")
+        }
+
+        // Fetch playback state (don't fail if this errors)
+        do {
+            self.playbackState = try await SpotifyAPI.fetchPlaybackState(accessToken: accessToken)
+        } catch {
+            // Playback state is optional, don't show error
+            self.playbackState = nil
         }
 
         isLoading = false
@@ -60,7 +75,7 @@ final class DevicesViewModel {
 
             // Activate Spotify Connect mode in PlaybackViewModel
             // This pauses local playback and routes controls to Web API
-            PlaybackViewModel.shared.activateSpotifyConnect(deviceId: device.id, accessToken: accessToken)
+            PlaybackViewModel.shared.activateSpotifyConnect(deviceId: device.id, deviceName: device.name, accessToken: accessToken)
 
             // Reload devices to update active state
             await loadDevices(accessToken: accessToken)

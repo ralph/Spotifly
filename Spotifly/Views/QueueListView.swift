@@ -75,7 +75,12 @@ struct QueueListView: View {
             }
         }
         .task {
-            queueViewModel.loadQueue()
+            // Use async loading if Spotify Connect is active
+            if playbackViewModel.isSpotifyConnectActive {
+                await queueViewModel.loadQueueAsync(accessToken: session.accessToken)
+            } else {
+                queueViewModel.loadQueue()
+            }
             await queueViewModel.loadFavorites(accessToken: session.accessToken)
         }
     }
