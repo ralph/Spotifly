@@ -124,13 +124,13 @@ fn get_album_art_url(track: &Track) -> String {
 
 // Helper function to extract album ID from track
 fn get_album_id(track: &Track) -> Option<String> {
-    Some(track.album.id.to_base62().ok()?)
+    Some(track.album.id.to_id().ok()?)
 }
 
 // Helper function to extract first artist ID from track
 fn get_artist_id(track: &Track) -> Option<String> {
     track.artists.first()
-        .and_then(|a| a.id.to_base62().ok())
+        .and_then(|a| a.id.to_id().ok())
 }
 
 // Helper function to build external URL from track URI
