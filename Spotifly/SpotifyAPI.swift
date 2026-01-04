@@ -59,6 +59,7 @@ struct PlaylistSimplified: Sendable, Identifiable, DurationFormattable {
     let trackCount: Int
     let uri: String
     let isPublic: Bool
+    let ownerId: String
     let ownerName: String
     let totalDurationMs: Int?
 }
@@ -537,11 +538,12 @@ enum SpotifyAPI {
                   let tracks = item["tracks"] as? [String: Any],
                   let trackCount = tracks["total"] as? Int,
                   let owner = item["owner"] as? [String: Any],
-                  let ownerName = owner["display_name"] as? String
+                  let ownerId = owner["id"] as? String
             else {
                 return nil
             }
 
+            let ownerName = owner["display_name"] as? String ?? ownerId
             let description = item["description"] as? String
             let isPublic = item["public"] as? Bool ?? false
 
@@ -577,6 +579,7 @@ enum SpotifyAPI {
                 trackCount: trackCount,
                 uri: uri,
                 isPublic: isPublic,
+                ownerId: ownerId,
                 ownerName: ownerName,
                 totalDurationMs: totalDurationMs,
             )
@@ -2298,18 +2301,15 @@ enum SpotifyAPI {
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let id = json["id"] as? String,
                   let name = json["name"] as? String,
-                  let uri = json["uri"] as? String
+                  let uri = json["uri"] as? String,
+                  let owner = json["owner"] as? [String: Any],
+                  let ownerId = owner["id"] as? String
             else {
                 throw SpotifyAPIError.invalidResponse
             }
 
             // Owner's display_name can be null, fall back to id
-            let ownerName: String
-            if let owner = json["owner"] as? [String: Any] {
-                ownerName = owner["display_name"] as? String ?? owner["id"] as? String ?? "Unknown"
-            } else {
-                ownerName = "Unknown"
-            }
+            let ownerName = owner["display_name"] as? String ?? ownerId
 
             let description = json["description"] as? String
             let isPublic = json["public"] as? Bool ?? false
@@ -2330,6 +2330,7 @@ enum SpotifyAPI {
                 trackCount: 0,
                 uri: uri,
                 isPublic: isPublic,
+                ownerId: ownerId,
                 ownerName: ownerName,
                 totalDurationMs: nil,
             )

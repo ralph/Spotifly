@@ -22,6 +22,9 @@ final class SpotifySession {
     /// Token expiration time
     private(set) var expiresIn: UInt64
 
+    /// The current user's Spotify ID (loaded lazily)
+    private(set) var userId: String?
+
     init(authResult: SpotifyAuthResult) {
         accessToken = authResult.accessToken
         refreshToken = authResult.refreshToken
@@ -33,5 +36,15 @@ final class SpotifySession {
         accessToken = authResult.accessToken
         refreshToken = authResult.refreshToken
         expiresIn = authResult.expiresIn
+    }
+
+    /// Loads the current user's ID if not already loaded
+    func loadUserIdIfNeeded() async {
+        guard userId == nil else { return }
+        do {
+            userId = try await SpotifyAPI.getCurrentUserId(accessToken: accessToken)
+        } catch {
+            // Silently fail - userId will remain nil
+        }
     }
 }

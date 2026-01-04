@@ -214,10 +214,11 @@ struct TrackRow: View {
                         Label("Add to New Playlist...", systemImage: "plus")
                     }
 
-                    if !playlistsViewModel.playlists.isEmpty {
+                    let ownedPlaylists = playlistsViewModel.playlists.filter { $0.ownerId == session.userId }
+                    if !ownedPlaylists.isEmpty {
                         Divider()
 
-                        ForEach(playlistsViewModel.playlists) { playlist in
+                        ForEach(ownedPlaylists) { playlist in
                             Button(playlist.name) {
                                 addToPlaylist(playlistId: playlist.id)
                             }
@@ -313,7 +314,8 @@ struct TrackRow: View {
             Text("Enter a name for the new playlist")
         }
         .task {
-            // Load playlists if not already loaded
+            // Load user ID and playlists if not already loaded
+            await session.loadUserIdIfNeeded()
             if playlistsViewModel.playlists.isEmpty, !playlistsViewModel.isLoading {
                 await playlistsViewModel.loadPlaylists(accessToken: session.accessToken)
             }
