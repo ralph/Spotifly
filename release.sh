@@ -152,9 +152,7 @@ ${CHANGELOG_ENTRY}
 
 **Note:** This version is signed and notarized with Apple Developer ID. No Gatekeeper warnings!
 
-[Full Changelog](https://github.com/ralph/homebrew-spotifly/blob/main/CHANGELOG.md)
-
-Built with [Claude Code](https://claude.com/claude-code)" \
+[Full Changelog](https://github.com/ralph/homebrew-spotifly/blob/main/CHANGELOG.md)" \
     --repo ralph/homebrew-spotifly
 
 # Also tag as latest
