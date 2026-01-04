@@ -137,4 +137,10 @@ final class NavigationCoordinator {
         pendingNavigationItem = .playlists
         navigationVersion += 1
     }
+
+    /// Clear the current playlist selection (e.g., after deletion)
+    func clearPlaylistSelection() {
+        pendingPlaylist = nil
+        navigationVersion += 1
+    }
 }

@@ -19,6 +19,7 @@ struct PlaylistDetailView: View {
     @State private var errorMessage: String?
     @State private var favoriteStatuses: [String: Bool] = [:]
     @State private var showRenameDialog = false
+    @State private var showDeleteConfirmation = false
     @State private var newPlaylistName = ""
     @State private var playlistName: String
 
@@ -140,6 +141,14 @@ struct PlaylistDetailView: View {
                                 } label: {
                                     Label("Rename", systemImage: "pencil")
                                 }
+
+                                Divider()
+
+                                Button(role: .destructive) {
+                                    showDeleteConfirmation = true
+                                } label: {
+                                    Label("Delete Playlist", systemImage: "trash")
+                                }
                             }
                         } label: {
                             Image(systemName: "ellipsis.circle.fill")
@@ -202,6 +211,31 @@ struct PlaylistDetailView: View {
             .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
         } message: {
             Text("Enter a new name for the playlist")
+        }
+        .alert("Delete Playlist", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deletePlaylist()
+            }
+        } message: {
+            Text("Are you sure you want to delete \"\(playlistName)\"? This action cannot be undone.")
+        }
+    }
+
+    private func deletePlaylist() {
+        Task {
+            do {
+                try await SpotifyAPI.deletePlaylist(
+                    accessToken: session.accessToken,
+                    playlistId: playlist.id,
+                )
+                // Refresh playlists to update the sidebar
+                await playlistsViewModel.refresh(accessToken: session.accessToken)
+                // Navigate away from the deleted playlist
+                navigationCoordinator.clearPlaylistSelection()
+            } catch {
+                errorMessage = "Failed to delete playlist: \(error.localizedDescription)"
+            }
         }
     }
 
