@@ -319,9 +319,9 @@ struct NowPlayingBarView: View {
                     Slider(
                         value: Binding(
                             get: { playbackViewModel.spotifyConnectVolume },
-                            set: { playbackViewModel.setSpotifyConnectVolume($0) }
+                            set: { playbackViewModel.setSpotifyConnectVolume($0) },
                         ),
-                        in: 0 ... 100
+                        in: 0 ... 100,
                     )
                     .tint(.green)
                     .frame(width: 80)
@@ -335,7 +335,7 @@ struct NowPlayingBarView: View {
 
                     Slider(
                         value: $playbackViewModel.volume,
-                        in: 0 ... 1
+                        in: 0 ... 1,
                     )
                     .tint(.green)
                     .frame(width: 80)

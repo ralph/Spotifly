@@ -2205,7 +2205,7 @@ enum SpotifyAPI {
         accessToken: String,
         deviceId: String,
         trackUris: [String],
-        positionMs: Int = 0
+        positionMs: Int = 0,
     ) async throws {
         var urlComponents = URLComponents(string: "\(baseURL)/me/player/play")!
         urlComponents.queryItems = [URLQueryItem(name: "device_id", value: deviceId)]
@@ -2317,7 +2317,7 @@ enum SpotifyAPI {
         let (_, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
         else {
             throw SpotifyAPIError.invalidResponse
         }
@@ -2334,7 +2334,7 @@ enum SpotifyAPI {
         let (_, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
         else {
             throw SpotifyAPIError.invalidResponse
         }
@@ -2351,7 +2351,7 @@ enum SpotifyAPI {
         let (_, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
         else {
             throw SpotifyAPIError.invalidResponse
         }
@@ -2368,7 +2368,7 @@ enum SpotifyAPI {
         let (_, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
         else {
             throw SpotifyAPIError.invalidResponse
         }
@@ -2390,7 +2390,7 @@ enum SpotifyAPI {
         let (_, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
         else {
             throw SpotifyAPIError.invalidResponse
         }
@@ -2481,7 +2481,7 @@ enum SpotifyAPI {
                     isActive: deviceData["is_active"] as? Bool ?? true,
                     isPrivateSession: deviceData["is_private_session"] as? Bool ?? false,
                     isRestricted: deviceData["is_restricted"] as? Bool ?? false,
-                    volumePercent: deviceData["volume_percent"] as? Int
+                    volumePercent: deviceData["volume_percent"] as? Int,
                 )
             }
 
@@ -2509,7 +2509,7 @@ enum SpotifyAPI {
                     artistName: artistName,
                     albumName: albumName,
                     imageURL: imageURL,
-                    durationMs: durationMs
+                    durationMs: durationMs,
                 )
             }
 
@@ -2524,7 +2524,7 @@ enum SpotifyAPI {
                 progressMs: progressMs,
                 currentTrack: currentTrack,
                 shuffleState: shuffleState,
-                repeatState: repeatState
+                repeatState: repeatState,
             )
 
         case 204:
@@ -2592,7 +2592,7 @@ enum SpotifyAPI {
                     artistName: artistName,
                     albumName: albumName,
                     imageURL: imageURL,
-                    durationMs: durationMs
+                    durationMs: durationMs,
                 )
             }
 
@@ -2624,7 +2624,7 @@ enum SpotifyAPI {
                         artistName: artistName,
                         albumName: albumName,
                         imageURL: imageURL,
-                        durationMs: durationMs
+                        durationMs: durationMs,
                     )
                 }
             }

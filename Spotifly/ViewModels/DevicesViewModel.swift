@@ -27,7 +27,7 @@ final class DevicesViewModel {
         // Fetch devices and playback state separately so one failure doesn't block the other
         do {
             let devicesResponse = try await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken)
-            self.devices = devicesResponse.devices
+            devices = devicesResponse.devices
         } catch let error as SpotifyAPIError {
             errorMessage = error.localizedDescription
         } catch {
@@ -36,10 +36,10 @@ final class DevicesViewModel {
 
         // Fetch playback state (don't fail if this errors)
         do {
-            self.playbackState = try await SpotifyAPI.fetchPlaybackState(accessToken: accessToken)
+            playbackState = try await SpotifyAPI.fetchPlaybackState(accessToken: accessToken)
         } catch {
             // Playback state is optional, don't show error
-            self.playbackState = nil
+            playbackState = nil
         }
 
         isLoading = false
@@ -54,7 +54,7 @@ final class DevicesViewModel {
 
             // Build array of track URIs from current position to end of queue
             var trackUris: [String] = []
-            for i in currentIndex..<queueLength {
+            for i in currentIndex ..< queueLength {
                 if let uri = SpotifyPlayer.queueUri(at: i) {
                     trackUris.append(uri)
                 }
@@ -66,7 +66,7 @@ final class DevicesViewModel {
                     accessToken: accessToken,
                     deviceId: device.id,
                     trackUris: trackUris,
-                    positionMs: positionMs
+                    positionMs: positionMs,
                 )
             } else {
                 // No tracks in queue, just transfer playback

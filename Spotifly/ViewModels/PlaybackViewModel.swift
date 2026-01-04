@@ -436,7 +436,7 @@ final class PlaybackViewModel {
                     updateNowPlayingInfo()
                 } else if !isRemoteDevice || !playbackState.isPlaying {
                     // Playback stopped or transferred to this device
-                    if isSpotifyConnectActive && !playbackState.isPlaying {
+                    if isSpotifyConnectActive, !playbackState.isPlaying {
                         isPlaying = false
                         updateNowPlayingInfo()
                     }
@@ -463,7 +463,7 @@ final class PlaybackViewModel {
         spotifyConnectSyncTask?.cancel()
 
         spotifyConnectSyncTask = Task {
-            while !Task.isCancelled && isSpotifyConnectActive {
+            while !Task.isCancelled, isSpotifyConnectActive {
                 guard let token = spotifyConnectAccessToken else { break }
 
                 await syncSpotifyConnectState(accessToken: token)

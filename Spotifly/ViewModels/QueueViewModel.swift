@@ -30,7 +30,7 @@ final class QueueViewModel {
                     durationMs: UInt32(track.durationMs),
                     albumId: nil,
                     artistId: nil,
-                    externalUrl: nil
+                    externalUrl: nil,
                 )
             }
             return
@@ -61,7 +61,7 @@ final class QueueViewModel {
                         durationMs: UInt32(track.durationMs),
                         albumId: nil,
                         artistId: nil,
-                        externalUrl: nil
+                        externalUrl: nil,
                     )
                 }
             } catch {

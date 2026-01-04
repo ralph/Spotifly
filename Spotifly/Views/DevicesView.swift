@@ -98,29 +98,29 @@ struct DevicesView: View {
                 }
 
                 #if os(macOS)
-                // AirPlay Section
-                Section {
-                    HStack(spacing: 12) {
-                        Image(systemName: "airplayaudio")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 30)
+                    // AirPlay Section
+                    Section {
+                        HStack(spacing: 12) {
+                            Image(systemName: "airplayaudio")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 30)
 
-                        Text("devices.airplay_select")
-                            .font(.body)
+                            Text("devices.airplay_select")
+                                .font(.body)
 
-                        Spacer()
+                            Spacer()
 
-                        AirPlayRoutePickerView()
-                            .frame(width: 30, height: 30)
+                            AirPlayRoutePickerView()
+                                .frame(width: 30, height: 30)
+                        }
+                        .padding(.vertical, 4)
+                    } header: {
+                        Text("devices.audio_output")
+                    } footer: {
+                        Text("devices.airplay_hint")
+                            .font(.caption2)
                     }
-                    .padding(.vertical, 4)
-                } header: {
-                    Text("devices.audio_output")
-                } footer: {
-                    Text("devices.airplay_hint")
-                        .font(.caption2)
-                }
                 #endif
 
                 // Spotify Connect Section
@@ -242,4 +242,3 @@ struct DeviceRow: View {
         .opacity(device.isRestricted ? 0.5 : 1.0)
     }
 }
-
