@@ -265,9 +265,10 @@ struct PlaylistDetailView: View {
     }
 
     private func loadTracks() async {
-        // Clear old tracks when loading new playlist
+        // Reset all state when loading new playlist
         tracks = []
         favoriteStatuses = [:]
+        playlistName = playlist.name
         isLoading = true
         errorMessage = nil
 
