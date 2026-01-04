@@ -2368,13 +2368,11 @@ enum SpotifyAPI {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        var body: [String: Any] = [
+        let body: [String: Any] = [
             "name": name,
+            "description": description ?? "",
             "public": isPublic,
         ]
-        if let description {
-            body["description"] = description
-        }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -2497,15 +2495,17 @@ enum SpotifyAPI {
         }
     }
 
-    /// Renames a playlist
+    /// Updates playlist details (name and/or description)
     /// - Parameters:
     ///   - accessToken: Spotify access token
-    ///   - playlistId: The ID of the playlist to rename
-    ///   - newName: The new name for the playlist
-    static func renamePlaylist(
+    ///   - playlistId: The ID of the playlist to update
+    ///   - newName: New name for the playlist (optional)
+    ///   - newDescription: New description for the playlist (optional)
+    static func updatePlaylistDetails(
         accessToken: String,
         playlistId: String,
-        newName: String,
+        newName: String? = nil,
+        newDescription: String? = nil,
     ) async throws {
         let urlString = "\(baseURL)/playlists/\(playlistId)"
         #if DEBUG
@@ -2521,7 +2521,13 @@ enum SpotifyAPI {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: Any] = ["name": newName]
+        var body: [String: Any] = [:]
+        if let newName {
+            body["name"] = newName
+        }
+        if let newDescription {
+            body["description"] = newDescription
+        }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)

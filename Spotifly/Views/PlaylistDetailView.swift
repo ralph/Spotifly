@@ -19,10 +19,12 @@ struct PlaylistDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var favoriteStatuses: [String: Bool] = [:]
-    @State private var showRenameDialog = false
+    @State private var showEditDetailsDialog = false
     @State private var showDeleteConfirmation = false
-    @State private var newPlaylistName = ""
+    @State private var editingPlaylistName = ""
+    @State private var editingPlaylistDescription = ""
     @State private var playlistName: String
+    @State private var playlistDescription: String
 
     // Edit mode state
     @State private var isEditing = false
@@ -44,6 +46,7 @@ struct PlaylistDetailView: View {
         self.playlist = playlist
         self.playbackViewModel = playbackViewModel
         _playlistName = State(initialValue: playlist.name)
+        _playlistDescription = State(initialValue: playlist.description ?? "")
     }
 
     private var totalDuration: String {
@@ -74,18 +77,21 @@ struct PlaylistDetailView: View {
         }
         .onChange(of: playlist.id) {
             playlistName = playlist.name
+            playlistDescription = playlist.description ?? ""
         }
-        .alert("Rename Playlist", isPresented: $showRenameDialog) {
-            TextField("Playlist name", text: $newPlaylistName)
+        .alert("Edit Playlist", isPresented: $showEditDetailsDialog) {
+            TextField("Name", text: $editingPlaylistName)
+            TextField("Description", text: $editingPlaylistDescription)
             Button("Cancel", role: .cancel) {
-                newPlaylistName = ""
+                editingPlaylistName = ""
+                editingPlaylistDescription = ""
             }
-            Button("Rename") {
-                renamePlaylist()
+            Button("Save") {
+                savePlaylistDetails()
             }
-            .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(editingPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
         } message: {
-            Text("Enter a new name for the playlist")
+            Text("Edit playlist name and description")
         }
         .alert("Delete Playlist", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -150,8 +156,8 @@ struct PlaylistDetailView: View {
                 .fontWeight(.semibold)
                 .multilineTextAlignment(.center)
 
-            if let description = playlist.description, !description.isEmpty {
-                Text(description)
+            if !playlistDescription.isEmpty {
+                Text(playlistDescription)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -209,10 +215,11 @@ struct PlaylistDetailView: View {
                 }
 
                 Button {
-                    newPlaylistName = playlistName
-                    showRenameDialog = true
+                    editingPlaylistName = playlistName
+                    editingPlaylistDescription = playlistDescription
+                    showEditDetailsDialog = true
                 } label: {
-                    Label("Rename", systemImage: "pencil")
+                    Label("Edit Details", systemImage: "pencil")
                 }
 
                 Divider()
@@ -378,24 +385,27 @@ struct PlaylistDetailView: View {
         }
     }
 
-    private func renamePlaylist() {
-        let trimmedName = newPlaylistName.trimmingCharacters(in: .whitespaces)
+    private func savePlaylistDetails() {
+        let trimmedName = editingPlaylistName.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
 
         Task {
             do {
-                try await SpotifyAPI.renamePlaylist(
+                try await SpotifyAPI.updatePlaylistDetails(
                     accessToken: session.accessToken,
                     playlistId: playlist.id,
                     newName: trimmedName,
+                    newDescription: editingPlaylistDescription,
                 )
                 playlistName = trimmedName
+                playlistDescription = editingPlaylistDescription
                 // Refresh playlists to update the sidebar
                 await playlistsViewModel.refresh(accessToken: session.accessToken)
             } catch {
-                errorMessage = "Failed to rename playlist: \(error.localizedDescription)"
+                errorMessage = "Failed to update playlist: \(error.localizedDescription)"
             }
-            newPlaylistName = ""
+            editingPlaylistName = ""
+            editingPlaylistDescription = ""
         }
     }
 
@@ -404,6 +414,7 @@ struct PlaylistDetailView: View {
         tracks = []
         favoriteStatuses = [:]
         playlistName = playlist.name
+        playlistDescription = playlist.description ?? ""
         isLoading = true
         errorMessage = nil
 
