@@ -88,8 +88,7 @@ struct SidebarView: View {
     var body: some View {
         List(selection: $selection) {
             Section {
-                // TODO: Re-enable devices view when ready for release
-                ForEach([NavigationItem.startpage, NavigationItem.queue /* , NavigationItem.devices */ ]) { item in
+                ForEach([NavigationItem.startpage, NavigationItem.queue, NavigationItem.devices]) { item in
                     NavigationLink(value: item) {
                         Label(item.title, systemImage: item.icon)
                     }

@@ -2,7 +2,7 @@
 //  DevicesView.swift
 //  Spotifly
 //
-//  View for selecting Spotify Connect devices
+//  View for selecting audio output devices and Spotify Connect devices
 //
 
 import SwiftUI
@@ -33,44 +33,82 @@ struct DevicesView: View {
             Divider()
 
             // Content
-            if viewModel.isLoading {
-                Spacer()
-                ProgressView()
-                    .controlSize(.large)
-                Spacer()
-            } else if let errorMessage = viewModel.errorMessage {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.secondary)
-                    Text(errorMessage)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            } else if viewModel.devices.isEmpty {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "speaker.slash")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.secondary)
-                    Text("devices.empty")
-                        .foregroundStyle(.secondary)
-                    Text("devices.empty_hint")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-                Spacer()
-            } else {
-                List {
-                    ForEach(viewModel.devices) { device in
-                        DeviceRow(device: device, viewModel: viewModel)
+            List {
+                #if os(macOS)
+                // AirPlay Section
+                Section {
+                    HStack(spacing: 12) {
+                        Image(systemName: "airplayaudio")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 30)
+
+                        Text("devices.airplay_select")
+                            .font(.body)
+
+                        Spacer()
+
+                        AirPlayRoutePickerView()
+                            .frame(width: 30, height: 30)
                     }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("devices.audio_output")
+                } footer: {
+                    Text("devices.airplay_hint")
+                        .font(.caption2)
                 }
-                .listStyle(.plain)
+                #endif
+
+                // Spotify Connect Section
+                Section {
+                    if viewModel.isLoading {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                                .controlSize(.small)
+                            Spacer()
+                        }
+                        .padding(.vertical, 20)
+                    } else if let errorMessage = viewModel.errorMessage {
+                        VStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    } else if viewModel.devices.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "speaker.slash")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                            Text("devices.empty")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("devices.empty_hint")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    } else {
+                        ForEach(viewModel.devices) { device in
+                            DeviceRow(device: device, viewModel: viewModel)
+                        }
+                    }
+                } header: {
+                    Text("devices.spotify_connect")
+                } footer: {
+                    Text("devices.spotify_connect_hint")
+                        .font(.caption2)
+                }
             }
+            .listStyle(.sidebar)
         }
         .task {
             await viewModel.loadDevices(accessToken: session.accessToken)
@@ -137,7 +175,7 @@ struct DeviceRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(device.isActive || device.isRestricted)
+        .disabled(device.isRestricted)
         .opacity(device.isRestricted ? 0.5 : 1.0)
     }
 }

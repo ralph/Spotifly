@@ -56,6 +56,11 @@ final class PlaybackViewModel {
     var queueLength: Int = 0
     var currentIndex: Int = 0
 
+    // Spotify Connect state
+    var isSpotifyConnectActive = false
+    var spotifyConnectDeviceId: String?
+    private var spotifyConnectAccessToken: String?
+
     /// Returns the URI of the currently playing track
     var currentlyPlayingURI: String? {
         // Try to get URI from queue first, fallback to currentTrackId for single tracks
@@ -274,39 +279,126 @@ final class PlaybackViewModel {
     }
 
     func next() {
-        do {
-            try SpotifyPlayer.next()
-            isPlaying = true
-            updateQueueState()
-            syncPositionAnchor()
-            updateNowPlayingInfo()
-        } catch {
-            errorMessage = error.localizedDescription
+        if isSpotifyConnectActive, let token = spotifyConnectAccessToken {
+            Task {
+                do {
+                    try await SpotifyAPI.skipToNext(accessToken: token)
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        } else {
+            do {
+                try SpotifyPlayer.next()
+                isPlaying = true
+                updateQueueState()
+                syncPositionAnchor()
+                updateNowPlayingInfo()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
     func previous() {
-        do {
-            try SpotifyPlayer.previous()
-            isPlaying = true
-            updateQueueState()
-            syncPositionAnchor()
-            updateNowPlayingInfo()
-        } catch {
-            errorMessage = error.localizedDescription
+        if isSpotifyConnectActive, let token = spotifyConnectAccessToken {
+            Task {
+                do {
+                    try await SpotifyAPI.skipToPrevious(accessToken: token)
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        } else {
+            do {
+                try SpotifyPlayer.previous()
+                isPlaying = true
+                updateQueueState()
+                syncPositionAnchor()
+                updateNowPlayingInfo()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
     func seek(to positionMs: UInt32) {
-        do {
-            try SpotifyPlayer.seek(positionMs: positionMs)
-            // Update anchor for smooth interpolation from new position
-            positionAnchorMs = positionMs
-            positionAnchorTime = CACurrentMediaTime()
-            currentPositionMs = positionMs
+        if isSpotifyConnectActive, let token = spotifyConnectAccessToken {
+            Task {
+                do {
+                    try await SpotifyAPI.seekToPosition(accessToken: token, positionMs: Int(positionMs))
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        } else {
+            do {
+                try SpotifyPlayer.seek(positionMs: positionMs)
+                // Update anchor for smooth interpolation from new position
+                positionAnchorMs = positionMs
+                positionAnchorTime = CACurrentMediaTime()
+                currentPositionMs = positionMs
+                updateNowPlayingInfo()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    // MARK: - Spotify Connect
+
+    /// Activates Spotify Connect mode - playback controls will use Web API
+    func activateSpotifyConnect(deviceId: String, accessToken: String) {
+        isSpotifyConnectActive = true
+        spotifyConnectDeviceId = deviceId
+        spotifyConnectAccessToken = accessToken
+
+        // Pause local playback
+        SpotifyPlayer.pause()
+    }
+
+    /// Deactivates Spotify Connect mode - returns to local playback
+    func deactivateSpotifyConnect() {
+        isSpotifyConnectActive = false
+        spotifyConnectDeviceId = nil
+        // Keep the access token for potential reactivation
+    }
+
+    /// Pause playback (works for both local and Spotify Connect)
+    func pause() {
+        if isSpotifyConnectActive, let token = spotifyConnectAccessToken {
+            Task {
+                do {
+                    try await SpotifyAPI.pausePlayback(accessToken: token)
+                    isPlaying = false
+                    updateNowPlayingInfo()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        } else {
+            SpotifyPlayer.pause()
+            isPlaying = false
             updateNowPlayingInfo()
-        } catch {
-            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Resume playback (works for both local and Spotify Connect)
+    func resume() {
+        if isSpotifyConnectActive, let token = spotifyConnectAccessToken {
+            Task {
+                do {
+                    try await SpotifyAPI.resumePlayback(accessToken: token)
+                    isPlaying = true
+                    updateNowPlayingInfo()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        } else {
+            SpotifyPlayer.resume()
+            isPlaying = true
+            updateNowPlayingInfo()
         }
     }
 

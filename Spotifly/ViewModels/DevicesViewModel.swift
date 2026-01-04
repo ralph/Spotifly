@@ -32,7 +32,35 @@ final class DevicesViewModel {
 
     func transferPlayback(to device: SpotifyDevice, accessToken: String) async {
         do {
-            try await SpotifyAPI.transferPlayback(accessToken: accessToken, deviceId: device.id, play: true)
+            // Get current track and queue from librespot
+            let currentIndex = SpotifyPlayer.currentIndex
+            let queueLength = SpotifyPlayer.queueLength
+            let positionMs = Int(SpotifyPlayer.positionMs)
+
+            // Build array of track URIs from current position to end of queue
+            var trackUris: [String] = []
+            for i in currentIndex..<queueLength {
+                if let uri = SpotifyPlayer.queueUri(at: i) {
+                    trackUris.append(uri)
+                }
+            }
+
+            if !trackUris.isEmpty {
+                // Start playback on the Spotify Connect device with current track and position
+                try await SpotifyAPI.startPlayback(
+                    accessToken: accessToken,
+                    deviceId: device.id,
+                    trackUris: trackUris,
+                    positionMs: positionMs
+                )
+            } else {
+                // No tracks in queue, just transfer playback
+                try await SpotifyAPI.transferPlayback(accessToken: accessToken, deviceId: device.id, play: true)
+            }
+
+            // Activate Spotify Connect mode in PlaybackViewModel
+            // This pauses local playback and routes controls to Web API
+            PlaybackViewModel.shared.activateSpotifyConnect(deviceId: device.id, accessToken: accessToken)
 
             // Reload devices to update active state
             await loadDevices(accessToken: accessToken)

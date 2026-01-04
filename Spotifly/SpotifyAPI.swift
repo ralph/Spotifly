@@ -2157,6 +2157,64 @@ enum SpotifyAPI {
         }
     }
 
+    /// Starts playback of specific tracks on a device
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - deviceId: The device ID to play on
+    ///   - trackUris: Array of track URIs to play
+    ///   - positionMs: Position in the first track to start from (default: 0)
+    static func startPlayback(
+        accessToken: String,
+        deviceId: String,
+        trackUris: [String],
+        positionMs: Int = 0
+    ) async throws {
+        var urlComponents = URLComponents(string: "\(baseURL)/me/player/play")!
+        urlComponents.queryItems = [URLQueryItem(name: "device_id", value: deviceId)]
+
+        guard let url = urlComponents.url else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Create request body with track URIs and position
+        let body: [String: Any] = [
+            "uris": trackUris,
+            "position_ms": positionMs,
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 204:
+            // Success - playback started
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 403:
+            throw SpotifyAPIError.apiError("Device is restricted and cannot accept playback")
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
     /// Transfers playback to a different device
     /// - Parameters:
     ///   - accessToken: Spotify access token
@@ -2205,6 +2263,98 @@ enum SpotifyAPI {
                 throw SpotifyAPIError.apiError(message)
             }
             throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    // MARK: - Spotify Connect Playback Controls
+
+    /// Pauses playback on the active Spotify Connect device
+    static func pausePlayback(accessToken: String) async throws {
+        let url = URL(string: "\(baseURL)/me/player/pause")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+    }
+
+    /// Resumes playback on the active Spotify Connect device
+    static func resumePlayback(accessToken: String) async throws {
+        let url = URL(string: "\(baseURL)/me/player/play")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+    }
+
+    /// Skips to the next track on the active Spotify Connect device
+    static func skipToNext(accessToken: String) async throws {
+        let url = URL(string: "\(baseURL)/me/player/next")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+    }
+
+    /// Skips to the previous track on the active Spotify Connect device
+    static func skipToPrevious(accessToken: String) async throws {
+        let url = URL(string: "\(baseURL)/me/player/previous")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+    }
+
+    /// Seeks to a position in the current track on the active Spotify Connect device
+    static func seekToPosition(accessToken: String, positionMs: Int) async throws {
+        var urlComponents = URLComponents(string: "\(baseURL)/me/player/seek")!
+        urlComponents.queryItems = [URLQueryItem(name: "position_ms", value: String(positionMs))]
+
+        guard let url = urlComponents.url else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
         }
     }
 }

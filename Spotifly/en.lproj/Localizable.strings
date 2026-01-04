@@ -104,9 +104,14 @@
 /* Show All Button */
 "show_all.tracks" = "Show all %d tracks";
 
-/* Devices (Spotify Connect) */
-"devices.title" = "Available Devices";
+/* Devices */
+"devices.title" = "Devices";
 "devices.active" = "Active";
+"devices.audio_output" = "Audio Output";
+"devices.airplay_select" = "AirPlay & Speakers";
+"devices.airplay_hint" = "Select where to play audio from your Mac";
+"devices.spotify_connect" = "Spotify Connect";
+"devices.spotify_connect_hint" = "Stream to devices running Spotify";
 "devices.empty" = "No devices found";
 "devices.empty_hint" = "Open Spotify on another device to see it here";
 "devices.error.not_logged_in" = "Not logged in";
