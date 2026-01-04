@@ -204,7 +204,7 @@ struct PlaylistDetailView: View {
                 Button {
                     enterEditMode()
                 } label: {
-                    Label("playlist.edit", systemImage: "pencil.line")
+                    Label("playlist.edit", systemImage: "arrow.up.arrow.down")
                 }
 
                 Button {
