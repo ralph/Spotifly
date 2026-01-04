@@ -44,8 +44,8 @@ struct NowPlayingBarView: View {
                                     .padding(.horizontal, 8)
                             }
                             .padding(.horizontal, 16)
-                            .padding(.top, windowState.isMiniPlayerMode ? 4 : 8)
-                            .padding(.bottom, 8)
+                            .padding(.top, 8)
+                            .padding(.bottom, windowState.isMiniPlayerMode ? 4 : 8)
                         } else {
                             // Wide layout: original layout
                             wideLayout
