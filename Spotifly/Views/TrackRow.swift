@@ -439,8 +439,8 @@ struct TrackRow: View {
                     playlistId: playlistId,
                     trackUris: [track.uri],
                 )
-                // Refresh playlists to update track counts
-                await playlistsViewModel.refresh(accessToken: accessToken)
+                // Update track count in sidebar immediately
+                playlistsViewModel.incrementTrackCount(playlistId: playlistId)
                 showSuccessFeedback()
             } catch {
                 playbackViewModel.errorMessage = "Failed to add to playlist: \(error.localizedDescription)"

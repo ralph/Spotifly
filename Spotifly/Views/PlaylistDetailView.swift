@@ -165,7 +165,8 @@ struct PlaylistDetailView: View {
                 Text("metadata.separator")
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
-                Text(String(format: String(localized: "metadata.tracks"), playlist.trackCount))
+                // Use actual track count once loaded, otherwise fall back to playlist metadata
+                Text(String(format: String(localized: "metadata.tracks"), tracks.isEmpty ? playlist.trackCount : tracks.count))
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
                 if !tracks.isEmpty {
@@ -468,8 +469,8 @@ struct PlaylistDetailView: View {
                 isEditing = false
                 editedTracks = []
 
-                // Refresh playlists to update track counts in sidebar
-                await playlistsViewModel.refresh(accessToken: session.accessToken)
+                // Update track count in sidebar immediately
+                playlistsViewModel.updateTrackCount(playlistId: playlist.id, count: tracks.count)
             } catch {
                 errorMessage = "Failed to save changes: \(error.localizedDescription)"
             }

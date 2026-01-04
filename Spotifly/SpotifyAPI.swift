@@ -56,10 +56,10 @@ struct TrackMetadata: Sendable {
 /// Simplified playlist metadata from Spotify
 struct PlaylistSimplified: Sendable, Identifiable, DurationFormattable {
     let id: String
-    let name: String
+    var name: String
     let description: String?
     let imageURL: URL?
-    let trackCount: Int
+    var trackCount: Int
     let uri: String
     let isPublic: Bool
     let ownerId: String
@@ -554,6 +554,10 @@ enum SpotifyAPI {
             else {
                 return nil
             }
+
+            #if DEBUG
+                apiLogger.debug("[PLAYLIST] id=\(id) name=\(name) trackCount=\(trackCount)")
+            #endif
 
             let ownerName = owner["display_name"] as? String ?? ownerId
             let description = item["description"] as? String
@@ -1566,6 +1570,10 @@ enum SpotifyAPI {
                     externalUrl: externalUrl,
                 )
             }
+
+            #if DEBUG
+                apiLogger.debug("[PLAYLIST_TRACKS] playlistId=\(playlistId) trackCount=\(tracks.count)")
+            #endif
 
             return tracks
         case 401:

@@ -68,4 +68,18 @@ final class PlaylistsViewModel {
         hasMore = false
         await loadPlaylists(accessToken: accessToken)
     }
+
+    /// Update the track count for a playlist (for immediate UI feedback)
+    func updateTrackCount(playlistId: String, count: Int) {
+        if let index = playlists.firstIndex(where: { $0.id == playlistId }) {
+            playlists[index].trackCount = count
+        }
+    }
+
+    /// Increment the track count for a playlist
+    func incrementTrackCount(playlistId: String, by count: Int = 1) {
+        if let index = playlists.firstIndex(where: { $0.id == playlistId }) {
+            playlists[index].trackCount += count
+        }
+    }
 }
