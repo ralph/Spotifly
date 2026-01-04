@@ -555,10 +555,6 @@ enum SpotifyAPI {
                 return nil
             }
 
-            #if DEBUG
-                apiLogger.debug("[PLAYLIST] id=\(id) name=\(name) trackCount=\(trackCount)")
-            #endif
-
             let ownerName = owner["display_name"] as? String ?? ownerId
             let description = item["description"] as? String
             let isPublic = item["public"] as? Bool ?? false
@@ -1570,10 +1566,6 @@ enum SpotifyAPI {
                     externalUrl: externalUrl,
                 )
             }
-
-            #if DEBUG
-                apiLogger.debug("[PLAYLIST_TRACKS] playlistId=\(playlistId) trackCount=\(tracks.count)")
-            #endif
 
             return tracks
         case 401:
