@@ -134,6 +134,7 @@ struct LoggedInView: View {
                 windowState: windowState,
             )
         }
+        .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .environment(session)
         .environment(devicesViewModel)

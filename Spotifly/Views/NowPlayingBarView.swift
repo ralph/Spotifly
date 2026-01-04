@@ -60,8 +60,9 @@ struct NowPlayingBarView: View {
                         barHeight = newValue
                     }
                 }
-                .background(Color(NSColor.controlBackgroundColor))
-                .frame(height: barHeight)
+                .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color(NSColor.controlBackgroundColor))
+                .frame(height: windowState.isMiniPlayerMode ? nil : barHeight)
+                .frame(maxHeight: windowState.isMiniPlayerMode ? .infinity : nil)
             }
         }
     }
