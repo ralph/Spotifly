@@ -116,7 +116,7 @@ struct StartpageView: View {
                             }
                         }
                     } label: {
-                        Text(String(format: String(localized: "version.label"), appVersion.split(separator: " ").first.map(String.init) ?? "", appVersion.split(separator: " ").last?.replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "") ?? ""))
+                        Text(appVersion)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -169,9 +169,7 @@ struct StartpageView: View {
     }
 
     private var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
-        return "\(version) (\(build))"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
     }
 
     private func copyTokenToClipboard() {
