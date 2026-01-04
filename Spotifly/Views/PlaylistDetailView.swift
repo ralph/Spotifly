@@ -11,11 +11,27 @@ struct PlaylistDetailView: View {
     let playlist: SearchPlaylist
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
+    @Environment(PlaylistsViewModel.self) private var playlistsViewModel
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     @State private var tracks: [PlaylistTrack] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var favoriteStatuses: [String: Bool] = [:]
+    @State private var showRenameDialog = false
+    @State private var newPlaylistName = ""
+    @State private var playlistName: String
+
+    /// Whether the current user owns this playlist
+    private var isOwner: Bool {
+        playlist.ownerId == session.userId
+    }
+
+    init(playlist: SearchPlaylist, playbackViewModel: PlaybackViewModel) {
+        self.playlist = playlist
+        self.playbackViewModel = playbackViewModel
+        _playlistName = State(initialValue: playlist.name)
+    }
 
     private var totalDuration: String {
         let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
@@ -67,7 +83,7 @@ struct PlaylistDetailView: View {
                     }
 
                     VStack(spacing: 8) {
-                        Text(playlist.name)
+                        Text(playlistName)
                             .font(.title2)
                             .fontWeight(.semibold)
                             .multilineTextAlignment(.center)
@@ -101,18 +117,39 @@ struct PlaylistDetailView: View {
                         }
                     }
 
-                    // Play All button
-                    Button {
-                        playAllTracks()
-                    } label: {
-                        Label("playback.play_playlist", systemImage: "play.fill")
-                            .font(.headline)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
+                    // Play All button and menu
+                    HStack(spacing: 12) {
+                        Button {
+                            playAllTracks()
+                        } label: {
+                            Label("playback.play_playlist", systemImage: "play.fill")
+                                .font(.headline)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                        .disabled(tracks.isEmpty)
+
+                        // Context menu
+                        Menu {
+                            if isOwner {
+                                Button {
+                                    newPlaylistName = playlistName
+                                    showRenameDialog = true
+                                } label: {
+                                    Label("Rename", systemImage: "pencil")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .disabled(tracks.isEmpty)
                 }
                 .padding(.top, 24)
 
@@ -153,6 +190,39 @@ struct PlaylistDetailView: View {
         }
         .task(id: playlist.id) {
             await loadTracks()
+        }
+        .alert("Rename Playlist", isPresented: $showRenameDialog) {
+            TextField("Playlist name", text: $newPlaylistName)
+            Button("Cancel", role: .cancel) {
+                newPlaylistName = ""
+            }
+            Button("Rename") {
+                renamePlaylist()
+            }
+            .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
+        } message: {
+            Text("Enter a new name for the playlist")
+        }
+    }
+
+    private func renamePlaylist() {
+        let trimmedName = newPlaylistName.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty else { return }
+
+        Task {
+            do {
+                try await SpotifyAPI.renamePlaylist(
+                    accessToken: session.accessToken,
+                    playlistId: playlist.id,
+                    newName: trimmedName,
+                )
+                playlistName = trimmedName
+                // Refresh playlists to update the sidebar
+                await playlistsViewModel.refresh(accessToken: session.accessToken)
+            } catch {
+                errorMessage = "Failed to rename playlist: \(error.localizedDescription)"
+            }
+            newPlaylistName = ""
         }
     }
 

@@ -262,16 +262,18 @@ struct SearchPlaylist: Sendable, Identifiable, DurationFormattable {
     let description: String?
     let imageURL: URL?
     let trackCount: Int
+    let ownerId: String
     let ownerName: String
     let totalDurationMs: Int?
 
-    init(id: String, name: String, uri: String, description: String?, imageURL: URL?, trackCount: Int, ownerName: String, totalDurationMs: Int? = nil) {
+    init(id: String, name: String, uri: String, description: String?, imageURL: URL?, trackCount: Int, ownerId: String, ownerName: String, totalDurationMs: Int? = nil) {
         self.id = id
         self.name = name
         self.uri = uri
         self.description = description
         self.imageURL = imageURL
         self.trackCount = trackCount
+        self.ownerId = ownerId
         self.ownerName = ownerName
         self.totalDurationMs = totalDurationMs
     }
@@ -283,6 +285,7 @@ struct SearchPlaylist: Sendable, Identifiable, DurationFormattable {
         description = playlist.description
         imageURL = playlist.imageURL
         trackCount = playlist.trackCount
+        ownerId = playlist.ownerId
         ownerName = playlist.ownerName
         self.totalDurationMs = totalDurationMs
     }
@@ -664,10 +667,13 @@ enum SpotifyAPI {
               let tracks = json["tracks"] as? [String: Any],
               let trackCount = tracks["total"] as? Int,
               let owner = json["owner"] as? [String: Any],
-              let ownerName = owner["display_name"] as? String
+              let ownerId = owner["id"] as? String
         else {
             throw SpotifyAPIError.invalidResponse
         }
+
+        // Owner's display_name can be null, fall back to id
+        let ownerName = owner["display_name"] as? String ?? ownerId
 
         let description = json["description"] as? String
 
@@ -702,6 +708,7 @@ enum SpotifyAPI {
             description: description,
             imageURL: imageURL,
             trackCount: trackCount,
+            ownerId: ownerId,
             ownerName: ownerName,
             totalDurationMs: totalDurationMs,
         )
@@ -2009,7 +2016,9 @@ enum SpotifyAPI {
                     let imageURLString = images?.first?["url"] as? String
                     let imageURL = imageURLString.flatMap { URL(string: $0) }
                     let trackCount = (item["tracks"] as? [String: Any])?["total"] as? Int ?? 0
-                    let ownerName = (item["owner"] as? [String: Any])?["display_name"] as? String ?? "Unknown"
+                    let owner = item["owner"] as? [String: Any]
+                    let ownerId = owner?["id"] as? String ?? ""
+                    let ownerName = owner?["display_name"] as? String ?? ownerId
 
                     return SearchPlaylist(
                         id: id,
@@ -2018,7 +2027,8 @@ enum SpotifyAPI {
                         description: description,
                         imageURL: imageURL,
                         trackCount: trackCount,
-                        ownerName: ownerName,
+                        ownerId: ownerId,
+                        ownerName: ownerName.isEmpty ? "Unknown" : ownerName,
                     )
                 }
             }
@@ -2464,6 +2474,114 @@ enum SpotifyAPI {
 
         case 403:
             throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Renames a playlist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist to rename
+    ///   - newName: The new name for the playlist
+    static func renamePlaylist(
+        accessToken: String,
+        playlistId: String,
+        newName: String,
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["name": newName]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Deletes (unfollows) a playlist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist to delete
+    static func deletePlaylist(
+        accessToken: String,
+        playlistId: String,
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/followers"
+        #if DEBUG
+            apiLogger.debug("[DELETE] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to delete this playlist")
 
         case 404:
             throw SpotifyAPIError.notFound
