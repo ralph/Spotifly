@@ -66,6 +66,7 @@ struct TrackRow: View {
     @State private var showNewPlaylistDialog = false
     @State private var newPlaylistName = ""
     @State private var isAddingToPlaylist = false
+    @State private var showPlaylistAddedSuccess = false
 
     init(
         track: TrackRowData,
@@ -262,15 +263,17 @@ struct TrackRow: View {
                 }
                 .disabled(track.externalUrl == nil)
             } label: {
-                Image(systemName: "ellipsis")
+                Image(systemName: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
                     .frame(width: 20, height: 20)
                     .contentShape(Rectangle())
+                    .animation(.easeInOut(duration: 0.2), value: showPlaylistAddedSuccess)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .disabled(showPlaylistAddedSuccess)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -463,6 +466,7 @@ struct TrackRow: View {
                     playlistId: playlistId,
                     trackUris: [track.uri],
                 )
+                showSuccessFeedback()
             } catch {
                 playbackViewModel.errorMessage = "Failed to add to playlist: \(error.localizedDescription)"
             }
@@ -497,10 +501,19 @@ struct TrackRow: View {
 
                 // Refresh playlists to show the new one
                 await playlistsViewModel.refresh(accessToken: accessToken)
+                showSuccessFeedback()
             } catch {
                 playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
             }
             isAddingToPlaylist = false
+        }
+    }
+
+    private func showSuccessFeedback() {
+        showPlaylistAddedSuccess = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            showPlaylistAddedSuccess = false
         }
     }
 }
