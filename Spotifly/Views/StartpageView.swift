@@ -116,7 +116,7 @@ struct StartpageView: View {
                             }
                         }
                     } label: {
-                        Text(appVersion)
+                        Text("Version \(appVersion)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
