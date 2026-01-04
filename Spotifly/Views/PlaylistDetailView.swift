@@ -200,6 +200,10 @@ struct PlaylistDetailView: View {
         .task(id: playlist.id) {
             await loadTracks()
         }
+        .onChange(of: playlist.id) {
+            // Reset name when switching playlists
+            playlistName = playlist.name
+        }
         .alert("Rename Playlist", isPresented: $showRenameDialog) {
             TextField("Playlist name", text: $newPlaylistName)
             Button("Cancel", role: .cancel) {
