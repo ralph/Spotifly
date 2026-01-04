@@ -62,7 +62,6 @@ struct TrackRow: View {
 
     @State private var isFavorited = false
     @State private var isCheckingFavorite = false
-    @State private var hasLoadedInitialFavorite = false
     @State private var showNewPlaylistDialog = false
     @State private var newPlaylistName = ""
     @State private var isAddingToPlaylist = false
@@ -284,17 +283,7 @@ struct TrackRow: View {
         .onTapGesture(count: 2) {
             handleDoubleTap()
         }
-        .task {
-            // Use pre-fetched value if available, otherwise fetch
-            if let initialFavorited, !hasLoadedInitialFavorite {
-                isFavorited = initialFavorited
-                hasLoadedInitialFavorite = true
-            } else if !hasLoadedInitialFavorite {
-                await checkFavoriteStatus()
-                hasLoadedInitialFavorite = true
-            }
-        }
-        .onChange(of: initialFavorited) { _, newValue in
+        .onChange(of: initialFavorited, initial: true) { _, newValue in
             // Update when parent's batch-fetched value changes
             if let newValue {
                 isFavorited = newValue
@@ -437,24 +426,6 @@ struct TrackRow: View {
 
             isCheckingFavorite = false
         }
-    }
-
-    private func checkFavoriteStatus() async {
-        guard let accessToken else { return }
-
-        isCheckingFavorite = true
-
-        do {
-            isFavorited = try await SpotifyAPI.checkSavedTrack(
-                accessToken: accessToken,
-                trackId: track.trackId,
-            )
-        } catch {
-            // Silently fail - just leave as unfavorited
-            isFavorited = false
-        }
-
-        isCheckingFavorite = false
     }
 
     private func addToPlaylist(playlistId: String) {

@@ -60,6 +60,12 @@ struct FavoritesListView: View {
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: session.accessToken,
+                                initialFavorited: true,
+                                onFavoriteChanged: { isFavorited in
+                                    if !isFavorited {
+                                        favoritesViewModel.removeTrack(id: track.id)
+                                    }
+                                },
                             )
 
                             if index < favoritesViewModel.tracks.count - 1 {

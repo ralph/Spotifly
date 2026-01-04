@@ -189,6 +189,8 @@ struct RecentTracksSection: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
 
+    @State private var favoriteStatuses: [String: Bool] = [:]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("recently_played.tracks")
@@ -203,6 +205,10 @@ struct RecentTracksSection: View {
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                         playbackViewModel: playbackViewModel,
                         accessToken: session.accessToken,
+                        initialFavorited: favoriteStatuses[track.id],
+                        onFavoriteChanged: { isFavorited in
+                            favoriteStatuses[track.id] = isFavorited
+                        },
                     )
 
                     if track.id != tracks.last?.id {
@@ -230,6 +236,24 @@ struct RecentTracksSection: View {
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(8)
             .padding(.horizontal)
+        }
+        .task(id: tracks.map(\.id)) {
+            await batchCheckFavorites()
+        }
+    }
+
+    private func batchCheckFavorites() async {
+        let trackIds = tracks.map(\.id)
+        guard !trackIds.isEmpty else { return }
+
+        do {
+            let statuses = try await SpotifyAPI.checkSavedTracks(
+                accessToken: session.accessToken,
+                trackIds: trackIds,
+            )
+            favoriteStatuses = statuses
+        } catch {
+            // Silently fail - rows will show unfavorited
         }
     }
 }

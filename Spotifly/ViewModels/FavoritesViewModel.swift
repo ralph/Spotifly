@@ -80,4 +80,10 @@ final class FavoritesViewModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    /// Removes a track from the local list (used when TrackRow handles the API call)
+    func removeTrack(id: String) {
+        tracks.removeAll { $0.id == id }
+        totalTracks -= 1
+    }
 }

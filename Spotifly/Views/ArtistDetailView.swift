@@ -19,6 +19,7 @@ struct ArtistDetailView: View {
     @State private var isLoadingAlbums = false
     @State private var errorMessage: String?
     @State private var showAllAlbums = false
+    @State private var favoriteStatuses: [String: Bool] = [:]
 
     var body: some View {
         ScrollView {
@@ -110,6 +111,10 @@ struct ArtistDetailView: View {
                                     currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                     playbackViewModel: playbackViewModel,
                                     accessToken: session.accessToken,
+                                    initialFavorited: favoriteStatuses[track.id],
+                                    onFavoriteChanged: { isFavorited in
+                                        favoriteStatuses[track.id] = isFavorited
+                                    },
                                 )
 
                                 if track.id != displayedTracks.last?.id {
@@ -273,6 +278,15 @@ struct ArtistDetailView: View {
                 accessToken: session.accessToken,
                 artistId: artist.id,
             )
+
+            // Batch check favorite statuses
+            let trackIds = topTracks.map(\.id)
+            if !trackIds.isEmpty {
+                favoriteStatuses = try await SpotifyAPI.checkSavedTracks(
+                    accessToken: session.accessToken,
+                    trackIds: trackIds,
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

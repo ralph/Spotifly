@@ -12,6 +12,8 @@ struct SearchTracksDetailView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
 
+    @State private var favoriteStatuses: [String: Bool] = [:]
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -54,6 +56,10 @@ struct SearchTracksDetailView: View {
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
                             accessToken: session.accessToken,
+                            initialFavorited: favoriteStatuses[track.id],
+                            onFavoriteChanged: { isFavorited in
+                                favoriteStatuses[track.id] = isFavorited
+                            },
                         )
 
                         if track.id != tracks.last?.id {
@@ -66,6 +72,23 @@ struct SearchTracksDetailView: View {
                 .cornerRadius(8)
                 .padding(.horizontal)
             }
+        }
+        .task(id: tracks.map(\.id)) {
+            await batchCheckFavorites()
+        }
+    }
+
+    private func batchCheckFavorites() async {
+        let trackIds = tracks.map(\.id)
+        guard !trackIds.isEmpty else { return }
+
+        do {
+            favoriteStatuses = try await SpotifyAPI.checkSavedTracks(
+                accessToken: session.accessToken,
+                trackIds: trackIds,
+            )
+        } catch {
+            // Silently fail
         }
     }
 

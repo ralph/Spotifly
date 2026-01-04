@@ -16,6 +16,7 @@ struct AlbumDetailView: View {
     @State private var tracks: [AlbumTrack] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var favoriteStatuses: [String: Bool] = [:]
 
     private var totalDuration: String {
         let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
@@ -164,6 +165,10 @@ struct AlbumDetailView: View {
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: session.accessToken,
+                                initialFavorited: favoriteStatuses[track.id],
+                                onFavoriteChanged: { isFavorited in
+                                    favoriteStatuses[track.id] = isFavorited
+                                },
                             )
 
                             if index < tracks.count - 1 {
@@ -186,6 +191,7 @@ struct AlbumDetailView: View {
     private func loadTracks() async {
         // Clear old tracks when loading new album
         tracks = []
+        favoriteStatuses = [:]
         isLoading = true
         errorMessage = nil
 
@@ -194,6 +200,15 @@ struct AlbumDetailView: View {
                 accessToken: session.accessToken,
                 albumId: album.id,
             )
+
+            // Batch check favorite statuses
+            let trackIds = tracks.map(\.id)
+            if !trackIds.isEmpty {
+                favoriteStatuses = try await SpotifyAPI.checkSavedTracks(
+                    accessToken: session.accessToken,
+                    trackIds: trackIds,
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
