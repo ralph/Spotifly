@@ -25,6 +25,9 @@ final class SpotifySession {
     /// The current user's Spotify ID (loaded lazily)
     private(set) var userId: String?
 
+    /// Whether we're currently loading the user ID
+    private var isLoadingUserId = false
+
     init(authResult: SpotifyAuthResult) {
         accessToken = authResult.accessToken
         refreshToken = authResult.refreshToken
@@ -40,11 +43,13 @@ final class SpotifySession {
 
     /// Loads the current user's ID if not already loaded
     func loadUserIdIfNeeded() async {
-        guard userId == nil else { return }
+        guard userId == nil, !isLoadingUserId else { return }
+        isLoadingUserId = true
         do {
             userId = try await SpotifyAPI.getCurrentUserId(accessToken: accessToken)
         } catch {
             // Silently fail - userId will remain nil
         }
+        isLoadingUserId = false
     }
 }
