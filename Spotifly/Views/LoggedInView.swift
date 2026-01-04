@@ -172,7 +172,7 @@ struct LoggedInView: View {
     /// Handle navigation from the NavigationCoordinator
     private func handleNavigation() {
         // Handle pending playlist navigation
-        if let pendingPlaylist = navigationCoordinator.pendingPlaylist {
+        if navigationCoordinator.pendingPlaylist != nil {
             // Clear other selections
             selectedAlbum = nil
             selectedArtist = nil

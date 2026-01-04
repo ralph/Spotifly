@@ -494,7 +494,9 @@ final class PlaybackViewModel {
             object: nil,
             queue: .main,
         ) { [weak self] _ in
-            self?.checkDriftAndSync()
+            Task { @MainActor in
+                self?.checkDriftAndSync()
+            }
         }
 
         timer.start()
