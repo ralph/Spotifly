@@ -138,6 +138,7 @@ struct LoggedInView: View {
         .environment(session)
         .environment(devicesViewModel)
         .environment(navigationCoordinator)
+        .environment(playlistsViewModel)
         .focusedValue(\.navigationSelection, $selectedNavigationItem)
         .focusedValue(\.searchFieldFocused, $searchFieldFocused)
         .focusedValue(\.accessToken, session.accessToken)
