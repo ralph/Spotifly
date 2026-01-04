@@ -482,7 +482,7 @@ enum SpotifyAPI {
     ///   - limit: Number of playlists to fetch (max 50)
     ///   - offset: Offset for pagination
     static func fetchUserPlaylists(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> PlaylistsResponse {
-        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,tracks(total,items(track(duration_ms))),public,owner(display_name)),total,next"
+        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,tracks(total,items(track(duration_ms))),public,owner(id,display_name)),total,next"
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
