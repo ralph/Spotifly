@@ -3,7 +3,7 @@
 //  Spotifly
 //
 //  Service for search functionality.
-//  Performs searches and stores returned entities in AppStore so favorites work.
+//  Performs searches and stores returned entities in AppStore.
 //
 
 import Foundation
@@ -13,23 +13,6 @@ import Foundation
 final class SearchService {
     private let store: AppStore
 
-    // Search state
-    var searchResults: SearchResults?
-    var isLoading = false
-    var errorMessage: String?
-
-    // Selection state
-    var selectedTrack: SearchTrack?
-    var selectedAlbum: SearchAlbum?
-    var selectedArtist: SearchArtist?
-    var selectedPlaylist: SearchPlaylist?
-    var showingAllTracks = false
-
-    // Expansion state for results sections
-    var expandedAlbums = false
-    var expandedArtists = false
-    var expandedPlaylists = false
-
     init(store: AppStore) {
         self.store = store
     }
@@ -38,14 +21,14 @@ final class SearchService {
 
     func search(accessToken: String, query: String) async {
         guard !query.isEmpty else {
-            searchResults = nil
+            store.setSearchResults(nil)
             return
         }
 
-        guard !isLoading else { return }
+        guard !store.searchIsLoading else { return }
 
-        isLoading = true
-        errorMessage = nil
+        store.searchIsLoading = true
+        store.searchErrorMessage = nil
 
         do {
             let results = try await SpotifyAPI.search(
@@ -55,7 +38,7 @@ final class SearchService {
                 limit: 20,
             )
 
-            searchResults = results
+            store.setSearchResults(results)
 
             // Store tracks in AppStore so favorites work when displayed
             let tracks = results.tracks.map { Track(from: $0) }
@@ -72,73 +55,40 @@ final class SearchService {
             store.upsertPlaylists(playlists)
 
         } catch {
-            errorMessage = error.localizedDescription
-            searchResults = nil
+            store.searchErrorMessage = error.localizedDescription
+            store.setSearchResults(nil)
         }
 
-        isLoading = false
+        store.searchIsLoading = false
     }
 
-    // MARK: - Selection
+    // MARK: - Selection (convenience methods that delegate to store)
 
     func showAllTracks() {
-        showingAllTracks = true
-        selectedTrack = nil
-        selectedAlbum = nil
-        selectedArtist = nil
-        selectedPlaylist = nil
+        store.showAllSearchTracks()
     }
 
     func selectTrack(_ track: SearchTrack) {
-        selectedTrack = track
-        selectedAlbum = nil
-        selectedArtist = nil
-        selectedPlaylist = nil
-        showingAllTracks = false
+        store.selectSearchTrack(track)
     }
 
     func selectAlbum(_ album: SearchAlbum) {
-        selectedAlbum = album
-        selectedTrack = nil
-        selectedArtist = nil
-        selectedPlaylist = nil
-        showingAllTracks = false
+        store.selectSearchAlbum(album)
     }
 
     func selectArtist(_ artist: SearchArtist) {
-        selectedArtist = artist
-        selectedTrack = nil
-        selectedAlbum = nil
-        selectedPlaylist = nil
-        showingAllTracks = false
+        store.selectSearchArtist(artist)
     }
 
     func selectPlaylist(_ playlist: SearchPlaylist) {
-        selectedPlaylist = playlist
-        selectedTrack = nil
-        selectedAlbum = nil
-        selectedArtist = nil
-        showingAllTracks = false
+        store.selectSearchPlaylist(playlist)
     }
 
     func clearSelection() {
-        selectedTrack = nil
-        selectedAlbum = nil
-        selectedArtist = nil
-        selectedPlaylist = nil
-        showingAllTracks = false
+        store.clearSearchSelection()
     }
 
     func clearSearch() {
-        searchResults = nil
-        selectedTrack = nil
-        selectedAlbum = nil
-        selectedArtist = nil
-        selectedPlaylist = nil
-        showingAllTracks = false
-        expandedAlbums = false
-        expandedArtists = false
-        expandedPlaylists = false
-        errorMessage = nil
+        store.clearSearch()
     }
 }

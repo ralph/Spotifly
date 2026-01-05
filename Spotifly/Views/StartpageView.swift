@@ -10,6 +10,7 @@ import SwiftUI
 
 struct StartpageView: View {
     @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
     @Environment(RecentlyPlayedService.self) private var recentlyPlayedService
     @Bindable var trackViewModel: TrackLookupViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
@@ -69,31 +70,31 @@ struct StartpageView: View {
                 Divider()
 
                 // Recently Played Section
-                if recentlyPlayedService.isLoading {
+                if store.recentlyPlayedIsLoading {
                     HStack {
                         Spacer()
                         ProgressView("loading.recently_played")
                         Spacer()
                     }
                     .padding()
-                } else if let error = recentlyPlayedService.errorMessage {
+                } else if let error = store.recentlyPlayedErrorMessage {
                     Text(String(format: String(localized: "error.load_recently_played"), error))
                         .foregroundStyle(.red)
                         .padding()
                 } else {
                     VStack(alignment: .leading, spacing: 20) {
                         // Recently Played Tracks (top 5 with "show more" button)
-                        if !recentlyPlayedService.recentTracks.isEmpty {
+                        if !store.recentTracks.isEmpty {
                             RecentTracksSection(
-                                tracks: Array(recentlyPlayedService.recentTracks.prefix(5)),
+                                tracks: Array(store.recentTracks.prefix(5)),
                                 showingAllTracks: $showingAllRecentTracks,
                                 playbackViewModel: playbackViewModel,
                             )
                         }
 
                         // Recently Played Content (mixed albums, artists, playlists)
-                        if !recentlyPlayedService.recentItems.isEmpty {
-                            RecentContentSection(items: recentlyPlayedService.recentItems)
+                        if !store.recentItems.isEmpty {
+                            RecentContentSection(items: store.recentItems)
                         }
                     }
                 }

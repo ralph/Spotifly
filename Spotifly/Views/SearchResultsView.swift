@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SearchResultsView: View {
     let searchResults: SearchResults
+    @Environment(AppStore.self) private var store
     @Environment(SearchService.self) private var searchService
 
     var body: some View {
@@ -92,7 +93,7 @@ struct SearchResultsView: View {
             // Albums section
             if !searchResults.albums.isEmpty {
                 Section {
-                    ForEach(searchService.expandedAlbums ? searchResults.albums : Array(searchResults.albums.prefix(10))) { album in
+                    ForEach(store.expandedSearchAlbums ? searchResults.albums : Array(searchResults.albums.prefix(10))) { album in
                         Button {
                             searchService.selectAlbum(album)
                         } label: {
@@ -161,13 +162,13 @@ struct SearchResultsView: View {
 
                     if searchResults.albums.count > 10 {
                         Button {
-                            searchService.expandedAlbums.toggle()
+                            store.expandedSearchAlbums.toggle()
                         } label: {
                             HStack {
-                                Text(searchService.expandedAlbums ? "action.show_less" : "action.show_more")
+                                Text(store.expandedSearchAlbums ? "action.show_less" : "action.show_more")
                                     .font(.subheadline)
                                 Spacer()
-                                Image(systemName: searchService.expandedAlbums ? "chevron.up" : "chevron.down")
+                                Image(systemName: store.expandedSearchAlbums ? "chevron.up" : "chevron.down")
                                     .font(.caption)
                             }
                             .foregroundStyle(.blue)
@@ -182,7 +183,7 @@ struct SearchResultsView: View {
             // Artists section
             if !searchResults.artists.isEmpty {
                 Section {
-                    ForEach(searchService.expandedArtists ? searchResults.artists : Array(searchResults.artists.prefix(10))) { artist in
+                    ForEach(store.expandedSearchArtists ? searchResults.artists : Array(searchResults.artists.prefix(10))) { artist in
                         Button {
                             searchService.selectArtist(artist)
                         } label: {
@@ -238,13 +239,13 @@ struct SearchResultsView: View {
 
                     if searchResults.artists.count > 10 {
                         Button {
-                            searchService.expandedArtists.toggle()
+                            store.expandedSearchArtists.toggle()
                         } label: {
                             HStack {
-                                Text(searchService.expandedArtists ? "action.show_less" : "action.show_more")
+                                Text(store.expandedSearchArtists ? "action.show_less" : "action.show_more")
                                     .font(.subheadline)
                                 Spacer()
-                                Image(systemName: searchService.expandedArtists ? "chevron.up" : "chevron.down")
+                                Image(systemName: store.expandedSearchArtists ? "chevron.up" : "chevron.down")
                                     .font(.caption)
                             }
                             .foregroundStyle(.blue)
@@ -259,7 +260,7 @@ struct SearchResultsView: View {
             // Playlists section
             if !searchResults.playlists.isEmpty {
                 Section {
-                    ForEach(searchService.expandedPlaylists ? searchResults.playlists : Array(searchResults.playlists.prefix(10))) { playlist in
+                    ForEach(store.expandedSearchPlaylists ? searchResults.playlists : Array(searchResults.playlists.prefix(10))) { playlist in
                         Button {
                             searchService.selectPlaylist(playlist)
                         } label: {
@@ -331,13 +332,13 @@ struct SearchResultsView: View {
 
                     if searchResults.playlists.count > 10 {
                         Button {
-                            searchService.expandedPlaylists.toggle()
+                            store.expandedSearchPlaylists.toggle()
                         } label: {
                             HStack {
-                                Text(searchService.expandedPlaylists ? "action.show_less" : "action.show_more")
+                                Text(store.expandedSearchPlaylists ? "action.show_less" : "action.show_more")
                                     .font(.subheadline)
                                 Spacer()
-                                Image(systemName: searchService.expandedPlaylists ? "chevron.up" : "chevron.down")
+                                Image(systemName: store.expandedSearchPlaylists ? "chevron.up" : "chevron.down")
                                     .font(.caption)
                             }
                             .foregroundStyle(.blue)

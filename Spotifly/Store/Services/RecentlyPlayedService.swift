@@ -8,21 +8,6 @@
 
 import Foundation
 
-// Mixed type for recently played albums, artists, and playlists
-enum RecentItem: Identifiable, Sendable {
-    case album(Album)
-    case artist(Artist)
-    case playlist(Playlist)
-
-    var id: String {
-        switch self {
-        case let .album(album): "album_\(album.id)"
-        case let .artist(artist): "artist_\(artist.id)"
-        case let .playlist(playlist): "playlist_\(playlist.id)"
-        }
-    }
-}
-
 @MainActor
 @Observable
 final class RecentlyPlayedService {
@@ -31,38 +16,23 @@ final class RecentlyPlayedService {
     // Configuration
     private let recentlyPlayedLimit = 30
 
-    // Recent tracks (stored in AppStore, IDs kept here for order)
-    private(set) var recentTrackIds: [String] = []
-
-    // Recent items (mixed albums, artists, playlists)
-    private(set) var recentItems: [RecentItem] = []
-
-    var isLoading = false
-    var errorMessage: String?
-    private var hasLoadedInitially = false
-
     init(store: AppStore) {
         self.store = store
-    }
-
-    /// Recent tracks from the store
-    var recentTracks: [Track] {
-        recentTrackIds.compactMap { store.tracks[$0] }
     }
 
     // MARK: - Loading
 
     /// Load recently played (only on first call unless refresh is called)
     func loadRecentlyPlayed(accessToken: String) async {
-        guard !hasLoadedInitially else { return }
-        hasLoadedInitially = true
+        guard !store.hasLoadedRecentlyPlayed else { return }
+        store.hasLoadedRecentlyPlayed = true
         await refresh(accessToken: accessToken)
     }
 
     /// Force refresh recently played content
     func refresh(accessToken: String) async {
-        isLoading = true
-        errorMessage = nil
+        store.recentlyPlayedIsLoading = true
+        store.recentlyPlayedErrorMessage = nil
 
         do {
             let response = try await SpotifyAPI.fetchRecentlyPlayed(
@@ -84,7 +54,7 @@ final class RecentlyPlayedService {
 
             // Store tracks in AppStore
             store.upsertTracks(Array(uniqueTracks.values))
-            recentTrackIds = orderedTrackIds
+            store.setRecentTrackIds(orderedTrackIds)
 
             // Process mixed items (albums, artists, playlists) in order of appearance
             var seenIds: Set<String> = []
@@ -235,13 +205,13 @@ final class RecentlyPlayedService {
                 }
             }
 
-            recentItems = finalItems
+            store.setRecentItems(finalItems)
 
         } catch {
-            errorMessage = error.localizedDescription
+            store.recentlyPlayedErrorMessage = error.localizedDescription
         }
 
-        isLoading = false
+        store.recentlyPlayedIsLoading = false
     }
 
     private func extractId(from uri: String) -> String {

@@ -13,9 +13,6 @@ import Foundation
 final class QueueService {
     private let store: AppStore
 
-    var queueItems: [QueueItem] = []
-    var errorMessage: String?
-
     init(store: AppStore) {
         self.store = store
     }
@@ -24,12 +21,12 @@ final class QueueService {
 
     /// Load queue items from the Rust player
     func loadQueue() {
-        errorMessage = nil
+        store.queueErrorMessage = nil
 
         do {
-            queueItems = try SpotifyPlayer.getAllQueueItems()
+            try store.setQueueItems(SpotifyPlayer.getAllQueueItems())
         } catch {
-            errorMessage = error.localizedDescription
+            store.queueErrorMessage = error.localizedDescription
         }
     }
 
@@ -41,7 +38,7 @@ final class QueueService {
     /// Batch check favorite status for all queue items and store in AppStore
     func loadFavorites(accessToken: String) async {
         // Extract track IDs from URIs
-        let trackIds = queueItems.compactMap { item -> String? in
+        let trackIds = store.queueItems.compactMap { item -> String? in
             let uri = item.uri
             if uri.hasPrefix("spotify:track:") {
                 return String(uri.dropFirst("spotify:track:".count))

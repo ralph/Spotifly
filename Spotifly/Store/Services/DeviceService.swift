@@ -13,9 +13,6 @@ import Foundation
 final class DeviceService {
     private let store: AppStore
 
-    var isLoading = false
-    var errorMessage: String?
-
     init(store: AppStore) {
         self.store = store
     }
@@ -24,20 +21,20 @@ final class DeviceService {
 
     /// Load available Spotify Connect devices
     func loadDevices(accessToken: String) async {
-        isLoading = true
-        errorMessage = nil
+        store.devicesIsLoading = true
+        store.devicesErrorMessage = nil
 
         do {
             let response = try await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken)
             let devices = response.devices.map { Device(from: $0) }
             store.upsertDevices(devices)
         } catch let error as SpotifyAPIError {
-            errorMessage = error.localizedDescription
+            store.devicesErrorMessage = error.localizedDescription
         } catch {
-            errorMessage = String(localized: "devices.error.failed_to_load")
+            store.devicesErrorMessage = String(localized: "devices.error.failed_to_load")
         }
 
-        isLoading = false
+        store.devicesIsLoading = false
     }
 
     // MARK: - Playback Transfer
@@ -54,9 +51,9 @@ final class DeviceService {
             // Reload devices to update active state
             await loadDevices(accessToken: accessToken)
         } catch let error as SpotifyAPIError {
-            errorMessage = error.localizedDescription
+            store.devicesErrorMessage = error.localizedDescription
         } catch {
-            errorMessage = String(localized: "devices.error.failed_to_transfer")
+            store.devicesErrorMessage = String(localized: "devices.error.failed_to_transfer")
         }
     }
 

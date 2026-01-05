@@ -27,19 +27,19 @@ struct DevicesView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .disabled(deviceService.isLoading)
+                .disabled(store.devicesIsLoading)
             }
             .padding()
 
             Divider()
 
             // Content
-            if deviceService.isLoading {
+            if store.devicesIsLoading {
                 Spacer()
                 ProgressView()
                     .controlSize(.large)
                 Spacer()
-            } else if let errorMessage = deviceService.errorMessage {
+            } else if let errorMessage = store.devicesErrorMessage {
                 Spacer()
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")

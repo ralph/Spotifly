@@ -15,7 +15,7 @@ struct QueueListView: View {
 
     var body: some View {
         Group {
-            if let error = queueService.errorMessage {
+            if let error = store.queueErrorMessage {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -31,7 +31,7 @@ struct QueueListView: View {
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if queueService.queueItems.isEmpty {
+            } else if store.queueItems.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "list.bullet")
                         .font(.system(size: 40))
@@ -46,7 +46,7 @@ struct QueueListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(queueService.queueItems.enumerated()), id: \.offset) { index, item in
+                        ForEach(Array(store.queueItems.enumerated()), id: \.offset) { index, item in
                             let trackData = item.toTrackRowData()
                             TrackRow(
                                 track: trackData,
@@ -58,7 +58,7 @@ struct QueueListView: View {
                                 doubleTapBehavior: .jumpToQueueIndex,
                             )
 
-                            if index < queueService.queueItems.count - 1 {
+                            if index < store.queueItems.count - 1 {
                                 Divider()
                                     .padding(.leading, 78)
                             }

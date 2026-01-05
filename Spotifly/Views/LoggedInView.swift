@@ -21,7 +21,7 @@ struct LoggedInView: View {
     // Normalized state store
     @State private var store = AppStore()
 
-    // Services - initialized lazily via computed properties
+    // Services - stateless, created on demand (all state lives in AppStore)
     private var trackService: TrackService { TrackService(store: store) }
     private var playlistService: PlaylistService { PlaylistService(store: store) }
     private var albumService: AlbumService { AlbumService(store: store) }
@@ -60,9 +60,9 @@ struct LoggedInView: View {
         case .startpage:
             showingAllRecentTracks
         case .searchResults:
-            searchService.selectedTrack != nil || searchService.selectedAlbum != nil ||
-                searchService.selectedArtist != nil || searchService.selectedPlaylist != nil ||
-                searchService.showingAllTracks
+            store.selectedSearchTrack != nil || store.selectedSearchAlbum != nil ||
+                store.selectedSearchArtist != nil || store.selectedSearchPlaylist != nil ||
+                store.showingAllSearchTracks
         case .artistContext:
             navigationCoordinator.currentAlbum != nil
         default:
@@ -88,14 +88,14 @@ struct LoggedInView: View {
                     .onSubmit(of: .search) {
                         Task {
                             await searchService.search(accessToken: authResult.accessToken, query: searchText)
-                            if searchService.searchResults != nil {
+                            if store.searchResults != nil {
                                 selectedNavigationItem = .searchResults
                             }
                         }
                     }
                     .onChange(of: searchText) { _, newValue in
                         if newValue.isEmpty {
-                            searchService.clearSearch()
+                            store.clearSearch()
                             if selectedNavigationItem == .searchResults {
                                 selectedNavigationItem = .startpage
                             }
@@ -113,14 +113,14 @@ struct LoggedInView: View {
                     .onSubmit(of: .search) {
                         Task {
                             await searchService.search(accessToken: authResult.accessToken, query: searchText)
-                            if searchService.searchResults != nil {
+                            if store.searchResults != nil {
                                 selectedNavigationItem = .searchResults
                             }
                         }
                     }
                     .onChange(of: searchText) { _, newValue in
                         if newValue.isEmpty {
-                            searchService.clearSearch()
+                            store.clearSearch()
                             if selectedNavigationItem == .searchResults {
                                 selectedNavigationItem = .startpage
                             }
@@ -192,7 +192,7 @@ struct LoggedInView: View {
             selectedArtistId = nil
             selectedPlaylistId = nil
             showingAllRecentTracks = false
-            searchService.clearSelection()
+            store.clearSearchSelection()
 
             selectedNavigationItem = .playlists
             // The playlist will be shown via navigationCoordinator.pendingPlaylist
@@ -215,7 +215,7 @@ struct LoggedInView: View {
         selectedArtistId = nil
         selectedPlaylistId = nil
         showingAllRecentTracks = false
-        searchService.clearSelection()
+        store.clearSearchSelection()
 
         // Navigate to the artist context section
         if let artistItem = navigationCoordinator.artistContextItem {
@@ -233,7 +233,7 @@ struct LoggedInView: View {
                 playbackViewModel.stop()
                 onLogout()
             },
-            hasSearchResults: searchService.searchResults != nil,
+            hasSearchResults: store.searchResults != nil,
             artistContextItem: navigationCoordinator.artistContextItem,
         )
     }
@@ -242,7 +242,7 @@ struct LoggedInView: View {
     private func contentView() -> some View {
         Group {
             if selectedNavigationItem == .searchResults,
-               let searchResults = searchService.searchResults
+               let searchResults = store.searchResults
             {
                 // Show search results when Search Results is selected
                 SearchResultsView(searchResults: searchResults)
@@ -328,29 +328,29 @@ struct LoggedInView: View {
         Group {
             if selectedNavigationItem == .searchResults {
                 // When viewing search results: show search result details
-                if searchService.showingAllTracks,
-                   let searchResults = searchService.searchResults
+                if store.showingAllSearchTracks,
+                   let searchResults = store.searchResults
                 {
                     SearchTracksDetailView(
                         tracks: searchResults.tracks,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedTrack = searchService.selectedTrack {
+                } else if let selectedTrack = store.selectedSearchTrack {
                     TrackDetailView(
                         track: selectedTrack,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedAlbum = searchService.selectedAlbum {
+                } else if let selectedAlbum = store.selectedSearchAlbum {
                     AlbumDetailView(
                         album: selectedAlbum,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedArtist = searchService.selectedArtist {
+                } else if let selectedArtist = store.selectedSearchArtist {
                     ArtistDetailView(
                         artist: selectedArtist,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedPlaylist = searchService.selectedPlaylist {
+                } else if let selectedPlaylist = store.selectedSearchPlaylist {
                     PlaylistDetailView(
                         playlist: selectedPlaylist,
                         playbackViewModel: playbackViewModel,
@@ -410,7 +410,7 @@ struct LoggedInView: View {
                     // Show all recent tracks detail if selected
                     if showingAllRecentTracks {
                         RecentTracksDetailView(
-                            tracks: recentlyPlayedService.recentTracks,
+                            tracks: store.recentTracks,
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
