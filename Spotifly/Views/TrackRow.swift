@@ -60,7 +60,6 @@ struct TrackRow: View {
     let onFavoriteChanged: ((Bool) -> Void)?
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(PlaylistsViewModel.self) private var playlistsViewModel
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
@@ -223,7 +222,7 @@ struct TrackRow: View {
                         Label("Add to New Playlist...", systemImage: "plus")
                     }
 
-                    // Show playlists from store if available, fallback to legacy viewModel
+                    // Show playlists from store
                     let ownedPlaylists = store.userPlaylists.filter { $0.ownerId == session.userId }
                     if !ownedPlaylists.isEmpty {
                         Divider()
@@ -231,18 +230,6 @@ struct TrackRow: View {
                         ForEach(ownedPlaylists) { playlist in
                             Button(playlist.name) {
                                 addToPlaylist(playlistId: playlist.id)
-                            }
-                        }
-                    } else {
-                        // Fallback to legacy viewModel during migration
-                        let legacyPlaylists = playlistsViewModel.playlists.filter { $0.ownerId == session.userId }
-                        if !legacyPlaylists.isEmpty {
-                            Divider()
-
-                            ForEach(legacyPlaylists) { playlist in
-                                Button(playlist.name) {
-                                    addToPlaylist(playlistId: playlist.id)
-                                }
                             }
                         }
                     }
@@ -451,8 +438,6 @@ struct TrackRow: View {
                     trackIds: [track.trackId],
                     accessToken: accessToken,
                 )
-                // Also update legacy viewModel for backward compatibility
-                playlistsViewModel.incrementTrackCount(playlistId: playlistId)
                 showSuccessFeedback()
             } catch {
                 playbackViewModel.errorMessage = "Failed to add to playlist: \(error.localizedDescription)"
@@ -484,8 +469,6 @@ struct TrackRow: View {
                     accessToken: accessToken,
                 )
 
-                // Refresh legacy playlists for backward compatibility
-                await playlistsViewModel.refresh(accessToken: accessToken)
                 showSuccessFeedback()
             } catch {
                 playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
