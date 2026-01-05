@@ -11,6 +11,7 @@ import SwiftUI
 struct AlbumDetailView: View {
     let album: SearchAlbum
     @Bindable var playbackViewModel: PlaybackViewModel
+    var onClose: (() -> Void)?
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
@@ -187,6 +188,19 @@ struct AlbumDetailView: View {
         }
         .task(id: album.id) {
             await loadTracks()
+        }
+        .overlay(alignment: .topTrailing) {
+            if let onClose {
+                Button {
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(12)
+            }
         }
     }
 

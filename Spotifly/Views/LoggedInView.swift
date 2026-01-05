@@ -374,6 +374,7 @@ struct LoggedInView: View {
                         AlbumDetailView(
                             album: SearchAlbum(from: album),
                             playbackViewModel: playbackViewModel,
+                            onClose: { selectedAlbumId = nil },
                         )
                     } else {
                         Text("empty.select_album")
@@ -387,6 +388,7 @@ struct LoggedInView: View {
                         ArtistDetailView(
                             artist: SearchArtist(from: artist),
                             playbackViewModel: playbackViewModel,
+                            onClose: { selectedArtistId = nil },
                         )
                     } else {
                         Text("empty.select_artist")
@@ -398,6 +400,10 @@ struct LoggedInView: View {
                         PlaylistDetailView(
                             playlist: pendingPlaylist,
                             playbackViewModel: playbackViewModel,
+                            onClose: {
+                                navigationCoordinator.pendingPlaylist = nil
+                                selectedPlaylistId = nil
+                            },
                         )
                     } else if let playlistId = selectedPlaylistId,
                               let playlist = store.playlists[playlistId]
@@ -405,6 +411,7 @@ struct LoggedInView: View {
                         PlaylistDetailView(
                             playlist: SearchPlaylist(from: playlist),
                             playbackViewModel: playbackViewModel,
+                            onClose: { selectedPlaylistId = nil },
                         )
                     } else {
                         Text("empty.select_playlist")

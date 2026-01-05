@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 struct PlaylistDetailView: View {
     let playlist: SearchPlaylist
     @Bindable var playbackViewModel: PlaybackViewModel
+    var onClose: (() -> Void)?
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(PlaylistService.self) private var playlistService
@@ -53,9 +54,10 @@ struct PlaylistDetailView: View {
         editedTrackIds.compactMap { store.tracks[$0] }
     }
 
-    init(playlist: SearchPlaylist, playbackViewModel: PlaybackViewModel) {
+    init(playlist: SearchPlaylist, playbackViewModel: PlaybackViewModel, onClose: (() -> Void)? = nil) {
         self.playlist = playlist
         self.playbackViewModel = playbackViewModel
+        self.onClose = onClose
         _playlistName = State(initialValue: playlist.name)
         _playlistDescription = State(initialValue: playlist.description ?? "")
     }
@@ -111,6 +113,19 @@ struct PlaylistDetailView: View {
             }
         } message: {
             Text("Are you sure you want to delete \"\(playlistName)\"? This action cannot be undone.")
+        }
+        .overlay(alignment: .topTrailing) {
+            if let onClose {
+                Button {
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(12)
+            }
         }
     }
 
