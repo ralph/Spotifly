@@ -157,6 +157,10 @@ struct LoggedInView: View {
         .focusedValue(\.searchFieldFocused, $searchFieldFocused)
         .focusedValue(\.accessToken, session.accessToken)
         .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
+        .task {
+            // Load favorite track IDs on startup so heart indicators work everywhere
+            try? await trackService.loadFavorites(accessToken: session.accessToken)
+        }
         .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
             handleNavigation()
         }
