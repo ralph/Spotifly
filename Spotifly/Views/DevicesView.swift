@@ -11,6 +11,7 @@ struct DevicesView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
+    @Environment(ConnectService.self) private var connectService
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,28 +50,115 @@ struct DevicesView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-            } else if store.availableDevices.isEmpty {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "speaker.slash")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.secondary)
-                    Text("devices.empty")
-                        .foregroundStyle(.secondary)
-                    Text("devices.empty_hint")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-                Spacer()
             } else {
                 List {
-                    ForEach(store.availableDevices) { device in
-                        DeviceRow(device: device)
+                    // Now Playing section
+                    if store.isSpotifyConnectActive, let deviceName = store.spotifyConnectDeviceName {
+                        Section {
+                            HStack(spacing: 12) {
+                                // Album art
+                                if let artURL = store.currentAlbumArtURL,
+                                   let url = URL(string: artURL)
+                                {
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case let .success(image):
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 50, height: 50)
+                                                .cornerRadius(6)
+                                        default:
+                                            Image(systemName: "music.note")
+                                                .font(.title2)
+                                                .frame(width: 50, height: 50)
+                                                .background(Color.gray.opacity(0.2))
+                                                .cornerRadius(6)
+                                        }
+                                    }
+                                } else {
+                                    Image(systemName: "music.note")
+                                        .font(.title2)
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.gray.opacity(0.2))
+                                        .cornerRadius(6)
+                                }
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    if let trackName = store.currentTrackName {
+                                        Text(trackName)
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .lineLimit(1)
+                                    }
+                                    if let artistName = store.currentArtistName {
+                                        Text(artistName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "hifispeaker.fill")
+                                            .font(.caption2)
+                                        Text(deviceName)
+                                            .font(.caption)
+                                    }
+                                    .foregroundStyle(.green)
+                                }
+
+                                Spacer()
+                            }
+                            .padding(.vertical, 4)
+                        } header: {
+                            Text("devices.now_playing")
+                        }
+                    }
+
+                    // Audio Output section (AirPlay)
+                    #if os(macOS)
+                        Section {
+                            AirPlayRoutePickerView()
+                                .frame(height: 30)
+                        } header: {
+                            Text("devices.audio_output")
+                        } footer: {
+                            Text("devices.airplay_hint")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    #endif
+
+                    // Spotify Connect devices
+                    Section {
+                        if store.availableDevices.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "speaker.slash")
+                                    .font(.title2)
+                                    .foregroundStyle(.secondary)
+                                Text("devices.empty")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Text("devices.empty_hint")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                        } else {
+                            ForEach(store.availableDevices) { device in
+                                DeviceRow(device: device)
+                            }
+                        }
+                    } header: {
+                        Text("devices.spotify_connect")
+                    } footer: {
+                        Text("devices.spotify_connect_hint")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .listStyle(.plain)
+                .listStyle(.inset)
             }
         }
         .task {
@@ -82,12 +170,21 @@ struct DevicesView: View {
 struct DeviceRow: View {
     let device: Device
     @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
+    @Environment(ConnectService.self) private var connectService
 
     var body: some View {
         Button {
             Task {
-                await deviceService.transferPlayback(to: device, accessToken: session.accessToken)
+                let success = await deviceService.transferPlayback(to: device, accessToken: session.accessToken)
+                if success {
+                    connectService.activateConnect(
+                        deviceId: device.id,
+                        deviceName: device.name,
+                        accessToken: session.accessToken,
+                    )
+                }
             }
         } label: {
             HStack(spacing: 12) {

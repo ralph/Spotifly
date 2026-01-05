@@ -30,6 +30,7 @@ struct LoggedInView: View {
     private var queueService: QueueService { QueueService(store: store) }
     private var recentlyPlayedService: RecentlyPlayedService { RecentlyPlayedService(store: store) }
     private var searchService: SearchService { SearchService(store: store) }
+    private var connectService: ConnectService { ConnectService(store: store) }
 
     @State private var navigationCoordinator = NavigationCoordinator()
 
@@ -144,6 +145,7 @@ struct LoggedInView: View {
         .environment(searchService)
         .environment(navigationCoordinator)
         .environment(store)
+        .environment(connectService)
         .environment(trackService)
         .environment(playlistService)
         .environment(albumService)
@@ -155,6 +157,8 @@ struct LoggedInView: View {
         .task {
             // Load favorite track IDs on startup so heart indicators work everywhere
             try? await trackService.loadFavorites(accessToken: session.accessToken)
+            // Check if there's already active remote playback to sync with
+            await connectService.checkAndSyncRemotePlayback(accessToken: session.accessToken)
         }
         .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
             handleNavigation()

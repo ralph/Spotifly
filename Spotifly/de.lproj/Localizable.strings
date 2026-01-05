@@ -112,6 +112,11 @@
 "devices.error.not_logged_in" = "Nicht angemeldet";
 "devices.error.failed_to_load" = "Geräte konnten nicht geladen werden";
 "devices.error.failed_to_transfer" = "Wiedergabe konnte nicht übertragen werden";
+"devices.now_playing" = "Aktuell gespielt";
+"devices.audio_output" = "Audio-Ausgabe";
+"devices.spotify_connect" = "Spotify Connect";
+"devices.airplay_hint" = "Audio von diesem Mac auf AirPlay-Lautsprecher streamen";
+"devices.spotify_connect_hint" = "Wiedergabe auf ein anderes Spotify-Gerät übertragen";
 
 /* Menu Commands */
 "menu.playback" = "Wiedergabe";
