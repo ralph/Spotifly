@@ -1588,9 +1588,9 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - artistId: The Spotify ID of the artist
     static func fetchArtistTopTracks(accessToken: String, artistId: String) async throws -> [SearchTrack] {
-        // Use US market by default (required parameter)
+        // Use market from token to get region-specific results
         // Note: top-tracks endpoint doesn't support fields parameter, returns full track objects
-        let urlString = "\(baseURL)/artists/\(artistId)/top-tracks?market=US"
+        let urlString = "\(baseURL)/artists/\(artistId)/top-tracks?market=from_token"
         #if DEBUG
             apiLogger.debug("[GET] \(urlString)")
         #endif
@@ -1682,7 +1682,7 @@ enum SpotifyAPI {
         artistId: String,
         limit: Int = 50,
     ) async throws -> [SearchAlbum] {
-        let urlString = "\(baseURL)/artists/\(artistId)/albums?include_groups=album,single&market=US&limit=\(limit)"
+        let urlString = "\(baseURL)/artists/\(artistId)/albums?include_groups=album,single&market=from_token&limit=\(limit)"
         #if DEBUG
             apiLogger.debug("[GET] \(urlString)")
         #endif
