@@ -41,7 +41,7 @@ final class ArtistService {
 
         let response = try await SpotifyAPI.fetchUserArtists(
             accessToken: accessToken,
-            limit: 50,
+            limit: 20,
             after: cursor,
         )
 
@@ -62,7 +62,7 @@ final class ArtistService {
         // Update pagination state (cursor-based)
         store.artistsPagination.isLoaded = true
         store.artistsPagination.hasMore = response.hasMore
-        store.artistsPagination.nextCursor = response.nextOffset.map { String($0) }
+        store.artistsPagination.nextCursor = response.nextCursor
         store.artistsPagination.total = response.total
     }
 

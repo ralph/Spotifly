@@ -111,7 +111,7 @@ struct ArtistsResponse: Sendable {
     let artists: [ArtistSimplified]
     let total: Int
     let hasMore: Bool
-    let nextOffset: Int?
+    let nextCursor: String?
 }
 
 /// Saved track (favorite) metadata from Spotify
@@ -1105,14 +1105,12 @@ enum SpotifyAPI {
 
         let cursors = artistsContainer["cursors"] as? [String: Any]
         let afterCursor = cursors?["after"] as? String
-        let hasMore = afterCursor != nil
-        let nextOffset = 0 // Artists use cursor-based pagination, not offset
 
         return ArtistsResponse(
             artists: artists,
             total: total,
-            hasMore: hasMore,
-            nextOffset: nextOffset,
+            hasMore: afterCursor != nil,
+            nextCursor: afterCursor,
         )
     }
 
