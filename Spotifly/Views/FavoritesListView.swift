@@ -63,13 +63,6 @@ struct FavoritesListView: View {
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: session.accessToken,
-                                initialFavorited: true,
-                                onFavoriteChanged: { isFavorited in
-                                    if !isFavorited {
-                                        // Track was unfavorited - store is already updated
-                                        // by TrackService.toggleFavorite
-                                    }
-                                },
                             )
 
                             if index < store.favoriteTracks.count - 1 {

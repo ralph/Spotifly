@@ -54,11 +54,6 @@ struct TrackRow: View {
     let accessToken: String? // For playback and queue operations
     let doubleTapBehavior: TrackRowDoubleTapBehavior
 
-    // Legacy parameters - kept for backward compatibility during migration
-    // These are now ignored; favorite status comes from AppStore
-    let initialFavorited: Bool?
-    let onFavoriteChanged: ((Bool) -> Void)?
-
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
@@ -85,8 +80,6 @@ struct TrackRow: View {
         playbackViewModel: PlaybackViewModel,
         accessToken: String? = nil,
         doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
-        initialFavorited: Bool? = nil,
-        onFavoriteChanged: ((Bool) -> Void)? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -100,8 +93,6 @@ struct TrackRow: View {
         self.playbackViewModel = playbackViewModel
         self.accessToken = accessToken
         self.doubleTapBehavior = doubleTapBehavior
-        self.initialFavorited = initialFavorited
-        self.onFavoriteChanged = onFavoriteChanged
     }
 
     var body: some View {
@@ -415,8 +406,6 @@ struct TrackRow: View {
                     trackId: track.trackId,
                     accessToken: accessToken,
                 )
-                // Notify legacy callback if provided (for backward compatibility)
-                onFavoriteChanged?(!isFavorited)
             } catch {
                 // Error is handled by optimistic rollback in TrackService
                 playbackViewModel.errorMessage = "Failed to update favorite: \(error.localizedDescription)"
