@@ -51,24 +51,19 @@ struct LoggedInView: View {
     // Selection state for startpage "show all recent tracks"
     @State private var showingAllRecentTracks = false
 
-    // Determines if we need three-column layout (when something is selected)
+    // Determines if we need three-column layout
     private var needsThreeColumnLayout: Bool {
         switch selectedNavigationItem {
-        case .albums:
-            selectedAlbumId != nil
-        case .artists:
-            selectedArtistId != nil
-        case .playlists:
-            selectedPlaylistId != nil || navigationCoordinator.pendingPlaylist != nil
+        case .albums, .artists, .playlists:
+            // Always use three-column for library sections (first item is auto-selected)
+            true
         case .startpage:
-            // Only show all recent tracks uses three-column on startpage
             showingAllRecentTracks
         case .searchResults:
             searchService.selectedTrack != nil || searchService.selectedAlbum != nil ||
                 searchService.selectedArtist != nil || searchService.selectedPlaylist != nil ||
                 searchService.showingAllTracks
         case .artistContext:
-            // Three-column only when an album is selected
             navigationCoordinator.currentAlbum != nil
         default:
             false

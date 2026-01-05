@@ -92,6 +92,15 @@ struct PlaylistsListView: View {
             if store.userPlaylists.isEmpty, !store.playlistsPagination.isLoading {
                 await loadPlaylists()
             }
+            // Set initial selection after loading or if already loaded
+            if selectedPlaylistId == nil, let first = store.userPlaylists.first {
+                selectedPlaylistId = first.id
+            }
+        }
+        .onChange(of: store.userPlaylists) { _, playlists in
+            if selectedPlaylistId == nil, let first = playlists.first {
+                selectedPlaylistId = first.id
+            }
         }
     }
 

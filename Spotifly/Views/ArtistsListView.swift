@@ -92,6 +92,15 @@ struct ArtistsListView: View {
             if store.userArtists.isEmpty, !store.artistsPagination.isLoading {
                 await loadArtists()
             }
+            // Set initial selection after loading or if already loaded
+            if selectedArtistId == nil, let first = store.userArtists.first {
+                selectedArtistId = first.id
+            }
+        }
+        .onChange(of: store.userArtists) { _, artists in
+            if selectedArtistId == nil, let first = artists.first {
+                selectedArtistId = first.id
+            }
         }
     }
 

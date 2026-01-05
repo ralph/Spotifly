@@ -92,6 +92,15 @@ struct AlbumsListView: View {
             if store.userAlbums.isEmpty, !store.albumsPagination.isLoading {
                 await loadAlbums()
             }
+            // Set initial selection after loading or if already loaded
+            if selectedAlbumId == nil, let first = store.userAlbums.first {
+                selectedAlbumId = first.id
+            }
+        }
+        .onChange(of: store.userAlbums) { _, albums in
+            if selectedAlbumId == nil, let first = albums.first {
+                selectedAlbumId = first.id
+            }
         }
     }
 

@@ -71,7 +71,7 @@ struct SearchTracksDetailView: View {
         .task(id: tracks.map(\.id)) {
             // Check favorite status and update store
             let trackIds = tracks.map(\.id)
-            try? await trackService.checkFavoriteStatus(trackIds: trackIds, accessToken: session.accessToken)
+            try? await trackService.checkFavoriteStatuses(trackIds: trackIds, accessToken: session.accessToken)
         }
     }
 
