@@ -78,3 +78,25 @@ struct MyView: View {
 2. **Read from store, write via services** - single source of truth
 3. **Favorites require tracks in store** - `store.isFavorite(trackId)` only works if track was loaded via a service
 4. **Favorites loaded on startup** - `LoggedInView` loads favorites so heart indicators work everywhere
+
+## Changelog & Releases
+
+### Changelog Management
+
+- Keep `CHANGELOG.md` in this repo up to date with all changes (detailed, technical notes welcome)
+- Use [Keep a Changelog](https://keepachangelog.com/) format with sections: Added, Changed, Fixed, Removed
+- Add entries under `## [Unreleased]` as you work
+- The changelog in `../homebrew-spotifly/CHANGELOG.md` is user-facing and should only contain brief, user-visible changes
+
+### Release Process
+
+When ready to release, run: `/release [version]` (e.g., `/release 1.1.5`)
+
+This will:
+1. Move `[Unreleased]` entries to a new version section with today's date
+2. Bump `MARKETING_VERSION` in the Xcode project
+3. Summarize changes for `../homebrew-spotifly/CHANGELOG.md`:
+   - Only user-visible features and fixes
+   - Keep descriptions brief (one line each)
+   - Group minor fixes as "Bug fixes and performance improvements" if needed
+4. Commit both repos
