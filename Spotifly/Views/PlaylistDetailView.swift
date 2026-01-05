@@ -2,7 +2,7 @@
 //  PlaylistDetailView.swift
 //  Spotifly
 //
-//  Shows details for a playlist search result with track list
+//  Shows details for a playlist with track list, using normalized store
 //
 
 import SwiftUI
@@ -12,13 +12,12 @@ struct PlaylistDetailView: View {
     let playlist: SearchPlaylist
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
-    @Environment(PlaylistsViewModel.self) private var playlistsViewModel
+    @Environment(AppStore.self) private var store
+    @Environment(PlaylistService.self) private var playlistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-    @State private var tracks: [PlaylistTrack] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var favoriteStatuses: [String: Bool] = [:]
     @State private var showEditDetailsDialog = false
     @State private var showDeleteConfirmation = false
     @State private var editingPlaylistName = ""
@@ -28,18 +27,30 @@ struct PlaylistDetailView: View {
 
     // Edit mode state
     @State private var isEditing = false
-    @State private var editedTracks: [PlaylistTrack] = []
+    @State private var editedTrackIds: [String] = []
     @State private var isSaving = false
-    @State private var draggedTrack: PlaylistTrack?
+    @State private var draggedTrackId: String?
+
+    /// Tracks from the store for this playlist
+    private var tracks: [Track] {
+        guard let storedPlaylist = store.playlists[playlist.id] else { return [] }
+        return storedPlaylist.trackIds.compactMap { store.tracks[$0] }
+    }
 
     /// Whether the current user owns this playlist
     private var isOwner: Bool {
         playlist.ownerId == session.userId
     }
 
-    /// Whether there are unsaved changes
+    /// Whether there are unsaved changes in edit mode
     private var hasChanges: Bool {
-        tracks.map(\.uri) != editedTracks.map(\.uri)
+        guard let storedPlaylist = store.playlists[playlist.id] else { return false }
+        return storedPlaylist.trackIds != editedTrackIds
+    }
+
+    /// Tracks being edited (from editedTrackIds)
+    private var editedTracks: [Track] {
+        editedTrackIds.compactMap { store.tracks[$0] }
     }
 
     init(playlist: SearchPlaylist, playbackViewModel: PlaybackViewModel) {
@@ -274,26 +285,26 @@ struct PlaylistDetailView: View {
         .padding(.bottom, 80)
     }
 
-    private func editTrackRowView(track: PlaylistTrack, index _: Int) -> some View {
+    private func editTrackRowView(track: Track, index _: Int) -> some View {
         let trackId = track.id
-        return EditTrackRow(track: track) {
+        return EditTrackRowFromTrack(track: track) {
             withAnimation {
-                if let idx = editedTracks.firstIndex(where: { $0.id == trackId }) {
-                    editedTracks.remove(at: idx)
+                if let idx = editedTrackIds.firstIndex(of: trackId) {
+                    editedTrackIds.remove(at: idx)
                 }
             }
         }
-        .opacity(draggedTrack?.id == track.id ? 0.5 : 1.0)
+        .opacity(draggedTrackId == track.id ? 0.5 : 1.0)
         .onDrag {
-            draggedTrack = track
+            draggedTrackId = track.id
             return NSItemProvider(object: track.id as NSString)
         }
         .onDrop(
             of: [.text],
-            delegate: TrackDropDelegate(
-                item: track,
-                items: $editedTracks,
-                draggedItem: $draggedTrack,
+            delegate: TrackIdDropDelegate(
+                itemId: track.id,
+                items: $editedTrackIds,
+                draggedItemId: $draggedTrackId,
             ),
         )
     }
@@ -307,10 +318,6 @@ struct PlaylistDetailView: View {
                     currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                     playbackViewModel: playbackViewModel,
                     accessToken: session.accessToken,
-                    initialFavorited: favoriteStatuses[track.id],
-                    onFavoriteChanged: { isFavorited in
-                        favoriteStatuses[track.id] = isFavorited
-                    },
                 )
 
                 if index < tracks.count - 1 {
@@ -371,12 +378,10 @@ struct PlaylistDetailView: View {
     private func deletePlaylist() {
         Task {
             do {
-                try await SpotifyAPI.deletePlaylist(
-                    accessToken: session.accessToken,
+                try await playlistService.deletePlaylist(
                     playlistId: playlist.id,
+                    accessToken: session.accessToken,
                 )
-                // Refresh playlists to update the sidebar
-                await playlistsViewModel.refresh(accessToken: session.accessToken)
                 // Navigate away from the deleted playlist
                 navigationCoordinator.clearPlaylistSelection()
             } catch {
@@ -391,16 +396,14 @@ struct PlaylistDetailView: View {
 
         Task {
             do {
-                try await SpotifyAPI.updatePlaylistDetails(
-                    accessToken: session.accessToken,
+                try await playlistService.updatePlaylistDetails(
                     playlistId: playlist.id,
-                    newName: trimmedName,
-                    newDescription: editingPlaylistDescription,
+                    name: trimmedName,
+                    description: editingPlaylistDescription,
+                    accessToken: session.accessToken,
                 )
                 playlistName = trimmedName
                 playlistDescription = editingPlaylistDescription
-                // Refresh playlists to update the sidebar
-                await playlistsViewModel.refresh(accessToken: session.accessToken)
             } catch {
                 errorMessage = "Failed to update playlist: \(error.localizedDescription)"
             }
@@ -410,28 +413,18 @@ struct PlaylistDetailView: View {
     }
 
     private func loadTracks() async {
-        // Reset all state when loading new playlist
-        tracks = []
-        favoriteStatuses = [:]
+        // Reset state when loading new playlist
         playlistName = playlist.name
         playlistDescription = playlist.description ?? ""
         isLoading = true
         errorMessage = nil
 
         do {
-            tracks = try await SpotifyAPI.fetchPlaylistTracks(
-                accessToken: session.accessToken,
+            // Load tracks via service (updates store)
+            _ = try await playlistService.getPlaylistTracks(
                 playlistId: playlist.id,
+                accessToken: session.accessToken,
             )
-
-            // Batch check favorite statuses
-            let trackIds = tracks.map(\.id)
-            if !trackIds.isEmpty {
-                favoriteStatuses = try await SpotifyAPI.checkSavedTracks(
-                    accessToken: session.accessToken,
-                    trackIds: trackIds,
-                )
-            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -451,13 +444,14 @@ struct PlaylistDetailView: View {
     // MARK: - Edit Mode
 
     private func enterEditMode() {
-        editedTracks = tracks
+        guard let storedPlaylist = store.playlists[playlist.id] else { return }
+        editedTrackIds = storedPlaylist.trackIds
         isEditing = true
     }
 
     private func cancelEditMode() {
         isEditing = false
-        editedTracks = []
+        editedTrackIds = []
     }
 
     private func saveChanges() {
@@ -467,21 +461,17 @@ struct PlaylistDetailView: View {
             isSaving = true
 
             do {
-                // Replace all tracks with the new order (handles both reordering and removals)
-                let newTrackUris = editedTracks.map(\.uri)
-                try await SpotifyAPI.replacePlaylistTracks(
-                    accessToken: session.accessToken,
+                // Replace all tracks with the new order
+                let newTrackUris = editedTrackIds.map { "spotify:track:\($0)" }
+                try await playlistService.replacePlaylistTracks(
                     playlistId: playlist.id,
                     trackUris: newTrackUris,
+                    accessToken: session.accessToken,
                 )
 
-                // Update local state
-                tracks = editedTracks
+                // Exit edit mode
                 isEditing = false
-                editedTracks = []
-
-                // Update track count in sidebar immediately
-                playlistsViewModel.updateTrackCount(playlistId: playlist.id, count: tracks.count)
+                editedTrackIds = []
             } catch {
                 errorMessage = "Failed to save changes: \(error.localizedDescription)"
             }
@@ -491,23 +481,105 @@ struct PlaylistDetailView: View {
     }
 }
 
-// MARK: - Drag and Drop
+// MARK: - Edit Track Row (for unified Track entity)
 
-/// Drop delegate for reordering tracks in edit mode
-struct TrackDropDelegate: DropDelegate {
-    let item: PlaylistTrack
-    @Binding var items: [PlaylistTrack]
-    @Binding var draggedItem: PlaylistTrack?
+/// Track row for edit mode using unified Track entity
+struct EditTrackRowFromTrack: View {
+    let track: Track
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Drag handle
+            Image(systemName: "line.3.horizontal")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 30)
+
+            // Album art
+            if let imageURL = track.imageURL {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(width: 40, height: 40)
+                    case let .success(image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 40, height: 40)
+                            .cornerRadius(4)
+                    case .failure:
+                        Image(systemName: "music.note")
+                            .font(.caption)
+                            .frame(width: 40, height: 40)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(4)
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+            } else {
+                Image(systemName: "music.note")
+                    .font(.caption)
+                    .frame(width: 40, height: 40)
+                    .background(Color.gray.opacity(0.2))
+                    .cornerRadius(4)
+            }
+
+            // Track info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.name)
+                    .font(.subheadline)
+                    .lineLimit(1)
+
+                Text(track.artistName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Duration
+            Text(track.durationFormatted)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            // Delete button
+            Button {
+                onDelete()
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Drag and Drop for Track IDs
+
+/// Drop delegate for reordering tracks by ID in edit mode
+struct TrackIdDropDelegate: DropDelegate {
+    let itemId: String
+    @Binding var items: [String]
+    @Binding var draggedItemId: String?
 
     func performDrop(info _: DropInfo) -> Bool {
-        draggedItem = nil
+        draggedItemId = nil
         return true
     }
 
     func dropEntered(info _: DropInfo) {
-        guard let draggedItem,
-              let fromIndex = items.firstIndex(where: { $0.id == draggedItem.id }),
-              let toIndex = items.firstIndex(where: { $0.id == item.id }),
+        guard let draggedItemId,
+              let fromIndex = items.firstIndex(of: draggedItemId),
+              let toIndex = items.firstIndex(of: itemId),
               fromIndex != toIndex
         else {
             return
@@ -523,6 +595,6 @@ struct TrackDropDelegate: DropDelegate {
     }
 
     func dropExited(info _: DropInfo) {
-        // Keep draggedItem until performDrop
+        // Keep draggedItemId until performDrop
     }
 }

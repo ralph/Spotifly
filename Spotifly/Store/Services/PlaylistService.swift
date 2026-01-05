@@ -234,4 +234,20 @@ final class PlaylistService {
         // Re-fetch playlist to get updated track order
         _ = try await fetchPlaylistDetails(playlistId: playlistId, accessToken: accessToken)
     }
+
+    /// Replace all tracks in a playlist (for bulk edits like reordering/removing)
+    func replacePlaylistTracks(
+        playlistId: String,
+        trackUris: [String],
+        accessToken: String,
+    ) async throws {
+        try await SpotifyAPI.replacePlaylistTracks(
+            accessToken: accessToken,
+            playlistId: playlistId,
+            trackUris: trackUris,
+        )
+
+        // Re-fetch to update store with new track order
+        _ = try await fetchPlaylistDetails(playlistId: playlistId, accessToken: accessToken)
+    }
 }

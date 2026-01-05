@@ -27,8 +27,7 @@ struct LoggedInView: View {
     private var albumService: AlbumService { AlbumService(store: store) }
     private var artistService: ArtistService { ArtistService(store: store) }
 
-    // Legacy ViewModels (PlaylistsViewModel still used by PlaylistDetailView)
-    @State private var playlistsViewModel = PlaylistsViewModel()
+    // Legacy ViewModels (to be migrated)
     @State private var queueViewModel = QueueViewModel()
     @State private var searchViewModel = SearchViewModel()
     @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
@@ -147,7 +146,6 @@ struct LoggedInView: View {
         .environment(session)
         .environment(devicesViewModel)
         .environment(navigationCoordinator)
-        .environment(playlistsViewModel)
         .environment(store)
         .environment(trackService)
         .environment(playlistService)
