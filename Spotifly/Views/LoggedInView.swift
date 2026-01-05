@@ -27,9 +27,9 @@ struct LoggedInView: View {
     private var albumService: AlbumService { AlbumService(store: store) }
     private var artistService: ArtistService { ArtistService(store: store) }
     private var deviceService: DeviceService { DeviceService(store: store) }
+    private var queueService: QueueService { QueueService(store: store) }
 
     // Legacy ViewModels (to be migrated)
-    @State private var queueViewModel = QueueViewModel()
     @State private var searchViewModel = SearchViewModel()
     @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
     @State private var navigationCoordinator = NavigationCoordinator()
@@ -145,6 +145,7 @@ struct LoggedInView: View {
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .environment(session)
         .environment(deviceService)
+        .environment(queueService)
         .environment(navigationCoordinator)
         .environment(store)
         .environment(trackService)
@@ -290,11 +291,8 @@ struct LoggedInView: View {
                         .navigationTitle("nav.artists")
 
                     case .queue:
-                        QueueListView(
-                            queueViewModel: queueViewModel,
-                            playbackViewModel: playbackViewModel,
-                        )
-                        .navigationTitle("nav.queue")
+                        QueueListView(playbackViewModel: playbackViewModel)
+                            .navigationTitle("nav.queue")
 
                     case .devices:
                         DevicesView()

@@ -1,19 +1,28 @@
 //
-//  QueueViewModel.swift
+//  QueueService.swift
 //  Spotifly
 //
-//  Manages current playback queue state
+//  Service for queue-related operations.
+//  Queue data comes from SpotifyPlayer (Rust), favorites are managed via TrackService.
 //
 
-import SwiftUI
+import Foundation
 
 @MainActor
 @Observable
-final class QueueViewModel {
+final class QueueService {
+    private let store: AppStore
+
     var queueItems: [QueueItem] = []
-    var favoriteStatus: [String: Bool] = [:]
     var errorMessage: String?
 
+    init(store: AppStore) {
+        self.store = store
+    }
+
+    // MARK: - Queue Loading
+
+    /// Load queue items from the Rust player
     func loadQueue() {
         errorMessage = nil
 
@@ -24,7 +33,12 @@ final class QueueViewModel {
         }
     }
 
-    /// Batch fetch favorite status for all queue items
+    /// Refresh the queue
+    func refresh() {
+        loadQueue()
+    }
+
+    /// Batch check favorite status for all queue items and store in AppStore
     func loadFavorites(accessToken: String) async {
         // Extract track IDs from URIs
         let trackIds = queueItems.compactMap { item -> String? in
@@ -38,26 +52,13 @@ final class QueueViewModel {
         guard !trackIds.isEmpty else { return }
 
         do {
-            favoriteStatus = try await SpotifyAPI.checkSavedTracks(
+            let statuses = try await SpotifyAPI.checkSavedTracks(
                 accessToken: accessToken,
                 trackIds: trackIds,
             )
+            store.updateFavoriteStatuses(statuses)
         } catch {
             // Silently fail - favorites just won't show
         }
-    }
-
-    /// Check if a track is favorited (by track ID)
-    func isFavorited(trackId: String) -> Bool {
-        favoriteStatus[trackId] ?? false
-    }
-
-    /// Update favorite status locally (after toggle)
-    func setFavorited(trackId: String, value: Bool) {
-        favoriteStatus[trackId] = value
-    }
-
-    func refresh() {
-        loadQueue()
     }
 }
