@@ -12,6 +12,7 @@ import Foundation
 @Observable
 final class AlbumService {
     private let store: AppStore
+    private var loadingAlbumTrackIds: Set<String> = []
 
     init(store: AppStore) {
         self.store = store
@@ -40,7 +41,7 @@ final class AlbumService {
 
         let response = try await SpotifyAPI.fetchUserAlbums(
             accessToken: accessToken,
-            limit: 50,
+            limit: 20,
             offset: offset,
         )
 
@@ -120,6 +121,22 @@ final class AlbumService {
         if let album = store.albums[albumId], album.tracksLoaded {
             return album.trackIds.compactMap { store.tracks[$0] }
         }
+
+        // Prevent concurrent fetches for the same album
+        guard !loadingAlbumTrackIds.contains(albumId) else {
+            // Wait for the other request to complete by polling
+            while loadingAlbumTrackIds.contains(albumId) {
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            // Now return from store (should be loaded)
+            if let album = store.albums[albumId] {
+                return album.trackIds.compactMap { store.tracks[$0] }
+            }
+            return []
+        }
+
+        loadingAlbumTrackIds.insert(albumId)
+        defer { loadingAlbumTrackIds.remove(albumId) }
 
         // Fetch album details (which includes tracks)
         let album = try await fetchAlbumDetails(albumId: albumId, accessToken: accessToken)
