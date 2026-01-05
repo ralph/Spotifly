@@ -2,25 +2,28 @@
 //  FavoritesListView.swift
 //  Spotifly
 //
-//  Displays user's saved tracks (favorites)
+//  Displays user's saved tracks (favorites) using normalized store
 //
 
 import SwiftUI
 
 struct FavoritesListView: View {
     @Environment(SpotifySession.self) private var session
-    @Bindable var favoritesViewModel: FavoritesViewModel
+    @Environment(AppStore.self) private var store
+    @Environment(TrackService.self) private var trackService
     @Bindable var playbackViewModel: PlaybackViewModel
+
+    @State private var errorMessage: String?
 
     var body: some View {
         Group {
-            if favoritesViewModel.isLoading, favoritesViewModel.tracks.isEmpty {
+            if store.favoritesPagination.isLoading, store.favoriteTracks.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
                     Text("loading.favorites")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = favoritesViewModel.errorMessage, favoritesViewModel.tracks.isEmpty {
+            } else if let error = errorMessage, store.favoriteTracks.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -32,13 +35,13 @@ struct FavoritesListView: View {
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
                         Task {
-                            await favoritesViewModel.loadTracks(accessToken: session.accessToken)
+                            await loadFavorites(forceRefresh: true)
                         }
                     }
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if favoritesViewModel.tracks.isEmpty {
+            } else if store.favoriteTracks.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "heart")
                         .font(.system(size: 40))
@@ -53,34 +56,28 @@ struct FavoritesListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(favoritesViewModel.tracks.enumerated()), id: \.element.id) { index, track in
+                        ForEach(Array(store.favoriteTracks.enumerated()), id: \.element.id) { index, track in
                             TrackRow(
                                 track: track.toTrackRowData(),
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: session.accessToken,
-                                initialFavorited: true,
-                                onFavoriteChanged: { isFavorited in
-                                    if !isFavorited {
-                                        favoritesViewModel.removeTrack(id: track.id)
-                                    }
-                                },
                             )
 
-                            if index < favoritesViewModel.tracks.count - 1 {
+                            if index < store.favoriteTracks.count - 1 {
                                 Divider()
                                     .padding(.leading, 94)
                             }
                         }
 
                         // Load more indicator
-                        if favoritesViewModel.hasMore {
+                        if store.favoritesPagination.hasMore {
                             ProgressView()
                                 .padding()
                                 .onAppear {
                                     Task {
-                                        await favoritesViewModel.loadMoreIfNeeded(accessToken: session.accessToken)
+                                        await loadMoreFavorites()
                                     }
                                 }
                         }
@@ -88,14 +85,35 @@ struct FavoritesListView: View {
                     .padding()
                 }
                 .refreshable {
-                    await favoritesViewModel.refresh(accessToken: session.accessToken)
+                    await loadFavorites(forceRefresh: true)
                 }
             }
         }
         .task {
-            if favoritesViewModel.tracks.isEmpty, !favoritesViewModel.isLoading {
-                await favoritesViewModel.loadTracks(accessToken: session.accessToken)
+            if store.favoriteTracks.isEmpty, !store.favoritesPagination.isLoading {
+                await loadFavorites()
             }
+        }
+    }
+
+    private func loadFavorites(forceRefresh: Bool = false) async {
+        errorMessage = nil
+
+        do {
+            try await trackService.loadFavorites(
+                accessToken: session.accessToken,
+                forceRefresh: forceRefresh,
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadMoreFavorites() async {
+        do {
+            try await trackService.loadMoreFavorites(accessToken: session.accessToken)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

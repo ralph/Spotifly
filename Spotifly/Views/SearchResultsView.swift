@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SearchResultsView: View {
     let searchResults: SearchResults
-    @Bindable var searchViewModel: SearchViewModel
+    @Environment(SearchService.self) private var searchService
 
     var body: some View {
         List {
@@ -18,7 +18,7 @@ struct SearchResultsView: View {
                 Section {
                     ForEach(searchResults.tracks.prefix(5)) { track in
                         Button {
-                            searchViewModel.selectTrack(track)
+                            searchService.selectTrack(track)
                         } label: {
                             HStack(spacing: 12) {
                                 if let imageURL = track.imageURL {
@@ -71,7 +71,7 @@ struct SearchResultsView: View {
 
                     if searchResults.tracks.count > 5 {
                         Button {
-                            searchViewModel.showAllTracks()
+                            searchService.showAllTracks()
                         } label: {
                             HStack {
                                 Text(String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
@@ -92,9 +92,9 @@ struct SearchResultsView: View {
             // Albums section
             if !searchResults.albums.isEmpty {
                 Section {
-                    ForEach(searchViewModel.expandedAlbums ? searchResults.albums : Array(searchResults.albums.prefix(10))) { album in
+                    ForEach(searchService.expandedAlbums ? searchResults.albums : Array(searchResults.albums.prefix(10))) { album in
                         Button {
-                            searchViewModel.selectAlbum(album)
+                            searchService.selectAlbum(album)
                         } label: {
                             HStack(spacing: 12) {
                                 if let imageURL = album.imageURL {
@@ -161,13 +161,13 @@ struct SearchResultsView: View {
 
                     if searchResults.albums.count > 10 {
                         Button {
-                            searchViewModel.expandedAlbums.toggle()
+                            searchService.expandedAlbums.toggle()
                         } label: {
                             HStack {
-                                Text(searchViewModel.expandedAlbums ? "action.show_less" : "action.show_more")
+                                Text(searchService.expandedAlbums ? "action.show_less" : "action.show_more")
                                     .font(.subheadline)
                                 Spacer()
-                                Image(systemName: searchViewModel.expandedAlbums ? "chevron.up" : "chevron.down")
+                                Image(systemName: searchService.expandedAlbums ? "chevron.up" : "chevron.down")
                                     .font(.caption)
                             }
                             .foregroundStyle(.blue)
@@ -182,9 +182,9 @@ struct SearchResultsView: View {
             // Artists section
             if !searchResults.artists.isEmpty {
                 Section {
-                    ForEach(searchViewModel.expandedArtists ? searchResults.artists : Array(searchResults.artists.prefix(10))) { artist in
+                    ForEach(searchService.expandedArtists ? searchResults.artists : Array(searchResults.artists.prefix(10))) { artist in
                         Button {
-                            searchViewModel.selectArtist(artist)
+                            searchService.selectArtist(artist)
                         } label: {
                             HStack(spacing: 12) {
                                 if let imageURL = artist.imageURL {
@@ -238,13 +238,13 @@ struct SearchResultsView: View {
 
                     if searchResults.artists.count > 10 {
                         Button {
-                            searchViewModel.expandedArtists.toggle()
+                            searchService.expandedArtists.toggle()
                         } label: {
                             HStack {
-                                Text(searchViewModel.expandedArtists ? "action.show_less" : "action.show_more")
+                                Text(searchService.expandedArtists ? "action.show_less" : "action.show_more")
                                     .font(.subheadline)
                                 Spacer()
-                                Image(systemName: searchViewModel.expandedArtists ? "chevron.up" : "chevron.down")
+                                Image(systemName: searchService.expandedArtists ? "chevron.up" : "chevron.down")
                                     .font(.caption)
                             }
                             .foregroundStyle(.blue)
@@ -259,9 +259,9 @@ struct SearchResultsView: View {
             // Playlists section
             if !searchResults.playlists.isEmpty {
                 Section {
-                    ForEach(searchViewModel.expandedPlaylists ? searchResults.playlists : Array(searchResults.playlists.prefix(10))) { playlist in
+                    ForEach(searchService.expandedPlaylists ? searchResults.playlists : Array(searchResults.playlists.prefix(10))) { playlist in
                         Button {
-                            searchViewModel.selectPlaylist(playlist)
+                            searchService.selectPlaylist(playlist)
                         } label: {
                             HStack(spacing: 12) {
                                 if let imageURL = playlist.imageURL {
@@ -331,13 +331,13 @@ struct SearchResultsView: View {
 
                     if searchResults.playlists.count > 10 {
                         Button {
-                            searchViewModel.expandedPlaylists.toggle()
+                            searchService.expandedPlaylists.toggle()
                         } label: {
                             HStack {
-                                Text(searchViewModel.expandedPlaylists ? "action.show_less" : "action.show_more")
+                                Text(searchService.expandedPlaylists ? "action.show_less" : "action.show_more")
                                     .font(.subheadline)
                                 Spacer()
-                                Image(systemName: searchViewModel.expandedPlaylists ? "chevron.up" : "chevron.down")
+                                Image(systemName: searchService.expandedPlaylists ? "chevron.up" : "chevron.down")
                                     .font(.caption)
                             }
                             .foregroundStyle(.blue)

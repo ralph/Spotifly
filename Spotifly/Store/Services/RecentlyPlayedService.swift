@@ -1,17 +1,18 @@
 //
-//  RecentlyPlayedViewModel.swift
+//  RecentlyPlayedService.swift
 //  Spotifly
 //
-//  Manages recently played content
+//  Service for recently played content.
+//  Fetches data from API and stores entities in AppStore.
 //
 
-import SwiftUI
+import Foundation
 
 // Mixed type for recently played albums, artists, and playlists
-enum RecentItem: Identifiable {
-    case album(SearchAlbum)
-    case artist(SearchArtist)
-    case playlist(SearchPlaylist)
+enum RecentItem: Identifiable, Sendable {
+    case album(Album)
+    case artist(Artist)
+    case playlist(Playlist)
 
     var id: String {
         switch self {
@@ -24,38 +25,66 @@ enum RecentItem: Identifiable {
 
 @MainActor
 @Observable
-final class RecentlyPlayedViewModel {
-    // Configuration
-    private let recentlyPlayedLimit = 30 // Easy to adjust for experimentation
+final class RecentlyPlayedService {
+    private let store: AppStore
 
-    var recentTracks: [SearchTrack] = []
-    var recentItems: [RecentItem] = [] // Mixed albums, artists, playlists
+    // Configuration
+    private let recentlyPlayedLimit = 30
+
+    // Recent tracks (stored in AppStore, IDs kept here for order)
+    private(set) var recentTrackIds: [String] = []
+
+    // Recent items (mixed albums, artists, playlists)
+    private(set) var recentItems: [RecentItem] = []
+
     var isLoading = false
     var errorMessage: String?
     private var hasLoadedInitially = false
 
+    init(store: AppStore) {
+        self.store = store
+    }
+
+    /// Recent tracks from the store
+    var recentTracks: [Track] {
+        recentTrackIds.compactMap { store.tracks[$0] }
+    }
+
+    // MARK: - Loading
+
+    /// Load recently played (only on first call unless refresh is called)
     func loadRecentlyPlayed(accessToken: String) async {
-        // Only load automatically on first call
         guard !hasLoadedInitially else { return }
         hasLoadedInitially = true
         await refresh(accessToken: accessToken)
     }
 
+    /// Force refresh recently played content
     func refresh(accessToken: String) async {
         isLoading = true
         errorMessage = nil
 
         do {
-            let response = try await SpotifyAPI.fetchRecentlyPlayed(accessToken: accessToken, limit: recentlyPlayedLimit)
+            let response = try await SpotifyAPI.fetchRecentlyPlayed(
+                accessToken: accessToken,
+                limit: recentlyPlayedLimit,
+            )
 
             // Process tracks - keep all unique tracks
-            var uniqueTracks: [String: SearchTrack] = [:]
+            var uniqueTracks: [String: Track] = [:]
+            var orderedTrackIds: [String] = []
+
             for item in response.items {
-                if uniqueTracks[item.track.id] == nil {
-                    uniqueTracks[item.track.id] = item.track
+                let track = Track(from: item.track)
+                if uniqueTracks[track.id] == nil {
+                    uniqueTracks[track.id] = track
+                    orderedTrackIds.append(track.id)
                 }
             }
-            recentTracks = Array(uniqueTracks.values)
+
+            // Store tracks in AppStore
+            store.upsertTracks(Array(uniqueTracks.values))
+            recentTrackIds = orderedTrackIds
 
             // Process mixed items (albums, artists, playlists) in order of appearance
             var seenIds: Set<String> = []
@@ -73,20 +102,17 @@ final class RecentlyPlayedViewModel {
                 switch context.type {
                 case "album":
                     albumIdsToFetch.append(itemId)
-
                 case "artist":
                     artistIdsToFetch.append(itemId)
-
                 case "playlist":
                     playlistIdsToFetch.append(itemId)
-
                 default:
                     break
                 }
             }
 
-            // Fetch album details concurrently
-            let fetchedAlbums = await withTaskGroup(of: (id: String, album: SearchAlbum?).self) { group in
+            // Fetch album details concurrently (return raw API response)
+            let fetchedAlbumResponses = await withTaskGroup(of: (id: String, album: SearchAlbum?).self) { group in
                 for albumId in albumIdsToFetch {
                     group.addTask {
                         do {
@@ -96,9 +122,8 @@ final class RecentlyPlayedViewModel {
                             )
                             return (albumId, albumDetails)
                         } catch {
-                            // Skip albums that can't be fetched
+                            return (albumId, nil)
                         }
-                        return (albumId, nil)
                     }
                 }
 
@@ -111,17 +136,25 @@ final class RecentlyPlayedViewModel {
                 return results
             }
 
-            // Fetch playlist details concurrently
-            let fetchedPlaylists = await withTaskGroup(of: (id: String, playlist: SearchPlaylist?).self) { group in
+            // Convert to entities on main actor and store
+            var fetchedAlbums: [String: Album] = [:]
+            for (id, searchAlbum) in fetchedAlbumResponses {
+                let album = Album(from: searchAlbum)
+                fetchedAlbums[id] = album
+            }
+            store.upsertAlbums(Array(fetchedAlbums.values))
+
+            // Fetch playlist details concurrently (return raw API response)
+            let fetchedPlaylistResponses = await withTaskGroup(of: (id: String, playlist: SearchPlaylist?).self) { group in
                 for playlistId in playlistIdsToFetch {
                     group.addTask {
                         do {
-                            let playlist = try await SpotifyAPI.fetchPlaylistDetails(
+                            let playlistDetails = try await SpotifyAPI.fetchPlaylistDetails(
                                 accessToken: accessToken,
                                 playlistId: playlistId,
                             )
-                            if playlist.trackCount > 0 {
-                                return (playlistId, playlist)
+                            if playlistDetails.trackCount > 0 {
+                                return (playlistId, playlistDetails)
                             }
                         } catch {
                             // Skip playlists that can't be fetched
@@ -139,20 +172,27 @@ final class RecentlyPlayedViewModel {
                 return results
             }
 
-            // Fetch artist details concurrently
-            let fetchedArtists = await withTaskGroup(of: (id: String, artist: SearchArtist?).self) { group in
+            // Convert to entities on main actor and store
+            var fetchedPlaylists: [String: Playlist] = [:]
+            for (id, searchPlaylist) in fetchedPlaylistResponses {
+                let playlist = Playlist(from: searchPlaylist)
+                fetchedPlaylists[id] = playlist
+            }
+            store.upsertPlaylists(Array(fetchedPlaylists.values))
+
+            // Fetch artist details concurrently (return raw API response)
+            let fetchedArtistResponses = await withTaskGroup(of: (id: String, artist: SearchArtist?).self) { group in
                 for artistId in artistIdsToFetch {
                     group.addTask {
                         do {
-                            let artist = try await SpotifyAPI.fetchArtistDetails(
+                            let artistDetails = try await SpotifyAPI.fetchArtistDetails(
                                 accessToken: accessToken,
                                 artistId: artistId,
                             )
-                            return (artistId, artist)
+                            return (artistId, artistDetails)
                         } catch {
-                            // Skip artists that can't be fetched
+                            return (artistId, nil)
                         }
-                        return (artistId, nil)
                     }
                 }
 
@@ -165,49 +205,33 @@ final class RecentlyPlayedViewModel {
                 return results
             }
 
-            // Insert albums, playlists, and artists in the correct order
+            // Convert to entities on main actor and store
+            var fetchedArtists: [String: Artist] = [:]
+            for (id, searchArtist) in fetchedArtistResponses {
+                let artist = Artist(from: searchArtist)
+                fetchedArtists[id] = artist
+            }
+            store.upsertArtists(Array(fetchedArtists.values))
+
+            // Build final items list in correct order
             var finalItems: [RecentItem] = []
+            var addedIds: Set<String> = []
 
             for item in response.items {
                 guard let context = item.context else { continue }
                 let itemId = extractId(from: context.uri)
 
+                guard !addedIds.contains(itemId) else { continue }
+
                 if context.type == "album", let album = fetchedAlbums[itemId] {
-                    // Check if we've already added this album
-                    let alreadyAdded = finalItems.contains { recentItem in
-                        if case let .album(a) = recentItem, a.id == album.id {
-                            return true
-                        }
-                        return false
-                    }
-
-                    if !alreadyAdded {
-                        finalItems.append(.album(album))
-                    }
+                    finalItems.append(.album(album))
+                    addedIds.insert(itemId)
                 } else if context.type == "playlist", let playlist = fetchedPlaylists[itemId] {
-                    // Check if we've already added this playlist
-                    let alreadyAdded = finalItems.contains { recentItem in
-                        if case let .playlist(p) = recentItem, p.id == playlist.id {
-                            return true
-                        }
-                        return false
-                    }
-
-                    if !alreadyAdded {
-                        finalItems.append(.playlist(playlist))
-                    }
+                    finalItems.append(.playlist(playlist))
+                    addedIds.insert(itemId)
                 } else if context.type == "artist", let artist = fetchedArtists[itemId] {
-                    // Check if we've already added this artist
-                    let alreadyAdded = finalItems.contains { recentItem in
-                        if case let .artist(a) = recentItem, a.id == artist.id {
-                            return true
-                        }
-                        return false
-                    }
-
-                    if !alreadyAdded {
-                        finalItems.append(.artist(artist))
-                    }
+                    finalItems.append(.artist(artist))
+                    addedIds.insert(itemId)
                 }
             }
 
@@ -221,7 +245,6 @@ final class RecentlyPlayedViewModel {
     }
 
     private func extractId(from uri: String) -> String {
-        // Extract ID from URI like "spotify:album:xxxxx" or "spotify:playlist:xxxxx"
         let components = uri.split(separator: ":")
         return components.count >= 3 ? String(components[2]) : uri
     }

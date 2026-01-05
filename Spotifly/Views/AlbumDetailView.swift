@@ -2,7 +2,7 @@
 //  AlbumDetailView.swift
 //  Spotifly
 //
-//  Shows details for an album search result with track list
+//  Shows details for an album with track list, using normalized store
 //
 
 import AppKit
@@ -12,11 +12,17 @@ struct AlbumDetailView: View {
     let album: SearchAlbum
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(AlbumService.self) private var albumService
 
-    @State private var tracks: [AlbumTrack] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var favoriteStatuses: [String: Bool] = [:]
+
+    /// Tracks from the store for this album
+    private var tracks: [Track] {
+        guard let storedAlbum = store.albums[album.id] else { return [] }
+        return storedAlbum.trackIds.compactMap { store.tracks[$0] }
+    }
 
     private var totalDuration: String {
         let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
@@ -165,10 +171,6 @@ struct AlbumDetailView: View {
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
                                 accessToken: session.accessToken,
-                                initialFavorited: favoriteStatuses[track.id],
-                                onFavoriteChanged: { isFavorited in
-                                    favoriteStatuses[track.id] = isFavorited
-                                },
                             )
 
                             if index < tracks.count - 1 {
@@ -189,26 +191,15 @@ struct AlbumDetailView: View {
     }
 
     private func loadTracks() async {
-        // Clear old tracks when loading new album
-        tracks = []
-        favoriteStatuses = [:]
         isLoading = true
         errorMessage = nil
 
         do {
-            tracks = try await SpotifyAPI.fetchAlbumTracks(
-                accessToken: session.accessToken,
+            // Load tracks via service (stores them in AppStore)
+            _ = try await albumService.getAlbumTracks(
                 albumId: album.id,
+                accessToken: session.accessToken,
             )
-
-            // Batch check favorite statuses
-            let trackIds = tracks.map(\.id)
-            if !trackIds.isEmpty {
-                favoriteStatuses = try await SpotifyAPI.checkSavedTracks(
-                    accessToken: session.accessToken,
-                    trackIds: trackIds,
-                )
-            }
         } catch {
             errorMessage = error.localizedDescription
         }

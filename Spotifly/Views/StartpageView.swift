@@ -10,9 +10,9 @@ import SwiftUI
 
 struct StartpageView: View {
     @Environment(SpotifySession.self) private var session
+    @Environment(RecentlyPlayedService.self) private var recentlyPlayedService
     @Bindable var trackViewModel: TrackLookupViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Bindable var recentlyPlayedViewModel: RecentlyPlayedViewModel
     @Binding var showingAllRecentTracks: Bool
 
     @State private var versionTapCount = 0
@@ -69,33 +69,31 @@ struct StartpageView: View {
                 Divider()
 
                 // Recently Played Section
-                if recentlyPlayedViewModel.isLoading {
+                if recentlyPlayedService.isLoading {
                     HStack {
                         Spacer()
                         ProgressView("loading.recently_played")
                         Spacer()
                     }
                     .padding()
-                } else if let error = recentlyPlayedViewModel.errorMessage {
+                } else if let error = recentlyPlayedService.errorMessage {
                     Text(String(format: String(localized: "error.load_recently_played"), error))
                         .foregroundStyle(.red)
                         .padding()
                 } else {
                     VStack(alignment: .leading, spacing: 20) {
                         // Recently Played Tracks (top 5 with "show more" button)
-                        if !recentlyPlayedViewModel.recentTracks.isEmpty {
+                        if !recentlyPlayedService.recentTracks.isEmpty {
                             RecentTracksSection(
-                                tracks: Array(recentlyPlayedViewModel.recentTracks.prefix(5)),
+                                tracks: Array(recentlyPlayedService.recentTracks.prefix(5)),
                                 showingAllTracks: $showingAllRecentTracks,
                                 playbackViewModel: playbackViewModel,
                             )
                         }
 
                         // Recently Played Content (mixed albums, artists, playlists)
-                        if !recentlyPlayedViewModel.recentItems.isEmpty {
-                            RecentContentSection(
-                                items: recentlyPlayedViewModel.recentItems,
-                            )
+                        if !recentlyPlayedService.recentItems.isEmpty {
+                            RecentContentSection(items: recentlyPlayedService.recentItems)
                         }
                     }
                 }
@@ -161,11 +159,9 @@ struct StartpageView: View {
             }
         }
         .task {
-            await recentlyPlayedViewModel.loadRecentlyPlayed(accessToken: session.accessToken)
+            await recentlyPlayedService.loadRecentlyPlayed(accessToken: session.accessToken)
         }
-        .startpageShortcuts(
-            recentlyPlayedViewModel: recentlyPlayedViewModel,
-        )
+        .startpageShortcuts(recentlyPlayedService: recentlyPlayedService)
     }
 
     private var appVersion: String {
@@ -182,12 +178,10 @@ struct StartpageView: View {
 // MARK: - Recently Played Sections
 
 struct RecentTracksSection: View {
-    let tracks: [SearchTrack]
+    let tracks: [Track]
     @Binding var showingAllTracks: Bool
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
-
-    @State private var favoriteStatuses: [String: Bool] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -203,10 +197,6 @@ struct RecentTracksSection: View {
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                         playbackViewModel: playbackViewModel,
                         accessToken: session.accessToken,
-                        initialFavorited: favoriteStatuses[track.id],
-                        onFavoriteChanged: { isFavorited in
-                            favoriteStatuses[track.id] = isFavorited
-                        },
                     )
 
                     if track.id != tracks.last?.id {
@@ -234,24 +224,6 @@ struct RecentTracksSection: View {
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(8)
             .padding(.horizontal)
-        }
-        .task(id: tracks.map(\.id)) {
-            await batchCheckFavorites()
-        }
-    }
-
-    private func batchCheckFavorites() async {
-        let trackIds = tracks.map(\.id)
-        guard !trackIds.isEmpty else { return }
-
-        do {
-            let statuses = try await SpotifyAPI.checkSavedTracks(
-                accessToken: session.accessToken,
-                trackIds: trackIds,
-            )
-            favoriteStatuses = statuses
-        } catch {
-            // Silently fail - rows will show unfavorited
         }
     }
 }
@@ -289,7 +261,7 @@ struct RecentContentSection: View {
 
                         case let .playlist(playlist):
                             RecentPlaylistCard(playlist: playlist) {
-                                navigationCoordinator.navigateToPlaylist(playlist)
+                                navigationCoordinator.navigateToPlaylist(SearchPlaylist(from: playlist))
                             }
                         }
                     }
@@ -303,7 +275,7 @@ struct RecentContentSection: View {
 // MARK: - Recent Item Cards
 
 private struct RecentAlbumCard: View {
-    let album: SearchAlbum
+    let album: Album
     let onTap: () -> Void
 
     var body: some View {
@@ -361,7 +333,7 @@ private struct RecentAlbumCard: View {
 }
 
 private struct RecentArtistCard: View {
-    let artist: SearchArtist
+    let artist: Artist
     let onTap: () -> Void
 
     var body: some View {
@@ -413,7 +385,7 @@ private struct RecentArtistCard: View {
 }
 
 private struct RecentPlaylistCard: View {
-    let playlist: SearchPlaylist
+    let playlist: Playlist
     let onTap: () -> Void
 
     var body: some View {

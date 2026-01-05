@@ -2,26 +2,31 @@
 //  ArtistsListView.swift
 //  Spotifly
 //
-//  Displays user's followed artists
+//  Displays user's followed artists using normalized store
 //
 
 import SwiftUI
 
 struct ArtistsListView: View {
     @Environment(SpotifySession.self) private var session
-    @Bindable var artistsViewModel: ArtistsViewModel
+    @Environment(AppStore.self) private var store
+    @Environment(ArtistService.self) private var artistService
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Binding var selectedArtist: ArtistSimplified?
+
+    // Selection uses artist ID, looked up from store
+    @Binding var selectedArtistId: String?
+
+    @State private var errorMessage: String?
 
     var body: some View {
         Group {
-            if artistsViewModel.isLoading, artistsViewModel.artists.isEmpty {
+            if store.artistsPagination.isLoading, store.userArtists.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
                     Text("loading.artists")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = artistsViewModel.errorMessage, artistsViewModel.artists.isEmpty {
+            } else if let error = errorMessage, store.userArtists.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -33,13 +38,13 @@ struct ArtistsListView: View {
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
                         Task {
-                            await artistsViewModel.loadArtists(accessToken: session.accessToken)
+                            await loadArtists(forceRefresh: true)
                         }
                     }
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if artistsViewModel.artists.isEmpty {
+            } else if store.userArtists.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "person.2")
                         .font(.system(size: 40))
@@ -54,21 +59,24 @@ struct ArtistsListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(artistsViewModel.artists) { artist in
+                        ForEach(store.userArtists) { artist in
                             ArtistRow(
                                 artist: artist,
                                 playbackViewModel: playbackViewModel,
-                                selectedArtist: $selectedArtist,
+                                isSelected: selectedArtistId == artist.id,
+                                onSelect: {
+                                    selectedArtistId = artist.id
+                                },
                             )
                         }
 
                         // Load more indicator
-                        if artistsViewModel.hasMore {
+                        if store.artistsPagination.hasMore {
                             ProgressView()
                                 .padding()
                                 .onAppear {
                                     Task {
-                                        await artistsViewModel.loadMoreIfNeeded(accessToken: session.accessToken)
+                                        await loadMoreArtists()
                                     }
                                 }
                         }
@@ -76,22 +84,44 @@ struct ArtistsListView: View {
                     .padding()
                 }
                 .refreshable {
-                    await artistsViewModel.refresh(accessToken: session.accessToken)
+                    await loadArtists(forceRefresh: true)
                 }
             }
         }
         .task {
-            if artistsViewModel.artists.isEmpty, !artistsViewModel.isLoading {
-                await artistsViewModel.loadArtists(accessToken: session.accessToken)
+            if store.userArtists.isEmpty, !store.artistsPagination.isLoading {
+                await loadArtists()
             }
+        }
+    }
+
+    private func loadArtists(forceRefresh: Bool = false) async {
+        errorMessage = nil
+        do {
+            try await artistService.loadUserArtists(
+                accessToken: session.accessToken,
+                forceRefresh: forceRefresh,
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadMoreArtists() async {
+        do {
+            try await artistService.loadMoreArtists(accessToken: session.accessToken)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }
 
 struct ArtistRow: View {
-    let artist: ArtistSimplified
+    let artist: Artist
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Binding var selectedArtist: ArtistSimplified?
+    let isSelected: Bool
+    let onSelect: () -> Void
+
     @Environment(SpotifySession.self) private var session
 
     var body: some View {
@@ -136,9 +166,11 @@ struct ArtistRow: View {
                         .lineLimit(1)
                 }
 
-                Text(String(format: String(localized: "metadata.followers"), formatFollowers(artist.followers)))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let followers = artist.followers {
+                    Text(String(format: String(localized: "metadata.followers"), formatFollowers(followers)))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer()
@@ -157,11 +189,11 @@ struct ArtistRow: View {
             .disabled(playbackViewModel.isLoading)
         }
         .padding()
-        .background(Color.gray.opacity(0.05))
+        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.gray.opacity(0.05))
         .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture {
-            selectedArtist = artist
+            onSelect()
         }
     }
 

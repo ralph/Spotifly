@@ -2,7 +2,7 @@
 //  ArtistDetailView.swift
 //  Spotifly
 //
-//  Shows details for an artist search result with top tracks
+//  Shows details for an artist with top tracks, using normalized store
 //
 
 import SwiftUI
@@ -12,14 +12,15 @@ struct ArtistDetailView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(AppStore.self) private var store
+    @Environment(ArtistService.self) private var artistService
 
-    @State private var topTracks: [SearchTrack] = []
-    @State private var albums: [SearchAlbum] = []
+    @State private var topTracks: [Track] = []
+    @State private var albums: [Album] = []
     @State private var isLoading = false
     @State private var isLoadingAlbums = false
     @State private var errorMessage: String?
     @State private var showAllAlbums = false
-    @State private var favoriteStatuses: [String: Bool] = [:]
 
     var body: some View {
         ScrollView {
@@ -111,10 +112,6 @@ struct ArtistDetailView: View {
                                     currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                     playbackViewModel: playbackViewModel,
                                     accessToken: session.accessToken,
-                                    initialFavorited: favoriteStatuses[track.id],
-                                    onFavoriteChanged: { isFavorited in
-                                        favoriteStatuses[track.id] = isFavorited
-                                    },
                                 )
 
                                 if track.id != displayedTracks.last?.id {
@@ -161,8 +158,9 @@ struct ArtistDetailView: View {
                                     album: album,
                                     isCurrentAlbum: album.id == navigationCoordinator.currentAlbum?.id,
                                 ) {
-                                    // Use efficient method since we already have the artist
-                                    navigationCoordinator.navigateToAlbum(album, artist: artist)
+                                    // Convert unified Album to SearchAlbum for navigation
+                                    let searchAlbum = SearchAlbum(from: album)
+                                    navigationCoordinator.navigateToAlbum(searchAlbum, artist: artist)
                                 }
                             }
                         }
@@ -179,27 +177,26 @@ struct ArtistDetailView: View {
     }
 
     /// Albums sorted with current album first (if any)
-    /// If the current album isn't in the fetched list, prepend it
-    private var sortedAlbumsWithCurrentFirst: [SearchAlbum] {
+    private var sortedAlbumsWithCurrentFirst: [Album] {
         guard let currentAlbum = navigationCoordinator.currentAlbum else {
             return albums
         }
         var sorted = albums
         if let index = sorted.firstIndex(where: { $0.id == currentAlbum.id }) {
-            // Current album is in the list - move it to the top
             let current = sorted.remove(at: index)
             sorted.insert(current, at: 0)
         } else {
-            // Current album not in list (e.g., single, EP, or not in first batch)
-            // Prepend it so it's always visible and highlighted
-            sorted.insert(currentAlbum, at: 0)
+            // Current album not in list - convert and prepend
+            if let storedAlbum = store.albums[currentAlbum.id] {
+                sorted.insert(storedAlbum, at: 0)
+            }
         }
         return sorted
     }
 
     /// A card view for displaying an album in the grid
     private struct AlbumCard: View {
-        let album: SearchAlbum
+        let album: Album
         let isCurrentAlbum: Bool
         let onTap: () -> Void
 
@@ -261,33 +258,23 @@ struct ArtistDetailView: View {
                 )
         }
 
-        private func formatReleaseYear(_ dateString: String) -> String {
-            // Release date can be "2023", "2023-05", or "2023-05-15"
-            String(dateString.prefix(4))
+        private func formatReleaseYear(_ dateString: String?) -> String {
+            guard let dateString else { return "" }
+            return String(dateString.prefix(4))
         }
     }
 
     private func loadTopTracks() async {
-        // Clear old data when loading new artist
         topTracks = []
-        favoriteStatuses = [:]
         isLoading = true
         errorMessage = nil
 
         do {
-            topTracks = try await SpotifyAPI.fetchArtistTopTracks(
-                accessToken: session.accessToken,
+            // Load via service (stores tracks in AppStore)
+            topTracks = try await artistService.fetchArtistTopTracks(
                 artistId: artist.id,
+                accessToken: session.accessToken,
             )
-
-            // Batch check favorite statuses
-            let trackIds = topTracks.map(\.id)
-            if !trackIds.isEmpty {
-                favoriteStatuses = try await SpotifyAPI.checkSavedTracks(
-                    accessToken: session.accessToken,
-                    trackIds: trackIds,
-                )
-            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -296,14 +283,14 @@ struct ArtistDetailView: View {
     }
 
     private func loadAlbums() async {
-        // Clear old data when loading new artist
         albums = []
         isLoadingAlbums = true
 
         do {
-            albums = try await SpotifyAPI.fetchArtistAlbums(
-                accessToken: session.accessToken,
+            // Load via service (stores albums in AppStore)
+            albums = try await artistService.fetchArtistAlbums(
                 artistId: artist.id,
+                accessToken: session.accessToken,
             )
         } catch {
             // Silently fail for albums - not critical

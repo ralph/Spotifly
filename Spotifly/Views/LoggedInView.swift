@@ -17,14 +17,20 @@ struct LoggedInView: View {
     @State private var session: SpotifySession
     @State private var trackViewModel = TrackLookupViewModel()
     private let playbackViewModel = PlaybackViewModel.shared
-    @State private var favoritesViewModel = FavoritesViewModel()
-    @State private var playlistsViewModel = PlaylistsViewModel()
-    @State private var albumsViewModel = AlbumsViewModel()
-    @State private var artistsViewModel = ArtistsViewModel()
-    @State private var queueViewModel = QueueViewModel()
-    @State private var searchViewModel = SearchViewModel()
-    @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
-    @State private var devicesViewModel = DevicesViewModel()
+
+    // Normalized state store
+    @State private var store = AppStore()
+
+    // Services - initialized lazily via computed properties
+    private var trackService: TrackService { TrackService(store: store) }
+    private var playlistService: PlaylistService { PlaylistService(store: store) }
+    private var albumService: AlbumService { AlbumService(store: store) }
+    private var artistService: ArtistService { ArtistService(store: store) }
+    private var deviceService: DeviceService { DeviceService(store: store) }
+    private var queueService: QueueService { QueueService(store: store) }
+    private var recentlyPlayedService: RecentlyPlayedService { RecentlyPlayedService(store: store) }
+    private var searchService: SearchService { SearchService(store: store) }
+
     @State private var navigationCoordinator = NavigationCoordinator()
 
     init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
@@ -37,10 +43,10 @@ struct LoggedInView: View {
     @State private var searchText = ""
     @State private var searchFieldFocused = false
 
-    // Selection state for library detail views
-    @State private var selectedAlbum: AlbumSimplified?
-    @State private var selectedArtist: ArtistSimplified?
-    @State private var selectedPlaylist: PlaylistSimplified?
+    // Selection state for library detail views (ID-based)
+    @State private var selectedAlbumId: String?
+    @State private var selectedArtistId: String?
+    @State private var selectedPlaylistId: String?
 
     // Selection state for startpage "show all recent tracks"
     @State private var showingAllRecentTracks = false
@@ -49,18 +55,18 @@ struct LoggedInView: View {
     private var needsThreeColumnLayout: Bool {
         switch selectedNavigationItem {
         case .albums:
-            selectedAlbum != nil
+            selectedAlbumId != nil
         case .artists:
-            selectedArtist != nil
+            selectedArtistId != nil
         case .playlists:
-            selectedPlaylist != nil || navigationCoordinator.pendingPlaylist != nil
+            selectedPlaylistId != nil || navigationCoordinator.pendingPlaylist != nil
         case .startpage:
             // Only show all recent tracks uses three-column on startpage
             showingAllRecentTracks
         case .searchResults:
-            searchViewModel.selectedTrack != nil || searchViewModel.selectedAlbum != nil ||
-                searchViewModel.selectedArtist != nil || searchViewModel.selectedPlaylist != nil ||
-                searchViewModel.showingAllTracks
+            searchService.selectedTrack != nil || searchService.selectedAlbum != nil ||
+                searchService.selectedArtist != nil || searchService.selectedPlaylist != nil ||
+                searchService.showingAllTracks
         case .artistContext:
             // Three-column only when an album is selected
             navigationCoordinator.currentAlbum != nil
@@ -86,15 +92,15 @@ struct LoggedInView: View {
                     .searchable(text: $searchText, isPresented: $searchFieldFocused)
                     .onSubmit(of: .search) {
                         Task {
-                            await searchViewModel.search(accessToken: authResult.accessToken, query: searchText)
-                            if searchViewModel.searchResults != nil {
+                            await searchService.search(accessToken: authResult.accessToken, query: searchText)
+                            if searchService.searchResults != nil {
                                 selectedNavigationItem = .searchResults
                             }
                         }
                     }
                     .onChange(of: searchText) { _, newValue in
                         if newValue.isEmpty {
-                            searchViewModel.clearSearch()
+                            searchService.clearSearch()
                             if selectedNavigationItem == .searchResults {
                                 selectedNavigationItem = .startpage
                             }
@@ -111,15 +117,15 @@ struct LoggedInView: View {
                     .searchable(text: $searchText, isPresented: $searchFieldFocused)
                     .onSubmit(of: .search) {
                         Task {
-                            await searchViewModel.search(accessToken: authResult.accessToken, query: searchText)
-                            if searchViewModel.searchResults != nil {
+                            await searchService.search(accessToken: authResult.accessToken, query: searchText)
+                            if searchService.searchResults != nil {
                                 selectedNavigationItem = .searchResults
                             }
                         }
                     }
                     .onChange(of: searchText) { _, newValue in
                         if newValue.isEmpty {
-                            searchViewModel.clearSearch()
+                            searchService.clearSearch()
                             if selectedNavigationItem == .searchResults {
                                 selectedNavigationItem = .startpage
                             }
@@ -137,13 +143,24 @@ struct LoggedInView: View {
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .environment(session)
-        .environment(devicesViewModel)
+        .environment(deviceService)
+        .environment(queueService)
+        .environment(recentlyPlayedService)
+        .environment(searchService)
         .environment(navigationCoordinator)
-        .environment(playlistsViewModel)
+        .environment(store)
+        .environment(trackService)
+        .environment(playlistService)
+        .environment(albumService)
+        .environment(artistService)
         .focusedValue(\.navigationSelection, $selectedNavigationItem)
         .focusedValue(\.searchFieldFocused, $searchFieldFocused)
         .focusedValue(\.accessToken, session.accessToken)
-        .focusedValue(\.recentlyPlayedViewModel, recentlyPlayedViewModel)
+        .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
+        .task {
+            // Load favorite track IDs on startup so heart indicators work everywhere
+            try? await trackService.loadFavorites(accessToken: session.accessToken)
+        }
         .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
             handleNavigation()
         }
@@ -163,7 +180,7 @@ struct LoggedInView: View {
                 navigationCoordinator.pendingPlaylist = nil
             }
         }
-        .onChange(of: selectedPlaylist?.id) { _, newValue in
+        .onChange(of: selectedPlaylistId) { _, newValue in
             // Clear pending playlist when user selects a playlist from the list
             if newValue != nil {
                 navigationCoordinator.pendingPlaylist = nil
@@ -176,11 +193,11 @@ struct LoggedInView: View {
         // Handle pending playlist navigation
         if navigationCoordinator.pendingPlaylist != nil {
             // Clear other selections
-            selectedAlbum = nil
-            selectedArtist = nil
-            selectedPlaylist = nil
+            selectedAlbumId = nil
+            selectedArtistId = nil
+            selectedPlaylistId = nil
             showingAllRecentTracks = false
-            searchViewModel.clearSelection()
+            searchService.clearSelection()
 
             selectedNavigationItem = .playlists
             // The playlist will be shown via navigationCoordinator.pendingPlaylist
@@ -199,11 +216,11 @@ struct LoggedInView: View {
         guard navigationCoordinator.isInArtistContext else { return }
 
         // Clear other selections to avoid conflicts
-        selectedAlbum = nil
-        selectedArtist = nil
-        selectedPlaylist = nil
+        selectedAlbumId = nil
+        selectedArtistId = nil
+        selectedPlaylistId = nil
         showingAllRecentTracks = false
-        searchViewModel.clearSelection()
+        searchService.clearSelection()
 
         // Navigate to the artist context section
         if let artistItem = navigationCoordinator.artistContextItem {
@@ -221,7 +238,7 @@ struct LoggedInView: View {
                 playbackViewModel.stop()
                 onLogout()
             },
-            hasSearchResults: searchViewModel.searchResults != nil,
+            hasSearchResults: searchService.searchResults != nil,
             artistContextItem: navigationCoordinator.artistContextItem,
         )
     }
@@ -230,14 +247,11 @@ struct LoggedInView: View {
     private func contentView() -> some View {
         Group {
             if selectedNavigationItem == .searchResults,
-               let searchResults = searchViewModel.searchResults
+               let searchResults = searchService.searchResults
             {
                 // Show search results when Search Results is selected
-                SearchResultsView(
-                    searchResults: searchResults,
-                    searchViewModel: searchViewModel,
-                )
-                .navigationTitle("nav.search_results")
+                SearchResultsView(searchResults: searchResults)
+                    .navigationTitle("nav.search_results")
             } else {
                 // Show main views for other sections
                 Group {
@@ -246,48 +260,40 @@ struct LoggedInView: View {
                         StartpageView(
                             trackViewModel: trackViewModel,
                             playbackViewModel: playbackViewModel,
-                            recentlyPlayedViewModel: recentlyPlayedViewModel,
                             showingAllRecentTracks: $showingAllRecentTracks,
                         )
                         .navigationTitle("nav.startpage")
 
                     case .favorites:
                         FavoritesListView(
-                            favoritesViewModel: favoritesViewModel,
                             playbackViewModel: playbackViewModel,
                         )
                         .navigationTitle("nav.favorites")
 
                     case .playlists:
                         PlaylistsListView(
-                            playlistsViewModel: playlistsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedPlaylist: $selectedPlaylist,
+                            selectedPlaylistId: $selectedPlaylistId,
                         )
                         .navigationTitle("nav.playlists")
 
                     case .albums:
                         AlbumsListView(
-                            albumsViewModel: albumsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedAlbum: $selectedAlbum,
+                            selectedAlbumId: $selectedAlbumId,
                         )
                         .navigationTitle("nav.albums")
 
                     case .artists:
                         ArtistsListView(
-                            artistsViewModel: artistsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedArtist: $selectedArtist,
+                            selectedArtistId: $selectedArtistId,
                         )
                         .navigationTitle("nav.artists")
 
                     case .queue:
-                        QueueListView(
-                            queueViewModel: queueViewModel,
-                            playbackViewModel: playbackViewModel,
-                        )
-                        .navigationTitle("nav.queue")
+                        QueueListView(playbackViewModel: playbackViewModel)
+                            .navigationTitle("nav.queue")
 
                     case .devices:
                         DevicesView()
@@ -327,29 +333,29 @@ struct LoggedInView: View {
         Group {
             if selectedNavigationItem == .searchResults {
                 // When viewing search results: show search result details
-                if searchViewModel.showingAllTracks,
-                   let searchResults = searchViewModel.searchResults
+                if searchService.showingAllTracks,
+                   let searchResults = searchService.searchResults
                 {
                     SearchTracksDetailView(
                         tracks: searchResults.tracks,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedTrack = searchViewModel.selectedTrack {
+                } else if let selectedTrack = searchService.selectedTrack {
                     TrackDetailView(
                         track: selectedTrack,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedAlbum = searchViewModel.selectedAlbum {
+                } else if let selectedAlbum = searchService.selectedAlbum {
                     AlbumDetailView(
                         album: selectedAlbum,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedArtist = searchViewModel.selectedArtist {
+                } else if let selectedArtist = searchService.selectedArtist {
                     ArtistDetailView(
                         artist: selectedArtist,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedPlaylist = searchViewModel.selectedPlaylist {
+                } else if let selectedPlaylist = searchService.selectedPlaylist {
                     PlaylistDetailView(
                         playlist: selectedPlaylist,
                         playbackViewModel: playbackViewModel,
@@ -362,9 +368,11 @@ struct LoggedInView: View {
                 // When not searching: show details for library selections
                 switch selectedNavigationItem {
                 case .albums:
-                    if let selectedAlbum {
+                    if let albumId = selectedAlbumId,
+                       let album = store.albums[albumId]
+                    {
                         AlbumDetailView(
-                            album: SearchAlbum(from: selectedAlbum),
+                            album: SearchAlbum(from: album),
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
@@ -373,9 +381,11 @@ struct LoggedInView: View {
                     }
 
                 case .artists:
-                    if let selectedArtist {
+                    if let artistId = selectedArtistId,
+                       let artist = store.artists[artistId]
+                    {
                         ArtistDetailView(
-                            artist: SearchArtist(from: selectedArtist),
+                            artist: SearchArtist(from: artist),
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
@@ -389,9 +399,11 @@ struct LoggedInView: View {
                             playlist: pendingPlaylist,
                             playbackViewModel: playbackViewModel,
                         )
-                    } else if let selectedPlaylist {
+                    } else if let playlistId = selectedPlaylistId,
+                              let playlist = store.playlists[playlistId]
+                    {
                         PlaylistDetailView(
-                            playlist: SearchPlaylist(from: selectedPlaylist),
+                            playlist: SearchPlaylist(from: playlist),
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
@@ -403,7 +415,7 @@ struct LoggedInView: View {
                     // Show all recent tracks detail if selected
                     if showingAllRecentTracks {
                         RecentTracksDetailView(
-                            tracks: recentlyPlayedViewModel.recentTracks,
+                            tracks: recentlyPlayedService.recentTracks,
                             playbackViewModel: playbackViewModel,
                         )
                     } else {

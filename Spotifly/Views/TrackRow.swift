@@ -53,19 +53,23 @@ struct TrackRow: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     let accessToken: String? // For playback and queue operations
     let doubleTapBehavior: TrackRowDoubleTapBehavior
-    let initialFavorited: Bool? // Pre-fetched favorite status (for batch efficiency)
-    let onFavoriteChanged: ((Bool) -> Void)? // Callback when favorite status changes
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(PlaylistsViewModel.self) private var playlistsViewModel
     @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(TrackService.self) private var trackService
+    @Environment(PlaylistService.self) private var playlistService
 
-    @State private var isFavorited = false
-    @State private var isCheckingFavorite = false
+    @State private var isTogglingFavorite = false
     @State private var showNewPlaylistDialog = false
     @State private var newPlaylistName = ""
     @State private var isAddingToPlaylist = false
     @State private var showPlaylistAddedSuccess = false
+
+    /// Favorite status from the store (single source of truth)
+    private var isFavorited: Bool {
+        store.isFavorite(track.trackId)
+    }
 
     init(
         track: TrackRowData,
@@ -76,8 +80,6 @@ struct TrackRow: View {
         playbackViewModel: PlaybackViewModel,
         accessToken: String? = nil,
         doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
-        initialFavorited: Bool? = nil,
-        onFavoriteChanged: ((Bool) -> Void)? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -91,8 +93,6 @@ struct TrackRow: View {
         self.playbackViewModel = playbackViewModel
         self.accessToken = accessToken
         self.doubleTapBehavior = doubleTapBehavior
-        self.initialFavorited = initialFavorited
-        self.onFavoriteChanged = onFavoriteChanged
     }
 
     var body: some View {
@@ -166,7 +166,7 @@ struct TrackRow: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
 
-            // Heart button (favorite status)
+            // Heart button (favorite status from store)
             Button {
                 toggleFavorite()
             } label: {
@@ -177,8 +177,8 @@ struct TrackRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(isCheckingFavorite || accessToken == nil)
-            .opacity(isCheckingFavorite ? 0.5 : 1.0)
+            .disabled(isTogglingFavorite || accessToken == nil)
+            .opacity(isTogglingFavorite ? 0.5 : 1.0)
 
             // Context menu
             Menu {
@@ -213,7 +213,8 @@ struct TrackRow: View {
                         Label("Add to New Playlist...", systemImage: "plus")
                     }
 
-                    let ownedPlaylists = playlistsViewModel.playlists.filter { $0.ownerId == session.userId }
+                    // Show playlists from store
+                    let ownedPlaylists = store.userPlaylists.filter { $0.ownerId == session.userId }
                     if !ownedPlaylists.isEmpty {
                         Divider()
 
@@ -283,12 +284,6 @@ struct TrackRow: View {
         .onTapGesture(count: 2) {
             handleDoubleTap()
         }
-        .onChange(of: initialFavorited, initial: true) { _, newValue in
-            // Update when parent's batch-fetched value changes
-            if let newValue {
-                isFavorited = newValue
-            }
-        }
         .alert("New Playlist", isPresented: $showNewPlaylistDialog) {
             TextField("Playlist name", text: $newPlaylistName)
             Button("Cancel", role: .cancel) {
@@ -305,8 +300,9 @@ struct TrackRow: View {
         .task {
             // Load user ID and playlists if not already loaded
             await session.loadUserIdIfNeeded()
-            if playlistsViewModel.playlists.isEmpty, !playlistsViewModel.isLoading {
-                await playlistsViewModel.loadPlaylists(accessToken: session.accessToken)
+            // Load playlists via service if store is empty
+            if store.userPlaylists.isEmpty, !store.playlistsPagination.isLoading {
+                try? await playlistService.loadUserPlaylists(accessToken: session.accessToken)
             }
         }
     }
@@ -398,49 +394,39 @@ struct TrackRow: View {
         }
     }
 
+    /// Toggle favorite using TrackService (optimistic update)
     private func toggleFavorite() {
         guard let accessToken else { return }
 
         Task {
-            isCheckingFavorite = true
+            isTogglingFavorite = true
 
             do {
-                if isFavorited {
-                    try await SpotifyAPI.removeSavedTrack(
-                        accessToken: accessToken,
-                        trackId: track.trackId,
-                    )
-                    isFavorited = false
-                    onFavoriteChanged?(false)
-                } else {
-                    try await SpotifyAPI.saveTrack(
-                        accessToken: accessToken,
-                        trackId: track.trackId,
-                    )
-                    isFavorited = true
-                    onFavoriteChanged?(true)
-                }
+                try await trackService.toggleFavorite(
+                    trackId: track.trackId,
+                    accessToken: accessToken,
+                )
             } catch {
-                // Silently fail - revert state
+                // Error is handled by optimistic rollback in TrackService
+                playbackViewModel.errorMessage = "Failed to update favorite: \(error.localizedDescription)"
             }
 
-            isCheckingFavorite = false
+            isTogglingFavorite = false
         }
     }
 
+    /// Add track to playlist using PlaylistService
     private func addToPlaylist(playlistId: String) {
         guard let accessToken else { return }
 
         Task {
             isAddingToPlaylist = true
             do {
-                try await SpotifyAPI.addTracksToPlaylist(
-                    accessToken: accessToken,
+                try await playlistService.addTracksToPlaylist(
                     playlistId: playlistId,
-                    trackUris: [track.uri],
+                    trackIds: [track.trackId],
+                    accessToken: accessToken,
                 )
-                // Update track count in sidebar immediately
-                playlistsViewModel.incrementTrackCount(playlistId: playlistId)
                 showSuccessFeedback()
             } catch {
                 playbackViewModel.errorMessage = "Failed to add to playlist: \(error.localizedDescription)"
@@ -449,6 +435,7 @@ struct TrackRow: View {
         }
     }
 
+    /// Create a new playlist and add the track to it
     private func createAndAddToPlaylist(name: String) {
         guard let accessToken else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
@@ -457,25 +444,20 @@ struct TrackRow: View {
         Task {
             isAddingToPlaylist = true
             do {
-                // Get user ID first
-                let userId = try await SpotifyAPI.getCurrentUserId(accessToken: accessToken)
-
-                // Create the playlist
-                let newPlaylist = try await SpotifyAPI.createPlaylist(
-                    accessToken: accessToken,
-                    userId: userId,
+                // Create the playlist using PlaylistService
+                let newPlaylist = try await playlistService.createPlaylist(
+                    userId: session.userId ?? "",
                     name: trimmedName,
+                    accessToken: accessToken,
                 )
 
                 // Add the track to the new playlist
-                try await SpotifyAPI.addTracksToPlaylist(
-                    accessToken: accessToken,
+                try await playlistService.addTracksToPlaylist(
                     playlistId: newPlaylist.id,
-                    trackUris: [track.uri],
+                    trackIds: [track.trackId],
+                    accessToken: accessToken,
                 )
 
-                // Refresh playlists to show the new one
-                await playlistsViewModel.refresh(accessToken: accessToken)
                 showSuccessFeedback()
             } catch {
                 playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
