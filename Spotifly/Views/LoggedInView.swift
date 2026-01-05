@@ -47,9 +47,9 @@ struct LoggedInView: View {
     @State private var searchText = ""
     @State private var searchFieldFocused = false
 
-    // Selection state for library detail views (ID-based, migrating progressively)
+    // Selection state for library detail views (ID-based)
     @State private var selectedAlbumId: String?
-    @State private var selectedArtist: ArtistSimplified? // TODO: migrate to selectedArtistId
+    @State private var selectedArtistId: String?
     @State private var selectedPlaylistId: String?
 
     // Selection state for startpage "show all recent tracks"
@@ -61,7 +61,7 @@ struct LoggedInView: View {
         case .albums:
             selectedAlbumId != nil
         case .artists:
-            selectedArtist != nil
+            selectedArtistId != nil
         case .playlists:
             selectedPlaylistId != nil || navigationCoordinator.pendingPlaylist != nil
         case .startpage:
@@ -192,7 +192,7 @@ struct LoggedInView: View {
         if navigationCoordinator.pendingPlaylist != nil {
             // Clear other selections
             selectedAlbumId = nil
-            selectedArtist = nil
+            selectedArtistId = nil
             selectedPlaylistId = nil
             showingAllRecentTracks = false
             searchViewModel.clearSelection()
@@ -215,7 +215,7 @@ struct LoggedInView: View {
 
         // Clear other selections to avoid conflicts
         selectedAlbumId = nil
-        selectedArtist = nil
+        selectedArtistId = nil
         selectedPlaylistId = nil
         showingAllRecentTracks = false
         searchViewModel.clearSelection()
@@ -288,9 +288,8 @@ struct LoggedInView: View {
 
                     case .artists:
                         ArtistsListView(
-                            artistsViewModel: artistsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedArtist: $selectedArtist,
+                            selectedArtistId: $selectedArtistId,
                         )
                         .navigationTitle("nav.artists")
 
@@ -387,9 +386,11 @@ struct LoggedInView: View {
                     }
 
                 case .artists:
-                    if let selectedArtist {
+                    if let artistId = selectedArtistId,
+                       let artist = store.artists[artistId]
+                    {
                         ArtistDetailView(
-                            artist: SearchArtist(from: selectedArtist),
+                            artist: SearchArtist(from: artist),
                             playbackViewModel: playbackViewModel,
                         )
                     } else {

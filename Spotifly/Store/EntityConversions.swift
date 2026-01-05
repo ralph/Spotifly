@@ -264,6 +264,20 @@ extension SearchAlbum {
     }
 }
 
+extension SearchArtist {
+    /// Convert from unified Artist entity (for views that expect SearchArtist)
+    init(from artist: Artist) {
+        self.init(
+            id: artist.id,
+            name: artist.name,
+            uri: artist.uri,
+            imageURL: artist.imageURL,
+            genres: artist.genres,
+            followers: artist.followers ?? 0,
+        )
+    }
+}
+
 extension SearchPlaylist {
     /// Convert from unified Playlist entity (for views that expect SearchPlaylist)
     init(from playlist: Playlist) {
