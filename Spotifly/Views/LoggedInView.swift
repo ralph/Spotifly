@@ -27,10 +27,8 @@ struct LoggedInView: View {
     private var albumService: AlbumService { AlbumService(store: store) }
     private var artistService: ArtistService { ArtistService(store: store) }
 
-    // Legacy ViewModels (to be migrated)
+    // Legacy ViewModels (PlaylistsViewModel still used by PlaylistDetailView)
     @State private var playlistsViewModel = PlaylistsViewModel()
-    @State private var albumsViewModel = AlbumsViewModel()
-    @State private var artistsViewModel = ArtistsViewModel()
     @State private var queueViewModel = QueueViewModel()
     @State private var searchViewModel = SearchViewModel()
     @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
