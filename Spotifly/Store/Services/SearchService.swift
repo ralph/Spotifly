@@ -1,26 +1,40 @@
 //
-//  SearchViewModel.swift
+//  SearchService.swift
 //  Spotifly
 //
-//  Manages search state and results
+//  Service for search functionality.
+//  Performs searches and stores returned entities in AppStore so favorites work.
 //
 
-import SwiftUI
+import Foundation
 
 @MainActor
 @Observable
-final class SearchViewModel {
+final class SearchService {
+    private let store: AppStore
+
+    // Search state
     var searchResults: SearchResults?
     var isLoading = false
     var errorMessage: String?
+
+    // Selection state
     var selectedTrack: SearchTrack?
     var selectedAlbum: SearchAlbum?
     var selectedArtist: SearchArtist?
     var selectedPlaylist: SearchPlaylist?
     var showingAllTracks = false
+
+    // Expansion state for results sections
     var expandedAlbums = false
     var expandedArtists = false
     var expandedPlaylists = false
+
+    init(store: AppStore) {
+        self.store = store
+    }
+
+    // MARK: - Search
 
     func search(accessToken: String, query: String) async {
         guard !query.isEmpty else {
@@ -42,6 +56,21 @@ final class SearchViewModel {
             )
 
             searchResults = results
+
+            // Store tracks in AppStore so favorites work when displayed
+            let tracks = results.tracks.map { Track(from: $0) }
+            store.upsertTracks(tracks)
+
+            // Store albums, artists, playlists for future reference
+            let albums = results.albums.map { Album(from: $0) }
+            store.upsertAlbums(albums)
+
+            let artists = results.artists.map { Artist(from: $0) }
+            store.upsertArtists(artists)
+
+            let playlists = results.playlists.map { Playlist(from: $0) }
+            store.upsertPlaylists(playlists)
+
         } catch {
             errorMessage = error.localizedDescription
             searchResults = nil
@@ -50,18 +79,7 @@ final class SearchViewModel {
         isLoading = false
     }
 
-    func clearSearch() {
-        searchResults = nil
-        selectedTrack = nil
-        selectedAlbum = nil
-        selectedArtist = nil
-        selectedPlaylist = nil
-        showingAllTracks = false
-        expandedAlbums = false
-        expandedArtists = false
-        expandedPlaylists = false
-        errorMessage = nil
-    }
+    // MARK: - Selection
 
     func showAllTracks() {
         showingAllTracks = true
@@ -109,5 +127,18 @@ final class SearchViewModel {
         selectedArtist = nil
         selectedPlaylist = nil
         showingAllTracks = false
+    }
+
+    func clearSearch() {
+        searchResults = nil
+        selectedTrack = nil
+        selectedAlbum = nil
+        selectedArtist = nil
+        selectedPlaylist = nil
+        showingAllTracks = false
+        expandedAlbums = false
+        expandedArtists = false
+        expandedPlaylists = false
+        errorMessage = nil
     }
 }
