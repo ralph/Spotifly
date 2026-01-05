@@ -2,6 +2,15 @@
 
 A Swift/SwiftUI app that integrates with Spotify using the [librespot](https://github.com/librespot-org/librespot) Rust library for OAuth authentication.
 
+## Installation
+
+Install via Homebrew from [homebrew-spotifly](https://github.com/ralph/homebrew-spotifly):
+
+```bash
+brew tap ralph/spotifly
+brew install spotifly
+```
+
 ## Architecture
 
 This project demonstrates Swift 6.2's C interoperability to call Rust code:
