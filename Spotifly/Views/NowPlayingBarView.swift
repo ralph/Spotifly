@@ -75,7 +75,8 @@ struct NowPlayingBarView: View {
             }
             .task(id: playbackViewModel.currentTrackId) {
                 // Check favorite status when track changes
-                await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: session.accessToken)
+                let token = await session.validAccessToken()
+                await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: token)
             }
         }
     }
@@ -246,7 +247,8 @@ struct NowPlayingBarView: View {
             Button {
                 if store.isSpotifyConnectActive {
                     Task {
-                        await connectService.skipToPrevious(accessToken: session.accessToken)
+                        let token = await session.validAccessToken()
+                        await connectService.skipToPrevious(accessToken: token)
                     }
                 } else {
                     playbackViewModel.previous()
@@ -261,10 +263,11 @@ struct NowPlayingBarView: View {
             Button {
                 if store.isSpotifyConnectActive {
                     Task {
+                        let token = await session.validAccessToken()
                         if store.isPlaying {
-                            await connectService.pause(accessToken: session.accessToken)
+                            await connectService.pause(accessToken: token)
                         } else {
-                            await connectService.resume(accessToken: session.accessToken)
+                            await connectService.resume(accessToken: token)
                         }
                     }
                 } else {
@@ -287,7 +290,8 @@ struct NowPlayingBarView: View {
             Button {
                 if store.isSpotifyConnectActive {
                     Task {
-                        await connectService.skipToNext(accessToken: session.accessToken)
+                        let token = await session.validAccessToken()
+                        await connectService.skipToNext(accessToken: token)
                     }
                 } else {
                     playbackViewModel.next()
@@ -339,7 +343,8 @@ struct NowPlayingBarView: View {
     private var favoriteButton: some View {
         Button {
             Task {
-                await playbackViewModel.toggleCurrentTrackFavorite(accessToken: session.accessToken)
+                let token = await session.validAccessToken()
+                await playbackViewModel.toggleCurrentTrackFavorite(accessToken: token)
             }
         } label: {
             Image(systemName: playbackViewModel.isCurrentTrackFavorited ? "heart.fill" : "heart")
@@ -362,7 +367,10 @@ struct NowPlayingBarView: View {
                     value: Binding(
                         get: { store.spotifyConnectVolume },
                         set: { newValue in
-                            connectService.setVolume(newValue, accessToken: session.accessToken)
+                            Task {
+                                let token = await session.validAccessToken()
+                                connectService.setVolume(newValue, accessToken: token)
+                            }
                         },
                     ),
                     in: 0 ... 100,

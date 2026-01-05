@@ -51,7 +51,6 @@ struct TrackRow: View {
     let isCurrentTrack: Bool
     let isPlayedTrack: Bool // For queue - tracks that have already played
     @Bindable var playbackViewModel: PlaybackViewModel
-    let accessToken: String? // For playback and queue operations
     let doubleTapBehavior: TrackRowDoubleTapBehavior
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
@@ -78,7 +77,6 @@ struct TrackRow: View {
         currentlyPlayingURI: String?,
         currentIndex: Int? = nil,
         playbackViewModel: PlaybackViewModel,
-        accessToken: String? = nil,
         doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
     ) {
         self.track = track
@@ -91,7 +89,6 @@ struct TrackRow: View {
             false
         }
         self.playbackViewModel = playbackViewModel
-        self.accessToken = accessToken
         self.doubleTapBehavior = doubleTapBehavior
     }
 
@@ -177,7 +174,7 @@ struct TrackRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(isTogglingFavorite || accessToken == nil)
+            .disabled(isTogglingFavorite)
             .opacity(isTogglingFavorite ? 0.5 : 1.0)
 
             // Context menu
@@ -187,21 +184,18 @@ struct TrackRow: View {
                 } label: {
                     Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                 }
-                .disabled(accessToken == nil)
 
                 Button {
                     addToQueue()
                 } label: {
                     Label("Add to Queue", systemImage: "text.append")
                 }
-                .disabled(accessToken == nil)
 
                 Button {
                     startSongRadio()
                 } label: {
                     Label("Start Song Radio", systemImage: "antenna.radiowaves.left.and.right")
                 }
-                .disabled(accessToken == nil)
 
                 Divider()
 
@@ -227,33 +221,38 @@ struct TrackRow: View {
                 } label: {
                     Label("Add to Playlist", systemImage: "music.note.list")
                 }
-                .disabled(accessToken == nil)
 
                 Divider()
 
                 Button {
-                    if let artistId = track.artistId, let accessToken {
-                        navigationCoordinator.navigateToArtist(
-                            artistId: artistId,
-                            accessToken: accessToken,
-                        )
+                    if let artistId = track.artistId {
+                        Task {
+                            let token = await session.validAccessToken()
+                            navigationCoordinator.navigateToArtist(
+                                artistId: artistId,
+                                accessToken: token,
+                            )
+                        }
                     }
                 } label: {
                     Label("Go to Artist", systemImage: "person.circle")
                 }
-                .disabled(track.artistId == nil || accessToken == nil)
+                .disabled(track.artistId == nil)
 
                 Button {
-                    if let albumId = track.albumId, let accessToken {
-                        navigationCoordinator.navigateToAlbum(
-                            albumId: albumId,
-                            accessToken: accessToken,
-                        )
+                    if let albumId = track.albumId {
+                        Task {
+                            let token = await session.validAccessToken()
+                            navigationCoordinator.navigateToAlbum(
+                                albumId: albumId,
+                                accessToken: token,
+                            )
+                        }
                     }
                 } label: {
                     Label("Go to Album", systemImage: "square.stack")
                 }
-                .disabled(track.albumId == nil || accessToken == nil)
+                .disabled(track.albumId == nil)
 
                 Divider()
 
@@ -302,7 +301,8 @@ struct TrackRow: View {
             await session.loadUserIdIfNeeded()
             // Load playlists via service if store is empty
             if store.userPlaylists.isEmpty, !store.playlistsPagination.isLoading {
-                try? await playlistService.loadUserPlaylists(accessToken: session.accessToken)
+                let token = await session.validAccessToken()
+                try? await playlistService.loadUserPlaylists(accessToken: token)
             }
         }
     }
@@ -316,14 +316,13 @@ struct TrackRow: View {
     }
 
     private func handleDoubleTap() {
-        guard let accessToken else { return }
-
         switch doubleTapBehavior {
         case .playTrack:
             Task {
+                let token = await session.validAccessToken()
                 await playbackViewModel.play(
                     uriOrUrl: track.uri,
-                    accessToken: accessToken,
+                    accessToken: token,
                 )
             }
         case .jumpToQueueIndex:
@@ -338,34 +337,32 @@ struct TrackRow: View {
     }
 
     private func playNext() {
-        guard let accessToken else { return }
-
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.playNext(
                 trackUri: track.uri,
-                accessToken: accessToken,
+                accessToken: token,
             )
         }
     }
 
     private func addToQueue() {
-        guard let accessToken else { return }
-
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.addToQueue(
                 trackUri: track.uri,
-                accessToken: accessToken,
+                accessToken: token,
             )
         }
     }
 
     private func startSongRadio() {
-        guard let accessToken else { return }
-
         Task {
             do {
+                let token = await session.validAccessToken()
+
                 // Ensure player is initialized (needed for radio API)
-                await playbackViewModel.initializeIfNeeded(accessToken: accessToken)
+                await playbackViewModel.initializeIfNeeded(accessToken: token)
 
                 // Use librespot's internal radio API
                 let radioTrackUris = try SpotifyPlayer.getRadioTracks(trackUri: track.uri)
@@ -380,7 +377,7 @@ struct TrackRow: View {
 
                     await playbackViewModel.playTracks(
                         trackUris,
-                        accessToken: accessToken,
+                        accessToken: token,
                     )
 
                     // Navigate to queue to show radio tracks
@@ -396,15 +393,14 @@ struct TrackRow: View {
 
     /// Toggle favorite using TrackService (optimistic update)
     private func toggleFavorite() {
-        guard let accessToken else { return }
-
         Task {
             isTogglingFavorite = true
 
             do {
+                let token = await session.validAccessToken()
                 try await trackService.toggleFavorite(
                     trackId: track.trackId,
-                    accessToken: accessToken,
+                    accessToken: token,
                 )
             } catch {
                 // Error is handled by optimistic rollback in TrackService
@@ -417,15 +413,14 @@ struct TrackRow: View {
 
     /// Add track to playlist using PlaylistService
     private func addToPlaylist(playlistId: String) {
-        guard let accessToken else { return }
-
         Task {
             isAddingToPlaylist = true
             do {
+                let token = await session.validAccessToken()
                 try await playlistService.addTracksToPlaylist(
                     playlistId: playlistId,
                     trackIds: [track.trackId],
-                    accessToken: accessToken,
+                    accessToken: token,
                 )
                 showSuccessFeedback()
             } catch {
@@ -437,25 +432,26 @@ struct TrackRow: View {
 
     /// Create a new playlist and add the track to it
     private func createAndAddToPlaylist(name: String) {
-        guard let accessToken else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
 
         Task {
             isAddingToPlaylist = true
             do {
+                let token = await session.validAccessToken()
+
                 // Create the playlist using PlaylistService
                 let newPlaylist = try await playlistService.createPlaylist(
                     userId: session.userId ?? "",
                     name: trimmedName,
-                    accessToken: accessToken,
+                    accessToken: token,
                 )
 
                 // Add the track to the new playlist
                 try await playlistService.addTracksToPlaylist(
                     playlistId: newPlaylist.id,
                     trackIds: [track.trackId],
-                    accessToken: accessToken,
+                    accessToken: token,
                 )
 
                 showSuccessFeedback()

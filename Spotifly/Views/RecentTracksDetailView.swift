@@ -53,7 +53,6 @@ struct RecentTracksDetailView: View {
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
-                            accessToken: session.accessToken,
                         )
 
                         if track.id != tracks.last?.id {
@@ -71,9 +70,10 @@ struct RecentTracksDetailView: View {
 
     private func playAllTracks() {
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: session.accessToken,
+                accessToken: token,
             )
         }
     }

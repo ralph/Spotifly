@@ -107,8 +107,9 @@ struct PlaylistsListView: View {
     private func loadPlaylists(forceRefresh: Bool = false) async {
         errorMessage = nil
         do {
+            let token = await session.validAccessToken()
             try await playlistService.loadUserPlaylists(
-                accessToken: session.accessToken,
+                accessToken: token,
                 forceRefresh: forceRefresh,
             )
         } catch {
@@ -118,7 +119,8 @@ struct PlaylistsListView: View {
 
     private func loadMorePlaylists() async {
         do {
-            try await playlistService.loadMorePlaylists(accessToken: session.accessToken)
+            let token = await session.validAccessToken()
+            try await playlistService.loadMorePlaylists(accessToken: token)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -207,7 +209,8 @@ struct PlaylistRow: View {
             // Play button
             Button {
                 Task {
-                    await playbackViewModel.play(uriOrUrl: playlist.uri, accessToken: session.accessToken)
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.play(uriOrUrl: playlist.uri, accessToken: token)
                 }
             } label: {
                 Image(systemName: "play.circle.fill")

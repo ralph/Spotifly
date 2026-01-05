@@ -23,7 +23,8 @@ struct DevicesView: View {
                 Spacer()
                 Button {
                     Task {
-                        await deviceService.loadDevices(accessToken: session.accessToken)
+                        let token = await session.validAccessToken()
+                        await deviceService.loadDevices(accessToken: token)
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
@@ -162,7 +163,8 @@ struct DevicesView: View {
             }
         }
         .task {
-            await deviceService.loadDevices(accessToken: session.accessToken)
+            let token = await session.validAccessToken()
+            await deviceService.loadDevices(accessToken: token)
         }
     }
 }
@@ -177,12 +179,13 @@ struct DeviceRow: View {
     var body: some View {
         Button {
             Task {
-                let success = await deviceService.transferPlayback(to: device, accessToken: session.accessToken)
+                let token = await session.validAccessToken()
+                let success = await deviceService.transferPlayback(to: device, accessToken: token)
                 if success {
                     connectService.activateConnect(
                         deviceId: device.id,
                         deviceName: device.name,
-                        accessToken: session.accessToken,
+                        accessToken: token,
                     )
                 }
             }

@@ -137,3 +137,13 @@
 "playlist.edit.save" = "Save";
 "playlist.edit.cancel" = "Cancel";
 "playlist.edit.saving" = "Saving...";
+
+/* Preferences */
+"preferences.playback" = "Playback";
+"preferences.info" = "Info";
+"preferences.streaming_quality" = "Streaming Quality";
+"preferences.gapless_playback" = "Gapless Playback";
+"preferences.default" = "Default";
+"preferences.restart_note" = "Changes take effect when playback restarts.";
+"preferences.version %@ (%@)" = "Version %@ (%@)";
+"preferences.copyright %@" = "© %@ Ralph von der Heyden";

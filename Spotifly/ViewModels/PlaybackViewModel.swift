@@ -521,6 +521,8 @@ final class PlaybackViewModel {
             isPlaying = SpotifyPlayer.isPlaying
             updateQueueState()
             syncPositionAnchor()
+            // Update currentTrackId to trigger favorite status check in NowPlayingBarView
+            currentTrackId = SpotifyPlayer.queueUri(at: currentIndex)
             return
         }
 

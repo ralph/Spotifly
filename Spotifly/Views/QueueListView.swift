@@ -54,7 +54,6 @@ struct QueueListView: View {
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 currentIndex: playbackViewModel.currentIndex,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: session.accessToken,
                                 doubleTapBehavior: .jumpToQueueIndex,
                             )
 
@@ -67,13 +66,15 @@ struct QueueListView: View {
                 }
                 .refreshable {
                     queueService.refresh()
-                    await queueService.loadFavorites(accessToken: session.accessToken)
+                    let token = await session.validAccessToken()
+                    await queueService.loadFavorites(accessToken: token)
                 }
             }
         }
         .task {
             queueService.loadQueue()
-            await queueService.loadFavorites(accessToken: session.accessToken)
+            let token = await session.validAccessToken()
+            await queueService.loadFavorites(accessToken: token)
         }
     }
 }

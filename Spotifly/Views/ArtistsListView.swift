@@ -107,8 +107,9 @@ struct ArtistsListView: View {
     private func loadArtists(forceRefresh: Bool = false) async {
         errorMessage = nil
         do {
+            let token = await session.validAccessToken()
             try await artistService.loadUserArtists(
-                accessToken: session.accessToken,
+                accessToken: token,
                 forceRefresh: forceRefresh,
             )
         } catch {
@@ -118,7 +119,8 @@ struct ArtistsListView: View {
 
     private func loadMoreArtists() async {
         do {
-            try await artistService.loadMoreArtists(accessToken: session.accessToken)
+            let token = await session.validAccessToken()
+            try await artistService.loadMoreArtists(accessToken: token)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -187,7 +189,8 @@ struct ArtistRow: View {
             // Play button
             Button {
                 Task {
-                    await playbackViewModel.play(uriOrUrl: artist.uri, accessToken: session.accessToken)
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.play(uriOrUrl: artist.uri, accessToken: token)
                 }
             } label: {
                 Image(systemName: "play.circle.fill")

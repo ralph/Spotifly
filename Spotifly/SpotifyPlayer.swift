@@ -55,6 +55,9 @@ enum SpotifyPlayer {
     /// Must be called before any playback operations.
     @SpotifyAuthActor
     static func initialize(accessToken: String) async throws {
+        // Sync playback settings from UserDefaults before initializing
+        syncSettingsFromUserDefaults()
+
         let result = await Task.detached {
             accessToken.withCString { tokenPtr in
                 spotifly_init_player(tokenPtr)
@@ -64,6 +67,16 @@ enum SpotifyPlayer {
         guard result == 0 else {
             throw SpotifyPlayerError.initializationFailed
         }
+    }
+
+    /// Syncs playback settings from UserDefaults to the Rust player
+    private nonisolated static func syncSettingsFromUserDefaults() {
+        let bitrateRawValue = UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1
+        let gaplessEnabled = UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
+
+        // Call FFI directly to avoid actor isolation issues
+        spotifly_set_bitrate(UInt8(min(max(bitrateRawValue, 0), 2)))
+        spotifly_set_gapless(gaplessEnabled)
     }
 
     /// Plays content by its Spotify URI or URL.
@@ -325,5 +338,48 @@ enum SpotifyPlayer {
         }
 
         return trackUris
+    }
+
+    // MARK: - Playback Settings
+
+    /// Streaming bitrate options
+    enum Bitrate: UInt8, CaseIterable, Identifiable {
+        case low = 0 // 96 kbps
+        case normal = 1 // 160 kbps (default)
+        case high = 2 // 320 kbps
+
+        var id: UInt8 { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .low: "Low (96 kbps)"
+            case .normal: "Normal (160 kbps)"
+            case .high: "High (320 kbps)"
+            }
+        }
+
+        var isDefault: Bool {
+            self == .normal
+        }
+    }
+
+    /// Sets the streaming bitrate. Takes effect on next player initialization.
+    static func setBitrate(_ bitrate: Bitrate) {
+        spotifly_set_bitrate(bitrate.rawValue)
+    }
+
+    /// Gets the current bitrate setting.
+    static var bitrate: Bitrate {
+        Bitrate(rawValue: spotifly_get_bitrate()) ?? .normal
+    }
+
+    /// Sets gapless playback. Takes effect on next player initialization.
+    static func setGapless(_ enabled: Bool) {
+        spotifly_set_gapless(enabled)
+    }
+
+    /// Gets the current gapless playback setting.
+    static var gapless: Bool {
+        spotifly_get_gapless()
     }
 }

@@ -54,7 +54,6 @@ struct SearchTracksDetailView: View {
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
-                            accessToken: session.accessToken,
                         )
 
                         if track.id != tracks.last?.id {
@@ -70,16 +69,18 @@ struct SearchTracksDetailView: View {
         }
         .task(id: tracks.map(\.id)) {
             // Check favorite status and update store
+            let token = await session.validAccessToken()
             let trackIds = tracks.map(\.id)
-            try? await trackService.checkFavoriteStatuses(trackIds: trackIds, accessToken: session.accessToken)
+            try? await trackService.checkFavoriteStatuses(trackIds: trackIds, accessToken: token)
         }
     }
 
     private func playAllTracks() {
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: session.accessToken,
+                accessToken: token,
             )
         }
     }

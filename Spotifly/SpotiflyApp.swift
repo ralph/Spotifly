@@ -18,8 +18,8 @@ struct FocusedSearchFieldFocused: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
-struct FocusedAccessToken: FocusedValueKey {
-    typealias Value = String
+struct FocusedSession: FocusedValueKey {
+    typealias Value = SpotifySession
 }
 
 struct FocusedRecentlyPlayedService: FocusedValueKey {
@@ -37,9 +37,9 @@ extension FocusedValues {
         set { self[FocusedSearchFieldFocused.self] = newValue }
     }
 
-    var accessToken: String? {
-        get { self[FocusedAccessToken.self] }
-        set { self[FocusedAccessToken.self] = newValue }
+    var session: SpotifySession? {
+        get { self[FocusedSession.self] }
+        set { self[FocusedSession.self] = newValue }
     }
 
     var recentlyPlayedService: RecentlyPlayedService? {
@@ -68,6 +68,10 @@ struct SpotiflyApp: App {
         .commands {
             SpotiflyCommands()
         }
+
+        Settings {
+            PreferencesView()
+        }
     }
 }
 
@@ -76,7 +80,7 @@ struct SpotiflyApp: App {
 struct SpotiflyCommands: Commands {
     @FocusedValue(\.navigationSelection) var navigationSelection
     @FocusedValue(\.searchFieldFocused) var searchFieldFocused
-    @FocusedValue(\.accessToken) var accessToken
+    @FocusedValue(\.session) var session
     @FocusedValue(\.recentlyPlayedService) var recentlyPlayedService
 
     private var playbackViewModel: PlaybackViewModel { PlaybackViewModel.shared }
@@ -112,8 +116,9 @@ struct SpotiflyCommands: Commands {
             Divider()
 
             Button("menu.like_track") {
-                guard let token = accessToken else { return }
+                guard let session else { return }
                 Task {
+                    let token = await session.validAccessToken()
                     await playbackViewModel.toggleCurrentTrackFavorite(accessToken: token)
                 }
             }
@@ -150,8 +155,9 @@ struct SpotiflyCommands: Commands {
             .keyboardShortcut("f", modifiers: .command)
 
             Button("menu.refresh") {
-                guard let token = accessToken, let service = recentlyPlayedService else { return }
+                guard let session, let service = recentlyPlayedService else { return }
                 Task {
+                    let token = await session.validAccessToken()
                     await service.refresh(accessToken: token)
                 }
             }

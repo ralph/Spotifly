@@ -88,7 +88,8 @@ struct LoggedInView: View {
                     .searchable(text: $searchText, isPresented: $searchFieldFocused)
                     .onSubmit(of: .search) {
                         Task {
-                            await searchService.search(accessToken: authResult.accessToken, query: searchText)
+                            let token = await session.validAccessToken()
+                            await searchService.search(accessToken: token, query: searchText)
                             if store.searchResults != nil {
                                 selectedNavigationItem = .searchResults
                             }
@@ -113,7 +114,8 @@ struct LoggedInView: View {
                     .searchable(text: $searchText, isPresented: $searchFieldFocused)
                     .onSubmit(of: .search) {
                         Task {
-                            await searchService.search(accessToken: authResult.accessToken, query: searchText)
+                            let token = await session.validAccessToken()
+                            await searchService.search(accessToken: token, query: searchText)
                             if store.searchResults != nil {
                                 selectedNavigationItem = .searchResults
                             }
@@ -152,13 +154,14 @@ struct LoggedInView: View {
         .environment(artistService)
         .focusedValue(\.navigationSelection, $selectedNavigationItem)
         .focusedValue(\.searchFieldFocused, $searchFieldFocused)
-        .focusedValue(\.accessToken, session.accessToken)
+        .focusedValue(\.session, session)
         .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
         .task {
             // Load favorite track IDs on startup so heart indicators work everywhere
-            try? await trackService.loadFavorites(accessToken: session.accessToken)
+            let token = await session.validAccessToken()
+            try? await trackService.loadFavorites(accessToken: token)
             // Check if there's already active remote playback to sync with
-            await connectService.checkAndSyncRemotePlayback(accessToken: session.accessToken)
+            await connectService.checkAndSyncRemotePlayback(accessToken: token)
         }
         .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
             handleNavigation()

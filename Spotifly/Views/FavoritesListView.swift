@@ -62,7 +62,6 @@ struct FavoritesListView: View {
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: session.accessToken,
                             )
 
                             if index < store.favoriteTracks.count - 1 {
@@ -100,8 +99,9 @@ struct FavoritesListView: View {
         errorMessage = nil
 
         do {
+            let token = await session.validAccessToken()
             try await trackService.loadFavorites(
-                accessToken: session.accessToken,
+                accessToken: token,
                 forceRefresh: forceRefresh,
             )
         } catch {
@@ -111,7 +111,8 @@ struct FavoritesListView: View {
 
     private func loadMoreFavorites() async {
         do {
-            try await trackService.loadMoreFavorites(accessToken: session.accessToken)
+            let token = await session.validAccessToken()
+            try await trackService.loadMoreFavorites(accessToken: token)
         } catch {
             errorMessage = error.localizedDescription
         }

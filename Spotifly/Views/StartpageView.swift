@@ -33,7 +33,8 @@ struct StartpageView: View {
                             .onSubmit {
                                 if !trackViewModel.spotifyURI.isEmpty {
                                     Task {
-                                        await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: session.accessToken)
+                                        let token = await session.validAccessToken()
+                                        await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: token)
                                     }
                                 }
                             }
@@ -50,7 +51,8 @@ struct StartpageView: View {
 
                         Button("action.play") {
                             Task {
-                                await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: session.accessToken)
+                                let token = await session.validAccessToken()
+                                await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: token)
                             }
                         }
                         .buttonStyle(.borderedProminent)
@@ -160,7 +162,8 @@ struct StartpageView: View {
             }
         }
         .task {
-            await recentlyPlayedService.loadRecentlyPlayed(accessToken: session.accessToken)
+            let token = await session.validAccessToken()
+            await recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
         }
         .startpageShortcuts(recentlyPlayedService: recentlyPlayedService)
     }
@@ -197,7 +200,6 @@ struct RecentTracksSection: View {
                         index: index,
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                         playbackViewModel: playbackViewModel,
-                        accessToken: session.accessToken,
                     )
 
                     if track.id != tracks.last?.id {
@@ -246,18 +248,24 @@ struct RecentContentSection: View {
                         switch item {
                         case let .album(album):
                             RecentAlbumCard(album: album) {
-                                navigationCoordinator.navigateToAlbum(
-                                    albumId: album.id,
-                                    accessToken: session.accessToken,
-                                )
+                                Task {
+                                    let token = await session.validAccessToken()
+                                    navigationCoordinator.navigateToAlbum(
+                                        albumId: album.id,
+                                        accessToken: token,
+                                    )
+                                }
                             }
 
                         case let .artist(artist):
                             RecentArtistCard(artist: artist) {
-                                navigationCoordinator.navigateToArtist(
-                                    artistId: artist.id,
-                                    accessToken: session.accessToken,
-                                )
+                                Task {
+                                    let token = await session.validAccessToken()
+                                    navigationCoordinator.navigateToArtist(
+                                        artistId: artist.id,
+                                        accessToken: token,
+                                    )
+                                }
                             }
 
                         case let .playlist(playlist):
