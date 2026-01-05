@@ -4,14 +4,14 @@ use librespot_core::cache::Cache;
 use librespot_core::SpotifyUri;
 use librespot_metadata::{Album, Artist, Metadata, Playlist, Track};
 use librespot_playback::audio_backend;
-use librespot_playback::config::{AudioFormat, PlayerConfig};
+use librespot_playback::config::{AudioFormat, Bitrate, PlayerConfig};
 use librespot_playback::mixer::softmixer::SoftMixer;
 use librespot_playback::mixer::{Mixer, MixerConfig};
 use librespot_playback::player::{Player, PlayerEvent};
 use once_cell::sync::Lazy;
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
@@ -39,6 +39,12 @@ static CURRENT_INDEX: AtomicUsize = AtomicUsize::new(0);
 // Position tracking - updated from player events
 static POSITION_MS: AtomicU32 = AtomicU32::new(0);
 static POSITION_TIMESTAMP_MS: AtomicU64 = AtomicU64::new(0);
+
+// Playback settings (applied on player init)
+// Bitrate: 0 = 96kbps, 1 = 160kbps (default), 2 = 320kbps
+static BITRATE_SETTING: AtomicU8 = AtomicU8::new(1);
+// Gapless playback: true by default (matches librespot default)
+static GAPLESS_SETTING: AtomicBool = AtomicBool::new(true);
 
 /// Get current timestamp in milliseconds since UNIX epoch
 fn current_timestamp_ms() -> u64 {
@@ -345,8 +351,25 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         *mixer_guard = Some(Arc::clone(&mixer));
     }
 
-    // Create player with position update interval for smooth seek bar
+    // Create player with user settings
+    let bitrate_setting = BITRATE_SETTING.load(Ordering::SeqCst);
+    let bitrate = match bitrate_setting {
+        0 => Bitrate::Bitrate96,
+        2 => Bitrate::Bitrate320,
+        _ => Bitrate::Bitrate160, // default
+    };
+    let gapless = GAPLESS_SETTING.load(Ordering::SeqCst);
+
+    let bitrate_kbps = match bitrate_setting {
+        0 => 96,
+        2 => 320,
+        _ => 160,
+    };
+    println!("[Spotifly] Player initialized: bitrate={}kbps, gapless={}", bitrate_kbps, gapless);
+
     let player_config = PlayerConfig {
+        bitrate,
+        gapless,
         position_update_interval: Some(Duration::from_millis(200)),
         ..PlayerConfig::default()
     };
@@ -1403,4 +1426,40 @@ pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
             -1
         }
     }
+}
+
+/// Sets the streaming bitrate.
+/// 0 = 96 kbps, 1 = 160 kbps (default), 2 = 320 kbps
+/// Note: Takes effect on next player initialization (restart playback to apply).
+#[no_mangle]
+pub extern "C" fn spotifly_set_bitrate(bitrate: u8) {
+    let value = bitrate.min(2); // Clamp to valid range
+    let old_value = BITRATE_SETTING.swap(value, Ordering::SeqCst);
+    if old_value != value {
+        let kbps = match value { 0 => 96, 2 => 320, _ => 160 };
+        println!("[Spotifly] Bitrate changed to {}kbps (restart playback to apply)", kbps);
+    }
+}
+
+/// Gets the current bitrate setting.
+/// 0 = 96 kbps, 1 = 160 kbps, 2 = 320 kbps
+#[no_mangle]
+pub extern "C" fn spotifly_get_bitrate() -> u8 {
+    BITRATE_SETTING.load(Ordering::SeqCst)
+}
+
+/// Sets gapless playback (true = enabled, false = disabled).
+/// Enabled by default. Takes effect on next player initialization (restart playback to apply).
+#[no_mangle]
+pub extern "C" fn spotifly_set_gapless(enabled: bool) {
+    let old_value = GAPLESS_SETTING.swap(enabled, Ordering::SeqCst);
+    if old_value != enabled {
+        println!("[Spotifly] Gapless playback changed to {} (restart playback to apply)", enabled);
+    }
+}
+
+/// Gets the current gapless playback setting.
+#[no_mangle]
+pub extern "C" fn spotifly_get_gapless() -> bool {
+    GAPLESS_SETTING.load(Ordering::SeqCst)
 }

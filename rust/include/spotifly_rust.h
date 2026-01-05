@@ -1,6 +1,7 @@
 #ifndef SPOTIFLY_RUST_H
 #define SPOTIFLY_RUST_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -141,6 +142,30 @@ char* spotifly_get_radio_tracks(const char* track_uri);
 ///
 /// @param volume Volume level (0 = muted, 65535 = max)
 int32_t spotifly_set_volume(uint16_t volume);
+
+// ============================================================================
+// Playback settings (take effect on next player initialization)
+// ============================================================================
+
+/// Sets the streaming bitrate.
+/// 0 = 96 kbps, 1 = 160 kbps (default), 2 = 320 kbps
+/// Note: Takes effect on next player initialization.
+///
+/// @param bitrate Bitrate level (0, 1, or 2)
+void spotifly_set_bitrate(uint8_t bitrate);
+
+/// Gets the current bitrate setting.
+/// 0 = 96 kbps, 1 = 160 kbps, 2 = 320 kbps
+uint8_t spotifly_get_bitrate(void);
+
+/// Sets gapless playback (true = enabled, false = disabled).
+/// Enabled by default. Takes effect on next player initialization.
+///
+/// @param enabled Whether gapless playback is enabled
+void spotifly_set_gapless(bool enabled);
+
+/// Gets the current gapless playback setting.
+bool spotifly_get_gapless(void);
 
 #ifdef __cplusplus
 }

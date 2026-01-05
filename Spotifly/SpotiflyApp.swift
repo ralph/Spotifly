@@ -68,6 +68,10 @@ struct SpotiflyApp: App {
         .commands {
             SpotiflyCommands()
         }
+
+        Settings {
+            PreferencesView()
+        }
     }
 }
 
