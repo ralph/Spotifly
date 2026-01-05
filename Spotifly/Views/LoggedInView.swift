@@ -47,9 +47,9 @@ struct LoggedInView: View {
     @State private var searchText = ""
     @State private var searchFieldFocused = false
 
-    // Selection state for library detail views
-    @State private var selectedAlbum: AlbumSimplified?
-    @State private var selectedArtist: ArtistSimplified?
+    // Selection state for library detail views (ID-based, migrating progressively)
+    @State private var selectedAlbumId: String?
+    @State private var selectedArtist: ArtistSimplified? // TODO: migrate to selectedArtistId
     @State private var selectedPlaylistId: String?
 
     // Selection state for startpage "show all recent tracks"
@@ -59,7 +59,7 @@ struct LoggedInView: View {
     private var needsThreeColumnLayout: Bool {
         switch selectedNavigationItem {
         case .albums:
-            selectedAlbum != nil
+            selectedAlbumId != nil
         case .artists:
             selectedArtist != nil
         case .playlists:
@@ -191,7 +191,7 @@ struct LoggedInView: View {
         // Handle pending playlist navigation
         if navigationCoordinator.pendingPlaylist != nil {
             // Clear other selections
-            selectedAlbum = nil
+            selectedAlbumId = nil
             selectedArtist = nil
             selectedPlaylistId = nil
             showingAllRecentTracks = false
@@ -214,7 +214,7 @@ struct LoggedInView: View {
         guard navigationCoordinator.isInArtistContext else { return }
 
         // Clear other selections to avoid conflicts
-        selectedAlbum = nil
+        selectedAlbumId = nil
         selectedArtist = nil
         selectedPlaylistId = nil
         showingAllRecentTracks = false
@@ -281,9 +281,8 @@ struct LoggedInView: View {
 
                     case .albums:
                         AlbumsListView(
-                            albumsViewModel: albumsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedAlbum: $selectedAlbum,
+                            selectedAlbumId: $selectedAlbumId,
                         )
                         .navigationTitle("nav.albums")
 
@@ -375,9 +374,11 @@ struct LoggedInView: View {
                 // When not searching: show details for library selections
                 switch selectedNavigationItem {
                 case .albums:
-                    if let selectedAlbum {
+                    if let albumId = selectedAlbumId,
+                       let album = store.albums[albumId]
+                    {
                         AlbumDetailView(
-                            album: SearchAlbum(from: selectedAlbum),
+                            album: SearchAlbum(from: album),
                             playbackViewModel: playbackViewModel,
                         )
                     } else {

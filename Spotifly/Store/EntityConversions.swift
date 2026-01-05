@@ -246,6 +246,24 @@ extension Playlist {
 
 // MARK: - Reverse Conversions (Entity to API types)
 
+extension SearchAlbum {
+    /// Convert from unified Album entity (for views that expect SearchAlbum)
+    init(from album: Album) {
+        self.init(
+            id: album.id,
+            name: album.name,
+            uri: album.uri,
+            artistName: album.artistName,
+            artistId: album.artistId,
+            imageURL: album.imageURL,
+            totalTracks: album.trackCount,
+            releaseDate: album.releaseDate ?? "",
+            totalDurationMs: album.totalDurationMs,
+            externalUrl: album.externalUrl,
+        )
+    }
+}
+
 extension SearchPlaylist {
     /// Convert from unified Playlist entity (for views that expect SearchPlaylist)
     init(from playlist: Playlist) {
