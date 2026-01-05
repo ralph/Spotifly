@@ -244,6 +244,25 @@ extension Playlist {
     }
 }
 
+// MARK: - Reverse Conversions (Entity to API types)
+
+extension SearchPlaylist {
+    /// Convert from unified Playlist entity (for views that expect SearchPlaylist)
+    init(from playlist: Playlist) {
+        self.init(
+            id: playlist.id,
+            name: playlist.name,
+            uri: playlist.uri,
+            description: playlist.description,
+            imageURL: playlist.imageURL,
+            trackCount: playlist.trackCount,
+            ownerId: playlist.ownerId,
+            ownerName: playlist.ownerName,
+            totalDurationMs: playlist.totalDurationMs,
+        )
+    }
+}
+
 // MARK: - Device Conversions
 
 extension Device {

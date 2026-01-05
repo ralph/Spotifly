@@ -50,7 +50,7 @@ struct LoggedInView: View {
     // Selection state for library detail views
     @State private var selectedAlbum: AlbumSimplified?
     @State private var selectedArtist: ArtistSimplified?
-    @State private var selectedPlaylist: PlaylistSimplified?
+    @State private var selectedPlaylistId: String?
 
     // Selection state for startpage "show all recent tracks"
     @State private var showingAllRecentTracks = false
@@ -63,7 +63,7 @@ struct LoggedInView: View {
         case .artists:
             selectedArtist != nil
         case .playlists:
-            selectedPlaylist != nil || navigationCoordinator.pendingPlaylist != nil
+            selectedPlaylistId != nil || navigationCoordinator.pendingPlaylist != nil
         case .startpage:
             // Only show all recent tracks uses three-column on startpage
             showingAllRecentTracks
@@ -178,7 +178,7 @@ struct LoggedInView: View {
                 navigationCoordinator.pendingPlaylist = nil
             }
         }
-        .onChange(of: selectedPlaylist?.id) { _, newValue in
+        .onChange(of: selectedPlaylistId) { _, newValue in
             // Clear pending playlist when user selects a playlist from the list
             if newValue != nil {
                 navigationCoordinator.pendingPlaylist = nil
@@ -193,7 +193,7 @@ struct LoggedInView: View {
             // Clear other selections
             selectedAlbum = nil
             selectedArtist = nil
-            selectedPlaylist = nil
+            selectedPlaylistId = nil
             showingAllRecentTracks = false
             searchViewModel.clearSelection()
 
@@ -216,7 +216,7 @@ struct LoggedInView: View {
         // Clear other selections to avoid conflicts
         selectedAlbum = nil
         selectedArtist = nil
-        selectedPlaylist = nil
+        selectedPlaylistId = nil
         showingAllRecentTracks = false
         searchViewModel.clearSelection()
 
@@ -274,9 +274,8 @@ struct LoggedInView: View {
 
                     case .playlists:
                         PlaylistsListView(
-                            playlistsViewModel: playlistsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedPlaylist: $selectedPlaylist,
+                            selectedPlaylistId: $selectedPlaylistId,
                         )
                         .navigationTitle("nav.playlists")
 
@@ -403,9 +402,11 @@ struct LoggedInView: View {
                             playlist: pendingPlaylist,
                             playbackViewModel: playbackViewModel,
                         )
-                    } else if let selectedPlaylist {
+                    } else if let playlistId = selectedPlaylistId,
+                              let playlist = store.playlists[playlistId]
+                    {
                         PlaylistDetailView(
-                            playlist: SearchPlaylist(from: selectedPlaylist),
+                            playlist: SearchPlaylist(from: playlist),
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
