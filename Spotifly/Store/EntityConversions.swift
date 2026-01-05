@@ -7,6 +7,26 @@
 
 import Foundation
 
+// MARK: - Track to TrackRowData Conversion
+
+extension Track {
+    /// Convert to TrackRowData for use with TrackRow view
+    func toTrackRowData() -> TrackRowData {
+        TrackRowData(
+            id: id,
+            uri: uri,
+            name: name,
+            artistName: artistName,
+            albumArtURL: imageURL?.absoluteString,
+            durationMs: durationMs,
+            trackNumber: trackNumber,
+            albumId: albumId,
+            artistId: artistId,
+            externalUrl: externalUrl,
+        )
+    }
+}
+
 // MARK: - Track Conversions
 
 extension Track {

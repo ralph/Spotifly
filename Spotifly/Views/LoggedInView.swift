@@ -17,7 +17,17 @@ struct LoggedInView: View {
     @State private var session: SpotifySession
     @State private var trackViewModel = TrackLookupViewModel()
     private let playbackViewModel = PlaybackViewModel.shared
-    @State private var favoritesViewModel = FavoritesViewModel()
+
+    // Normalized state store
+    @State private var store = AppStore()
+
+    // Services - initialized lazily via computed properties
+    private var trackService: TrackService { TrackService(store: store) }
+    private var playlistService: PlaylistService { PlaylistService(store: store) }
+    private var albumService: AlbumService { AlbumService(store: store) }
+    private var artistService: ArtistService { ArtistService(store: store) }
+
+    // Legacy ViewModels (to be migrated)
     @State private var playlistsViewModel = PlaylistsViewModel()
     @State private var albumsViewModel = AlbumsViewModel()
     @State private var artistsViewModel = ArtistsViewModel()
@@ -140,6 +150,11 @@ struct LoggedInView: View {
         .environment(devicesViewModel)
         .environment(navigationCoordinator)
         .environment(playlistsViewModel)
+        .environment(store)
+        .environment(trackService)
+        .environment(playlistService)
+        .environment(albumService)
+        .environment(artistService)
         .focusedValue(\.navigationSelection, $selectedNavigationItem)
         .focusedValue(\.searchFieldFocused, $searchFieldFocused)
         .focusedValue(\.accessToken, session.accessToken)
@@ -253,7 +268,6 @@ struct LoggedInView: View {
 
                     case .favorites:
                         FavoritesListView(
-                            favoritesViewModel: favoritesViewModel,
                             playbackViewModel: playbackViewModel,
                         )
                         .navigationTitle("nav.favorites")
