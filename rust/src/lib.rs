@@ -429,7 +429,23 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         drop(player_clone);
     });
 
+    // Store session, player, mixer, and event channel first
+    // This ensures basic playback works even if Spirc initialization fails
+    {
+        let mut player_guard = PLAYER.lock().unwrap();
+        *player_guard = Some(Arc::clone(&player));
+    }
+    {
+        let mut session_guard = SESSION.lock().unwrap();
+        *session_guard = Some(session.clone());
+    }
+    {
+        let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
+        *tx_guard = Some(tx);
+    }
+
     // Create Spirc for Spotify Connect support (makes this app appear as a Connect device)
+    // This is optional - if it fails, basic playback still works
     let connect_config = ConnectConfig {
         name: "Spotifly".to_string(),
         device_type: DeviceType::Computer,
@@ -440,36 +456,27 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     // Create credentials from access token for Spirc
     let spirc_credentials = librespot_core::authentication::Credentials::with_access_token(access_token);
 
-    let (spirc, spirc_task) = Spirc::new(
+    match Spirc::new(
         connect_config,
-        session.clone(),
+        session,
         spirc_credentials,
-        Arc::clone(&player),
+        player,
         mixer as Arc<dyn Mixer>,
     )
     .await
-    .map_err(|e| format!("Spirc error: {:?}", e))?;
+    {
+        Ok((spirc, spirc_task)) => {
+            // Spawn Spirc background task
+            let spirc_arc = Arc::new(spirc);
+            RUNTIME.spawn(spirc_task);
 
-    // Spawn Spirc background task
-    let spirc_arc = Arc::new(spirc);
-    RUNTIME.spawn(spirc_task);
-
-    // Store everything
-    {
-        let mut player_guard = PLAYER.lock().unwrap();
-        *player_guard = Some(player);
-    }
-    {
-        let mut session_guard = SESSION.lock().unwrap();
-        *session_guard = Some(session);
-    }
-    {
-        let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
-        *tx_guard = Some(tx);
-    }
-    {
-        let mut spirc_guard = SPIRC.lock().unwrap();
-        *spirc_guard = Some(spirc_arc);
+            let mut spirc_guard = SPIRC.lock().unwrap();
+            *spirc_guard = Some(spirc_arc);
+        }
+        Err(e) => {
+            // Spirc failed but basic playback still works
+            eprintln!("Spirc init warning (Connect won't be available): {:?}", e);
+        }
     }
 
     Ok(())
