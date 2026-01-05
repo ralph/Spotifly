@@ -334,6 +334,44 @@ struct DevicesResponse: Sendable {
     let devices: [SpotifyDevice]
 }
 
+/// Track info in playback state
+struct PlaybackTrack: Sendable {
+    let id: String
+    let name: String
+    let uri: String
+    let artistName: String
+    let albumName: String
+    let imageURL: URL?
+    let durationMs: Int
+}
+
+/// Current playback state from Spotify
+struct PlaybackState: Sendable {
+    let device: SpotifyDevice?
+    let isPlaying: Bool
+    let progressMs: Int
+    let currentTrack: PlaybackTrack?
+    let shuffleState: Bool
+    let repeatState: String
+}
+
+/// Track in the playback queue
+struct QueueTrack: Sendable, Identifiable {
+    let id: String
+    let name: String
+    let uri: String
+    let artistName: String
+    let albumName: String
+    let imageURL: URL?
+    let durationMs: Int
+}
+
+/// Queue response from Spotify
+struct QueueResponse: Sendable {
+    let currentlyPlaying: QueueTrack?
+    let queue: [QueueTrack]
+}
+
 /// Errors from Spotify API
 enum SpotifyAPIError: Error, LocalizedError {
     case invalidURI
@@ -2271,6 +2309,450 @@ enum SpotifyAPI {
             throw SpotifyAPIError.apiError("Device is restricted and cannot accept playback")
         case 404:
             throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Starts playback of specific tracks on a device
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - deviceId: The device ID to play on
+    ///   - trackUris: Array of track URIs to play
+    ///   - positionMs: Position in the first track to start from (default: 0)
+    static func startPlayback(
+        accessToken: String,
+        deviceId: String,
+        trackUris: [String],
+        positionMs: Int = 0,
+    ) async throws {
+        var urlComponents = URLComponents(string: "\(baseURL)/me/player/play")!
+        urlComponents.queryItems = [URLQueryItem(name: "device_id", value: deviceId)]
+
+        guard let url = urlComponents.url else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        let urlString = url.absoluteString
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Create request body with track URIs and position
+        let body: [String: Any] = [
+            "uris": trackUris,
+            "position_ms": positionMs,
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 204:
+            // Success - playback started
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 403:
+            throw SpotifyAPIError.apiError("Device is restricted and cannot accept playback")
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    // MARK: - Spotify Connect Playback Controls
+
+    /// Pauses playback on the active Spotify Connect device
+    static func pausePlayback(accessToken: String) async throws {
+        let urlString = "\(baseURL)/me/player/pause"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        let url = URL(string: urlString)!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+    }
+
+    /// Resumes playback on the active Spotify Connect device
+    static func resumePlayback(accessToken: String) async throws {
+        let urlString = "\(baseURL)/me/player/play"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        let url = URL(string: urlString)!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+    }
+
+    /// Skips to the next track on the active Spotify Connect device
+    static func skipToNext(accessToken: String) async throws {
+        let urlString = "\(baseURL)/me/player/next"
+        #if DEBUG
+            apiLogger.debug("[POST] \(urlString)")
+        #endif
+
+        let url = URL(string: urlString)!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+    }
+
+    /// Skips to the previous track on the active Spotify Connect device
+    static func skipToPrevious(accessToken: String) async throws {
+        let urlString = "\(baseURL)/me/player/previous"
+        #if DEBUG
+            apiLogger.debug("[POST] \(urlString)")
+        #endif
+
+        let url = URL(string: urlString)!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+    }
+
+    /// Seeks to a position in the current track on the active Spotify Connect device
+    static func seekToPosition(accessToken: String, positionMs: Int) async throws {
+        var urlComponents = URLComponents(string: "\(baseURL)/me/player/seek")!
+        urlComponents.queryItems = [URLQueryItem(name: "position_ms", value: String(positionMs))]
+
+        guard let url = urlComponents.url else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        let urlString = url.absoluteString
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200 ... 204).contains(httpResponse.statusCode) || httpResponse.statusCode == 403
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+    }
+
+    /// Sets the volume on the active Spotify Connect device
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - volumePercent: Volume level (0-100)
+    ///   - deviceId: Optional device ID to set volume on (uses active device if nil)
+    static func setVolume(accessToken: String, volumePercent: Int, deviceId: String? = nil) async throws {
+        var urlComponents = URLComponents(string: "\(baseURL)/me/player/volume")!
+        var queryItems = [URLQueryItem(name: "volume_percent", value: String(volumePercent))]
+        if let deviceId {
+            queryItems.append(URLQueryItem(name: "device_id", value: deviceId))
+        }
+        urlComponents.queryItems = queryItems
+
+        guard let url = urlComponents.url else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        let urlString = url.absoluteString
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 204:
+            // Success
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 403:
+            throw SpotifyAPIError.apiError("Volume control not available for this device")
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Fetches current playback state including active device and track info
+    static func fetchPlaybackState(accessToken: String) async throws -> PlaybackState? {
+        let urlString = "\(baseURL)/me/player"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            // Parse device info
+            var device: SpotifyDevice?
+            if let deviceData = json["device"] as? [String: Any],
+               let id = deviceData["id"] as? String,
+               let name = deviceData["name"] as? String,
+               let type = deviceData["type"] as? String
+            {
+                device = SpotifyDevice(
+                    id: id,
+                    name: name,
+                    type: type,
+                    isActive: deviceData["is_active"] as? Bool ?? true,
+                    isPrivateSession: deviceData["is_private_session"] as? Bool ?? false,
+                    isRestricted: deviceData["is_restricted"] as? Bool ?? false,
+                    volumePercent: deviceData["volume_percent"] as? Int,
+                )
+            }
+
+            // Parse track info
+            var currentTrack: PlaybackTrack?
+            if let item = json["item"] as? [String: Any],
+               let id = item["id"] as? String,
+               let name = item["name"] as? String,
+               let uri = item["uri"] as? String,
+               let durationMs = item["duration_ms"] as? Int
+            {
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.compactMap { $0["name"] as? String }.joined(separator: ", ") ?? "Unknown"
+
+                let albumData = item["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumImages = albumData?["images"] as? [[String: Any]]
+                let imageURLString = albumImages?.first?["url"] as? String
+                let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                currentTrack = PlaybackTrack(
+                    id: id,
+                    name: name,
+                    uri: uri,
+                    artistName: artistName,
+                    albumName: albumName,
+                    imageURL: imageURL,
+                    durationMs: durationMs,
+                )
+            }
+
+            let isPlaying = json["is_playing"] as? Bool ?? false
+            let progressMs = json["progress_ms"] as? Int ?? 0
+            let shuffleState = json["shuffle_state"] as? Bool ?? false
+            let repeatState = json["repeat_state"] as? String ?? "off"
+
+            return PlaybackState(
+                device: device,
+                isPlaying: isPlaying,
+                progressMs: progressMs,
+                currentTrack: currentTrack,
+                shuffleState: shuffleState,
+                repeatState: repeatState,
+            )
+
+        case 204:
+            // No active playback
+            return nil
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Fetches the user's playback queue
+    static func fetchQueue(accessToken: String) async throws -> QueueResponse {
+        let urlString = "\(baseURL)/me/player/queue"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            // Parse currently playing track
+            var currentlyPlaying: QueueTrack?
+            if let item = json["currently_playing"] as? [String: Any],
+               let id = item["id"] as? String,
+               let name = item["name"] as? String,
+               let uri = item["uri"] as? String,
+               let durationMs = item["duration_ms"] as? Int
+            {
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.compactMap { $0["name"] as? String }.joined(separator: ", ") ?? "Unknown"
+
+                let albumData = item["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumImages = albumData?["images"] as? [[String: Any]]
+                let imageURLString = albumImages?.first?["url"] as? String
+                let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                currentlyPlaying = QueueTrack(
+                    id: id,
+                    name: name,
+                    uri: uri,
+                    artistName: artistName,
+                    albumName: albumName,
+                    imageURL: imageURL,
+                    durationMs: durationMs,
+                )
+            }
+
+            // Parse queue
+            var queue: [QueueTrack] = []
+            if let queueArray = json["queue"] as? [[String: Any]] {
+                queue = queueArray.compactMap { item -> QueueTrack? in
+                    guard let id = item["id"] as? String,
+                          let name = item["name"] as? String,
+                          let uri = item["uri"] as? String,
+                          let durationMs = item["duration_ms"] as? Int
+                    else {
+                        return nil
+                    }
+
+                    let artistsArray = item["artists"] as? [[String: Any]]
+                    let artistName = artistsArray?.compactMap { $0["name"] as? String }.joined(separator: ", ") ?? "Unknown"
+
+                    let albumData = item["album"] as? [String: Any]
+                    let albumName = albumData?["name"] as? String ?? ""
+                    let albumImages = albumData?["images"] as? [[String: Any]]
+                    let imageURLString = albumImages?.first?["url"] as? String
+                    let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                    return QueueTrack(
+                        id: id,
+                        name: name,
+                        uri: uri,
+                        artistName: artistName,
+                        albumName: albumName,
+                        imageURL: imageURL,
+                        durationMs: durationMs,
+                    )
+                }
+            }
+
+            return QueueResponse(currentlyPlaying: currentlyPlaying, queue: queue)
+
+        case 204:
+            // No active playback
+            return QueueResponse(currentlyPlaying: nil, queue: [])
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
         default:
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let error = errorJson["error"] as? [String: Any],

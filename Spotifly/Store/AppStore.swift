@@ -136,6 +136,14 @@ final class AppStore {
     var devicesIsLoading = false
     var devicesErrorMessage: String?
 
+    // MARK: - Spotify Connect State
+
+    var isSpotifyConnectActive = false
+    var spotifyConnectDeviceId: String?
+    var spotifyConnectDeviceName: String?
+    var spotifyConnectVolume: Double = 50
+    private(set) var spotifyConnectAccessToken: String?
+
     // MARK: - Playback State
 
     var isPlaying = false
@@ -231,6 +239,11 @@ final class AppStore {
 
     var hasNext: Bool { currentIndex + 1 < queueLength }
     var hasPrevious: Bool { currentIndex > 0 }
+
+    /// Whether to show the Now Playing bar (has queue OR Spotify Connect active)
+    var shouldShowNowPlayingBar: Bool {
+        queueLength > 0 || isSpotifyConnectActive
+    }
 
     // MARK: - Initialization
 
@@ -508,6 +521,47 @@ final class AppStore {
         queueItems = items
     }
 
+    // MARK: - Spotify Connect Actions
+
+    /// Activate Spotify Connect mode (playing on remote device)
+    func activateSpotifyConnect(deviceId: String, deviceName: String?, accessToken: String) {
+        isSpotifyConnectActive = true
+        spotifyConnectDeviceId = deviceId
+        spotifyConnectDeviceName = deviceName
+        spotifyConnectAccessToken = accessToken
+
+        // Pause local playback when switching to Connect
+        if isPlaying {
+            SpotifyPlayer.pause()
+        }
+    }
+
+    /// Deactivate Spotify Connect mode (return to local playback)
+    func deactivateSpotifyConnect() {
+        isSpotifyConnectActive = false
+        spotifyConnectDeviceId = nil
+        spotifyConnectDeviceName = nil
+        spotifyConnectAccessToken = nil
+    }
+
+    /// Update playback state from Spotify Connect sync
+    func updateFromConnectState(_ state: PlaybackState) {
+        isPlaying = state.isPlaying
+        spotifyConnectVolume = Double(state.device?.volumePercent ?? 50)
+
+        if let track = state.currentTrack {
+            currentTrackId = track.uri
+            currentTrackName = track.name
+            currentArtistName = track.artistName
+            currentAlbumArtURL = track.imageURL?.absoluteString
+            trackDurationMs = UInt32(track.durationMs)
+            currentPositionMs = UInt32(state.progressMs)
+            positionAnchorMs = UInt32(state.progressMs)
+            positionAnchorTime = CACurrentMediaTime()
+            updateNowPlayingInfo()
+        }
+    }
+
     // MARK: - Playback Control
 
     func initializePlayerIfNeeded(accessToken: String) async {
@@ -734,6 +788,13 @@ final class AppStore {
     }
 
     private func checkDriftAndSync() {
+        // Skip Rust sync when Spotify Connect is active (sync handled by ConnectService)
+        guard !isSpotifyConnectActive else {
+            currentPositionMs = interpolatedPositionMs
+            updateNowPlayingInfo()
+            return
+        }
+
         let rustCurrentIndex = SpotifyPlayer.currentIndex
         if rustCurrentIndex != currentIndex {
             currentIndex = rustCurrentIndex
