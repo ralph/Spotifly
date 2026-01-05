@@ -22,8 +22,8 @@ struct FocusedAccessToken: FocusedValueKey {
     typealias Value = String
 }
 
-struct FocusedRecentlyPlayedViewModel: FocusedValueKey {
-    typealias Value = RecentlyPlayedViewModel
+struct FocusedRecentlyPlayedService: FocusedValueKey {
+    typealias Value = RecentlyPlayedService
 }
 
 extension FocusedValues {
@@ -42,9 +42,9 @@ extension FocusedValues {
         set { self[FocusedAccessToken.self] = newValue }
     }
 
-    var recentlyPlayedViewModel: RecentlyPlayedViewModel? {
-        get { self[FocusedRecentlyPlayedViewModel.self] }
-        set { self[FocusedRecentlyPlayedViewModel.self] = newValue }
+    var recentlyPlayedService: RecentlyPlayedService? {
+        get { self[FocusedRecentlyPlayedService.self] }
+        set { self[FocusedRecentlyPlayedService.self] = newValue }
     }
 }
 
@@ -77,7 +77,7 @@ struct SpotiflyCommands: Commands {
     @FocusedValue(\.navigationSelection) var navigationSelection
     @FocusedValue(\.searchFieldFocused) var searchFieldFocused
     @FocusedValue(\.accessToken) var accessToken
-    @FocusedValue(\.recentlyPlayedViewModel) var recentlyPlayedViewModel
+    @FocusedValue(\.recentlyPlayedService) var recentlyPlayedService
 
     private var playbackViewModel: PlaybackViewModel { PlaybackViewModel.shared }
 
@@ -150,9 +150,9 @@ struct SpotiflyCommands: Commands {
             .keyboardShortcut("f", modifiers: .command)
 
             Button("menu.refresh") {
-                guard let token = accessToken, let viewModel = recentlyPlayedViewModel else { return }
+                guard let token = accessToken, let service = recentlyPlayedService else { return }
                 Task {
-                    await viewModel.refresh(accessToken: token)
+                    await service.refresh(accessToken: token)
                 }
             }
             .keyboardShortcut("r", modifiers: .command)

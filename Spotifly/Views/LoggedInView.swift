@@ -28,10 +28,10 @@ struct LoggedInView: View {
     private var artistService: ArtistService { ArtistService(store: store) }
     private var deviceService: DeviceService { DeviceService(store: store) }
     private var queueService: QueueService { QueueService(store: store) }
+    private var recentlyPlayedService: RecentlyPlayedService { RecentlyPlayedService(store: store) }
 
     // Legacy ViewModels (to be migrated)
     @State private var searchViewModel = SearchViewModel()
-    @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
     @State private var navigationCoordinator = NavigationCoordinator()
 
     init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
@@ -146,6 +146,7 @@ struct LoggedInView: View {
         .environment(session)
         .environment(deviceService)
         .environment(queueService)
+        .environment(recentlyPlayedService)
         .environment(navigationCoordinator)
         .environment(store)
         .environment(trackService)
@@ -155,7 +156,7 @@ struct LoggedInView: View {
         .focusedValue(\.navigationSelection, $selectedNavigationItem)
         .focusedValue(\.searchFieldFocused, $searchFieldFocused)
         .focusedValue(\.accessToken, session.accessToken)
-        .focusedValue(\.recentlyPlayedViewModel, recentlyPlayedViewModel)
+        .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
         .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
             handleNavigation()
         }
@@ -258,7 +259,6 @@ struct LoggedInView: View {
                         StartpageView(
                             trackViewModel: trackViewModel,
                             playbackViewModel: playbackViewModel,
-                            recentlyPlayedViewModel: recentlyPlayedViewModel,
                             showingAllRecentTracks: $showingAllRecentTracks,
                         )
                         .navigationTitle("nav.startpage")
@@ -414,7 +414,7 @@ struct LoggedInView: View {
                     // Show all recent tracks detail if selected
                     if showingAllRecentTracks {
                         RecentTracksDetailView(
-                            tracks: recentlyPlayedViewModel.recentTracks,
+                            tracks: recentlyPlayedService.recentTracks,
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
