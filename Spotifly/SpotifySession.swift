@@ -32,18 +32,13 @@ final class SpotifySession {
     private var isRefreshing = false
 
     /// Background task that proactively refreshes the token before expiration
-    /// Marked nonisolated(unsafe) to allow cancellation in deinit
-    private nonisolated(unsafe) var refreshTask: Task<Void, Never>?
+    private var refreshTask: Task<Void, Never>?
 
     init(authResult: SpotifyAuthResult) {
         accessToken = authResult.accessToken
         refreshToken = authResult.refreshToken
         expiresIn = authResult.expiresIn
         scheduleProactiveRefresh()
-    }
-
-    deinit {
-        refreshTask?.cancel()
     }
 
     /// Update the session with new auth result (e.g., after token refresh)
