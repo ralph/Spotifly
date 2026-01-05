@@ -1,26 +1,36 @@
 //
-//  DevicesViewModel.swift
+//  DeviceService.swift
 //  Spotifly
 //
-//  View model for managing Spotify Connect devices
+//  Service for Spotify Connect device operations.
+//  Handles API calls and updates AppStore on success.
 //
 
 import Foundation
 
 @MainActor
 @Observable
-final class DevicesViewModel {
-    var devices: [SpotifyDevice] = []
+final class DeviceService {
+    private let store: AppStore
+
     var isLoading = false
     var errorMessage: String?
 
+    init(store: AppStore) {
+        self.store = store
+    }
+
+    // MARK: - Device Loading
+
+    /// Load available Spotify Connect devices
     func loadDevices(accessToken: String) async {
         isLoading = true
         errorMessage = nil
 
         do {
             let response = try await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken)
-            devices = response.devices
+            let devices = response.devices.map { Device(from: $0) }
+            store.upsertDevices(devices)
         } catch let error as SpotifyAPIError {
             errorMessage = error.localizedDescription
         } catch {
@@ -30,9 +40,16 @@ final class DevicesViewModel {
         isLoading = false
     }
 
-    func transferPlayback(to device: SpotifyDevice, accessToken: String) async {
+    // MARK: - Playback Transfer
+
+    /// Transfer playback to a specific device
+    func transferPlayback(to device: Device, accessToken: String) async {
         do {
-            try await SpotifyAPI.transferPlayback(accessToken: accessToken, deviceId: device.id, play: true)
+            try await SpotifyAPI.transferPlayback(
+                accessToken: accessToken,
+                deviceId: device.id,
+                play: true,
+            )
 
             // Reload devices to update active state
             await loadDevices(accessToken: accessToken)
@@ -43,6 +60,9 @@ final class DevicesViewModel {
         }
     }
 
+    // MARK: - Helpers
+
+    /// Get appropriate icon name for device type
     func deviceIcon(for type: String) -> String {
         switch type.lowercased() {
         case "computer":

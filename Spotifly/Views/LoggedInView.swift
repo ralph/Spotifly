@@ -26,12 +26,12 @@ struct LoggedInView: View {
     private var playlistService: PlaylistService { PlaylistService(store: store) }
     private var albumService: AlbumService { AlbumService(store: store) }
     private var artistService: ArtistService { ArtistService(store: store) }
+    private var deviceService: DeviceService { DeviceService(store: store) }
 
     // Legacy ViewModels (to be migrated)
     @State private var queueViewModel = QueueViewModel()
     @State private var searchViewModel = SearchViewModel()
     @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
-    @State private var devicesViewModel = DevicesViewModel()
     @State private var navigationCoordinator = NavigationCoordinator()
 
     init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
@@ -144,7 +144,7 @@ struct LoggedInView: View {
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .environment(session)
-        .environment(devicesViewModel)
+        .environment(deviceService)
         .environment(navigationCoordinator)
         .environment(store)
         .environment(trackService)
