@@ -10,7 +10,6 @@ import SwiftUI
 struct ArtistDetailView: View {
     let artist: SearchArtist
     @Bindable var playbackViewModel: PlaybackViewModel
-    var onClose: (() -> Void)?
     @Environment(SpotifySession.self) private var session
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(AppStore.self) private var store
@@ -174,19 +173,6 @@ struct ArtistDetailView: View {
         .task(id: artist.id) {
             await loadTopTracks()
             await loadAlbums()
-        }
-        .overlay(alignment: .topTrailing) {
-            if let onClose {
-                Button {
-                    onClose()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .padding(12)
-            }
         }
     }
 
