@@ -111,7 +111,6 @@ struct ArtistDetailView: View {
                                     index: index,
                                     currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                     playbackViewModel: playbackViewModel,
-                                    accessToken: session.accessToken,
                                 )
 
                                 if track.id != displayedTracks.last?.id {
@@ -270,10 +269,11 @@ struct ArtistDetailView: View {
         errorMessage = nil
 
         do {
+            let token = await session.validAccessToken()
             // Load via service (stores tracks in AppStore)
             topTracks = try await artistService.fetchArtistTopTracks(
                 artistId: artist.id,
-                accessToken: session.accessToken,
+                accessToken: token,
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -287,10 +287,11 @@ struct ArtistDetailView: View {
         isLoadingAlbums = true
 
         do {
+            let token = await session.validAccessToken()
             // Load via service (stores albums in AppStore)
             albums = try await artistService.fetchArtistAlbums(
                 artistId: artist.id,
-                accessToken: session.accessToken,
+                accessToken: token,
             )
         } catch {
             // Silently fail for albums - not critical
@@ -301,9 +302,10 @@ struct ArtistDetailView: View {
 
     private func playAllTopTracks() {
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.playTracks(
                 topTracks.map(\.uri),
-                accessToken: session.accessToken,
+                accessToken: token,
             )
         }
     }

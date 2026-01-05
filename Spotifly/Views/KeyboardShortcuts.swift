@@ -75,7 +75,8 @@ private struct PlaybackShortcutsView: View {
             // Cmd+L - Like/Unlike current track
             Button("") {
                 Task {
-                    await playbackViewModel.toggleCurrentTrackFavorite(accessToken: session.accessToken)
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.toggleCurrentTrackFavorite(accessToken: token)
                 }
             }
             .keyboardShortcut("l", modifiers: .command)
@@ -128,7 +129,8 @@ private struct StartpageShortcutsView: View {
             // Cmd+R - Refresh recently played
             Button("") {
                 Task {
-                    await recentlyPlayedService.refresh(accessToken: session.accessToken)
+                    let token = await session.validAccessToken()
+                    await recentlyPlayedService.refresh(accessToken: token)
                 }
             }
             .keyboardShortcut("r", modifiers: .command)

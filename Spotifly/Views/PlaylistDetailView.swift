@@ -317,7 +317,6 @@ struct PlaylistDetailView: View {
                     index: index,
                     currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                     playbackViewModel: playbackViewModel,
-                    accessToken: session.accessToken,
                 )
 
                 if index < tracks.count - 1 {
@@ -378,9 +377,10 @@ struct PlaylistDetailView: View {
     private func deletePlaylist() {
         Task {
             do {
+                let token = await session.validAccessToken()
                 try await playlistService.deletePlaylist(
                     playlistId: playlist.id,
-                    accessToken: session.accessToken,
+                    accessToken: token,
                 )
                 // Navigate away from the deleted playlist
                 navigationCoordinator.clearPlaylistSelection()
@@ -396,11 +396,12 @@ struct PlaylistDetailView: View {
 
         Task {
             do {
+                let token = await session.validAccessToken()
                 try await playlistService.updatePlaylistDetails(
                     playlistId: playlist.id,
                     name: trimmedName,
                     description: editingPlaylistDescription,
-                    accessToken: session.accessToken,
+                    accessToken: token,
                 )
                 playlistName = trimmedName
                 playlistDescription = editingPlaylistDescription
@@ -420,10 +421,11 @@ struct PlaylistDetailView: View {
         errorMessage = nil
 
         do {
+            let token = await session.validAccessToken()
             // Load tracks via service (updates store)
             _ = try await playlistService.getPlaylistTracks(
                 playlistId: playlist.id,
-                accessToken: session.accessToken,
+                accessToken: token,
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -434,9 +436,10 @@ struct PlaylistDetailView: View {
 
     private func playAllTracks() {
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: session.accessToken,
+                accessToken: token,
             )
         }
     }
@@ -461,12 +464,13 @@ struct PlaylistDetailView: View {
             isSaving = true
 
             do {
+                let token = await session.validAccessToken()
                 // Replace all tracks with the new order
                 let newTrackUris = editedTrackIds.map { "spotify:track:\($0)" }
                 try await playlistService.replacePlaylistTracks(
                     playlistId: playlist.id,
                     trackUris: newTrackUris,
-                    accessToken: session.accessToken,
+                    accessToken: token,
                 )
 
                 // Exit edit mode

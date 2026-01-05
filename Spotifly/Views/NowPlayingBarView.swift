@@ -68,7 +68,8 @@ struct NowPlayingBarView: View {
             }
             .task(id: playbackViewModel.currentTrackId) {
                 // Check favorite status when track changes
-                await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: session.accessToken)
+                let token = await session.validAccessToken()
+                await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: token)
             }
         }
     }
@@ -299,7 +300,8 @@ struct NowPlayingBarView: View {
     private var favoriteButton: some View {
         Button {
             Task {
-                await playbackViewModel.toggleCurrentTrackFavorite(accessToken: session.accessToken)
+                let token = await session.validAccessToken()
+                await playbackViewModel.toggleCurrentTrackFavorite(accessToken: token)
             }
         } label: {
             Image(systemName: playbackViewModel.isCurrentTrackFavorited ? "heart.fill" : "heart")

@@ -13,7 +13,7 @@ import SwiftUI
 @MainActor
 @Observable
 final class SpotifySession {
-    /// The current access token - kept fresh by background refresh task
+    /// The current access token
     private(set) var accessToken: String
 
     /// The refresh token (if available)
@@ -21,6 +21,9 @@ final class SpotifySession {
 
     /// Token expiration time in seconds (from when token was obtained)
     private(set) var expiresIn: UInt64
+
+    /// When the current token was obtained
+    private var tokenObtainedAt: Date
 
     /// The current user's Spotify ID (loaded lazily)
     private(set) var userId: String?
@@ -31,14 +34,14 @@ final class SpotifySession {
     /// Whether a token refresh is currently in progress
     private var isRefreshing = false
 
-    /// Background task that proactively refreshes the token before expiration
-    private var refreshTask: Task<Void, Never>?
+    /// Continuation for callers waiting on a refresh in progress
+    private var refreshWaiters: [CheckedContinuation<String, Never>] = []
 
     init(authResult: SpotifyAuthResult) {
         accessToken = authResult.accessToken
         refreshToken = authResult.refreshToken
         expiresIn = authResult.expiresIn
-        scheduleProactiveRefresh()
+        tokenObtainedAt = Date()
     }
 
     /// Update the session with new auth result (e.g., after token refresh)
@@ -46,49 +49,43 @@ final class SpotifySession {
         accessToken = authResult.accessToken
         refreshToken = authResult.refreshToken
         expiresIn = authResult.expiresIn
+        tokenObtainedAt = Date()
     }
 
-    /// Schedules a background task to refresh the token before it expires
-    private func scheduleProactiveRefresh() {
-        refreshTask?.cancel()
+    /// Returns a valid access token, refreshing if necessary.
+    /// This is sleep-proof: validation happens at access time, not on a scheduled timer.
+    func validAccessToken() async -> String {
+        let expirationDate = tokenObtainedAt.addingTimeInterval(TimeInterval(expiresIn))
+        let bufferDate = Date().addingTimeInterval(300) // 5 min buffer
 
-        guard let refreshToken, expiresIn > 0 else { return }
-
-        // Refresh 5 minutes before expiration (or halfway if token lifetime < 10 min)
-        let refreshBuffer: TimeInterval = min(300, TimeInterval(expiresIn) / 2)
-        let refreshDelay = TimeInterval(expiresIn) - refreshBuffer
-
-        guard refreshDelay > 0 else {
-            // Token already expired or about to - refresh immediately
-            Task {
-                await performRefresh(refreshToken: refreshToken)
-            }
-            return
+        if bufferDate < expirationDate {
+            // Token still valid for 5+ minutes
+            return accessToken
         }
 
-        refreshTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(refreshDelay))
-                guard !Task.isCancelled else { return }
-                await self?.performRefresh(refreshToken: refreshToken)
-            } catch {
-                // Task was cancelled
+        // Token expired or expiring soon - need to refresh
+        guard let refreshToken else {
+            // No refresh token available, return current token and hope for the best
+            #if DEBUG
+                print("[SpotifySession] Token expiring but no refresh token available")
+            #endif
+            return accessToken
+        }
+
+        // If already refreshing, wait for that to complete
+        if isRefreshing {
+            return await withCheckedContinuation { continuation in
+                refreshWaiters.append(continuation)
             }
         }
 
-        #if DEBUG
-            let refreshTime = Date().addingTimeInterval(refreshDelay)
-            let formatter = DateFormatter()
-            formatter.timeStyle = .medium
-            print("[SpotifySession] Token refresh scheduled for \(formatter.string(from: refreshTime))")
-        #endif
+        // Perform the refresh
+        return await performRefreshAndReturn(refreshToken: refreshToken)
     }
 
-    /// Performs the token refresh and schedules the next one
-    private func performRefresh(refreshToken: String) async {
-        guard !isRefreshing else { return }
+    /// Performs the token refresh and returns the new token
+    private func performRefreshAndReturn(refreshToken: String) async -> String {
         isRefreshing = true
-        defer { isRefreshing = false }
 
         do {
             let newResult = try await SpotifyAuth.refreshAccessToken(refreshToken: refreshToken)
@@ -97,17 +94,30 @@ final class SpotifySession {
             #if DEBUG
                 print("[SpotifySession] Token refreshed successfully")
             #endif
-            scheduleProactiveRefresh()
+
+            // Resume all waiters with new token
+            let token = accessToken
+            for waiter in refreshWaiters {
+                waiter.resume(returning: token)
+            }
+            refreshWaiters.removeAll()
+            isRefreshing = false
+
+            return token
         } catch {
             #if DEBUG
-                print("[SpotifySession] Token refresh failed: \(error), retrying in 1 minute")
+                print("[SpotifySession] Token refresh failed: \(error)")
             #endif
-            // Retry in 1 minute
-            refreshTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(60))
-                guard !Task.isCancelled else { return }
-                await self?.performRefresh(refreshToken: refreshToken)
+
+            // Resume waiters with current token (may be expired)
+            let token = accessToken
+            for waiter in refreshWaiters {
+                waiter.resume(returning: token)
             }
+            refreshWaiters.removeAll()
+            isRefreshing = false
+
+            return token
         }
     }
 
@@ -116,7 +126,8 @@ final class SpotifySession {
         guard userId == nil, !isLoadingUserId else { return }
         isLoadingUserId = true
         do {
-            userId = try await SpotifyAPI.getCurrentUserId(accessToken: accessToken)
+            let token = await validAccessToken()
+            userId = try await SpotifyAPI.getCurrentUserId(accessToken: token)
         } catch {
             // Silently fail - userId will remain nil
         }

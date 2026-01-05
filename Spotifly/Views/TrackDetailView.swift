@@ -72,9 +72,10 @@ struct TrackDetailView: View {
             // Play button
             Button {
                 Task {
+                    let token = await session.validAccessToken()
                     await playbackViewModel.play(
                         uriOrUrl: track.uri,
-                        accessToken: session.accessToken,
+                        accessToken: token,
                     )
                 }
             } label: {

@@ -170,7 +170,6 @@ struct AlbumDetailView: View {
                                 showTrackNumber: true,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: session.accessToken,
                             )
 
                             if index < tracks.count - 1 {
@@ -195,10 +194,11 @@ struct AlbumDetailView: View {
         errorMessage = nil
 
         do {
+            let token = await session.validAccessToken()
             // Load tracks via service (stores them in AppStore)
             _ = try await albumService.getAlbumTracks(
                 albumId: album.id,
-                accessToken: session.accessToken,
+                accessToken: token,
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -209,19 +209,21 @@ struct AlbumDetailView: View {
 
     private func playAllTracks() {
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: session.accessToken,
+                accessToken: token,
             )
         }
     }
 
     private func playNext() {
         Task {
+            let token = await session.validAccessToken()
             for track in tracks.reversed() {
                 await playbackViewModel.playNext(
                     trackUri: track.uri,
-                    accessToken: session.accessToken,
+                    accessToken: token,
                 )
             }
         }
@@ -229,10 +231,11 @@ struct AlbumDetailView: View {
 
     private func addToQueue() {
         Task {
+            let token = await session.validAccessToken()
             for track in tracks {
                 await playbackViewModel.addToQueue(
                     trackUri: track.uri,
-                    accessToken: session.accessToken,
+                    accessToken: token,
                 )
             }
         }
