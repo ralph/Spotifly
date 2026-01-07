@@ -5,7 +5,6 @@
 //  Shows details for an album with track list, using normalized store
 //
 
-import AppKit
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
@@ -253,8 +252,12 @@ struct AlbumDetailView: View {
     private func copyToClipboard() {
         guard let externalUrl = album.externalUrl else { return }
 
+        #if os(macOS)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(externalUrl, forType: .string)
+        #else
+        UIPasteboard.general.string = externalUrl
+        #endif
     }
 }

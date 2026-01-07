@@ -108,25 +108,20 @@ struct FullScreenPlayerView: View {
                 // Progress bar and time
                 VStack(spacing: 8) {
                     Slider(
-                        value: Binding(
+                        value: Binding<Double>(
                             get: { Double(playbackViewModel.currentPositionMs) },
                             set: { newValue in
-                                let positionMs = UInt32(newValue)
+                                let positionMs = UInt32(max(0, newValue))
                                 do {
                                     try SpotifyPlayer.seek(positionMs: positionMs)
                                     playbackViewModel.currentPositionMs = positionMs
-
-                                    if playbackViewModel.isPlaying {
-                                        playbackViewModel.playbackStartTime = Date().addingTimeInterval(-Double(positionMs) / 1000.0)
-                                    }
-
                                     playbackViewModel.updateNowPlayingInfo()
                                 } catch {
                                     playbackViewModel.errorMessage = error.localizedDescription
                                 }
                             }
                         ),
-                        in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1))
+                        in: Double(0)...Double(max(playbackViewModel.trackDurationMs, 1))
                     )
                     .tint(.green)
 
@@ -163,15 +158,9 @@ struct FullScreenPlayerView: View {
                         if playbackViewModel.isPlaying {
                             SpotifyPlayer.pause()
                             playbackViewModel.isPlaying = false
-                            playbackViewModel.playbackStartTime = nil
                         } else {
                             SpotifyPlayer.resume()
                             playbackViewModel.isPlaying = true
-                            if playbackViewModel.currentPositionMs > 0 {
-                                playbackViewModel.playbackStartTime = Date().addingTimeInterval(-Double(playbackViewModel.currentPositionMs) / 1000.0)
-                            } else {
-                                playbackViewModel.playbackStartTime = Date()
-                            }
                         }
                         playbackViewModel.updateNowPlayingInfo()
                     } label: {

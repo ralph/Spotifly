@@ -64,11 +64,11 @@ struct SpotiflyApp: App {
     }
 
     var body: some Scene {
+        #if os(macOS)
         WindowGroup {
             ContentView()
                 .environmentObject(windowState)
         }
-        #if os(macOS)
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
         .commands {
             SpotiflyCommands()
@@ -76,6 +76,11 @@ struct SpotiflyApp: App {
 
         Settings {
             PreferencesView()
+        }
+        #else
+        WindowGroup {
+            ContentView()
+                .environmentObject(windowState)
         }
         #endif
     }

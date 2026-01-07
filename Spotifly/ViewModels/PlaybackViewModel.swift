@@ -631,7 +631,6 @@ final class PlaybackViewModel {
                 if self.isPlaying {
                     SpotifyPlayer.pause()
                     self.isPlaying = false
-                    self.playbackStartTime = nil
                     self.updateNowPlayingInfo()
                 }
             }
@@ -672,7 +671,6 @@ final class PlaybackViewModel {
                     if self.isPlaying {
                         SpotifyPlayer.pause()
                         self.isPlaying = false
-                        self.playbackStartTime = nil
                         self.updateNowPlayingInfo()
                     }
                 }

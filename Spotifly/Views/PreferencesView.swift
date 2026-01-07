@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+#if os(macOS)
 struct PreferencesView: View {
     var body: some View {
         TabView {
@@ -118,3 +119,4 @@ struct InfoView: View {
         .padding(.bottom, 24)
     }
 }
+#endif
