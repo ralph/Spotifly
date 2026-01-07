@@ -28,8 +28,8 @@ enum SpotifyConfigError: Error, LocalizedError {
 }
 
 enum SpotifyConfig: Sendable {
-    /// Your Spotify App Client ID (from Info.plist or SPOTIFY_CLIENT_ID environment variable)
-    nonisolated static let clientId: String = {
+    /// Built-in Spotify App Client ID (from Info.plist or SPOTIFY_CLIENT_ID environment variable)
+    private nonisolated static let builtInClientId: String = {
         // First try to read from Info.plist (for release builds)
         if let infoPlistValue = Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String,
            !infoPlistValue.isEmpty
@@ -44,6 +44,14 @@ enum SpotifyConfig: Sendable {
 
         fatalError("Missing Spotify Client ID. Add SpotifyClientID to Info.plist or set SPOTIFY_CLIENT_ID environment variable.")
     }()
+
+    /// Returns the active Client ID: custom from keychain if available, otherwise built-in
+    nonisolated static func getClientId() -> String {
+        if let customClientId = KeychainManager.loadCustomClientId(), !customClientId.isEmpty {
+            return customClientId
+        }
+        return builtInClientId
+    }
 
     /// Redirect URI for OAuth callback
     nonisolated static let redirectUri = "de.rvdh.spotifly://callback"

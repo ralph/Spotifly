@@ -167,7 +167,7 @@ enum SpotifyAuth {
         // Build the authorization URL
         var components = URLComponents(string: "https://accounts.spotify.com/authorize")!
         components.queryItems = [
-            URLQueryItem(name: "client_id", value: SpotifyConfig.clientId),
+            URLQueryItem(name: "client_id", value: SpotifyConfig.getClientId()),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "redirect_uri", value: SpotifyConfig.redirectUri),
             URLQueryItem(name: "scope", value: SpotifyConfig.scopes.joined(separator: " ")),
@@ -230,7 +230,7 @@ enum SpotifyAuth {
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": SpotifyConfig.redirectUri,
-            "client_id": SpotifyConfig.clientId,
+            "client_id": SpotifyConfig.getClientId(),
             "code_verifier": codeVerifier,
         ])
 
@@ -259,7 +259,7 @@ enum SpotifyAuth {
         request.httpBody = formURLEncode([
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
-            "client_id": SpotifyConfig.clientId,
+            "client_id": SpotifyConfig.getClientId(),
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)

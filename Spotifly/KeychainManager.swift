@@ -110,6 +110,59 @@ enum KeychainManager {
         loadAuthResult() != nil
     }
 
+    // MARK: - Custom Client ID
+
+    /// Saves a custom Spotify Client ID to the keychain
+    nonisolated static func saveCustomClientId(_ clientId: String) throws {
+        // Delete any existing item first
+        clearCustomClientId()
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.spotifly.config",
+            kSecAttrAccount as String: "spotify_custom_client_id",
+            kSecValueData as String: clientId.data(using: .utf8)!,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw KeychainError.saveFailed(status)
+        }
+    }
+
+    /// Loads the custom Spotify Client ID from the keychain, returns nil if not found
+    nonisolated static func loadCustomClientId() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.spotifly.config",
+            kSecAttrAccount as String: "spotify_custom_client_id",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let clientId = String(data: data, encoding: .utf8)
+        else {
+            return nil
+        }
+        return clientId
+    }
+
+    /// Clears the custom Client ID from the keychain
+    nonisolated static func clearCustomClientId() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.spotifly.config",
+            kSecAttrAccount as String: "spotify_custom_client_id",
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
     // MARK: - Private Keychain Operations
 
     private static func save(key: String, data: Data) throws {

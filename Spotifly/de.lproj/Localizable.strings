@@ -7,6 +7,8 @@
 "auth.authenticating" = "Authentifiziere...";
 "auth.loading" = "Lädt...";
 "auth.logout" = "Abmelden";
+"auth.use_custom_client_id" = "Eigene client id verwenden";
+"auth.client_id_placeholder" = "Client id eingeben";
 
 /* Navigation */
 "nav.startpage" = "Startseite";

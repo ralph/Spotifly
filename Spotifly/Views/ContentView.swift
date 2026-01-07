@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var viewModel = AuthViewModel()
+    @State private var useCustomClientId: Bool = KeychainManager.loadCustomClientId() != nil
+    @State private var customClientId: String = KeychainManager.loadCustomClientId() ?? ""
 
     var body: some View {
         Group {
@@ -40,7 +42,28 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("auth.use_custom_client_id", isOn: $useCustomClientId)
+                    .toggleStyle(.checkbox)
+                    .onChange(of: useCustomClientId) { _, newValue in
+                        if !newValue {
+                            customClientId = ""
+                            KeychainManager.clearCustomClientId()
+                        }
+                    }
+
+                if useCustomClientId {
+                    TextField("auth.client_id_placeholder", text: $customClientId)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 280)
+                }
+            }
+            .frame(width: 280, alignment: .leading)
+
             Button {
+                if useCustomClientId, !customClientId.isEmpty {
+                    try? KeychainManager.saveCustomClientId(customClientId)
+                }
                 viewModel.startOAuth()
             } label: {
                 HStack {
@@ -55,7 +78,7 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
-            .disabled(viewModel.isAuthenticating)
+            .disabled(viewModel.isAuthenticating || (useCustomClientId && customClientId.isEmpty))
 
             if let error = viewModel.errorMessage {
                 Text(error)
