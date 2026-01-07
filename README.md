@@ -133,4 +133,4 @@ The following settings are configured in the Xcode project:
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
