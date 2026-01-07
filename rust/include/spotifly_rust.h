@@ -15,14 +15,10 @@ void spotifly_free_string(char* s);
 // Playback functions
 // ============================================================================
 
-/// Initializes the player with the given access token and device information.
+/// Initializes the player with the given access token.
 /// Must be called before play/pause operations.
 /// Returns 0 on success, -1 on error.
-///
-/// @param access_token OAuth access token
-/// @param device_name Device name (e.g., "iPhone 15 Pro" or "MacBook Pro")
-/// @param device_type Device type (0 = Computer/macOS, 1 = Smartphone/iOS)
-int32_t spotifly_init_player(const char* access_token, const char* device_name, int32_t device_type);
+int32_t spotifly_init_player(const char* access_token);
 
 /// Plays multiple tracks in sequence.
 /// Returns 0 on success, -1 on error.

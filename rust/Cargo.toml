@@ -19,3 +19,15 @@ serde_json = "1.0"
 [profile.release]
 opt-level = 3
 lto = true
+
+# Use local patched librespot that spoofs iOS as macOS
+# Spotify rejects iPhone platform identifiers, so we report as macOS x86_64
+# See: https://github.com/librespot-org/librespot/issues/1399
+[patch.crates-io]
+librespot-core = { path = "../../librespot/core" }
+librespot-metadata = { path = "../../librespot/metadata" }
+librespot-playback = { path = "../../librespot/playback" }
+librespot-audio = { path = "../../librespot/audio" }
+librespot-oauth = { path = "../../librespot/oauth" }
+librespot-protocol = { path = "../../librespot/protocol" }
+librespot-discovery = { path = "../../librespot/discovery" }

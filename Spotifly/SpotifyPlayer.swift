@@ -61,26 +61,12 @@ enum SpotifyPlayer {
         // Sync playback settings from UserDefaults before initializing
         syncSettingsFromUserDefaults()
 
-        // Get device name and type based on platform
-        let deviceName: String
-        let deviceType: Int32
-
-        #if os(iOS)
-        deviceName = await MainActor.run {
-            UIDevice.current.name // e.g., "Ralph's iPhone"
-        }
-        deviceType = 1 // Smartphone
-        #else
-        // macOS
-        deviceName = Host.current().localizedName ?? "Mac"
-        deviceType = 0 // Computer
-        #endif
+        // Note: iOS spoofing as macOS happens at the librespot level
+        // See patches in librespot/core/src/connection/handshake.rs and mod.rs
 
         let result = await Task.detached {
             accessToken.withCString { tokenPtr in
-                deviceName.withCString { namePtr in
-                    spotifly_init_player(tokenPtr, namePtr, deviceType)
-                }
+                spotifly_init_player(tokenPtr)
             }
         }.value
 

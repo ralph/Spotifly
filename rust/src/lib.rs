@@ -120,23 +120,22 @@ fn get_album_art_url(track: &Track) -> String {
     // Try to get largest album cover from track metadata
     track.album.covers.iter()
         .max_by_key(|img| img.width * img.height)
-        .and_then(|img| {
-            img.id.to_base16().ok().map(|file_id_hex| {
-                format!("https://i.scdn.co/image/{}", file_id_hex)
-            })
+        .map(|img| {
+            let file_id_hex = img.id.to_base16();
+            format!("https://i.scdn.co/image/{}", file_id_hex)
         })
         .unwrap_or_default()
 }
 
 // Helper function to extract album ID from track
 fn get_album_id(track: &Track) -> Option<String> {
-    Some(track.album.id.to_id().ok()?)
+    Some(track.album.id.to_id())
 }
 
 // Helper function to extract first artist ID from track
 fn get_artist_id(track: &Track) -> Option<String> {
     track.artists.first()
-        .and_then(|a| a.id.to_id().ok())
+        .map(|a| a.id.to_id())
 }
 
 // Helper function to build external URL from track URI
@@ -282,27 +281,13 @@ pub extern "C" fn spotifly_free_string(s: *mut c_char) {
     }
 }
 
-/// Initializes the player with the given access token and device information.
+/// Initializes the player with the given access token.
 /// Must be called before play/pause operations.
 /// Returns 0 on success, -1 on error.
-///
-/// # Parameters
-/// - access_token: OAuth access token
-/// - device_name: Device name (e.g., "iPhone 15 Pro")
-/// - device_type: Device type (0 = Computer/macOS, 1 = Smartphone/iOS)
 #[no_mangle]
-pub extern "C" fn spotifly_init_player(
-    access_token: *const c_char,
-    device_name: *const c_char,
-    device_type: i32,
-) -> i32 {
+pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
     if access_token.is_null() {
         eprintln!("Player init error: access_token is null");
-        return -1;
-    }
-
-    if device_name.is_null() {
-        eprintln!("Player init error: device_name is null");
         return -1;
     }
 
@@ -311,16 +296,6 @@ pub extern "C" fn spotifly_init_player(
             Ok(s) => s.to_string(),
             Err(_) => {
                 eprintln!("Player init error: invalid access_token string");
-                return -1;
-            }
-        }
-    };
-
-    let device_name_str = unsafe {
-        match CStr::from_ptr(device_name).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                eprintln!("Player init error: invalid device_name string");
                 return -1;
             }
         }
@@ -336,7 +311,7 @@ pub extern "C" fn spotifly_init_player(
     }
 
     let result = RUNTIME.block_on(async {
-        init_player_async(&token_str, &device_name_str, device_type).await
+        init_player_async(&token_str).await
     });
 
     match result {
@@ -348,13 +323,9 @@ pub extern "C" fn spotifly_init_player(
     }
 }
 
-async fn init_player_async(access_token: &str, device_name: &str, device_type: i32) -> Result<(), String> {
-    // Create device ID with platform identifier
-    let platform_prefix = if device_type == 1 { "ios" } else { "macos" };
-    let device_id = format!("spotifly_{}_{}", platform_prefix, std::process::id());
-
+async fn init_player_async(access_token: &str) -> Result<(), String> {
     let session_config = SessionConfig {
-        device_id,
+        device_id: format!("spotifly_{}", std::process::id()),
         ..Default::default()
     };
 
