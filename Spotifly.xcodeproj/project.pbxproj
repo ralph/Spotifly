@@ -27,7 +27,6 @@
 		CAA7B2582F04363800E959B5 /* Spotifly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spotifly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CAA7B2652F04363900E959B5 /* SpotiflyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotiflyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CAA7B26F2F04363900E959B5 /* SpotiflyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpotiflyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		CADAA6112F0812A200993A9D /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -89,7 +88,6 @@
 		CAA7B24F2F04363800E959B5 = {
 			isa = PBXGroup;
 			children = (
-				CADAA6112F0812A200993A9D /* Secrets.xcconfig */,
 				CAA7B25A2F04363800E959B5 /* Spotifly */,
 				CAA7B2682F04363900E959B5 /* SpotiflyTests */,
 				CAA7B2722F04363900E959B5 /* SpotiflyUITests */,
@@ -316,7 +314,6 @@
 /* Begin XCBuildConfiguration section */
 		CAA7B2772F04363900E959B5 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = CADAA6112F0812A200993A9D /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -381,7 +378,6 @@
 		};
 		CAA7B2782F04363900E959B5 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = CADAA6112F0812A200993A9D /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;

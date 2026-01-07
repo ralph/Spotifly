@@ -5,7 +5,7 @@
 //  Configuration for Spotify API credentials
 //
 //  Users must provide their own Spotify Client ID.
-//  See: https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#using-your-own-client-id
+//  See: https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#setting-up-your-client-id
 //
 
 import Foundation

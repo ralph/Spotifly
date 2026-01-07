@@ -127,7 +127,7 @@ The following settings are configured in the Xcode project:
 
 ## Spotify Client ID
 
-This app requires your own Spotify Client ID to function. See the [setup instructions](https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#using-your-own-client-id) for details on creating a Spotify app.
+This app requires your own Spotify Client ID to function. See the [setup instructions](https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#setting-up-your-client-id) for details on creating a Spotify app.
 
 **Note:** While it's recommended to create a new Spotify app just for Spotifly, you can also use an existing Spotify app. Just add `de.rvdh.spotifly://callback` to its Redirect URIs (you can have multiple redirect URIs).
 

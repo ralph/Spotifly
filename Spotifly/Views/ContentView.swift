@@ -49,7 +49,7 @@ struct ContentView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 280)
 
-                Link(destination: URL(string: "https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#using-your-own-client-id")!) {
+                Link(destination: URL(string: "https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#setting-up-your-client-id")!) {
                     Text("auth.client_id_help_link")
                         .font(.caption)
                 }
