@@ -7,8 +7,10 @@
 "auth.authenticating" = "Authenticating...";
 "auth.loading" = "Loading...";
 "auth.logout" = "Logout";
-"auth.use_custom_client_id" = "Use my own client id";
-"auth.client_id_placeholder" = "Enter your client id";
+"auth.client_id_label" = "Spotify Client ID";
+"auth.client_id_placeholder" = "Enter your Client ID";
+"auth.client_id_help_link" = "How do I get a Client ID?";
+"auth.client_id_existing_app_note" = "You can use an existing Spotify app if you add the redirect URI de.rvdh.spotifly://callback";
 
 /* Navigation */
 "nav.startpage" = "Startpage";

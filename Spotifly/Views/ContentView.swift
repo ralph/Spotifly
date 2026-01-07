@@ -9,8 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var viewModel = AuthViewModel()
-    @State private var useCustomClientId: Bool = KeychainManager.loadCustomClientId() != nil
-    @State private var customClientId: String = KeychainManager.loadCustomClientId() ?? ""
+    @State private var clientId: String = KeychainManager.loadCustomClientId() ?? ""
 
     var body: some View {
         Group {
@@ -43,26 +42,28 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
 
             VStack(alignment: .leading, spacing: 8) {
-                Toggle("auth.use_custom_client_id", isOn: $useCustomClientId)
-                    .toggleStyle(.checkbox)
-                    .onChange(of: useCustomClientId) { _, newValue in
-                        if !newValue {
-                            customClientId = ""
-                            KeychainManager.clearCustomClientId()
-                        }
-                    }
+                Text("auth.client_id_label")
+                    .font(.headline)
 
-                if useCustomClientId {
-                    TextField("auth.client_id_placeholder", text: $customClientId)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 280)
+                TextField("auth.client_id_placeholder", text: $clientId)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 280)
+
+                Link(destination: URL(string: "https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#using-your-own-client-id")!) {
+                    Text("auth.client_id_help_link")
+                        .font(.caption)
                 }
+
+                Text("auth.client_id_existing_app_note")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 280, alignment: .leading)
             }
             .frame(width: 280, alignment: .leading)
 
             Button {
-                if useCustomClientId, !customClientId.isEmpty {
-                    try? KeychainManager.saveCustomClientId(customClientId)
+                if !clientId.isEmpty {
+                    try? KeychainManager.saveCustomClientId(clientId)
                 }
                 viewModel.startOAuth()
             } label: {
@@ -78,7 +79,7 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
-            .disabled(viewModel.isAuthenticating || (useCustomClientId && customClientId.isEmpty))
+            .disabled(viewModel.isAuthenticating || clientId.isEmpty)
 
             if let error = viewModel.errorMessage {
                 Text(error)

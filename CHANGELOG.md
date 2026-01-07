@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Client ID is now mandatory: removed optional toggle, users must provide their own Spotify Client ID
+- Added link to setup instructions on login screen
+- Added note about using existing Spotify apps with the required redirect URI
+
 ## [1.1.5] - 2026-01-07
 
 ### Added

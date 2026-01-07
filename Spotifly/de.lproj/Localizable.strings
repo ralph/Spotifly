@@ -7,8 +7,10 @@
 "auth.authenticating" = "Authentifiziere...";
 "auth.loading" = "Lädt...";
 "auth.logout" = "Abmelden";
-"auth.use_custom_client_id" = "Eigene client id verwenden";
-"auth.client_id_placeholder" = "Client id eingeben";
+"auth.client_id_label" = "Spotify Client ID";
+"auth.client_id_placeholder" = "Client ID eingeben";
+"auth.client_id_help_link" = "Wie bekomme ich eine Client ID?";
+"auth.client_id_existing_app_note" = "Du kannst eine vorhandene Spotify-App verwenden, wenn du die Redirect-URI de.rvdh.spotifly://callback hinzufügst";
 
 /* Navigation */
 "nav.startpage" = "Startseite";

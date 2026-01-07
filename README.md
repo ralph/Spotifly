@@ -125,11 +125,16 @@ The following settings are configured in the Xcode project:
   - `-framework Security`
   - `-framework CoreFoundation`
 
+## Spotify Client ID
+
+This app requires your own Spotify Client ID to function. See the [setup instructions](https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#using-your-own-client-id) for details on creating a Spotify app.
+
+**Note:** While it's recommended to create a new Spotify app just for Spotifly, you can also use an existing Spotify app. Just add `de.rvdh.spotifly://callback` to its Redirect URIs (you can have multiple redirect URIs).
+
 ## Notes
 
 - The app sandbox is enabled, but you may need to disable it or add network entitlements for the OAuth flow to work properly
 - Currently builds for macOS only; iOS would require cross-compilation of the Rust library
-- Uses Spotify's official client ID from librespot
 
 ## License
 
