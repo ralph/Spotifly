@@ -19,6 +19,9 @@ struct QueueItem: Sendable, Identifiable {
     let artistName: String
     let albumArtURL: String
     let durationMs: UInt32
+    let albumId: String?
+    let artistId: String?
+    let externalUrl: String?
 
     var durationFormatted: String {
         let totalSeconds = Int(durationMs / 1000)
@@ -55,6 +58,9 @@ enum SpotifyPlayer {
     /// Must be called before any playback operations.
     @SpotifyAuthActor
     static func initialize(accessToken: String) async throws {
+        // Sync playback settings from UserDefaults before initializing
+        syncSettingsFromUserDefaults()
+
         // Get device name and type based on platform
         let deviceName: String
         let deviceType: Int32
@@ -81,6 +87,16 @@ enum SpotifyPlayer {
         guard result == 0 else {
             throw SpotifyPlayerError.initializationFailed
         }
+    }
+
+    /// Syncs playback settings from UserDefaults to the Rust player
+    private nonisolated static func syncSettingsFromUserDefaults() {
+        let bitrateRawValue = UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1
+        let gaplessEnabled = UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
+
+        // Call FFI directly to avoid actor isolation issues
+        spotifly_set_bitrate(UInt8(min(max(bitrateRawValue, 0), 2)))
+        spotifly_set_gapless(gaplessEnabled)
     }
 
     /// Plays content by its Spotify URI or URL.
@@ -150,6 +166,12 @@ enum SpotifyPlayer {
     /// Returns whether the player is currently playing.
     static var isPlaying: Bool {
         spotifly_is_playing() == 1
+    }
+
+    /// Returns the current playback position in milliseconds.
+    /// This is the actual position from the player, not an estimate.
+    static var positionMs: UInt32 {
+        spotifly_get_position_ms()
     }
 
     /// Skips to the next track in the queue.
@@ -235,11 +257,6 @@ enum SpotifyPlayer {
         spotifly_get_queue_duration_ms(index)
     }
 
-    /// Cleans up player resources.
-    static func cleanup() {
-        spotifly_cleanup_player()
-    }
-
     /// Fetches all queue items.
     static func getAllQueueItems() throws -> [QueueItem] {
         guard let cStr = spotifly_get_all_queue_items() else {
@@ -267,6 +284,11 @@ enum SpotifyPlayer {
                 return nil
             }
 
+            // Optional fields for navigation
+            let albumId = item["album_id"] as? String
+            let artistId = item["artist_id"] as? String
+            let externalUrl = item["external_url"] as? String
+
             return QueueItem(
                 id: uri,
                 uri: uri,
@@ -274,7 +296,38 @@ enum SpotifyPlayer {
                 artistName: artistName,
                 albumArtURL: albumArtURL,
                 durationMs: durationMs,
+                albumId: albumId,
+                artistId: artistId,
+                externalUrl: externalUrl,
             )
+        }
+    }
+
+    /// Adds a track to the end of the current queue without clearing it.
+    @SpotifyAuthActor
+    static func addToQueue(trackUri: String) async throws {
+        let result = await Task.detached {
+            trackUri.withCString { ptr in
+                spotifly_add_to_queue(ptr)
+            }
+        }.value
+
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
+    /// Adds a track to play next (after the currently playing track).
+    @SpotifyAuthActor
+    static func addNextToQueue(trackUri: String) async throws {
+        let result = await Task.detached {
+            trackUri.withCString { ptr in
+                spotifly_add_next_to_queue(ptr)
+            }
+        }.value
+
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
         }
     }
 
@@ -284,9 +337,69 @@ enum SpotifyPlayer {
         spotifly_set_volume(volumeU16)
     }
 
-    /// Gets the current playback volume (0.0 - 1.0).
-    static func getVolume() -> Double {
-        let volumeU16 = spotifly_get_volume()
-        return Double(volumeU16) / 65535.0
+    /// Gets radio track URIs for a seed track using librespot's internal API.
+    /// - Parameter trackUri: The Spotify track URI to use as seed
+    /// - Returns: Array of track URIs for the radio playlist
+    static func getRadioTracks(trackUri: String) throws -> [String] {
+        let cStr: UnsafeMutablePointer<CChar>? = trackUri.withCString { ptr in
+            spotifly_get_radio_tracks(ptr)
+        }
+
+        guard let cStr else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+        defer { spotifly_free_string(cStr) }
+
+        let jsonString = String(cString: cStr)
+        guard let jsonData = jsonString.data(using: .utf8),
+              let trackUris = try? JSONDecoder().decode([String].self, from: jsonData)
+        else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+
+        return trackUris
+    }
+
+    // MARK: - Playback Settings
+
+    /// Streaming bitrate options
+    enum Bitrate: UInt8, CaseIterable, Identifiable {
+        case low = 0 // 96 kbps
+        case normal = 1 // 160 kbps (default)
+        case high = 2 // 320 kbps
+
+        var id: UInt8 { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .low: "Low (96 kbps)"
+            case .normal: "Normal (160 kbps)"
+            case .high: "High (320 kbps)"
+            }
+        }
+
+        var isDefault: Bool {
+            self == .normal
+        }
+    }
+
+    /// Sets the streaming bitrate. Takes effect on next player initialization.
+    static func setBitrate(_ bitrate: Bitrate) {
+        spotifly_set_bitrate(bitrate.rawValue)
+    }
+
+    /// Gets the current bitrate setting.
+    static var bitrate: Bitrate {
+        Bitrate(rawValue: spotifly_get_bitrate()) ?? .normal
+    }
+
+    /// Sets gapless playback. Takes effect on next player initialization.
+    static func setGapless(_ enabled: Bool) {
+        spotifly_set_gapless(enabled)
+    }
+
+    /// Gets the current gapless playback setting.
+    static var gapless: Bool {
+        spotifly_get_gapless()
     }
 }

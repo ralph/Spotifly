@@ -4,15 +4,16 @@ use librespot_core::cache::Cache;
 use librespot_core::SpotifyUri;
 use librespot_metadata::{Album, Artist, Metadata, Playlist, Track};
 use librespot_playback::audio_backend;
-use librespot_playback::config::{AudioFormat, PlayerConfig};
+use librespot_playback::config::{AudioFormat, Bitrate, PlayerConfig};
 use librespot_playback::mixer::softmixer::SoftMixer;
 use librespot_playback::mixer::{Mixer, MixerConfig};
 use librespot_playback::player::{Player, PlayerEvent};
 use once_cell::sync::Lazy;
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
@@ -35,6 +36,30 @@ static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::n
 static QUEUE: Lazy<Mutex<Vec<QueueItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static CURRENT_INDEX: AtomicUsize = AtomicUsize::new(0);
 
+// Position tracking - updated from player events
+static POSITION_MS: AtomicU32 = AtomicU32::new(0);
+static POSITION_TIMESTAMP_MS: AtomicU64 = AtomicU64::new(0);
+
+// Playback settings (applied on player init)
+// Bitrate: 0 = 96kbps, 1 = 160kbps (default), 2 = 320kbps
+static BITRATE_SETTING: AtomicU8 = AtomicU8::new(1);
+// Gapless playback: true by default (matches librespot default)
+static GAPLESS_SETTING: AtomicBool = AtomicBool::new(true);
+
+/// Get current timestamp in milliseconds since UNIX epoch
+fn current_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_millis() as u64
+}
+
+/// Update position from player event
+fn update_position(position_ms: u32) {
+    POSITION_MS.store(position_ms, Ordering::SeqCst);
+    POSITION_TIMESTAMP_MS.store(current_timestamp_ms(), Ordering::SeqCst);
+}
+
 #[derive(Clone, serde::Serialize)]
 struct QueueItem {
     uri: String,
@@ -42,6 +67,9 @@ struct QueueItem {
     artist_name: String,
     album_art_url: String,
     duration_ms: u32,
+    album_id: Option<String>,
+    artist_id: Option<String>,
+    external_url: Option<String>,
 }
 
 // Helper function to convert URL to URI
@@ -100,6 +128,28 @@ fn get_album_art_url(track: &Track) -> String {
         .unwrap_or_default()
 }
 
+// Helper function to extract album ID from track
+fn get_album_id(track: &Track) -> Option<String> {
+    Some(track.album.id.to_id().ok()?)
+}
+
+// Helper function to extract first artist ID from track
+fn get_artist_id(track: &Track) -> Option<String> {
+    track.artists.first()
+        .and_then(|a| a.id.to_id().ok())
+}
+
+// Helper function to build external URL from track URI
+fn get_external_url(uri: &str) -> Option<String> {
+    // URI format: spotify:track:TRACKID
+    let parts: Vec<&str> = uri.split(':').collect();
+    if parts.len() == 3 && parts[1] == "track" {
+        Some(format!("https://open.spotify.com/track/{}", parts[2]))
+    } else {
+        None
+    }
+}
+
 // Load album tracks into queue
 async fn load_album(session: &Session, album_uri: SpotifyUri) -> Result<Vec<QueueItem>, String> {
     let album = Album::get(session, &album_uri).await
@@ -115,6 +165,7 @@ async fn load_album(session: &Session, album_uri: SpotifyUri) -> Result<Vec<Queu
     // Fetch metadata for each track
     for track_uri in track_uris {
         if let Ok(track) = Track::get(session, &track_uri).await {
+            let uri_str = track_uri.to_string();
             let track_name = track.name.clone();
             let artist_name = track.artists.iter()
                 .map(|a| a.name.clone())
@@ -124,11 +175,14 @@ async fn load_album(session: &Session, album_uri: SpotifyUri) -> Result<Vec<Queu
             let duration_ms = track.duration as u32;
 
             queue_items.push(QueueItem {
-                uri: track_uri.to_string(),
+                uri: uri_str.clone(),
                 track_name,
                 artist_name,
                 album_art_url,
                 duration_ms,
+                album_id: get_album_id(&track),
+                artist_id: get_artist_id(&track),
+                external_url: get_external_url(&uri_str),
             });
         }
     }
@@ -150,6 +204,7 @@ async fn load_playlist(session: &Session, playlist_uri: SpotifyUri) -> Result<Ve
 
             // Fetch track metadata
             if let Ok(track) = Track::get(session, &track_uri).await {
+                let uri_str = track_uri.to_string();
                 let track_name = track.name.clone();
                 let artist_name = track.artists.iter()
                     .map(|a| a.name.clone())
@@ -159,11 +214,14 @@ async fn load_playlist(session: &Session, playlist_uri: SpotifyUri) -> Result<Ve
                 let duration_ms = track.duration as u32;
 
                 queue_items.push(QueueItem {
-                    uri: track_uri.to_string(),
+                    uri: uri_str.clone(),
                     track_name,
                     artist_name,
                     album_art_url,
                     duration_ms,
+                    album_id: get_album_id(&track),
+                    artist_id: get_artist_id(&track),
+                    external_url: get_external_url(&uri_str),
                 });
             }
         }
@@ -189,6 +247,7 @@ async fn load_artist(session: &Session, artist_uri: SpotifyUri) -> Result<Vec<Qu
     // Fetch metadata for each track
     for track_uri in track_uris {
         if let Ok(track) = Track::get(session, &track_uri).await {
+            let uri_str = track_uri.to_string();
             let track_name = track.name.clone();
             let artist_name = track.artists.iter()
                 .map(|a| a.name.clone())
@@ -198,11 +257,14 @@ async fn load_artist(session: &Session, artist_uri: SpotifyUri) -> Result<Vec<Qu
             let duration_ms = track.duration as u32;
 
             queue_items.push(QueueItem {
-                uri: track_uri.to_string(),
+                uri: uri_str.clone(),
                 track_name,
                 artist_name,
                 album_art_url,
                 duration_ms,
+                album_id: get_album_id(&track),
+                artist_id: get_artist_id(&track),
+                external_url: get_external_url(&uri_str),
             });
         }
     }
@@ -317,8 +379,28 @@ async fn init_player_async(access_token: &str, device_name: &str, device_type: i
         *mixer_guard = Some(Arc::clone(&mixer));
     }
 
-    // Create player
-    let player_config = PlayerConfig::default();
+    // Create player with user settings
+    let bitrate_setting = BITRATE_SETTING.load(Ordering::SeqCst);
+    let bitrate = match bitrate_setting {
+        0 => Bitrate::Bitrate96,
+        2 => Bitrate::Bitrate320,
+        _ => Bitrate::Bitrate160, // default
+    };
+    let gapless = GAPLESS_SETTING.load(Ordering::SeqCst);
+
+    let bitrate_kbps = match bitrate_setting {
+        0 => 96,
+        2 => 320,
+        _ => 160,
+    };
+    println!("[Spotifly] Player initialized: bitrate={}kbps, gapless={}", bitrate_kbps, gapless);
+
+    let player_config = PlayerConfig {
+        bitrate,
+        gapless,
+        position_update_interval: Some(Duration::from_millis(200)),
+        ..PlayerConfig::default()
+    };
     let audio_format = AudioFormat::default();
 
     let backend = audio_backend::find(None).ok_or("No audio backend found")?;
@@ -347,17 +429,28 @@ async fn init_player_async(access_token: &str, device_name: &str, device_type: i
                 }
                 event = event_channel.recv() => {
                     match event {
-                        Some(PlayerEvent::Playing { .. }) => {
+                        Some(PlayerEvent::Playing { position_ms, .. }) => {
                             IS_PLAYING.store(true, Ordering::SeqCst);
+                            update_position(position_ms);
                         }
-                        Some(PlayerEvent::Paused { .. }) => {
+                        Some(PlayerEvent::Paused { position_ms, .. }) => {
                             IS_PLAYING.store(false, Ordering::SeqCst);
+                            update_position(position_ms);
+                        }
+                        Some(PlayerEvent::PositionChanged { position_ms, .. }) => {
+                            // Periodic position update (every 200ms)
+                            update_position(position_ms);
+                        }
+                        Some(PlayerEvent::Seeked { position_ms, .. }) => {
+                            update_position(position_ms);
                         }
                         Some(PlayerEvent::Stopped { .. }) => {
                             IS_PLAYING.store(false, Ordering::SeqCst);
+                            update_position(0);
                         }
                         Some(PlayerEvent::EndOfTrack { .. }) => {
                             IS_PLAYING.store(false, Ordering::SeqCst);
+                            update_position(0);
                             // Auto-advance to next track if available
                             let queue_guard = QUEUE.lock().unwrap();
                             let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
@@ -483,6 +576,9 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
                         artist_name,
                         album_art_url,
                         duration_ms,
+                        album_id: get_album_id(&track),
+                        artist_id: get_artist_id(&track),
+                        external_url: get_external_url(&uri_str),
                     };
 
                     queue_items.push(queue_item);
@@ -588,6 +684,9 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
                     artist_name,
                     album_art_url,
                     duration_ms,
+                    album_id: get_album_id(&track),
+                    artist_id: get_artist_id(&track),
+                    external_url: get_external_url(&uri_str),
                 };
 
                 let mut queue_guard = QUEUE.lock().unwrap();
@@ -733,6 +832,31 @@ pub extern "C" fn spotifly_stop() -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_is_playing() -> i32 {
     if IS_PLAYING.load(Ordering::SeqCst) { 1 } else { 0 }
+}
+
+/// Returns the current playback position in milliseconds.
+/// If playing, interpolates from last known position.
+/// Returns 0 if not playing or no position available.
+#[no_mangle]
+pub extern "C" fn spotifly_get_position_ms() -> u32 {
+    let stored_position = POSITION_MS.load(Ordering::SeqCst);
+    let stored_timestamp = POSITION_TIMESTAMP_MS.load(Ordering::SeqCst);
+
+    if stored_timestamp == 0 {
+        return 0;
+    }
+
+    // If playing, interpolate position from last update
+    if IS_PLAYING.load(Ordering::SeqCst) {
+        let now = current_timestamp_ms();
+        let elapsed_since_update = now.saturating_sub(stored_timestamp);
+        // Cap interpolation at 5 seconds - librespot events can be delayed
+        // but if we haven't heard anything in 5s, something is wrong
+        let capped_elapsed = elapsed_since_update.min(5000) as u32;
+        stored_position.saturating_add(capped_elapsed)
+    } else {
+        stored_position
+    }
 }
 
 /// Skips to the next track in the queue.
@@ -974,6 +1098,69 @@ pub extern "C" fn spotifly_get_queue_duration_ms(index: usize) -> u32 {
     queue_guard[index].duration_ms
 }
 
+/// Gets the album ID for a queue item by index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds or album ID is not available.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_album_id(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match &queue_guard[index].album_id {
+        Some(album_id) => {
+            match CString::new(album_id.clone()) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+/// Gets the artist ID for a queue item by index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds or artist ID is not available.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_artist_id(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match &queue_guard[index].artist_id {
+        Some(artist_id) => {
+            match CString::new(artist_id.clone()) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        None => ptr::null_mut(),
+    }
+}
+
+/// Gets the external URL for a queue item by index.
+/// Caller must free the string with spotifly_free_string().
+/// Returns NULL if index is out of bounds or external URL is not available.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_external_url(index: usize) -> *mut c_char {
+    let queue_guard = QUEUE.lock().unwrap();
+    if index >= queue_guard.len() {
+        return ptr::null_mut();
+    }
+
+    match &queue_guard[index].external_url {
+        Some(external_url) => {
+            match CString::new(external_url.clone()) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        None => ptr::null_mut(),
+    }
+}
+
 /// Returns all queue items as a JSON string.
 /// Caller must free the string with spotifly_free_string().
 /// Returns NULL on error.
@@ -993,42 +1180,263 @@ pub extern "C" fn spotifly_get_all_queue_items() -> *mut c_char {
     }
 }
 
-/// Cleans up the player resources.
+/// Adds a track to the end of the current queue without clearing it.
+/// Returns 0 on success, -1 on error.
 #[no_mangle]
-pub extern "C" fn spotifly_cleanup_player() {
-    // Signal event listener to stop
-    {
-        let tx_guard = PLAYER_EVENT_TX.lock().unwrap();
-        if let Some(tx) = tx_guard.as_ref() {
-            let _ = tx.send(());
+pub extern "C" fn spotifly_add_to_queue(track_uri: *const c_char) -> i32 {
+    if track_uri.is_null() {
+        eprintln!("Add to queue error: track_uri is null");
+        return -1;
+    }
+
+    let uri_str = unsafe {
+        match CStr::from_ptr(track_uri).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Add to queue error: invalid track_uri string");
+                return -1;
+            }
+        }
+    };
+
+    let session_guard = SESSION.lock().unwrap();
+    let session = match session_guard.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            eprintln!("Add to queue error: session not initialized");
+            return -1;
+        }
+    };
+    drop(session_guard);
+
+    let result: Result<(), String> = RUNTIME.block_on(async {
+        // Parse the URI
+        let spotify_uri = parse_spotify_uri(&uri_str)?;
+
+        // Only support tracks for add to queue
+        match spotify_uri {
+            SpotifyUri::Track { .. } => {
+                let track = Track::get(&session, &spotify_uri).await
+                    .map_err(|e| format!("Failed to load track: {:?}", e))?;
+
+                let track_name = track.name.clone();
+                let artist_name = track.artists.iter()
+                    .map(|a| a.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let album_art_url = get_album_art_url(&track);
+                let duration_ms = track.duration as u32;
+
+                let queue_item = QueueItem {
+                    uri: uri_str.clone(),
+                    track_name,
+                    artist_name,
+                    album_art_url,
+                    duration_ms,
+                    album_id: get_album_id(&track),
+                    artist_id: get_artist_id(&track),
+                    external_url: get_external_url(&uri_str),
+                };
+
+                // Add to queue instead of replacing
+                let mut queue_guard = QUEUE.lock().unwrap();
+                queue_guard.push(queue_item);
+                drop(queue_guard);
+
+                Ok(())
+            }
+            _ => {
+                Err(format!("Only track URIs are supported for add to queue: {}", uri_str))
+            }
+        }
+    });
+
+    match result {
+        Ok(_) => 0,
+        Err(e) => {
+            eprintln!("Add to queue error: {}", e);
+            -1
         }
     }
+}
 
-    // Clear player
-    {
-        let mut player_guard = PLAYER.lock().unwrap();
-        *player_guard = None;
+/// Adds a track to play next (after the currently playing track).
+/// If nothing is playing, adds it to the queue.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_add_next_to_queue(track_uri: *const c_char) -> i32 {
+    if track_uri.is_null() {
+        eprintln!("Add next to queue error: track_uri is null");
+        return -1;
     }
 
-    // Clear session
-    {
-        let mut session_guard = SESSION.lock().unwrap();
-        *session_guard = None;
+    let uri_str = unsafe {
+        match CStr::from_ptr(track_uri).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Add next to queue error: invalid track_uri string");
+                return -1;
+            }
+        }
+    };
+
+    let session_guard = SESSION.lock().unwrap();
+    let session = match session_guard.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            eprintln!("Add next to queue error: session not initialized");
+            return -1;
+        }
+    };
+    drop(session_guard);
+
+    let result: Result<(), String> = RUNTIME.block_on(async {
+        // Parse the URI
+        let spotify_uri = parse_spotify_uri(&uri_str)?;
+
+        // Only support tracks for add to queue
+        match spotify_uri {
+            SpotifyUri::Track { .. } => {
+                let track = Track::get(&session, &spotify_uri).await
+                    .map_err(|e| format!("Failed to load track: {:?}", e))?;
+
+                let track_name = track.name.clone();
+                let artist_name = track.artists.iter()
+                    .map(|a| a.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let album_art_url = get_album_art_url(&track);
+                let duration_ms = track.duration as u32;
+
+                let queue_item = QueueItem {
+                    uri: uri_str.clone(),
+                    track_name,
+                    artist_name,
+                    album_art_url,
+                    duration_ms,
+                    album_id: get_album_id(&track),
+                    artist_id: get_artist_id(&track),
+                    external_url: get_external_url(&uri_str),
+                };
+
+                // Insert after current index
+                let mut queue_guard = QUEUE.lock().unwrap();
+                let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
+
+                // Insert at current_index + 1, or at the end if queue is empty
+                let insert_position = if queue_guard.is_empty() {
+                    0
+                } else {
+                    (current_idx + 1).min(queue_guard.len())
+                };
+
+                queue_guard.insert(insert_position, queue_item);
+                drop(queue_guard);
+
+                Ok(())
+            }
+            _ => {
+                Err(format!("Only track URIs are supported for add next to queue: {}", uri_str))
+            }
+        }
+    });
+
+    match result {
+        Ok(_) => 0,
+        Err(e) => {
+            eprintln!("Add next to queue error: {}", e);
+            -1
+        }
+    }
+}
+
+/// Gets radio tracks for a seed track and returns them as JSON.
+/// Returns a JSON array of track URIs, or NULL on error.
+/// Caller must free the string with spotifly_free_string().
+#[no_mangle]
+pub extern "C" fn spotifly_get_radio_tracks(track_uri: *const c_char) -> *mut c_char {
+    if track_uri.is_null() {
+        eprintln!("Get radio error: track_uri is null");
+        return ptr::null_mut();
     }
 
-    // Clear mixer
-    {
-        let mut mixer_guard = MIXER.lock().unwrap();
-        *mixer_guard = None;
-    }
+    let uri_str = unsafe {
+        match CStr::from_ptr(track_uri).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Get radio error: invalid track_uri string");
+                return ptr::null_mut();
+            }
+        }
+    };
 
-    // Clear event sender
-    {
-        let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
-        *tx_guard = None;
-    }
+    let session_guard = SESSION.lock().unwrap();
+    let session = match session_guard.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            eprintln!("Get radio error: session not initialized");
+            return ptr::null_mut();
+        }
+    };
+    drop(session_guard);
 
-    IS_PLAYING.store(false, Ordering::SeqCst);
+    let result: Result<Vec<String>, String> = RUNTIME.block_on(async {
+        // Parse the URI
+        let spotify_uri = parse_spotify_uri(&uri_str)?;
+
+        // Get radio tracks from Spotify
+        let response = session.spclient().get_radio_for_track(&spotify_uri).await
+            .map_err(|e| format!("Failed to get radio: {:?}", e))?;
+
+        // Parse the JSON response
+        let json: serde_json::Value = serde_json::from_slice(&response)
+            .map_err(|e| format!("Failed to parse radio response: {:?}", e))?;
+
+        // The API returns a playlist URI in mediaItems, not individual tracks
+        // Format: { "mediaItems": [{ "uri": "spotify:playlist:xxx" }] }
+        let playlist_uri = json.get("mediaItems")
+            .and_then(|items| items.as_array())
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("uri"))
+            .and_then(|u| u.as_str())
+            .filter(|uri| uri.starts_with("spotify:playlist:"))
+            .ok_or_else(|| "No radio playlist found in response".to_string())?;
+
+        // Parse the playlist URI
+        let playlist_spotify_uri = parse_spotify_uri(playlist_uri)?;
+
+        // Load the playlist tracks
+        let queue_items = load_playlist(&session, playlist_spotify_uri).await?;
+
+        // Extract just the track URIs
+        let track_uris: Vec<String> = queue_items.into_iter()
+            .map(|item| item.uri)
+            .collect();
+
+        if track_uris.is_empty() {
+            return Err("Radio playlist is empty".to_string());
+        }
+
+        Ok(track_uris)
+    });
+
+    match result {
+        Ok(track_uris) => {
+            match serde_json::to_string(&track_uris) {
+                Ok(json_string) => {
+                    match CString::new(json_string) {
+                        Ok(cstr) => cstr.into_raw(),
+                        Err(_) => ptr::null_mut(),
+                    }
+                }
+                Err(_) => ptr::null_mut(),
+            }
+        }
+        Err(e) => {
+            eprintln!("Get radio error: {}", e);
+            ptr::null_mut()
+        }
+    }
 }
 
 /// Sets the playback volume (0-65535).
@@ -1048,16 +1456,38 @@ pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
     }
 }
 
-/// Gets the current playback volume (0-65535).
-/// Returns the volume on success, 0 on error.
+/// Sets the streaming bitrate.
+/// 0 = 96 kbps, 1 = 160 kbps (default), 2 = 320 kbps
+/// Note: Takes effect on next player initialization (restart playback to apply).
 #[no_mangle]
-pub extern "C" fn spotifly_get_volume() -> u16 {
-    let mixer_guard = MIXER.lock().unwrap();
-    match mixer_guard.as_ref() {
-        Some(mixer) => mixer.volume(),
-        None => {
-            eprintln!("Get volume error: mixer not initialized");
-            0
-        }
+pub extern "C" fn spotifly_set_bitrate(bitrate: u8) {
+    let value = bitrate.min(2); // Clamp to valid range
+    let old_value = BITRATE_SETTING.swap(value, Ordering::SeqCst);
+    if old_value != value {
+        let kbps = match value { 0 => 96, 2 => 320, _ => 160 };
+        println!("[Spotifly] Bitrate changed to {}kbps (restart playback to apply)", kbps);
     }
+}
+
+/// Gets the current bitrate setting.
+/// 0 = 96 kbps, 1 = 160 kbps, 2 = 320 kbps
+#[no_mangle]
+pub extern "C" fn spotifly_get_bitrate() -> u8 {
+    BITRATE_SETTING.load(Ordering::SeqCst)
+}
+
+/// Sets gapless playback (true = enabled, false = disabled).
+/// Enabled by default. Takes effect on next player initialization (restart playback to apply).
+#[no_mangle]
+pub extern "C" fn spotifly_set_gapless(enabled: bool) {
+    let old_value = GAPLESS_SETTING.swap(enabled, Ordering::SeqCst);
+    if old_value != enabled {
+        println!("[Spotifly] Gapless playback changed to {} (restart playback to apply)", enabled);
+    }
+}
+
+/// Gets the current gapless playback setting.
+#[no_mangle]
+pub extern "C" fn spotifly_get_gapless() -> bool {
+    GAPLESS_SETTING.load(Ordering::SeqCst)
 }

@@ -7,6 +7,10 @@
 "auth.authenticating" = "Authenticating...";
 "auth.loading" = "Loading...";
 "auth.logout" = "Logout";
+"auth.client_id_label" = "Spotify Client ID";
+"auth.client_id_placeholder" = "Enter your Client ID";
+"auth.client_id_help_link" = "How do I get a Client ID?";
+"auth.client_id_existing_app_note" = "You can use an existing Spotify app if you add the redirect URI de.rvdh.spotifly://callback";
 
 /* Navigation */
 "nav.startpage" = "Startpage";
@@ -112,3 +116,33 @@
 "devices.error.not_logged_in" = "Not logged in";
 "devices.error.failed_to_load" = "Failed to load devices";
 "devices.error.failed_to_transfer" = "Failed to transfer playback";
+
+/* Menu Commands */
+"menu.playback" = "Playback";
+"menu.play_pause" = "Play / Pause";
+"menu.next_track" = "Next Track";
+"menu.previous_track" = "Previous Track";
+"menu.like_track" = "Like / Unlike Track";
+"menu.navigate" = "Navigate";
+"menu.favorites" = "Favorites";
+"menu.playlists" = "Playlists";
+"menu.albums" = "Albums";
+"menu.artists" = "Artists";
+"menu.search" = "Search";
+"menu.refresh" = "Refresh";
+
+/* Playlist Edit Mode */
+"playlist.edit" = "Edit";
+"playlist.edit.save" = "Save";
+"playlist.edit.cancel" = "Cancel";
+"playlist.edit.saving" = "Saving...";
+
+/* Preferences */
+"preferences.playback" = "Playback";
+"preferences.info" = "Info";
+"preferences.streaming_quality" = "Streaming Quality";
+"preferences.gapless_playback" = "Gapless Playback";
+"preferences.default" = "Default";
+"preferences.restart_note" = "Changes take effect when playback restarts.";
+"preferences.version %@ (%@)" = "Version %@ (%@)";
+"preferences.copyright %@" = "© %@ Ralph von der Heyden";

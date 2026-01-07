@@ -2,9 +2,10 @@
 //  AlbumDetailView.swift
 //  Spotifly
 //
-//  Shows details for an album search result with track list
+//  Shows details for an album with track list, using normalized store
 //
 
+import AppKit
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
@@ -14,12 +15,19 @@ import UIKit
 
 struct AlbumDetailView: View {
     let album: SearchAlbum
-    let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(AlbumService.self) private var albumService
 
-    @State private var tracks: [AlbumTrack] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+
+    /// Tracks from the store for this album
+    private var tracks: [Track] {
+        guard let storedAlbum = store.albums[album.id] else { return [] }
+        return storedAlbum.trackIds.compactMap { store.tracks[$0] }
+    }
 
     private var totalDuration: String {
         let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
@@ -101,18 +109,53 @@ struct AlbumDetailView: View {
                         }
                     }
 
-                    // Play All button
-                    Button {
-                        playAllTracks()
-                    } label: {
-                        Label("playback.play_album", systemImage: "play.fill")
-                            .font(.headline)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
+                    // Play All button and menu
+                    HStack(spacing: 12) {
+                        Button {
+                            playAllTracks()
+                        } label: {
+                            Label("playback.play_album", systemImage: "play.fill")
+                                .font(.headline)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                        .disabled(tracks.isEmpty)
+
+                        // Context menu
+                        Menu {
+                            Button {
+                                playNext()
+                            } label: {
+                                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                            }
+                            .disabled(tracks.isEmpty)
+
+                            Button {
+                                addToQueue()
+                            } label: {
+                                Label("Add to Queue", systemImage: "text.append")
+                            }
+                            .disabled(tracks.isEmpty)
+
+                            Divider()
+
+                            Button {
+                                copyToClipboard()
+                            } label: {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+                            .disabled(album.externalUrl == nil)
+                        } label: {
+                            Image(systemName: "ellipsis.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .disabled(tracks.isEmpty)
                 }
                 .padding(.top, 24)
 
@@ -132,14 +175,7 @@ struct AlbumDetailView: View {
                                 showTrackNumber: true,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
-                            ) {
-                                Task {
-                                    await playbackViewModel.play(
-                                        uriOrUrl: track.uri,
-                                        accessToken: authResult.accessToken,
-                                    )
-                                }
-                            }
+                            )
 
                             if index < tracks.count - 1 {
                                 Divider()
@@ -163,15 +199,15 @@ struct AlbumDetailView: View {
     }
 
     private func loadTracks() async {
-        // Clear old tracks when loading new album
-        tracks = []
         isLoading = true
         errorMessage = nil
 
         do {
-            tracks = try await SpotifyAPI.fetchAlbumTracks(
-                accessToken: authResult.accessToken,
+            let token = await session.validAccessToken()
+            // Load tracks via service (stores them in AppStore)
+            _ = try await albumService.getAlbumTracks(
                 albumId: album.id,
+                accessToken: token,
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -182,10 +218,43 @@ struct AlbumDetailView: View {
 
     private func playAllTracks() {
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: authResult.accessToken,
+                accessToken: token,
             )
         }
+    }
+
+    private func playNext() {
+        Task {
+            let token = await session.validAccessToken()
+            for track in tracks.reversed() {
+                await playbackViewModel.playNext(
+                    trackUri: track.uri,
+                    accessToken: token,
+                )
+            }
+        }
+    }
+
+    private func addToQueue() {
+        Task {
+            let token = await session.validAccessToken()
+            for track in tracks {
+                await playbackViewModel.addToQueue(
+                    trackUri: track.uri,
+                    accessToken: token,
+                )
+            }
+        }
+    }
+
+    private func copyToClipboard() {
+        guard let externalUrl = album.externalUrl else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(externalUrl, forType: .string)
     }
 }

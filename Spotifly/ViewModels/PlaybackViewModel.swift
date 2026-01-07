@@ -5,6 +5,7 @@
 //  Created by Ralph von der Heyden on 30.12.25.
 //
 
+import QuartzCore
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
@@ -13,9 +14,45 @@ import UIKit
 #endif
 import MediaPlayer
 
+// MARK: - Drift Correction Timer
+
+/// Helper class for periodic drift correction (not UI updates)
+/// Uses a plain Thread with isCancelled check to avoid Swift concurrency issues
+private final class DriftCorrectionTimer {
+    private var thread: Thread?
+    static let checkNotification = Notification.Name("DriftCorrectionCheck")
+
+    func start() {
+        let notificationName = DriftCorrectionTimer.checkNotification
+        let thread = Thread {
+            while !Thread.current.isCancelled {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: notificationName, object: nil)
+                }
+                // Check drift every second (not 100ms - UI uses TimelineView now)
+                Thread.sleep(forTimeInterval: 1.0)
+            }
+        }
+        thread.name = "com.spotifly.drift-correction"
+        thread.qualityOfService = .utility
+        thread.start()
+        self.thread = thread
+    }
+
+    func stop() {
+        thread?.cancel()
+        thread = nil
+    }
+}
+
+// MARK: - Playback View Model
+
 @MainActor
 @Observable
 final class PlaybackViewModel {
+    /// Shared singleton instance - ensures only one timer runs
+    static let shared = PlaybackViewModel()
+
     var isPlaying = false
     var isLoading = false
     var currentTrackId: String?
@@ -52,10 +89,8 @@ final class PlaybackViewModel {
 
     private var isInitialized = false
     private var lastAlbumArtURL: String?
-    var playbackStartTime: Date? // Internal for pause/resume handling
-    private var positionTimer: Timer?
 
-    init() {
+    private init() {
         setupRemoteCommandCenter()
 
         // Load saved volume (but don't apply it yet - mixer isn't initialized)
@@ -80,8 +115,6 @@ final class PlaybackViewModel {
         // Start position update timer
         startPositionTimer()
     }
-
-    // Timer will be automatically invalidated when the object is deallocated
 
     func initializeIfNeeded(accessToken: String) async {
         guard !isInitialized else { return }
@@ -112,7 +145,7 @@ final class PlaybackViewModel {
 
         do {
             try await SpotifyPlayer.play(uriOrUrl: uriOrUrl)
-            await handlePlaybackStarted(trackId: uriOrUrl, accessToken: accessToken)
+            handlePlaybackStarted(trackId: uriOrUrl)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -145,7 +178,7 @@ final class PlaybackViewModel {
 
         do {
             try await SpotifyPlayer.playTracks(trackUris)
-            await handlePlaybackStarted(trackId: trackUris[0], accessToken: accessToken)
+            handlePlaybackStarted(trackId: trackUris[0])
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -153,17 +186,61 @@ final class PlaybackViewModel {
         isLoading = false
     }
 
+    func addToQueue(trackUri: String, accessToken: String) async {
+        // Initialize if needed
+        if !isInitialized {
+            await initializeIfNeeded(accessToken: accessToken)
+        }
+
+        guard isInitialized else {
+            errorMessage = "Player not initialized"
+            return
+        }
+
+        errorMessage = nil
+
+        do {
+            try await SpotifyPlayer.addToQueue(trackUri: trackUri)
+            // Update queue state to reflect the change
+            updateQueueState()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func playNext(trackUri: String, accessToken: String) async {
+        // Initialize if needed
+        if !isInitialized {
+            await initializeIfNeeded(accessToken: accessToken)
+        }
+
+        guard isInitialized else {
+            errorMessage = "Player not initialized"
+            return
+        }
+
+        errorMessage = nil
+
+        do {
+            try await SpotifyPlayer.addNextToQueue(trackUri: trackUri)
+            // Update queue state to reflect the change
+            updateQueueState()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     // MARK: - Playback State Helpers
 
     /// Common setup after playback has started
-    private func handlePlaybackStarted(trackId: String, accessToken: String) async {
+    private func handlePlaybackStarted(trackId: String) {
         currentTrackId = trackId
         isPlaying = true
-        playbackStartTime = Date()
         // Apply volume after playback starts (mixer is now initialized)
         SpotifyPlayer.setVolume(volume)
         updateQueueState()
-        await checkCurrentTrackFavoriteStatus(accessToken: accessToken)
+        syncPositionAnchor()
+        // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackId changes
     }
 
     func togglePlayPause(trackId: String, accessToken: String) async {
@@ -201,13 +278,7 @@ final class PlaybackViewModel {
             currentArtistName = SpotifyPlayer.queueArtistName(at: currentIndex)
             currentAlbumArtURL = SpotifyPlayer.queueAlbumArtUrl(at: currentIndex)
             trackDurationMs = SpotifyPlayer.queueDurationMs(at: currentIndex)
-
-            // Reset position tracking for new track
-            currentPositionMs = 0
-            if isPlaying {
-                playbackStartTime = Date()
-            }
-
+            // Position is synced separately via syncPositionAnchor()
             updateNowPlayingInfo()
         }
     }
@@ -216,9 +287,8 @@ final class PlaybackViewModel {
         do {
             try SpotifyPlayer.next()
             isPlaying = true
-            currentPositionMs = 0
-            playbackStartTime = Date()
             updateQueueState()
+            syncPositionAnchor()
             updateNowPlayingInfo()
         } catch {
             errorMessage = error.localizedDescription
@@ -229,9 +299,21 @@ final class PlaybackViewModel {
         do {
             try SpotifyPlayer.previous()
             isPlaying = true
-            currentPositionMs = 0
-            playbackStartTime = Date()
             updateQueueState()
+            syncPositionAnchor()
+            updateNowPlayingInfo()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func seek(to positionMs: UInt32) {
+        do {
+            try SpotifyPlayer.seek(positionMs: positionMs)
+            // Update anchor for smooth interpolation from new position
+            positionAnchorMs = positionMs
+            positionAnchorTime = CACurrentMediaTime()
+            currentPositionMs = positionMs
             updateNowPlayingInfo()
         } catch {
             errorMessage = error.localizedDescription
@@ -259,6 +341,14 @@ final class PlaybackViewModel {
     private func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
+        // Remove any existing handlers to prevent duplicates
+        commandCenter.playCommand.removeTarget(nil)
+        commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+
         // Enable commands
         commandCenter.playCommand.isEnabled = true
         commandCenter.pauseCommand.isEnabled = true
@@ -274,12 +364,6 @@ final class PlaybackViewModel {
                 if !self.isPlaying {
                     SpotifyPlayer.resume()
                     self.isPlaying = true
-                    // Adjust start time based on current position
-                    if self.currentPositionMs > 0 {
-                        self.playbackStartTime = Date().addingTimeInterval(-Double(self.currentPositionMs) / 1000.0)
-                    } else {
-                        self.playbackStartTime = Date()
-                    }
                     self.updateNowPlayingInfo()
                 }
             }
@@ -293,7 +377,6 @@ final class PlaybackViewModel {
                 if self.isPlaying {
                     SpotifyPlayer.pause()
                     self.isPlaying = false
-                    self.playbackStartTime = nil
                     self.updateNowPlayingInfo()
                 }
             }
@@ -307,16 +390,9 @@ final class PlaybackViewModel {
                 if self.isPlaying {
                     SpotifyPlayer.pause()
                     self.isPlaying = false
-                    self.playbackStartTime = nil
                 } else {
                     SpotifyPlayer.resume()
                     self.isPlaying = true
-                    // Adjust start time based on current position
-                    if self.currentPositionMs > 0 {
-                        self.playbackStartTime = Date().addingTimeInterval(-Double(self.currentPositionMs) / 1000.0)
-                    } else {
-                        self.playbackStartTime = Date()
-                    }
                 }
                 self.updateNowPlayingInfo()
             }
@@ -325,17 +401,15 @@ final class PlaybackViewModel {
 
         // Next track command
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.next()
-            }
+            guard let self else { return .commandFailed }
+            next()
             return .success
         }
 
         // Previous track command
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.previous()
-            }
+            guard let self else { return .commandFailed }
+            previous()
             return .success
         }
 
@@ -344,28 +418,17 @@ final class PlaybackViewModel {
             Task { @MainActor in
                 guard let self else { return }
                 guard let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
-
                 let positionMs = UInt32(seekEvent.positionTime * 1000)
-
-                do {
-                    try SpotifyPlayer.seek(positionMs: positionMs)
-                    self.currentPositionMs = positionMs
-
-                    // Update playback start time to maintain sync
-                    if self.isPlaying {
-                        self.playbackStartTime = Date().addingTimeInterval(-Double(positionMs) / 1000.0)
-                    }
-
-                    self.updateNowPlayingInfo()
-                } catch {
-                    self.errorMessage = error.localizedDescription
-                }
+                self.seek(to: positionMs)
             }
             return .success
         }
     }
 
     func updateNowPlayingInfo() {
+        // Don't update Now Playing with invalid data - causes --:-- display
+        guard trackDurationMs > 0 else { return }
+
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
 
         if let trackName = currentTrackName {
@@ -376,9 +439,10 @@ final class PlaybackViewModel {
             nowPlayingInfo[MPMediaItemPropertyArtist] = artistName
         }
 
-        // Duration and position
+        // Duration and position - ensure position doesn't exceed duration
+        let validPosition = min(currentPositionMs, trackDurationMs)
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = Double(trackDurationMs) / 1000.0
-        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(currentPositionMs) / 1000.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(validPosition) / 1000.0
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
 
         // Update Now Playing (preserves existing artwork)
@@ -417,23 +481,62 @@ final class PlaybackViewModel {
 
     // MARK: - Position Tracking
 
-    private func startPositionTimer() {
-        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.updatePosition()
-            }
-        }
+    // Anchor-based position tracking using CACurrentMediaTime for precision
+    // UI reads interpolatedPositionMs (computed), not currentPositionMs directly
+    private var positionAnchorMs: UInt32 = 0
+    private var positionAnchorTime: Double = CACurrentMediaTime()
+    private var lastRustPosition: UInt32 = 0
+    private var driftCorrectionTimer: DriftCorrectionTimer?
+    private var driftObserver: NSObjectProtocol?
+
+    /// Computed position using anchor interpolation - UI should bind to this
+    /// Called by TimelineView on every frame for smooth updates
+    var interpolatedPositionMs: UInt32 {
+        guard isPlaying else { return currentPositionMs }
+        let elapsed = CACurrentMediaTime() - positionAnchorTime
+        let elapsedMs = UInt32(max(0, min(elapsed * 1000, Double(UInt32.max - 1))))
+        let interpolated = positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue
+        return min(interpolated, trackDurationMs)
     }
 
-    private func updatePosition() {
+    private func startPositionTimer() {
+        let timer = DriftCorrectionTimer()
+
+        // Observe drift correction notifications
+        driftObserver = NotificationCenter.default.addObserver(
+            forName: DriftCorrectionTimer.checkNotification,
+            object: nil,
+            queue: .main,
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.checkDriftAndSync()
+            }
+        }
+
+        timer.start()
+        driftCorrectionTimer = timer
+    }
+
+    /// Sync position anchor with Rust - call after seek, play, resume, track change
+    private func syncPositionAnchor() {
+        let rustPosition = SpotifyPlayer.positionMs
+        positionAnchorMs = rustPosition
+        positionAnchorTime = CACurrentMediaTime()
+        lastRustPosition = rustPosition
+        currentPositionMs = rustPosition
+    }
+
+    /// Called every second to check for drift and sync state
+    private func checkDriftAndSync() {
         // Check if track changed (auto-advance)
         let rustCurrentIndex = SpotifyPlayer.currentIndex
         if rustCurrentIndex != currentIndex {
-            // Track changed due to auto-advance
             currentIndex = rustCurrentIndex
             isPlaying = SpotifyPlayer.isPlaying
-            playbackStartTime = isPlaying ? Date() : nil
             updateQueueState()
+            syncPositionAnchor()
+            // Update currentTrackId to trigger favorite status check in NowPlayingBarView
+            currentTrackId = SpotifyPlayer.queueUri(at: currentIndex)
             return
         }
 
@@ -441,24 +544,25 @@ final class PlaybackViewModel {
         let rustIsPlaying = SpotifyPlayer.isPlaying
         if rustIsPlaying != isPlaying {
             isPlaying = rustIsPlaying
-            if isPlaying {
-                playbackStartTime = Date().addingTimeInterval(-Double(currentPositionMs) / 1000.0)
-            } else {
-                playbackStartTime = nil
+            syncPositionAnchor()
+        }
+
+        // Update currentPositionMs for non-TimelineView consumers
+        currentPositionMs = interpolatedPositionMs
+
+        // Check for significant drift from Rust position
+        let rustPosition = SpotifyPlayer.positionMs
+        if rustPosition != lastRustPosition {
+            let drift = abs(Int32(rustPosition) - Int32(interpolatedPositionMs))
+            if drift > 500 {
+                // More than 500ms drift - resync anchor
+                positionAnchorMs = rustPosition
+                positionAnchorTime = CACurrentMediaTime()
+                currentPositionMs = min(rustPosition, trackDurationMs)
             }
+            lastRustPosition = rustPosition
         }
 
-        guard isPlaying, let startTime = playbackStartTime else {
-            return
-        }
-
-        let elapsed = Date().timeIntervalSince(startTime)
-        let positionMs = UInt32(elapsed * 1000)
-
-        // Clamp to duration
-        currentPositionMs = min(positionMs, trackDurationMs)
-
-        // Update Now Playing info periodically
         updateNowPlayingInfo()
     }
 

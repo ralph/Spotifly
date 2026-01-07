@@ -6,6 +6,34 @@
 //
 
 import Foundation
+import os.log
+
+private let apiLogger = Logger(subsystem: "com.spotifly.app", category: "SpotifyAPI")
+
+// MARK: - Duration Formatting Protocol
+
+/// Protocol for types that have a total duration in milliseconds
+protocol DurationFormattable {
+    var totalDurationMs: Int? { get }
+}
+
+extension DurationFormattable {
+    /// Formats the total duration as "X hr Y min" or "Y min"
+    var formattedDuration: String? {
+        guard let totalDurationMs else { return nil }
+        let totalSeconds = totalDurationMs / 1000
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+
+        if hours > 0 {
+            return String(format: "%d hr %d min", hours, minutes)
+        } else {
+            return String(format: "%d min", minutes)
+        }
+    }
+}
+
+// MARK: - Track Metadata
 
 /// Track metadata from Spotify
 struct TrackMetadata: Sendable {
@@ -26,15 +54,17 @@ struct TrackMetadata: Sendable {
 }
 
 /// Simplified playlist metadata from Spotify
-struct PlaylistSimplified: Sendable, Identifiable {
+struct PlaylistSimplified: Sendable, Identifiable, DurationFormattable {
     let id: String
-    let name: String
+    var name: String
     let description: String?
     let imageURL: URL?
-    let trackCount: Int
+    var trackCount: Int
     let uri: String
     let isPublic: Bool
+    let ownerId: String
     let ownerName: String
+    let totalDurationMs: Int?
 }
 
 /// Response wrapper for playlists endpoint
@@ -46,7 +76,7 @@ struct PlaylistsResponse: Sendable {
 }
 
 /// Simplified album metadata from Spotify
-struct AlbumSimplified: Sendable, Identifiable {
+struct AlbumSimplified: Sendable, Identifiable, DurationFormattable {
     let id: String
     let name: String
     let artistName: String
@@ -55,6 +85,7 @@ struct AlbumSimplified: Sendable, Identifiable {
     let uri: String
     let releaseDate: String
     let albumType: String
+    let totalDurationMs: Int?
 }
 
 /// Response wrapper for albums endpoint
@@ -80,7 +111,7 @@ struct ArtistsResponse: Sendable {
     let artists: [ArtistSimplified]
     let total: Int
     let hasMore: Bool
-    let nextOffset: Int?
+    let nextCursor: String?
 }
 
 /// Saved track (favorite) metadata from Spotify
@@ -93,6 +124,9 @@ struct SavedTrack: Sendable, Identifiable {
     let durationMs: Int
     let uri: String
     let addedAt: String
+    let albumId: String?
+    let artistId: String?
+    let externalUrl: String?
 }
 
 /// Response wrapper for saved tracks endpoint
@@ -111,6 +145,8 @@ struct AlbumTrack: Sendable, Identifiable {
     let artistName: String
     let durationMs: Int
     let trackNumber: Int
+    let artistId: String?
+    let externalUrl: String?
 }
 
 /// Playlist track (from playlist tracks endpoint)
@@ -123,6 +159,9 @@ struct PlaylistTrack: Sendable, Identifiable {
     let imageURL: URL?
     let durationMs: Int
     let addedAt: String
+    let albumId: String?
+    let artistId: String?
+    let externalUrl: String?
 }
 
 /// Search result type
@@ -142,36 +181,48 @@ struct SearchTrack: Sendable, Identifiable {
     let albumName: String
     let imageURL: URL?
     let durationMs: Int
+    let albumId: String?
+    let artistId: String?
+    let externalUrl: String? // Web URL from Spotify API
 }
 
 /// Album search result
-struct SearchAlbum: Sendable, Identifiable {
+struct SearchAlbum: Sendable, Identifiable, DurationFormattable {
     let id: String
     let name: String
     let uri: String
     let artistName: String
+    let artistId: String?
     let imageURL: URL?
     let totalTracks: Int
     let releaseDate: String
+    let totalDurationMs: Int?
+    let externalUrl: String?
 
-    init(id: String, name: String, uri: String, artistName: String, imageURL: URL?, totalTracks: Int, releaseDate: String) {
+    init(id: String, name: String, uri: String, artistName: String, artistId: String? = nil, imageURL: URL?, totalTracks: Int, releaseDate: String, totalDurationMs: Int? = nil, externalUrl: String? = nil) {
         self.id = id
         self.name = name
         self.uri = uri
         self.artistName = artistName
+        self.artistId = artistId
         self.imageURL = imageURL
         self.totalTracks = totalTracks
         self.releaseDate = releaseDate
+        self.totalDurationMs = totalDurationMs
+        self.externalUrl = externalUrl
     }
 
-    init(from album: AlbumSimplified) {
+    init(from album: AlbumSimplified, totalDurationMs: Int? = nil) {
         id = album.id
         name = album.name
         uri = album.uri
         artistName = album.artistName
+        artistId = nil // AlbumSimplified doesn't have artistId
         imageURL = album.imageURL
         totalTracks = album.trackCount
         releaseDate = album.releaseDate
+        self.totalDurationMs = totalDurationMs
+        externalUrl = nil // AlbumSimplified doesn't have externalUrl
     }
 }
 
@@ -204,33 +255,39 @@ struct SearchArtist: Sendable, Identifiable {
 }
 
 /// Playlist search result
-struct SearchPlaylist: Sendable, Identifiable {
+struct SearchPlaylist: Sendable, Identifiable, DurationFormattable {
     let id: String
     let name: String
     let uri: String
     let description: String?
     let imageURL: URL?
     let trackCount: Int
+    let ownerId: String
     let ownerName: String
+    let totalDurationMs: Int?
 
-    init(id: String, name: String, uri: String, description: String?, imageURL: URL?, trackCount: Int, ownerName: String) {
+    init(id: String, name: String, uri: String, description: String?, imageURL: URL?, trackCount: Int, ownerId: String, ownerName: String, totalDurationMs: Int? = nil) {
         self.id = id
         self.name = name
         self.uri = uri
         self.description = description
         self.imageURL = imageURL
         self.trackCount = trackCount
+        self.ownerId = ownerId
         self.ownerName = ownerName
+        self.totalDurationMs = totalDurationMs
     }
 
-    init(from playlist: PlaylistSimplified) {
+    init(from playlist: PlaylistSimplified, totalDurationMs: Int? = nil) {
         id = playlist.id
         name = playlist.name
         uri = playlist.uri
         description = playlist.description
         imageURL = playlist.imageURL
         trackCount = playlist.trackCount
+        ownerId = playlist.ownerId
         ownerName = playlist.ownerName
+        self.totalDurationMs = totalDurationMs
     }
 }
 
@@ -338,6 +395,9 @@ enum SpotifyAPI {
     /// Fetches track metadata from Spotify Web API
     static func fetchTrackMetadata(trackId: String, accessToken: String) async throws -> TrackMetadata {
         let urlString = "\(baseURL)/tracks/\(trackId)?fields=id,name,duration_ms,artists(name),album(name,images),preview_url"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -431,7 +491,10 @@ enum SpotifyAPI {
     ///   - limit: Number of playlists to fetch (max 50)
     ///   - offset: Offset for pagination
     static func fetchUserPlaylists(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> PlaylistsResponse {
-        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,tracks(total),public,owner(display_name)),total,next"
+        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,tracks(total,items(track(duration_ms))),public,owner(id,display_name)),total,next"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -487,11 +550,12 @@ enum SpotifyAPI {
                   let tracks = item["tracks"] as? [String: Any],
                   let trackCount = tracks["total"] as? Int,
                   let owner = item["owner"] as? [String: Any],
-                  let ownerName = owner["display_name"] as? String
+                  let ownerId = owner["id"] as? String
             else {
                 return nil
             }
 
+            let ownerName = owner["display_name"] as? String ?? ownerId
             let description = item["description"] as? String
             let isPublic = item["public"] as? Bool ?? false
 
@@ -503,6 +567,22 @@ enum SpotifyAPI {
                 imageURL = URL(string: urlString)
             }
 
+            // Calculate total duration from tracks
+            var totalDurationMs: Int?
+            if let items = tracks["items"] as? [[String: Any]] {
+                let durations = items.compactMap { item -> Int? in
+                    guard let track = item["track"] as? [String: Any],
+                          let duration = track["duration_ms"] as? Int
+                    else {
+                        return nil
+                    }
+                    return duration
+                }
+                if !durations.isEmpty {
+                    totalDurationMs = durations.reduce(0, +)
+                }
+            }
+
             return PlaylistSimplified(
                 id: id,
                 name: name,
@@ -511,7 +591,9 @@ enum SpotifyAPI {
                 trackCount: trackCount,
                 uri: uri,
                 isPublic: isPublic,
+                ownerId: ownerId,
                 ownerName: ownerName,
+                totalDurationMs: totalDurationMs,
             )
         }
 
@@ -533,7 +615,10 @@ enum SpotifyAPI {
     ///   - playlistId: Playlist ID
     static func fetchPlaylistDetails(accessToken: String, playlistId: String) async throws -> SearchPlaylist {
         // Add fields parameter to request only what we need, and market=from_token for region-specific playlists
-        let urlString = "\(baseURL)/playlists/\(playlistId)?fields=id,name,description,images,tracks.total,uri,public,owner.display_name&market=from_token"
+        let urlString = "\(baseURL)/playlists/\(playlistId)?fields=id,name,description,images,tracks(total,items(track(duration_ms))),uri,public,owner(id,display_name)&market=from_token"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -582,10 +667,13 @@ enum SpotifyAPI {
               let tracks = json["tracks"] as? [String: Any],
               let trackCount = tracks["total"] as? Int,
               let owner = json["owner"] as? [String: Any],
-              let ownerName = owner["display_name"] as? String
+              let ownerId = owner["id"] as? String
         else {
             throw SpotifyAPIError.invalidResponse
         }
+
+        // Owner's display_name can be null, fall back to id
+        let ownerName = owner["display_name"] as? String ?? ownerId
 
         let description = json["description"] as? String
 
@@ -597,6 +685,22 @@ enum SpotifyAPI {
             imageURL = URL(string: urlString)
         }
 
+        // Calculate total duration from tracks
+        var totalDurationMs: Int?
+        if let items = tracks["items"] as? [[String: Any]] {
+            let durations = items.compactMap { item -> Int? in
+                guard let track = item["track"] as? [String: Any],
+                      let duration = track["duration_ms"] as? Int
+                else {
+                    return nil
+                }
+                return duration
+            }
+            if !durations.isEmpty {
+                totalDurationMs = durations.reduce(0, +)
+            }
+        }
+
         return SearchPlaylist(
             id: id,
             name: name,
@@ -604,7 +708,9 @@ enum SpotifyAPI {
             description: description,
             imageURL: imageURL,
             trackCount: trackCount,
+            ownerId: ownerId,
             ownerName: ownerName,
+            totalDurationMs: totalDurationMs,
         )
     }
 
@@ -613,7 +719,10 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - albumId: Album ID
     static func fetchAlbumDetails(accessToken: String, albumId: String) async throws -> SearchAlbum {
-        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(name),images"
+        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(id,name),images,tracks(items(duration_ms)),external_urls(spotify)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -667,6 +776,7 @@ enum SpotifyAPI {
         }
 
         let artistName = artists.first?["name"] as? String ?? "Unknown Artist"
+        let artistId = artists.first?["id"] as? String
 
         var imageURL: URL?
         if let images = json["images"] as? [[String: Any]],
@@ -676,14 +786,32 @@ enum SpotifyAPI {
             imageURL = URL(string: urlString)
         }
 
+        // Calculate total duration from tracks
+        var totalDurationMs: Int?
+        if let tracksObj = json["tracks"] as? [String: Any],
+           let items = tracksObj["items"] as? [[String: Any]]
+        {
+            let durations = items.compactMap { $0["duration_ms"] as? Int }
+            if !durations.isEmpty {
+                totalDurationMs = durations.reduce(0, +)
+            }
+        }
+
+        // Parse external URL
+        let externalUrls = json["external_urls"] as? [String: Any]
+        let externalUrl = externalUrls?["spotify"] as? String
+
         return SearchAlbum(
             id: id,
             name: name,
             uri: uri,
             artistName: artistName,
+            artistId: artistId,
             imageURL: imageURL,
             totalTracks: totalTracks,
             releaseDate: releaseDate,
+            totalDurationMs: totalDurationMs,
+            externalUrl: externalUrl,
         )
     }
 
@@ -693,6 +821,9 @@ enum SpotifyAPI {
     ///   - artistId: Artist ID
     static func fetchArtistDetails(accessToken: String, artistId: String) async throws -> SearchArtist {
         let urlString = "\(baseURL)/artists/\(artistId)?fields=id,name,uri,genres,followers(total),images"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -769,7 +900,10 @@ enum SpotifyAPI {
     ///   - limit: Number of albums to fetch (max 50)
     ///   - offset: Offset for pagination
     static func fetchUserAlbums(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> AlbumsResponse {
-        let urlString = "\(baseURL)/me/albums?limit=\(limit)&offset=\(offset)&fields=items(album(id,name,uri,total_tracks,release_date,album_type,artists(name),images)),total,next"
+        let urlString = "\(baseURL)/me/albums?limit=\(limit)&offset=\(offset)&fields=items(album(id,name,uri,total_tracks,release_date,album_type,artists(name),images,tracks(items(duration_ms)))),total,next"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -844,6 +978,17 @@ enum SpotifyAPI {
                 imageURL = URL(string: urlString)
             }
 
+            // Calculate total duration from tracks
+            var totalDurationMs: Int?
+            if let tracksObj = album["tracks"] as? [String: Any],
+               let items = tracksObj["items"] as? [[String: Any]]
+            {
+                let durations = items.compactMap { $0["duration_ms"] as? Int }
+                if !durations.isEmpty {
+                    totalDurationMs = durations.reduce(0, +)
+                }
+            }
+
             return AlbumSimplified(
                 id: id,
                 name: name,
@@ -853,6 +998,7 @@ enum SpotifyAPI {
                 uri: uri,
                 releaseDate: releaseDate,
                 albumType: albumType,
+                totalDurationMs: totalDurationMs,
             )
         }
 
@@ -878,6 +1024,9 @@ enum SpotifyAPI {
         if let after {
             urlString += "&after=\(after)"
         }
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -956,14 +1105,12 @@ enum SpotifyAPI {
 
         let cursors = artistsContainer["cursors"] as? [String: Any]
         let afterCursor = cursors?["after"] as? String
-        let hasMore = afterCursor != nil
-        let nextOffset = 0 // Artists use cursor-based pagination, not offset
 
         return ArtistsResponse(
             artists: artists,
             total: total,
-            hasMore: hasMore,
-            nextOffset: nextOffset,
+            hasMore: afterCursor != nil,
+            nextCursor: afterCursor,
         )
     }
 
@@ -973,7 +1120,10 @@ enum SpotifyAPI {
     ///   - limit: Number of tracks to fetch (max 50)
     ///   - offset: Offset for pagination
     static func fetchUserSavedTracks(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> SavedTracksResponse {
-        let urlString = "\(baseURL)/me/tracks?limit=\(limit)&offset=\(offset)&fields=items(track(id,name,uri,duration_ms,artists(name),album(name,images)),added_at),total,next"
+        let urlString = "\(baseURL)/me/tracks?limit=\(limit)&offset=\(offset)&fields=items(track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify)),added_at),total,next"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1034,15 +1184,19 @@ enum SpotifyAPI {
             }
 
             var artistName = "Unknown Artist"
+            var artistId: String?
             if let artists = track["artists"] as? [[String: Any]] {
                 let artistNames = artists.compactMap { $0["name"] as? String }
                 artistName = artistNames.joined(separator: ", ")
+                artistId = artists.first?["id"] as? String
             }
 
             var albumName = "Unknown Album"
+            var albumId: String?
             var imageURL: URL?
             if let album = track["album"] as? [String: Any] {
                 albumName = album["name"] as? String ?? "Unknown Album"
+                albumId = album["id"] as? String
 
                 if let images = album["images"] as? [[String: Any]],
                    let firstImage = images.first,
@@ -1051,6 +1205,9 @@ enum SpotifyAPI {
                     imageURL = URL(string: urlString)
                 }
             }
+
+            let externalUrls = track["external_urls"] as? [String: Any]
+            let externalUrl = externalUrls?["spotify"] as? String
 
             return SavedTrack(
                 id: id,
@@ -1061,6 +1218,9 @@ enum SpotifyAPI {
                 durationMs: durationMs,
                 uri: uri,
                 addedAt: addedAt,
+                albumId: albumId,
+                artistId: artistId,
+                externalUrl: externalUrl,
             )
         }
 
@@ -1082,6 +1242,9 @@ enum SpotifyAPI {
     ///   - trackId: The Spotify ID of the track to save
     static func saveTrack(accessToken: String, trackId: String) async throws {
         let urlString = "\(baseURL)/me/tracks"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1130,46 +1293,75 @@ enum SpotifyAPI {
     ///   - trackId: The Spotify ID of the track to check
     /// - Returns: True if track is saved, false otherwise
     static func checkSavedTrack(accessToken: String, trackId: String) async throws -> Bool {
-        let urlString = "\(baseURL)/me/tracks/contains?ids=\(trackId)"
+        let result = try await checkSavedTracks(accessToken: accessToken, trackIds: [trackId])
+        return result[trackId] ?? false
+    }
 
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
+    /// Batch checks if multiple tracks are saved in user's library
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - trackIds: Array of Spotify track IDs to check (max 50 per request)
+    /// - Returns: Dictionary mapping track ID to saved status
+    static func checkSavedTracks(accessToken: String, trackIds: [String]) async throws -> [String: Bool] {
+        guard !trackIds.isEmpty else { return [:] }
 
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        // Spotify API allows max 50 IDs per request
+        let batchSize = 50
+        var results: [String: Bool] = [:]
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw SpotifyAPIError.networkError(error)
-        }
+        for batchStart in stride(from: 0, to: trackIds.count, by: batchSize) {
+            let batchEnd = min(batchStart + batchSize, trackIds.count)
+            let batch = Array(trackIds[batchStart ..< batchEnd])
+            let idsParam = batch.joined(separator: ",")
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
+            let urlString = "\(baseURL)/me/tracks/contains?ids=\(idsParam)"
+            #if DEBUG
+                apiLogger.debug("[GET] \(urlString)")
+            #endif
 
-        switch httpResponse.statusCode {
-        case 200:
-            // Parse JSON response - returns array of booleans
-            guard let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [Bool],
-                  let isSaved = jsonArray.first
-            else {
+            guard let url = URL(string: urlString) else {
+                throw SpotifyAPIError.invalidURI
+            }
+
+            var request = URLRequest(url: url)
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await URLSession.shared.data(for: request)
+            } catch {
+                throw SpotifyAPIError.networkError(error)
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
                 throw SpotifyAPIError.invalidResponse
             }
-            return isSaved
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        default:
-            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = errorJson["error"] as? [String: Any],
-               let message = error["message"] as? String
-            {
-                throw SpotifyAPIError.apiError(message)
+
+            switch httpResponse.statusCode {
+            case 200:
+                guard let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [Bool],
+                      jsonArray.count == batch.count
+                else {
+                    throw SpotifyAPIError.invalidResponse
+                }
+                // Map results back to track IDs
+                for (index, trackId) in batch.enumerated() {
+                    results[trackId] = jsonArray[index]
+                }
+            case 401:
+                throw SpotifyAPIError.unauthorized
+            default:
+                if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let error = errorJson["error"] as? [String: Any],
+                   let message = error["message"] as? String
+                {
+                    throw SpotifyAPIError.apiError(message)
+                }
+                throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
             }
-            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
         }
+
+        return results
     }
 
     /// Removes a track from user's saved tracks (unfavorites)
@@ -1178,6 +1370,9 @@ enum SpotifyAPI {
     ///   - trackId: The Spotify ID of the track to remove
     static func removeSavedTrack(accessToken: String, trackId: String) async throws {
         let urlString = "\(baseURL)/me/tracks?ids=\(trackId)"
+        #if DEBUG
+            apiLogger.debug("[DELETE] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1225,7 +1420,10 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - albumId: The Spotify ID of the album
     static func fetchAlbumTracks(accessToken: String, albumId: String) async throws -> [AlbumTrack] {
-        let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(name))"
+        let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(id,name),external_urls(spotify))"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1258,7 +1456,12 @@ enum SpotifyAPI {
                     return nil
                 }
 
-                let artistName = (item["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let externalUrls = item["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
 
                 return AlbumTrack(
                     id: id,
@@ -1267,6 +1470,8 @@ enum SpotifyAPI {
                     artistName: artistName,
                     durationMs: durationMs,
                     trackNumber: trackNumber,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
                 )
             }
 
@@ -1293,7 +1498,10 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - playlistId: The Spotify ID of the playlist
     static func fetchPlaylistTracks(accessToken: String, playlistId: String) async throws -> [PlaylistTrack] {
-        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks?limit=50&fields=items(track(id,name,uri,duration_ms,artists(name),album(name,images)),added_at)"
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks?limit=50&fields=items(track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify)),added_at)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1326,11 +1534,20 @@ enum SpotifyAPI {
                     return nil
                 }
 
-                let artistName = (track["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
-                let albumName = (track["album"] as? [String: Any])?["name"] as? String ?? ""
-                let albumImages = (track["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                let artistsArray = track["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let albumData = track["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumId = albumData?["id"] as? String
+                let albumImages = albumData?["images"] as? [[String: Any]]
                 let imageURLString = albumImages?.first?["url"] as? String
                 let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                let externalUrls = track["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
+
                 let addedAt = item["added_at"] as? String ?? ""
 
                 return PlaylistTrack(
@@ -1342,6 +1559,9 @@ enum SpotifyAPI {
                     imageURL: imageURL,
                     durationMs: durationMs,
                     addedAt: addedAt,
+                    albumId: albumId,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
                 )
             }
 
@@ -1368,8 +1588,12 @@ enum SpotifyAPI {
     ///   - accessToken: Spotify access token
     ///   - artistId: The Spotify ID of the artist
     static func fetchArtistTopTracks(accessToken: String, artistId: String) async throws -> [SearchTrack] {
-        // Use US market by default (required parameter)
-        let urlString = "\(baseURL)/artists/\(artistId)/top-tracks?market=US&fields=tracks(id,name,uri,duration_ms,artists(name),album(name,images))"
+        // Use market from token to get region-specific results
+        // Note: top-tracks endpoint doesn't support fields parameter, returns full track objects
+        let urlString = "\(baseURL)/artists/\(artistId)/top-tracks?market=from_token"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1401,11 +1625,19 @@ enum SpotifyAPI {
                     return nil
                 }
 
-                let artistName = (item["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
-                let albumName = (item["album"] as? [String: Any])?["name"] as? String ?? ""
-                let albumImages = (item["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let albumData = item["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumId = albumData?["id"] as? String
+                let albumImages = albumData?["images"] as? [[String: Any]]
                 let imageURLString = albumImages?.first?["url"] as? String
                 let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                let externalUrls = item["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
 
                 return SearchTrack(
                     id: id,
@@ -1415,6 +1647,9 @@ enum SpotifyAPI {
                     albumName: albumName,
                     imageURL: imageURL,
                     durationMs: durationMs,
+                    albumId: albumId,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
                 )
             }
 
@@ -1422,6 +1657,188 @@ enum SpotifyAPI {
         case 401:
             throw SpotifyAPIError.unauthorized
         case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    // MARK: - Artist Albums
+
+    /// Fetches albums for a specific artist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - artistId: The Spotify ID of the artist
+    ///   - limit: Maximum number of albums to return (default 50)
+    /// - Returns: Array of albums by the artist
+    static func fetchArtistAlbums(
+        accessToken: String,
+        artistId: String,
+        limit: Int = 50,
+    ) async throws -> [SearchAlbum] {
+        let urlString = "\(baseURL)/artists/\(artistId)/albums?include_groups=album,single&market=from_token&limit=\(limit)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let items = json["items"] as? [[String: Any]]
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            let albums = items.compactMap { item -> SearchAlbum? in
+                guard let id = item["id"] as? String,
+                      let name = item["name"] as? String,
+                      let uri = item["uri"] as? String,
+                      let totalTracks = item["total_tracks"] as? Int,
+                      let releaseDate = item["release_date"] as? String
+                else {
+                    return nil
+                }
+
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+
+                let images = item["images"] as? [[String: Any]]
+                let imageURLString = images?.first?["url"] as? String
+                let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                return SearchAlbum(
+                    id: id,
+                    name: name,
+                    uri: uri,
+                    artistName: artistName,
+                    imageURL: imageURL,
+                    totalTracks: totalTracks,
+                    releaseDate: releaseDate,
+                )
+            }
+
+            return albums
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    // MARK: - Recommendations (Radio)
+
+    /// Fetches track recommendations based on a seed track (for "Start Radio" feature)
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - seedTrackId: The Spotify ID of the seed track
+    ///   - limit: Number of tracks to return (default 50, max 100)
+    /// - Returns: Array of recommended tracks
+    static func fetchRecommendations(
+        accessToken: String,
+        seedTrackId: String,
+        limit: Int = 50,
+    ) async throws -> [SearchTrack] {
+        let urlString = "\(baseURL)/recommendations?seed_tracks=\(seedTrackId)&limit=\(limit)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tracks = json["tracks"] as? [[String: Any]]
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            let recommendedTracks = tracks.compactMap { item -> SearchTrack? in
+                guard let id = item["id"] as? String,
+                      let name = item["name"] as? String,
+                      let uri = item["uri"] as? String,
+                      let durationMs = item["duration_ms"] as? Int
+                else {
+                    return nil
+                }
+
+                let artistsArray = item["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let albumData = item["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumId = albumData?["id"] as? String
+                let albumImages = albumData?["images"] as? [[String: Any]]
+                let imageURLString = albumImages?.first?["url"] as? String
+                let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                let externalUrls = item["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
+
+                return SearchTrack(
+                    id: id,
+                    name: name,
+                    uri: uri,
+                    artistName: artistName,
+                    albumName: albumName,
+                    imageURL: imageURL,
+                    durationMs: durationMs,
+                    albumId: albumId,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
+                )
+            }
+
+            return recommendedTracks
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            // Try to get actual error message from Spotify
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError("Recommendations API: \(message)")
+            }
             throw SpotifyAPIError.notFound
         default:
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -1447,6 +1864,9 @@ enum SpotifyAPI {
         let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
 
         let urlString = "\(baseURL)/search?q=\(encodedQuery)&type=\(typesParam)&limit=\(limit)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1485,11 +1905,19 @@ enum SpotifyAPI {
                         return nil
                     }
 
-                    let artistName = (item["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
-                    let albumName = (item["album"] as? [String: Any])?["name"] as? String ?? ""
-                    let albumImages = (item["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                    let artistsArray = item["artists"] as? [[String: Any]]
+                    let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                    let artistId = artistsArray?.first?["id"] as? String
+
+                    let albumData = item["album"] as? [String: Any]
+                    let albumName = albumData?["name"] as? String ?? ""
+                    let albumId = albumData?["id"] as? String
+                    let albumImages = albumData?["images"] as? [[String: Any]]
                     let imageURLString = albumImages?.first?["url"] as? String
                     let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                    let externalUrls = item["external_urls"] as? [String: Any]
+                    let externalUrl = externalUrls?["spotify"] as? String
 
                     return SearchTrack(
                         id: id,
@@ -1499,6 +1927,9 @@ enum SpotifyAPI {
                         albumName: albumName,
                         imageURL: imageURL,
                         durationMs: durationMs,
+                        albumId: albumId,
+                        artistId: artistId,
+                        externalUrl: externalUrl,
                     )
                 }
             }
@@ -1583,7 +2014,9 @@ enum SpotifyAPI {
                     let imageURLString = images?.first?["url"] as? String
                     let imageURL = imageURLString.flatMap { URL(string: $0) }
                     let trackCount = (item["tracks"] as? [String: Any])?["total"] as? Int ?? 0
-                    let ownerName = (item["owner"] as? [String: Any])?["display_name"] as? String ?? "Unknown"
+                    let owner = item["owner"] as? [String: Any]
+                    let ownerId = owner?["id"] as? String ?? ""
+                    let ownerName = owner?["display_name"] as? String ?? ownerId
 
                     return SearchPlaylist(
                         id: id,
@@ -1592,7 +2025,8 @@ enum SpotifyAPI {
                         description: description,
                         imageURL: imageURL,
                         trackCount: trackCount,
-                        ownerName: ownerName,
+                        ownerId: ownerId,
+                        ownerName: ownerName.isEmpty ? "Unknown" : ownerName,
                     )
                 }
             }
@@ -1626,6 +2060,9 @@ enum SpotifyAPI {
         limit: Int = 50,
     ) async throws -> RecentlyPlayedResponse {
         let urlString = "\(baseURL)/me/player/recently-played?limit=\(limit)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1661,11 +2098,19 @@ enum SpotifyAPI {
                     return nil
                 }
 
-                let artistName = (trackData["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
-                let albumName = (trackData["album"] as? [String: Any])?["name"] as? String ?? ""
-                let albumImages = (trackData["album"] as? [String: Any])?["images"] as? [[String: Any]]
+                let artistsArray = trackData["artists"] as? [[String: Any]]
+                let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                let artistId = artistsArray?.first?["id"] as? String
+
+                let albumData = trackData["album"] as? [String: Any]
+                let albumName = albumData?["name"] as? String ?? ""
+                let albumId = albumData?["id"] as? String
+                let albumImages = albumData?["images"] as? [[String: Any]]
                 let imageURLString = albumImages?.first?["url"] as? String
                 let imageURL = imageURLString.flatMap { URL(string: $0) }
+
+                let externalUrls = trackData["external_urls"] as? [String: Any]
+                let externalUrl = externalUrls?["spotify"] as? String
 
                 let track = SearchTrack(
                     id: trackId,
@@ -1675,6 +2120,9 @@ enum SpotifyAPI {
                     albumName: albumName,
                     imageURL: imageURL,
                     durationMs: durationMs,
+                    albumId: albumId,
+                    artistId: artistId,
+                    externalUrl: externalUrl,
                 )
 
                 // Parse context if available
@@ -1715,6 +2163,9 @@ enum SpotifyAPI {
     /// Fetches available Spotify Connect devices
     static func fetchAvailableDevices(accessToken: String) async throws -> DevicesResponse {
         let urlString = "\(baseURL)/me/player/devices"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1784,6 +2235,9 @@ enum SpotifyAPI {
     ///   - play: Whether to start playing on the new device (default: true)
     static func transferPlayback(accessToken: String, deviceId: String, play: Bool = true) async throws {
         let urlString = "\(baseURL)/me/player"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
 
         guard let url = URL(string: urlString) else {
             throw SpotifyAPIError.invalidURI
@@ -1817,6 +2271,506 @@ enum SpotifyAPI {
             throw SpotifyAPIError.apiError("Device is restricted and cannot accept playback")
         case 404:
             throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    // MARK: - Playlist Management
+
+    /// Gets the current user's Spotify user ID
+    /// - Parameter accessToken: Spotify access token
+    /// - Returns: The user's Spotify ID
+    static func getCurrentUserId(accessToken: String) async throws -> String {
+        let urlString = "\(baseURL)/me"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let userId = json["id"] as? String
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+            return userId
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Creates a new playlist for the user
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - userId: The user's Spotify ID
+    ///   - name: The name for the new playlist
+    ///   - description: Optional description for the playlist
+    ///   - isPublic: Whether the playlist should be public (default: false)
+    /// - Returns: The created playlist
+    static func createPlaylist(
+        accessToken: String,
+        userId: String,
+        name: String,
+        description: String? = nil,
+        isPublic: Bool = false,
+    ) async throws -> PlaylistSimplified {
+        let urlString = "\(baseURL)/users/\(userId)/playlists"
+        #if DEBUG
+            apiLogger.debug("[POST] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "name": name,
+            "description": description ?? "",
+            "public": isPublic,
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 201:
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = json["id"] as? String,
+                  let name = json["name"] as? String,
+                  let uri = json["uri"] as? String,
+                  let owner = json["owner"] as? [String: Any],
+                  let ownerId = owner["id"] as? String
+            else {
+                throw SpotifyAPIError.invalidResponse
+            }
+
+            // Owner's display_name can be null, fall back to id
+            let ownerName = owner["display_name"] as? String ?? ownerId
+
+            let description = json["description"] as? String
+            let isPublic = json["public"] as? Bool ?? false
+
+            var imageURL: URL?
+            if let images = json["images"] as? [[String: Any]],
+               let firstImage = images.first,
+               let urlString = firstImage["url"] as? String
+            {
+                imageURL = URL(string: urlString)
+            }
+
+            return PlaylistSimplified(
+                id: id,
+                name: name,
+                description: description,
+                imageURL: imageURL,
+                trackCount: 0,
+                uri: uri,
+                isPublic: isPublic,
+                ownerId: ownerId,
+                ownerName: ownerName,
+                totalDurationMs: nil,
+            )
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to create playlists for this user")
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Adds tracks to an existing playlist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist to add tracks to
+    ///   - trackUris: Array of Spotify track URIs (e.g., "spotify:track:xxx")
+    static func addTracksToPlaylist(
+        accessToken: String,
+        playlistId: String,
+        trackUris: [String],
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
+        #if DEBUG
+            apiLogger.debug("[POST] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["uris": trackUris]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 201:
+            // Success - tracks added
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Updates playlist details (name and/or description)
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist to update
+    ///   - newName: New name for the playlist (optional)
+    ///   - newDescription: New description for the playlist (optional)
+    static func updatePlaylistDetails(
+        accessToken: String,
+        playlistId: String,
+        newName: String? = nil,
+        newDescription: String? = nil,
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [:]
+        if let newName {
+            body["name"] = newName
+        }
+        if let newDescription {
+            body["description"] = newDescription
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Deletes (unfollows) a playlist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist to delete
+    static func deletePlaylist(
+        accessToken: String,
+        playlistId: String,
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/followers"
+        #if DEBUG
+            apiLogger.debug("[DELETE] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to delete this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Removes tracks from a playlist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist
+    ///   - trackUris: Array of track URIs to remove
+    static func removeTracksFromPlaylist(
+        accessToken: String,
+        playlistId: String,
+        trackUris: [String],
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
+        #if DEBUG
+            apiLogger.debug("[DELETE] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Format: { "tracks": [{ "uri": "spotify:track:xxx" }, ...] }
+        let tracks = trackUris.map { ["uri": $0] }
+        let body: [String: Any] = ["tracks": tracks]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Reorders tracks in a playlist
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist
+    ///   - rangeStart: The position of the first track to be reordered
+    ///   - insertBefore: The position where the tracks should be inserted
+    ///   - rangeLength: Number of tracks to reorder (default 1)
+    static func reorderPlaylistTracks(
+        accessToken: String,
+        playlistId: String,
+        rangeStart: Int,
+        insertBefore: Int,
+        rangeLength: Int = 1,
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "range_start": rangeStart,
+            "insert_before": insertBefore,
+            "range_length": rangeLength,
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 201:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Replaces all tracks in a playlist (used for reordering)
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - playlistId: The ID of the playlist
+    ///   - trackUris: Array of track URIs in the desired order
+    static func replacePlaylistTracks(
+        accessToken: String,
+        playlistId: String,
+        trackUris: [String],
+    ) async throws {
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
+        #if DEBUG
+            apiLogger.debug("[PUT] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["uris": trackUris]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 201:
+            break
+
+        case 401:
+            throw SpotifyAPIError.unauthorized
+
+        case 403:
+            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
+
+        case 404:
+            throw SpotifyAPIError.notFound
+
         default:
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let error = errorJson["error"] as? [String: Any],

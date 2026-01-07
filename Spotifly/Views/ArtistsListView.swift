@@ -2,26 +2,31 @@
 //  ArtistsListView.swift
 //  Spotifly
 //
-//  Displays user's followed artists
+//  Displays user's followed artists using normalized store
 //
 
 import SwiftUI
 
 struct ArtistsListView: View {
-    let authResult: SpotifyAuthResult
-    @Bindable var artistsViewModel: ArtistsViewModel
+    @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(ArtistService.self) private var artistService
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Binding var selectedArtist: ArtistSimplified?
+
+    // Selection uses artist ID, looked up from store
+    @Binding var selectedArtistId: String?
+
+    @State private var errorMessage: String?
 
     var body: some View {
         Group {
-            if artistsViewModel.isLoading, artistsViewModel.artists.isEmpty {
+            if store.artistsPagination.isLoading, store.userArtists.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
                     Text("loading.artists")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = artistsViewModel.errorMessage, artistsViewModel.artists.isEmpty {
+            } else if let error = errorMessage, store.userArtists.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -33,13 +38,13 @@ struct ArtistsListView: View {
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
                         Task {
-                            await artistsViewModel.loadArtists(accessToken: authResult.accessToken)
+                            await loadArtists(forceRefresh: true)
                         }
                     }
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if artistsViewModel.artists.isEmpty {
+            } else if store.userArtists.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "person.2")
                         .font(.system(size: 40))
@@ -54,22 +59,24 @@ struct ArtistsListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(artistsViewModel.artists) { artist in
+                        ForEach(store.userArtists) { artist in
                             ArtistRow(
                                 artist: artist,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken,
-                                selectedArtist: $selectedArtist,
+                                isSelected: selectedArtistId == artist.id,
+                                onSelect: {
+                                    selectedArtistId = artist.id
+                                },
                             )
                         }
 
                         // Load more indicator
-                        if artistsViewModel.hasMore {
+                        if store.artistsPagination.hasMore {
                             ProgressView()
                                 .padding()
                                 .onAppear {
                                     Task {
-                                        await artistsViewModel.loadMoreIfNeeded(accessToken: authResult.accessToken)
+                                        await loadMoreArtists()
                                     }
                                 }
                         }
@@ -77,23 +84,56 @@ struct ArtistsListView: View {
                     .padding()
                 }
                 .refreshable {
-                    await artistsViewModel.refresh(accessToken: authResult.accessToken)
+                    await loadArtists(forceRefresh: true)
                 }
             }
         }
         .task {
-            if artistsViewModel.artists.isEmpty, !artistsViewModel.isLoading {
-                await artistsViewModel.loadArtists(accessToken: authResult.accessToken)
+            if store.userArtists.isEmpty, !store.artistsPagination.isLoading {
+                await loadArtists()
             }
+            // Set initial selection after loading or if already loaded
+            if selectedArtistId == nil, let first = store.userArtists.first {
+                selectedArtistId = first.id
+            }
+        }
+        .onChange(of: store.userArtists) { _, artists in
+            if selectedArtistId == nil, let first = artists.first {
+                selectedArtistId = first.id
+            }
+        }
+    }
+
+    private func loadArtists(forceRefresh: Bool = false) async {
+        errorMessage = nil
+        do {
+            let token = await session.validAccessToken()
+            try await artistService.loadUserArtists(
+                accessToken: token,
+                forceRefresh: forceRefresh,
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadMoreArtists() async {
+        do {
+            let token = await session.validAccessToken()
+            try await artistService.loadMoreArtists(accessToken: token)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }
 
 struct ArtistRow: View {
-    let artist: ArtistSimplified
+    let artist: Artist
     @Bindable var playbackViewModel: PlaybackViewModel
-    let accessToken: String
-    @Binding var selectedArtist: ArtistSimplified?
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         HStack(spacing: 12) {
@@ -137,9 +177,11 @@ struct ArtistRow: View {
                         .lineLimit(1)
                 }
 
-                Text(String(format: String(localized: "metadata.followers"), formatFollowers(artist.followers)))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let followers = artist.followers {
+                    Text(String(format: String(localized: "metadata.followers"), formatFollowers(followers)))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer()
@@ -147,7 +189,8 @@ struct ArtistRow: View {
             // Play button
             Button {
                 Task {
-                    await playbackViewModel.play(uriOrUrl: artist.uri, accessToken: accessToken)
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.play(uriOrUrl: artist.uri, accessToken: token)
                 }
             } label: {
                 Image(systemName: "play.circle.fill")
@@ -158,11 +201,11 @@ struct ArtistRow: View {
             .disabled(playbackViewModel.isLoading)
         }
         .padding()
-        .background(Color.gray.opacity(0.05))
+        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.gray.opacity(0.05))
         .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture {
-            selectedArtist = artist
+            onSelect()
         }
     }
 

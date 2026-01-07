@@ -13,13 +13,11 @@ import UIKit
 import SwiftUI
 
 struct StartpageView: View {
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(RecentlyPlayedService.self) private var recentlyPlayedService
     @Bindable var trackViewModel: TrackLookupViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Bindable var recentlyPlayedViewModel: RecentlyPlayedViewModel
-    @Binding var selectedRecentAlbum: SearchAlbum?
-    @Binding var selectedRecentArtist: SearchArtist?
-    @Binding var selectedRecentPlaylist: SearchPlaylist?
     @Binding var showingAllRecentTracks: Bool
 
     @State private var versionTapCount = 0
@@ -39,7 +37,8 @@ struct StartpageView: View {
                             .onSubmit {
                                 if !trackViewModel.spotifyURI.isEmpty {
                                     Task {
-                                        await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: authResult.accessToken)
+                                        let token = await session.validAccessToken()
+                                        await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: token)
                                     }
                                 }
                             }
@@ -56,7 +55,8 @@ struct StartpageView: View {
 
                         Button("action.play") {
                             Task {
-                                await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: authResult.accessToken)
+                                let token = await session.validAccessToken()
+                                await playbackViewModel.play(uriOrUrl: trackViewModel.spotifyURI, accessToken: token)
                             }
                         }
                         .buttonStyle(.borderedProminent)
@@ -76,41 +76,31 @@ struct StartpageView: View {
                 Divider()
 
                 // Recently Played Section
-                if recentlyPlayedViewModel.isLoading {
+                if store.recentlyPlayedIsLoading {
                     HStack {
                         Spacer()
                         ProgressView("loading.recently_played")
                         Spacer()
                     }
                     .padding()
-                } else if let error = recentlyPlayedViewModel.errorMessage {
+                } else if let error = store.recentlyPlayedErrorMessage {
                     Text(String(format: String(localized: "error.load_recently_played"), error))
                         .foregroundStyle(.red)
                         .padding()
                 } else {
                     VStack(alignment: .leading, spacing: 20) {
                         // Recently Played Tracks (top 5 with "show more" button)
-                        if !recentlyPlayedViewModel.recentTracks.isEmpty {
+                        if !store.recentTracks.isEmpty {
                             RecentTracksSection(
-                                tracks: Array(recentlyPlayedViewModel.recentTracks.prefix(5)),
+                                tracks: Array(store.recentTracks.prefix(5)),
                                 showingAllTracks: $showingAllRecentTracks,
-                                selectedRecentAlbum: $selectedRecentAlbum,
-                                selectedRecentArtist: $selectedRecentArtist,
-                                selectedRecentPlaylist: $selectedRecentPlaylist,
-                                authResult: authResult,
                                 playbackViewModel: playbackViewModel,
                             )
                         }
 
                         // Recently Played Content (mixed albums, artists, playlists)
-                        if !recentlyPlayedViewModel.recentItems.isEmpty {
-                            RecentContentSection(
-                                items: recentlyPlayedViewModel.recentItems,
-                                selectedAlbum: $selectedRecentAlbum,
-                                selectedArtist: $selectedRecentArtist,
-                                selectedPlaylist: $selectedRecentPlaylist,
-                                showingAllTracks: $showingAllRecentTracks,
-                            )
+                        if !store.recentItems.isEmpty {
+                            RecentContentSection(items: store.recentItems)
                         }
                     }
                 }
@@ -131,7 +121,7 @@ struct StartpageView: View {
                             }
                         }
                     } label: {
-                        Text(String(format: String(localized: "version.label"), appVersion.split(separator: " ").first.map(String.init) ?? "", appVersion.split(separator: " ").last?.replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "") ?? ""))
+                        Text("Version \(appVersion)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -145,7 +135,7 @@ struct StartpageView: View {
                                 .fontWeight(.semibold)
 
                             HStack(spacing: 8) {
-                                Text(authResult.accessToken)
+                                Text(session.accessToken)
                                     .font(.system(.caption, design: .monospaced))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -180,27 +170,23 @@ struct StartpageView: View {
             }
         }
         .task {
-            await recentlyPlayedViewModel.loadRecentlyPlayed(accessToken: authResult.accessToken)
+            let token = await session.validAccessToken()
+            await recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
         }
-        .startpageShortcuts(
-            recentlyPlayedViewModel: recentlyPlayedViewModel,
-            authResult: authResult,
-        )
+        .startpageShortcuts(recentlyPlayedService: recentlyPlayedService)
     }
 
     private var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
-        return "\(version) (\(build))"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
     }
 
     private func copyTokenToClipboard() {
         #if os(macOS)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(authResult.accessToken, forType: .string)
+        pasteboard.setString(session.accessToken, forType: .string)
         #else
-        UIPasteboard.general.string = authResult.accessToken
+        UIPasteboard.general.string = session.accessToken
         #endif
     }
 }
@@ -208,13 +194,10 @@ struct StartpageView: View {
 // MARK: - Recently Played Sections
 
 struct RecentTracksSection: View {
-    let tracks: [SearchTrack]
+    let tracks: [Track]
     @Binding var showingAllTracks: Bool
-    @Binding var selectedRecentAlbum: SearchAlbum?
-    @Binding var selectedRecentArtist: SearchArtist?
-    @Binding var selectedRecentPlaylist: SearchPlaylist?
-    let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -223,19 +206,13 @@ struct RecentTracksSection: View {
                 .padding(.horizontal)
 
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(tracks) { track in
+                ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
                     TrackRow(
                         track: track.toTrackRowData(),
+                        index: index,
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                         playbackViewModel: playbackViewModel,
-                    ) {
-                        Task {
-                            await playbackViewModel.play(
-                                uriOrUrl: track.uri,
-                                accessToken: authResult.accessToken,
-                            )
-                        }
-                    }
+                    )
 
                     if track.id != tracks.last?.id {
                         Divider()
@@ -246,9 +223,6 @@ struct RecentTracksSection: View {
                 // Show more button
                 Button {
                     showingAllTracks = true
-                    selectedRecentAlbum = nil
-                    selectedRecentArtist = nil
-                    selectedRecentPlaylist = nil
                 } label: {
                     HStack {
                         Text("recently_played.show_more")
@@ -275,10 +249,8 @@ struct RecentTracksSection: View {
 
 struct RecentContentSection: View {
     let items: [RecentItem]
-    @Binding var selectedAlbum: SearchAlbum?
-    @Binding var selectedArtist: SearchArtist?
-    @Binding var selectedPlaylist: SearchPlaylist?
-    @Binding var showingAllTracks: Bool
+    @Environment(SpotifySession.self) private var session
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -291,165 +263,30 @@ struct RecentContentSection: View {
                     ForEach(items) { item in
                         switch item {
                         case let .album(album):
-                            VStack(spacing: 8) {
-                                if let imageURL = album.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 120, height: 120)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 120, height: 120)
-                                                .cornerRadius(4)
-                                                .shadow(radius: 2)
-                                        case .failure:
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Color.gray.opacity(0.2))
-                                                .frame(width: 120, height: 120)
-                                                .overlay(
-                                                    Image(systemName: "music.note")
-                                                        .font(.system(size: 40))
-                                                        .foregroundStyle(.secondary),
-                                                )
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(width: 120, height: 120)
-                                        .overlay(
-                                            Image(systemName: "music.note")
-                                                .font(.system(size: 40))
-                                                .foregroundStyle(.secondary),
-                                        )
+                            RecentAlbumCard(album: album) {
+                                Task {
+                                    let token = await session.validAccessToken()
+                                    navigationCoordinator.navigateToAlbum(
+                                        albumId: album.id,
+                                        accessToken: token,
+                                    )
                                 }
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(album.name)
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                        .lineLimit(2)
-                                    Text(album.artistName)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                .frame(width: 120, alignment: .leading)
-                            }
-                            .onTapGesture {
-                                selectedAlbum = album
-                                selectedArtist = nil
-                                selectedPlaylist = nil
-                                showingAllTracks = false
                             }
 
                         case let .artist(artist):
-                            VStack(spacing: 8) {
-                                if let imageURL = artist.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 120, height: 120)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 120, height: 120)
-                                                .clipShape(Circle())
-                                                .shadow(radius: 2)
-                                        case .failure:
-                                            Circle()
-                                                .fill(Color.gray.opacity(0.2))
-                                                .frame(width: 120, height: 120)
-                                                .overlay(
-                                                    Image(systemName: "person.circle.fill")
-                                                        .font(.system(size: 60))
-                                                        .foregroundStyle(.secondary),
-                                                )
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    Circle()
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(width: 120, height: 120)
-                                        .overlay(
-                                            Image(systemName: "person.circle.fill")
-                                                .font(.system(size: 60))
-                                                .foregroundStyle(.secondary),
-                                        )
+                            RecentArtistCard(artist: artist) {
+                                Task {
+                                    let token = await session.validAccessToken()
+                                    navigationCoordinator.navigateToArtist(
+                                        artistId: artist.id,
+                                        accessToken: token,
+                                    )
                                 }
-
-                                Text(artist.name)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .lineLimit(2)
-                                    .frame(width: 120, alignment: .center)
-                            }
-                            .onTapGesture {
-                                selectedArtist = artist
-                                selectedAlbum = nil
-                                selectedPlaylist = nil
-                                showingAllTracks = false
                             }
 
                         case let .playlist(playlist):
-                            VStack(spacing: 8) {
-                                if let imageURL = playlist.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 120, height: 120)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 120, height: 120)
-                                                .cornerRadius(4)
-                                                .shadow(radius: 2)
-                                        case .failure:
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .fill(Color.gray.opacity(0.2))
-                                                .frame(width: 120, height: 120)
-                                                .overlay(
-                                                    Image(systemName: "music.note.list")
-                                                        .font(.system(size: 40))
-                                                        .foregroundStyle(.secondary),
-                                                )
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(width: 120, height: 120)
-                                        .overlay(
-                                            Image(systemName: "music.note.list")
-                                                .font(.system(size: 40))
-                                                .foregroundStyle(.secondary),
-                                        )
-                                }
-
-                                Text(playlist.name)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .lineLimit(2)
-                                    .frame(width: 120, alignment: .leading)
-                            }
-                            .onTapGesture {
-                                selectedPlaylist = playlist
-                                selectedAlbum = nil
-                                selectedArtist = nil
-                                showingAllTracks = false
+                            RecentPlaylistCard(playlist: playlist) {
+                                navigationCoordinator.navigateToPlaylist(SearchPlaylist(from: playlist))
                             }
                         }
                     }
@@ -457,5 +294,169 @@ struct RecentContentSection: View {
                 .padding(.horizontal)
             }
         }
+    }
+}
+
+// MARK: - Recent Item Cards
+
+private struct RecentAlbumCard: View {
+    let album: Album
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                if let imageURL = album.imageURL {
+                    AsyncImage(url: imageURL) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                                .frame(width: 120, height: 120)
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 120, height: 120)
+                                .cornerRadius(4)
+                                .shadow(radius: 2)
+                        case .failure:
+                            albumPlaceholder
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                } else {
+                    albumPlaceholder
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(album.name)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(2)
+                    Text(album.artistName)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(width: 120, alignment: .leading)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var albumPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.gray.opacity(0.2))
+            .frame(width: 120, height: 120)
+            .overlay(
+                Image(systemName: "music.note")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary),
+            )
+    }
+}
+
+private struct RecentArtistCard: View {
+    let artist: Artist
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                if let imageURL = artist.imageURL {
+                    AsyncImage(url: imageURL) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                                .frame(width: 120, height: 120)
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                                .shadow(radius: 2)
+                        case .failure:
+                            artistPlaceholder
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                } else {
+                    artistPlaceholder
+                }
+
+                Text(artist.name)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(2)
+                    .frame(width: 120, alignment: .center)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var artistPlaceholder: some View {
+        Circle()
+            .fill(Color.gray.opacity(0.2))
+            .frame(width: 120, height: 120)
+            .overlay(
+                Image(systemName: "person.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.secondary),
+            )
+    }
+}
+
+private struct RecentPlaylistCard: View {
+    let playlist: Playlist
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 8) {
+                if let imageURL = playlist.imageURL {
+                    AsyncImage(url: imageURL) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                                .frame(width: 120, height: 120)
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 120, height: 120)
+                                .cornerRadius(4)
+                                .shadow(radius: 2)
+                        case .failure:
+                            playlistPlaceholder
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                } else {
+                    playlistPlaceholder
+                }
+
+                Text(playlist.name)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(2)
+                    .frame(width: 120, alignment: .leading)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var playlistPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.gray.opacity(0.2))
+            .frame(width: 120, height: 120)
+            .overlay(
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary),
+            )
     }
 }

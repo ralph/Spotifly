@@ -127,21 +127,32 @@ if [ "$REPLACE_EXISTING" = true ]; then
     git push --delete origin "v${VERSION}" --repo ralph/homebrew-spotifly 2>/dev/null || true
 fi
 
+# Extract changelog entry for this version
+CHANGELOG_FILE="$HOME/code/spotifly/homebrew-spotifly/CHANGELOG.md"
+CHANGELOG_ENTRY=""
+if [ -f "$CHANGELOG_FILE" ]; then
+    # Extract the section for this version (from ## [VERSION] to next ## or end)
+    CHANGELOG_ENTRY=$(awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[/{flag=0} flag" "$CHANGELOG_FILE")
+fi
+
 # Create GitHub release
 echo -e "\n${YELLOW}Creating GitHub release v${VERSION}...${NC}"
 
 gh release create "v${VERSION}" \
     "${ZIP_NAME}" \
     --title "Spotifly ${VERSION}" \
-    --notes "Release ${VERSION}
+    --notes "## What's New
 
-Download and install:
+${CHANGELOG_ENTRY}
+
+## Download and Install
+
 - **Homebrew (recommended)**: \`brew install ralph/spotifly/spotifly\`
 - **Manual**: Download Spotifly-${VERSION}.zip, extract, and move to Applications
 
 **Note:** This version is signed and notarized with Apple Developer ID. No Gatekeeper warnings!
 
-Built with [Claude Code](https://claude.com/claude-code)" \
+[Full Changelog](https://github.com/ralph/homebrew-spotifly/blob/main/CHANGELOG.md)" \
     --repo ralph/homebrew-spotifly
 
 # Also tag as latest
@@ -150,17 +161,18 @@ gh release delete latest --yes --repo ralph/homebrew-spotifly 2>/dev/null || tru
 gh release create latest \
     "${ZIP_NAME}" \
     --title "Spotifly (Latest)" \
-    --notes "Latest stable release of Spotifly
+    --notes "Latest stable release of Spotifly (v${VERSION})
 
-This is a rolling release that always points to the latest version.
+## What's New
 
-Download and install:
+${CHANGELOG_ENTRY}
+
+## Download and Install
+
 - **Homebrew (recommended)**: \`brew install ralph/spotifly/spotifly\`
 - **Manual**: Download Spotifly-latest.zip, extract, and move to Applications
 
-Current version: ${VERSION}
-
-For specific versions, see: https://github.com/ralph/homebrew-spotifly/releases" \
+[Full Changelog](https://github.com/ralph/homebrew-spotifly/blob/main/CHANGELOG.md) · [All Releases](https://github.com/ralph/homebrew-spotifly/releases)" \
     --repo ralph/homebrew-spotifly
 
 # Copy zip as latest.zip

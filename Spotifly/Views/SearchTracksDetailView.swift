@@ -14,8 +14,9 @@ import UIKit
 
 struct SearchTracksDetailView: View {
     let tracks: [SearchTrack]
-    let authResult: SpotifyAuthResult
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
+    @Environment(TrackService.self) private var trackService
 
     var body: some View {
         ScrollView {
@@ -58,14 +59,7 @@ struct SearchTracksDetailView: View {
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
-                        ) {
-                            Task {
-                                await playbackViewModel.play(
-                                    uriOrUrl: track.uri,
-                                    accessToken: authResult.accessToken,
-                                )
-                            }
-                        }
+                        )
 
                         if track.id != tracks.last?.id {
                             Divider()
@@ -82,13 +76,20 @@ struct SearchTracksDetailView: View {
                 .padding(.horizontal)
             }
         }
+        .task(id: tracks.map(\.id)) {
+            // Check favorite status and update store
+            let token = await session.validAccessToken()
+            let trackIds = tracks.map(\.id)
+            try? await trackService.checkFavoriteStatuses(trackIds: trackIds, accessToken: token)
+        }
     }
 
     private func playAllTracks() {
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: authResult.accessToken,
+                accessToken: token,
             )
         }
     }

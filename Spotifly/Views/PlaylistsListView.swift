@@ -2,26 +2,31 @@
 //  PlaylistsListView.swift
 //  Spotifly
 //
-//  Displays user's playlists
+//  Displays user's playlists using normalized store
 //
 
 import SwiftUI
 
 struct PlaylistsListView: View {
-    let authResult: SpotifyAuthResult
-    @Bindable var playlistsViewModel: PlaylistsViewModel
+    @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(PlaylistService.self) private var playlistService
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Binding var selectedPlaylist: PlaylistSimplified?
+
+    // Selection uses playlist ID, looked up from store
+    @Binding var selectedPlaylistId: String?
+
+    @State private var errorMessage: String?
 
     var body: some View {
         Group {
-            if playlistsViewModel.isLoading, playlistsViewModel.playlists.isEmpty {
+            if store.playlistsPagination.isLoading, store.userPlaylists.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
                     Text("loading.playlists")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = playlistsViewModel.errorMessage, playlistsViewModel.playlists.isEmpty {
+            } else if let error = errorMessage, store.userPlaylists.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -33,13 +38,13 @@ struct PlaylistsListView: View {
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
                         Task {
-                            await playlistsViewModel.loadPlaylists(accessToken: authResult.accessToken)
+                            await loadPlaylists(forceRefresh: true)
                         }
                     }
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if playlistsViewModel.playlists.isEmpty {
+            } else if store.userPlaylists.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "music.note.list")
                         .font(.system(size: 40))
@@ -54,22 +59,24 @@ struct PlaylistsListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(playlistsViewModel.playlists) { playlist in
+                        ForEach(store.userPlaylists) { playlist in
                             PlaylistRow(
                                 playlist: playlist,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken,
-                                selectedPlaylist: $selectedPlaylist,
+                                isSelected: selectedPlaylistId == playlist.id,
+                                onSelect: {
+                                    selectedPlaylistId = playlist.id
+                                },
                             )
                         }
 
                         // Load more indicator
-                        if playlistsViewModel.hasMore {
+                        if store.playlistsPagination.hasMore {
                             ProgressView()
                                 .padding()
                                 .onAppear {
                                     Task {
-                                        await playlistsViewModel.loadMoreIfNeeded(accessToken: authResult.accessToken)
+                                        await loadMorePlaylists()
                                     }
                                 }
                         }
@@ -77,23 +84,56 @@ struct PlaylistsListView: View {
                     .padding()
                 }
                 .refreshable {
-                    await playlistsViewModel.refresh(accessToken: authResult.accessToken)
+                    await loadPlaylists(forceRefresh: true)
                 }
             }
         }
         .task {
-            if playlistsViewModel.playlists.isEmpty, !playlistsViewModel.isLoading {
-                await playlistsViewModel.loadPlaylists(accessToken: authResult.accessToken)
+            if store.userPlaylists.isEmpty, !store.playlistsPagination.isLoading {
+                await loadPlaylists()
             }
+            // Set initial selection after loading or if already loaded
+            if selectedPlaylistId == nil, let first = store.userPlaylists.first {
+                selectedPlaylistId = first.id
+            }
+        }
+        .onChange(of: store.userPlaylists) { _, playlists in
+            if selectedPlaylistId == nil, let first = playlists.first {
+                selectedPlaylistId = first.id
+            }
+        }
+    }
+
+    private func loadPlaylists(forceRefresh: Bool = false) async {
+        errorMessage = nil
+        do {
+            let token = await session.validAccessToken()
+            try await playlistService.loadUserPlaylists(
+                accessToken: token,
+                forceRefresh: forceRefresh,
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadMorePlaylists() async {
+        do {
+            let token = await session.validAccessToken()
+            try await playlistService.loadMorePlaylists(accessToken: token)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }
 
 struct PlaylistRow: View {
-    let playlist: PlaylistSimplified
+    let playlist: Playlist
     @Bindable var playbackViewModel: PlaybackViewModel
-    let accessToken: String
-    @Binding var selectedPlaylist: PlaylistSimplified?
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         HStack(spacing: 12) {
@@ -146,6 +186,15 @@ struct PlaylistRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    if let duration = playlist.formattedDuration {
+                        Text("metadata.separator")
+                            .foregroundStyle(.secondary)
+
+                        Text(duration)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Text("metadata.separator")
                         .foregroundStyle(.secondary)
 
@@ -160,7 +209,8 @@ struct PlaylistRow: View {
             // Play button
             Button {
                 Task {
-                    await playbackViewModel.play(uriOrUrl: playlist.uri, accessToken: accessToken)
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.play(uriOrUrl: playlist.uri, accessToken: token)
                 }
             } label: {
                 Image(systemName: "play.circle.fill")
@@ -171,11 +221,11 @@ struct PlaylistRow: View {
             .disabled(playbackViewModel.isLoading)
         }
         .padding()
-        .background(Color.gray.opacity(0.05))
+        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.gray.opacity(0.05))
         .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture {
-            selectedPlaylist = playlist
+            onSelect()
         }
     }
 }

@@ -16,46 +16,57 @@ struct LoggedInView: View {
 
     @EnvironmentObject var windowState: WindowState
 
+    @State private var session: SpotifySession
     @State private var trackViewModel = TrackLookupViewModel()
-    @State private var playbackViewModel = PlaybackViewModel()
-    @State private var favoritesViewModel = FavoritesViewModel()
-    @State private var playlistsViewModel = PlaylistsViewModel()
-    @State private var albumsViewModel = AlbumsViewModel()
-    @State private var artistsViewModel = ArtistsViewModel()
-    @State private var queueViewModel = QueueViewModel()
-    @State private var searchViewModel = SearchViewModel()
-    @State private var recentlyPlayedViewModel = RecentlyPlayedViewModel()
-    @State private var devicesViewModel = DevicesViewModel()
+    private let playbackViewModel = PlaybackViewModel.shared
+
+    // Normalized state store
+    @State private var store = AppStore()
+
+    // Services - stateless, created on demand (all state lives in AppStore)
+    private var trackService: TrackService { TrackService(store: store) }
+    private var playlistService: PlaylistService { PlaylistService(store: store) }
+    private var albumService: AlbumService { AlbumService(store: store) }
+    private var artistService: ArtistService { ArtistService(store: store) }
+    private var deviceService: DeviceService { DeviceService(store: store) }
+    private var queueService: QueueService { QueueService(store: store) }
+    private var recentlyPlayedService: RecentlyPlayedService { RecentlyPlayedService(store: store) }
+    private var searchService: SearchService { SearchService(store: store) }
+
+    @State private var navigationCoordinator = NavigationCoordinator()
+
+    init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
+        self.authResult = authResult
+        self.onLogout = onLogout
+        _session = State(initialValue: SpotifySession(authResult: authResult))
+    }
+
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var searchText = ""
     @State private var searchFieldFocused = false
 
-    // Selection state for detail views
-    @State private var selectedAlbum: AlbumSimplified?
-    @State private var selectedArtist: ArtistSimplified?
-    @State private var selectedPlaylist: PlaylistSimplified?
+    // Selection state for library detail views (ID-based)
+    @State private var selectedAlbumId: String?
+    @State private var selectedArtistId: String?
+    @State private var selectedPlaylistId: String?
 
-    // Selection state for recently played items from startpage
-    @State private var selectedRecentAlbum: SearchAlbum?
-    @State private var selectedRecentArtist: SearchArtist?
-    @State private var selectedRecentPlaylist: SearchPlaylist?
+    // Selection state for startpage "show all recent tracks"
     @State private var showingAllRecentTracks = false
 
-    // Determines if we need three-column layout (when something is selected)
+    // Determines if we need three-column layout
     private var needsThreeColumnLayout: Bool {
         switch selectedNavigationItem {
-        case .albums:
-            selectedAlbum != nil
-        case .artists:
-            selectedArtist != nil
-        case .playlists:
-            selectedPlaylist != nil
+        case .albums, .artists, .playlists:
+            // Always use three-column for library sections (first item is auto-selected)
+            true
         case .startpage:
-            selectedRecentAlbum != nil || selectedRecentArtist != nil || selectedRecentPlaylist != nil || showingAllRecentTracks
+            showingAllRecentTracks
         case .searchResults:
-            searchViewModel.selectedTrack != nil || searchViewModel.selectedAlbum != nil ||
-                searchViewModel.selectedArtist != nil || searchViewModel.selectedPlaylist != nil ||
-                searchViewModel.showingAllTracks
+            store.selectedSearchTrack != nil || store.selectedSearchAlbum != nil ||
+                store.selectedSearchArtist != nil || store.selectedSearchPlaylist != nil ||
+                store.showingAllSearchTracks
+        case .artistContext:
+            navigationCoordinator.currentAlbum != nil
         default:
             false
         }
@@ -78,15 +89,16 @@ struct LoggedInView: View {
                     .searchable(text: $searchText, isPresented: $searchFieldFocused)
                     .onSubmit(of: .search) {
                         Task {
-                            await searchViewModel.search(accessToken: authResult.accessToken, query: searchText)
-                            if searchViewModel.searchResults != nil {
+                            let token = await session.validAccessToken()
+                            await searchService.search(accessToken: token, query: searchText)
+                            if store.searchResults != nil {
                                 selectedNavigationItem = .searchResults
                             }
                         }
                     }
                     .onChange(of: searchText) { _, newValue in
                         if newValue.isEmpty {
-                            searchViewModel.clearSearch()
+                            store.clearSearch()
                             if selectedNavigationItem == .searchResults {
                                 selectedNavigationItem = .startpage
                             }
@@ -103,15 +115,16 @@ struct LoggedInView: View {
                     .searchable(text: $searchText, isPresented: $searchFieldFocused)
                     .onSubmit(of: .search) {
                         Task {
-                            await searchViewModel.search(accessToken: authResult.accessToken, query: searchText)
-                            if searchViewModel.searchResults != nil {
+                            let token = await session.validAccessToken()
+                            await searchService.search(accessToken: token, query: searchText)
+                            if store.searchResults != nil {
                                 selectedNavigationItem = .searchResults
                             }
                         }
                     }
                     .onChange(of: searchText) { _, newValue in
                         if newValue.isEmpty {
-                            searchViewModel.clearSearch()
+                            store.clearSearch()
                             if selectedNavigationItem == .searchResults {
                                 selectedNavigationItem = .startpage
                             }
@@ -122,16 +135,33 @@ struct LoggedInView: View {
 
             // Now Playing Bar (always visible at bottom)
             NowPlayingBarView(
-                authResult: authResult,
                 playbackViewModel: playbackViewModel,
                 windowState: windowState
             )
         }
-        #if !os(macOS)
+        #if os(macOS)
+        .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
+        #else
         .ignoresSafeArea(.all, edges: .bottom)
         #endif
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
-        .environment(devicesViewModel)
+        .environment(session)
+        .environment(deviceService)
+        .environment(queueService)
+        .environment(recentlyPlayedService)
+        .environment(searchService)
+        .environment(navigationCoordinator)
+        .environment(store)
+        .environment(trackService)
+        .environment(playlistService)
+        .environment(albumService)
+        .environment(artistService)
+        #if os(macOS)
+        .focusedValue(\.navigationSelection, $selectedNavigationItem)
+        .focusedValue(\.searchFieldFocused, $searchFieldFocused)
+        .focusedValue(\.session, session)
+        .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
+        #endif
         #if !os(macOS)
         .fullScreenCover(isPresented: $windowState.isMiniPlayerMode) {
             FullScreenPlayerView(
@@ -140,6 +170,76 @@ struct LoggedInView: View {
             )
         }
         #endif
+        .task {
+            // Load favorite track IDs on startup so heart indicators work everywhere
+            let token = await session.validAccessToken()
+            try? await trackService.loadFavorites(accessToken: token)
+        }
+        .onChange(of: navigationCoordinator.navigationVersion) { _, _ in
+            handleNavigation()
+        }
+        .onChange(of: selectedNavigationItem) { oldValue, newValue in
+            // Clear artist context when navigating away from artist section
+            if case .artistContext = oldValue {
+                if case .artistContext = newValue {
+                    // Staying in artist context, don't clear
+                } else {
+                    // Navigating away, clear the context
+                    navigationCoordinator.clearArtistContext()
+                }
+            }
+
+            // Clear pending playlist when navigating away from playlists
+            if oldValue == .playlists, newValue != .playlists {
+                navigationCoordinator.pendingPlaylist = nil
+            }
+        }
+        .onChange(of: selectedPlaylistId) { _, newValue in
+            // Clear pending playlist when user selects a playlist from the list
+            if newValue != nil {
+                navigationCoordinator.pendingPlaylist = nil
+            }
+        }
+    }
+
+    /// Handle navigation from the NavigationCoordinator
+    private func handleNavigation() {
+        // Handle pending playlist navigation
+        if navigationCoordinator.pendingPlaylist != nil {
+            // Clear other selections
+            selectedAlbumId = nil
+            selectedArtistId = nil
+            selectedPlaylistId = nil
+            showingAllRecentTracks = false
+            store.clearSearchSelection()
+
+            selectedNavigationItem = .playlists
+            // The playlist will be shown via navigationCoordinator.pendingPlaylist
+            // It stays set until user selects something else
+            return
+        }
+
+        // Handle pending direct navigation (e.g., navigate to queue)
+        if let pendingItem = navigationCoordinator.pendingNavigationItem {
+            selectedNavigationItem = pendingItem
+            navigationCoordinator.pendingNavigationItem = nil
+            return
+        }
+
+        // Handle artist context navigation
+        guard navigationCoordinator.isInArtistContext else { return }
+
+        // Clear other selections to avoid conflicts
+        selectedAlbumId = nil
+        selectedArtistId = nil
+        selectedPlaylistId = nil
+        showingAllRecentTracks = false
+        store.clearSearchSelection()
+
+        // Navigate to the artist context section
+        if let artistItem = navigationCoordinator.artistContextItem {
+            selectedNavigationItem = artistItem
+        }
     }
 
     // MARK: - View Builders
@@ -152,7 +252,8 @@ struct LoggedInView: View {
                 playbackViewModel.stop()
                 onLogout()
             },
-            hasSearchResults: searchViewModel.searchResults != nil,
+            hasSearchResults: store.searchResults != nil,
+            artistContextItem: navigationCoordinator.artistContextItem,
         )
     }
 
@@ -160,81 +261,75 @@ struct LoggedInView: View {
     private func contentView() -> some View {
         Group {
             if selectedNavigationItem == .searchResults,
-               let searchResults = searchViewModel.searchResults
+               let searchResults = store.searchResults
             {
                 // Show search results when Search Results is selected
-                SearchResultsView(
-                    searchResults: searchResults,
-                    searchViewModel: searchViewModel,
-                )
-                .navigationTitle("nav.search_results")
+                SearchResultsView(searchResults: searchResults)
+                    .navigationTitle("nav.search_results")
             } else {
                 // Show main views for other sections
                 Group {
                     switch selectedNavigationItem {
                     case .startpage:
                         StartpageView(
-                            authResult: authResult,
                             trackViewModel: trackViewModel,
                             playbackViewModel: playbackViewModel,
-                            recentlyPlayedViewModel: recentlyPlayedViewModel,
-                            selectedRecentAlbum: $selectedRecentAlbum,
-                            selectedRecentArtist: $selectedRecentArtist,
-                            selectedRecentPlaylist: $selectedRecentPlaylist,
                             showingAllRecentTracks: $showingAllRecentTracks,
                         )
                         .navigationTitle("nav.startpage")
 
                     case .favorites:
                         FavoritesListView(
-                            authResult: authResult,
-                            favoritesViewModel: favoritesViewModel,
                             playbackViewModel: playbackViewModel,
                         )
                         .navigationTitle("nav.favorites")
 
                     case .playlists:
                         PlaylistsListView(
-                            authResult: authResult,
-                            playlistsViewModel: playlistsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedPlaylist: $selectedPlaylist,
+                            selectedPlaylistId: $selectedPlaylistId,
                         )
                         .navigationTitle("nav.playlists")
 
                     case .albums:
                         AlbumsListView(
-                            authResult: authResult,
-                            albumsViewModel: albumsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedAlbum: $selectedAlbum,
+                            selectedAlbumId: $selectedAlbumId,
                         )
                         .navigationTitle("nav.albums")
 
                     case .artists:
                         ArtistsListView(
-                            authResult: authResult,
-                            artistsViewModel: artistsViewModel,
                             playbackViewModel: playbackViewModel,
-                            selectedArtist: $selectedArtist,
+                            selectedArtistId: $selectedArtistId,
                         )
                         .navigationTitle("nav.artists")
 
                     case .queue:
-                        QueueListView(
-                            authResult: authResult,
-                            queueViewModel: queueViewModel,
-                            playbackViewModel: playbackViewModel,
-                        )
-                        .navigationTitle("nav.queue")
+                        QueueListView(playbackViewModel: playbackViewModel)
+                            .navigationTitle("nav.queue")
 
                     case .devices:
-                        DevicesView(authResult: authResult)
+                        DevicesView()
                             .navigationTitle("nav.devices")
 
                     case .searchResults:
                         // Handled in outer if statement
                         EmptyView()
+
+                    case .artistContext:
+                        // In two-column mode: this is shown as detail
+                        // In three-column mode: this is shown as content
+                        // Either way, show the artist
+                        if let artist = navigationCoordinator.currentArtist {
+                            ArtistDetailView(
+                                artist: artist,
+                                playbackViewModel: playbackViewModel,
+                            )
+                            .navigationTitle(artist.name)
+                        } else {
+                            ProgressView()
+                        }
 
                     case .none:
                         Text("empty.select_item")
@@ -252,36 +347,31 @@ struct LoggedInView: View {
         Group {
             if selectedNavigationItem == .searchResults {
                 // When viewing search results: show search result details
-                if searchViewModel.showingAllTracks,
-                   let searchResults = searchViewModel.searchResults
+                if store.showingAllSearchTracks,
+                   let searchResults = store.searchResults
                 {
                     SearchTracksDetailView(
                         tracks: searchResults.tracks,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedTrack = searchViewModel.selectedTrack {
+                } else if let selectedTrack = store.selectedSearchTrack {
                     TrackDetailView(
                         track: selectedTrack,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedAlbum = searchViewModel.selectedAlbum {
+                } else if let selectedAlbum = store.selectedSearchAlbum {
                     AlbumDetailView(
                         album: selectedAlbum,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedArtist = searchViewModel.selectedArtist {
+                } else if let selectedArtist = store.selectedSearchArtist {
                     ArtistDetailView(
                         artist: selectedArtist,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
-                } else if let selectedPlaylist = searchViewModel.selectedPlaylist {
+                } else if let selectedPlaylist = store.selectedSearchPlaylist {
                     PlaylistDetailView(
                         playlist: selectedPlaylist,
-                        authResult: authResult,
                         playbackViewModel: playbackViewModel,
                     )
                 } else {
@@ -292,10 +382,11 @@ struct LoggedInView: View {
                 // When not searching: show details for library selections
                 switch selectedNavigationItem {
                 case .albums:
-                    if let selectedAlbum {
+                    if let albumId = selectedAlbumId,
+                       let album = store.albums[albumId]
+                    {
                         AlbumDetailView(
-                            album: SearchAlbum(from: selectedAlbum),
-                            authResult: authResult,
+                            album: SearchAlbum(from: album),
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
@@ -304,10 +395,11 @@ struct LoggedInView: View {
                     }
 
                 case .artists:
-                    if let selectedArtist {
+                    if let artistId = selectedArtistId,
+                       let artist = store.artists[artistId]
+                    {
                         ArtistDetailView(
-                            artist: SearchArtist(from: selectedArtist),
-                            authResult: authResult,
+                            artist: SearchArtist(from: artist),
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
@@ -316,10 +408,16 @@ struct LoggedInView: View {
                     }
 
                 case .playlists:
-                    if let selectedPlaylist {
+                    if let pendingPlaylist = navigationCoordinator.pendingPlaylist {
                         PlaylistDetailView(
-                            playlist: SearchPlaylist(from: selectedPlaylist),
-                            authResult: authResult,
+                            playlist: pendingPlaylist,
+                            playbackViewModel: playbackViewModel,
+                        )
+                    } else if let playlistId = selectedPlaylistId,
+                              let playlist = store.playlists[playlistId]
+                    {
+                        PlaylistDetailView(
+                            playlist: SearchPlaylist(from: playlist),
                             playbackViewModel: playbackViewModel,
                         )
                     } else {
@@ -328,29 +426,21 @@ struct LoggedInView: View {
                     }
 
                 case .startpage:
-                    // Show details for recently played selections
+                    // Show all recent tracks detail if selected
                     if showingAllRecentTracks {
                         RecentTracksDetailView(
-                            tracks: recentlyPlayedViewModel.recentTracks,
-                            authResult: authResult,
+                            tracks: store.recentTracks,
                             playbackViewModel: playbackViewModel,
                         )
-                    } else if let selectedAlbum = selectedRecentAlbum {
+                    } else {
+                        EmptyView()
+                    }
+
+                case .artistContext:
+                    // Only called in three-column mode (when album is selected)
+                    if let album = navigationCoordinator.currentAlbum {
                         AlbumDetailView(
-                            album: selectedAlbum,
-                            authResult: authResult,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else if let selectedArtist = selectedRecentArtist {
-                        ArtistDetailView(
-                            artist: selectedArtist,
-                            authResult: authResult,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else if let selectedPlaylist = selectedRecentPlaylist {
-                        PlaylistDetailView(
-                            playlist: selectedPlaylist,
-                            authResult: authResult,
+                            album: album,
                             playbackViewModel: playbackViewModel,
                         )
                     } else {

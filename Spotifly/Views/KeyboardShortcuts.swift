@@ -24,13 +24,11 @@ extension View {
 
     /// Adds startpage-specific keyboard shortcuts (refresh)
     func startpageShortcuts(
-        recentlyPlayedViewModel: RecentlyPlayedViewModel,
-        authResult: SpotifyAuthResult,
+        recentlyPlayedService: RecentlyPlayedService,
     ) -> some View {
         background(
             StartpageShortcutsView(
-                recentlyPlayedViewModel: recentlyPlayedViewModel,
-                authResult: authResult,
+                recentlyPlayedService: recentlyPlayedService,
             ),
         )
     }
@@ -45,6 +43,7 @@ extension View {
 
 private struct PlaybackShortcutsView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         Group {
@@ -72,6 +71,15 @@ private struct PlaybackShortcutsView: View {
                 playbackViewModel.previous()
             }
             .keyboardShortcut(.leftArrow, modifiers: .command)
+
+            // Cmd+L - Like/Unlike current track
+            Button("") {
+                Task {
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.toggleCurrentTrackFavorite(accessToken: token)
+                }
+            }
+            .keyboardShortcut("l", modifiers: .command)
         }
         .frame(width: 0, height: 0)
         .opacity(0)
@@ -113,15 +121,16 @@ private struct LibraryNavigationShortcutsView: View {
 }
 
 private struct StartpageShortcutsView: View {
-    @Bindable var recentlyPlayedViewModel: RecentlyPlayedViewModel
-    let authResult: SpotifyAuthResult
+    @Bindable var recentlyPlayedService: RecentlyPlayedService
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         Group {
             // Cmd+R - Refresh recently played
             Button("") {
                 Task {
-                    await recentlyPlayedViewModel.refresh(accessToken: authResult.accessToken)
+                    let token = await session.validAccessToken()
+                    await recentlyPlayedService.refresh(accessToken: token)
                 }
             }
             .keyboardShortcut("r", modifiers: .command)

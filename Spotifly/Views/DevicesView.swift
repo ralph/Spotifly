@@ -8,8 +8,9 @@
 import SwiftUI
 
 struct DevicesView: View {
-    let authResult: SpotifyAuthResult
-    @Environment(DevicesViewModel.self) private var viewModel
+    @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(DeviceService.self) private var deviceService
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,24 +22,25 @@ struct DevicesView: View {
                 Spacer()
                 Button {
                     Task {
-                        await viewModel.loadDevices(accessToken: authResult.accessToken)
+                        let token = await session.validAccessToken()
+                        await deviceService.loadDevices(accessToken: token)
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .disabled(viewModel.isLoading)
+                .disabled(store.devicesIsLoading)
             }
             .padding()
 
             Divider()
 
             // Content
-            if viewModel.isLoading {
+            if store.devicesIsLoading {
                 Spacer()
                 ProgressView()
                     .controlSize(.large)
                 Spacer()
-            } else if let errorMessage = viewModel.errorMessage {
+            } else if let errorMessage = store.devicesErrorMessage {
                 Spacer()
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
@@ -48,7 +50,7 @@ struct DevicesView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-            } else if viewModel.devices.isEmpty {
+            } else if store.availableDevices.isEmpty {
                 Spacer()
                 VStack(spacing: 12) {
                     Image(systemName: "speaker.slash")
@@ -65,32 +67,34 @@ struct DevicesView: View {
                 Spacer()
             } else {
                 List {
-                    ForEach(viewModel.devices) { device in
-                        DeviceRow(device: device, viewModel: viewModel, authResult: authResult)
+                    ForEach(store.availableDevices) { device in
+                        DeviceRow(device: device)
                     }
                 }
                 .listStyle(.plain)
             }
         }
         .task {
-            await viewModel.loadDevices(accessToken: authResult.accessToken)
+            let token = await session.validAccessToken()
+            await deviceService.loadDevices(accessToken: token)
         }
     }
 }
 
 struct DeviceRow: View {
-    let device: SpotifyDevice
-    let viewModel: DevicesViewModel
-    let authResult: SpotifyAuthResult
+    let device: Device
+    @Environment(SpotifySession.self) private var session
+    @Environment(DeviceService.self) private var deviceService
 
     var body: some View {
         Button {
             Task {
-                await viewModel.transferPlayback(to: device, accessToken: authResult.accessToken)
+                let token = await session.validAccessToken()
+                await deviceService.transferPlayback(to: device, accessToken: token)
             }
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: viewModel.deviceIcon(for: device.type))
+                Image(systemName: deviceService.deviceIcon(for: device.type))
                     .font(.title3)
                     .foregroundStyle(device.isActive ? .green : .secondary)
                     .frame(width: 30)

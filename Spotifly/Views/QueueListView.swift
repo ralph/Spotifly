@@ -8,13 +8,14 @@
 import SwiftUI
 
 struct QueueListView: View {
-    let authResult: SpotifyAuthResult
-    @Bindable var queueViewModel: QueueViewModel
+    @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(QueueService.self) private var queueService
     @Bindable var playbackViewModel: PlaybackViewModel
 
     var body: some View {
         Group {
-            if let error = queueViewModel.errorMessage {
+            if let error = store.queueErrorMessage {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -25,12 +26,12 @@ struct QueueListView: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
-                        queueViewModel.loadQueue()
+                        queueService.loadQueue()
                     }
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if queueViewModel.queueItems.isEmpty {
+            } else if store.queueItems.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "list.bullet")
                         .font(.system(size: 40))
@@ -45,23 +46,18 @@ struct QueueListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(queueViewModel.queueItems.enumerated()), id: \.element.id) { index, item in
+                        ForEach(Array(store.queueItems.enumerated()), id: \.offset) { index, item in
+                            let trackData = item.toTrackRowData()
                             TrackRow(
-                                track: item.toTrackRowData(),
+                                track: trackData,
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 currentIndex: playbackViewModel.currentIndex,
                                 playbackViewModel: playbackViewModel,
-                            ) {
-                                do {
-                                    try SpotifyPlayer.jumpToIndex(index)
-                                    playbackViewModel.updateQueueState()
-                                } catch {
-                                    playbackViewModel.errorMessage = error.localizedDescription
-                                }
-                            }
+                                doubleTapBehavior: .jumpToQueueIndex,
+                            )
 
-                            if index < queueViewModel.queueItems.count - 1 {
+                            if index < store.queueItems.count - 1 {
                                 Divider()
                                     .padding(.leading, 78)
                             }
@@ -69,12 +65,16 @@ struct QueueListView: View {
                     }
                 }
                 .refreshable {
-                    queueViewModel.refresh()
+                    queueService.refresh()
+                    let token = await session.validAccessToken()
+                    await queueService.loadFavorites(accessToken: token)
                 }
             }
         }
         .task {
-            queueViewModel.loadQueue()
+            queueService.loadQueue()
+            let token = await session.validAccessToken()
+            await queueService.loadFavorites(accessToken: token)
         }
     }
 }

@@ -13,9 +13,9 @@ import UIKit
 #endif
 
 struct RecentTracksDetailView: View {
-    let tracks: [SearchTrack]
-    let authResult: SpotifyAuthResult
+    let tracks: [Track]
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         ScrollView {
@@ -58,14 +58,7 @@ struct RecentTracksDetailView: View {
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
-                        ) {
-                            Task {
-                                await playbackViewModel.play(
-                                    uriOrUrl: track.uri,
-                                    accessToken: authResult.accessToken,
-                                )
-                            }
-                        }
+                        )
 
                         if track.id != tracks.last?.id {
                             Divider()
@@ -86,9 +79,10 @@ struct RecentTracksDetailView: View {
 
     private func playAllTracks() {
         Task {
+            let token = await session.validAccessToken()
             await playbackViewModel.playTracks(
                 tracks.map(\.uri),
-                accessToken: authResult.accessToken,
+                accessToken: token,
             )
         }
     }

@@ -13,11 +13,13 @@ import UIKit
 #endif
 
 struct NowPlayingBarView: View {
-    let authResult: SpotifyAuthResult
+    @Environment(SpotifySession.self) private var session
     @Bindable var playbackViewModel: PlaybackViewModel
     @ObservedObject var windowState: WindowState
 
     @State private var barHeight: CGFloat = 66
+    @State private var cachedAlbumArtImage: Image?
+    @State private var cachedAlbumArtURL: String?
 
     // Helper function for time formatting
     private func formatTime(_ milliseconds: UInt32) -> String {
@@ -49,8 +51,8 @@ struct NowPlayingBarView: View {
                                     .padding(.horizontal, 8)
                             }
                             .padding(.horizontal, 16)
-                            .padding(.top, windowState.isMiniPlayerMode ? 4 : 8)
-                            .padding(.bottom, 8)
+                            .padding(.top, 8)
+                            .padding(.bottom, windowState.isMiniPlayerMode ? 4 : 8)
                         } else {
                             // Wide layout: original layout
                             wideLayout
@@ -66,11 +68,18 @@ struct NowPlayingBarView: View {
                     }
                 }
                 #if os(macOS)
-            .background(Color(NSColor.controlBackgroundColor))
-            #else
-            .background(Color(UIColor.secondarySystemBackground))
-            #endif
+                .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color(NSColor.controlBackgroundColor))
+                .frame(height: windowState.isMiniPlayerMode ? nil : barHeight)
+                .frame(maxHeight: windowState.isMiniPlayerMode ? .infinity : nil)
+                #else
+                .background(Color(UIColor.secondarySystemBackground))
                 .frame(height: barHeight)
+                #endif
+            }
+            .task(id: playbackViewModel.currentTrackId) {
+                // Check favorite status when track changes
+                let token = await session.validAccessToken()
+                await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: token)
             }
         }
     }
@@ -137,42 +146,33 @@ struct NowPlayingBarView: View {
 
             Spacer()
 
-            HStack(spacing: 8) {
-                Text(formatTime(playbackViewModel.currentPositionMs))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .frame(width: 40, alignment: .trailing)
+            // TimelineView updates at display refresh rate for smooth slider
+            TimelineView(.animation(minimumInterval: 0.033)) { _ in
+                HStack(spacing: 8) {
+                    Text(formatTime(playbackViewModel.interpolatedPositionMs))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .frame(width: 40, alignment: .trailing)
 
-                Slider(
-                    value: Binding(
-                        get: { Double(playbackViewModel.currentPositionMs) },
-                        set: { newValue in
-                            let positionMs = UInt32(newValue)
-                            do {
-                                try SpotifyPlayer.seek(positionMs: positionMs)
-                                playbackViewModel.currentPositionMs = positionMs
+                    Slider(
+                        value: Binding(
+                            get: { Double(playbackViewModel.interpolatedPositionMs) },
+                            set: { newValue in
+                                playbackViewModel.seek(to: UInt32(newValue))
+                            },
+                        ),
+                        in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
+                    )
+                    .tint(.green)
+                    .frame(width: 200)
 
-                                if playbackViewModel.isPlaying {
-                                    playbackViewModel.playbackStartTime = Date().addingTimeInterval(-Double(positionMs) / 1000.0)
-                                }
-
-                                playbackViewModel.updateNowPlayingInfo()
-                            } catch {
-                                playbackViewModel.errorMessage = error.localizedDescription
-                            }
-                        },
-                    ),
-                    in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
-                )
-                .tint(.green)
-                .frame(width: 200)
-
-                Text(formatTime(playbackViewModel.trackDurationMs))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .frame(width: 40, alignment: .leading)
+                    Text(formatTime(playbackViewModel.trackDurationMs))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .frame(width: 40, alignment: .leading)
+                }
             }
 
             favoriteButton
@@ -191,10 +191,20 @@ struct NowPlayingBarView: View {
 
     private func albumArt(size: CGFloat) -> some View {
         Group {
-            if let artURL = playbackViewModel.currentAlbumArtURL,
-               !artURL.isEmpty,
-               let url = URL(string: artURL)
+            if let cachedImage = cachedAlbumArtImage,
+               cachedAlbumArtURL == playbackViewModel.currentAlbumArtURL
             {
+                // Use cached image
+                cachedImage
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else if let artURL = playbackViewModel.currentAlbumArtURL,
+                      !artURL.isEmpty,
+                      let url = URL(string: artURL)
+            {
+                // Load new image
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
@@ -205,25 +215,29 @@ struct NowPlayingBarView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(width: size, height: size)
-                            .cornerRadius(4)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .onAppear {
+                                cachedAlbumArtImage = image
+                                cachedAlbumArtURL = artURL
+                            }
                     case .failure:
-                        Image(systemName: "music.note")
-                            .font(.title3)
-                            .frame(width: size, height: size)
-                            .background(Color.gray.opacity(0.2))
-                            .cornerRadius(4)
+                        placeholderAlbumArt(size: size)
                     @unknown default:
                         EmptyView()
                     }
                 }
             } else {
-                Image(systemName: "music.note")
-                    .font(.title3)
-                    .frame(width: size, height: size)
-                    .background(Color.gray.opacity(0.2))
-                    .cornerRadius(4)
+                placeholderAlbumArt(size: size)
             }
         }
+    }
+
+    private func placeholderAlbumArt(size: CGFloat) -> some View {
+        Image(systemName: "music.note")
+            .font(.title3)
+            .frame(width: size, height: size)
+            .background(Color.gray.opacity(0.2))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     private var trackInfo: some View {
@@ -258,15 +272,9 @@ struct NowPlayingBarView: View {
                 if playbackViewModel.isPlaying {
                     SpotifyPlayer.pause()
                     playbackViewModel.isPlaying = false
-                    playbackViewModel.playbackStartTime = nil
                 } else {
                     SpotifyPlayer.resume()
                     playbackViewModel.isPlaying = true
-                    if playbackViewModel.currentPositionMs > 0 {
-                        playbackViewModel.playbackStartTime = Date().addingTimeInterval(-Double(playbackViewModel.currentPositionMs) / 1000.0)
-                    } else {
-                        playbackViewModel.playbackStartTime = Date()
-                    }
                 }
                 playbackViewModel.updateNowPlayingInfo()
             } label: {
@@ -287,39 +295,30 @@ struct NowPlayingBarView: View {
     }
 
     private var progressBar: some View {
-        HStack(spacing: 8) {
-            Text(formatTime(playbackViewModel.currentPositionMs))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+        // TimelineView updates at display refresh rate for smooth slider
+        TimelineView(.animation(minimumInterval: 0.033)) { _ in
+            HStack(spacing: 8) {
+                Text(formatTime(playbackViewModel.interpolatedPositionMs))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
 
-            Slider(
-                value: Binding(
-                    get: { Double(playbackViewModel.currentPositionMs) },
-                    set: { newValue in
-                        let positionMs = UInt32(newValue)
-                        do {
-                            try SpotifyPlayer.seek(positionMs: positionMs)
-                            playbackViewModel.currentPositionMs = positionMs
+                Slider(
+                    value: Binding(
+                        get: { Double(playbackViewModel.interpolatedPositionMs) },
+                        set: { newValue in
+                            playbackViewModel.seek(to: UInt32(newValue))
+                        },
+                    ),
+                    in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
+                )
+                .tint(.green)
 
-                            if playbackViewModel.isPlaying {
-                                playbackViewModel.playbackStartTime = Date().addingTimeInterval(-Double(positionMs) / 1000.0)
-                            }
-
-                            playbackViewModel.updateNowPlayingInfo()
-                        } catch {
-                            playbackViewModel.errorMessage = error.localizedDescription
-                        }
-                    },
-                ),
-                in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
-            )
-            .tint(.green)
-
-            Text(formatTime(playbackViewModel.trackDurationMs))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+                Text(formatTime(playbackViewModel.trackDurationMs))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
         }
     }
 
@@ -333,7 +332,8 @@ struct NowPlayingBarView: View {
     private var favoriteButton: some View {
         Button {
             Task {
-                await playbackViewModel.toggleCurrentTrackFavorite(accessToken: authResult.accessToken)
+                let token = await session.validAccessToken()
+                await playbackViewModel.toggleCurrentTrackFavorite(accessToken: token)
             }
         } label: {
             Image(systemName: playbackViewModel.isCurrentTrackFavorited ? "heart.fill" : "heart")
@@ -341,10 +341,6 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(playbackViewModel.isCurrentTrackFavorited ? .red : .secondary)
         }
         .buttonStyle(.plain)
-        .task(id: playbackViewModel.currentTrackId) {
-            // Check favorite status when track changes
-            await playbackViewModel.checkCurrentTrackFavoriteStatus(accessToken: authResult.accessToken)
-        }
     }
 
     private var volumeControl: some View {

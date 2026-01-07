@@ -32,3 +32,6 @@ rust/target/
 Secrets.xcconfig
 
 plans.md
+
+# Release artifacts
+*.zip

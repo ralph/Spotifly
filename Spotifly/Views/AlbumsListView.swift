@@ -2,26 +2,31 @@
 //  AlbumsListView.swift
 //  Spotifly
 //
-//  Displays user's saved albums
+//  Displays user's saved albums using normalized store
 //
 
 import SwiftUI
 
 struct AlbumsListView: View {
-    let authResult: SpotifyAuthResult
-    @Bindable var albumsViewModel: AlbumsViewModel
+    @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(AlbumService.self) private var albumService
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Binding var selectedAlbum: AlbumSimplified?
+
+    // Selection uses album ID, looked up from store
+    @Binding var selectedAlbumId: String?
+
+    @State private var errorMessage: String?
 
     var body: some View {
         Group {
-            if albumsViewModel.isLoading, albumsViewModel.albums.isEmpty {
+            if store.albumsPagination.isLoading, store.userAlbums.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
                     Text("loading.albums")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = albumsViewModel.errorMessage, albumsViewModel.albums.isEmpty {
+            } else if let error = errorMessage, store.userAlbums.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -33,13 +38,13 @@ struct AlbumsListView: View {
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
                         Task {
-                            await albumsViewModel.loadAlbums(accessToken: authResult.accessToken)
+                            await loadAlbums(forceRefresh: true)
                         }
                     }
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if albumsViewModel.albums.isEmpty {
+            } else if store.userAlbums.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "square.stack")
                         .font(.system(size: 40))
@@ -54,22 +59,24 @@ struct AlbumsListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(albumsViewModel.albums) { album in
+                        ForEach(store.userAlbums) { album in
                             AlbumRow(
                                 album: album,
                                 playbackViewModel: playbackViewModel,
-                                accessToken: authResult.accessToken,
-                                selectedAlbum: $selectedAlbum,
+                                isSelected: selectedAlbumId == album.id,
+                                onSelect: {
+                                    selectedAlbumId = album.id
+                                },
                             )
                         }
 
                         // Load more indicator
-                        if albumsViewModel.hasMore {
+                        if store.albumsPagination.hasMore {
                             ProgressView()
                                 .padding()
                                 .onAppear {
                                     Task {
-                                        await albumsViewModel.loadMoreIfNeeded(accessToken: authResult.accessToken)
+                                        await loadMoreAlbums()
                                     }
                                 }
                         }
@@ -77,23 +84,56 @@ struct AlbumsListView: View {
                     .padding()
                 }
                 .refreshable {
-                    await albumsViewModel.refresh(accessToken: authResult.accessToken)
+                    await loadAlbums(forceRefresh: true)
                 }
             }
         }
         .task {
-            if albumsViewModel.albums.isEmpty, !albumsViewModel.isLoading {
-                await albumsViewModel.loadAlbums(accessToken: authResult.accessToken)
+            if store.userAlbums.isEmpty, !store.albumsPagination.isLoading {
+                await loadAlbums()
             }
+            // Set initial selection after loading or if already loaded
+            if selectedAlbumId == nil, let first = store.userAlbums.first {
+                selectedAlbumId = first.id
+            }
+        }
+        .onChange(of: store.userAlbums) { _, albums in
+            if selectedAlbumId == nil, let first = albums.first {
+                selectedAlbumId = first.id
+            }
+        }
+    }
+
+    private func loadAlbums(forceRefresh: Bool = false) async {
+        errorMessage = nil
+        do {
+            let token = await session.validAccessToken()
+            try await albumService.loadUserAlbums(
+                accessToken: token,
+                forceRefresh: forceRefresh,
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadMoreAlbums() async {
+        do {
+            let token = await session.validAccessToken()
+            try await albumService.loadMoreAlbums(accessToken: token)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }
 
 struct AlbumRow: View {
-    let album: AlbumSimplified
+    let album: Album
     @Bindable var playbackViewModel: PlaybackViewModel
-    let accessToken: String
-    @Binding var selectedAlbum: AlbumSimplified?
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         HStack(spacing: 12) {
@@ -144,19 +184,32 @@ struct AlbumRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Text("metadata.separator")
-                        .foregroundStyle(.secondary)
+                    if let duration = album.formattedDuration {
+                        Text("metadata.separator")
+                            .foregroundStyle(.secondary)
 
-                    Text(album.releaseDate.prefix(4))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        Text(duration)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
-                    Text("metadata.separator")
-                        .foregroundStyle(.secondary)
+                    if let releaseDate = album.releaseDate {
+                        Text("metadata.separator")
+                            .foregroundStyle(.secondary)
 
-                    Text(album.albumType.capitalized)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        Text(releaseDate.prefix(4))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let albumType = album.albumType {
+                        Text("metadata.separator")
+                            .foregroundStyle(.secondary)
+
+                        Text(albumType.capitalized)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -165,7 +218,8 @@ struct AlbumRow: View {
             // Play button
             Button {
                 Task {
-                    await playbackViewModel.play(uriOrUrl: album.uri, accessToken: accessToken)
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.play(uriOrUrl: album.uri, accessToken: token)
                 }
             } label: {
                 Image(systemName: "play.circle.fill")
@@ -176,11 +230,11 @@ struct AlbumRow: View {
             .disabled(playbackViewModel.isLoading)
         }
         .padding()
-        .background(Color.gray.opacity(0.05))
+        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.gray.opacity(0.05))
         .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture {
-            selectedAlbum = album
+            onSelect()
         }
     }
 }
