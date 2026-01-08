@@ -6,6 +6,11 @@
 //
 
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// Data needed to display a track row
 struct TrackRowData: Identifiable {
@@ -310,9 +315,13 @@ struct TrackRow: View {
     private func copyToClipboard() {
         guard let externalUrl = track.externalUrl else { return }
 
+        #if os(macOS)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(externalUrl, forType: .string)
+        #else
+        UIPasteboard.general.string = externalUrl
+        #endif
     }
 
     private func handleDoubleTap() {

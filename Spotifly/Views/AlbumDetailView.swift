@@ -5,8 +5,12 @@
 //  Shows details for an album with track list, using normalized store
 //
 
-import AppKit
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct AlbumDetailView: View {
     let album: SearchAlbum
@@ -178,7 +182,11 @@ struct AlbumDetailView: View {
                             }
                         }
                     }
-                    .background(Color(NSColor.controlBackgroundColor))
+                    #if os(macOS)
+            .background(Color(NSColor.controlBackgroundColor))
+            #else
+            .background(Color(UIColor.secondarySystemBackground))
+            #endif
                     .cornerRadius(8)
                     .padding(.horizontal)
                 }
@@ -244,8 +252,12 @@ struct AlbumDetailView: View {
     private func copyToClipboard() {
         guard let externalUrl = album.externalUrl else { return }
 
+        #if os(macOS)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(externalUrl, forType: .string)
+        #else
+        UIPasteboard.general.string = externalUrl
+        #endif
     }
 }

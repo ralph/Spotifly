@@ -5,7 +5,9 @@
 //  Created by Ralph von der Heyden on 30.12.25.
 //
 
+#if canImport(AppKit)
 import AppKit
+#endif
 import SwiftUI
 
 struct LoggedInView: View {
@@ -134,10 +136,14 @@ struct LoggedInView: View {
             // Now Playing Bar (always visible at bottom)
             NowPlayingBarView(
                 playbackViewModel: playbackViewModel,
-                windowState: windowState,
+                windowState: windowState
             )
         }
+        #if os(macOS)
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
+        #else
+        .ignoresSafeArea(.all, edges: .bottom)
+        #endif
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .environment(session)
         .environment(deviceService)
@@ -150,10 +156,20 @@ struct LoggedInView: View {
         .environment(playlistService)
         .environment(albumService)
         .environment(artistService)
+        #if os(macOS)
         .focusedValue(\.navigationSelection, $selectedNavigationItem)
         .focusedValue(\.searchFieldFocused, $searchFieldFocused)
         .focusedValue(\.session, session)
         .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
+        #endif
+        #if !os(macOS)
+        .fullScreenCover(isPresented: $windowState.isMiniPlayerMode) {
+            FullScreenPlayerView(
+                authResult: authResult,
+                playbackViewModel: playbackViewModel
+            )
+        }
+        #endif
         .task {
             // Load favorite track IDs on startup so heart indicators work everywhere
             let token = await session.validAccessToken()

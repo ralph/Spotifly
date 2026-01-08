@@ -120,23 +120,22 @@ fn get_album_art_url(track: &Track) -> String {
     // Try to get largest album cover from track metadata
     track.album.covers.iter()
         .max_by_key(|img| img.width * img.height)
-        .and_then(|img| {
-            img.id.to_base16().ok().map(|file_id_hex| {
-                format!("https://i.scdn.co/image/{}", file_id_hex)
-            })
+        .map(|img| {
+            let file_id_hex = img.id.to_base16();
+            format!("https://i.scdn.co/image/{}", file_id_hex)
         })
         .unwrap_or_default()
 }
 
 // Helper function to extract album ID from track
 fn get_album_id(track: &Track) -> Option<String> {
-    Some(track.album.id.to_id().ok()?)
+    Some(track.album.id.to_id())
 }
 
 // Helper function to extract first artist ID from track
 fn get_artist_id(track: &Track) -> Option<String> {
     track.artists.first()
-        .and_then(|a| a.id.to_id().ok())
+        .map(|a| a.id.to_id())
 }
 
 // Helper function to build external URL from track URI

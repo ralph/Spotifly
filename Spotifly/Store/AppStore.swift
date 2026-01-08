@@ -10,6 +10,11 @@ import Foundation
 import MediaPlayer
 import QuartzCore
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Recent Item
 
@@ -802,11 +807,17 @@ final class AppStore {
             Task {
                 do {
                     let (data, _) = try await URLSession.shared.data(from: url)
+                    #if os(macOS)
                     guard let image = NSImage(data: data) else { return }
+                    let imageSize = image.size
+                    #else
+                    guard let image = UIImage(data: data) else { return }
+                    let imageSize = image.size
+                    #endif
 
                     await MainActor.run {
                         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                        info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in
+                        info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: imageSize) { @Sendable _ in
                             image
                         }
                         MPNowPlayingInfoCenter.default().nowPlayingInfo = info

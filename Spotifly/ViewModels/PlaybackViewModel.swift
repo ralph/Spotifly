@@ -7,7 +7,11 @@
 
 import QuartzCore
 import SwiftUI
-
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import MediaPlayer
 
 // MARK: - Drift Correction Timer
@@ -101,6 +105,12 @@ final class PlaybackViewModel {
         initialInfo[MPMediaItemPropertyTitle] = "Spotifly"
         initialInfo[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = initialInfo
+
+        // Set up audio session for iOS/iPadOS
+        AudioSessionManager.shared.setupAudioSession()
+
+        // Set up audio interruption handling
+        setupAudioInterruptionHandling()
 
         // Start position update timer
         startPositionTimer()
@@ -446,16 +456,20 @@ final class PlaybackViewModel {
             Task {
                 do {
                     let (data, _) = try await URLSession.shared.data(from: url)
+                    #if os(macOS)
                     guard let image = NSImage(data: data) else { return }
+                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    #else
+                    guard let image = UIImage(data: data) else { return }
+                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    #endif
 
                     // Update Now Playing on main actor
                     await MainActor.run {
                         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
                         // Mark closure as @Sendable to fix crash - MPNowPlayingInfoCenter executes
                         // the closure on an internal dispatch queue, not on MainActor
-                        info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in
-                            image
-                        }
+                        info[MPMediaItemPropertyArtwork] = artwork
                         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
                     }
                 } catch {
@@ -599,6 +613,70 @@ final class PlaybackViewModel {
         }
 
         return String(components[2])
+    }
+
+    // MARK: - Audio Interruption Handling
+
+    private func setupAudioInterruptionHandling() {
+        #if os(iOS)
+        // Handle audio interruptions (phone calls, etc.)
+        NotificationCenter.default.addObserver(
+            forName: .audioInterruptionBegan,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // Pause playback when interrupted
+                if self.isPlaying {
+                    SpotifyPlayer.pause()
+                    self.isPlaying = false
+                    self.updateNowPlayingInfo()
+                }
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .audioInterruptionEnded,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            // Extract userInfo before Task to avoid data race
+            let shouldResume = notification.userInfo?["shouldResume"] as? Bool ?? false
+
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // Optionally resume playback when interruption ends
+                if shouldResume {
+                    // Auto-resume only if the system recommends it
+                    // User can manually resume if they prefer
+                    print("Audio interruption ended - can resume playback")
+                }
+            }
+        }
+
+        // Handle route changes (headphones unplugged, etc.)
+        NotificationCenter.default.addObserver(
+            forName: .audioRouteChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            // Extract userInfo before Task to avoid data race
+            let shouldPause = notification.userInfo?["shouldPause"] as? Bool ?? false
+
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if shouldPause {
+                    // Pause when headphones are unplugged
+                    if self.isPlaying {
+                        SpotifyPlayer.pause()
+                        self.isPlaying = false
+                        self.updateNowPlayingInfo()
+                    }
+                }
+            }
+        }
+        #endif
     }
 
     // MARK: - Volume Persistence

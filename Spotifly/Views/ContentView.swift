@@ -15,12 +15,20 @@ struct ContentView: View {
         Group {
             if viewModel.isLoading {
                 ProgressView(String(localized: "auth.loading"))
+                    #if os(macOS)
                     .frame(minWidth: 500, minHeight: 400)
+                    #else
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    #endif
             } else if let authResult = viewModel.authResult {
                 LoggedInView(authResult: authResult, onLogout: { viewModel.logout() })
             } else {
                 loginView
+                    #if os(macOS)
                     .frame(minWidth: 500, minHeight: 400)
+                    #else
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    #endif
             }
         }
     }

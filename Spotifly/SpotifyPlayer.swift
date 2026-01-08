@@ -7,6 +7,9 @@
 
 import Foundation
 import SpotiflyRust
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Queue item metadata
 struct QueueItem: Sendable, Identifiable {
@@ -57,6 +60,9 @@ enum SpotifyPlayer {
     static func initialize(accessToken: String) async throws {
         // Sync playback settings from UserDefaults before initializing
         syncSettingsFromUserDefaults()
+
+        // Note: iOS spoofing as macOS happens at the librespot level
+        // See patches in librespot/core/src/connection/handshake.rs and mod.rs
 
         let result = await Task.detached {
             accessToken.withCString { tokenPtr in

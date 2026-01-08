@@ -5,7 +5,11 @@
 //  Startpage with playback controls and track lookup
 //
 
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import SwiftUI
 
 struct StartpageView: View {
@@ -153,7 +157,11 @@ struct StartpageView: View {
                                 .foregroundStyle(.tertiary)
                         }
                         .padding()
+                        #if os(macOS)
                         .background(Color(NSColor.controlBackgroundColor))
+                        #else
+                        .background(Color(UIColor.secondarySystemBackground))
+                        #endif
                         .cornerRadius(8)
                         .padding(.horizontal)
                     }
@@ -173,9 +181,13 @@ struct StartpageView: View {
     }
 
     private func copyTokenToClipboard() {
+        #if os(macOS)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(session.accessToken, forType: .string)
+        #else
+        UIPasteboard.general.string = session.accessToken
+        #endif
     }
 }
 
@@ -224,7 +236,11 @@ struct RecentTracksSection: View {
                 }
                 .buttonStyle(.plain)
             }
+            #if os(macOS)
             .background(Color(NSColor.controlBackgroundColor))
+            #else
+            .background(Color(UIColor.secondarySystemBackground))
+            #endif
             .cornerRadius(8)
             .padding(.horizontal)
         }

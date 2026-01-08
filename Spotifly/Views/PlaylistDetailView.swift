@@ -7,6 +7,11 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct PlaylistDetailView: View {
     let playlist: SearchPlaylist
@@ -279,7 +284,11 @@ struct PlaylistDetailView: View {
                 }
             }
         }
+        #if os(macOS)
         .background(Color(NSColor.controlBackgroundColor))
+        #else
+        .background(Color(UIColor.secondarySystemBackground))
+        #endif
         .cornerRadius(8)
         .padding(.horizontal)
         .padding(.bottom, 80)
@@ -325,7 +334,11 @@ struct PlaylistDetailView: View {
                 }
             }
         }
+        #if os(macOS)
         .background(Color(NSColor.controlBackgroundColor))
+        #else
+        .background(Color(UIColor.secondarySystemBackground))
+        #endif
         .cornerRadius(8)
         .padding(.horizontal)
     }

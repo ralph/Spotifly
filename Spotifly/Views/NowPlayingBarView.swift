@@ -6,6 +6,11 @@
 //
 
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct NowPlayingBarView: View {
     @Environment(SpotifySession.self) private var session
@@ -62,9 +67,14 @@ struct NowPlayingBarView: View {
                         barHeight = newValue
                     }
                 }
+                #if os(macOS)
                 .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color(NSColor.controlBackgroundColor))
                 .frame(height: windowState.isMiniPlayerMode ? nil : barHeight)
                 .frame(maxHeight: windowState.isMiniPlayerMode ? .infinity : nil)
+                #else
+                .background(Color(UIColor.secondarySystemBackground))
+                .frame(height: barHeight)
+                #endif
             }
             .task(id: playbackViewModel.currentTrackId) {
                 // Check favorite status when track changes
@@ -78,10 +88,19 @@ struct NowPlayingBarView: View {
 
     private func compactTopRow(showVolume: Bool) -> some View {
         HStack(spacing: 12) {
-            albumArt(size: 40)
+            // Album art and track info - tappable on iOS to open full screen player
+            Group {
+                albumArt(size: 40)
 
-            trackInfo
-                .frame(minWidth: 100, alignment: .leading)
+                trackInfo
+                    .frame(minWidth: 100, alignment: .leading)
+            }
+            #if !os(macOS)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                windowState.toggleMiniPlayerMode()
+            }
+            #endif
 
             Spacer()
 
@@ -93,7 +112,9 @@ struct NowPlayingBarView: View {
 
             queuePosition
 
+            #if os(macOS)
             miniPlayerToggle
+            #endif
 
             if showVolume {
                 volumeControl
@@ -105,10 +126,19 @@ struct NowPlayingBarView: View {
 
     private var wideLayout: some View {
         HStack(spacing: 16) {
-            albumArt(size: 50)
+            // Album art and track info - tappable on iOS to open full screen player
+            Group {
+                albumArt(size: 50)
 
-            trackInfo
-                .frame(minWidth: 150, alignment: .leading)
+                trackInfo
+                    .frame(minWidth: 150, alignment: .leading)
+            }
+            #if !os(macOS)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                windowState.toggleMiniPlayerMode()
+            }
+            #endif
 
             Spacer()
 
@@ -149,7 +179,9 @@ struct NowPlayingBarView: View {
 
             queuePosition
 
+            #if os(macOS)
             miniPlayerToggle
+            #endif
 
             volumeControl
         }

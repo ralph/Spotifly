@@ -6,6 +6,11 @@
 //
 
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct RecentTracksDetailView: View {
     let tracks: [Track]
@@ -61,7 +66,11 @@ struct RecentTracksDetailView: View {
                         }
                     }
                 }
-                .background(Color(NSColor.controlBackgroundColor))
+                #if os(macOS)
+            .background(Color(NSColor.controlBackgroundColor))
+            #else
+            .background(Color(UIColor.secondarySystemBackground))
+            #endif
                 .cornerRadius(8)
                 .padding(.horizontal)
             }
