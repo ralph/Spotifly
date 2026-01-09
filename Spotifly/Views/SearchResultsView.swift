@@ -9,65 +9,25 @@ import SwiftUI
 
 struct SearchResultsView: View {
     let searchResults: SearchResults
+    @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(AppStore.self) private var store
+    @Environment(SpotifySession.self) private var session
     @Environment(SearchService.self) private var searchService
+    @Environment(TrackService.self) private var trackService
 
     var body: some View {
         List {
             // Tracks section
             if !searchResults.tracks.isEmpty {
                 Section {
-                    ForEach(searchResults.tracks.prefix(5)) { track in
-                        Button {
-                            searchService.selectTrack(track)
-                        } label: {
-                            HStack(spacing: 12) {
-                                if let imageURL = track.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 40, height: 40)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 40, height: 40)
-                                                .cornerRadius(4)
-                                        case .failure:
-                                            Image(systemName: "music.note")
-                                                .frame(width: 40, height: 40)
-                                                .background(Color.gray.opacity(0.2))
-                                                .cornerRadius(4)
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    Image(systemName: "music.note")
-                                        .frame(width: 40, height: 40)
-                                        .background(Color.gray.opacity(0.2))
-                                        .cornerRadius(4)
-                                }
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(track.name)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
-                                    Text(track.artistName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
-
-                                Text(formatDuration(track.durationMs))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                        }
-                        .buttonStyle(.plain)
+                    ForEach(Array(searchResults.tracks.prefix(5).enumerated()), id: \.element.id) { index, track in
+                        TrackRow(
+                            track: track.toTrackRowData(),
+                            index: index,
+                            currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+                            playbackViewModel: playbackViewModel,
+                        )
+                        .listRowInsets(EdgeInsets())
                     }
 
                     if searchResults.tracks.count > 5 {
@@ -351,13 +311,12 @@ struct SearchResultsView: View {
             }
         }
         .listStyle(.sidebar)
-    }
-
-    private func formatDuration(_ milliseconds: Int) -> String {
-        let totalSeconds = milliseconds / 1000
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        .task(id: searchResults.tracks.prefix(5).map(\.id)) {
+            // Check favorite status for displayed tracks
+            let token = await session.validAccessToken()
+            let trackIds = searchResults.tracks.prefix(5).map(\.id)
+            try? await trackService.checkFavoriteStatuses(trackIds: Array(trackIds), accessToken: token)
+        }
     }
 
     private func formatFollowers(_ count: Int) -> String {

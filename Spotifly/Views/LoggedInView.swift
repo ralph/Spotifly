@@ -219,7 +219,7 @@ struct LoggedInView: View {
                    let searchResults = store.searchResults
                 {
                     // Show search results when Search Results is selected
-                    SearchResultsView(searchResults: searchResults)
+                    SearchResultsView(searchResults: searchResults, playbackViewModel: playbackViewModel)
                         .navigationTitle("nav.search_results")
                 } else {
                     // Show main views for other sections
