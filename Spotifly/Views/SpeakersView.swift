@@ -1,5 +1,5 @@
 //
-//  DevicesView.swift
+//  SpeakersView.swift
 //  Spotifly
 //
 //  View for selecting speakers (Spotify Connect and AirPlay)
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct DevicesView: View {
+struct SpeakersView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
@@ -155,7 +155,7 @@ struct DevicesView: View {
                                 .padding(.vertical, 16)
                             } else {
                                 ForEach(store.availableDevices) { device in
-                                    DeviceRow(device: device)
+                                    SpeakerRow(device: device)
                                 }
                             }
                         } header: {
@@ -195,7 +195,7 @@ struct DevicesView: View {
     }
 }
 
-struct DeviceRow: View {
+struct SpeakerRow: View {
     let device: Device
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
