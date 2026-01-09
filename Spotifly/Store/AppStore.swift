@@ -112,9 +112,6 @@ final class AppStore {
     // MARK: - Search State
 
     var searchResults: SearchResults?
-    var expandedSearchAlbums = false
-    var expandedSearchArtists = false
-    var expandedSearchPlaylists = false
     var searchIsLoading = false
     var searchErrorMessage: String?
 
@@ -457,9 +454,6 @@ final class AppStore {
 
     func clearSearch() {
         searchResults = nil
-        expandedSearchAlbums = false
-        expandedSearchArtists = false
-        expandedSearchPlaylists = false
         searchErrorMessage = nil
     }
 
