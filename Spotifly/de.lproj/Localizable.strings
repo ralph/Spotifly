@@ -20,7 +20,7 @@
 "nav.albums" = "Alben";
 "nav.artists" = "Künstler";
 "nav.queue" = "Warteschlange";
-"nav.devices" = "Geräte";
+"nav.speakers" = "Lautsprecher";
 "nav.library" = "Bibliothek";
 
 /* Common Actions */
@@ -143,27 +143,27 @@
 /* Show All Button */
 "show_all.tracks" = "Alle %d Tracks anzeigen";
 
-/* Devices (Spotify Connect) */
-"devices.title" = "Verfügbare Geräte";
-"devices.active" = "Aktiv";
-"devices.empty" = "Keine Geräte gefunden";
-"devices.empty_hint" = "Öffne Spotify auf einem anderen Gerät, um es hier zu sehen";
-"devices.error.not_logged_in" = "Nicht angemeldet";
-"devices.error.failed_to_load" = "Geräte konnten nicht geladen werden";
-"devices.error.failed_to_transfer" = "Wiedergabe konnte nicht übertragen werden";
-"devices.now_playing" = "Aktuell gespielt";
-"devices.audio_output" = "Audio-Ausgabe";
-"devices.spotify_connect" = "Spotify Connect";
-"devices.airplay_hint" = "Audio von diesem Mac auf AirPlay-Lautsprecher streamen";
-"devices.spotify_connect_hint" = "Wiedergabe auf ein anderes Spotify-Gerät übertragen";
+/* Speakers */
+"speakers.title" = "Lautsprecher";
+"speakers.active" = "Aktiv";
+"speakers.empty" = "Keine Lautsprecher gefunden";
+"speakers.empty_hint" = "Öffne Spotify auf einem anderen Gerät, um es hier zu sehen";
+"speakers.error.not_logged_in" = "Nicht angemeldet";
+"speakers.error.failed_to_load" = "Lautsprecher konnten nicht geladen werden";
+"speakers.error.failed_to_transfer" = "Wiedergabe konnte nicht übertragen werden";
+"speakers.now_playing" = "Aktuell gespielt";
+"speakers.audio_output" = "AirPlay";
+"speakers.spotify_connect" = "Spotify Connect";
+"speakers.airplay_hint" = "Audio von diesem Mac auf AirPlay-Lautsprecher streamen";
+"speakers.spotify_connect_hint" = "Wiedergabe auf ein anderes Spotify-Gerät übertragen";
 
 /* Spotify Connect */
 "connect.transfer_to_computer" = "Auf diesem Computer abspielen";
 
-/* Devices - This Computer */
-"devices.this_computer" = "Dieser Computer";
-"devices.this_computer.name" = "Spotifly";
-"devices.this_computer.hint" = "Wiedergabe hierher übertragen";
+/* Speakers - This Computer */
+"speakers.this_computer" = "Dieser Computer";
+"speakers.this_computer.name" = "Spotifly";
+"speakers.this_computer.hint" = "Wiedergabe hierher übertragen";
 
 /* Menu Commands */
 "menu.playback" = "Wiedergabe";
@@ -194,3 +194,9 @@
 "preferences.restart_note" = "Änderungen werden bei Neustart der Wiedergabe wirksam.";
 "preferences.version %@ (%@)" = "Version %@ (%@)";
 "preferences.copyright %@" = "© %@ Ralph von der Heyden";
+"preferences.speakers" = "Lautsprecher";
+"preferences.speakers.connect" = "Spotify Connect Lautsprecher anzeigen";
+"preferences.speakers.connect_description" = "Spotifly als Spotify Connect Lautsprecher registrieren und andere Connect-Geräte anzeigen. Ermöglicht Fernsteuerung vom Handy.";
+"preferences.speakers.airplay" = "AirPlay Lautsprecher anzeigen";
+"preferences.speakers.airplay_description" = "AirPlay-Ausgabeauswahl anzeigen, um Audio auf AirPlay-kompatible Lautsprecher zu streamen.";
+"preferences.speakers.none_enabled" = "Aktiviere mindestens eine Option, um den Lautsprecher-Bereich in der Seitenleiste anzuzeigen.";

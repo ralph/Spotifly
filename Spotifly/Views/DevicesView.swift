@@ -2,7 +2,7 @@
 //  DevicesView.swift
 //  Spotifly
 //
-//  View for selecting Spotify Connect devices
+//  View for selecting speakers (Spotify Connect and AirPlay)
 //
 
 import SwiftUI
@@ -14,35 +14,40 @@ struct DevicesView: View {
     @Environment(ConnectService.self) private var connectService
     @Bindable var playbackViewModel: PlaybackViewModel
 
+    @AppStorage("showSpotifyConnectSpeakers") private var showConnectSpeakers: Bool = false
+    @AppStorage("showAirPlaySpeakers") private var showAirPlaySpeakers: Bool = false
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("devices.title")
+                Text("speakers.title")
                     .font(.title2)
                     .fontWeight(.bold)
                 Spacer()
-                Button {
-                    Task {
-                        let token = await session.validAccessToken()
-                        await deviceService.loadDevices(accessToken: token)
+                if showConnectSpeakers {
+                    Button {
+                        Task {
+                            let token = await session.validAccessToken()
+                            await deviceService.loadDevices(accessToken: token)
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
                     }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+                    .disabled(store.devicesIsLoading)
                 }
-                .disabled(store.devicesIsLoading)
             }
             .padding()
 
             Divider()
 
             // Content
-            if store.devicesIsLoading {
+            if showConnectSpeakers, store.devicesIsLoading {
                 Spacer()
                 ProgressView()
                     .controlSize(.large)
                 Spacer()
-            } else if let errorMessage = store.devicesErrorMessage {
+            } else if showConnectSpeakers, let errorMessage = store.devicesErrorMessage {
                 Spacer()
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
@@ -54,8 +59,10 @@ struct DevicesView: View {
                 Spacer()
             } else {
                 List {
-                    // Now Playing section
-                    if store.isSpotifyConnectActive, let deviceName = store.spotifyConnectDeviceName {
+                    // Now Playing section (only when Connect is active)
+                    if showConnectSpeakers, store.isSpotifyConnectActive,
+                       let deviceName = store.spotifyConnectDeviceName
+                    {
                         Section {
                             HStack(spacing: 12) {
                                 // Album art
@@ -112,70 +119,78 @@ struct DevicesView: View {
                             }
                             .padding(.vertical, 4)
                         } header: {
-                            Text("devices.now_playing")
+                            Text("speakers.now_playing")
                         }
                     }
-
-                    // Audio Output section (AirPlay)
-                    #if os(macOS)
-                        Section {
-                            AirPlayRoutePickerView()
-                                .frame(height: 30)
-                        } header: {
-                            Text("devices.audio_output")
-                        } footer: {
-                            Text("devices.airplay_hint")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    #endif
 
                     // This Computer (local playback) - only when Connect is active on a REMOTE device
                     // Don't show when Spotifly itself is the active device (we're already here)
-                    if store.isSpotifyConnectActive, store.spotifyConnectDeviceName != "Spotifly" {
+                    if showConnectSpeakers, store.isSpotifyConnectActive,
+                       store.spotifyConnectDeviceName != "Spotifly"
+                    {
                         Section {
                             ThisComputerRow(playbackViewModel: playbackViewModel)
                         } header: {
-                            Text("devices.this_computer")
+                            Text("speakers.this_computer")
                         }
                     }
 
-                    // Spotify Connect devices
-                    Section {
-                        if store.availableDevices.isEmpty {
-                            VStack(spacing: 8) {
-                                Image(systemName: "speaker.slash")
-                                    .font(.title2)
-                                    .foregroundStyle(.secondary)
-                                Text("devices.empty")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Text("devices.empty_hint")
+                    // Spotify Connect devices (before AirPlay)
+                    if showConnectSpeakers {
+                        Section {
+                            if store.availableDevices.isEmpty {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "speaker.slash")
+                                        .font(.title2)
+                                        .foregroundStyle(.secondary)
+                                    Text("speakers.empty")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Text("speakers.empty_hint")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                            } else {
+                                ForEach(store.availableDevices) { device in
+                                    DeviceRow(device: device)
+                                }
+                            }
+                        } header: {
+                            Text("speakers.spotify_connect")
+                        } footer: {
+                            Text("speakers.spotify_connect_hint")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    // Audio Output section (AirPlay) - after Spotify Connect
+                    #if os(macOS)
+                        if showAirPlaySpeakers {
+                            Section {
+                                AirPlayRoutePickerView()
+                                    .frame(height: 30)
+                            } header: {
+                                Text("speakers.audio_output")
+                            } footer: {
+                                Text("speakers.airplay_hint")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                        } else {
-                            ForEach(store.availableDevices) { device in
-                                DeviceRow(device: device)
                             }
                         }
-                    } header: {
-                        Text("devices.spotify_connect")
-                    } footer: {
-                        Text("devices.spotify_connect_hint")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    #endif
                 }
                 .listStyle(.inset)
             }
         }
         .task {
-            let token = await session.validAccessToken()
-            await deviceService.loadDevices(accessToken: token)
+            if showConnectSpeakers {
+                let token = await session.validAccessToken()
+                await deviceService.loadDevices(accessToken: token)
+            }
         }
     }
 }
@@ -222,7 +237,7 @@ struct DeviceRow: View {
                             Text("•")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text("devices.active")
+                            Text("speakers.active")
                                 .font(.caption)
                                 .foregroundStyle(.green)
                         }
@@ -272,11 +287,11 @@ struct ThisComputerRow: View {
                     .frame(width: 30)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("devices.this_computer.name")
+                    Text("speakers.this_computer.name")
                         .font(.body)
                         .foregroundStyle(.primary)
 
-                    Text("devices.this_computer.hint")
+                    Text("speakers.this_computer.hint")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

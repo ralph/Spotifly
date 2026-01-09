@@ -37,7 +37,7 @@ struct QueueItem: Sendable, Identifiable {
         durationMs: UInt32,
         albumId: String?,
         artistId: String?,
-        externalUrl: String?
+        externalUrl: String?,
     ) {
         self.id = id
         self.uri = uri

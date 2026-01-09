@@ -35,6 +35,9 @@ struct LoggedInView: View {
 
     @State private var navigationCoordinator = NavigationCoordinator()
 
+    // Speaker settings
+    @AppStorage("showSpotifyConnectSpeakers") private var showConnectSpeakers: Bool = false
+
     init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
         self.authResult = authResult
         self.onLogout = onLogout
@@ -101,9 +104,6 @@ struct LoggedInView: View {
             // Load startup data
             let token = await session.validAccessToken()
 
-            // Initialize player early so Spotifly appears as a Connect device immediately
-            async let playerInit: () = playbackViewModel.initializeIfNeeded(accessToken: token)
-
             // Load favorites so heart indicators work everywhere
             async let favorites: () = { try? await trackService.loadFavorites(accessToken: token) }()
 
@@ -112,10 +112,16 @@ struct LoggedInView: View {
             async let newReleases: () = newReleasesService.loadNewReleases(accessToken: token)
             async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
 
-            // Check if there's already active remote playback to sync with
-            async let connectSync: () = connectService.checkAndSyncRemotePlayback(accessToken: token)
+            _ = await (favorites, topArtists, newReleases, recentlyPlayed)
 
-            _ = await (playerInit, favorites, topArtists, newReleases, recentlyPlayed, connectSync)
+            // Only initialize player/Spirc and sync Connect if the setting is enabled
+            if showConnectSpeakers {
+                // Initialize player early so Spotifly appears as a Connect device immediately
+                await playbackViewModel.initializeIfNeeded(accessToken: token)
+
+                // Check if there's already active remote playback to sync with
+                await connectService.checkAndSyncRemotePlayback(accessToken: token)
+            }
         }
         .onChange(of: navigationCoordinator.pendingNavigationItem) { _, newValue in
             if let pendingItem = newValue {
@@ -270,9 +276,9 @@ struct LoggedInView: View {
                             QueueListView(playbackViewModel: playbackViewModel)
                                 .navigationTitle("nav.queue")
 
-                        case .devices:
+                        case .speakers:
                             DevicesView(playbackViewModel: playbackViewModel)
-                                .navigationTitle("nav.devices")
+                                .navigationTitle("nav.speakers")
 
                         case .searchResults:
                             // Handled in outer if statement
