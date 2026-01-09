@@ -7,6 +7,10 @@
 "auth.authenticating" = "Authentifiziere...";
 "auth.loading" = "Lädt...";
 "auth.logout" = "Abmelden";
+"auth.client_id_label" = "Spotify Client ID";
+"auth.client_id_placeholder" = "Client ID eingeben";
+"auth.client_id_help_link" = "Wie bekomme ich eine Client ID?";
+"auth.client_id_existing_app_note" = "Du kannst eine vorhandene Spotify-App verwenden, wenn du die Redirect-URI de.rvdh.spotifly://callback hinzufügst";
 
 /* Navigation */
 "nav.startpage" = "Startseite";
@@ -26,6 +30,25 @@
 "action.show_less" = "Weniger anzeigen";
 "action.copy_token" = "Token in Zwischenablage kopieren";
 "action.copy_track_uri" = "Track-URI kopieren";
+"action.edit" = "Bearbeiten";
+"action.done" = "Fertig";
+"action.cancel" = "Abbrechen";
+"action.create" = "Erstellen";
+"action.share" = "Teilen";
+
+/* Track Context Menu */
+"track.menu.play_next" = "Als Nächstes spielen";
+"track.menu.add_to_queue" = "Zur Warteschlange hinzufügen";
+"track.menu.start_radio" = "Song-Radio starten";
+"track.menu.add_to_playlist" = "Zu Playlist hinzufügen";
+"track.menu.add_to_new_playlist" = "Zu neuer Playlist hinzufügen...";
+"track.menu.go_to_artist" = "Zum Künstler";
+"track.menu.go_to_album" = "Zum Album";
+
+/* New Playlist Dialog */
+"playlist.new.title" = "Neue Playlist";
+"playlist.new.placeholder" = "Playlist-Name";
+"playlist.new.message" = "Gib einen Namen für die neue Playlist ein";
 
 /* Playback */
 "playback.play_album" = "Album abspielen";
@@ -56,6 +79,9 @@
 "error.load_artists" = "Laden der Künstler fehlgeschlagen";
 "error.load_queue" = "Laden der Warteschlange fehlgeschlagen";
 "error.load_recently_played" = "Laden von \"Kürzlich gespielt\" fehlgeschlagen: %@";
+"error.remove_from_queue" = "Entfernen des Tracks aus der Warteschlange fehlgeschlagen";
+"error.reorder_queue" = "Umordnen der Warteschlange fehlgeschlagen";
+"error.clear_queue" = "Leeren der Warteschlange fehlgeschlagen";
 
 /* Empty States */
 "empty.select_item" = "Wähle ein Element aus der Seitenleiste";
@@ -74,10 +100,23 @@
 "empty.queue_empty" = "Warteschlange ist leer";
 "empty.queue_empty.description" = "Spiele einen Track, Album, Playlist oder Künstler ab, um die Warteschlange zu sehen";
 
+/* Queue */
+"queue.title" = "Warteschlange";
+"queue.song_count %lld %lld" = "%lld Songs (%lld ausstehend)";
+"queue.scroll_to_current" = "Zum aktuellen Track scrollen";
+"queue.clear" = "Ausstehende Tracks löschen";
+"queue.clear.confirm.title" = "Warteschlange leeren";
+"queue.clear.confirm.message %lld" = "Dies entfernt %lld ausstehende Tracks aus der Warteschlange.";
+"queue.clear.confirm.action" = "Warteschlange leeren";
+
+/* Startpage Sections */
+"startpage.top_artists" = "Deine Top-Künstler";
+"startpage.top_artists.empty" = "Höre mehr Musik, um deine Top-Künstler zu sehen";
+"startpage.new_releases" = "Neuerscheinungen";
+"startpage.new_releases.empty" = "Keine Neuerscheinungen verfügbar";
+
 /* Recently Played */
-"recently_played.tracks" = "Kürzlich gespielte Tracks";
 "recently_played.content" = "Kürzlich gespielt";
-"recently_played.show_more" = "Mehr anzeigen…";
 
 /* Sections */
 "section.tracks" = "Tracks";

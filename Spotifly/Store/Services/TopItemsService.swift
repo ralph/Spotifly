@@ -1,0 +1,55 @@
+//
+//  TopItemsService.swift
+//  Spotifly
+//
+//  Service for fetching user's top artists.
+//  Fetches data from API and stores entities in AppStore.
+//
+
+import Foundation
+
+@MainActor
+@Observable
+final class TopItemsService {
+    private let store: AppStore
+
+    init(store: AppStore) {
+        self.store = store
+    }
+
+    // MARK: - Top Artists
+
+    /// Load top artists (only on first call unless refresh is called)
+    func loadTopArtists(accessToken: String, timeRange: TopItemsTimeRange = .mediumTerm) async {
+        // Skip if already loaded or currently loading (prevents concurrent duplicate requests)
+        guard !store.hasLoadedTopArtists, !store.topArtistsIsLoading else { return }
+        await refreshTopArtists(accessToken: accessToken, timeRange: timeRange)
+    }
+
+    /// Force refresh top artists
+    func refreshTopArtists(accessToken: String, timeRange: TopItemsTimeRange = .mediumTerm) async {
+        store.topArtistsIsLoading = true
+        store.topArtistsErrorMessage = nil
+
+        do {
+            let response = try await SpotifyAPI.fetchUserTopArtists(
+                accessToken: accessToken,
+                timeRange: timeRange,
+                limit: 20,
+            )
+
+            // Convert to entities and store
+            let artists = response.artists.map { Artist(from: $0) }
+            store.upsertArtists(artists)
+            store.setTopArtistIds(artists.map(\.id))
+
+            // Mark as loaded only after successful completion
+            store.hasLoadedTopArtists = true
+
+        } catch {
+            store.topArtistsErrorMessage = error.localizedDescription
+        }
+
+        store.topArtistsIsLoading = false
+    }
+}

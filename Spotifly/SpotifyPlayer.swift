@@ -311,6 +311,32 @@ enum SpotifyPlayer {
         }
     }
 
+    /// Removes a track from the queue at the given index.
+    /// Only allows removing unplayed tracks (after current index).
+    static func removeFromQueue(at index: Int) throws {
+        let result = spotifly_remove_from_queue(index)
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
+    /// Moves a track from one position to another in the queue.
+    /// Only allows reordering unplayed tracks (after current index).
+    static func moveQueueItem(from: Int, to: Int) throws {
+        let result = spotifly_move_queue_item(from, to)
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
+    /// Clears all unplayed tracks from the queue (keeps current and played).
+    static func clearUpcomingQueue() throws {
+        let result = spotifly_clear_upcoming_queue()
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
     /// Sets the playback volume (0.0 - 1.0).
     static func setVolume(_ volume: Double) {
         let volumeU16 = UInt16(max(0, min(1, volume)) * 65535.0)

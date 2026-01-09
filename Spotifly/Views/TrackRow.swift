@@ -182,19 +182,19 @@ struct TrackRow: View {
                 Button {
                     playNext()
                 } label: {
-                    Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                    Label("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward")
                 }
 
                 Button {
                     addToQueue()
                 } label: {
-                    Label("Add to Queue", systemImage: "text.append")
+                    Label("track.menu.add_to_queue", systemImage: "text.append")
                 }
 
                 Button {
                     startSongRadio()
                 } label: {
-                    Label("Start Song Radio", systemImage: "antenna.radiowaves.left.and.right")
+                    Label("track.menu.start_radio", systemImage: "antenna.radiowaves.left.and.right")
                 }
 
                 Divider()
@@ -204,7 +204,7 @@ struct TrackRow: View {
                     Button {
                         showNewPlaylistDialog = true
                     } label: {
-                        Label("Add to New Playlist...", systemImage: "plus")
+                        Label("track.menu.add_to_new_playlist", systemImage: "plus")
                     }
 
                     // Show playlists from store
@@ -219,38 +219,26 @@ struct TrackRow: View {
                         }
                     }
                 } label: {
-                    Label("Add to Playlist", systemImage: "music.note.list")
+                    Label("track.menu.add_to_playlist", systemImage: "music.note.list")
                 }
 
                 Divider()
 
                 Button {
                     if let artistId = track.artistId {
-                        Task {
-                            let token = await session.validAccessToken()
-                            navigationCoordinator.navigateToArtist(
-                                artistId: artistId,
-                                accessToken: token,
-                            )
-                        }
+                        navigationCoordinator.navigateToArtist(artistId: artistId)
                     }
                 } label: {
-                    Label("Go to Artist", systemImage: "person.circle")
+                    Label("track.menu.go_to_artist", systemImage: "person.circle")
                 }
                 .disabled(track.artistId == nil)
 
                 Button {
                     if let albumId = track.albumId {
-                        Task {
-                            let token = await session.validAccessToken()
-                            navigationCoordinator.navigateToAlbum(
-                                albumId: albumId,
-                                accessToken: token,
-                            )
-                        }
+                        navigationCoordinator.navigateToAlbum(albumId: albumId)
                     }
                 } label: {
-                    Label("Go to Album", systemImage: "square.stack")
+                    Label("track.menu.go_to_album", systemImage: "square.stack")
                 }
                 .disabled(track.albumId == nil)
 
@@ -259,7 +247,7 @@ struct TrackRow: View {
                 Button {
                     copyToClipboard()
                 } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
+                    Label("action.share", systemImage: "square.and.arrow.up")
                 }
                 .disabled(track.externalUrl == nil)
             } label: {
@@ -283,18 +271,18 @@ struct TrackRow: View {
         .onTapGesture(count: 2) {
             handleDoubleTap()
         }
-        .alert("New Playlist", isPresented: $showNewPlaylistDialog) {
-            TextField("Playlist name", text: $newPlaylistName)
-            Button("Cancel", role: .cancel) {
+        .alert("playlist.new.title", isPresented: $showNewPlaylistDialog) {
+            TextField("playlist.new.placeholder", text: $newPlaylistName)
+            Button("action.cancel", role: .cancel) {
                 newPlaylistName = ""
             }
-            Button("Create") {
+            Button("action.create") {
                 createAndAddToPlaylist(name: newPlaylistName)
                 newPlaylistName = ""
             }
             .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
         } message: {
-            Text("Enter a name for the new playlist")
+            Text("playlist.new.message")
         }
         .task {
             // Load user ID and playlists if not already loaded

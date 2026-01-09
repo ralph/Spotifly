@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Queue editing: Edit queue like playlists with drag-and-drop reordering and track removal
+- Fixed queue header with song count, scroll-to-current button, clear queue button, and edit mode toggle
+- Only unplayed tracks can be reordered or removed from the queue
+- Real-time queue updates: when player advances during editing, track is automatically removed from edit list
+- New Rust FFI functions for queue manipulation: `spotifly_remove_from_queue`, `spotifly_move_queue_item`, `spotifly_clear_upcoming_queue`
+
+## [1.1.6] - 2026-01-07
+
+### Changed
+- Client ID is now mandatory: removed optional toggle, users must provide their own Spotify Client ID
+- Added link to setup instructions on login screen
+- Added note about using existing Spotify apps with the required redirect URI
+
+## [1.1.5] - 2026-01-07
+
+### Added
+- Custom Client ID support: Users can now provide their own Spotify Client ID on the login screen via a checkbox and input field, useful for working around Spotify API restrictions
+
 ## [1.1.4] - 2026-01-05
 
 ### Added

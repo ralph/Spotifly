@@ -8,21 +8,76 @@
 import SwiftUI
 
 struct ArtistDetailView: View {
-    let artist: SearchArtist
+    // ID is always required (either passed directly or derived from artist object)
+    let artistId: String
+
+    // Optional pre-loaded artist (avoids network request if already have data)
+    private let initialArtist: SearchArtist?
+
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(AppStore.self) private var store
     @Environment(ArtistService.self) private var artistService
 
+    @State private var artist: SearchArtist?
     @State private var topTracks: [Track] = []
     @State private var albums: [Album] = []
+    @State private var isLoadingArtist = false
     @State private var isLoading = false
     @State private var isLoadingAlbums = false
     @State private var errorMessage: String?
     @State private var showAllAlbums = false
 
+    /// Initialize with an artist ID (fetches artist data)
+    init(artistId: String, playbackViewModel: PlaybackViewModel) {
+        self.artistId = artistId
+        initialArtist = nil
+        self.playbackViewModel = playbackViewModel
+    }
+
+    /// Initialize with a pre-loaded artist (avoids network request)
+    init(artist: SearchArtist, playbackViewModel: PlaybackViewModel) {
+        artistId = artist.id
+        initialArtist = artist
+        self.playbackViewModel = playbackViewModel
+    }
+
     var body: some View {
+        Group {
+            if let artist {
+                artistContent(artist)
+            } else if isLoadingArtist {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage {
+                VStack {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                    Button("action.try_again") {
+                        Task { await loadArtist() }
+                    }
+                }
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .navigationTitle(artist?.name ?? "")
+        .task(id: artistId) {
+            // Use initial artist if provided, otherwise fetch
+            if let initialArtist {
+                artist = initialArtist
+            } else {
+                await loadArtist()
+            }
+            await loadTopTracks()
+            await loadAlbums()
+        }
+    }
+
+    @ViewBuilder
+    private func artistContent(_ artist: SearchArtist) -> some View {
         ScrollView {
             VStack(spacing: 24) {
                 // Artist image and metadata
@@ -149,17 +204,11 @@ struct ArtistDetailView: View {
                         }
                         .padding(.horizontal)
 
-                        let sortedAlbums = sortedAlbumsWithCurrentFirst
-                        let displayedAlbums = showAllAlbums ? sortedAlbums : Array(sortedAlbums.prefix(5))
+                        let displayedAlbums = showAllAlbums ? albums : Array(albums.prefix(5))
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 180), spacing: 16)], spacing: 16) {
                             ForEach(displayedAlbums) { album in
-                                AlbumCard(
-                                    album: album,
-                                    isCurrentAlbum: album.id == navigationCoordinator.currentAlbum?.id,
-                                ) {
-                                    // Convert unified Album to SearchAlbum for navigation
-                                    let searchAlbum = SearchAlbum(from: album)
-                                    navigationCoordinator.navigateToAlbum(searchAlbum, artist: artist)
+                                AlbumCard(album: album) {
+                                    navigationCoordinator.navigateToAlbum(albumId: album.id)
                                 }
                             }
                         }
@@ -169,34 +218,11 @@ struct ArtistDetailView: View {
             }
             .padding(.bottom, 24)
         }
-        .task(id: artist.id) {
-            await loadTopTracks()
-            await loadAlbums()
-        }
-    }
-
-    /// Albums sorted with current album first (if any)
-    private var sortedAlbumsWithCurrentFirst: [Album] {
-        guard let currentAlbum = navigationCoordinator.currentAlbum else {
-            return albums
-        }
-        var sorted = albums
-        if let index = sorted.firstIndex(where: { $0.id == currentAlbum.id }) {
-            let current = sorted.remove(at: index)
-            sorted.insert(current, at: 0)
-        } else {
-            // Current album not in list - convert and prepend
-            if let storedAlbum = store.albums[currentAlbum.id] {
-                sorted.insert(storedAlbum, at: 0)
-            }
-        }
-        return sorted
     }
 
     /// A card view for displaying an album in the grid
     private struct AlbumCard: View {
         let album: Album
-        let isCurrentAlbum: Bool
         let onTap: () -> Void
 
         var body: some View {
@@ -214,10 +240,6 @@ struct ArtistDetailView: View {
                                     .aspectRatio(contentMode: .fill)
                                     .frame(width: 150, height: 150)
                                     .cornerRadius(8)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color.green, lineWidth: isCurrentAlbum ? 3 : 0),
-                                    )
                             case .failure:
                                 albumPlaceholder
                             @unknown default:
@@ -233,7 +255,6 @@ struct ArtistDetailView: View {
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .lineLimit(1)
-                            .foregroundStyle(isCurrentAlbum ? .green : .primary)
 
                         Text(formatReleaseYear(album.releaseDate))
                             .font(.caption)
@@ -251,16 +272,30 @@ struct ArtistDetailView: View {
                 .frame(width: 150, height: 150)
                 .background(Color.gray.opacity(0.2))
                 .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.green, lineWidth: isCurrentAlbum ? 3 : 0),
-                )
         }
 
         private func formatReleaseYear(_ dateString: String?) -> String {
             guard let dateString else { return "" }
             return String(dateString.prefix(4))
         }
+    }
+
+    private func loadArtist() async {
+        isLoadingArtist = true
+        errorMessage = nil
+
+        let token = await session.validAccessToken()
+        do {
+            let artistEntity = try await artistService.fetchArtistDetails(
+                artistId: artistId,
+                accessToken: token,
+            )
+            artist = SearchArtist(from: artistEntity)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoadingArtist = false
     }
 
     private func loadTopTracks() async {
@@ -272,7 +307,7 @@ struct ArtistDetailView: View {
             let token = await session.validAccessToken()
             // Load via service (stores tracks in AppStore)
             topTracks = try await artistService.fetchArtistTopTracks(
-                artistId: artist.id,
+                artistId: artistId,
                 accessToken: token,
             )
         } catch {
@@ -290,7 +325,7 @@ struct ArtistDetailView: View {
             let token = await session.validAccessToken()
             // Load via service (stores albums in AppStore)
             albums = try await artistService.fetchArtistAlbums(
-                artistId: artist.id,
+                artistId: artistId,
                 accessToken: token,
             )
         } catch {

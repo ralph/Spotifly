@@ -9,21 +9,28 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct PlaylistDetailView: View {
-    let playlist: SearchPlaylist
+    // ID is always required (either passed directly or derived from playlist object)
+    let playlistId: String
+
+    // Optional pre-loaded playlist (avoids network request if already have data)
+    private let initialPlaylist: SearchPlaylist?
+
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(PlaylistService.self) private var playlistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
+    @State private var playlist: SearchPlaylist?
+    @State private var isLoadingPlaylist = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showEditDetailsDialog = false
     @State private var showDeleteConfirmation = false
     @State private var editingPlaylistName = ""
     @State private var editingPlaylistDescription = ""
-    @State private var playlistName: String
-    @State private var playlistDescription: String
+    @State private var playlistName: String = ""
+    @State private var playlistDescription: String = ""
 
     // Edit mode state
     @State private var isEditing = false
@@ -31,33 +38,40 @@ struct PlaylistDetailView: View {
     @State private var isSaving = false
     @State private var draggedTrackId: String?
 
+    /// Initialize with a playlist ID (fetches playlist data)
+    init(playlistId: String, playbackViewModel: PlaybackViewModel) {
+        self.playlistId = playlistId
+        initialPlaylist = nil
+        self.playbackViewModel = playbackViewModel
+    }
+
+    /// Initialize with a pre-loaded playlist (avoids network request)
+    init(playlist: SearchPlaylist, playbackViewModel: PlaybackViewModel) {
+        playlistId = playlist.id
+        initialPlaylist = playlist
+        self.playbackViewModel = playbackViewModel
+    }
+
     /// Tracks from the store for this playlist
     private var tracks: [Track] {
-        guard let storedPlaylist = store.playlists[playlist.id] else { return [] }
+        guard let storedPlaylist = store.playlists[playlistId] else { return [] }
         return storedPlaylist.trackIds.compactMap { store.tracks[$0] }
     }
 
     /// Whether the current user owns this playlist
     private var isOwner: Bool {
-        playlist.ownerId == session.userId
+        playlist?.ownerId == session.userId
     }
 
     /// Whether there are unsaved changes in edit mode
     private var hasChanges: Bool {
-        guard let storedPlaylist = store.playlists[playlist.id] else { return false }
+        guard let storedPlaylist = store.playlists[playlistId] else { return false }
         return storedPlaylist.trackIds != editedTrackIds
     }
 
     /// Tracks being edited (from editedTrackIds)
     private var editedTracks: [Track] {
         editedTrackIds.compactMap { store.tracks[$0] }
-    }
-
-    init(playlist: SearchPlaylist, playbackViewModel: PlaybackViewModel) {
-        self.playlist = playlist
-        self.playbackViewModel = playbackViewModel
-        _playlistName = State(initialValue: playlist.name)
-        _playlistDescription = State(initialValue: playlist.description ?? "")
     }
 
     private var totalDuration: String {
@@ -74,21 +88,42 @@ struct PlaylistDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                playlistHeader
-                trackListSection
+        Group {
+            if let playlist {
+                playlistContent(playlist)
+            } else if isLoadingPlaylist {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage {
+                VStack {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                    Button("action.try_again") {
+                        Task { await loadPlaylist() }
+                    }
+                }
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .overlay(alignment: .bottom) {
-            floatingEditBar
-        }
-        .task(id: playlist.id) {
+        .navigationTitle(playlist?.name ?? "")
+        .task(id: playlistId) {
+            // Use initial playlist if provided, otherwise fetch
+            if let initialPlaylist {
+                playlist = initialPlaylist
+                playlistName = initialPlaylist.name
+                playlistDescription = initialPlaylist.description ?? ""
+            } else {
+                await loadPlaylist()
+            }
             await loadTracks()
         }
-        .onChange(of: playlist.id) {
-            playlistName = playlist.name
-            playlistDescription = playlist.description ?? ""
+        .onChange(of: playlistId) {
+            if let playlist {
+                playlistName = playlist.name
+                playlistDescription = playlist.description ?? ""
+            }
         }
         .alert("Edit Playlist", isPresented: $showEditDetailsDialog) {
             TextField("Name", text: $editingPlaylistName)
@@ -114,20 +149,33 @@ struct PlaylistDetailView: View {
         }
     }
 
+    @ViewBuilder
+    private func playlistContent(_ playlist: SearchPlaylist) -> some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                playlistHeader(playlist)
+                trackListSection
+            }
+        }
+        .overlay(alignment: .bottom) {
+            floatingEditBar
+        }
+    }
+
     // MARK: - Subviews
 
     @ViewBuilder
-    private var playlistHeader: some View {
+    private func playlistHeader(_ playlist: SearchPlaylist) -> some View {
         VStack(spacing: 16) {
-            playlistArtwork
-            playlistMetadata
-            playlistActions
+            playlistArtwork(playlist)
+            playlistMetadata(playlist)
+            playlistActions()
         }
         .padding(.top, 24)
     }
 
     @ViewBuilder
-    private var playlistArtwork: some View {
+    private func playlistArtwork(_ playlist: SearchPlaylist) -> some View {
         if let imageURL = playlist.imageURL {
             AsyncImage(url: imageURL) { phase in
                 switch phase {
@@ -160,7 +208,7 @@ struct PlaylistDetailView: View {
             .cornerRadius(8)
     }
 
-    private var playlistMetadata: some View {
+    private func playlistMetadata(_ playlist: SearchPlaylist) -> some View {
         VStack(spacing: 8) {
             Text(playlistName)
                 .font(.title2)
@@ -198,7 +246,7 @@ struct PlaylistDetailView: View {
         }
     }
 
-    private var playlistActions: some View {
+    private func playlistActions() -> some View {
         HStack(spacing: 12) {
             Button {
                 playAllTracks()
@@ -212,11 +260,11 @@ struct PlaylistDetailView: View {
             .tint(.green)
             .disabled(tracks.isEmpty)
 
-            playlistContextMenu
+            playlistContextMenu()
         }
     }
 
-    private var playlistContextMenu: some View {
+    private func playlistContextMenu() -> some View {
         Menu {
             if isOwner {
                 Button {
@@ -271,7 +319,7 @@ struct PlaylistDetailView: View {
     private var editModeTrackList: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(editedTracks.enumerated()), id: \.element.id) { index, track in
-                editTrackRowView(track: track, index: index)
+                editTrackRowView(track: track)
 
                 if index < editedTracks.count - 1 {
                     Divider()
@@ -285,7 +333,7 @@ struct PlaylistDetailView: View {
         .padding(.bottom, 80)
     }
 
-    private func editTrackRowView(track: Track, index _: Int) -> some View {
+    private func editTrackRowView(track: Track) -> some View {
         let trackId = track.id
         return EditTrackRowFromTrack(track: track) {
             withAnimation {
@@ -379,7 +427,7 @@ struct PlaylistDetailView: View {
             do {
                 let token = await session.validAccessToken()
                 try await playlistService.deletePlaylist(
-                    playlistId: playlist.id,
+                    playlistId: playlistId,
                     accessToken: token,
                 )
                 // Navigate away from the deleted playlist
@@ -398,7 +446,7 @@ struct PlaylistDetailView: View {
             do {
                 let token = await session.validAccessToken()
                 try await playlistService.updatePlaylistDetails(
-                    playlistId: playlist.id,
+                    playlistId: playlistId,
                     name: trimmedName,
                     description: editingPlaylistDescription,
                     accessToken: token,
@@ -413,10 +461,32 @@ struct PlaylistDetailView: View {
         }
     }
 
+    private func loadPlaylist() async {
+        isLoadingPlaylist = true
+        errorMessage = nil
+
+        let token = await session.validAccessToken()
+        do {
+            let playlistEntity = try await playlistService.fetchPlaylistDetails(
+                playlistId: playlistId,
+                accessToken: token,
+            )
+            playlist = SearchPlaylist(from: playlistEntity)
+            playlistName = playlistEntity.name
+            playlistDescription = playlistEntity.description ?? ""
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoadingPlaylist = false
+    }
+
     private func loadTracks() async {
         // Reset state when loading new playlist
-        playlistName = playlist.name
-        playlistDescription = playlist.description ?? ""
+        if let playlist {
+            playlistName = playlist.name
+            playlistDescription = playlist.description ?? ""
+        }
         isLoading = true
         errorMessage = nil
 
@@ -424,7 +494,7 @@ struct PlaylistDetailView: View {
             let token = await session.validAccessToken()
             // Load tracks via service (updates store)
             _ = try await playlistService.getPlaylistTracks(
-                playlistId: playlist.id,
+                playlistId: playlistId,
                 accessToken: token,
             )
         } catch {
@@ -447,7 +517,7 @@ struct PlaylistDetailView: View {
     // MARK: - Edit Mode
 
     private func enterEditMode() {
-        guard let storedPlaylist = store.playlists[playlist.id] else { return }
+        guard let storedPlaylist = store.playlists[playlistId] else { return }
         editedTrackIds = storedPlaylist.trackIds
         isEditing = true
     }
@@ -468,7 +538,7 @@ struct PlaylistDetailView: View {
                 // Replace all tracks with the new order
                 let newTrackUris = editedTrackIds.map { "spotify:track:\($0)" }
                 try await playlistService.replacePlaylistTracks(
-                    playlistId: playlist.id,
+                    playlistId: playlistId,
                     trackUris: newTrackUris,
                     accessToken: token,
                 )

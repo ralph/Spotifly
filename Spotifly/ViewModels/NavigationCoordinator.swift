@@ -2,7 +2,8 @@
 //  NavigationCoordinator.swift
 //  Spotifly
 //
-//  Centralized navigation coordinator for app-wide navigation
+//  Centralized navigation coordinator for app-wide navigation.
+//  Handles cross-section navigation (sidebar jumps) and drill-down navigation stack.
 //
 
 import SwiftUI
@@ -11,113 +12,34 @@ import SwiftUI
 @MainActor
 @Observable
 final class NavigationCoordinator {
-    /// Current artist context (shown in sidebar when viewing artist/album)
-    var currentArtist: SearchArtist?
+    // MARK: - Navigation Stack
 
-    /// Current album within artist context
-    var currentAlbum: SearchAlbum?
+    /// Navigation path for drill-down navigation (artist, album, playlist detail views)
+    var navigationPath = NavigationPath()
 
-    /// Counter that increments when navigation is requested (for onChange detection)
-    var navigationVersion = 0
-
-    /// Loading state for navigation requests
-    var isLoading = false
-
-    /// Error message if navigation fails
-    var errorMessage: String?
-
-    /// Whether we're in artist context mode
-    var isInArtistContext: Bool {
-        currentArtist != nil
+    /// Push a destination onto the navigation stack
+    func push(_ destination: NavigationDestination) {
+        navigationPath.append(destination)
     }
 
-    /// The navigation item for the sidebar
-    var artistContextItem: NavigationItem? {
-        guard let artist = currentArtist else { return nil }
-        return .artistContext(artistName: artist.name)
+    /// Clear the navigation stack (called when switching sidebar sections)
+    func clearNavigationStack() {
+        navigationPath = NavigationPath()
     }
 
-    /// Navigate to an artist by ID (opens artist section)
-    func navigateToArtist(artistId: String, accessToken: String) {
-        isLoading = true
-        errorMessage = nil
+    // MARK: - Drill-Down Navigation
 
-        Task {
-            do {
-                let artist = try await SpotifyAPI.fetchArtistDetails(
-                    accessToken: accessToken,
-                    artistId: artistId,
-                )
-                currentArtist = artist
-                currentAlbum = nil
-                navigationVersion += 1
-            } catch {
-                errorMessage = "Failed to load artist: \(error.localizedDescription)"
-            }
-            isLoading = false
-        }
+    /// Navigate to an artist detail view (pushes onto navigation stack)
+    func navigateToArtist(artistId: String) {
+        push(.artist(id: artistId))
     }
 
-    /// Navigate to an album by ID (opens album within artist context)
-    func navigateToAlbum(albumId: String, accessToken: String) {
-        isLoading = true
-        errorMessage = nil
-
-        Task {
-            do {
-                let album = try await SpotifyAPI.fetchAlbumDetails(
-                    accessToken: accessToken,
-                    albumId: albumId,
-                )
-
-                // Also fetch the artist if we don't have them or it's a different artist
-                let artistId = album.artistId ?? (album.artistName.isEmpty ? nil : nil)
-                if let artistId, currentArtist?.id != artistId {
-                    let artist = try await SpotifyAPI.fetchArtistDetails(
-                        accessToken: accessToken,
-                        artistId: artistId,
-                    )
-                    currentArtist = artist
-                } else if currentArtist == nil {
-                    // Create a minimal artist from album info if we can't fetch
-                    // This shouldn't happen often, but handles edge cases
-                    if let artistId = album.artistId {
-                        let artist = try await SpotifyAPI.fetchArtistDetails(
-                            accessToken: accessToken,
-                            artistId: artistId,
-                        )
-                        currentArtist = artist
-                    }
-                }
-
-                currentAlbum = album
-                navigationVersion += 1
-            } catch {
-                errorMessage = "Failed to load album: \(error.localizedDescription)"
-            }
-            isLoading = false
-        }
+    /// Navigate to an album detail view (pushes onto navigation stack)
+    func navigateToAlbum(albumId: String) {
+        push(.album(id: albumId))
     }
 
-    /// Navigate to an album with a known artist (more efficient, avoids extra API call)
-    func navigateToAlbum(_ album: SearchAlbum, artist: SearchArtist) {
-        currentArtist = artist
-        currentAlbum = album
-        navigationVersion += 1
-    }
-
-    /// Clear the artist context (called when switching away from artist section)
-    func clearArtistContext() {
-        currentArtist = nil
-        currentAlbum = nil
-    }
-
-    /// Clear just the current album (stay in artist context)
-    func clearCurrentAlbum() {
-        currentAlbum = nil
-    }
-
-    // MARK: - Direct Navigation
+    // MARK: - Cross-Section Navigation
 
     /// Pending navigation request (observed by LoggedInView)
     var pendingNavigationItem: NavigationItem?
@@ -128,19 +50,16 @@ final class NavigationCoordinator {
     /// Navigate to the queue
     func navigateToQueue() {
         pendingNavigationItem = .queue
-        navigationVersion += 1
     }
 
     /// Navigate to a playlist detail view
     func navigateToPlaylist(_ playlist: SearchPlaylist) {
         pendingPlaylist = playlist
         pendingNavigationItem = .playlists
-        navigationVersion += 1
     }
 
     /// Clear the current playlist selection (e.g., after deletion)
     func clearPlaylistSelection() {
         pendingPlaylist = nil
-        navigationVersion += 1
     }
 }

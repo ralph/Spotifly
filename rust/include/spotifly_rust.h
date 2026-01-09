@@ -130,6 +130,25 @@ int32_t spotifly_add_to_queue(const char* track_uri);
 /// @param track_uri Spotify track URI (e.g., "spotify:track:xxx")
 int32_t spotifly_add_next_to_queue(const char* track_uri);
 
+/// Removes a track from the queue at the given index.
+/// Only allows removing tracks AFTER the current index (unplayed tracks).
+/// Returns 0 on success, -1 on error.
+///
+/// @param index Index of the track to remove
+int32_t spotifly_remove_from_queue(size_t index);
+
+/// Moves a track from one position to another in the queue.
+/// Only allows reordering tracks AFTER the current index (unplayed tracks).
+/// Returns 0 on success, -1 on error.
+///
+/// @param from_index Index to move from
+/// @param to_index Index to move to
+int32_t spotifly_move_queue_item(size_t from_index, size_t to_index);
+
+/// Clears all tracks after the currently playing track from the queue.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_clear_upcoming_queue(void);
+
 /// Gets radio tracks for a seed track and returns them as JSON.
 /// Returns a JSON array of track URIs, or NULL on error.
 /// Caller must free the string with spotifly_free_string().

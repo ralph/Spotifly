@@ -114,6 +114,29 @@ struct ArtistsResponse: Sendable {
     let nextCursor: String?
 }
 
+/// Time range for top items (artists/tracks)
+enum TopItemsTimeRange: String, Sendable {
+    case shortTerm = "short_term" // ~4 weeks
+    case mediumTerm = "medium_term" // ~6 months (default)
+    case longTerm = "long_term" // ~1 year
+}
+
+/// Response wrapper for user's top artists endpoint
+struct TopArtistsResponse: Sendable {
+    let artists: [ArtistSimplified]
+    let total: Int
+    let hasMore: Bool
+    let nextOffset: Int?
+}
+
+/// Response wrapper for new releases endpoint
+struct NewReleasesResponse: Sendable {
+    let albums: [AlbumSimplified]
+    let total: Int
+    let hasMore: Bool
+    let nextOffset: Int?
+}
+
 /// Saved track (favorite) metadata from Spotify
 struct SavedTrack: Sendable, Identifiable {
     let id: String
@@ -255,7 +278,7 @@ struct SearchArtist: Sendable, Identifiable {
 }
 
 /// Playlist search result
-struct SearchPlaylist: Sendable, Identifiable, DurationFormattable {
+struct SearchPlaylist: Sendable, Identifiable, DurationFormattable, Equatable {
     let id: String
     let name: String
     let uri: String
@@ -3262,5 +3285,224 @@ enum SpotifyAPI {
             }
             throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
         }
+    }
+
+    // MARK: - User Top Items
+
+    /// Fetches user's top artists from Spotify Web API
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - timeRange: Time range for calculating top items
+    ///   - limit: Number of artists to fetch (max 50)
+    ///   - offset: Offset for pagination
+    static func fetchUserTopArtists(
+        accessToken: String,
+        timeRange: TopItemsTimeRange = .mediumTerm,
+        limit: Int = 20,
+        offset: Int = 0,
+    ) async throws -> TopArtistsResponse {
+        let urlString = "\(baseURL)/me/top/artists?time_range=\(timeRange.rawValue)&limit=\(limit)&offset=\(offset)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw SpotifyAPIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+
+        // Parse JSON response
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let items = json["items"] as? [[String: Any]],
+              let total = json["total"] as? Int
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        let artists = items.compactMap { item -> ArtistSimplified? in
+            guard let id = item["id"] as? String,
+                  let name = item["name"] as? String,
+                  let uri = item["uri"] as? String
+            else {
+                return nil
+            }
+
+            let genres = (item["genres"] as? [String]) ?? []
+            let followersDict = item["followers"] as? [String: Any]
+            let followers = followersDict?["total"] as? Int ?? 0
+
+            var imageURL: URL?
+            if let images = item["images"] as? [[String: Any]],
+               let firstImage = images.first,
+               let urlString = firstImage["url"] as? String
+            {
+                imageURL = URL(string: urlString)
+            }
+
+            return ArtistSimplified(
+                id: id,
+                name: name,
+                imageURL: imageURL,
+                uri: uri,
+                genres: genres,
+                followers: followers,
+            )
+        }
+
+        let nextOffset = offset + limit
+        let hasMore = nextOffset < total
+
+        return TopArtistsResponse(
+            artists: artists,
+            total: total,
+            hasMore: hasMore,
+            nextOffset: hasMore ? nextOffset : nil,
+        )
+    }
+
+    // MARK: - Browse
+
+    /// Fetches new album releases from Spotify Web API
+    /// - Parameters:
+    ///   - accessToken: Spotify access token
+    ///   - limit: Number of albums to fetch (max 50)
+    ///   - offset: Offset for pagination
+    static func fetchNewReleases(
+        accessToken: String,
+        limit: Int = 20,
+        offset: Int = 0,
+    ) async throws -> NewReleasesResponse {
+        let urlString = "\(baseURL)/browse/new-releases?limit=\(limit)&offset=\(offset)"
+        #if DEBUG
+            apiLogger.debug("[GET] \(urlString)")
+        #endif
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw SpotifyAPIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            break
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String
+            {
+                throw SpotifyAPIError.apiError(message)
+            }
+            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+
+        // Parse JSON response
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let albumsContainer = json["albums"] as? [String: Any],
+              let items = albumsContainer["items"] as? [[String: Any]],
+              let total = albumsContainer["total"] as? Int
+        else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        let albums = items.compactMap { item -> AlbumSimplified? in
+            guard let id = item["id"] as? String,
+                  let name = item["name"] as? String,
+                  let uri = item["uri"] as? String
+            else {
+                return nil
+            }
+
+            // Extract artist info
+            var artistName = "Unknown Artist"
+            if let artists = item["artists"] as? [[String: Any]],
+               let firstArtist = artists.first
+            {
+                artistName = (firstArtist["name"] as? String) ?? artistName
+            }
+
+            // Extract image
+            var imageURL: URL?
+            if let images = item["images"] as? [[String: Any]],
+               let firstImage = images.first,
+               let urlString = firstImage["url"] as? String
+            {
+                imageURL = URL(string: urlString)
+            }
+
+            let trackCount = item["total_tracks"] as? Int ?? 0
+            let releaseDate = (item["release_date"] as? String) ?? ""
+            let albumType = (item["album_type"] as? String) ?? "album"
+
+            return AlbumSimplified(
+                id: id,
+                name: name,
+                artistName: artistName,
+                imageURL: imageURL,
+                trackCount: trackCount,
+                uri: uri,
+                releaseDate: releaseDate,
+                albumType: albumType,
+                totalDurationMs: nil,
+            )
+        }
+
+        let nextOffset = offset + limit
+        let hasMore = nextOffset < total
+
+        return NewReleasesResponse(
+            albums: albums,
+            total: total,
+            hasMore: hasMore,
+            nextOffset: hasMore ? nextOffset : nil,
+        )
     }
 }

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var viewModel = AuthViewModel()
+    @State private var clientId: String = KeychainManager.loadCustomClientId() ?? ""
 
     var body: some View {
         Group {
@@ -40,7 +41,30 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("auth.client_id_label")
+                    .font(.headline)
+
+                TextField("auth.client_id_placeholder", text: $clientId)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 280)
+
+                Link(destination: URL(string: "https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#setting-up-your-client-id")!) {
+                    Text("auth.client_id_help_link")
+                        .font(.caption)
+                }
+
+                Text("auth.client_id_existing_app_note")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 280, alignment: .leading)
+            }
+            .frame(width: 280, alignment: .leading)
+
             Button {
+                if !clientId.isEmpty {
+                    try? KeychainManager.saveCustomClientId(clientId)
+                }
                 viewModel.startOAuth()
             } label: {
                 HStack {
@@ -55,7 +79,7 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
-            .disabled(viewModel.isAuthenticating)
+            .disabled(viewModel.isAuthenticating || clientId.isEmpty)
 
             if let error = viewModel.errorMessage {
                 Text(error)
