@@ -58,4 +58,28 @@ final class QueueService {
             // Silently fail - favorites just won't show
         }
     }
+
+    // MARK: - Queue Manipulation
+
+    /// Remove a track from the queue at the given index
+    /// - Parameter index: Index of the track to remove (must be > currentIndex)
+    func removeFromQueue(at index: Int) throws {
+        try SpotifyPlayer.removeFromQueue(at: index)
+        loadQueue() // Refresh queue from Rust
+    }
+
+    /// Move a track in the queue from one position to another
+    /// - Parameters:
+    ///   - from: Source index (must be > currentIndex)
+    ///   - to: Destination index (must be > currentIndex)
+    func moveQueueItem(from: Int, to: Int) throws {
+        try SpotifyPlayer.moveQueueItem(from: from, to: to)
+        loadQueue() // Refresh queue from Rust
+    }
+
+    /// Clear all unplayed tracks from the queue
+    func clearUpcomingQueue() throws {
+        try SpotifyPlayer.clearUpcomingQueue()
+        loadQueue() // Refresh queue from Rust
+    }
 }

@@ -1322,6 +1322,77 @@ pub extern "C" fn spotifly_add_next_to_queue(track_uri: *const c_char) -> i32 {
     }
 }
 
+/// Removes a track from the queue at the given index.
+/// Only allows removing tracks AFTER the current index (unplayed tracks).
+/// Returns 0 on success, -1 on error or if trying to remove a played/playing track.
+#[no_mangle]
+pub extern "C" fn spotifly_remove_from_queue(index: usize) -> i32 {
+    let mut queue_guard = QUEUE.lock().unwrap();
+    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
+
+    // Validate index: must be after current track and within bounds
+    if index <= current_idx || index >= queue_guard.len() {
+        eprintln!(
+            "Remove from queue error: invalid index {} (current: {}, len: {})",
+            index,
+            current_idx,
+            queue_guard.len()
+        );
+        return -1;
+    }
+
+    queue_guard.remove(index);
+    0
+}
+
+/// Moves a track from one position to another in the queue.
+/// Only allows reordering tracks AFTER the current index (unplayed tracks).
+/// Returns 0 on success, -1 on error or if trying to move played/playing tracks.
+#[no_mangle]
+pub extern "C" fn spotifly_move_queue_item(from_index: usize, to_index: usize) -> i32 {
+    let mut queue_guard = QUEUE.lock().unwrap();
+    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
+
+    // Validate indices: both must be after current track and within bounds
+    if from_index <= current_idx
+        || to_index <= current_idx
+        || from_index >= queue_guard.len()
+        || to_index >= queue_guard.len()
+    {
+        eprintln!(
+            "Move queue item error: invalid indices from={} to={} (current: {}, len: {})",
+            from_index,
+            to_index,
+            current_idx,
+            queue_guard.len()
+        );
+        return -1;
+    }
+
+    if from_index == to_index {
+        return 0; // No-op, success
+    }
+
+    let item = queue_guard.remove(from_index);
+    queue_guard.insert(to_index, item);
+    0
+}
+
+/// Clears all tracks after the currently playing track from the queue.
+/// Keeps the currently playing track and all previously played tracks.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_clear_upcoming_queue() -> i32 {
+    let mut queue_guard = QUEUE.lock().unwrap();
+    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
+
+    // Truncate queue to current_idx + 1 (keep current and played)
+    if current_idx + 1 < queue_guard.len() {
+        queue_guard.truncate(current_idx + 1);
+    }
+    0
+}
+
 /// Gets radio tracks for a seed track and returns them as JSON.
 /// Returns a JSON array of track URIs, or NULL on error.
 /// Caller must free the string with spotifly_free_string().

@@ -30,6 +30,9 @@
 "action.show_less" = "Weniger anzeigen";
 "action.copy_token" = "Token in Zwischenablage kopieren";
 "action.copy_track_uri" = "Track-URI kopieren";
+"action.edit" = "Bearbeiten";
+"action.done" = "Fertig";
+"action.cancel" = "Abbrechen";
 
 /* Playback */
 "playback.play_album" = "Album abspielen";
@@ -60,6 +63,9 @@
 "error.load_artists" = "Laden der Künstler fehlgeschlagen";
 "error.load_queue" = "Laden der Warteschlange fehlgeschlagen";
 "error.load_recently_played" = "Laden von \"Kürzlich gespielt\" fehlgeschlagen: %@";
+"error.remove_from_queue" = "Entfernen des Tracks aus der Warteschlange fehlgeschlagen";
+"error.reorder_queue" = "Umordnen der Warteschlange fehlgeschlagen";
+"error.clear_queue" = "Leeren der Warteschlange fehlgeschlagen";
 
 /* Empty States */
 "empty.select_item" = "Wähle ein Element aus der Seitenleiste";
@@ -77,6 +83,15 @@
 "empty.no_artists.description" = "Folge Künstlern in der Spotify-App";
 "empty.queue_empty" = "Warteschlange ist leer";
 "empty.queue_empty.description" = "Spiele einen Track, Album, Playlist oder Künstler ab, um die Warteschlange zu sehen";
+
+/* Queue */
+"queue.title" = "Warteschlange";
+"queue.song_count %lld %lld" = "%lld Songs (%lld ausstehend)";
+"queue.scroll_to_current" = "Zum aktuellen Track scrollen";
+"queue.clear" = "Ausstehende Tracks löschen";
+"queue.clear.confirm.title" = "Warteschlange leeren";
+"queue.clear.confirm.message %lld" = "Dies entfernt %lld ausstehende Tracks aus der Warteschlange.";
+"queue.clear.confirm.action" = "Warteschlange leeren";
 
 /* Recently Played */
 "recently_played.tracks" = "Kürzlich gespielte Tracks";

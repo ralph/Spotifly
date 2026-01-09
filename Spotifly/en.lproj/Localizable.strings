@@ -30,6 +30,9 @@
 "action.show_less" = "Show less";
 "action.copy_token" = "Copy token to clipboard";
 "action.copy_track_uri" = "Copy track URI";
+"action.edit" = "Edit";
+"action.done" = "Done";
+"action.cancel" = "Cancel";
 
 /* Playback */
 "playback.play_album" = "Play Album";
@@ -60,6 +63,9 @@
 "error.load_artists" = "Failed to load artists";
 "error.load_queue" = "Failed to load queue";
 "error.load_recently_played" = "Failed to load recently played: %@";
+"error.remove_from_queue" = "Failed to remove track from queue";
+"error.reorder_queue" = "Failed to reorder queue";
+"error.clear_queue" = "Failed to clear queue";
 
 /* Empty States */
 "empty.select_item" = "Select an item from the sidebar";
@@ -77,6 +83,15 @@
 "empty.no_artists.description" = "Follow artists in the Spotify app";
 "empty.queue_empty" = "Queue is empty";
 "empty.queue_empty.description" = "Play a track, album, playlist, or artist to see the queue";
+
+/* Queue */
+"queue.title" = "Queue";
+"queue.song_count %lld %lld" = "%lld songs (%lld upcoming)";
+"queue.scroll_to_current" = "Scroll to current track";
+"queue.clear" = "Clear upcoming tracks";
+"queue.clear.confirm.title" = "Clear Queue";
+"queue.clear.confirm.message %lld" = "This will remove %lld upcoming tracks from the queue.";
+"queue.clear.confirm.action" = "Clear Queue";
 
 /* Recently Played */
 "recently_played.tracks" = "Recently Played Tracks";
