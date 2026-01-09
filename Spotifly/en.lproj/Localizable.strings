@@ -109,6 +109,14 @@
 "queue.clear.confirm.message %lld" = "This will remove %lld upcoming tracks from the queue.";
 "queue.clear.confirm.action" = "Clear Queue";
 
+/* Startpage Sections */
+"startpage.top_artists" = "Your Top Artists";
+"startpage.top_artists.empty" = "Listen to more music to see your top artists";
+"startpage.top_tracks" = "Your Top Tracks";
+"startpage.top_tracks.empty" = "Listen to more music to see your top tracks";
+"startpage.new_releases" = "New Releases";
+"startpage.new_releases.empty" = "No new releases available";
+
 /* Recently Played */
 "recently_played.tracks" = "Recently Played Tracks";
 "recently_played.content" = "Recently Played";

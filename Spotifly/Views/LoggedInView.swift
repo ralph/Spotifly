@@ -30,6 +30,8 @@ struct LoggedInView: View {
     private var queueService: QueueService { QueueService(store: store) }
     private var recentlyPlayedService: RecentlyPlayedService { RecentlyPlayedService(store: store) }
     private var searchService: SearchService { SearchService(store: store) }
+    private var topItemsService: TopItemsService { TopItemsService(store: store) }
+    private var newReleasesService: NewReleasesService { NewReleasesService(store: store) }
 
     @State private var navigationCoordinator = NavigationCoordinator()
 
@@ -144,6 +146,8 @@ struct LoggedInView: View {
         .environment(queueService)
         .environment(recentlyPlayedService)
         .environment(searchService)
+        .environment(topItemsService)
+        .environment(newReleasesService)
         .environment(navigationCoordinator)
         .environment(store)
         .environment(trackService)

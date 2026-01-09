@@ -233,6 +233,21 @@ final class AppStore {
         recentTrackIds.compactMap { tracks[$0] }
     }
 
+    /// Top artists from the store
+    var topArtists: [Artist] {
+        topArtistIds.compactMap { artists[$0] }
+    }
+
+    /// Top tracks from the store
+    var topTracks: [Track] {
+        topTrackIds.compactMap { tracks[$0] }
+    }
+
+    /// New release albums from the store
+    var newReleaseAlbums: [Album] {
+        newReleaseAlbumIds.compactMap { albums[$0] }
+    }
+
     /// Active device (if any)
     var activeDevice: Device? {
         devices.values.first { $0.isActive }
