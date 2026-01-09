@@ -21,8 +21,8 @@ final class TopItemsService {
 
     /// Load top artists (only on first call unless refresh is called)
     func loadTopArtists(accessToken: String, timeRange: TopItemsTimeRange = .mediumTerm) async {
-        guard !store.hasLoadedTopArtists else { return }
-        store.hasLoadedTopArtists = true
+        // Skip if already loaded or currently loading (prevents concurrent duplicate requests)
+        guard !store.hasLoadedTopArtists, !store.topArtistsIsLoading else { return }
         await refreshTopArtists(accessToken: accessToken, timeRange: timeRange)
     }
 
@@ -42,6 +42,9 @@ final class TopItemsService {
             let artists = response.artists.map { Artist(from: $0) }
             store.upsertArtists(artists)
             store.setTopArtistIds(artists.map(\.id))
+
+            // Mark as loaded only after successful completion
+            store.hasLoadedTopArtists = true
 
         } catch {
             store.topArtistsErrorMessage = error.localizedDescription

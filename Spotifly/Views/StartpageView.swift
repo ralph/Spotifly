@@ -35,13 +35,6 @@ struct StartpageView: View {
             }
             .padding(.vertical)
         }
-        .task {
-            let token = await session.validAccessToken()
-            async let a: () = topItemsService.loadTopArtists(accessToken: token)
-            async let b: () = newReleasesService.loadNewReleases(accessToken: token)
-            async let c: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
-            _ = await (a, b, c)
-        }
         .refreshable {
             let token = await session.validAccessToken()
             await topItemsService.refreshTopArtists(accessToken: token)
@@ -236,18 +229,11 @@ struct StartpageView: View {
 
 private struct TopArtistCard: View {
     let artist: Artist
-    @Environment(SpotifySession.self) private var session
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
         Button {
-            Task {
-                let token = await session.validAccessToken()
-                navigationCoordinator.navigateToArtist(
-                    artistId: artist.id,
-                    accessToken: token,
-                )
-            }
+            navigationCoordinator.navigateToArtist(artistId: artist.id)
         } label: {
             VStack(spacing: 8) {
                 if let imageURL = artist.imageURL {
@@ -300,18 +286,11 @@ private struct TopArtistCard: View {
 
 private struct NewReleaseCard: View {
     let album: Album
-    @Environment(SpotifySession.self) private var session
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
         Button {
-            Task {
-                let token = await session.validAccessToken()
-                navigationCoordinator.navigateToAlbum(
-                    albumId: album.id,
-                    accessToken: token,
-                )
-            }
+            navigationCoordinator.navigateToAlbum(albumId: album.id)
         } label: {
             VStack(spacing: 8) {
                 if let imageURL = album.imageURL {
@@ -369,7 +348,6 @@ private struct NewReleaseCard: View {
 
 struct RecentContentSection: View {
     let items: [RecentItem]
-    @Environment(SpotifySession.self) private var session
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
@@ -384,13 +362,7 @@ struct RecentContentSection: View {
                         switch item {
                         case let .album(album):
                             RecentAlbumCard(album: album) {
-                                Task {
-                                    let token = await session.validAccessToken()
-                                    navigationCoordinator.navigateToAlbum(
-                                        albumId: album.id,
-                                        accessToken: token,
-                                    )
-                                }
+                                navigationCoordinator.navigateToAlbum(albumId: album.id)
                             }
 
                         case let .playlist(playlist):

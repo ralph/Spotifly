@@ -226,13 +226,7 @@ struct TrackRow: View {
 
                 Button {
                     if let artistId = track.artistId {
-                        Task {
-                            let token = await session.validAccessToken()
-                            navigationCoordinator.navigateToArtist(
-                                artistId: artistId,
-                                accessToken: token,
-                            )
-                        }
+                        navigationCoordinator.navigateToArtist(artistId: artistId)
                     }
                 } label: {
                     Label("track.menu.go_to_artist", systemImage: "person.circle")
@@ -241,13 +235,7 @@ struct TrackRow: View {
 
                 Button {
                     if let albumId = track.albumId {
-                        Task {
-                            let token = await session.validAccessToken()
-                            navigationCoordinator.navigateToAlbum(
-                                albumId: albumId,
-                                accessToken: token,
-                            )
-                        }
+                        navigationCoordinator.navigateToAlbum(albumId: albumId)
                     }
                 } label: {
                     Label("track.menu.go_to_album", systemImage: "square.stack")

@@ -21,8 +21,8 @@ final class NewReleasesService {
 
     /// Load new releases (only on first call unless refresh is called)
     func loadNewReleases(accessToken: String) async {
-        guard !store.hasLoadedNewReleases else { return }
-        store.hasLoadedNewReleases = true
+        // Skip if already loaded or currently loading (prevents concurrent duplicate requests)
+        guard !store.hasLoadedNewReleases, !store.newReleasesIsLoading else { return }
         await refresh(accessToken: accessToken)
     }
 
@@ -41,6 +41,9 @@ final class NewReleasesService {
             let albums = response.albums.map { Album(from: $0) }
             store.upsertAlbums(albums)
             store.setNewReleaseAlbumIds(albums.map(\.id))
+
+            // Mark as loaded only after successful completion
+            store.hasLoadedNewReleases = true
 
         } catch {
             store.newReleasesErrorMessage = error.localizedDescription

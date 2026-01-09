@@ -9,18 +9,39 @@ import AppKit
 import SwiftUI
 
 struct AlbumDetailView: View {
-    let album: SearchAlbum
+    // ID is always required (either passed directly or derived from album object)
+    let albumId: String
+
+    // Optional pre-loaded album (avoids network request if already have data)
+    private let initialAlbum: SearchAlbum?
+
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
 
+    @State private var album: SearchAlbum?
+    @State private var isLoadingAlbum = false
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    /// Initialize with an album ID (fetches album data)
+    init(albumId: String, playbackViewModel: PlaybackViewModel) {
+        self.albumId = albumId
+        initialAlbum = nil
+        self.playbackViewModel = playbackViewModel
+    }
+
+    /// Initialize with a pre-loaded album (avoids network request)
+    init(album: SearchAlbum, playbackViewModel: PlaybackViewModel) {
+        albumId = album.id
+        initialAlbum = album
+        self.playbackViewModel = playbackViewModel
+    }
+
     /// Tracks from the store for this album
     private var tracks: [Track] {
-        guard let storedAlbum = store.albums[album.id] else { return [] }
+        guard let storedAlbum = store.albums[albumId] else { return [] }
         return storedAlbum.trackIds.compactMap { store.tracks[$0] }
     }
 
@@ -38,6 +59,39 @@ struct AlbumDetailView: View {
     }
 
     var body: some View {
+        Group {
+            if let album {
+                albumContent(album)
+            } else if isLoadingAlbum {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage {
+                VStack {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                    Button("action.try_again") {
+                        Task { await loadAlbum() }
+                    }
+                }
+            } else {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .navigationTitle(album?.name ?? "")
+        .task(id: albumId) {
+            // Use initial album if provided, otherwise fetch
+            if let initialAlbum {
+                album = initialAlbum
+            } else {
+                await loadAlbum()
+            }
+            await loadTracks()
+        }
+    }
+
+    @ViewBuilder
+    private func albumContent(_ album: SearchAlbum) -> some View {
         ScrollView {
             VStack(spacing: 24) {
                 // Album art and metadata
@@ -137,7 +191,7 @@ struct AlbumDetailView: View {
                             Divider()
 
                             Button {
-                                copyToClipboard()
+                                copyToClipboard(album)
                             } label: {
                                 Label("Share", systemImage: "square.and.arrow.up")
                             }
@@ -184,9 +238,24 @@ struct AlbumDetailView: View {
                 }
             }
         }
-        .task(id: album.id) {
-            await loadTracks()
+    }
+
+    private func loadAlbum() async {
+        isLoadingAlbum = true
+        errorMessage = nil
+
+        let token = await session.validAccessToken()
+        do {
+            let albumEntity = try await albumService.fetchAlbumDetails(
+                albumId: albumId,
+                accessToken: token,
+            )
+            album = SearchAlbum(from: albumEntity)
+        } catch {
+            errorMessage = error.localizedDescription
         }
+
+        isLoadingAlbum = false
     }
 
     private func loadTracks() async {
@@ -197,7 +266,7 @@ struct AlbumDetailView: View {
             let token = await session.validAccessToken()
             // Load tracks via service (stores them in AppStore)
             _ = try await albumService.getAlbumTracks(
-                albumId: album.id,
+                albumId: albumId,
                 accessToken: token,
             )
         } catch {
@@ -241,7 +310,7 @@ struct AlbumDetailView: View {
         }
     }
 
-    private func copyToClipboard() {
+    private func copyToClipboard(_ album: SearchAlbum) {
         guard let externalUrl = album.externalUrl else { return }
 
         let pasteboard = NSPasteboard.general

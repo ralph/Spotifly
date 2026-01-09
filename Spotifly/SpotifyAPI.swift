@@ -278,7 +278,7 @@ struct SearchArtist: Sendable, Identifiable {
 }
 
 /// Playlist search result
-struct SearchPlaylist: Sendable, Identifiable, DurationFormattable {
+struct SearchPlaylist: Sendable, Identifiable, DurationFormattable, Equatable {
     let id: String
     let name: String
     let uri: String

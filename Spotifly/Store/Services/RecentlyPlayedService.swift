@@ -24,8 +24,8 @@ final class RecentlyPlayedService {
 
     /// Load recently played (only on first call unless refresh is called)
     func loadRecentlyPlayed(accessToken: String) async {
-        guard !store.hasLoadedRecentlyPlayed else { return }
-        store.hasLoadedRecentlyPlayed = true
+        // Skip if already loaded or currently loading (prevents concurrent duplicate requests)
+        guard !store.hasLoadedRecentlyPlayed, !store.recentlyPlayedIsLoading else { return }
         await refresh(accessToken: accessToken)
     }
 
@@ -206,6 +206,9 @@ final class RecentlyPlayedService {
             }
 
             store.setRecentItems(finalItems)
+
+            // Mark as loaded only after successful completion
+            store.hasLoadedRecentlyPlayed = true
 
         } catch {
             store.recentlyPlayedErrorMessage = error.localizedDescription

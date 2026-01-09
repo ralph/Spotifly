@@ -16,7 +16,6 @@ enum NavigationItem: Hashable, Identifiable {
     case artists
     case queue
     case devices
-    case artistContext(artistName: String) // Dynamic artist/album context
 
     var id: String {
         switch self {
@@ -28,7 +27,6 @@ enum NavigationItem: Hashable, Identifiable {
         case .artists: "artists"
         case .queue: "queue"
         case .devices: "devices"
-        case let .artistContext(name): "artistContext:\(name)"
         }
     }
 
@@ -50,8 +48,6 @@ enum NavigationItem: Hashable, Identifiable {
             String(localized: "nav.queue")
         case .devices:
             String(localized: "nav.devices")
-        case let .artistContext(artistName):
-            artistName
         }
     }
 
@@ -73,8 +69,6 @@ enum NavigationItem: Hashable, Identifiable {
             "list.bullet"
         case .devices:
             "hifispeaker.2.fill"
-        case .artistContext:
-            "person.circle.fill"
         }
     }
 }
@@ -83,7 +77,6 @@ struct SidebarView: View {
     @Binding var selection: NavigationItem?
     let onLogout: () -> Void
     var hasSearchResults: Bool = false
-    var artistContextItem: NavigationItem? // Dynamic artist context item
 
     var body: some View {
         List(selection: $selection) {
@@ -108,15 +101,6 @@ struct SidebarView: View {
                 Section {
                     NavigationLink(value: NavigationItem.searchResults) {
                         Label(String(localized: "nav.search_results"), systemImage: "magnifyingglass")
-                    }
-                }
-            }
-
-            // Dynamic artist context section
-            if let artistItem = artistContextItem {
-                Section {
-                    NavigationLink(value: artistItem) {
-                        Label(artistItem.title, systemImage: artistItem.icon)
                     }
                 }
             }
