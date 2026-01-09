@@ -76,7 +76,7 @@ struct SearchResultsView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(searchResults.tracks.prefix(10)) { track in
+                    ForEach(searchResults.tracks) { track in
                         TrackCard(track: track, playbackViewModel: playbackViewModel)
                     }
                 }

@@ -39,6 +39,11 @@ final class NavigationCoordinator {
         push(.album(id: albumId))
     }
 
+    /// Navigate to a playlist detail view (pushes onto navigation stack)
+    func navigateToPlaylistDetail(playlistId: String) {
+        push(.playlist(id: playlistId))
+    }
+
     // MARK: - Cross-Section Navigation
 
     /// Pending navigation request (observed by LoggedInView)
