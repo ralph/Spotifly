@@ -33,6 +33,22 @@
 "action.edit" = "Edit";
 "action.done" = "Done";
 "action.cancel" = "Cancel";
+"action.create" = "Create";
+"action.share" = "Share";
+
+/* Track Context Menu */
+"track.menu.play_next" = "Play Next";
+"track.menu.add_to_queue" = "Add to Queue";
+"track.menu.start_radio" = "Start Song Radio";
+"track.menu.add_to_playlist" = "Add to Playlist";
+"track.menu.add_to_new_playlist" = "Add to New Playlist...";
+"track.menu.go_to_artist" = "Go to Artist";
+"track.menu.go_to_album" = "Go to Album";
+
+/* New Playlist Dialog */
+"playlist.new.title" = "New Playlist";
+"playlist.new.placeholder" = "Playlist name";
+"playlist.new.message" = "Enter a name for the new playlist";
 
 /* Playback */
 "playback.play_album" = "Play Album";
