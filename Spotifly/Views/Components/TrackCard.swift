@@ -1,26 +1,24 @@
 //
-//  AlbumCard.swift
+//  TrackCard.swift
 //  Spotifly
 //
-//  Reusable album card for horizontal scroll sections
+//  Reusable track card for horizontal scroll sections
 //
 
 import SwiftUI
 
-struct AlbumCard: View {
-    let id: String
-    let name: String
-    let artistName: String
-    let imageURL: URL?
+struct TrackCard: View {
+    let track: Track
+    let playbackViewModel: PlaybackViewModel
 
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(SpotifySession.self) private var session
 
     var body: some View {
         Button {
-            navigationCoordinator.navigateToAlbum(albumId: id)
+            playTrack()
         } label: {
             VStack(spacing: 8) {
-                if let imageURL {
+                if let imageURL = track.imageURL {
                     AsyncImage(url: imageURL) { phase in
                         switch phase {
                         case .empty:
@@ -34,21 +32,21 @@ struct AlbumCard: View {
                                 .cornerRadius(4)
                                 .shadow(radius: 2)
                         case .failure:
-                            albumPlaceholder
+                            trackPlaceholder
                         @unknown default:
                             EmptyView()
                         }
                     }
                 } else {
-                    albumPlaceholder
+                    trackPlaceholder
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(name)
+                    Text(track.name)
                         .font(.caption)
                         .fontWeight(.medium)
                         .lineLimit(2)
-                    Text(artistName)
+                    Text(track.artistName)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -59,7 +57,7 @@ struct AlbumCard: View {
         .buttonStyle(.plain)
     }
 
-    private var albumPlaceholder: some View {
+    private var trackPlaceholder: some View {
         RoundedRectangle(cornerRadius: 4)
             .fill(Color.gray.opacity(0.2))
             .frame(width: 120, height: 120)
@@ -69,16 +67,11 @@ struct AlbumCard: View {
                     .foregroundStyle(.secondary),
             )
     }
-}
 
-// MARK: - Convenience initializers
-
-extension AlbumCard {
-    /// Initialize from an Album entity
-    init(album: Album) {
-        id = album.id
-        name = album.name
-        artistName = album.artistName
-        imageURL = album.imageURL
+    private func playTrack() {
+        Task {
+            let token = await session.validAccessToken()
+            await playbackViewModel.playTracks([track.uri], accessToken: token)
+        }
     }
 }

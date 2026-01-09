@@ -12,15 +12,15 @@ struct PlaylistCard: View {
     let name: String
     let imageURL: URL?
 
-    /// The playlist object needed for navigation (contains full data)
-    private let searchPlaylist: SearchPlaylist?
+    /// The playlist object needed for navigation
+    private let playlist: Playlist?
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
         Button {
-            if let searchPlaylist {
-                navigationCoordinator.navigateToPlaylist(searchPlaylist)
+            if let playlist {
+                navigationCoordinator.navigateToPlaylist(playlist)
             }
         } label: {
             VStack(spacing: 8) {
@@ -77,14 +77,6 @@ extension PlaylistCard {
         id = playlist.id
         name = playlist.name
         imageURL = playlist.imageURL
-        searchPlaylist = SearchPlaylist(from: playlist)
-    }
-
-    /// Initialize from a SearchPlaylist
-    init(playlist: SearchPlaylist) {
-        id = playlist.id
-        name = playlist.name
-        imageURL = playlist.imageURL
-        searchPlaylist = playlist
+        self.playlist = playlist
     }
 }

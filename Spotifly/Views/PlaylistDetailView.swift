@@ -13,7 +13,7 @@ struct PlaylistDetailView: View {
     let playlistId: String
 
     // Optional pre-loaded playlist (avoids network request if already have data)
-    private let initialPlaylist: SearchPlaylist?
+    private let initialPlaylist: Playlist?
 
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
@@ -21,7 +21,7 @@ struct PlaylistDetailView: View {
     @Environment(PlaylistService.self) private var playlistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-    @State private var playlist: SearchPlaylist?
+    @State private var playlist: Playlist?
     @State private var isLoadingPlaylist = false
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -46,7 +46,7 @@ struct PlaylistDetailView: View {
     }
 
     /// Initialize with a pre-loaded playlist (avoids network request)
-    init(playlist: SearchPlaylist, playbackViewModel: PlaybackViewModel) {
+    init(playlist: Playlist, playbackViewModel: PlaybackViewModel) {
         playlistId = playlist.id
         initialPlaylist = playlist
         self.playbackViewModel = playbackViewModel
@@ -150,7 +150,7 @@ struct PlaylistDetailView: View {
     }
 
     @ViewBuilder
-    private func playlistContent(_ playlist: SearchPlaylist) -> some View {
+    private func playlistContent(_ playlist: Playlist) -> some View {
         ScrollView {
             VStack(spacing: 24) {
                 playlistHeader(playlist)
@@ -165,7 +165,7 @@ struct PlaylistDetailView: View {
     // MARK: - Subviews
 
     @ViewBuilder
-    private func playlistHeader(_ playlist: SearchPlaylist) -> some View {
+    private func playlistHeader(_ playlist: Playlist) -> some View {
         VStack(spacing: 16) {
             playlistArtwork(playlist)
             playlistMetadata(playlist)
@@ -175,7 +175,7 @@ struct PlaylistDetailView: View {
     }
 
     @ViewBuilder
-    private func playlistArtwork(_ playlist: SearchPlaylist) -> some View {
+    private func playlistArtwork(_ playlist: Playlist) -> some View {
         if let imageURL = playlist.imageURL {
             AsyncImage(url: imageURL) { phase in
                 switch phase {
@@ -208,7 +208,7 @@ struct PlaylistDetailView: View {
             .cornerRadius(8)
     }
 
-    private func playlistMetadata(_ playlist: SearchPlaylist) -> some View {
+    private func playlistMetadata(_ playlist: Playlist) -> some View {
         VStack(spacing: 8) {
             Text(playlistName)
                 .font(.title2)
@@ -471,7 +471,7 @@ struct PlaylistDetailView: View {
                 playlistId: playlistId,
                 accessToken: token,
             )
-            playlist = SearchPlaylist(from: playlistEntity)
+            playlist = playlistEntity
             playlistName = playlistEntity.name
             playlistDescription = playlistEntity.description ?? ""
         } catch {

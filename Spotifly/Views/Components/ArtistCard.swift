@@ -74,11 +74,4 @@ extension ArtistCard {
         name = artist.name
         imageURL = artist.imageURL
     }
-
-    /// Initialize from a SearchArtist
-    init(artist: SearchArtist) {
-        id = artist.id
-        name = artist.name
-        imageURL = artist.imageURL
-    }
 }

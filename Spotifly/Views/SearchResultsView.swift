@@ -13,13 +13,12 @@ struct SearchResultsView: View {
     @Environment(AppStore.self) private var store
     @Environment(SpotifySession.self) private var session
     @Environment(TrackService.self) private var trackService
-
-    @State private var showAllTracks = false
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // Tracks section (keeping list style for now)
+                // Tracks section
                 if !searchResults.tracks.isEmpty {
                     tracksSection
                 }
@@ -54,46 +53,33 @@ struct SearchResultsView: View {
     @ViewBuilder
     private var tracksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("section.tracks")
-                .font(.headline)
-                .padding(.horizontal)
+            HStack {
+                Text("section.tracks")
+                    .font(.headline)
 
-            let displayedTracks = showAllTracks ? searchResults.tracks : Array(searchResults.tracks.prefix(5))
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(displayedTracks.enumerated()), id: \.element.id) { index, track in
-                    TrackRow(
-                        track: track.toTrackRowData(),
-                        index: index,
-                        currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                        playbackViewModel: playbackViewModel,
-                    )
+                Spacer()
 
-                    if index < displayedTracks.count - 1 {
-                        Divider()
-                            .padding(.leading, 94)
+                if searchResults.tracks.count > 5 {
+                    NavigationLink(value: NavigationDestination.searchTracks(tracks: searchResults.tracks)) {
+                        HStack(spacing: 4) {
+                            Text(String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
+                                .font(.subheadline)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.blue)
                     }
+                    .buttonStyle(.plain)
                 }
             }
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(8)
             .padding(.horizontal)
 
-            if searchResults.tracks.count > 5 {
-                Button {
-                    withAnimation {
-                        showAllTracks.toggle()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(searchResults.tracks.prefix(10)) { track in
+                        TrackCard(track: track, playbackViewModel: playbackViewModel)
                     }
-                } label: {
-                    HStack {
-                        Text(showAllTracks ? "action.show_less" : String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
-                            .font(.subheadline)
-                        Spacer()
-                        Image(systemName: showAllTracks ? "chevron.up" : "chevron.down")
-                            .font(.caption)
-                    }
-                    .foregroundStyle(.blue)
                 }
-                .buttonStyle(.plain)
                 .padding(.horizontal)
             }
         }

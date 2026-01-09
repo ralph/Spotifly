@@ -40,19 +40,11 @@ final class SearchService {
 
             store.setSearchResults(results)
 
-            // Store tracks in AppStore so favorites work when displayed
-            let tracks = results.tracks.map { Track(from: $0) }
-            store.upsertTracks(tracks)
-
-            // Store albums, artists, playlists for future reference
-            let albums = results.albums.map { Album(from: $0) }
-            store.upsertAlbums(albums)
-
-            let artists = results.artists.map { Artist(from: $0) }
-            store.upsertArtists(artists)
-
-            let playlists = results.playlists.map { Playlist(from: $0) }
-            store.upsertPlaylists(playlists)
+            // Store entities in AppStore so favorites work and for future reference
+            store.upsertTracks(results.tracks)
+            store.upsertAlbums(results.albums)
+            store.upsertArtists(results.artists)
+            store.upsertPlaylists(results.playlists)
 
         } catch {
             store.searchErrorMessage = error.localizedDescription

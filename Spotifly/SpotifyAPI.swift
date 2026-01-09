@@ -314,12 +314,12 @@ struct SearchPlaylist: Sendable, Identifiable, DurationFormattable, Equatable {
     }
 }
 
-/// Search results wrapper
+/// Search results wrapper (uses unified Entity types)
 struct SearchResults: Sendable {
-    let tracks: [SearchTrack]
-    let albums: [SearchAlbum]
-    let artists: [SearchArtist]
-    let playlists: [SearchPlaylist]
+    let tracks: [Track]
+    let albums: [Album]
+    let artists: [Artist]
+    let playlists: [Playlist]
 }
 
 /// Recently played context
@@ -1910,10 +1910,10 @@ enum SpotifyAPI {
                 throw SpotifyAPIError.invalidResponse
             }
 
-            var tracks: [SearchTrack] = []
-            var albums: [SearchAlbum] = []
-            var artists: [SearchArtist] = []
-            var playlists: [SearchPlaylist] = []
+            var tracks: [Track] = []
+            var albums: [Album] = []
+            var artists: [Artist] = []
+            var playlists: [Playlist] = []
 
             // Parse tracks
             if let tracksObj = json["tracks"] as? [String: Any],
@@ -1942,17 +1942,18 @@ enum SpotifyAPI {
                     let externalUrls = item["external_urls"] as? [String: Any]
                     let externalUrl = externalUrls?["spotify"] as? String
 
-                    return SearchTrack(
+                    return Track(
                         id: id,
                         name: name,
                         uri: uri,
+                        durationMs: durationMs,
+                        trackNumber: nil,
+                        externalUrl: externalUrl,
+                        albumId: albumId,
+                        artistId: artistId,
                         artistName: artistName,
                         albumName: albumName,
                         imageURL: imageURL,
-                        durationMs: durationMs,
-                        albumId: albumId,
-                        artistId: artistId,
-                        externalUrl: externalUrl,
                     )
                 }
             }
@@ -1969,21 +1970,29 @@ enum SpotifyAPI {
                         return nil
                     }
 
-                    let artistName = (item["artists"] as? [[String: Any]])?.first?["name"] as? String ?? "Unknown"
+                    let artistsArray = item["artists"] as? [[String: Any]]
+                    let artistName = artistsArray?.first?["name"] as? String ?? "Unknown"
+                    let artistId = artistsArray?.first?["id"] as? String
                     let totalTracks = item["total_tracks"] as? Int ?? 0
                     let releaseDate = item["release_date"] as? String ?? ""
+                    let albumType = item["album_type"] as? String
                     let images = item["images"] as? [[String: Any]]
                     let imageURLString = images?.first?["url"] as? String
                     let imageURL = imageURLString.flatMap { URL(string: $0) }
+                    let externalUrls = item["external_urls"] as? [String: Any]
+                    let externalUrl = externalUrls?["spotify"] as? String
 
-                    return SearchAlbum(
+                    return Album(
                         id: id,
                         name: name,
                         uri: uri,
-                        artistName: artistName,
                         imageURL: imageURL,
-                        totalTracks: totalTracks,
                         releaseDate: releaseDate,
+                        albumType: albumType,
+                        externalUrl: externalUrl,
+                        artistId: artistId,
+                        artistName: artistName,
+                        knownTrackCount: totalTracks,
                     )
                 }
             }
@@ -2004,9 +2013,9 @@ enum SpotifyAPI {
                     let images = item["images"] as? [[String: Any]]
                     let imageURLString = images?.first?["url"] as? String
                     let imageURL = imageURLString.flatMap { URL(string: $0) }
-                    let followers = (item["followers"] as? [String: Any])?["total"] as? Int ?? 0
+                    let followers = (item["followers"] as? [String: Any])?["total"] as? Int
 
-                    return SearchArtist(
+                    return Artist(
                         id: id,
                         name: name,
                         uri: uri,
@@ -2041,15 +2050,16 @@ enum SpotifyAPI {
                     let ownerId = owner?["id"] as? String ?? ""
                     let ownerName = owner?["display_name"] as? String ?? ownerId
 
-                    return SearchPlaylist(
+                    return Playlist(
                         id: id,
                         name: name,
-                        uri: uri,
                         description: description,
                         imageURL: imageURL,
-                        trackCount: trackCount,
+                        uri: uri,
+                        isPublic: true,
                         ownerId: ownerId,
                         ownerName: ownerName.isEmpty ? "Unknown" : ownerName,
+                        knownTrackCount: trackCount,
                     )
                 }
             }

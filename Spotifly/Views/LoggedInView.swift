@@ -300,6 +300,12 @@ struct LoggedInView: View {
                 playlistId: id,
                 playbackViewModel: playbackViewModel,
             )
+
+        case let .searchTracks(tracks):
+            SearchAllTracksView(
+                tracks: tracks,
+                playbackViewModel: playbackViewModel,
+            )
         }
     }
 
@@ -313,7 +319,7 @@ struct LoggedInView: View {
                    let album = store.albums[albumId]
                 {
                     AlbumDetailView(
-                        album: SearchAlbum(from: album),
+                        album: album,
                         playbackViewModel: playbackViewModel,
                     )
                 } else {
@@ -326,7 +332,7 @@ struct LoggedInView: View {
                    let artist = store.artists[artistId]
                 {
                     ArtistDetailView(
-                        artist: SearchArtist(from: artist),
+                        artist: artist,
                         playbackViewModel: playbackViewModel,
                     )
                 } else {
@@ -344,7 +350,7 @@ struct LoggedInView: View {
                           let playlist = store.playlists[playlistId]
                 {
                     PlaylistDetailView(
-                        playlist: SearchPlaylist(from: playlist),
+                        playlist: playlist,
                         playbackViewModel: playbackViewModel,
                     )
                 } else {

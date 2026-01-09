@@ -12,7 +12,7 @@ struct ArtistDetailView: View {
     let artistId: String
 
     // Optional pre-loaded artist (avoids network request if already have data)
-    private let initialArtist: SearchArtist?
+    private let initialArtist: Artist?
 
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
@@ -20,7 +20,7 @@ struct ArtistDetailView: View {
     @Environment(AppStore.self) private var store
     @Environment(ArtistService.self) private var artistService
 
-    @State private var artist: SearchArtist?
+    @State private var artist: Artist?
     @State private var topTracks: [Track] = []
     @State private var albums: [Album] = []
     @State private var isLoadingArtist = false
@@ -37,7 +37,7 @@ struct ArtistDetailView: View {
     }
 
     /// Initialize with a pre-loaded artist (avoids network request)
-    init(artist: SearchArtist, playbackViewModel: PlaybackViewModel) {
+    init(artist: Artist, playbackViewModel: PlaybackViewModel) {
         artistId = artist.id
         initialArtist = artist
         self.playbackViewModel = playbackViewModel
@@ -77,7 +77,7 @@ struct ArtistDetailView: View {
     }
 
     @ViewBuilder
-    private func artistContent(_ artist: SearchArtist) -> some View {
+    private func artistContent(_ artist: Artist) -> some View {
         ScrollView {
             VStack(spacing: 24) {
                 // Artist image and metadata
@@ -124,9 +124,11 @@ struct ArtistDetailView: View {
                                 .multilineTextAlignment(.center)
                         }
 
-                        Text(String(format: String(localized: "metadata.followers"), formatFollowers(artist.followers)))
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
+                        if let followers = artist.followers {
+                            Text(String(format: String(localized: "metadata.followers"), formatFollowers(followers)))
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
 
                     // Play Top Tracks button
@@ -290,7 +292,7 @@ struct ArtistDetailView: View {
                 artistId: artistId,
                 accessToken: token,
             )
-            artist = SearchArtist(from: artistEntity)
+            artist = artistEntity
         } catch {
             errorMessage = error.localizedDescription
         }

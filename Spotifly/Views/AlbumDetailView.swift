@@ -13,14 +13,14 @@ struct AlbumDetailView: View {
     let albumId: String
 
     // Optional pre-loaded album (avoids network request if already have data)
-    private let initialAlbum: SearchAlbum?
+    private let initialAlbum: Album?
 
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
 
-    @State private var album: SearchAlbum?
+    @State private var album: Album?
     @State private var isLoadingAlbum = false
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -33,7 +33,7 @@ struct AlbumDetailView: View {
     }
 
     /// Initialize with a pre-loaded album (avoids network request)
-    init(album: SearchAlbum, playbackViewModel: PlaybackViewModel) {
+    init(album: Album, playbackViewModel: PlaybackViewModel) {
         albumId = album.id
         initialAlbum = album
         self.playbackViewModel = playbackViewModel
@@ -91,7 +91,7 @@ struct AlbumDetailView: View {
     }
 
     @ViewBuilder
-    private func albumContent(_ album: SearchAlbum) -> some View {
+    private func albumContent(_ album: Album) -> some View {
         ScrollView {
             VStack(spacing: 24) {
                 // Album art and metadata
@@ -138,7 +138,7 @@ struct AlbumDetailView: View {
                             .foregroundStyle(.secondary)
 
                         HStack(spacing: 4) {
-                            Text(String(format: String(localized: "metadata.tracks"), album.totalTracks))
+                            Text(String(format: String(localized: "metadata.tracks"), album.trackCount))
                                 .font(.subheadline)
                                 .foregroundStyle(.tertiary)
                             if !tracks.isEmpty {
@@ -149,12 +149,14 @@ struct AlbumDetailView: View {
                                     .font(.subheadline)
                                     .foregroundStyle(.tertiary)
                             }
-                            Text("metadata.separator")
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
-                            Text(album.releaseDate)
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
+                            if let releaseDate = album.releaseDate {
+                                Text("metadata.separator")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.tertiary)
+                                Text(releaseDate)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
 
@@ -250,7 +252,7 @@ struct AlbumDetailView: View {
                 albumId: albumId,
                 accessToken: token,
             )
-            album = SearchAlbum(from: albumEntity)
+            album = albumEntity
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -310,7 +312,7 @@ struct AlbumDetailView: View {
         }
     }
 
-    private func copyToClipboard(_ album: SearchAlbum) {
+    private func copyToClipboard(_ album: Album) {
         guard let externalUrl = album.externalUrl else { return }
 
         let pasteboard = NSPasteboard.general
