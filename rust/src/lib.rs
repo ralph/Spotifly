@@ -333,15 +333,15 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         ..Default::default()
     };
 
-    // Create session with access token
+    // Create credentials - will be used by Spirc to connect
     let credentials = librespot_core::authentication::Credentials::with_access_token(access_token);
-    
+
     let cache = Cache::new(None::<std::path::PathBuf>, None, None, None)
         .map_err(|e| format!("Cache error: {}", e))?;
 
+    // Create session but DON'T connect yet - let Spirc handle the connection
+    // This is important for Spirc to work properly with OAuth tokens
     let session = Session::new(session_config, Some(cache));
-    session.connect(credentials, true).await
-        .map_err(|e| format!("Session connect error: {}", e))?;
 
     // Create mixer
     let mixer_config = MixerConfig::default();
@@ -468,7 +468,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     }
 
     // Create Spirc for Spotify Connect support (makes this app appear as a Connect device)
-    // This is optional - if it fails, basic playback still works
+    // Spirc::new() will connect the session - this is the proper way per librespot examples
     let connect_config = ConnectConfig {
         name: "Spotifly".to_string(),
         device_type: DeviceType::Computer,
@@ -476,13 +476,12 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         ..Default::default()
     };
 
-    // Create credentials from access token for Spirc
-    let spirc_credentials = librespot_core::authentication::Credentials::with_access_token(access_token);
-
+    // Use the SAME credentials for Spirc - don't create new ones
+    // Spirc::new() handles the session connection internally
     match Spirc::new(
         connect_config,
-        session,
-        spirc_credentials,
+        session.clone(),
+        credentials.clone(), // Clone so we can use it for fallback if needed
         player,
         mixer as Arc<dyn Mixer>,
     )
@@ -495,10 +494,17 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 
             let mut spirc_guard = SPIRC.lock().unwrap();
             *spirc_guard = Some(spirc_arc);
+            println!("[Spotifly] Spirc initialized - Spotify Connect available");
         }
         Err(e) => {
-            // Spirc failed but basic playback still works
-            eprintln!("Spirc init warning (Connect won't be available): {:?}", e);
+            // Spirc failed - fall back to manual session connection for basic playback
+            eprintln!("Spirc init failed: {:?}", e);
+            eprintln!("[Spotifly] Falling back to basic playback (Connect won't be available)");
+
+            // Connect session manually so basic playback works
+            if let Err(connect_err) = session.connect(credentials, true).await {
+                return Err(format!("Session connect error: {}", connect_err));
+            }
         }
     }
 
