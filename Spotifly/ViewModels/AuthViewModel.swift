@@ -37,13 +37,13 @@ final class AuthViewModel {
         }
     }
 
-    func startOAuth() {
+    func startOAuth(useCustomClientId: Bool) {
         isAuthenticating = true
         errorMessage = nil
 
         Task {
             do {
-                let result = try await SpotifyAuth.authenticate()
+                let result = try await SpotifyAuth.authenticate(useCustomClientId: useCustomClientId)
                 self.authResult = result
                 self.isAuthenticating = false
 

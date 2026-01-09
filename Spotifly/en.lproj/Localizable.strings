@@ -11,6 +11,7 @@
 "auth.client_id_placeholder" = "Enter your Client ID";
 "auth.client_id_help_link" = "How do I get a Client ID?";
 "auth.client_id_existing_app_note" = "You can use an existing Spotify app if you add the redirect URI de.rvdh.spotifly://callback";
+"auth.use_custom_client_id" = "Use custom Client ID";
 
 /* Navigation */
 "nav.startpage" = "Startpage";

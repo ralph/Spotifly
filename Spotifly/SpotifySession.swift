@@ -88,7 +88,8 @@ final class SpotifySession {
         isRefreshing = true
 
         do {
-            let newResult = try await SpotifyAuth.refreshAccessToken(refreshToken: refreshToken)
+            let useCustomClientId = KeychainManager.loadUseCustomClientId()
+            let newResult = try await SpotifyAuth.refreshAccessToken(refreshToken: refreshToken, useCustomClientId: useCustomClientId)
             update(with: newResult)
             try? KeychainManager.saveAuthResult(newResult)
             #if DEBUG
