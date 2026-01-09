@@ -354,42 +354,41 @@ struct NowPlayingBarView: View {
         .buttonStyle(.plain)
     }
 
+    /// Unified volume (0-100 scale, like Spotify API)
+    private var currentVolume: Double {
+        if store.isSpotifyConnectActive {
+            store.spotifyConnectVolume
+        } else {
+            playbackViewModel.volume * 100
+        }
+    }
+
+    private func setVolume(_ volume: Double) {
+        if store.isSpotifyConnectActive {
+            Task {
+                let token = await session.validAccessToken()
+                connectService.setVolume(volume, accessToken: token)
+            }
+        } else {
+            playbackViewModel.volume = volume / 100
+        }
+    }
+
     private var volumeControl: some View {
         HStack(spacing: 6) {
-            if store.isSpotifyConnectActive {
-                // Connect volume (0-100)
-                let connectVolume = store.spotifyConnectVolume
-                Image(systemName: connectVolume == 0 ? "speaker.fill" : connectVolume < 50 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
-                    .font(.caption)
-                    .foregroundStyle(.green)
+            Image(systemName: currentVolume == 0 ? "speaker.fill" : currentVolume < 50 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
+                .font(.caption)
+                .foregroundStyle(store.isSpotifyConnectActive ? .green : .secondary)
 
-                Slider(
-                    value: Binding(
-                        get: { store.spotifyConnectVolume },
-                        set: { newValue in
-                            Task {
-                                let token = await session.validAccessToken()
-                                connectService.setVolume(newValue, accessToken: token)
-                            }
-                        },
-                    ),
-                    in: 0 ... 100,
-                )
-                .tint(.green)
-                .frame(width: 80)
-            } else {
-                // Local volume (0-1)
-                Image(systemName: playbackViewModel.volume == 0 ? "speaker.fill" : playbackViewModel.volume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Slider(
-                    value: $playbackViewModel.volume,
-                    in: 0 ... 1,
-                )
-                .tint(.green)
-                .frame(width: 80)
-            }
+            Slider(
+                value: Binding(
+                    get: { currentVolume },
+                    set: { setVolume($0) },
+                ),
+                in: 0 ... 100,
+            )
+            .tint(.green)
+            .frame(width: 80)
         }
     }
 
