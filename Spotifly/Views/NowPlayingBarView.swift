@@ -126,7 +126,7 @@ struct NowPlayingBarView: View {
             // TimelineView updates at display refresh rate for smooth slider
             TimelineView(.animation(minimumInterval: 0.033)) { _ in
                 HStack(spacing: 8) {
-                    Text(formatTime(playbackViewModel.interpolatedPositionMs))
+                    Text(formatTime(currentPositionMs))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -134,17 +134,24 @@ struct NowPlayingBarView: View {
 
                     Slider(
                         value: Binding(
-                            get: { Double(playbackViewModel.interpolatedPositionMs) },
+                            get: { Double(currentPositionMs) },
                             set: { newValue in
-                                playbackViewModel.seek(to: UInt32(newValue))
+                                if store.isSpotifyConnectActive {
+                                    Task {
+                                        let token = await session.validAccessToken()
+                                        await connectService.seek(to: Int(newValue), accessToken: token)
+                                    }
+                                } else {
+                                    playbackViewModel.seek(to: UInt32(newValue))
+                                }
                             },
                         ),
-                        in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
+                        in: 0 ... Double(max(currentDurationMs, 1)),
                     )
                     .tint(.green)
                     .frame(width: 200)
 
-                    Text(formatTime(playbackViewModel.trackDurationMs))
+                    Text(formatTime(currentDurationMs))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -229,15 +236,48 @@ struct NowPlayingBarView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            // Show device indicator when Connect active
+            // Show device indicator when Connect active - clickable to transfer back
             if store.isSpotifyConnectActive, let deviceName = store.spotifyConnectDeviceName {
-                HStack(spacing: 4) {
-                    Image(systemName: "hifispeaker.fill")
-                        .font(.caption2)
-                    Text(deviceName)
-                        .font(.caption2)
+                Button {
+                    transferToLocalPlayback()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "hifispeaker.fill")
+                            .font(.caption2)
+                        Text(deviceName)
+                            .font(.caption2)
+                        Image(systemName: "arrow.right.circle")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.green)
                 }
-                .foregroundStyle(.green)
+                .buttonStyle(.plain)
+                .help("connect.transfer_to_computer")
+            }
+        }
+    }
+
+    private func transferToLocalPlayback() {
+        guard let currentTrackUri = store.currentTrackId else { return }
+        let currentPosition = store.currentPositionMs
+
+        Task {
+            let token = await session.validAccessToken()
+
+            // Pause the remote device first
+            await connectService.pause(accessToken: token)
+
+            // Deactivate Connect mode
+            connectService.deactivateConnect()
+
+            // Start playing locally from the same position
+            await playbackViewModel.play(uriOrUrl: currentTrackUri, accessToken: token)
+
+            // Seek to the position we were at
+            if currentPosition > 0 {
+                // Small delay to let playback start
+                try? await Task.sleep(for: .milliseconds(500))
+                playbackViewModel.seek(to: currentPosition)
             }
         }
     }
@@ -305,27 +345,52 @@ struct NowPlayingBarView: View {
         }
     }
 
+    /// Current playback position (interpolated for smooth display)
+    private var currentPositionMs: UInt32 {
+        if store.isSpotifyConnectActive {
+            store.interpolatedPositionMs
+        } else {
+            playbackViewModel.interpolatedPositionMs
+        }
+    }
+
+    /// Current track duration
+    private var currentDurationMs: UInt32 {
+        if store.isSpotifyConnectActive {
+            store.trackDurationMs
+        } else {
+            playbackViewModel.trackDurationMs
+        }
+    }
+
     private var progressBar: some View {
         // TimelineView updates at display refresh rate for smooth slider
         TimelineView(.animation(minimumInterval: 0.033)) { _ in
             HStack(spacing: 8) {
-                Text(formatTime(playbackViewModel.interpolatedPositionMs))
+                Text(formatTime(currentPositionMs))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
 
                 Slider(
                     value: Binding(
-                        get: { Double(playbackViewModel.interpolatedPositionMs) },
+                        get: { Double(currentPositionMs) },
                         set: { newValue in
-                            playbackViewModel.seek(to: UInt32(newValue))
+                            if store.isSpotifyConnectActive {
+                                Task {
+                                    let token = await session.validAccessToken()
+                                    await connectService.seek(to: Int(newValue), accessToken: token)
+                                }
+                            } else {
+                                playbackViewModel.seek(to: UInt32(newValue))
+                            }
                         },
                     ),
-                    in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
+                    in: 0 ... Double(max(currentDurationMs, 1)),
                 )
                 .tint(.green)
 
-                Text(formatTime(playbackViewModel.trackDurationMs))
+                Text(formatTime(currentDurationMs))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -356,11 +421,16 @@ struct NowPlayingBarView: View {
 
     /// Unified volume (0-100 scale, like Spotify API)
     private var currentVolume: Double {
-        if store.isSpotifyConnectActive {
+        let vol = if store.isSpotifyConnectActive {
             store.spotifyConnectVolume
         } else {
             playbackViewModel.volume * 100
         }
+        #if DEBUG
+            // Uncomment to debug volume issues
+            // print("[NowPlayingBar] currentVolume: \(vol), isConnect=\(store.isSpotifyConnectActive), connectVol=\(store.spotifyConnectVolume), localVol=\(playbackViewModel.volume)")
+        #endif
+        return vol
     }
 
     private func setVolume(_ volume: Double) {

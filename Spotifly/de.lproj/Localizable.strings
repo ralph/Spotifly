@@ -157,6 +157,14 @@
 "devices.airplay_hint" = "Audio von diesem Mac auf AirPlay-Lautsprecher streamen";
 "devices.spotify_connect_hint" = "Wiedergabe auf ein anderes Spotify-Gerät übertragen";
 
+/* Spotify Connect */
+"connect.transfer_to_computer" = "Auf diesem Computer abspielen";
+
+/* Devices - This Computer */
+"devices.this_computer" = "Dieser Computer";
+"devices.this_computer.name" = "Spotifly";
+"devices.this_computer.hint" = "Wiedergabe hierher übertragen";
+
 /* Menu Commands */
 "menu.playback" = "Wiedergabe";
 "menu.play_pause" = "Abspielen / Pause";

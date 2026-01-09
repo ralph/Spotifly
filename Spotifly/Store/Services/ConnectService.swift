@@ -12,8 +12,7 @@ import Foundation
 @Observable
 final class ConnectService {
     private let store: AppStore
-    private var syncTask: Task<Void, Never>?
-    private var volumeUpdateTask: Task<Void, Never>?
+    private let maxSyncFailuresBeforeDeactivate = 3
 
     init(store: AppStore) {
         self.store = store
@@ -23,6 +22,9 @@ final class ConnectService {
 
     /// Activate Spotify Connect mode and start periodic sync
     func activateConnect(deviceId: String, deviceName: String?, accessToken: String) {
+        #if DEBUG
+            print("[ConnectService] activateConnect: deviceId=\(deviceId), deviceName=\(deviceName ?? "nil")")
+        #endif
         store.activateSpotifyConnect(deviceId: deviceId, deviceName: deviceName)
         startSyncTask(accessToken: accessToken)
     }
@@ -113,10 +115,10 @@ final class ConnectService {
         store.spotifyConnectVolume = volume
 
         // Cancel any pending volume update
-        volumeUpdateTask?.cancel()
+        store.connectVolumeUpdateTask?.cancel()
 
         // Debounce volume updates (150ms)
-        volumeUpdateTask = Task {
+        store.connectVolumeUpdateTask = Task {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
 
@@ -137,8 +139,12 @@ final class ConnectService {
 
     private func startSyncTask(accessToken: String) {
         stopSyncTask()
+        store.connectConsecutiveSyncFailures = 0
 
-        syncTask = Task {
+        store.connectSyncTask = Task {
+            // Initial delay to allow transfer to complete
+            try? await Task.sleep(for: .milliseconds(500))
+
             while !Task.isCancelled {
                 await syncPlaybackState(accessToken: accessToken)
                 try? await Task.sleep(for: .seconds(2))
@@ -147,17 +153,32 @@ final class ConnectService {
     }
 
     private func stopSyncTask() {
-        syncTask?.cancel()
-        syncTask = nil
+        store.connectSyncTask?.cancel()
+        store.connectSyncTask = nil
     }
 
     private func syncPlaybackState(accessToken: String) async {
         do {
             guard let state = try await SpotifyAPI.fetchPlaybackState(accessToken: accessToken) else {
-                // No active playback - deactivate Connect
-                deactivateConnect()
+                store.connectConsecutiveSyncFailures += 1
+                #if DEBUG
+                    print("[ConnectService] syncPlaybackState: no playback state (failure \(store.connectConsecutiveSyncFailures)/\(maxSyncFailuresBeforeDeactivate))")
+                #endif
+                if store.connectConsecutiveSyncFailures >= maxSyncFailuresBeforeDeactivate {
+                    #if DEBUG
+                        print("[ConnectService] too many failures, deactivating")
+                    #endif
+                    deactivateConnect()
+                }
                 return
             }
+
+            // Reset failure counter on success
+            store.connectConsecutiveSyncFailures = 0
+
+            #if DEBUG
+                print("[ConnectService] sync: playing=\(state.isPlaying), progress=\(state.progressMs)ms, volume=\(state.device?.volumePercent ?? -1)%")
+            #endif
 
             store.updateFromConnectState(state)
 
@@ -169,7 +190,13 @@ final class ConnectService {
                 }
             }
         } catch {
-            // On error, keep current state - transient network issues shouldn't deactivate
+            store.connectConsecutiveSyncFailures += 1
+            #if DEBUG
+                print("[ConnectService] syncPlaybackState error (failure \(store.connectConsecutiveSyncFailures)/\(maxSyncFailuresBeforeDeactivate)): \(error)")
+            #endif
+            if store.connectConsecutiveSyncFailures >= maxSyncFailuresBeforeDeactivate {
+                deactivateConnect()
+            }
         }
     }
 }

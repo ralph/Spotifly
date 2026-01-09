@@ -157,6 +157,11 @@ final class AppStore {
     var spotifyConnectDeviceName: String?
     var spotifyConnectVolume: Double = 50
 
+    // Sync task state (stored here so ConnectService instances share it)
+    var connectSyncTask: Task<Void, Never>?
+    var connectVolumeUpdateTask: Task<Void, Never>?
+    var connectConsecutiveSyncFailures = 0
+
     // MARK: - Playback State
 
     var isPlaying = false
@@ -591,6 +596,9 @@ final class AppStore {
             currentPositionMs = UInt32(state.progressMs)
             positionAnchorMs = UInt32(state.progressMs)
             positionAnchorTime = CACurrentMediaTime()
+            #if DEBUG
+                print("[AppStore] updateFromConnectState: position=\(currentPositionMs)ms, duration=\(trackDurationMs)ms, volume=\(spotifyConnectVolume)")
+            #endif
             updateNowPlayingInfo()
         }
     }

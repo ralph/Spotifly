@@ -12,6 +12,7 @@ struct DevicesView: View {
     @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
     @Environment(ConnectService.self) private var connectService
+    @Bindable var playbackViewModel: PlaybackViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -129,6 +130,15 @@ struct DevicesView: View {
                         }
                     #endif
 
+                    // This Computer (local playback) - only when Connect is active
+                    if store.isSpotifyConnectActive {
+                        Section {
+                            ThisComputerRow(playbackViewModel: playbackViewModel)
+                        } header: {
+                            Text("devices.this_computer")
+                        }
+                    }
+
                     // Spotify Connect devices
                     Section {
                         if store.availableDevices.isEmpty {
@@ -238,7 +248,73 @@ struct DeviceRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(device.isActive || device.isRestricted)
+        .disabled(device.isRestricted)
         .opacity(device.isRestricted ? 0.5 : 1.0)
+    }
+}
+
+struct ThisComputerRow: View {
+    @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(ConnectService.self) private var connectService
+    @Environment(DeviceService.self) private var deviceService
+    @Bindable var playbackViewModel: PlaybackViewModel
+
+    var body: some View {
+        Button {
+            transferToLocalPlayback()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "desktopcomputer")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("devices.this_computer.name")
+                        .font(.body)
+                        .foregroundStyle(.primary)
+
+                    Text("devices.this_computer.hint")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.left.circle")
+                    .foregroundStyle(.green)
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func transferToLocalPlayback() {
+        guard let currentTrackUri = store.currentTrackId else { return }
+        let currentPosition = store.currentPositionMs
+
+        Task {
+            let token = await session.validAccessToken()
+
+            // Pause the remote device first
+            await connectService.pause(accessToken: token)
+
+            // Deactivate Connect mode
+            connectService.deactivateConnect()
+
+            // Start playing locally from the same position
+            await playbackViewModel.play(uriOrUrl: currentTrackUri, accessToken: token)
+
+            // Seek to the position we were at
+            if currentPosition > 0 {
+                try? await Task.sleep(for: .milliseconds(500))
+                playbackViewModel.seek(to: currentPosition)
+            }
+
+            // Refresh devices list so the UI updates
+            await deviceService.loadDevices(accessToken: token)
+        }
     }
 }

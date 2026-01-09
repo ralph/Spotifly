@@ -268,7 +268,7 @@ struct LoggedInView: View {
                                 .navigationTitle("nav.queue")
 
                         case .devices:
-                            DevicesView()
+                            DevicesView(playbackViewModel: playbackViewModel)
                                 .navigationTitle("nav.devices")
 
                         case .searchResults:
