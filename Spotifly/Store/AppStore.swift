@@ -268,11 +268,6 @@ final class AppStore {
     var hasNext: Bool { currentIndex + 1 < queueLength }
     var hasPrevious: Bool { currentIndex > 0 }
 
-    /// Whether to show the Now Playing bar (has queue OR Spotify Connect active)
-    var shouldShowNowPlayingBar: Bool {
-        queueLength > 0 || isSpotifyConnectActive
-    }
-
     // MARK: - Initialization
 
     init() {

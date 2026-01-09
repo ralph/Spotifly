@@ -42,17 +42,10 @@ final class QueueService {
             #endif
 
             // Build queue items: currently playing + queue
-            var items: [QueueItem] = []
+            let currentItems = response.currentlyPlaying.map { [QueueItem(from: $0)] } ?? []
+            let queueItems = response.queue.map { QueueItem(from: $0) }
+            store.setQueueItems(currentItems + queueItems)
 
-            if let current = response.currentlyPlaying {
-                items.append(QueueItem(from: current))
-            }
-
-            for track in response.queue {
-                items.append(QueueItem(from: track))
-            }
-
-            store.setQueueItems(items)
             // Current index is always 0 for Connect (currently playing is first)
             store.currentIndex = 0
         } catch {

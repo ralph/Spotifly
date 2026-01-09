@@ -358,7 +358,7 @@ struct DevicesResponse: Sendable {
 }
 
 /// Track info in playback state
-struct PlaybackTrack: Sendable {
+struct PlaybackTrack: Sendable, Identifiable {
     let id: String
     let name: String
     let uri: String
@@ -366,6 +366,31 @@ struct PlaybackTrack: Sendable {
     let albumName: String
     let imageURL: URL?
     let durationMs: Int
+
+    /// Parse from Spotify API JSON
+    init?(from json: [String: Any]) {
+        guard let id = json["id"] as? String,
+              let name = json["name"] as? String,
+              let uri = json["uri"] as? String,
+              let durationMs = json["duration_ms"] as? Int
+        else {
+            return nil
+        }
+
+        self.id = id
+        self.name = name
+        self.uri = uri
+        self.durationMs = durationMs
+
+        let artistsArray = json["artists"] as? [[String: Any]]
+        artistName = artistsArray?.compactMap { $0["name"] as? String }.joined(separator: ", ") ?? "Unknown"
+
+        let albumData = json["album"] as? [String: Any]
+        albumName = albumData?["name"] as? String ?? ""
+        let albumImages = albumData?["images"] as? [[String: Any]]
+        let imageURLString = albumImages?.first?["url"] as? String
+        imageURL = imageURLString.flatMap { URL(string: $0) }
+    }
 }
 
 /// Current playback state from Spotify
@@ -378,16 +403,8 @@ struct PlaybackState: Sendable {
     let repeatState: String
 }
 
-/// Track in the playback queue
-struct QueueTrack: Sendable, Identifiable {
-    let id: String
-    let name: String
-    let uri: String
-    let artistName: String
-    let albumName: String
-    let imageURL: URL?
-    let durationMs: Int
-}
+/// Track in the playback queue (same structure as PlaybackTrack)
+typealias QueueTrack = PlaybackTrack
 
 /// Queue response from Spotify
 struct QueueResponse: Sendable {
@@ -2621,32 +2638,7 @@ enum SpotifyAPI {
             }
 
             // Parse track info
-            var currentTrack: PlaybackTrack?
-            if let item = json["item"] as? [String: Any],
-               let id = item["id"] as? String,
-               let name = item["name"] as? String,
-               let uri = item["uri"] as? String,
-               let durationMs = item["duration_ms"] as? Int
-            {
-                let artistsArray = item["artists"] as? [[String: Any]]
-                let artistName = artistsArray?.compactMap { $0["name"] as? String }.joined(separator: ", ") ?? "Unknown"
-
-                let albumData = item["album"] as? [String: Any]
-                let albumName = albumData?["name"] as? String ?? ""
-                let albumImages = albumData?["images"] as? [[String: Any]]
-                let imageURLString = albumImages?.first?["url"] as? String
-                let imageURL = imageURLString.flatMap { URL(string: $0) }
-
-                currentTrack = PlaybackTrack(
-                    id: id,
-                    name: name,
-                    uri: uri,
-                    artistName: artistName,
-                    albumName: albumName,
-                    imageURL: imageURL,
-                    durationMs: durationMs,
-                )
-            }
+            let currentTrack: PlaybackTrack? = (json["item"] as? [String: Any]).flatMap { PlaybackTrack(from: $0) }
 
             let isPlaying = json["is_playing"] as? Bool ?? false
             let progressMs = json["progress_ms"] as? Int ?? 0
@@ -2707,65 +2699,11 @@ enum SpotifyAPI {
             }
 
             // Parse currently playing track
-            var currentlyPlaying: QueueTrack?
-            if let item = json["currently_playing"] as? [String: Any],
-               let id = item["id"] as? String,
-               let name = item["name"] as? String,
-               let uri = item["uri"] as? String,
-               let durationMs = item["duration_ms"] as? Int
-            {
-                let artistsArray = item["artists"] as? [[String: Any]]
-                let artistName = artistsArray?.compactMap { $0["name"] as? String }.joined(separator: ", ") ?? "Unknown"
-
-                let albumData = item["album"] as? [String: Any]
-                let albumName = albumData?["name"] as? String ?? ""
-                let albumImages = albumData?["images"] as? [[String: Any]]
-                let imageURLString = albumImages?.first?["url"] as? String
-                let imageURL = imageURLString.flatMap { URL(string: $0) }
-
-                currentlyPlaying = QueueTrack(
-                    id: id,
-                    name: name,
-                    uri: uri,
-                    artistName: artistName,
-                    albumName: albumName,
-                    imageURL: imageURL,
-                    durationMs: durationMs,
-                )
-            }
+            let currentlyPlaying: QueueTrack? = (json["currently_playing"] as? [String: Any]).flatMap { QueueTrack(from: $0) }
 
             // Parse queue
-            var queue: [QueueTrack] = []
-            if let queueArray = json["queue"] as? [[String: Any]] {
-                queue = queueArray.compactMap { item -> QueueTrack? in
-                    guard let id = item["id"] as? String,
-                          let name = item["name"] as? String,
-                          let uri = item["uri"] as? String,
-                          let durationMs = item["duration_ms"] as? Int
-                    else {
-                        return nil
-                    }
-
-                    let artistsArray = item["artists"] as? [[String: Any]]
-                    let artistName = artistsArray?.compactMap { $0["name"] as? String }.joined(separator: ", ") ?? "Unknown"
-
-                    let albumData = item["album"] as? [String: Any]
-                    let albumName = albumData?["name"] as? String ?? ""
-                    let albumImages = albumData?["images"] as? [[String: Any]]
-                    let imageURLString = albumImages?.first?["url"] as? String
-                    let imageURL = imageURLString.flatMap { URL(string: $0) }
-
-                    return QueueTrack(
-                        id: id,
-                        name: name,
-                        uri: uri,
-                        artistName: artistName,
-                        albumName: albumName,
-                        imageURL: imageURL,
-                        durationMs: durationMs,
-                    )
-                }
-            }
+            let queueArray = json["queue"] as? [[String: Any]] ?? []
+            let queue = queueArray.compactMap { QueueTrack(from: $0) }
 
             return QueueResponse(currentlyPlaying: currentlyPlaying, queue: queue)
 

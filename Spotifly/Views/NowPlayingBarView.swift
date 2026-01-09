@@ -258,27 +258,9 @@ struct NowPlayingBarView: View {
     }
 
     private func transferToLocalPlayback() {
-        guard let currentTrackUri = store.currentTrackId else { return }
-        let currentPosition = store.currentPositionMs
-
         Task {
             let token = await session.validAccessToken()
-
-            // Pause the remote device first
-            await connectService.pause(accessToken: token)
-
-            // Deactivate Connect mode
-            connectService.deactivateConnect()
-
-            // Start playing locally from the same position
-            await playbackViewModel.play(uriOrUrl: currentTrackUri, accessToken: token)
-
-            // Seek to the position we were at
-            if currentPosition > 0 {
-                // Small delay to let playback start
-                try? await Task.sleep(for: .milliseconds(500))
-                playbackViewModel.seek(to: currentPosition)
-            }
+            await connectService.transferToLocal(playbackViewModel: playbackViewModel, accessToken: token)
         }
     }
 

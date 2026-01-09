@@ -112,6 +112,32 @@ final class ConnectService {
         }
     }
 
+    // MARK: - Transfer to Local
+
+    /// Transfer playback from remote device to local playback
+    /// - Parameters:
+    ///   - playbackViewModel: The playback view model to start local playback
+    ///   - accessToken: Spotify access token
+    func transferToLocal(playbackViewModel: PlaybackViewModel, accessToken: String) async {
+        guard let currentTrackUri = store.currentTrackId else { return }
+        let currentPosition = store.currentPositionMs
+
+        // Pause the remote device first
+        await pause(accessToken: accessToken)
+
+        // Deactivate Connect mode
+        deactivateConnect()
+
+        // Start playing locally from the same position
+        await playbackViewModel.play(uriOrUrl: currentTrackUri, accessToken: accessToken)
+
+        // Seek to the position we were at
+        if currentPosition > 0 {
+            try? await Task.sleep(for: .milliseconds(500))
+            playbackViewModel.seek(to: currentPosition)
+        }
+    }
+
     // MARK: - Volume Control
 
     /// Set volume on the active Spotify Connect device (debounced)
