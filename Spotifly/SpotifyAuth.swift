@@ -109,11 +109,19 @@ private final class AuthenticationSession: NSObject, ASWebAuthenticationPresenta
 
 /// Token response from Spotify API
 private struct TokenResponse: Decodable, Sendable {
-    let access_token: String
-    let refresh_token: String?
-    let expires_in: Int
-    let token_type: String
+    let accessToken: String
+    let refreshToken: String?
+    let expiresIn: Int
+    let tokenType: String
     let scope: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+        case expiresIn = "expires_in"
+        case tokenType = "token_type"
+        case scope
+    }
 }
 
 /// Swift implementation of dual Spotify OAuth authentication
@@ -293,7 +301,7 @@ enum SpotifyAuth {
         spotifly_free_string(accessTokenPtr)
 
         // Get the refresh token (optional)
-        var refreshToken: String? = nil
+        var refreshToken: String?
         if let refreshTokenPtr = spotifly_get_refresh_token() {
             refreshToken = String(cString: refreshTokenPtr)
             spotifly_free_string(refreshTokenPtr)
@@ -377,7 +385,7 @@ enum SpotifyAuth {
         spotifly_free_string(accessTokenPtr)
 
         // Get the new refresh token (optional)
-        var newRefreshToken: String? = nil
+        var newRefreshToken: String?
         if let refreshTokenPtr = spotifly_get_refresh_token() {
             newRefreshToken = String(cString: refreshTokenPtr)
             spotifly_free_string(refreshTokenPtr)
@@ -398,9 +406,9 @@ enum SpotifyAuth {
         let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
 
         return SpotifyAuthResult(
-            accessToken: tokenResponse.access_token,
-            refreshToken: tokenResponse.refresh_token,
-            expiresIn: UInt64(tokenResponse.expires_in),
+            accessToken: tokenResponse.accessToken,
+            refreshToken: tokenResponse.refreshToken,
+            expiresIn: UInt64(tokenResponse.expiresIn),
         )
     }
 

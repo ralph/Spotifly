@@ -10,10 +10,16 @@ import Security
 
 /// Manages secure storage of authentication tokens in the Keychain
 enum KeychainManager {
-    private static let service = "com.spotifly.oauth"
+    // MARK: - Keychain Keys
+
+    private static let oauthService = "com.spotifly.oauth"
+    private static let configService = "com.spotifly.config"
+
     private static let accessTokenKey = "spotify_access_token"
     private static let refreshTokenKey = "spotify_refresh_token"
     private static let expiresAtKey = "spotify_expires_at"
+    private static let customClientIdKey = "spotify_custom_client_id"
+    private static let useCustomClientIdKey = "spotify_use_custom_client_id"
 
     // MARK: - Public API
 
@@ -118,13 +124,12 @@ enum KeychainManager {
 
     /// Saves a custom Spotify Client ID to the keychain
     nonisolated static func saveCustomClientId(_ clientId: String) throws {
-        // Delete any existing item first
         clearCustomClientId()
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.spotifly.config",
-            kSecAttrAccount as String: "spotify_custom_client_id",
+            kSecAttrService as String: configService,
+            kSecAttrAccount as String: customClientIdKey,
             kSecValueData as String: clientId.data(using: .utf8)!,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
@@ -139,8 +144,8 @@ enum KeychainManager {
     nonisolated static func loadCustomClientId() -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.spotifly.config",
-            kSecAttrAccount as String: "spotify_custom_client_id",
+            kSecAttrService as String: configService,
+            kSecAttrAccount as String: customClientIdKey,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -161,8 +166,8 @@ enum KeychainManager {
     nonisolated static func clearCustomClientId() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.spotifly.config",
-            kSecAttrAccount as String: "spotify_custom_client_id",
+            kSecAttrService as String: configService,
+            kSecAttrAccount as String: customClientIdKey,
         ]
         SecItemDelete(query as CFDictionary)
     }
@@ -171,13 +176,12 @@ enum KeychainManager {
 
     /// Saves whether user is using custom client ID mode
     nonisolated static func saveUseCustomClientId(_ useCustom: Bool) throws {
-        // Delete any existing item first
         clearUseCustomClientId()
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.spotifly.config",
-            kSecAttrAccount as String: "spotify_use_custom_client_id",
+            kSecAttrService as String: configService,
+            kSecAttrAccount as String: useCustomClientIdKey,
             kSecValueData as String: (useCustom ? "true" : "false").data(using: .utf8)!,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
@@ -192,8 +196,8 @@ enum KeychainManager {
     nonisolated static func loadUseCustomClientId() -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.spotifly.config",
-            kSecAttrAccount as String: "spotify_use_custom_client_id",
+            kSecAttrService as String: configService,
+            kSecAttrAccount as String: useCustomClientIdKey,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -205,7 +209,7 @@ enum KeychainManager {
               let data = result as? Data,
               let value = String(data: data, encoding: .utf8)
         else {
-            return false // Default to keymaster auth
+            return false
         }
         return value == "true"
     }
@@ -214,8 +218,8 @@ enum KeychainManager {
     nonisolated static func clearUseCustomClientId() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.spotifly.config",
-            kSecAttrAccount as String: "spotify_use_custom_client_id",
+            kSecAttrService as String: configService,
+            kSecAttrAccount as String: useCustomClientIdKey,
         ]
         SecItemDelete(query as CFDictionary)
     }
@@ -228,7 +232,7 @@ enum KeychainManager {
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: oauthService,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
@@ -244,7 +248,7 @@ enum KeychainManager {
     private static func load(key: String) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: oauthService,
             kSecAttrAccount as String: key,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
@@ -263,7 +267,7 @@ enum KeychainManager {
     private static func delete(key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: oauthService,
             kSecAttrAccount as String: key,
         ]
 

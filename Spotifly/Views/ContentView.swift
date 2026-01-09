@@ -9,8 +9,12 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var viewModel = AuthViewModel()
-    @State private var useCustomClientId: Bool = KeychainManager.loadUseCustomClientId()
-    @State private var clientId: String = KeychainManager.loadCustomClientId() ?? ""
+    @State private var useCustomClientId = KeychainManager.loadUseCustomClientId()
+    @State private var clientId = KeychainManager.loadCustomClientId() ?? ""
+
+    private var canConnect: Bool {
+        !viewModel.isAuthenticating && (!useCustomClientId || !clientId.isEmpty)
+    }
 
     var body: some View {
         Group {
@@ -87,7 +91,7 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
-            .disabled(viewModel.isAuthenticating || (useCustomClientId && clientId.isEmpty))
+            .disabled(!canConnect)
 
             if let error = viewModel.errorMessage {
                 Text(error)

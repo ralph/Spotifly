@@ -62,24 +62,6 @@ enum SpotifyConfig: Sendable {
         useCustomClientId ? customRedirectUri : keymasterRedirectUri
     }
 
-    /// Legacy method for backward compatibility - returns keymaster client ID by default
-    @available(*, deprecated, message: "Use getClientId(useCustomClientId:) instead")
-    nonisolated static func getClientId() -> String {
-        getClientId(useCustomClientId: KeychainManager.loadUseCustomClientId())
-    }
-
-    /// Legacy property for backward compatibility
-    @available(*, deprecated, message: "Use customRedirectUri or keymasterRedirectUri instead")
-    nonisolated static var redirectUri: String {
-        getRedirectUri(useCustomClientId: KeychainManager.loadUseCustomClientId())
-    }
-
-    /// Legacy property for backward compatibility
-    @available(*, deprecated, message: "Use customCallbackURLScheme instead")
-    nonisolated static var callbackURLScheme: String {
-        customCallbackURLScheme
-    }
-
     /// OAuth scopes required by the app
     nonisolated static let scopes: [String] = [
         "user-read-private",
