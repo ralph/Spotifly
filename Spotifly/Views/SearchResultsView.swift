@@ -10,10 +10,8 @@ import SwiftUI
 struct SearchResultsView: View {
     let searchResults: SearchResults
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Environment(AppStore.self) private var store
     @Environment(SpotifySession.self) private var session
     @Environment(TrackService.self) private var trackService
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
         ScrollView {
@@ -50,7 +48,6 @@ struct SearchResultsView: View {
 
     // MARK: - Tracks Section
 
-    @ViewBuilder
     private var tracksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -87,7 +84,6 @@ struct SearchResultsView: View {
 
     // MARK: - Artists Section
 
-    @ViewBuilder
     private var artistsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("section.artists")
@@ -107,7 +103,6 @@ struct SearchResultsView: View {
 
     // MARK: - Albums Section
 
-    @ViewBuilder
     private var albumsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("section.albums")
@@ -127,7 +122,6 @@ struct SearchResultsView: View {
 
     // MARK: - Playlists Section
 
-    @ViewBuilder
     private var playlistsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("section.playlists")

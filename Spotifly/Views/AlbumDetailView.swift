@@ -45,19 +45,6 @@ struct AlbumDetailView: View {
         return storedAlbum.trackIds.compactMap { store.tracks[$0] }
     }
 
-    private var totalDuration: String {
-        let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
-        let totalSeconds = totalMs / 1000
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-
-        if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
-        } else {
-            return String(format: "%d min", minutes)
-        }
-    }
-
     var body: some View {
         Group {
             if let album {
@@ -90,7 +77,6 @@ struct AlbumDetailView: View {
         }
     }
 
-    @ViewBuilder
     private func albumContent(_ album: Album) -> some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -145,7 +131,7 @@ struct AlbumDetailView: View {
                                 Text("metadata.separator")
                                     .font(.subheadline)
                                     .foregroundStyle(.tertiary)
-                                Text(totalDuration)
+                                Text(totalDuration(of: tracks))
                                     .font(.subheadline)
                                     .foregroundStyle(.tertiary)
                             }

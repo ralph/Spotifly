@@ -74,19 +74,6 @@ struct PlaylistDetailView: View {
         editedTrackIds.compactMap { store.tracks[$0] }
     }
 
-    private var totalDuration: String {
-        let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
-        let totalSeconds = totalMs / 1000
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-
-        if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
-        } else {
-            return String(format: "%d min", minutes)
-        }
-    }
-
     var body: some View {
         Group {
             if let playlist {
@@ -149,7 +136,6 @@ struct PlaylistDetailView: View {
         }
     }
 
-    @ViewBuilder
     private func playlistContent(_ playlist: Playlist) -> some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -164,7 +150,6 @@ struct PlaylistDetailView: View {
 
     // MARK: - Subviews
 
-    @ViewBuilder
     private func playlistHeader(_ playlist: Playlist) -> some View {
         VStack(spacing: 16) {
             playlistArtwork(playlist)
@@ -238,7 +223,7 @@ struct PlaylistDetailView: View {
                     Text("metadata.separator")
                         .font(.subheadline)
                         .foregroundStyle(.tertiary)
-                    Text(totalDuration)
+                    Text(totalDuration(of: tracks))
                         .font(.subheadline)
                         .foregroundStyle(.tertiary)
                 }

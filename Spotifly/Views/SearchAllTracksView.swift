@@ -12,19 +12,6 @@ struct SearchAllTracksView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
 
-    private var totalDuration: String {
-        let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
-        let totalSeconds = totalMs / 1000
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-
-        if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
-        } else {
-            return String(format: "%d min", minutes)
-        }
-    }
-
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -49,7 +36,7 @@ struct SearchAllTracksView: View {
                             Text("metadata.separator")
                                 .font(.subheadline)
                                 .foregroundStyle(.tertiary)
-                            Text(totalDuration)
+                            Text(totalDuration(of: tracks))
                                 .font(.subheadline)
                                 .foregroundStyle(.tertiary)
                         }

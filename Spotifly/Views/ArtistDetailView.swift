@@ -76,7 +76,6 @@ struct ArtistDetailView: View {
         }
     }
 
-    @ViewBuilder
     private func artistContent(_ artist: Artist) -> some View {
         ScrollView {
             VStack(spacing: 24) {
