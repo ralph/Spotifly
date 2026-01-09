@@ -53,5 +53,6 @@ enum SpotifyConfig: Sendable {
         "user-library-modify",
         "user-follow-read",
         "user-read-recently-played",
+        "user-top-read",
     ]
 }
