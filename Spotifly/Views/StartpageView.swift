@@ -125,14 +125,7 @@ struct StartpageView: View {
 
     /// Filter recent items to only albums and playlists
     private var recentAlbumsAndPlaylists: [RecentItem] {
-        store.recentItems.filter { item in
-            switch item {
-            case .album, .playlist:
-                true
-            case .artist:
-                false
-            }
-        }
+        store.recentItems.filter { !$0.isArtist }
     }
 
     @ViewBuilder
@@ -371,7 +364,7 @@ struct RecentContentSection: View {
                             }
 
                         case .artist:
-                            // Artists filtered out at parent level
+                            // Artists are filtered out by recentAlbumsAndPlaylists
                             EmptyView()
                         }
                     }

@@ -26,6 +26,11 @@ enum RecentItem: Identifiable, Sendable {
         case let .playlist(playlist): "playlist_\(playlist.id)"
         }
     }
+
+    var isArtist: Bool {
+        if case .artist = self { return true }
+        return false
+    }
 }
 
 // MARK: - Drift Correction Timer
@@ -493,6 +498,15 @@ final class AppStore {
         selectedSearchAlbum = nil
         selectedSearchArtist = nil
         selectedSearchPlaylist = nil
+    }
+
+    /// Whether any search result is currently selected
+    var hasSearchSelection: Bool {
+        selectedSearchTrack != nil ||
+            selectedSearchAlbum != nil ||
+            selectedSearchArtist != nil ||
+            selectedSearchPlaylist != nil ||
+            showingAllSearchTracks
     }
 
     func clearSearchSelection() {

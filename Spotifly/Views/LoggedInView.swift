@@ -56,9 +56,7 @@ struct LoggedInView: View {
             // Always use three-column for library sections (first item is auto-selected)
             true
         case .searchResults:
-            store.selectedSearchTrack != nil || store.selectedSearchAlbum != nil ||
-                store.selectedSearchArtist != nil || store.selectedSearchPlaylist != nil ||
-                store.showingAllSearchTracks
+            store.hasSearchSelection
         default:
             false
         }
