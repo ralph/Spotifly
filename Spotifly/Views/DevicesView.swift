@@ -130,8 +130,9 @@ struct DevicesView: View {
                         }
                     #endif
 
-                    // This Computer (local playback) - only when Connect is active
-                    if store.isSpotifyConnectActive {
+                    // This Computer (local playback) - only when Connect is active on a REMOTE device
+                    // Don't show when Spotifly itself is the active device (we're already here)
+                    if store.isSpotifyConnectActive, store.spotifyConnectDeviceName != "Spotifly" {
                         Section {
                             ThisComputerRow(playbackViewModel: playbackViewModel)
                         } header: {

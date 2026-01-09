@@ -31,7 +31,7 @@ struct LoggedInView: View {
     private var searchService: SearchService { SearchService(store: store) }
     private var topItemsService: TopItemsService { TopItemsService(store: store) }
     private var newReleasesService: NewReleasesService { NewReleasesService(store: store) }
-    private var connectService: ConnectService { ConnectService(store: store) }
+    private var connectService: ConnectService { ConnectService(store: store, deviceService: deviceService) }
 
     @State private var navigationCoordinator = NavigationCoordinator()
 
@@ -101,6 +101,9 @@ struct LoggedInView: View {
             // Load startup data
             let token = await session.validAccessToken()
 
+            // Initialize player early so Spotifly appears as a Connect device immediately
+            async let playerInit: () = playbackViewModel.initializeIfNeeded(accessToken: token)
+
             // Load favorites so heart indicators work everywhere
             async let favorites: () = { try? await trackService.loadFavorites(accessToken: token) }()
 
@@ -112,7 +115,7 @@ struct LoggedInView: View {
             // Check if there's already active remote playback to sync with
             async let connectSync: () = connectService.checkAndSyncRemotePlayback(accessToken: token)
 
-            _ = await (favorites, topArtists, newReleases, recentlyPlayed, connectSync)
+            _ = await (playerInit, favorites, topArtists, newReleases, recentlyPlayed, connectSync)
         }
         .onChange(of: navigationCoordinator.pendingNavigationItem) { _, newValue in
             if let pendingItem = newValue {

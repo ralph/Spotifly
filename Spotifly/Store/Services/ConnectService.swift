@@ -12,10 +12,12 @@ import Foundation
 @Observable
 final class ConnectService {
     private let store: AppStore
+    private let deviceService: DeviceService
     private let maxSyncFailuresBeforeDeactivate = 3
 
-    init(store: AppStore) {
+    init(store: AppStore, deviceService: DeviceService) {
         self.store = store
+        self.deviceService = deviceService
     }
 
     // MARK: - Connect Activation
@@ -182,11 +184,13 @@ final class ConnectService {
 
             store.updateFromConnectState(state)
 
-            // Update device info if changed
+            // Update device info if changed and refresh device list
             if let device = state.device {
                 if device.id != store.spotifyConnectDeviceId {
                     store.spotifyConnectDeviceId = device.id
                     store.spotifyConnectDeviceName = device.name
+                    // Refresh device list so UI shows correct active device
+                    await deviceService.loadDevices(accessToken: accessToken)
                 }
             }
         } catch {
