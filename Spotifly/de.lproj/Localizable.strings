@@ -112,15 +112,11 @@
 /* Startpage Sections */
 "startpage.top_artists" = "Deine Top-Künstler";
 "startpage.top_artists.empty" = "Höre mehr Musik, um deine Top-Künstler zu sehen";
-"startpage.top_tracks" = "Deine Top-Tracks";
-"startpage.top_tracks.empty" = "Höre mehr Musik, um deine Top-Tracks zu sehen";
 "startpage.new_releases" = "Neuerscheinungen";
 "startpage.new_releases.empty" = "Keine Neuerscheinungen verfügbar";
 
 /* Recently Played */
-"recently_played.tracks" = "Kürzlich gespielte Tracks";
 "recently_played.content" = "Kürzlich gespielt";
-"recently_played.show_more" = "Mehr anzeigen…";
 
 /* Sections */
 "section.tracks" = "Tracks";

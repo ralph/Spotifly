@@ -2,7 +2,7 @@
 //  TopItemsService.swift
 //  Spotifly
 //
-//  Service for fetching user's top artists and tracks.
+//  Service for fetching user's top artists.
 //  Fetches data from API and stores entities in AppStore.
 //
 
@@ -48,38 +48,5 @@ final class TopItemsService {
         }
 
         store.topArtistsIsLoading = false
-    }
-
-    // MARK: - Top Tracks
-
-    /// Load top tracks (only on first call unless refresh is called)
-    func loadTopTracks(accessToken: String, timeRange: TopItemsTimeRange = .mediumTerm) async {
-        guard !store.hasLoadedTopTracks else { return }
-        store.hasLoadedTopTracks = true
-        await refreshTopTracks(accessToken: accessToken, timeRange: timeRange)
-    }
-
-    /// Force refresh top tracks
-    func refreshTopTracks(accessToken: String, timeRange: TopItemsTimeRange = .mediumTerm) async {
-        store.topTracksIsLoading = true
-        store.topTracksErrorMessage = nil
-
-        do {
-            let response = try await SpotifyAPI.fetchUserTopTracks(
-                accessToken: accessToken,
-                timeRange: timeRange,
-                limit: 20,
-            )
-
-            // Convert to entities and store
-            let tracks = response.tracks.map { Track(from: $0) }
-            store.upsertTracks(tracks)
-            store.setTopTrackIds(tracks.map(\.id))
-
-        } catch {
-            store.topTracksErrorMessage = error.localizedDescription
-        }
-
-        store.topTracksIsLoading = false
     }
 }

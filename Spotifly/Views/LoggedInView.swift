@@ -15,7 +15,6 @@ struct LoggedInView: View {
     @EnvironmentObject var windowState: WindowState
 
     @State private var session: SpotifySession
-    @State private var trackViewModel = TrackLookupViewModel()
     private let playbackViewModel = PlaybackViewModel.shared
 
     // Normalized state store
@@ -50,17 +49,12 @@ struct LoggedInView: View {
     @State private var selectedArtistId: String?
     @State private var selectedPlaylistId: String?
 
-    // Selection state for startpage "show all recent tracks"
-    @State private var showingAllRecentTracks = false
-
     // Determines if we need three-column layout
     private var needsThreeColumnLayout: Bool {
         switch selectedNavigationItem {
         case .albums, .artists, .playlists:
             // Always use three-column for library sections (first item is auto-selected)
             true
-        case .startpage:
-            showingAllRecentTracks
         case .searchResults:
             store.selectedSearchTrack != nil || store.selectedSearchAlbum != nil ||
                 store.selectedSearchArtist != nil || store.selectedSearchPlaylist != nil ||
@@ -198,7 +192,6 @@ struct LoggedInView: View {
             selectedAlbumId = nil
             selectedArtistId = nil
             selectedPlaylistId = nil
-            showingAllRecentTracks = false
             store.clearSearchSelection()
 
             selectedNavigationItem = .playlists
@@ -221,7 +214,6 @@ struct LoggedInView: View {
         selectedAlbumId = nil
         selectedArtistId = nil
         selectedPlaylistId = nil
-        showingAllRecentTracks = false
         store.clearSearchSelection()
 
         // Navigate to the artist context section
@@ -259,12 +251,8 @@ struct LoggedInView: View {
                 Group {
                     switch selectedNavigationItem {
                     case .startpage:
-                        StartpageView(
-                            trackViewModel: trackViewModel,
-                            playbackViewModel: playbackViewModel,
-                            showingAllRecentTracks: $showingAllRecentTracks,
-                        )
-                        .navigationTitle("nav.startpage")
+                        StartpageView()
+                            .navigationTitle("nav.startpage")
 
                     case .favorites:
                         FavoritesListView(
@@ -411,17 +399,6 @@ struct LoggedInView: View {
                     } else {
                         Text("empty.select_playlist")
                             .foregroundStyle(.secondary)
-                    }
-
-                case .startpage:
-                    // Show all recent tracks detail if selected
-                    if showingAllRecentTracks {
-                        RecentTracksDetailView(
-                            tracks: store.recentTracks,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else {
-                        EmptyView()
                     }
 
                 case .artistContext:

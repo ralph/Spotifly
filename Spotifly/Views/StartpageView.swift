@@ -14,9 +14,6 @@ struct StartpageView: View {
     @Environment(RecentlyPlayedService.self) private var recentlyPlayedService
     @Environment(TopItemsService.self) private var topItemsService
     @Environment(NewReleasesService.self) private var newReleasesService
-    @Bindable var trackViewModel: TrackLookupViewModel
-    @Bindable var playbackViewModel: PlaybackViewModel
-    @Binding var showingAllRecentTracks: Bool
 
     @State private var versionTapCount = 0
     @State private var showTokenInfo = false
