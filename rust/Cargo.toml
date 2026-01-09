@@ -10,6 +10,7 @@ crate-type = ["staticlib"]
 [dependencies]
 librespot-core = "0.8"
 librespot-metadata = "0.8"
+librespot-oauth = "0.8"
 librespot-playback = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 once_cell = "1.19"

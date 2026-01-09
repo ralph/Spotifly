@@ -78,9 +78,13 @@ enum KeychainManager {
         let isExpired = result.expiresIn < 300 // 5 minutes
 
         if isExpired, let refreshToken = result.refreshToken {
-            // Attempt to refresh the token
+            // Attempt to refresh the token using the stored auth mode
+            let useCustomClientId = loadUseCustomClientId()
             do {
-                let newResult = try await SpotifyAuth.refreshAccessToken(refreshToken: refreshToken)
+                let newResult = try await SpotifyAuth.refreshAccessToken(
+                    refreshToken: refreshToken,
+                    useCustomClientId: useCustomClientId,
+                )
 
                 // Save the new result to keychain
                 try saveAuthResult(newResult)
@@ -159,6 +163,59 @@ enum KeychainManager {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "com.spotifly.config",
             kSecAttrAccount as String: "spotify_custom_client_id",
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    // MARK: - Auth Mode (Custom vs Keymaster)
+
+    /// Saves whether user is using custom client ID mode
+    nonisolated static func saveUseCustomClientId(_ useCustom: Bool) throws {
+        // Delete any existing item first
+        clearUseCustomClientId()
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.spotifly.config",
+            kSecAttrAccount as String: "spotify_use_custom_client_id",
+            kSecValueData as String: (useCustom ? "true" : "false").data(using: .utf8)!,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw KeychainError.saveFailed(status)
+        }
+    }
+
+    /// Loads whether user is using custom client ID mode (default: false)
+    nonisolated static func loadUseCustomClientId() -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.spotifly.config",
+            kSecAttrAccount as String: "spotify_use_custom_client_id",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8)
+        else {
+            return false // Default to keymaster auth
+        }
+        return value == "true"
+    }
+
+    /// Clears the auth mode setting from the keychain
+    nonisolated static func clearUseCustomClientId() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.spotifly.config",
+            kSecAttrAccount as String: "spotify_use_custom_client_id",
         ]
         SecItemDelete(query as CFDictionary)
     }

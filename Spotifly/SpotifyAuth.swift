@@ -2,12 +2,15 @@
 //  SpotifyAuth.swift
 //  Spotifly
 //
-//  Swift implementation of Spotify OAuth using ASWebAuthenticationSession with PKCE
+//  Dual authentication implementation:
+//  - Keymaster auth (default): Uses librespot-oauth with official Spotify desktop client ID
+//  - Custom client ID auth: Uses ASWebAuthenticationSession with user's client ID
 //
 
 import AuthenticationServices
 import CryptoKit
 import Foundation
+import SpotiflyRust
 
 /// Actor that manages Spotify authentication and player operations
 @globalActor
@@ -55,7 +58,7 @@ enum SpotifyAuthError: Error, Sendable, LocalizedError {
     }
 }
 
-/// Helper class to manage the auth session and its delegate
+/// Helper class to manage the auth session and its delegate (for ASWebAuthenticationSession)
 private final class AuthenticationSession: NSObject, ASWebAuthenticationPresentationContextProviding, @unchecked Sendable {
     private let anchor: ASPresentationAnchor
 
@@ -113,9 +116,9 @@ private struct TokenResponse: Decodable, Sendable {
     let scope: String?
 }
 
-/// Swift implementation of Spotify OAuth using ASWebAuthenticationSession with PKCE
+/// Swift implementation of dual Spotify OAuth authentication
 enum SpotifyAuth {
-    // MARK: - PKCE Helper Functions
+    // MARK: - PKCE Helper Functions (for ASWebAuthenticationSession)
 
     /// Converts data to base64url encoding (RFC 4648)
     private static func base64URLEncode(_ data: Data) -> String {
@@ -155,21 +158,36 @@ enum SpotifyAuth {
 
     // MARK: - Public API
 
-    /// Initiates the Spotify OAuth flow using ASWebAuthenticationSession.
+    /// Initiates the Spotify OAuth flow using the appropriate method based on auth mode.
+    /// - Parameter useCustomClientId: Whether to use custom client ID (ASWebAuthenticationSession) or keymaster (librespot-oauth)
     /// - Returns: The authentication result containing tokens
     /// - Throws: SpotifyAuthError if authentication fails
     @MainActor
-    static func authenticate() async throws -> SpotifyAuthResult {
+    static func authenticate(useCustomClientId: Bool) async throws -> SpotifyAuthResult {
+        if useCustomClientId {
+            try await authenticateWithASWebAuth()
+        } else {
+            try await authenticateWithLibrespot()
+        }
+    }
+
+    // MARK: - ASWebAuthenticationSession (Custom Client ID)
+
+    /// Authenticates using ASWebAuthenticationSession with custom client ID
+    @MainActor
+    private static func authenticateWithASWebAuth() async throws -> SpotifyAuthResult {
         let codeVerifier = generateCodeVerifier()
         let codeChallenge = generateCodeChallenge(from: codeVerifier)
         let state = generateState()
 
+        let clientId = SpotifyConfig.getClientId(useCustomClientId: true)
+
         // Build the authorization URL
         var components = URLComponents(string: "https://accounts.spotify.com/authorize")!
         components.queryItems = [
-            URLQueryItem(name: "client_id", value: SpotifyConfig.getClientId()),
+            URLQueryItem(name: "client_id", value: clientId),
             URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "redirect_uri", value: SpotifyConfig.redirectUri),
+            URLQueryItem(name: "redirect_uri", value: SpotifyConfig.customRedirectUri),
             URLQueryItem(name: "scope", value: SpotifyConfig.scopes.joined(separator: " ")),
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
@@ -189,7 +207,7 @@ enum SpotifyAuth {
         let authSession = AuthenticationSession(anchor: anchor)
         let callbackURL = try await authSession.authenticate(
             url: authURL,
-            callbackURLScheme: SpotifyConfig.callbackURLScheme,
+            callbackURLScheme: SpotifyConfig.customCallbackURLScheme,
         )
 
         // Parse the callback URL to extract the authorization code
@@ -216,11 +234,11 @@ enum SpotifyAuth {
         }
 
         // Exchange authorization code for tokens
-        return try await exchangeCodeForToken(code: code, codeVerifier: codeVerifier)
+        return try await exchangeCodeForToken(code: code, codeVerifier: codeVerifier, clientId: clientId)
     }
 
-    /// Exchanges an authorization code for access and refresh tokens
-    private static func exchangeCodeForToken(code: String, codeVerifier: String) async throws -> SpotifyAuthResult {
+    /// Exchanges an authorization code for access and refresh tokens (for ASWebAuthenticationSession)
+    private static func exchangeCodeForToken(code: String, codeVerifier: String, clientId: String) async throws -> SpotifyAuthResult {
         let tokenURL = URL(string: "https://accounts.spotify.com/api/token")!
 
         var request = URLRequest(url: tokenURL)
@@ -229,8 +247,8 @@ enum SpotifyAuth {
         request.httpBody = formURLEncode([
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": SpotifyConfig.redirectUri,
-            "client_id": SpotifyConfig.getClientId(),
+            "redirect_uri": SpotifyConfig.customRedirectUri,
+            "client_id": clientId,
             "code_verifier": codeVerifier,
         ])
 
@@ -246,12 +264,71 @@ enum SpotifyAuth {
         return try parseTokenResponse(data: data)
     }
 
+    // MARK: - Librespot OAuth (Keymaster)
+
+    /// Authenticates using librespot-oauth with keymaster client ID
+    @SpotifyAuthActor
+    private static func authenticateWithLibrespot() async throws -> SpotifyAuthResult {
+        let clientId = SpotifyConfig.keymasterClientId
+        let redirectUri = SpotifyConfig.keymasterRedirectUri
+
+        // Run the OAuth flow on a background thread since it blocks
+        let result = await Task.detached {
+            spotifly_start_oauth(clientId, redirectUri)
+        }.value
+
+        guard result == 0 else {
+            throw SpotifyAuthError.authenticationFailed
+        }
+
+        guard spotifly_has_oauth_result() == 1 else {
+            throw SpotifyAuthError.noTokenAvailable
+        }
+
+        // Get the access token
+        guard let accessTokenPtr = spotifly_get_access_token() else {
+            throw SpotifyAuthError.noTokenAvailable
+        }
+        let accessToken = String(cString: accessTokenPtr)
+        spotifly_free_string(accessTokenPtr)
+
+        // Get the refresh token (optional)
+        var refreshToken: String? = nil
+        if let refreshTokenPtr = spotifly_get_refresh_token() {
+            refreshToken = String(cString: refreshTokenPtr)
+            spotifly_free_string(refreshTokenPtr)
+        }
+
+        // Get expiration time
+        let expiresIn = spotifly_get_token_expires_in()
+
+        return SpotifyAuthResult(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            expiresIn: expiresIn,
+        )
+    }
+
+    // MARK: - Token Refresh
+
     /// Refreshes the access token using a refresh token.
-    /// - Parameter refreshToken: The refresh token to use
+    /// - Parameters:
+    ///   - refreshToken: The refresh token to use
+    ///   - useCustomClientId: Whether to use custom client ID mode
     /// - Returns: The new authentication result containing fresh tokens
     /// - Throws: SpotifyAuthError if refresh fails
-    static func refreshAccessToken(refreshToken: String) async throws -> SpotifyAuthResult {
+    static func refreshAccessToken(refreshToken: String, useCustomClientId: Bool) async throws -> SpotifyAuthResult {
+        if useCustomClientId {
+            try await refreshWithASWebAuth(refreshToken: refreshToken)
+        } else {
+            try await refreshWithLibrespot(refreshToken: refreshToken)
+        }
+    }
+
+    /// Refreshes token using Spotify API (for ASWebAuthenticationSession/custom client ID)
+    private static func refreshWithASWebAuth(refreshToken: String) async throws -> SpotifyAuthResult {
         let tokenURL = URL(string: "https://accounts.spotify.com/api/token")!
+        let clientId = SpotifyConfig.getClientId(useCustomClientId: true)
 
         var request = URLRequest(url: tokenURL)
         request.httpMethod = "POST"
@@ -259,7 +336,7 @@ enum SpotifyAuth {
         request.httpBody = formURLEncode([
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
-            "client_id": SpotifyConfig.getClientId(),
+            "client_id": clientId,
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -273,6 +350,49 @@ enum SpotifyAuth {
         return try parseTokenResponse(data: data)
     }
 
+    /// Refreshes token using librespot-oauth (for keymaster)
+    @SpotifyAuthActor
+    private static func refreshWithLibrespot(refreshToken: String) async throws -> SpotifyAuthResult {
+        let clientId = SpotifyConfig.keymasterClientId
+        let redirectUri = SpotifyConfig.keymasterRedirectUri
+
+        // Run the token refresh on a background thread since it blocks
+        let result = await Task.detached {
+            spotifly_refresh_access_token(clientId, redirectUri, refreshToken)
+        }.value
+
+        guard result == 0 else {
+            throw SpotifyAuthError.refreshFailed
+        }
+
+        guard spotifly_has_oauth_result() == 1 else {
+            throw SpotifyAuthError.noTokenAvailable
+        }
+
+        // Get the new access token
+        guard let accessTokenPtr = spotifly_get_access_token() else {
+            throw SpotifyAuthError.noTokenAvailable
+        }
+        let accessToken = String(cString: accessTokenPtr)
+        spotifly_free_string(accessTokenPtr)
+
+        // Get the new refresh token (optional)
+        var newRefreshToken: String? = nil
+        if let refreshTokenPtr = spotifly_get_refresh_token() {
+            newRefreshToken = String(cString: refreshTokenPtr)
+            spotifly_free_string(refreshTokenPtr)
+        }
+
+        // Get expiration time
+        let expiresIn = spotifly_get_token_expires_in()
+
+        return SpotifyAuthResult(
+            accessToken: accessToken,
+            refreshToken: newRefreshToken,
+            expiresIn: expiresIn,
+        )
+    }
+
     /// Parses the token response from Spotify
     private static func parseTokenResponse(data: Data) throws -> SpotifyAuthResult {
         let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
@@ -284,8 +404,8 @@ enum SpotifyAuth {
         )
     }
 
-    /// Clears any stored OAuth result (no-op for this implementation, keychain handles storage)
+    /// Clears any stored OAuth result (no-op for ASWebAuth, clears Rust state for librespot)
     static func clearAuthResult() {
-        // No-op - keychain manager handles clearing
+        spotifly_clear_oauth_result()
     }
 }
