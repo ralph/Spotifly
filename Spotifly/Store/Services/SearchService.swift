@@ -62,32 +62,6 @@ final class SearchService {
         store.searchIsLoading = false
     }
 
-    // MARK: - Selection (convenience methods that delegate to store)
-
-    func showAllTracks() {
-        store.showAllSearchTracks()
-    }
-
-    func selectTrack(_ track: SearchTrack) {
-        store.selectSearchTrack(track)
-    }
-
-    func selectAlbum(_ album: SearchAlbum) {
-        store.selectSearchAlbum(album)
-    }
-
-    func selectArtist(_ artist: SearchArtist) {
-        store.selectSearchArtist(artist)
-    }
-
-    func selectPlaylist(_ playlist: SearchPlaylist) {
-        store.selectSearchPlaylist(playlist)
-    }
-
-    func clearSelection() {
-        store.clearSearchSelection()
-    }
-
     func clearSearch() {
         store.clearSearch()
     }

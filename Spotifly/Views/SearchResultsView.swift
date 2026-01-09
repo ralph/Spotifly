@@ -12,15 +12,18 @@ struct SearchResultsView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(AppStore.self) private var store
     @Environment(SpotifySession.self) private var session
-    @Environment(SearchService.self) private var searchService
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
+
+    @State private var showAllTracks = false
 
     var body: some View {
         List {
             // Tracks section
             if !searchResults.tracks.isEmpty {
                 Section {
-                    ForEach(Array(searchResults.tracks.prefix(5).enumerated()), id: \.element.id) { index, track in
+                    let displayedTracks = showAllTracks ? searchResults.tracks : Array(searchResults.tracks.prefix(5))
+                    ForEach(Array(displayedTracks.enumerated()), id: \.element.id) { index, track in
                         TrackRow(
                             track: track.toTrackRowData(),
                             index: index,
@@ -32,13 +35,13 @@ struct SearchResultsView: View {
 
                     if searchResults.tracks.count > 5 {
                         Button {
-                            searchService.showAllTracks()
+                            showAllTracks.toggle()
                         } label: {
                             HStack {
-                                Text(String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
+                                Text(showAllTracks ? "action.show_less" : String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
                                     .font(.subheadline)
                                 Spacer()
-                                Image(systemName: "chevron.right")
+                                Image(systemName: showAllTracks ? "chevron.up" : "chevron.down")
                                     .font(.caption)
                             }
                             .foregroundStyle(.blue)
@@ -55,7 +58,7 @@ struct SearchResultsView: View {
                 Section {
                     ForEach(store.expandedSearchAlbums ? searchResults.albums : Array(searchResults.albums.prefix(10))) { album in
                         Button {
-                            searchService.selectAlbum(album)
+                            navigationCoordinator.navigateToAlbum(albumId: album.id)
                         } label: {
                             HStack(spacing: 12) {
                                 if let imageURL = album.imageURL {
@@ -145,7 +148,7 @@ struct SearchResultsView: View {
                 Section {
                     ForEach(store.expandedSearchArtists ? searchResults.artists : Array(searchResults.artists.prefix(10))) { artist in
                         Button {
-                            searchService.selectArtist(artist)
+                            navigationCoordinator.navigateToArtist(artistId: artist.id)
                         } label: {
                             HStack(spacing: 12) {
                                 if let imageURL = artist.imageURL {
@@ -222,7 +225,7 @@ struct SearchResultsView: View {
                 Section {
                     ForEach(store.expandedSearchPlaylists ? searchResults.playlists : Array(searchResults.playlists.prefix(10))) { playlist in
                         Button {
-                            searchService.selectPlaylist(playlist)
+                            navigationCoordinator.navigateToPlaylist(playlist)
                         } label: {
                             HStack(spacing: 12) {
                                 if let imageURL = playlist.imageURL {
@@ -311,11 +314,11 @@ struct SearchResultsView: View {
             }
         }
         .listStyle(.sidebar)
-        .task(id: searchResults.tracks.prefix(5).map(\.id)) {
-            // Check favorite status for displayed tracks
+        .task(id: searchResults.tracks.map(\.id).joined()) {
+            // Check favorite status for all search tracks
             let token = await session.validAccessToken()
-            let trackIds = searchResults.tracks.prefix(5).map(\.id)
-            try? await trackService.checkFavoriteStatuses(trackIds: Array(trackIds), accessToken: token)
+            let trackIds = searchResults.tracks.map(\.id)
+            try? await trackService.checkFavoriteStatuses(trackIds: trackIds, accessToken: token)
         }
     }
 
