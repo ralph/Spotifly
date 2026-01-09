@@ -31,7 +31,7 @@ struct LoggedInView: View {
     private var searchService: SearchService { SearchService(store: store) }
     private var topItemsService: TopItemsService { TopItemsService(store: store) }
     private var newReleasesService: NewReleasesService { NewReleasesService(store: store) }
-    private var connectService: ConnectService { ConnectService(store: store, deviceService: deviceService) }
+    private var connectService: ConnectService { ConnectService(store: store, deviceService: deviceService, queueService: queueService) }
 
     @State private var navigationCoordinator = NavigationCoordinator()
 

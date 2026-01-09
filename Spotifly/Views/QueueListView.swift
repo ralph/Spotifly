@@ -61,8 +61,12 @@ struct QueueListView: View {
             }
         }
         .task {
-            queueService.loadQueue()
             let token = await session.validAccessToken()
+            if store.isSpotifyConnectActive {
+                await queueService.loadConnectQueue(accessToken: token)
+            } else {
+                queueService.loadQueue()
+            }
             await queueService.loadFavorites(accessToken: token)
         }
         .onChange(of: store.currentIndex) { oldIndex, newIndex in
@@ -102,14 +106,14 @@ struct QueueListView: View {
             .disabled(store.queueItems.isEmpty || isEditing)
             .help("queue.scroll_to_current")
 
-            // Clear queue button
+            // Clear queue button - disabled in Connect mode (can't modify remote queue)
             Button {
                 showClearConfirmation = true
             } label: {
                 Image(systemName: "trash")
             }
             .buttonStyle(.bordered)
-            .disabled(unplayedItems.isEmpty)
+            .disabled(unplayedItems.isEmpty || store.isSpotifyConnectActive)
             .help("queue.clear")
             .confirmationDialog(
                 "queue.clear.confirm.title",
@@ -124,7 +128,7 @@ struct QueueListView: View {
                 Text("queue.clear.confirm.message \(unplayedSongCount)")
             }
 
-            // Edit/Done button
+            // Edit/Done button - disabled in Connect mode (can't modify remote queue)
             Button {
                 if isEditing {
                     exitEditMode()
@@ -135,7 +139,7 @@ struct QueueListView: View {
                 Text(isEditing ? "action.done" : "action.edit")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(unplayedItems.isEmpty && !isEditing)
+            .disabled((unplayedItems.isEmpty && !isEditing) || store.isSpotifyConnectActive)
         }
         .padding()
         .background(.regularMaterial)
@@ -167,8 +171,12 @@ struct QueueListView: View {
                 }
             }
             .refreshable {
-                queueService.refresh()
                 let token = await session.validAccessToken()
+                if store.isSpotifyConnectActive {
+                    await queueService.loadConnectQueue(accessToken: token)
+                } else {
+                    queueService.refresh()
+                }
                 await queueService.loadFavorites(accessToken: token)
             }
             .onAppear { scrollProxy = proxy }

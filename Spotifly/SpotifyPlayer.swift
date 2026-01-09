@@ -26,6 +26,42 @@ struct QueueItem: Sendable, Identifiable {
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+
+    /// Memberwise initializer
+    init(
+        id: String,
+        uri: String,
+        trackName: String,
+        artistName: String,
+        albumArtURL: String,
+        durationMs: UInt32,
+        albumId: String?,
+        artistId: String?,
+        externalUrl: String?
+    ) {
+        self.id = id
+        self.uri = uri
+        self.trackName = trackName
+        self.artistName = artistName
+        self.albumArtURL = albumArtURL
+        self.durationMs = durationMs
+        self.albumId = albumId
+        self.artistId = artistId
+        self.externalUrl = externalUrl
+    }
+
+    /// Create from Spotify API QueueTrack
+    init(from queueTrack: QueueTrack) {
+        id = queueTrack.uri
+        uri = queueTrack.uri
+        trackName = queueTrack.name
+        artistName = queueTrack.artistName
+        albumArtURL = queueTrack.imageURL?.absoluteString ?? ""
+        durationMs = UInt32(queueTrack.durationMs)
+        albumId = nil // Not provided by queue API
+        artistId = nil // Not provided by queue API
+        externalUrl = "https://open.spotify.com/track/\(queueTrack.id)"
+    }
 }
 
 /// Errors that can occur during playback

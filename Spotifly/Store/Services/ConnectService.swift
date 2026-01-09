@@ -13,11 +13,13 @@ import Foundation
 final class ConnectService {
     private let store: AppStore
     private let deviceService: DeviceService
+    private let queueService: QueueService
     private let maxSyncFailuresBeforeDeactivate = 3
 
-    init(store: AppStore, deviceService: DeviceService) {
+    init(store: AppStore, deviceService: DeviceService, queueService: QueueService) {
         self.store = store
         self.deviceService = deviceService
+        self.queueService = queueService
     }
 
     // MARK: - Connect Activation
@@ -182,7 +184,16 @@ final class ConnectService {
                 print("[ConnectService] sync: playing=\(state.isPlaying), progress=\(state.progressMs)ms, volume=\(state.device?.volumePercent ?? -1)%")
             #endif
 
+            // Detect track change before updating state
+            let previousTrackId = store.currentTrackId
+            let newTrackId = state.currentTrack?.uri
+
             store.updateFromConnectState(state)
+
+            // Refresh queue when track changes
+            if newTrackId != previousTrackId {
+                await queueService.loadConnectQueue(accessToken: accessToken)
+            }
 
             // Update device info if changed and refresh device list
             if let device = state.device {
