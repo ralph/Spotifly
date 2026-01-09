@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.7] - 2026-01-09
+
 ### Added
 - Queue editing: Edit queue like playlists with drag-and-drop reordering and track removal
 - Fixed queue header with song count, scroll-to-current button, clear queue button, and edit mode toggle
