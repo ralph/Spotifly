@@ -126,6 +126,24 @@ final class AppStore {
     var recentlyPlayedErrorMessage: String?
     var hasLoadedRecentlyPlayed = false
 
+    // MARK: - Top Items State
+
+    private(set) var topArtistIds: [String] = []
+    private(set) var topTrackIds: [String] = []
+    var topArtistsIsLoading = false
+    var topTracksIsLoading = false
+    var topArtistsErrorMessage: String?
+    var topTracksErrorMessage: String?
+    var hasLoadedTopArtists = false
+    var hasLoadedTopTracks = false
+
+    // MARK: - New Releases State
+
+    private(set) var newReleaseAlbumIds: [String] = []
+    var newReleasesIsLoading = false
+    var newReleasesErrorMessage: String?
+    var hasLoadedNewReleases = false
+
     // MARK: - Queue State
 
     var queueItems: [QueueItem] = []
@@ -500,6 +518,22 @@ final class AppStore {
 
     func setRecentItems(_ items: [RecentItem]) {
         recentItems = items
+    }
+
+    // MARK: - Top Items Actions
+
+    func setTopArtistIds(_ ids: [String]) {
+        topArtistIds = ids
+    }
+
+    func setTopTrackIds(_ ids: [String]) {
+        topTrackIds = ids
+    }
+
+    // MARK: - New Releases Actions
+
+    func setNewReleaseAlbumIds(_ ids: [String]) {
+        newReleaseAlbumIds = ids
     }
 
     // MARK: - Queue Actions
