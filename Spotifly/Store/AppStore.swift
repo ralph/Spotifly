@@ -156,7 +156,6 @@ final class AppStore {
     var spotifyConnectDeviceId: String?
     var spotifyConnectDeviceName: String?
     var spotifyConnectVolume: Double = 50
-    private(set) var spotifyConnectAccessToken: String?
 
     // MARK: - Playback State
 
@@ -560,11 +559,10 @@ final class AppStore {
     // MARK: - Spotify Connect Actions
 
     /// Activate Spotify Connect mode (playing on remote device)
-    func activateSpotifyConnect(deviceId: String, deviceName: String?, accessToken: String) {
+    func activateSpotifyConnect(deviceId: String, deviceName: String?) {
         isSpotifyConnectActive = true
         spotifyConnectDeviceId = deviceId
         spotifyConnectDeviceName = deviceName
-        spotifyConnectAccessToken = accessToken
 
         // Pause local playback when switching to Connect
         if isPlaying {
@@ -577,7 +575,6 @@ final class AppStore {
         isSpotifyConnectActive = false
         spotifyConnectDeviceId = nil
         spotifyConnectDeviceName = nil
-        spotifyConnectAccessToken = nil
     }
 
     /// Update playback state from Spotify Connect sync

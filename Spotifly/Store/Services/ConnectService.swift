@@ -23,7 +23,7 @@ final class ConnectService {
 
     /// Activate Spotify Connect mode and start periodic sync
     func activateConnect(deviceId: String, deviceName: String?, accessToken: String) {
-        store.activateSpotifyConnect(deviceId: deviceId, deviceName: deviceName, accessToken: accessToken)
+        store.activateSpotifyConnect(deviceId: deviceId, deviceName: deviceName)
         startSyncTask(accessToken: accessToken)
     }
 
@@ -45,7 +45,6 @@ final class ConnectService {
                 store.activateSpotifyConnect(
                     deviceId: device.id,
                     deviceName: device.name,
-                    accessToken: accessToken,
                 )
                 store.updateFromConnectState(state)
                 startSyncTask(accessToken: accessToken)
