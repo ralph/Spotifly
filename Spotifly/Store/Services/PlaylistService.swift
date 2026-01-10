@@ -150,8 +150,8 @@ final class PlaylistService {
         try await SpotifyAPI.updatePlaylistDetails(
             accessToken: accessToken,
             playlistId: playlistId,
-            newName: name,
-            newDescription: description,
+            name: name,
+            description: description,
         )
 
         // Update store on success

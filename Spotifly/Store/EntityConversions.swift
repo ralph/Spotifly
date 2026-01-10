@@ -30,65 +30,35 @@ extension Track {
 // MARK: - Track Conversions
 
 extension Track {
-    /// Convert from SearchTrack (search results, recently played)
-    init(from searchTrack: SearchTrack) {
-        id = searchTrack.id
-        name = searchTrack.name
-        uri = searchTrack.uri
-        durationMs = searchTrack.durationMs
-        trackNumber = nil
-        externalUrl = searchTrack.externalUrl
-        albumId = searchTrack.albumId
-        artistId = searchTrack.artistId
-        artistName = searchTrack.artistName
-        albumName = searchTrack.albumName
-        imageURL = searchTrack.imageURL
+    /// Convert from APITrack (unified track type from all API sources)
+    init(from track: APITrack) {
+        id = track.id
+        name = track.name
+        uri = track.uri
+        durationMs = track.durationMs
+        trackNumber = track.trackNumber
+        externalUrl = track.externalUrl
+        albumId = track.albumId
+        artistId = track.artistId
+        artistName = track.artistName
+        albumName = track.albumName
+        imageURL = track.imageURL
     }
 
-    /// Convert from SavedTrack (favorites/liked tracks)
-    init(from savedTrack: SavedTrack) {
-        id = savedTrack.id
-        name = savedTrack.name
-        uri = savedTrack.uri
-        durationMs = savedTrack.durationMs
-        trackNumber = nil
-        externalUrl = savedTrack.externalUrl
-        albumId = savedTrack.albumId
-        artistId = savedTrack.artistId
-        artistName = savedTrack.artistName
-        albumName = savedTrack.albumName
-        imageURL = savedTrack.imageURL
-    }
-
-    /// Convert from AlbumTrack (album track listing)
-    /// Requires album context for image and album name
-    init(from albumTrack: AlbumTrack, albumId: String, albumName: String, imageURL: URL?) {
-        id = albumTrack.id
-        name = albumTrack.name
-        uri = albumTrack.uri
-        durationMs = albumTrack.durationMs
-        trackNumber = albumTrack.trackNumber
-        externalUrl = albumTrack.externalUrl
+    /// Convert from APITrack with album context override
+    /// Used when album info isn't included in the API response (e.g., album tracks endpoint)
+    init(from track: APITrack, albumId: String, albumName: String, imageURL: URL?) {
+        id = track.id
+        name = track.name
+        uri = track.uri
+        durationMs = track.durationMs
+        trackNumber = track.trackNumber
+        externalUrl = track.externalUrl
         self.albumId = albumId
-        artistId = albumTrack.artistId
-        artistName = albumTrack.artistName
+        artistId = track.artistId
+        artistName = track.artistName
         self.albumName = albumName
         self.imageURL = imageURL
-    }
-
-    /// Convert from PlaylistTrack (playlist track listing)
-    init(from playlistTrack: PlaylistTrack) {
-        id = playlistTrack.id
-        name = playlistTrack.name
-        uri = playlistTrack.uri
-        durationMs = playlistTrack.durationMs
-        trackNumber = nil
-        externalUrl = playlistTrack.externalUrl
-        albumId = playlistTrack.albumId
-        artistId = playlistTrack.artistId
-        artistName = playlistTrack.artistName
-        albumName = playlistTrack.albumName
-        imageURL = playlistTrack.imageURL
     }
 
     /// Convert from TrackMetadata (single track lookup)

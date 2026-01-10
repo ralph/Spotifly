@@ -50,17 +50,17 @@ struct QueueItem: Sendable, Identifiable {
         self.externalUrl = externalUrl
     }
 
-    /// Create from Spotify API QueueTrack
-    init(from queueTrack: QueueTrack) {
-        id = queueTrack.uri
-        uri = queueTrack.uri
-        trackName = queueTrack.name
-        artistName = queueTrack.artistName
-        albumArtURL = queueTrack.imageURL?.absoluteString ?? ""
-        durationMs = UInt32(queueTrack.durationMs)
-        albumId = nil // Not provided by queue API
-        artistId = nil // Not provided by queue API
-        externalUrl = "https://open.spotify.com/track/\(queueTrack.id)"
+    /// Create from Spotify API APITrack
+    init(from track: APITrack) {
+        id = track.uri
+        uri = track.uri
+        trackName = track.name
+        artistName = track.artistName
+        albumArtURL = track.imageURL?.absoluteString ?? ""
+        durationMs = UInt32(track.durationMs)
+        albumId = track.albumId
+        artistId = track.artistId
+        externalUrl = track.externalUrl ?? "https://open.spotify.com/track/\(track.id)"
     }
 }
 
