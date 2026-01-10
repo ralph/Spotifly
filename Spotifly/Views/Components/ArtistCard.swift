@@ -11,12 +11,16 @@ struct ArtistCard: View {
     let id: String
     let name: String
     let imageURL: URL?
+    let currentSection: NavigationItem
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
         Button {
-            navigationCoordinator.navigateToArtist(artistId: id)
+            navigationCoordinator.navigateToArtistSection(
+                artistId: id,
+                from: currentSection,
+            )
         } label: {
             VStack(spacing: 8) {
                 if let imageURL {
@@ -69,9 +73,10 @@ struct ArtistCard: View {
 
 extension ArtistCard {
     /// Initialize from an Artist entity
-    init(artist: Artist) {
+    init(artist: Artist, currentSection: NavigationItem = .startpage) {
         id = artist.id
         name = artist.name
         imageURL = artist.imageURL
+        self.currentSection = currentSection
     }
 }

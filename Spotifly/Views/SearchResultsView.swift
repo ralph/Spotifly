@@ -93,7 +93,7 @@ struct SearchResultsView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(searchResults.artists) { artist in
-                        ArtistCard(artist: artist)
+                        ArtistCard(artist: artist, currentSection: .searchResults)
                     }
                 }
                 .padding(.horizontal)
@@ -112,7 +112,7 @@ struct SearchResultsView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(searchResults.albums) { album in
-                        AlbumCard(album: album)
+                        AlbumCard(album: album, currentSection: .searchResults)
                     }
                 }
                 .padding(.horizontal)

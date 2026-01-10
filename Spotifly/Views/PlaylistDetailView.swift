@@ -350,6 +350,8 @@ struct PlaylistDetailView: View {
                     index: index,
                     currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                     playbackViewModel: playbackViewModel,
+                    currentSection: .playlists,
+                    selectionId: playlistId,
                 )
 
                 if index < tracks.count - 1 {

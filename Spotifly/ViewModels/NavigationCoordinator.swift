@@ -27,7 +27,28 @@ final class NavigationCoordinator {
         navigationPath = NavigationPath()
     }
 
-    // MARK: - Drill-Down Navigation
+    // MARK: - Section History (for back navigation between sections)
+
+    /// The section the user navigated from (for back button)
+    var previousSection: NavigationItem?
+
+    /// The selection ID in the previous section (to restore state when going back)
+    var previousSelectionId: String?
+
+    /// Title for the back button (e.g., "Playlists", "Home")
+    var previousSectionTitle: String? {
+        previousSection?.title
+    }
+
+    // MARK: - Ephemeral Viewing (items not in user's library)
+
+    /// Album being viewed that may not be in the user's library
+    var viewingAlbumId: String?
+
+    /// Artist being viewed that may not be in the user's library
+    var viewingArtistId: String?
+
+    // MARK: - Drill-Down Navigation (within a section)
 
     /// Navigate to an artist detail view (pushes onto navigation stack)
     func navigateToArtist(artistId: String) {
@@ -42,6 +63,53 @@ final class NavigationCoordinator {
     /// Navigate to a playlist detail view (pushes onto navigation stack)
     func navigateToPlaylistDetail(playlistId: String) {
         push(.playlist(id: playlistId))
+    }
+
+    // MARK: - Section Navigation (switches sidebar section with history)
+
+    /// Navigate to the Albums section to view a specific album
+    /// - Parameters:
+    ///   - albumId: The album to view
+    ///   - fromSection: The current section (for back navigation)
+    ///   - selectionId: The current selection ID (playlist ID, etc.) to restore when going back
+    func navigateToAlbumSection(albumId: String, from fromSection: NavigationItem, selectionId: String? = nil) {
+        previousSection = fromSection
+        previousSelectionId = selectionId
+        viewingAlbumId = albumId
+        pendingNavigationItem = .albums
+    }
+
+    /// Navigate to the Artists section to view a specific artist
+    /// - Parameters:
+    ///   - artistId: The artist to view
+    ///   - fromSection: The current section (for back navigation)
+    ///   - selectionId: The current selection ID to restore when going back
+    func navigateToArtistSection(artistId: String, from fromSection: NavigationItem, selectionId: String? = nil) {
+        previousSection = fromSection
+        previousSelectionId = selectionId
+        viewingArtistId = artistId
+        pendingNavigationItem = .artists
+    }
+
+    /// Go back to the previous section
+    /// - Returns: The section to navigate to, or nil if no history
+    func goBack() -> (section: NavigationItem, selectionId: String?)? {
+        guard let section = previousSection else { return nil }
+        let selectionId = previousSelectionId
+        clearSectionHistory()
+        return (section, selectionId)
+    }
+
+    /// Clear section history (called when user manually navigates)
+    func clearSectionHistory() {
+        previousSection = nil
+        previousSelectionId = nil
+    }
+
+    /// Clear ephemeral viewing state
+    func clearEphemeralViewing() {
+        viewingAlbumId = nil
+        viewingArtistId = nil
     }
 
     // MARK: - Cross-Section Navigation

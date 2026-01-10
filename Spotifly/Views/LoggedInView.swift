@@ -142,6 +142,14 @@ struct LoggedInView: View {
             if oldValue == .playlists, newValue != .playlists {
                 navigationCoordinator.pendingPlaylist = nil
             }
+
+            // Clear ephemeral viewing state when navigating away from albums/artists
+            if oldValue == .albums, newValue != .albums {
+                navigationCoordinator.viewingAlbumId = nil
+            }
+            if oldValue == .artists, newValue != .artists {
+                navigationCoordinator.viewingArtistId = nil
+            }
         }
         .onChange(of: selectedPlaylistId) { _, newValue in
             // Clear pending playlist when user selects a playlist from the list
@@ -210,6 +218,29 @@ struct LoggedInView: View {
         }
     }
 
+    /// Handle back navigation from AlbumsListView/ArtistsListView
+    private func handleBackNavigation(section: NavigationItem, selectionId: String?) {
+        // Clear ephemeral viewing state
+        navigationCoordinator.clearEphemeralViewing()
+
+        // Navigate to the previous section
+        selectedNavigationItem = section
+
+        // Restore selection if provided
+        if let selectionId {
+            switch section {
+            case .playlists:
+                selectedPlaylistId = selectionId
+            case .albums:
+                selectedAlbumId = selectionId
+            case .artists:
+                selectedArtistId = selectionId
+            default:
+                break
+            }
+        }
+    }
+
     @ViewBuilder
     private func sidebarView() -> some View {
         SidebarView(
@@ -257,6 +288,7 @@ struct LoggedInView: View {
                             AlbumsListView(
                                 playbackViewModel: playbackViewModel,
                                 selectedAlbumId: $selectedAlbumId,
+                                onBack: handleBackNavigation,
                             )
                             .navigationTitle("nav.albums")
 
@@ -264,6 +296,7 @@ struct LoggedInView: View {
                             ArtistsListView(
                                 playbackViewModel: playbackViewModel,
                                 selectedArtistId: $selectedArtistId,
+                                onBack: handleBackNavigation,
                             )
                             .navigationTitle("nav.artists")
 
@@ -336,6 +369,14 @@ struct LoggedInView: View {
                         album: album,
                         playbackViewModel: playbackViewModel,
                     )
+                    .id(albumId) // Force view recreation when album changes
+                } else if let albumId = selectedAlbumId {
+                    // Album ID is set but not in store yet - show loading and fetch
+                    AlbumDetailView(
+                        albumId: albumId,
+                        playbackViewModel: playbackViewModel,
+                    )
+                    .id(albumId)
                 } else {
                     Text("empty.select_album")
                         .foregroundStyle(.secondary)
@@ -349,6 +390,14 @@ struct LoggedInView: View {
                         artist: artist,
                         playbackViewModel: playbackViewModel,
                     )
+                    .id(artistId) // Force view recreation when artist changes
+                } else if let artistId = selectedArtistId {
+                    // Artist ID is set but not in store yet - show loading and fetch
+                    ArtistDetailView(
+                        artistId: artistId,
+                        playbackViewModel: playbackViewModel,
+                    )
+                    .id(artistId)
                 } else {
                     Text("empty.select_artist")
                         .foregroundStyle(.secondary)

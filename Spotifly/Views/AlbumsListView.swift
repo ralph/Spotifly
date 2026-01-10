@@ -11,22 +11,42 @@ struct AlbumsListView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Bindable var playbackViewModel: PlaybackViewModel
 
     // Selection uses album ID, looked up from store
     @Binding var selectedAlbumId: String?
 
+    /// Callback to handle back navigation (sets the pending navigation in LoggedInView)
+    var onBack: ((NavigationItem, String?) -> Void)?
+
     @State private var errorMessage: String?
+
+    /// The ephemeral album being viewed (if not in user's library)
+    private var ephemeralAlbum: Album? {
+        guard let viewingId = navigationCoordinator.viewingAlbumId,
+              !store.userAlbumIds.contains(viewingId),
+              let album = store.albums[viewingId]
+        else {
+            return nil
+        }
+        return album
+    }
+
+    /// Whether we have content to show (either ephemeral album or user albums)
+    private var hasContent: Bool {
+        ephemeralAlbum != nil || !store.userAlbums.isEmpty
+    }
 
     var body: some View {
         Group {
-            if store.albumsPagination.isLoading, store.userAlbums.isEmpty {
+            if store.albumsPagination.isLoading, !hasContent {
                 VStack(spacing: 16) {
                     ProgressView()
                     Text("loading.albums")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = errorMessage, store.userAlbums.isEmpty {
+            } else if let error = errorMessage, !hasContent {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -44,7 +64,7 @@ struct AlbumsListView: View {
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if store.userAlbums.isEmpty {
+            } else if !hasContent {
                 VStack(spacing: 16) {
                     Image(systemName: "square.stack")
                         .font(.system(size: 40))
@@ -59,12 +79,66 @@ struct AlbumsListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        // Back button when navigated from another section
+                        if let backTitle = navigationCoordinator.previousSectionTitle {
+                            Button {
+                                if let (section, selectionId) = navigationCoordinator.goBack() {
+                                    onBack?(section, selectionId)
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.caption.weight(.semibold))
+                                    Text("Back to \(backTitle)")
+                                        .font(.subheadline)
+                                }
+                                .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.bottom, 8)
+                        }
+
+                        // Ephemeral "Currently Viewing" section
+                        if let album = ephemeralAlbum {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Currently Viewing")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+
+                                AlbumRow(
+                                    album: album,
+                                    playbackViewModel: playbackViewModel,
+                                    isSelected: selectedAlbumId == album.id,
+                                    onSelect: {
+                                        selectedAlbumId = album.id
+                                    },
+                                )
+                            }
+
+                            if !store.userAlbums.isEmpty {
+                                Divider()
+                                    .padding(.vertical, 8)
+
+                                Text("Your Library")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+                            }
+                        }
+
+                        // User's library albums
                         ForEach(store.userAlbums) { album in
                             AlbumRow(
                                 album: album,
                                 playbackViewModel: playbackViewModel,
                                 isSelected: selectedAlbumId == album.id,
                                 onSelect: {
+                                    // Clear ephemeral state when user selects a library album
+                                    navigationCoordinator.viewingAlbumId = nil
+                                    navigationCoordinator.clearSectionHistory()
                                     selectedAlbumId = album.id
                                 },
                             )
@@ -92,13 +166,22 @@ struct AlbumsListView: View {
             if store.userAlbums.isEmpty, !store.albumsPagination.isLoading {
                 await loadAlbums()
             }
-            // Set initial selection after loading or if already loaded
-            if selectedAlbumId == nil, let first = store.userAlbums.first {
+            // Always sync selection with viewing album ID (handles navigation from other sections)
+            if let viewingId = navigationCoordinator.viewingAlbumId {
+                selectedAlbumId = viewingId
+            } else if selectedAlbumId == nil, let first = store.userAlbums.first {
+                // No ephemeral album, select first user album
                 selectedAlbumId = first.id
             }
         }
+        .onChange(of: navigationCoordinator.viewingAlbumId) { _, newId in
+            // Auto-select the ephemeral album when it's set
+            if let id = newId {
+                selectedAlbumId = id
+            }
+        }
         .onChange(of: store.userAlbums) { _, albums in
-            if selectedAlbumId == nil, let first = albums.first {
+            if selectedAlbumId == nil, ephemeralAlbum == nil, let first = albums.first {
                 selectedAlbumId = first.id
             }
         }

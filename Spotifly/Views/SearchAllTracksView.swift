@@ -64,6 +64,7 @@ struct SearchAllTracksView: View {
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
+                            currentSection: .searchResults,
                         )
 
                         if index < tracks.count - 1 {

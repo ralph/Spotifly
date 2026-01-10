@@ -160,6 +160,7 @@ struct QueueListView: View {
                             currentIndex: playbackViewModel.currentIndex,
                             playbackViewModel: playbackViewModel,
                             doubleTapBehavior: .jumpToQueueIndex,
+                            currentSection: .queue,
                         )
                         .id(index)
 

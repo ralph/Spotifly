@@ -11,22 +11,42 @@ struct ArtistsListView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(ArtistService.self) private var artistService
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Bindable var playbackViewModel: PlaybackViewModel
 
     // Selection uses artist ID, looked up from store
     @Binding var selectedArtistId: String?
 
+    /// Callback to handle back navigation (sets the pending navigation in LoggedInView)
+    var onBack: ((NavigationItem, String?) -> Void)?
+
     @State private var errorMessage: String?
+
+    /// The ephemeral artist being viewed (if not in user's library)
+    private var ephemeralArtist: Artist? {
+        guard let viewingId = navigationCoordinator.viewingArtistId,
+              !store.userArtistIds.contains(viewingId),
+              let artist = store.artists[viewingId]
+        else {
+            return nil
+        }
+        return artist
+    }
+
+    /// Whether we have content to show (either ephemeral artist or user artists)
+    private var hasContent: Bool {
+        ephemeralArtist != nil || !store.userArtists.isEmpty
+    }
 
     var body: some View {
         Group {
-            if store.artistsPagination.isLoading, store.userArtists.isEmpty {
+            if store.artistsPagination.isLoading, !hasContent {
                 VStack(spacing: 16) {
                     ProgressView()
                     Text("loading.artists")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = errorMessage, store.userArtists.isEmpty {
+            } else if let error = errorMessage, !hasContent {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -44,7 +64,7 @@ struct ArtistsListView: View {
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if store.userArtists.isEmpty {
+            } else if !hasContent {
                 VStack(spacing: 16) {
                     Image(systemName: "person.2")
                         .font(.system(size: 40))
@@ -59,12 +79,66 @@ struct ArtistsListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        // Back button when navigated from another section
+                        if let backTitle = navigationCoordinator.previousSectionTitle {
+                            Button {
+                                if let (section, selectionId) = navigationCoordinator.goBack() {
+                                    onBack?(section, selectionId)
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.caption.weight(.semibold))
+                                    Text("Back to \(backTitle)")
+                                        .font(.subheadline)
+                                }
+                                .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.bottom, 8)
+                        }
+
+                        // Ephemeral "Currently Viewing" section
+                        if let artist = ephemeralArtist {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Currently Viewing")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+
+                                ArtistRow(
+                                    artist: artist,
+                                    playbackViewModel: playbackViewModel,
+                                    isSelected: selectedArtistId == artist.id,
+                                    onSelect: {
+                                        selectedArtistId = artist.id
+                                    },
+                                )
+                            }
+
+                            if !store.userArtists.isEmpty {
+                                Divider()
+                                    .padding(.vertical, 8)
+
+                                Text("Your Library")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+                            }
+                        }
+
+                        // User's library artists
                         ForEach(store.userArtists) { artist in
                             ArtistRow(
                                 artist: artist,
                                 playbackViewModel: playbackViewModel,
                                 isSelected: selectedArtistId == artist.id,
                                 onSelect: {
+                                    // Clear ephemeral state when user selects a library artist
+                                    navigationCoordinator.viewingArtistId = nil
+                                    navigationCoordinator.clearSectionHistory()
                                     selectedArtistId = artist.id
                                 },
                             )
@@ -92,13 +166,22 @@ struct ArtistsListView: View {
             if store.userArtists.isEmpty, !store.artistsPagination.isLoading {
                 await loadArtists()
             }
-            // Set initial selection after loading or if already loaded
-            if selectedArtistId == nil, let first = store.userArtists.first {
+            // Always sync selection with viewing artist ID (handles navigation from other sections)
+            if let viewingId = navigationCoordinator.viewingArtistId {
+                selectedArtistId = viewingId
+            } else if selectedArtistId == nil, let first = store.userArtists.first {
+                // No ephemeral artist, select first user artist
                 selectedArtistId = first.id
             }
         }
+        .onChange(of: navigationCoordinator.viewingArtistId) { _, newId in
+            // Auto-select the ephemeral artist when it's set
+            if let id = newId {
+                selectedArtistId = id
+            }
+        }
         .onChange(of: store.userArtists) { _, artists in
-            if selectedArtistId == nil, let first = artists.first {
+            if selectedArtistId == nil, ephemeralArtist == nil, let first = artists.first {
                 selectedArtistId = first.id
             }
         }

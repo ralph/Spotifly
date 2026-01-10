@@ -53,6 +53,7 @@ struct RecentTracksDetailView: View {
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
+                            currentSection: .startpage,
                         )
 
                         if track.id != tracks.last?.id {

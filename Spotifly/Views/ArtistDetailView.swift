@@ -167,6 +167,8 @@ struct ArtistDetailView: View {
                                     index: index,
                                     currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                     playbackViewModel: playbackViewModel,
+                                    currentSection: .artists,
+                                    selectionId: artistId,
                                 )
 
                                 if track.id != displayedTracks.last?.id {
@@ -209,7 +211,11 @@ struct ArtistDetailView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 180), spacing: 16)], spacing: 16) {
                             ForEach(displayedAlbums) { album in
                                 AlbumCard(album: album) {
-                                    navigationCoordinator.navigateToAlbum(albumId: album.id)
+                                    navigationCoordinator.navigateToAlbumSection(
+                                        albumId: album.id,
+                                        from: .artists,
+                                        selectionId: artistId,
+                                    )
                                 }
                             }
                         }

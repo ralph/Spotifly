@@ -52,6 +52,8 @@ struct TrackRow: View {
     let isPlayedTrack: Bool // For queue - tracks that have already played
     @Bindable var playbackViewModel: PlaybackViewModel
     let doubleTapBehavior: TrackRowDoubleTapBehavior
+    let currentSection: NavigationItem // Current sidebar section (for "Go to" navigation)
+    let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(SpotifySession.self) private var session
@@ -78,6 +80,8 @@ struct TrackRow: View {
         currentIndex: Int? = nil,
         playbackViewModel: PlaybackViewModel,
         doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
+        currentSection: NavigationItem = .startpage,
+        selectionId: String? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -90,6 +94,8 @@ struct TrackRow: View {
         }
         self.playbackViewModel = playbackViewModel
         self.doubleTapBehavior = doubleTapBehavior
+        self.currentSection = currentSection
+        self.selectionId = selectionId
     }
 
     var body: some View {
@@ -226,7 +232,11 @@ struct TrackRow: View {
 
                 Button {
                     if let artistId = track.artistId {
-                        navigationCoordinator.navigateToArtist(artistId: artistId)
+                        navigationCoordinator.navigateToArtistSection(
+                            artistId: artistId,
+                            from: currentSection,
+                            selectionId: selectionId,
+                        )
                     }
                 } label: {
                     Label("track.menu.go_to_artist", systemImage: "person.circle")
@@ -235,7 +245,11 @@ struct TrackRow: View {
 
                 Button {
                     if let albumId = track.albumId {
-                        navigationCoordinator.navigateToAlbum(albumId: albumId)
+                        navigationCoordinator.navigateToAlbumSection(
+                            albumId: albumId,
+                            from: currentSection,
+                            selectionId: selectionId,
+                        )
                     }
                 } label: {
                     Label("track.menu.go_to_album", systemImage: "square.stack")

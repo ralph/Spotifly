@@ -212,6 +212,8 @@ struct AlbumDetailView: View {
                                 showTrackNumber: true,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
+                                currentSection: .albums,
+                                selectionId: albumId,
                             )
 
                             if index < tracks.count - 1 {

@@ -62,6 +62,7 @@ struct FavoritesListView: View {
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
+                                currentSection: .favorites,
                             )
 
                             if index < store.favoriteTracks.count - 1 {
