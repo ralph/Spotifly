@@ -39,13 +39,18 @@ final class NavigationCoordinator {
         push(.album(id: albumId))
     }
 
+    /// Navigate to a playlist detail view (pushes onto navigation stack)
+    func navigateToPlaylistDetail(playlistId: String) {
+        push(.playlist(id: playlistId))
+    }
+
     // MARK: - Cross-Section Navigation
 
     /// Pending navigation request (observed by LoggedInView)
     var pendingNavigationItem: NavigationItem?
 
     /// Pending playlist to show in detail view
-    var pendingPlaylist: SearchPlaylist?
+    var pendingPlaylist: Playlist?
 
     /// Navigate to the queue
     func navigateToQueue() {
@@ -53,7 +58,7 @@ final class NavigationCoordinator {
     }
 
     /// Navigate to a playlist detail view
-    func navigateToPlaylist(_ playlist: SearchPlaylist) {
+    func navigateToPlaylist(_ playlist: Playlist) {
         pendingPlaylist = playlist
         pendingNavigationItem = .playlists
     }

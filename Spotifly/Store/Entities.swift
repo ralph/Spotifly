@@ -70,15 +70,7 @@ struct Album: Identifiable, Sendable, Hashable {
 
     var formattedDuration: String? {
         guard let totalDurationMs else { return nil }
-        let totalSeconds = totalDurationMs / 1000
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-
-        if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
-        } else {
-            return String(format: "%d min", minutes)
-        }
+        return formatDuration(milliseconds: totalDurationMs)
     }
 
     /// Memberwise initializer with all fields
@@ -153,15 +145,7 @@ struct Playlist: Identifiable, Sendable, Hashable {
 
     var formattedDuration: String? {
         guard let totalDurationMs else { return nil }
-        let totalSeconds = totalDurationMs / 1000
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-
-        if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
-        } else {
-            return String(format: "%d min", minutes)
-        }
+        return formatDuration(milliseconds: totalDurationMs)
     }
 
     /// Memberwise initializer with all fields
@@ -203,6 +187,27 @@ struct Device: Identifiable, Sendable, Hashable {
     let isPrivateSession: Bool
     let isRestricted: Bool
     let volumePercent: Int?
+}
+
+// MARK: - Duration Formatting
+
+/// Format milliseconds as human-readable duration (e.g., "3 hr 15 min" or "45 min")
+func formatDuration(milliseconds: Int) -> String {
+    let totalSeconds = milliseconds / 1000
+    let hours = totalSeconds / 3600
+    let minutes = (totalSeconds % 3600) / 60
+
+    if hours > 0 {
+        return String(format: "%d hr %d min", hours, minutes)
+    } else {
+        return String(format: "%d min", minutes)
+    }
+}
+
+/// Calculate total duration from a sequence of tracks
+func totalDuration(of tracks: some Sequence<Track>) -> String {
+    let totalMs = tracks.reduce(0) { $0 + $1.durationMs }
+    return formatDuration(milliseconds: totalMs)
 }
 
 // MARK: - Pagination State

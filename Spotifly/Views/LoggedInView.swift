@@ -59,10 +59,6 @@ struct LoggedInView: View {
         case .albums, .artists, .playlists:
             // Always use three-column for library sections (first item is auto-selected)
             true
-        case .searchResults:
-            store.selectedSearchTrack != nil || store.selectedSearchAlbum != nil ||
-                store.selectedSearchArtist != nil || store.selectedSearchPlaylist != nil ||
-                store.showingAllSearchTracks
         default:
             false
         }
@@ -135,7 +131,6 @@ struct LoggedInView: View {
                 selectedAlbumId = nil
                 selectedArtistId = nil
                 selectedPlaylistId = nil
-                store.clearSearchSelection()
                 selectedNavigationItem = .playlists
             }
         }
@@ -235,7 +230,7 @@ struct LoggedInView: View {
                    let searchResults = store.searchResults
                 {
                     // Show search results when Search Results is selected
-                    SearchResultsView(searchResults: searchResults)
+                    SearchResultsView(searchResults: searchResults, playbackViewModel: playbackViewModel)
                         .navigationTitle("nav.search_results")
                 } else {
                     // Show main views for other sections
@@ -319,96 +314,67 @@ struct LoggedInView: View {
                 playlistId: id,
                 playbackViewModel: playbackViewModel,
             )
+
+        case let .searchTracks(tracks):
+            SearchAllTracksView(
+                tracks: tracks,
+                playbackViewModel: playbackViewModel,
+            )
         }
     }
 
     @ViewBuilder
     private func detailView() -> some View {
         Group {
-            if selectedNavigationItem == .searchResults {
-                // When viewing search results: show search result details
-                if store.showingAllSearchTracks,
-                   let searchResults = store.searchResults
+            // Show details for library selections (three-column layout)
+            switch selectedNavigationItem {
+            case .albums:
+                if let albumId = selectedAlbumId,
+                   let album = store.albums[albumId]
                 {
-                    SearchTracksDetailView(
-                        tracks: searchResults.tracks,
-                        playbackViewModel: playbackViewModel,
-                    )
-                } else if let selectedTrack = store.selectedSearchTrack {
-                    TrackDetailView(
-                        track: selectedTrack,
-                        playbackViewModel: playbackViewModel,
-                    )
-                } else if let selectedAlbum = store.selectedSearchAlbum {
                     AlbumDetailView(
-                        album: selectedAlbum,
-                        playbackViewModel: playbackViewModel,
-                    )
-                } else if let selectedArtist = store.selectedSearchArtist {
-                    ArtistDetailView(
-                        artist: selectedArtist,
-                        playbackViewModel: playbackViewModel,
-                    )
-                } else if let selectedPlaylist = store.selectedSearchPlaylist {
-                    PlaylistDetailView(
-                        playlist: selectedPlaylist,
+                        album: album,
                         playbackViewModel: playbackViewModel,
                     )
                 } else {
-                    Text("empty.select_search_result")
+                    Text("empty.select_album")
                         .foregroundStyle(.secondary)
                 }
-            } else {
-                // When not searching: show details for library selections
-                switch selectedNavigationItem {
-                case .albums:
-                    if let albumId = selectedAlbumId,
-                       let album = store.albums[albumId]
-                    {
-                        AlbumDetailView(
-                            album: SearchAlbum(from: album),
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else {
-                        Text("empty.select_album")
-                            .foregroundStyle(.secondary)
-                    }
 
-                case .artists:
-                    if let artistId = selectedArtistId,
-                       let artist = store.artists[artistId]
-                    {
-                        ArtistDetailView(
-                            artist: SearchArtist(from: artist),
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else {
-                        Text("empty.select_artist")
-                            .foregroundStyle(.secondary)
-                    }
-
-                case .playlists:
-                    if let pendingPlaylist = navigationCoordinator.pendingPlaylist {
-                        PlaylistDetailView(
-                            playlist: pendingPlaylist,
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else if let playlistId = selectedPlaylistId,
-                              let playlist = store.playlists[playlistId]
-                    {
-                        PlaylistDetailView(
-                            playlist: SearchPlaylist(from: playlist),
-                            playbackViewModel: playbackViewModel,
-                        )
-                    } else {
-                        Text("empty.select_playlist")
-                            .foregroundStyle(.secondary)
-                    }
-
-                default:
-                    // For Favorites, Queue, etc.: no detail view
-                    EmptyView()
+            case .artists:
+                if let artistId = selectedArtistId,
+                   let artist = store.artists[artistId]
+                {
+                    ArtistDetailView(
+                        artist: artist,
+                        playbackViewModel: playbackViewModel,
+                    )
+                } else {
+                    Text("empty.select_artist")
+                        .foregroundStyle(.secondary)
                 }
+
+            case .playlists:
+                if let pendingPlaylist = navigationCoordinator.pendingPlaylist {
+                    PlaylistDetailView(
+                        playlist: pendingPlaylist,
+                        playbackViewModel: playbackViewModel,
+                    )
+                } else if let playlistId = selectedPlaylistId,
+                          let playlist = store.playlists[playlistId]
+                {
+                    PlaylistDetailView(
+                        playlist: playlist,
+                        playbackViewModel: playbackViewModel,
+                    )
+                } else {
+                    Text("empty.select_playlist")
+                        .foregroundStyle(.secondary)
+                }
+
+            default:
+                // For Favorites, Queue, etc.: no detail view
+                EmptyView()
             }
         }
     }

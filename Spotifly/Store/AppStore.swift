@@ -26,6 +26,11 @@ enum RecentItem: Identifiable, Sendable {
         case let .playlist(playlist): "playlist_\(playlist.id)"
         }
     }
+
+    var isArtist: Bool {
+        if case .artist = self { return true }
+        return false
+    }
 }
 
 // MARK: - Drift Correction Timer
@@ -107,14 +112,6 @@ final class AppStore {
     // MARK: - Search State
 
     var searchResults: SearchResults?
-    var selectedSearchTrack: SearchTrack?
-    var selectedSearchAlbum: SearchAlbum?
-    var selectedSearchArtist: SearchArtist?
-    var selectedSearchPlaylist: SearchPlaylist?
-    var showingAllSearchTracks = false
-    var expandedSearchAlbums = false
-    var expandedSearchArtists = false
-    var expandedSearchPlaylists = false
     var searchIsLoading = false
     var searchErrorMessage: String?
 
@@ -467,64 +464,8 @@ final class AppStore {
         searchResults = results
     }
 
-    func selectSearchTrack(_ track: SearchTrack) {
-        selectedSearchTrack = track
-        selectedSearchAlbum = nil
-        selectedSearchArtist = nil
-        selectedSearchPlaylist = nil
-        showingAllSearchTracks = false
-    }
-
-    func selectSearchAlbum(_ album: SearchAlbum) {
-        selectedSearchAlbum = album
-        selectedSearchTrack = nil
-        selectedSearchArtist = nil
-        selectedSearchPlaylist = nil
-        showingAllSearchTracks = false
-    }
-
-    func selectSearchArtist(_ artist: SearchArtist) {
-        selectedSearchArtist = artist
-        selectedSearchTrack = nil
-        selectedSearchAlbum = nil
-        selectedSearchPlaylist = nil
-        showingAllSearchTracks = false
-    }
-
-    func selectSearchPlaylist(_ playlist: SearchPlaylist) {
-        selectedSearchPlaylist = playlist
-        selectedSearchTrack = nil
-        selectedSearchAlbum = nil
-        selectedSearchArtist = nil
-        showingAllSearchTracks = false
-    }
-
-    func showAllSearchTracks() {
-        showingAllSearchTracks = true
-        selectedSearchTrack = nil
-        selectedSearchAlbum = nil
-        selectedSearchArtist = nil
-        selectedSearchPlaylist = nil
-    }
-
-    func clearSearchSelection() {
-        selectedSearchTrack = nil
-        selectedSearchAlbum = nil
-        selectedSearchArtist = nil
-        selectedSearchPlaylist = nil
-        showingAllSearchTracks = false
-    }
-
     func clearSearch() {
         searchResults = nil
-        selectedSearchTrack = nil
-        selectedSearchAlbum = nil
-        selectedSearchArtist = nil
-        selectedSearchPlaylist = nil
-        showingAllSearchTracks = false
-        expandedSearchAlbums = false
-        expandedSearchArtists = false
-        expandedSearchPlaylists = false
         searchErrorMessage = nil
     }
 

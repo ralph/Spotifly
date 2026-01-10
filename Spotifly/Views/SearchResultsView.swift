@@ -2,371 +2,140 @@
 //  SearchResultsView.swift
 //  Spotifly
 //
-//  Displays search results grouped by type
+//  Displays search results with horizontal scrolling sections
 //
 
 import SwiftUI
 
 struct SearchResultsView: View {
     let searchResults: SearchResults
-    @Environment(AppStore.self) private var store
-    @Environment(SearchService.self) private var searchService
+    @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(SpotifySession.self) private var session
+    @Environment(TrackService.self) private var trackService
 
     var body: some View {
-        List {
-            // Tracks section
-            if !searchResults.tracks.isEmpty {
-                Section {
-                    ForEach(searchResults.tracks.prefix(5)) { track in
-                        Button {
-                            searchService.selectTrack(track)
-                        } label: {
-                            HStack(spacing: 12) {
-                                if let imageURL = track.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 40, height: 40)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 40, height: 40)
-                                                .cornerRadius(4)
-                                        case .failure:
-                                            Image(systemName: "music.note")
-                                                .frame(width: 40, height: 40)
-                                                .background(Color.gray.opacity(0.2))
-                                                .cornerRadius(4)
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    Image(systemName: "music.note")
-                                        .frame(width: 40, height: 40)
-                                        .background(Color.gray.opacity(0.2))
-                                        .cornerRadius(4)
-                                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Tracks section
+                if !searchResults.tracks.isEmpty {
+                    tracksSection
+                }
 
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(track.name)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
-                                    Text(track.artistName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                // Artists section
+                if !searchResults.artists.isEmpty {
+                    artistsSection
+                }
 
-                                Spacer()
+                // Albums section
+                if !searchResults.albums.isEmpty {
+                    albumsSection
+                }
 
-                                Text(formatDuration(track.durationMs))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    if searchResults.tracks.count > 5 {
-                        Button {
-                            searchService.showAllTracks()
-                        } label: {
-                            HStack {
-                                Text(String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
-                                    .font(.subheadline)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.blue)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } header: {
-                    Text("section.tracks")
+                // Playlists section
+                if !searchResults.playlists.isEmpty {
+                    playlistsSection
                 }
             }
+            .padding(.vertical)
+        }
+        .task(id: searchResults.tracks.map(\.id).joined()) {
+            // Check favorite status for all search tracks
+            let token = await session.validAccessToken()
+            let trackIds = searchResults.tracks.map(\.id)
+            try? await trackService.checkFavoriteStatuses(trackIds: trackIds, accessToken: token)
+        }
+    }
 
-            // Albums section
-            if !searchResults.albums.isEmpty {
-                Section {
-                    ForEach(store.expandedSearchAlbums ? searchResults.albums : Array(searchResults.albums.prefix(10))) { album in
-                        Button {
-                            searchService.selectAlbum(album)
-                        } label: {
-                            HStack(spacing: 12) {
-                                if let imageURL = album.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 50, height: 50)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 50, height: 50)
-                                                .cornerRadius(4)
-                                        case .failure:
-                                            Image(systemName: "music.note")
-                                                .frame(width: 50, height: 50)
-                                                .background(Color.gray.opacity(0.2))
-                                                .cornerRadius(4)
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    Image(systemName: "music.note")
-                                        .frame(width: 50, height: 50)
-                                        .background(Color.gray.opacity(0.2))
-                                        .cornerRadius(4)
-                                }
+    // MARK: - Tracks Section
 
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(album.name)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
-                                    Text(album.artistName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    HStack(spacing: 4) {
-                                        Text(String(format: String(localized: "metadata.tracks"), album.totalTracks))
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                        if let duration = album.formattedDuration {
-                                            Text("metadata.separator")
-                                                .font(.caption2)
-                                                .foregroundStyle(.tertiary)
-                                            Text(duration)
-                                                .font(.caption2)
-                                                .foregroundStyle(.tertiary)
-                                        }
-                                        Text("metadata.separator")
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                        Text(album.releaseDate)
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
+    private var tracksSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("section.tracks")
+                    .font(.headline)
 
-                                Spacer()
-                            }
+                Spacer()
+
+                if searchResults.tracks.count > 5 {
+                    NavigationLink(value: NavigationDestination.searchTracks(tracks: searchResults.tracks)) {
+                        HStack(spacing: 4) {
+                            Text(String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
+                                .font(.subheadline)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
                         }
-                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
                     }
-
-                    if searchResults.albums.count > 10 {
-                        Button {
-                            store.expandedSearchAlbums.toggle()
-                        } label: {
-                            HStack {
-                                Text(store.expandedSearchAlbums ? "action.show_less" : "action.show_more")
-                                    .font(.subheadline)
-                                Spacer()
-                                Image(systemName: store.expandedSearchAlbums ? "chevron.up" : "chevron.down")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.blue)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } header: {
-                    Text("section.albums")
+                    .buttonStyle(.plain)
                 }
             }
+            .padding(.horizontal)
 
-            // Artists section
-            if !searchResults.artists.isEmpty {
-                Section {
-                    ForEach(store.expandedSearchArtists ? searchResults.artists : Array(searchResults.artists.prefix(10))) { artist in
-                        Button {
-                            searchService.selectArtist(artist)
-                        } label: {
-                            HStack(spacing: 12) {
-                                if let imageURL = artist.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 50, height: 50)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 50, height: 50)
-                                                .clipShape(Circle())
-                                        case .failure:
-                                            Image(systemName: "person.circle.fill")
-                                                .resizable()
-                                                .frame(width: 50, height: 50)
-                                                .foregroundStyle(.gray.opacity(0.3))
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    Image(systemName: "person.circle.fill")
-                                        .resizable()
-                                        .frame(width: 50, height: 50)
-                                        .foregroundStyle(.gray.opacity(0.3))
-                                }
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(artist.name)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
-                                    if !artist.genres.isEmpty {
-                                        Text(artist.genres.prefix(2).joined(separator: ", "))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    Text(String(format: String(localized: "metadata.followers"), formatFollowers(artist.followers)))
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                }
-
-                                Spacer()
-                            }
-                        }
-                        .buttonStyle(.plain)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(searchResults.tracks) { track in
+                        TrackCard(track: track, playbackViewModel: playbackViewModel)
                     }
-
-                    if searchResults.artists.count > 10 {
-                        Button {
-                            store.expandedSearchArtists.toggle()
-                        } label: {
-                            HStack {
-                                Text(store.expandedSearchArtists ? "action.show_less" : "action.show_more")
-                                    .font(.subheadline)
-                                Spacer()
-                                Image(systemName: store.expandedSearchArtists ? "chevron.up" : "chevron.down")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.blue)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } header: {
-                    Text("section.artists")
                 }
-            }
-
-            // Playlists section
-            if !searchResults.playlists.isEmpty {
-                Section {
-                    ForEach(store.expandedSearchPlaylists ? searchResults.playlists : Array(searchResults.playlists.prefix(10))) { playlist in
-                        Button {
-                            searchService.selectPlaylist(playlist)
-                        } label: {
-                            HStack(spacing: 12) {
-                                if let imageURL = playlist.imageURL {
-                                    AsyncImage(url: imageURL) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView()
-                                                .frame(width: 50, height: 50)
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 50, height: 50)
-                                                .cornerRadius(4)
-                                        case .failure:
-                                            Image(systemName: "music.note.list")
-                                                .frame(width: 50, height: 50)
-                                                .background(Color.gray.opacity(0.2))
-                                                .cornerRadius(4)
-                                        @unknown default:
-                                            EmptyView()
-                                        }
-                                    }
-                                } else {
-                                    Image(systemName: "music.note.list")
-                                        .frame(width: 50, height: 50)
-                                        .background(Color.gray.opacity(0.2))
-                                        .cornerRadius(4)
-                                }
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(playlist.name)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
-                                    if let description = playlist.description, !description.isEmpty {
-                                        Text(description)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    HStack(spacing: 4) {
-                                        Text(String(format: String(localized: "metadata.by_owner"), playlist.ownerName))
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                        Text("metadata.separator")
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                        Text(String(format: String(localized: "metadata.tracks"), playlist.trackCount))
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                        if let duration = playlist.formattedDuration {
-                                            Text("metadata.separator")
-                                                .font(.caption2)
-                                                .foregroundStyle(.tertiary)
-                                            Text(duration)
-                                                .font(.caption2)
-                                                .foregroundStyle(.tertiary)
-                                        }
-                                    }
-                                }
-
-                                Spacer()
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    if searchResults.playlists.count > 10 {
-                        Button {
-                            store.expandedSearchPlaylists.toggle()
-                        } label: {
-                            HStack {
-                                Text(store.expandedSearchPlaylists ? "action.show_less" : "action.show_more")
-                                    .font(.subheadline)
-                                Spacer()
-                                Image(systemName: store.expandedSearchPlaylists ? "chevron.up" : "chevron.down")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.blue)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } header: {
-                    Text("section.playlists")
-                }
+                .padding(.horizontal)
             }
         }
-        .listStyle(.sidebar)
     }
 
-    private func formatDuration(_ milliseconds: Int) -> String {
-        let totalSeconds = milliseconds / 1000
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
+    // MARK: - Artists Section
+
+    private var artistsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("section.artists")
+                .font(.headline)
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(searchResults.artists) { artist in
+                        ArtistCard(artist: artist)
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
     }
 
-    private func formatFollowers(_ count: Int) -> String {
-        if count >= 1_000_000 {
-            String(format: "%.1fM", Double(count) / 1_000_000.0)
-        } else if count >= 1000 {
-            String(format: "%.1fK", Double(count) / 1000.0)
-        } else {
-            "\(count)"
+    // MARK: - Albums Section
+
+    private var albumsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("section.albums")
+                .font(.headline)
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(searchResults.albums) { album in
+                        AlbumCard(album: album)
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+
+    // MARK: - Playlists Section
+
+    private var playlistsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("section.playlists")
+                .font(.headline)
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(searchResults.playlists) { playlist in
+                        PlaylistCard(playlist: playlist)
+                    }
+                }
+                .padding(.horizontal)
+            }
         }
     }
 }
