@@ -1,3 +1,5 @@
+use librespot_connect::{ConnectConfig, Spirc};
+use librespot_core::config::DeviceType;
 use librespot_core::session::Session;
 use librespot_core::SessionConfig;
 use librespot_core::cache::Cache;
@@ -29,6 +31,7 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
 static PLAYER: Lazy<Mutex<Option<Arc<Player>>>> = Lazy::new(|| Mutex::new(None));
 static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
 static MIXER: Lazy<Mutex<Option<Arc<SoftMixer>>>> = Lazy::new(|| Mutex::new(None));
+static SPIRC: Lazy<Mutex<Option<Arc<Spirc>>>> = Lazy::new(|| Mutex::new(None));
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
 
@@ -330,15 +333,15 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         ..Default::default()
     };
 
-    // Create session with access token
+    // Create credentials - will be used by Spirc to connect
     let credentials = librespot_core::authentication::Credentials::with_access_token(access_token);
-    
+
     let cache = Cache::new(None::<std::path::PathBuf>, None, None, None)
         .map_err(|e| format!("Cache error: {}", e))?;
 
+    // Create session but DON'T connect yet - let Spirc handle the connection
+    // This is important for Spirc to work properly with OAuth tokens
     let session = Session::new(session_config, Some(cache));
-    session.connect(credentials, true).await
-        .map_err(|e| format!("Session connect error: {}", e))?;
 
     // Create mixer
     let mixer_config = MixerConfig::default();
@@ -449,18 +452,60 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         drop(player_clone);
     });
 
-    // Store everything
+    // Store session, player, mixer, and event channel first
+    // This ensures basic playback works even if Spirc initialization fails
     {
         let mut player_guard = PLAYER.lock().unwrap();
-        *player_guard = Some(player);
+        *player_guard = Some(Arc::clone(&player));
     }
     {
         let mut session_guard = SESSION.lock().unwrap();
-        *session_guard = Some(session);
+        *session_guard = Some(session.clone());
     }
     {
         let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
         *tx_guard = Some(tx);
+    }
+
+    // Create Spirc for Spotify Connect support (makes this app appear as a Connect device)
+    // Spirc::new() will connect the session - this is the proper way per librespot examples
+    let connect_config = ConnectConfig {
+        name: "Spotifly".to_string(),
+        device_type: DeviceType::Computer,
+        initial_volume: 65535 / 2, // 50% volume
+        ..Default::default()
+    };
+
+    // Use the SAME credentials for Spirc - don't create new ones
+    // Spirc::new() handles the session connection internally
+    match Spirc::new(
+        connect_config,
+        session.clone(),
+        credentials.clone(), // Clone so we can use it for fallback if needed
+        player,
+        mixer as Arc<dyn Mixer>,
+    )
+    .await
+    {
+        Ok((spirc, spirc_task)) => {
+            // Spawn Spirc background task
+            let spirc_arc = Arc::new(spirc);
+            RUNTIME.spawn(spirc_task);
+
+            let mut spirc_guard = SPIRC.lock().unwrap();
+            *spirc_guard = Some(spirc_arc);
+            println!("[Spotifly] Spirc initialized - Spotify Connect available");
+        }
+        Err(e) => {
+            // Spirc failed - fall back to manual session connection for basic playback
+            eprintln!("Spirc init failed: {:?}", e);
+            eprintln!("[Spotifly] Falling back to basic playback (Connect won't be available)");
+
+            // Connect session manually so basic playback works
+            if let Err(connect_err) = session.connect(credentials, true).await {
+                return Err(format!("Session connect error: {}", connect_err));
+            }
+        }
     }
 
     Ok(())

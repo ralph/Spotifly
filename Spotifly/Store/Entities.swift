@@ -11,7 +11,7 @@ import Foundation
 // MARK: - Track
 
 /// Unified track entity - single source of truth for all track data.
-/// Constructed from SearchTrack, SavedTrack, AlbumTrack, PlaylistTrack, or TrackMetadata.
+/// Constructed from APITrack or TrackMetadata via EntityConversions.
 struct Track: Identifiable, Sendable, Hashable {
     let id: String
     let name: String

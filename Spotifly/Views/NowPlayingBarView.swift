@@ -9,12 +9,19 @@ import SwiftUI
 
 struct NowPlayingBarView: View {
     @Environment(SpotifySession.self) private var session
+    @Environment(AppStore.self) private var store
+    @Environment(ConnectService.self) private var connectService
     @Bindable var playbackViewModel: PlaybackViewModel
     @ObservedObject var windowState: WindowState
 
     @State private var barHeight: CGFloat = 66
     @State private var cachedAlbumArtImage: Image?
     @State private var cachedAlbumArtURL: String?
+
+    /// Whether to show the bar (has queue OR Spotify Connect active)
+    private var shouldShowBar: Bool {
+        playbackViewModel.queueLength > 0 || store.isSpotifyConnectActive
+    }
 
     // Helper function for time formatting
     private func formatTime(_ milliseconds: UInt32) -> String {
@@ -25,7 +32,7 @@ struct NowPlayingBarView: View {
     }
 
     var body: some View {
-        if playbackViewModel.queueLength > 0 {
+        if shouldShowBar {
             VStack(spacing: 0) {
                 // Only show divider when not in mini player mode
                 if !windowState.isMiniPlayerMode {
@@ -119,7 +126,7 @@ struct NowPlayingBarView: View {
             // TimelineView updates at display refresh rate for smooth slider
             TimelineView(.animation(minimumInterval: 0.033)) { _ in
                 HStack(spacing: 8) {
-                    Text(formatTime(playbackViewModel.interpolatedPositionMs))
+                    Text(formatTime(currentPositionMs))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -127,17 +134,24 @@ struct NowPlayingBarView: View {
 
                     Slider(
                         value: Binding(
-                            get: { Double(playbackViewModel.interpolatedPositionMs) },
+                            get: { Double(currentPositionMs) },
                             set: { newValue in
-                                playbackViewModel.seek(to: UInt32(newValue))
+                                if store.isSpotifyConnectActive {
+                                    Task {
+                                        let token = await session.validAccessToken()
+                                        await connectService.seek(to: Int(newValue), accessToken: token)
+                                    }
+                                } else {
+                                    playbackViewModel.seek(to: UInt32(newValue))
+                                }
                             },
                         ),
-                        in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
+                        in: 0 ... Double(max(currentDurationMs, 1)),
                     )
                     .tint(.green)
                     .frame(width: 200)
 
-                    Text(formatTime(playbackViewModel.trackDurationMs))
+                    Text(formatTime(currentDurationMs))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -210,55 +224,124 @@ struct NowPlayingBarView: View {
 
     private var trackInfo: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let trackName = playbackViewModel.currentTrackName {
+            if let trackName = store.isSpotifyConnectActive ? store.currentTrackName : playbackViewModel.currentTrackName {
                 Text(trackName)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .lineLimit(1)
             }
-            if let artistName = playbackViewModel.currentArtistName {
+            if let artistName = store.isSpotifyConnectActive ? store.currentArtistName : playbackViewModel.currentArtistName {
                 Text(artistName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+            // Show device indicator when Connect active - clickable to transfer back
+            if store.isSpotifyConnectActive, let deviceName = store.spotifyConnectDeviceName {
+                Button {
+                    transferToLocalPlayback()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "hifispeaker.fill")
+                            .font(.caption2)
+                        Text(deviceName)
+                            .font(.caption2)
+                        Image(systemName: "arrow.right.circle")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.green)
+                }
+                .buttonStyle(.plain)
+                .help("connect.transfer_to_computer")
+            }
+        }
+    }
+
+    private func transferToLocalPlayback() {
+        Task {
+            let token = await session.validAccessToken()
+            await connectService.transferToLocal(playbackViewModel: playbackViewModel, accessToken: token)
         }
     }
 
     private var playbackControls: some View {
         HStack(spacing: 16) {
             Button {
-                playbackViewModel.previous()
+                if store.isSpotifyConnectActive {
+                    Task {
+                        let token = await session.validAccessToken()
+                        await connectService.skipToPrevious(accessToken: token)
+                    }
+                } else {
+                    playbackViewModel.previous()
+                }
             } label: {
                 Image(systemName: "backward.fill")
                     .font(.body)
             }
             .buttonStyle(.plain)
-            .disabled(!playbackViewModel.hasPrevious)
+            .disabled(!store.isSpotifyConnectActive && !playbackViewModel.hasPrevious)
 
             Button {
-                if playbackViewModel.isPlaying {
-                    SpotifyPlayer.pause()
-                    playbackViewModel.isPlaying = false
+                if store.isSpotifyConnectActive {
+                    Task {
+                        let token = await session.validAccessToken()
+                        if store.isPlaying {
+                            await connectService.pause(accessToken: token)
+                        } else {
+                            await connectService.resume(accessToken: token)
+                        }
+                    }
                 } else {
-                    SpotifyPlayer.resume()
-                    playbackViewModel.isPlaying = true
+                    if playbackViewModel.isPlaying {
+                        SpotifyPlayer.pause()
+                        playbackViewModel.isPlaying = false
+                    } else {
+                        SpotifyPlayer.resume()
+                        playbackViewModel.isPlaying = true
+                    }
+                    playbackViewModel.updateNowPlayingInfo()
                 }
-                playbackViewModel.updateNowPlayingInfo()
             } label: {
-                Image(systemName: playbackViewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                let isPlaying = store.isSpotifyConnectActive ? store.isPlaying : playbackViewModel.isPlaying
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.title2)
             }
             .buttonStyle(.plain)
 
             Button {
-                playbackViewModel.next()
+                if store.isSpotifyConnectActive {
+                    Task {
+                        let token = await session.validAccessToken()
+                        await connectService.skipToNext(accessToken: token)
+                    }
+                } else {
+                    playbackViewModel.next()
+                }
             } label: {
                 Image(systemName: "forward.fill")
                     .font(.body)
             }
             .buttonStyle(.plain)
-            .disabled(!playbackViewModel.hasNext)
+            .disabled(!store.isSpotifyConnectActive && !playbackViewModel.hasNext)
+        }
+    }
+
+    /// Current playback position (interpolated for smooth display)
+    private var currentPositionMs: UInt32 {
+        if store.isSpotifyConnectActive {
+            store.interpolatedPositionMs
+        } else {
+            playbackViewModel.interpolatedPositionMs
+        }
+    }
+
+    /// Current track duration
+    private var currentDurationMs: UInt32 {
+        if store.isSpotifyConnectActive {
+            store.trackDurationMs
+        } else {
+            playbackViewModel.trackDurationMs
         }
     }
 
@@ -266,23 +349,30 @@ struct NowPlayingBarView: View {
         // TimelineView updates at display refresh rate for smooth slider
         TimelineView(.animation(minimumInterval: 0.033)) { _ in
             HStack(spacing: 8) {
-                Text(formatTime(playbackViewModel.interpolatedPositionMs))
+                Text(formatTime(currentPositionMs))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
 
                 Slider(
                     value: Binding(
-                        get: { Double(playbackViewModel.interpolatedPositionMs) },
+                        get: { Double(currentPositionMs) },
                         set: { newValue in
-                            playbackViewModel.seek(to: UInt32(newValue))
+                            if store.isSpotifyConnectActive {
+                                Task {
+                                    let token = await session.validAccessToken()
+                                    await connectService.seek(to: Int(newValue), accessToken: token)
+                                }
+                            } else {
+                                playbackViewModel.seek(to: UInt32(newValue))
+                            }
                         },
                     ),
-                    in: 0 ... Double(max(playbackViewModel.trackDurationMs, 1)),
+                    in: 0 ... Double(max(currentDurationMs, 1)),
                 )
                 .tint(.green)
 
-                Text(formatTime(playbackViewModel.trackDurationMs))
+                Text(formatTime(currentDurationMs))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -311,15 +401,43 @@ struct NowPlayingBarView: View {
         .buttonStyle(.plain)
     }
 
+    /// Unified volume (0-100 scale, like Spotify API)
+    private var currentVolume: Double {
+        let vol = if store.isSpotifyConnectActive {
+            store.spotifyConnectVolume
+        } else {
+            playbackViewModel.volume * 100
+        }
+        #if DEBUG
+            // Uncomment to debug volume issues
+            // print("[NowPlayingBar] currentVolume: \(vol), isConnect=\(store.isSpotifyConnectActive), connectVol=\(store.spotifyConnectVolume), localVol=\(playbackViewModel.volume)")
+        #endif
+        return vol
+    }
+
+    private func setVolume(_ volume: Double) {
+        if store.isSpotifyConnectActive {
+            Task {
+                let token = await session.validAccessToken()
+                connectService.setVolume(volume, accessToken: token)
+            }
+        } else {
+            playbackViewModel.volume = volume / 100
+        }
+    }
+
     private var volumeControl: some View {
         HStack(spacing: 6) {
-            Image(systemName: playbackViewModel.volume == 0 ? "speaker.fill" : playbackViewModel.volume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
+            Image(systemName: currentVolume == 0 ? "speaker.fill" : currentVolume < 50 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(store.isSpotifyConnectActive ? .green : .secondary)
 
             Slider(
-                value: $playbackViewModel.volume,
-                in: 0 ... 1,
+                value: Binding(
+                    get: { currentVolume },
+                    set: { setVolume($0) },
+                ),
+                in: 0 ... 100,
             )
             .tint(.green)
             .frame(width: 80)

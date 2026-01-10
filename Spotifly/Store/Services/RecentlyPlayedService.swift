@@ -82,7 +82,7 @@ final class RecentlyPlayedService {
             }
 
             // Fetch album details concurrently (return raw API response)
-            let fetchedAlbumResponses = await withTaskGroup(of: (id: String, album: SearchAlbum?).self) { group in
+            let fetchedAlbumResponses = await withTaskGroup(of: (id: String, album: APIAlbum?).self) { group in
                 for albumId in albumIdsToFetch {
                     group.addTask {
                         do {
@@ -97,7 +97,7 @@ final class RecentlyPlayedService {
                     }
                 }
 
-                var results: [String: SearchAlbum] = [:]
+                var results: [String: APIAlbum] = [:]
                 for await (id, album) in group {
                     if let album {
                         results[id] = album
@@ -115,7 +115,7 @@ final class RecentlyPlayedService {
             store.upsertAlbums(Array(fetchedAlbums.values))
 
             // Fetch playlist details concurrently (return raw API response)
-            let fetchedPlaylistResponses = await withTaskGroup(of: (id: String, playlist: SearchPlaylist?).self) { group in
+            let fetchedPlaylistResponses = await withTaskGroup(of: (id: String, playlist: APIPlaylist?).self) { group in
                 for playlistId in playlistIdsToFetch {
                     group.addTask {
                         do {
@@ -133,7 +133,7 @@ final class RecentlyPlayedService {
                     }
                 }
 
-                var results: [String: SearchPlaylist] = [:]
+                var results: [String: APIPlaylist] = [:]
                 for await (id, playlist) in group {
                     if let playlist {
                         results[id] = playlist
@@ -151,7 +151,7 @@ final class RecentlyPlayedService {
             store.upsertPlaylists(Array(fetchedPlaylists.values))
 
             // Fetch artist details concurrently (return raw API response)
-            let fetchedArtistResponses = await withTaskGroup(of: (id: String, artist: SearchArtist?).self) { group in
+            let fetchedArtistResponses = await withTaskGroup(of: (id: String, artist: APIArtist?).self) { group in
                 for artistId in artistIdsToFetch {
                     group.addTask {
                         do {
@@ -166,7 +166,7 @@ final class RecentlyPlayedService {
                     }
                 }
 
-                var results: [String: SearchArtist] = [:]
+                var results: [String: APIArtist] = [:]
                 for await (id, artist) in group {
                     if let artist {
                         results[id] = artist

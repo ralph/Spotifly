@@ -15,7 +15,7 @@ enum NavigationItem: Hashable, Identifiable {
     case albums
     case artists
     case queue
-    case devices
+    case speakers
 
     var id: String {
         switch self {
@@ -26,7 +26,7 @@ enum NavigationItem: Hashable, Identifiable {
         case .albums: "albums"
         case .artists: "artists"
         case .queue: "queue"
-        case .devices: "devices"
+        case .speakers: "speakers"
         }
     }
 
@@ -46,8 +46,8 @@ enum NavigationItem: Hashable, Identifiable {
             String(localized: "nav.artists")
         case .queue:
             String(localized: "nav.queue")
-        case .devices:
-            String(localized: "nav.devices")
+        case .speakers:
+            String(localized: "nav.speakers")
         }
     }
 
@@ -67,7 +67,7 @@ enum NavigationItem: Hashable, Identifiable {
             "person.2.fill"
         case .queue:
             "list.bullet"
-        case .devices:
+        case .speakers:
             "hifispeaker.2.fill"
         }
     }
@@ -78,11 +78,27 @@ struct SidebarView: View {
     let onLogout: () -> Void
     var hasSearchResults: Bool = false
 
+    @AppStorage("showSpotifyConnectSpeakers") private var showConnectSpeakers: Bool = false
+    @AppStorage("showAirPlaySpeakers") private var showAirPlaySpeakers: Bool = false
+
+    /// Whether to show the speakers item in the sidebar
+    private var showSpeakersItem: Bool {
+        showConnectSpeakers || showAirPlaySpeakers
+    }
+
+    /// Navigation items in the main section (conditionally includes speakers)
+    private var mainNavItems: [NavigationItem] {
+        var items: [NavigationItem] = [.startpage, .queue]
+        if showSpeakersItem {
+            items.append(.speakers)
+        }
+        return items
+    }
+
     var body: some View {
         List(selection: $selection) {
             Section {
-                // TODO: Re-enable devices view when ready for release
-                ForEach([NavigationItem.startpage, NavigationItem.queue /* , NavigationItem.devices */ ]) { item in
+                ForEach(mainNavItems) { item in
                     NavigationLink(value: item) {
                         Label(item.title, systemImage: item.icon)
                     }

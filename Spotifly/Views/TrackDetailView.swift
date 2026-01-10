@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct TrackDetailView: View {
-    let track: SearchTrack
+    let track: Track
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
 
@@ -59,9 +59,11 @@ struct TrackDetailView: View {
                     .font(.title3)
                     .foregroundStyle(.secondary)
 
-                Text(track.albumName)
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
+                if let albumName = track.albumName {
+                    Text(albumName)
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
 
                 Text(formatDuration(track.durationMs))
                     .font(.caption)

@@ -19,7 +19,7 @@ final class QueueService {
 
     // MARK: - Queue Loading
 
-    /// Load queue items from the Rust player
+    /// Load queue items from the Rust player (local playback)
     func loadQueue() {
         store.queueErrorMessage = nil
 
@@ -30,7 +30,30 @@ final class QueueService {
         }
     }
 
-    /// Refresh the queue
+    /// Load queue from Spotify API (Connect playback)
+    func loadConnectQueue(accessToken: String) async {
+        store.queueErrorMessage = nil
+
+        do {
+            let response = try await SpotifyAPI.fetchQueue(accessToken: accessToken)
+
+            #if DEBUG
+                print("[QueueService] Connect queue: currentlyPlaying=\(response.currentlyPlaying?.name ?? "nil"), queue count=\(response.queue.count)")
+            #endif
+
+            // Build queue items: currently playing + queue
+            let currentItems = response.currentlyPlaying.map { [QueueItem(from: $0)] } ?? []
+            let queueItems = response.queue.map { QueueItem(from: $0) }
+            store.setQueueItems(currentItems + queueItems)
+
+            // Current index is always 0 for Connect (currently playing is first)
+            store.currentIndex = 0
+        } catch {
+            store.queueErrorMessage = error.localizedDescription
+        }
+    }
+
+    /// Refresh the queue (chooses local or Connect based on state)
     func refresh() {
         loadQueue()
     }

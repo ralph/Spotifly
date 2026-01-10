@@ -20,7 +20,7 @@
 "nav.albums" = "Albums";
 "nav.artists" = "Artists";
 "nav.queue" = "Queue";
-"nav.devices" = "Devices";
+"nav.speakers" = "Speakers";
 "nav.library" = "Library";
 
 /* Common Actions */
@@ -143,14 +143,27 @@
 /* Show All Button */
 "show_all.tracks" = "Show all %d tracks";
 
-/* Devices (Spotify Connect) */
-"devices.title" = "Available Devices";
-"devices.active" = "Active";
-"devices.empty" = "No devices found";
-"devices.empty_hint" = "Open Spotify on another device to see it here";
-"devices.error.not_logged_in" = "Not logged in";
-"devices.error.failed_to_load" = "Failed to load devices";
-"devices.error.failed_to_transfer" = "Failed to transfer playback";
+/* Speakers */
+"speakers.title" = "Speakers";
+"speakers.active" = "Active";
+"speakers.empty" = "No speakers found";
+"speakers.empty_hint" = "Open Spotify on another device to see it here";
+"speakers.error.not_logged_in" = "Not logged in";
+"speakers.error.failed_to_load" = "Failed to load speakers";
+"speakers.error.failed_to_transfer" = "Failed to transfer playback";
+"speakers.now_playing" = "Now Playing";
+"speakers.audio_output" = "AirPlay";
+"speakers.spotify_connect" = "Spotify Connect";
+"speakers.airplay_hint" = "Stream audio from this Mac to AirPlay speakers";
+"speakers.spotify_connect_hint" = "Transfer playback to another Spotify device";
+
+/* Spotify Connect */
+"connect.transfer_to_computer" = "Play on this computer";
+
+/* Speakers - This Computer */
+"speakers.this_computer" = "This Computer";
+"speakers.this_computer.name" = "Spotifly";
+"speakers.this_computer.hint" = "Transfer playback here";
 
 /* Menu Commands */
 "menu.playback" = "Playback";
@@ -181,3 +194,9 @@
 "preferences.restart_note" = "Changes take effect when playback restarts.";
 "preferences.version %@ (%@)" = "Version %@ (%@)";
 "preferences.copyright %@" = "© %@ Ralph von der Heyden";
+"preferences.speakers" = "Speakers";
+"preferences.speakers.connect" = "Show Spotify Connect Speakers";
+"preferences.speakers.connect_description" = "Register Spotifly as a Spotify Connect speaker and show other Connect devices. Allows remote control from your phone.";
+"preferences.speakers.airplay" = "Show AirPlay Speakers";
+"preferences.speakers.airplay_description" = "Show AirPlay output selector to stream audio to AirPlay-compatible speakers.";
+"preferences.speakers.none_enabled" = "Enable at least one option to show the Speakers section in the sidebar.";

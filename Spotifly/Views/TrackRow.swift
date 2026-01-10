@@ -478,67 +478,16 @@ extension QueueItem {
     }
 }
 
-extension AlbumTrack {
+extension APITrack {
     func toTrackRowData() -> TrackRowData {
         TrackRowData(
             id: id,
             uri: uri,
             name: name,
             artistName: artistName,
-            albumArtURL: nil, // Album tracks don't have individual art
+            albumArtURL: imageURL?.absoluteString,
             durationMs: durationMs,
             trackNumber: trackNumber,
-            albumId: nil, // Not needed - already viewing the album
-            artistId: artistId,
-            externalUrl: externalUrl,
-        )
-    }
-}
-
-extension PlaylistTrack {
-    func toTrackRowData() -> TrackRowData {
-        TrackRowData(
-            id: id,
-            uri: uri,
-            name: name,
-            artistName: artistName,
-            albumArtURL: imageURL?.absoluteString,
-            durationMs: durationMs,
-            trackNumber: nil,
-            albumId: albumId,
-            artistId: artistId,
-            externalUrl: externalUrl,
-        )
-    }
-}
-
-extension SearchTrack {
-    func toTrackRowData() -> TrackRowData {
-        TrackRowData(
-            id: id,
-            uri: uri,
-            name: name,
-            artistName: artistName,
-            albumArtURL: imageURL?.absoluteString,
-            durationMs: durationMs,
-            trackNumber: nil,
-            albumId: albumId,
-            artistId: artistId,
-            externalUrl: externalUrl,
-        )
-    }
-}
-
-extension SavedTrack {
-    func toTrackRowData() -> TrackRowData {
-        TrackRowData(
-            id: id,
-            uri: uri,
-            name: name,
-            artistName: artistName,
-            albumArtURL: imageURL?.absoluteString,
-            durationMs: durationMs,
-            trackNumber: nil,
             albumId: albumId,
             artistId: artistId,
             externalUrl: externalUrl,

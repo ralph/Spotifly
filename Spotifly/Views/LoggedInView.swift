@@ -31,8 +31,12 @@ struct LoggedInView: View {
     private var searchService: SearchService { SearchService(store: store) }
     private var topItemsService: TopItemsService { TopItemsService(store: store) }
     private var newReleasesService: NewReleasesService { NewReleasesService(store: store) }
+    private var connectService: ConnectService { ConnectService(store: store, deviceService: deviceService, queueService: queueService) }
 
     @State private var navigationCoordinator = NavigationCoordinator()
+
+    // Speaker settings
+    @AppStorage("showSpotifyConnectSpeakers") private var showConnectSpeakers: Bool = false
 
     init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
         self.authResult = authResult
@@ -83,6 +87,7 @@ struct LoggedInView: View {
         .environment(newReleasesService)
         .environment(navigationCoordinator)
         .environment(store)
+        .environment(connectService)
         .environment(trackService)
         .environment(playlistService)
         .environment(albumService)
@@ -104,6 +109,15 @@ struct LoggedInView: View {
             async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
 
             _ = await (favorites, topArtists, newReleases, recentlyPlayed)
+
+            // Only initialize player/Spirc and sync Connect if the setting is enabled
+            if showConnectSpeakers {
+                // Initialize player early so Spotifly appears as a Connect device immediately
+                await playbackViewModel.initializeIfNeeded(accessToken: token)
+
+                // Check if there's already active remote playback to sync with
+                await connectService.checkAndSyncRemotePlayback(accessToken: token)
+            }
         }
         .onChange(of: navigationCoordinator.pendingNavigationItem) { _, newValue in
             if let pendingItem = newValue {
@@ -257,9 +271,9 @@ struct LoggedInView: View {
                             QueueListView(playbackViewModel: playbackViewModel)
                                 .navigationTitle("nav.queue")
 
-                        case .devices:
-                            DevicesView()
-                                .navigationTitle("nav.devices")
+                        case .speakers:
+                            SpeakersView(playbackViewModel: playbackViewModel)
+                                .navigationTitle("nav.speakers")
 
                         case .searchResults:
                             // Handled in outer if statement

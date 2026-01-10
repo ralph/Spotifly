@@ -9,7 +9,7 @@ import SwiftUI
 
 /// Track row view for playlist edit mode
 struct EditTrackRow: View {
-    let track: PlaylistTrack
+    let track: Track
     let onRemove: () -> Void
 
     var body: some View {
