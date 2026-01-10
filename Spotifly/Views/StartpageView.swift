@@ -73,7 +73,7 @@ struct StartpageView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(store.topArtists) { artist in
-                            TopArtistCard(artist: artist)
+                            ArtistCard(artist: artist)
                         }
                     }
                     .padding(.horizontal)
@@ -112,7 +112,7 @@ struct StartpageView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(store.newReleaseAlbums) { album in
-                            NewReleaseCard(album: album)
+                            AlbumCard(album: album)
                         }
                     }
                     .padding(.horizontal)
@@ -218,130 +218,10 @@ struct StartpageView: View {
     }
 }
 
-// MARK: - Top Artist Card
-
-private struct TopArtistCard: View {
-    let artist: Artist
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
-
-    var body: some View {
-        Button {
-            navigationCoordinator.navigateToArtist(artistId: artist.id)
-        } label: {
-            VStack(spacing: 8) {
-                if let imageURL = artist.imageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(width: 120, height: 120)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .clipShape(Circle())
-                                .shadow(radius: 2)
-                        case .failure:
-                            artistPlaceholder
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
-                } else {
-                    artistPlaceholder
-                }
-
-                Text(artist.name)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .frame(width: 120)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var artistPlaceholder: some View {
-        Circle()
-            .fill(Color.gray.opacity(0.2))
-            .frame(width: 120, height: 120)
-            .overlay(
-                Image(systemName: "person.circle.fill")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.secondary),
-            )
-    }
-}
-
-// MARK: - New Release Card
-
-private struct NewReleaseCard: View {
-    let album: Album
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
-
-    var body: some View {
-        Button {
-            navigationCoordinator.navigateToAlbum(albumId: album.id)
-        } label: {
-            VStack(spacing: 8) {
-                if let imageURL = album.imageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(width: 120, height: 120)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .cornerRadius(4)
-                                .shadow(radius: 2)
-                        case .failure:
-                            albumPlaceholder
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
-                } else {
-                    albumPlaceholder
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(album.name)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .lineLimit(2)
-                    Text(album.artistName)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(width: 120, alignment: .leading)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var albumPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.gray.opacity(0.2))
-            .frame(width: 120, height: 120)
-            .overlay(
-                Image(systemName: "music.note")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary),
-            )
-    }
-}
-
 // MARK: - Recently Played Section
 
 struct RecentContentSection: View {
     let items: [RecentItem]
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -354,14 +234,10 @@ struct RecentContentSection: View {
                     ForEach(items) { item in
                         switch item {
                         case let .album(album):
-                            RecentAlbumCard(album: album) {
-                                navigationCoordinator.navigateToAlbum(albumId: album.id)
-                            }
+                            AlbumCard(album: album)
 
                         case let .playlist(playlist):
-                            RecentPlaylistCard(playlist: playlist) {
-                                navigationCoordinator.navigateToPlaylist(SearchPlaylist(from: playlist))
-                            }
+                            PlaylistCard(playlist: playlist)
 
                         case .artist:
                             // Artists are filtered out by recentAlbumsAndPlaylists
@@ -372,117 +248,5 @@ struct RecentContentSection: View {
                 .padding(.horizontal)
             }
         }
-    }
-}
-
-// MARK: - Recent Item Cards
-
-private struct RecentAlbumCard: View {
-    let album: Album
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: 8) {
-                if let imageURL = album.imageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(width: 120, height: 120)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .cornerRadius(4)
-                                .shadow(radius: 2)
-                        case .failure:
-                            albumPlaceholder
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
-                } else {
-                    albumPlaceholder
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(album.name)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .lineLimit(2)
-                    Text(album.artistName)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(width: 120, alignment: .leading)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var albumPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.gray.opacity(0.2))
-            .frame(width: 120, height: 120)
-            .overlay(
-                Image(systemName: "music.note")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary),
-            )
-    }
-}
-
-private struct RecentPlaylistCard: View {
-    let playlist: Playlist
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: 8) {
-                if let imageURL = playlist.imageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(width: 120, height: 120)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .cornerRadius(4)
-                                .shadow(radius: 2)
-                        case .failure:
-                            playlistPlaceholder
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
-                } else {
-                    playlistPlaceholder
-                }
-
-                Text(playlist.name)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .lineLimit(2)
-                    .frame(width: 120, alignment: .leading)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var playlistPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.gray.opacity(0.2))
-            .frame(width: 120, height: 120)
-            .overlay(
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary),
-            )
     }
 }

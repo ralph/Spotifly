@@ -244,57 +244,6 @@ extension Playlist {
     }
 }
 
-// MARK: - Reverse Conversions (Entity to API types)
-
-extension SearchAlbum {
-    /// Convert from unified Album entity (for views that expect SearchAlbum)
-    init(from album: Album) {
-        self.init(
-            id: album.id,
-            name: album.name,
-            uri: album.uri,
-            artistName: album.artistName,
-            artistId: album.artistId,
-            imageURL: album.imageURL,
-            totalTracks: album.trackCount,
-            releaseDate: album.releaseDate ?? "",
-            totalDurationMs: album.totalDurationMs,
-            externalUrl: album.externalUrl,
-        )
-    }
-}
-
-extension SearchArtist {
-    /// Convert from unified Artist entity (for views that expect SearchArtist)
-    init(from artist: Artist) {
-        self.init(
-            id: artist.id,
-            name: artist.name,
-            uri: artist.uri,
-            imageURL: artist.imageURL,
-            genres: artist.genres,
-            followers: artist.followers ?? 0,
-        )
-    }
-}
-
-extension SearchPlaylist {
-    /// Convert from unified Playlist entity (for views that expect SearchPlaylist)
-    init(from playlist: Playlist) {
-        self.init(
-            id: playlist.id,
-            name: playlist.name,
-            uri: playlist.uri,
-            description: playlist.description,
-            imageURL: playlist.imageURL,
-            trackCount: playlist.trackCount,
-            ownerId: playlist.ownerId,
-            ownerName: playlist.ownerName,
-            totalDurationMs: playlist.totalDurationMs,
-        )
-    }
-}
-
 // MARK: - Device Conversions
 
 extension Device {

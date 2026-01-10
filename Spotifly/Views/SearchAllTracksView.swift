@@ -1,38 +1,47 @@
 //
-//  SearchTracksDetailView.swift
+//  SearchAllTracksView.swift
 //  Spotifly
 //
-//  Shows all tracks from search results
+//  Displays all tracks from search results in a scrollable list
 //
 
 import SwiftUI
 
-struct SearchTracksDetailView: View {
-    let tracks: [SearchTrack]
+struct SearchAllTracksView: View {
+    let tracks: [Track]
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
-    @Environment(TrackService.self) private var trackService
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Header
+                // Header with play button
                 VStack(spacing: 16) {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 120, height: 120)
+                        .background(Color.gray.opacity(0.2))
+                        .cornerRadius(8)
+
                     VStack(spacing: 8) {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 60))
-                            .foregroundStyle(.green)
+                        Text("section.tracks")
+                            .font(.title2)
+                            .fontWeight(.semibold)
 
-                        Text("section.all_tracks")
-                            .font(.title)
-                            .fontWeight(.bold)
-
-                        Text(String(format: String(localized: "metadata.tracks"), tracks.count))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 4) {
+                            Text(String(format: String(localized: "metadata.tracks"), tracks.count))
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                            Text("metadata.separator")
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                            Text(totalDuration(of: tracks))
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
 
-                    // Play all button
                     Button {
                         playAllTracks()
                     } label: {
@@ -43,6 +52,7 @@ struct SearchTracksDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
+                    .disabled(tracks.isEmpty)
                 }
                 .padding(.top, 24)
 
@@ -56,7 +66,7 @@ struct SearchTracksDetailView: View {
                             playbackViewModel: playbackViewModel,
                         )
 
-                        if track.id != tracks.last?.id {
+                        if index < tracks.count - 1 {
                             Divider()
                                 .padding(.leading, 94)
                         }
@@ -67,12 +77,7 @@ struct SearchTracksDetailView: View {
                 .padding(.horizontal)
             }
         }
-        .task(id: tracks.map(\.id)) {
-            // Check favorite status and update store
-            let token = await session.validAccessToken()
-            let trackIds = tracks.map(\.id)
-            try? await trackService.checkFavoriteStatuses(trackIds: trackIds, accessToken: token)
-        }
+        .navigationTitle("section.tracks")
     }
 
     private func playAllTracks() {
