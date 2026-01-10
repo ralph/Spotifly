@@ -110,8 +110,8 @@ extension Track {
 // MARK: - Album Conversions
 
 extension Album {
-    /// Convert from AlbumSimplified (user's saved albums)
-    init(from album: AlbumSimplified) {
+    /// Convert from APIAlbum
+    init(from album: APIAlbum) {
         self.init(
             id: album.id,
             name: album.name,
@@ -119,8 +119,8 @@ extension Album {
             imageURL: album.imageURL,
             releaseDate: album.releaseDate,
             albumType: album.albumType,
-            externalUrl: nil,
-            artistId: nil,
+            externalUrl: album.externalUrl,
+            artistId: album.artistId,
             artistName: album.artistName,
             trackIds: [],
             totalDurationMs: album.totalDurationMs,
@@ -128,33 +128,15 @@ extension Album {
         )
     }
 
-    /// Convert from SearchAlbum (search results, album details)
-    init(from album: SearchAlbum) {
-        self.init(
-            id: album.id,
-            name: album.name,
-            uri: album.uri,
-            imageURL: album.imageURL,
-            releaseDate: album.releaseDate,
-            albumType: nil,
-            externalUrl: album.externalUrl,
-            artistId: album.artistId,
-            artistName: album.artistName,
-            trackIds: [],
-            totalDurationMs: album.totalDurationMs,
-            knownTrackCount: album.totalTracks,
-        )
-    }
-
     /// Create with explicit track IDs (when loading album details with tracks)
-    init(from album: SearchAlbum, trackIds: [String], totalDurationMs: Int?) {
+    init(from album: APIAlbum, trackIds: [String], totalDurationMs: Int?) {
         self.init(
             id: album.id,
             name: album.name,
             uri: album.uri,
             imageURL: album.imageURL,
             releaseDate: album.releaseDate,
-            albumType: nil,
+            albumType: album.albumType,
             externalUrl: album.externalUrl,
             artistId: album.artistId,
             artistName: album.artistName,
@@ -168,18 +150,8 @@ extension Album {
 // MARK: - Artist Conversions
 
 extension Artist {
-    /// Convert from ArtistSimplified (user's followed artists)
-    init(from artist: ArtistSimplified) {
-        id = artist.id
-        name = artist.name
-        uri = artist.uri
-        imageURL = artist.imageURL
-        genres = artist.genres
-        followers = artist.followers
-    }
-
-    /// Convert from SearchArtist (search results, artist details)
-    init(from artist: SearchArtist) {
+    /// Convert from APIArtist
+    init(from artist: APIArtist) {
         id = artist.id
         name = artist.name
         uri = artist.uri
@@ -192,32 +164,15 @@ extension Artist {
 // MARK: - Playlist Conversions
 
 extension Playlist {
-    /// Convert from PlaylistSimplified (user's playlists)
-    init(from playlist: PlaylistSimplified) {
+    /// Convert from APIPlaylist
+    init(from playlist: APIPlaylist) {
         self.init(
             id: playlist.id,
             name: playlist.name,
             description: playlist.description,
             imageURL: playlist.imageURL,
             uri: playlist.uri,
-            isPublic: playlist.isPublic,
-            ownerId: playlist.ownerId,
-            ownerName: playlist.ownerName,
-            trackIds: [],
-            totalDurationMs: playlist.totalDurationMs,
-            knownTrackCount: playlist.trackCount,
-        )
-    }
-
-    /// Convert from SearchPlaylist (search results, playlist details)
-    init(from playlist: SearchPlaylist) {
-        self.init(
-            id: playlist.id,
-            name: playlist.name,
-            description: playlist.description,
-            imageURL: playlist.imageURL,
-            uri: playlist.uri,
-            isPublic: true, // Search results don't include this
+            isPublic: playlist.isPublic ?? true,
             ownerId: playlist.ownerId,
             ownerName: playlist.ownerName,
             trackIds: [],
@@ -227,14 +182,14 @@ extension Playlist {
     }
 
     /// Create with explicit track IDs (when loading playlist details with tracks)
-    init(from playlist: SearchPlaylist, trackIds: [String], totalDurationMs: Int?) {
+    init(from playlist: APIPlaylist, trackIds: [String], totalDurationMs: Int?) {
         self.init(
             id: playlist.id,
             name: playlist.name,
             description: playlist.description,
             imageURL: playlist.imageURL,
             uri: playlist.uri,
-            isPublic: true,
+            isPublic: playlist.isPublic ?? true,
             ownerId: playlist.ownerId,
             ownerName: playlist.ownerName,
             trackIds: trackIds,

@@ -53,62 +53,64 @@ struct TrackMetadata: Sendable {
     }
 }
 
-/// Simplified playlist metadata from Spotify
-struct PlaylistSimplified: Sendable, Identifiable, DurationFormattable {
+/// Playlist metadata from Spotify API
+struct APIPlaylist: Sendable, Identifiable, DurationFormattable {
     let id: String
     var name: String
+    let uri: String
     let description: String?
     let imageURL: URL?
     var trackCount: Int
-    let uri: String
-    let isPublic: Bool
     let ownerId: String
     let ownerName: String
+    let isPublic: Bool?
     let totalDurationMs: Int?
 }
 
 /// Response wrapper for playlists endpoint
 struct PlaylistsResponse: Sendable {
-    let playlists: [PlaylistSimplified]
+    let playlists: [APIPlaylist]
     let total: Int
     let hasMore: Bool
     let nextOffset: Int?
 }
 
-/// Simplified album metadata from Spotify
-struct AlbumSimplified: Sendable, Identifiable, DurationFormattable {
+/// Album metadata from Spotify API
+struct APIAlbum: Sendable, Identifiable, DurationFormattable {
     let id: String
     let name: String
+    let uri: String
     let artistName: String
+    let artistId: String?
     let imageURL: URL?
     let trackCount: Int
-    let uri: String
     let releaseDate: String
-    let albumType: String
+    let albumType: String?
     let totalDurationMs: Int?
+    let externalUrl: String?
 }
 
 /// Response wrapper for albums endpoint
 struct AlbumsResponse: Sendable {
-    let albums: [AlbumSimplified]
+    let albums: [APIAlbum]
     let total: Int
     let hasMore: Bool
     let nextOffset: Int?
 }
 
-/// Simplified artist metadata from Spotify
-struct ArtistSimplified: Sendable, Identifiable {
+/// Artist metadata from Spotify API
+struct APIArtist: Sendable, Identifiable {
     let id: String
     let name: String
-    let imageURL: URL?
     let uri: String
+    let imageURL: URL?
     let genres: [String]
     let followers: Int
 }
 
 /// Response wrapper for artists endpoint
 struct ArtistsResponse: Sendable {
-    let artists: [ArtistSimplified]
+    let artists: [APIArtist]
     let total: Int
     let hasMore: Bool
     let nextCursor: String?
@@ -123,7 +125,7 @@ enum TopItemsTimeRange: String, Sendable {
 
 /// Response wrapper for user's top artists endpoint
 struct TopArtistsResponse: Sendable {
-    let artists: [ArtistSimplified]
+    let artists: [APIArtist]
     let total: Int
     let hasMore: Bool
     let nextOffset: Int?
@@ -131,7 +133,7 @@ struct TopArtistsResponse: Sendable {
 
 /// Response wrapper for new releases endpoint
 struct NewReleasesResponse: Sendable {
-    let albums: [AlbumSimplified]
+    let albums: [APIAlbum]
     let total: Int
     let hasMore: Bool
     let nextOffset: Int?
@@ -207,111 +209,6 @@ struct SearchTrack: Sendable, Identifiable {
     let albumId: String?
     let artistId: String?
     let externalUrl: String? // Web URL from Spotify API
-}
-
-/// Album search result
-struct SearchAlbum: Sendable, Identifiable, DurationFormattable {
-    let id: String
-    let name: String
-    let uri: String
-    let artistName: String
-    let artistId: String?
-    let imageURL: URL?
-    let totalTracks: Int
-    let releaseDate: String
-    let totalDurationMs: Int?
-    let externalUrl: String?
-
-    init(id: String, name: String, uri: String, artistName: String, artistId: String? = nil, imageURL: URL?, totalTracks: Int, releaseDate: String, totalDurationMs: Int? = nil, externalUrl: String? = nil) {
-        self.id = id
-        self.name = name
-        self.uri = uri
-        self.artistName = artistName
-        self.artistId = artistId
-        self.imageURL = imageURL
-        self.totalTracks = totalTracks
-        self.releaseDate = releaseDate
-        self.totalDurationMs = totalDurationMs
-        self.externalUrl = externalUrl
-    }
-
-    init(from album: AlbumSimplified, totalDurationMs: Int? = nil) {
-        id = album.id
-        name = album.name
-        uri = album.uri
-        artistName = album.artistName
-        artistId = nil // AlbumSimplified doesn't have artistId
-        imageURL = album.imageURL
-        totalTracks = album.trackCount
-        releaseDate = album.releaseDate
-        self.totalDurationMs = totalDurationMs
-        externalUrl = nil // AlbumSimplified doesn't have externalUrl
-    }
-}
-
-/// Artist search result
-struct SearchArtist: Sendable, Identifiable {
-    let id: String
-    let name: String
-    let uri: String
-    let imageURL: URL?
-    let genres: [String]
-    let followers: Int
-
-    init(id: String, name: String, uri: String, imageURL: URL?, genres: [String], followers: Int) {
-        self.id = id
-        self.name = name
-        self.uri = uri
-        self.imageURL = imageURL
-        self.genres = genres
-        self.followers = followers
-    }
-
-    init(from artist: ArtistSimplified) {
-        id = artist.id
-        name = artist.name
-        uri = artist.uri
-        imageURL = artist.imageURL
-        genres = artist.genres
-        followers = artist.followers
-    }
-}
-
-/// Playlist search result
-struct SearchPlaylist: Sendable, Identifiable, DurationFormattable, Equatable {
-    let id: String
-    let name: String
-    let uri: String
-    let description: String?
-    let imageURL: URL?
-    let trackCount: Int
-    let ownerId: String
-    let ownerName: String
-    let totalDurationMs: Int?
-
-    init(id: String, name: String, uri: String, description: String?, imageURL: URL?, trackCount: Int, ownerId: String, ownerName: String, totalDurationMs: Int? = nil) {
-        self.id = id
-        self.name = name
-        self.uri = uri
-        self.description = description
-        self.imageURL = imageURL
-        self.trackCount = trackCount
-        self.ownerId = ownerId
-        self.ownerName = ownerName
-        self.totalDurationMs = totalDurationMs
-    }
-
-    init(from playlist: PlaylistSimplified, totalDurationMs: Int? = nil) {
-        id = playlist.id
-        name = playlist.name
-        uri = playlist.uri
-        description = playlist.description
-        imageURL = playlist.imageURL
-        trackCount = playlist.trackCount
-        ownerId = playlist.ownerId
-        ownerName = playlist.ownerName
-        self.totalDurationMs = totalDurationMs
-    }
 }
 
 /// Search results wrapper (uses unified Entity types)
@@ -621,7 +518,7 @@ enum SpotifyAPI {
             throw SpotifyAPIError.invalidResponse
         }
 
-        let playlists = items.compactMap { item -> PlaylistSimplified? in
+        let playlists = items.compactMap { item -> APIPlaylist? in
             guard let id = item["id"] as? String,
                   let name = item["name"] as? String,
                   let uri = item["uri"] as? String,
@@ -661,16 +558,16 @@ enum SpotifyAPI {
                 }
             }
 
-            return PlaylistSimplified(
+            return APIPlaylist(
                 id: id,
                 name: name,
+                uri: uri,
                 description: description,
                 imageURL: imageURL,
                 trackCount: trackCount,
-                uri: uri,
-                isPublic: isPublic,
                 ownerId: ownerId,
                 ownerName: ownerName,
+                isPublic: isPublic,
                 totalDurationMs: totalDurationMs,
             )
         }
@@ -691,7 +588,7 @@ enum SpotifyAPI {
     /// - Parameters:
     ///   - accessToken: Spotify access token
     ///   - playlistId: Playlist ID
-    static func fetchPlaylistDetails(accessToken: String, playlistId: String) async throws -> SearchPlaylist {
+    static func fetchPlaylistDetails(accessToken: String, playlistId: String) async throws -> APIPlaylist {
         // Add fields parameter to request only what we need, and market=from_token for region-specific playlists
         let urlString = "\(baseURL)/playlists/\(playlistId)?fields=id,name,description,images,tracks(total,items(track(duration_ms))),uri,public,owner(id,display_name)&market=from_token"
         #if DEBUG
@@ -779,7 +676,7 @@ enum SpotifyAPI {
             }
         }
 
-        return SearchPlaylist(
+        return APIPlaylist(
             id: id,
             name: name,
             uri: uri,
@@ -788,6 +685,7 @@ enum SpotifyAPI {
             trackCount: trackCount,
             ownerId: ownerId,
             ownerName: ownerName,
+            isPublic: nil,
             totalDurationMs: totalDurationMs,
         )
     }
@@ -796,7 +694,7 @@ enum SpotifyAPI {
     /// - Parameters:
     ///   - accessToken: Spotify access token
     ///   - albumId: Album ID
-    static func fetchAlbumDetails(accessToken: String, albumId: String) async throws -> SearchAlbum {
+    static func fetchAlbumDetails(accessToken: String, albumId: String) async throws -> APIAlbum {
         let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,artists(id,name),images,tracks(items(duration_ms)),external_urls(spotify)"
         #if DEBUG
             apiLogger.debug("[GET] \(urlString)")
@@ -879,15 +777,16 @@ enum SpotifyAPI {
         let externalUrls = json["external_urls"] as? [String: Any]
         let externalUrl = externalUrls?["spotify"] as? String
 
-        return SearchAlbum(
+        return APIAlbum(
             id: id,
             name: name,
             uri: uri,
             artistName: artistName,
             artistId: artistId,
             imageURL: imageURL,
-            totalTracks: totalTracks,
+            trackCount: totalTracks,
             releaseDate: releaseDate,
+            albumType: nil,
             totalDurationMs: totalDurationMs,
             externalUrl: externalUrl,
         )
@@ -897,7 +796,7 @@ enum SpotifyAPI {
     /// - Parameters:
     ///   - accessToken: Spotify access token
     ///   - artistId: Artist ID
-    static func fetchArtistDetails(accessToken: String, artistId: String) async throws -> SearchArtist {
+    static func fetchArtistDetails(accessToken: String, artistId: String) async throws -> APIArtist {
         let urlString = "\(baseURL)/artists/\(artistId)?fields=id,name,uri,genres,followers(total),images"
         #if DEBUG
             apiLogger.debug("[GET] \(urlString)")
@@ -962,7 +861,7 @@ enum SpotifyAPI {
             imageURL = URL(string: urlString)
         }
 
-        return SearchArtist(
+        return APIArtist(
             id: id,
             name: name,
             uri: uri,
@@ -1030,7 +929,7 @@ enum SpotifyAPI {
             throw SpotifyAPIError.invalidResponse
         }
 
-        let albums = items.compactMap { item -> AlbumSimplified? in
+        let albums = items.compactMap { item -> APIAlbum? in
             guard let album = item["album"] as? [String: Any],
                   let id = album["id"] as? String,
                   let name = album["name"] as? String,
@@ -1067,16 +966,18 @@ enum SpotifyAPI {
                 }
             }
 
-            return AlbumSimplified(
+            return APIAlbum(
                 id: id,
                 name: name,
+                uri: uri,
                 artistName: artistName,
+                artistId: nil,
                 imageURL: imageURL,
                 trackCount: totalTracks,
-                uri: uri,
                 releaseDate: releaseDate,
                 albumType: albumType,
                 totalDurationMs: totalDurationMs,
+                externalUrl: nil,
             )
         }
 
@@ -1151,7 +1052,7 @@ enum SpotifyAPI {
             throw SpotifyAPIError.invalidResponse
         }
 
-        let artists = items.compactMap { item -> ArtistSimplified? in
+        let artists = items.compactMap { item -> APIArtist? in
             guard let id = item["id"] as? String,
                   let name = item["name"] as? String,
                   let uri = item["uri"] as? String
@@ -1171,13 +1072,13 @@ enum SpotifyAPI {
                 imageURL = URL(string: urlString)
             }
 
-            return ArtistSimplified(
+            return APIArtist(
                 id: id,
                 name: name,
-                imageURL: imageURL,
                 uri: uri,
+                imageURL: imageURL,
                 genres: genres,
-                followers: followers,
+                followers: followers
             )
         }
 
@@ -1759,7 +1660,7 @@ enum SpotifyAPI {
         accessToken: String,
         artistId: String,
         limit: Int = 50,
-    ) async throws -> [SearchAlbum] {
+    ) async throws -> [APIAlbum] {
         let urlString = "\(baseURL)/artists/\(artistId)/albums?include_groups=album,single&market=from_token&limit=\(limit)"
         #if DEBUG
             apiLogger.debug("[GET] \(urlString)")
@@ -1786,7 +1687,7 @@ enum SpotifyAPI {
                 throw SpotifyAPIError.invalidResponse
             }
 
-            let albums = items.compactMap { item -> SearchAlbum? in
+            let albums = items.compactMap { item -> APIAlbum? in
                 guard let id = item["id"] as? String,
                       let name = item["name"] as? String,
                       let uri = item["uri"] as? String,
@@ -1803,14 +1704,18 @@ enum SpotifyAPI {
                 let imageURLString = images?.first?["url"] as? String
                 let imageURL = imageURLString.flatMap { URL(string: $0) }
 
-                return SearchAlbum(
+                return APIAlbum(
                     id: id,
                     name: name,
                     uri: uri,
                     artistName: artistName,
+                    artistId: nil,
                     imageURL: imageURL,
-                    totalTracks: totalTracks,
+                    trackCount: totalTracks,
                     releaseDate: releaseDate,
+                    albumType: nil,
+                    totalDurationMs: nil,
+                    externalUrl: nil,
                 )
             }
 
@@ -2796,7 +2701,7 @@ enum SpotifyAPI {
         name: String,
         description: String? = nil,
         isPublic: Bool = false,
-    ) async throws -> PlaylistSimplified {
+    ) async throws -> APIPlaylist {
         let urlString = "\(baseURL)/users/\(userId)/playlists"
         #if DEBUG
             apiLogger.debug("[POST] \(urlString)")
@@ -2850,16 +2755,16 @@ enum SpotifyAPI {
                 imageURL = URL(string: urlString)
             }
 
-            return PlaylistSimplified(
+            return APIPlaylist(
                 id: id,
                 name: name,
+                uri: uri,
                 description: description,
                 imageURL: imageURL,
                 trackCount: 0,
-                uri: uri,
-                isPublic: isPublic,
                 ownerId: ownerId,
                 ownerName: ownerName,
+                isPublic: isPublic,
                 totalDurationMs: nil,
             )
 
@@ -3298,7 +3203,7 @@ enum SpotifyAPI {
             throw SpotifyAPIError.invalidResponse
         }
 
-        let artists = items.compactMap { item -> ArtistSimplified? in
+        let artists = items.compactMap { item -> APIArtist? in
             guard let id = item["id"] as? String,
                   let name = item["name"] as? String,
                   let uri = item["uri"] as? String
@@ -3318,13 +3223,13 @@ enum SpotifyAPI {
                 imageURL = URL(string: urlString)
             }
 
-            return ArtistSimplified(
+            return APIArtist(
                 id: id,
                 name: name,
-                imageURL: imageURL,
                 uri: uri,
+                imageURL: imageURL,
                 genres: genres,
-                followers: followers,
+                followers: followers
             )
         }
 
@@ -3401,7 +3306,7 @@ enum SpotifyAPI {
             throw SpotifyAPIError.invalidResponse
         }
 
-        let albums = items.compactMap { item -> AlbumSimplified? in
+        let albums = items.compactMap { item -> APIAlbum? in
             guard let id = item["id"] as? String,
                   let name = item["name"] as? String,
                   let uri = item["uri"] as? String
@@ -3430,16 +3335,18 @@ enum SpotifyAPI {
             let releaseDate = (item["release_date"] as? String) ?? ""
             let albumType = (item["album_type"] as? String) ?? "album"
 
-            return AlbumSimplified(
+            return APIAlbum(
                 id: id,
                 name: name,
+                uri: uri,
                 artistName: artistName,
+                artistId: nil,
                 imageURL: imageURL,
                 trackCount: trackCount,
-                uri: uri,
                 releaseDate: releaseDate,
                 albumType: albumType,
                 totalDurationMs: nil,
+                externalUrl: nil,
             )
         }
 
