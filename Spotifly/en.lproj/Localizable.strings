@@ -22,6 +22,9 @@
 "nav.queue" = "Queue";
 "nav.speakers" = "Speakers";
 "nav.library" = "Library";
+"nav.back_to %@" = "Back to %@";
+"nav.currently_viewing" = "Currently Viewing";
+"nav.your_library" = "Your Library";
 
 /* Common Actions */
 "action.play" = "Play";

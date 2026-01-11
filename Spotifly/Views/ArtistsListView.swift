@@ -89,7 +89,7 @@ struct ArtistsListView: View {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left")
                                         .font(.caption.weight(.semibold))
-                                    Text("Back to \(backTitle)")
+                                    Text("nav.back_to \(backTitle)")
                                         .font(.subheadline)
                                 }
                                 .foregroundStyle(.secondary)
@@ -101,7 +101,7 @@ struct ArtistsListView: View {
                         // Ephemeral "Currently Viewing" section
                         if let artist = ephemeralArtist {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Currently Viewing")
+                                Text("nav.currently_viewing")
                                     .font(.caption)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.secondary)
@@ -121,7 +121,7 @@ struct ArtistsListView: View {
                                 Divider()
                                     .padding(.vertical, 8)
 
-                                Text("Your Library")
+                                Text("nav.your_library")
                                     .font(.caption)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.secondary)
