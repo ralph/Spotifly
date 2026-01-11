@@ -83,12 +83,24 @@ final class SpotifySession {
         return await performRefreshAndReturn(refreshToken: refreshToken)
     }
 
-    /// Performs the token refresh and returns the new token
+    /// Performs the token refresh and returns the new token.
+    /// Uses a detached task to prevent cancellation from caller's context.
     private func performRefreshAndReturn(refreshToken: String) async -> String {
         isRefreshing = true
 
-        do {
-            let newResult = try await SpotifyAuth.refreshAccessToken(refreshToken: refreshToken)
+        // Use a detached task to prevent the refresh from being cancelled
+        // when the calling view/task is cancelled (e.g., user navigates away)
+        let result: Result<SpotifyAuthResult, Error> = await Task.detached(priority: .userInitiated) {
+            do {
+                let newResult = try await SpotifyAuth.refreshAccessToken(refreshToken: refreshToken)
+                return .success(newResult)
+            } catch {
+                return .failure(error)
+            }
+        }.value
+
+        switch result {
+        case let .success(newResult):
             update(with: newResult)
             try? KeychainManager.saveAuthResult(newResult)
             #if DEBUG
@@ -104,7 +116,8 @@ final class SpotifySession {
             isRefreshing = false
 
             return token
-        } catch {
+
+        case let .failure(error):
             #if DEBUG
                 print("[SpotifySession] Token refresh failed: \(error)")
             #endif
