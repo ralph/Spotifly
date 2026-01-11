@@ -20,6 +20,11 @@ struct PreferencesView: View {
                     Label("preferences.speakers", systemImage: "hifispeaker.2")
                 }
 
+            StartpageSettingsView()
+                .tabItem {
+                    Label("nav.startpage", systemImage: "house")
+                }
+
             InfoView()
                 .tabItem {
                     Label("preferences.info", systemImage: "info.circle")
@@ -101,6 +106,35 @@ struct SpeakersSettingsView: View {
             if !showConnectSpeakers, !showAirPlaySpeakers {
                 Section {
                     Text("preferences.speakers.none_enabled")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Startpage Settings Tab
+
+struct StartpageSettingsView: View {
+    @AppStorage("showTopArtists") private var showTopArtists: Bool = true
+    @AppStorage("showRecentlyPlayed") private var showRecentlyPlayed: Bool = true
+    @AppStorage("showNewReleases") private var showNewReleases: Bool = true
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("startpage.top_artists", isOn: $showTopArtists)
+                Toggle("recently_played.content", isOn: $showRecentlyPlayed)
+                Toggle("startpage.new_releases", isOn: $showNewReleases)
+            } header: {
+                Text("preferences.startpage.sections")
+            }
+
+            if !showTopArtists, !showRecentlyPlayed, !showNewReleases {
+                Section {
+                    Text("preferences.startpage.none_enabled")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -15,20 +15,41 @@ struct StartpageView: View {
     @Environment(TopItemsService.self) private var topItemsService
     @Environment(NewReleasesService.self) private var newReleasesService
 
+    // Startpage section preferences
+    @AppStorage("showTopArtists") private var showTopArtists: Bool = true
+    @AppStorage("showRecentlyPlayed") private var showRecentlyPlayed: Bool = true
+    @AppStorage("showNewReleases") private var showNewReleases: Bool = true
+
     @State private var versionTapCount = 0
     @State private var showTokenInfo = false
+
+    /// Whether any section is enabled
+    private var hasAnySectionEnabled: Bool {
+        showTopArtists || showRecentlyPlayed || showNewReleases
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                // Top Artists Section
-                topArtistsSection
+                if hasAnySectionEnabled {
+                    // Top Artists Section
+                    if showTopArtists {
+                        topArtistsSection
+                    }
 
-                // Recently Played (albums and playlists only)
-                recentlyPlayedSection
+                    // Recently Played (albums and playlists only)
+                    if showRecentlyPlayed {
+                        recentlyPlayedSection
+                    }
 
-                // New Releases Section
-                newReleasesSection
+                    // New Releases Section
+                    if showNewReleases {
+                        newReleasesSection
+                    }
+                } else {
+                    // Empty state when no sections are enabled
+                    emptyStateView
+                }
 
                 // Version Section
                 versionSection
@@ -37,10 +58,33 @@ struct StartpageView: View {
         }
         .refreshable {
             let token = await session.validAccessToken()
-            await topItemsService.refreshTopArtists(accessToken: token)
-            await newReleasesService.refresh(accessToken: token)
-            await recentlyPlayedService.refresh(accessToken: token)
+            if showTopArtists {
+                await topItemsService.refreshTopArtists(accessToken: token)
+            }
+            if showNewReleases {
+                await newReleasesService.refresh(accessToken: token)
+            }
+            if showRecentlyPlayed {
+                await recentlyPlayedService.refresh(accessToken: token)
+            }
         }
+    }
+
+    // MARK: - Empty State
+
+    private var emptyStateView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "house")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text("startpage.empty")
+                .font(.headline)
+            Text("startpage.empty.description")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
     }
 
     // MARK: - Top Artists Section

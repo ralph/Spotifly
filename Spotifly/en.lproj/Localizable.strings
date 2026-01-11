@@ -117,6 +117,8 @@
 "startpage.top_artists.empty" = "Listen to more music to see your top artists";
 "startpage.new_releases" = "New Releases";
 "startpage.new_releases.empty" = "No new releases available";
+"startpage.empty" = "No sections enabled";
+"startpage.empty.description" = "Enable sections in Preferences → Startpage";
 
 /* Recently Played */
 "recently_played.content" = "Recently Played";
@@ -203,3 +205,7 @@
 "preferences.speakers.airplay" = "Show AirPlay Speakers";
 "preferences.speakers.airplay_description" = "Show AirPlay output selector to stream audio to AirPlay-compatible speakers.";
 "preferences.speakers.none_enabled" = "Enable at least one option to show the Speakers section in the sidebar.";
+
+/* Startpage Preferences */
+"preferences.startpage.sections" = "Sections";
+"preferences.startpage.none_enabled" = "The startpage will be empty. Enable at least one section to show content.";

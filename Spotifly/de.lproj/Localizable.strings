@@ -117,6 +117,8 @@
 "startpage.top_artists.empty" = "Höre mehr Musik, um deine Top-Künstler zu sehen";
 "startpage.new_releases" = "Neuerscheinungen";
 "startpage.new_releases.empty" = "Keine Neuerscheinungen verfügbar";
+"startpage.empty" = "Keine Bereiche aktiviert";
+"startpage.empty.description" = "Aktiviere Bereiche in Einstellungen → Startseite";
 
 /* Recently Played */
 "recently_played.content" = "Kürzlich gespielt";
@@ -203,3 +205,7 @@
 "preferences.speakers.airplay" = "AirPlay Lautsprecher anzeigen";
 "preferences.speakers.airplay_description" = "AirPlay-Ausgabeauswahl anzeigen, um Audio auf AirPlay-kompatible Lautsprecher zu streamen.";
 "preferences.speakers.none_enabled" = "Aktiviere mindestens eine Option, um den Lautsprecher-Bereich in der Seitenleiste anzuzeigen.";
+
+/* Startpage Preferences */
+"preferences.startpage.sections" = "Bereiche";
+"preferences.startpage.none_enabled" = "Die Startseite wird leer sein. Aktiviere mindestens einen Bereich, um Inhalte anzuzeigen.";
