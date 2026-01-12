@@ -190,7 +190,9 @@ final class PlaybackViewModel {
         errorMessage = nil
 
         do {
-            try await SpotifyPlayer.addToQueue(trackUri: trackUri)
+            // Use Web API to add to queue - this goes through Spotify's servers
+            // and syncs with Spirc via dealer for proper Connect state
+            try await SpotifyAPI.addToQueue(trackUri: trackUri, accessToken: accessToken)
             // Update queue state to reflect the change
             updateQueueState()
         } catch {
@@ -212,6 +214,10 @@ final class PlaybackViewModel {
         errorMessage = nil
 
         do {
+            // Note: Spotify Web API doesn't support "play next" directly.
+            // Using Rust FFI which inserts at position 0 in local queue.
+            // This works when Spirc is not active; when Spirc is active,
+            // consider using addToQueue instead (adds to end of queue).
             try await SpotifyPlayer.addNextToQueue(trackUri: trackUri)
             // Update queue state to reflect the change
             updateQueueState()

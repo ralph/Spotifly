@@ -1,4 +1,4 @@
-use librespot_connect::{ConnectConfig, Spirc};
+use librespot_connect::{ConnectConfig, LoadRequest, LoadRequestOptions, Spirc};
 use librespot_core::config::DeviceType;
 use librespot_core::session::Session;
 use librespot_core::SessionConfig;
@@ -526,6 +526,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 /// - track_uris_json: JSON array of track URIs as a C string (e.g., "[\"spotify:track:xxx\", \"spotify:track:yyy\"]")
 #[no_mangle]
 pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
+    println!("[Spotifly] spotifly_play_tracks called");
     if track_uris_json.is_null() {
         eprintln!("Play tracks error: track_uris_json is null");
         return -1;
@@ -555,6 +556,30 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
         return -1;
     }
 
+    // Try to use Spirc.load() for proper Connect state sync
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        let load_request = LoadRequest::from_tracks(
+            track_uris.clone(),
+            LoadRequestOptions {
+                start_playing: true,
+                seek_to: 0,
+                ..Default::default()
+            },
+        );
+        match spirc.load(load_request) {
+            Ok(_) => {
+                drop(spirc_guard);
+                return 0;
+            }
+            Err(e) => {
+                eprintln!("Spirc.load() failed: {:?}, falling back to direct player", e);
+            }
+        }
+    }
+    drop(spirc_guard);
+
+    // Fallback to direct player if Spirc is not available
     let player_guard = PLAYER.lock().unwrap();
     let player = match player_guard.as_ref() {
         Some(p) => Arc::clone(p),
@@ -618,7 +643,7 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
             return Err("No valid tracks loaded".to_string());
         }
 
-        // Update queue
+        // Update queue (only for fallback mode without Spirc)
         let mut queue_guard = QUEUE.lock().unwrap();
         queue_guard.clear();
         queue_guard.extend(queue_items);
@@ -662,9 +687,54 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
         }
     };
 
+    println!("[Spotifly] spotifly_play_track called: {}", input_str);
+
     // Convert URL to URI if needed
     let uri_str = url_to_uri(&input_str);
 
+    // Try to use Spirc.load() for proper Connect state sync
+    // For albums, playlists, artists: use context_uri so Spirc/Spotify manages the queue
+    // For single tracks: use from_tracks with single track
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        let load_result = if uri_str.starts_with("spotify:track:") {
+            // Single track - use from_tracks
+            let load_request = LoadRequest::from_tracks(
+                vec![uri_str.clone()],
+                LoadRequestOptions {
+                    start_playing: true,
+                    seek_to: 0,
+                    ..Default::default()
+                },
+            );
+            spirc.load(load_request)
+        } else {
+            // Albums, playlists, artists - use context_uri
+            let load_request = LoadRequest::from_context_uri(
+                uri_str.clone(),
+                LoadRequestOptions {
+                    start_playing: true,
+                    seek_to: 0,
+                    ..Default::default()
+                },
+            );
+            spirc.load(load_request)
+        };
+
+        match load_result {
+            Ok(_) => {
+                drop(spirc_guard);
+                IS_PLAYING.store(true, Ordering::SeqCst);
+                return 0;
+            }
+            Err(e) => {
+                eprintln!("Spirc.load() failed: {:?}, falling back to direct player", e);
+            }
+        }
+    }
+    drop(spirc_guard);
+
+    // Fallback to direct player if Spirc is not available
     let player_guard = PLAYER.lock().unwrap();
     let player = match player_guard.as_ref() {
         Some(p) => Arc::clone(p),
@@ -691,7 +761,7 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
 
         match spotify_uri {
             SpotifyUri::Track { .. } => {
-                // Single track - create queue with one item
+                // Single track - create queue with one item (fallback mode only)
                 let track = Track::get(&session, &spotify_uri).await
                     .map_err(|e| format!("Failed to load track: {:?}", e))?;
 
@@ -723,7 +793,7 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
                 player.load(spotify_uri, true, 0);
             }
             SpotifyUri::Album { .. } => {
-                // Load album tracks
+                // Load album tracks (fallback mode only)
                 let queue_items = load_album(&session, spotify_uri.clone()).await?;
 
                 if queue_items.is_empty() {
@@ -742,7 +812,7 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
                 player.load(first_uri, true, 0);
             }
             SpotifyUri::Playlist { .. } => {
-                // Load playlist tracks
+                // Load playlist tracks (fallback mode only)
                 let queue_items = load_playlist(&session, spotify_uri.clone()).await?;
 
                 if queue_items.is_empty() {
@@ -761,7 +831,7 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
                 player.load(first_uri, true, 0);
             }
             SpotifyUri::Artist { .. } => {
-                // Load artist top tracks
+                // Load artist top tracks (fallback mode only)
                 let queue_items = load_artist(&session, spotify_uri.clone()).await?;
 
                 if queue_items.is_empty() {
@@ -803,6 +873,7 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_pause() -> i32 {
+    println!("[Spotifly] spotifly_pause called");
     // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
@@ -832,6 +903,7 @@ pub extern "C" fn spotifly_pause() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_resume() -> i32 {
+    println!("[Spotifly] spotifly_resume called");
     // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
@@ -861,6 +933,7 @@ pub extern "C" fn spotifly_resume() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_stop() -> i32 {
+    println!("[Spotifly] spotifly_stop called");
     let player_guard = PLAYER.lock().unwrap();
     match player_guard.as_ref() {
         Some(player) => {
@@ -880,6 +953,7 @@ pub extern "C" fn spotifly_stop() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_shutdown() -> i32 {
+    println!("[Spotifly] spotifly_shutdown called");
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
         if spirc.shutdown().is_ok() {
@@ -894,6 +968,7 @@ pub extern "C" fn spotifly_shutdown() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_set_shuffle(shuffle: bool) -> i32 {
+    println!("[Spotifly] spotifly_set_shuffle called: {}", shuffle);
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
         if spirc.shuffle(shuffle).is_ok() {
@@ -907,6 +982,7 @@ pub extern "C" fn spotifly_set_shuffle(shuffle: bool) -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_set_repeat(repeat: bool) -> i32 {
+    println!("[Spotifly] spotifly_set_repeat called: {}", repeat);
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
         if spirc.repeat(repeat).is_ok() {
@@ -921,6 +997,7 @@ pub extern "C" fn spotifly_set_repeat(repeat: bool) -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_set_repeat_track(repeat: bool) -> i32 {
+    println!("[Spotifly] spotifly_set_repeat_track called: {}", repeat);
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
         if spirc.repeat_track(repeat).is_ok() {
@@ -965,6 +1042,7 @@ pub extern "C" fn spotifly_get_position_ms() -> u32 {
 /// Returns 0 on success, -1 on error or if at end of queue.
 #[no_mangle]
 pub extern "C" fn spotifly_next() -> i32 {
+    println!("[Spotifly] spotifly_next called");
     // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
@@ -1020,6 +1098,7 @@ pub extern "C" fn spotifly_next() -> i32 {
 /// Returns 0 on success, -1 on error or if at start of queue.
 #[no_mangle]
 pub extern "C" fn spotifly_previous() -> i32 {
+    println!("[Spotifly] spotifly_previous called");
     // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
@@ -1074,6 +1153,7 @@ pub extern "C" fn spotifly_previous() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
+    println!("[Spotifly] spotifly_seek called: {}ms", position_ms);
     // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
@@ -1102,6 +1182,7 @@ pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_jump_to_index(index: usize) -> i32 {
+    println!("[Spotifly] spotifly_jump_to_index called: {}", index);
     let queue_guard = QUEUE.lock().unwrap();
 
     if index >= queue_guard.len() {
@@ -1331,6 +1412,8 @@ pub extern "C" fn spotifly_add_to_queue(track_uri: *const c_char) -> i32 {
         }
     };
 
+    println!("[Spotifly] spotifly_add_to_queue called: {}", uri_str);
+
     let session_guard = SESSION.lock().unwrap();
     let session = match session_guard.as_ref() {
         Some(s) => s.clone(),
@@ -1412,6 +1495,8 @@ pub extern "C" fn spotifly_add_next_to_queue(track_uri: *const c_char) -> i32 {
         }
     };
 
+    println!("[Spotifly] spotifly_add_next_to_queue called: {}", uri_str);
+
     let session_guard = SESSION.lock().unwrap();
     let session = match session_guard.as_ref() {
         Some(s) => s.clone(),
@@ -1487,6 +1572,7 @@ pub extern "C" fn spotifly_add_next_to_queue(track_uri: *const c_char) -> i32 {
 /// Returns 0 on success, -1 on error or if trying to remove a played/playing track.
 #[no_mangle]
 pub extern "C" fn spotifly_remove_from_queue(index: usize) -> i32 {
+    println!("[Spotifly] spotifly_remove_from_queue called: index={}", index);
     let mut queue_guard = QUEUE.lock().unwrap();
     let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
 
@@ -1510,6 +1596,7 @@ pub extern "C" fn spotifly_remove_from_queue(index: usize) -> i32 {
 /// Returns 0 on success, -1 on error or if trying to move played/playing tracks.
 #[no_mangle]
 pub extern "C" fn spotifly_move_queue_item(from_index: usize, to_index: usize) -> i32 {
+    println!("[Spotifly] spotifly_move_queue_item called: from={} to={}", from_index, to_index);
     let mut queue_guard = QUEUE.lock().unwrap();
     let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
 
@@ -1543,6 +1630,7 @@ pub extern "C" fn spotifly_move_queue_item(from_index: usize, to_index: usize) -
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_clear_upcoming_queue() -> i32 {
+    println!("[Spotifly] spotifly_clear_upcoming_queue called");
     let mut queue_guard = QUEUE.lock().unwrap();
     let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
 
@@ -1646,6 +1734,7 @@ pub extern "C" fn spotifly_get_radio_tracks(track_uri: *const c_char) -> *mut c_
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
+    println!("[Spotifly] spotifly_set_volume called: {}", volume);
     // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
@@ -1710,6 +1799,7 @@ pub extern "C" fn spotifly_get_gapless() -> bool {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_transfer_to_local() -> i32 {
+    println!("[Spotifly] spotifly_transfer_to_local called");
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => {
@@ -1751,6 +1841,8 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
             }
         }
     };
+
+    println!("[Spotifly] spotifly_transfer_playback called: {}", to_device_str);
 
     let session_guard = SESSION.lock().unwrap();
     let session = match session_guard.as_ref() {
