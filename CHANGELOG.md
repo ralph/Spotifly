@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Volume changes now use `Spirc.set_volume()` to properly sync volume with Spotify Connect state
 - Next/previous track now use `Spirc.next()`/`Spirc.prev()` to properly sync with Spotify Connect state
 - Pause/resume now use `Spirc.pause()`/`Spirc.play()` to properly sync with Spotify Connect state
+- App now calls `Spirc.shutdown()` on quit to properly disconnect from Spotify Connect and notify other devices
 
 ### Removed
 - Obsolete 500ms seek delay hack for transfer to local - native transfer preserves position seamlessly

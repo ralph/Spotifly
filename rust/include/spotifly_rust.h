@@ -43,6 +43,11 @@ int32_t spotifly_resume(void);
 /// Returns 0 on success, -1 on error.
 int32_t spotifly_stop(void);
 
+/// Shuts down the Spirc connection and sends goodbye to other devices.
+/// Call this when the app is quitting to properly disconnect from Spotify Connect.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_shutdown(void);
+
 /// Returns 1 if currently playing, 0 otherwise.
 int32_t spotifly_is_playing(void);
 

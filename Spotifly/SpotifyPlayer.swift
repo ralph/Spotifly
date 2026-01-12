@@ -179,6 +179,12 @@ enum SpotifyPlayer {
         spotifly_stop()
     }
 
+    /// Shuts down the Spirc connection and sends goodbye to other devices.
+    /// Call this when the app is quitting to properly disconnect from Spotify Connect.
+    static func shutdown() {
+        spotifly_shutdown()
+    }
+
     /// Returns whether the player is currently playing.
     static var isPlaying: Bool {
         spotifly_is_playing() == 1

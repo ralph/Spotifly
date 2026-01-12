@@ -48,10 +48,20 @@ extension FocusedValues {
     }
 }
 
+// MARK: - App Delegate
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillTerminate(_ notification: Notification) {
+        // Shut down Spirc to send goodbye to other Spotify Connect devices
+        SpotifyPlayer.shutdown()
+    }
+}
+
 // MARK: - App
 
 @main
 struct SpotiflyApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var windowState = WindowState()
 
     init() {

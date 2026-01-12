@@ -875,6 +875,20 @@ pub extern "C" fn spotifly_stop() -> i32 {
     }
 }
 
+/// Shuts down the Spirc connection and sends goodbye to other devices.
+/// Call this when the app is quitting to properly disconnect from Spotify Connect.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_shutdown() -> i32 {
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        if spirc.shutdown().is_ok() {
+            return 0;
+        }
+    }
+    -1
+}
+
 /// Returns 1 if currently playing, 0 otherwise.
 #[no_mangle]
 pub extern "C" fn spotifly_is_playing() -> i32 {
