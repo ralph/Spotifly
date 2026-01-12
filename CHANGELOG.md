@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Seeking now uses `Spirc.set_position_ms()` to properly sync position with Spotify Connect state
 - Volume changes now use `Spirc.set_volume()` to properly sync volume with Spotify Connect state
 - Next/previous track now use `Spirc.next()`/`Spirc.prev()` to properly sync with Spotify Connect state
-- Pause now uses `Spirc.pause()` to properly sync with Spotify Connect state
+- Pause/resume now use `Spirc.pause()`/`Spirc.play()` to properly sync with Spotify Connect state
 
 ### Removed
 - Obsolete 500ms seek delay hack for transfer to local - native transfer preserves position seamlessly
