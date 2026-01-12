@@ -1549,6 +1549,16 @@ pub extern "C" fn spotifly_get_radio_tracks(track_uri: *const c_char) -> *mut c_
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
+    // Try to use Spirc for proper Connect state sync
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        if spirc.set_volume(volume).is_ok() {
+            return 0;
+        }
+    }
+    drop(spirc_guard);
+
+    // Fallback to direct mixer control if Spirc not available
     let mixer_guard = MIXER.lock().unwrap();
     match mixer_guard.as_ref() {
         Some(mixer) => {
