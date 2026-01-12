@@ -411,6 +411,18 @@ enum SpotifyPlayer {
         }
     }
 
+    /// Transfers playback from this local player to another device.
+    /// Uses the native Spotify Connect protocol via SpClient for seamless handoff.
+    /// - Parameter deviceId: The target device ID to transfer playback to
+    static func transferPlayback(to deviceId: String) throws {
+        let result = deviceId.withCString { ptr in
+            spotifly_transfer_playback(ptr)
+        }
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
     // MARK: - Playback Settings
 
     /// Streaming bitrate options

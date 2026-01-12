@@ -167,6 +167,13 @@ int32_t spotifly_set_volume(uint16_t volume);
 /// Returns 0 on success, -1 on error.
 int32_t spotifly_transfer_to_local(void);
 
+/// Transfers playback from this local player to another device.
+/// Uses the native Spotify Connect protocol via SpClient.
+/// Returns 0 on success, -1 on error.
+///
+/// @param to_device_id The target device ID to transfer playback to
+int32_t spotifly_transfer_playback(const char* to_device_id);
+
 // ============================================================================
 // Playback settings (take effect on next player initialization)
 // ============================================================================

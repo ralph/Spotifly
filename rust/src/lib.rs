@@ -32,6 +32,7 @@ static PLAYER: Lazy<Mutex<Option<Arc<Player>>>> = Lazy::new(|| Mutex::new(None))
 static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
 static MIXER: Lazy<Mutex<Option<Arc<SoftMixer>>>> = Lazy::new(|| Mutex::new(None));
 static SPIRC: Lazy<Mutex<Option<Arc<Spirc>>>> = Lazy::new(|| Mutex::new(None));
+static DEVICE_ID: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
 
@@ -328,10 +329,17 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
 }
 
 async fn init_player_async(access_token: &str) -> Result<(), String> {
+    let device_id = format!("spotifly_{}", std::process::id());
     let session_config = SessionConfig {
-        device_id: format!("spotifly_{}", std::process::id()),
+        device_id: device_id.clone(),
         ..Default::default()
     };
+
+    // Store device ID for later use in transfers
+    {
+        let mut device_id_guard = DEVICE_ID.lock().unwrap();
+        *device_id_guard = Some(device_id);
+    }
 
     // Create credentials - will be used by Spirc to connect
     let credentials = librespot_core::authentication::Credentials::with_access_token(access_token);
@@ -1599,6 +1607,74 @@ pub extern "C" fn spotifly_transfer_to_local() -> i32 {
         }
         None => {
             eprintln!("Transfer error: Spirc not initialized");
+            -1
+        }
+    }
+}
+
+/// Transfers playback from this local player to another device.
+/// Uses the native Spotify Connect protocol via SpClient.
+/// Returns 0 on success, -1 on error.
+///
+/// # Parameters
+/// - to_device_id: The target device ID to transfer playback to
+#[no_mangle]
+pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32 {
+    if to_device_id.is_null() {
+        eprintln!("Transfer playback error: to_device_id is null");
+        return -1;
+    }
+
+    let to_device_str = unsafe {
+        match CStr::from_ptr(to_device_id).to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                eprintln!("Transfer playback error: invalid to_device_id string");
+                return -1;
+            }
+        }
+    };
+
+    let session_guard = SESSION.lock().unwrap();
+    let session = match session_guard.as_ref() {
+        Some(s) => s.clone(),
+        None => {
+            eprintln!("Transfer playback error: session not initialized");
+            return -1;
+        }
+    };
+    drop(session_guard);
+
+    let device_id_guard = DEVICE_ID.lock().unwrap();
+    let from_device_id = match device_id_guard.as_ref() {
+        Some(id) => id.clone(),
+        None => {
+            eprintln!("Transfer playback error: device ID not initialized");
+            return -1;
+        }
+    };
+    drop(device_id_guard);
+
+    let result: Result<(), String> = RUNTIME.block_on(async {
+        session.spclient()
+            .transfer(&from_device_id, &to_device_str, None)
+            .await
+            .map_err(|e| format!("Transfer failed: {:?}", e))?;
+        Ok(())
+    });
+
+    match result {
+        Ok(_) => {
+            // Pause local playback after successful transfer
+            let player_guard = PLAYER.lock().unwrap();
+            if let Some(player) = player_guard.as_ref() {
+                player.pause();
+            }
+            IS_PLAYING.store(false, Ordering::SeqCst);
+            0
+        }
+        Err(e) => {
+            eprintln!("Transfer playback error: {}", e);
             -1
         }
     }
