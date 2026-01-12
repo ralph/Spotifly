@@ -162,6 +162,11 @@ char* spotifly_get_radio_tracks(const char* track_uri);
 /// @param volume Volume level (0 = muted, 65535 = max)
 int32_t spotifly_set_volume(uint16_t volume);
 
+/// Transfers playback from another device to this local player.
+/// Uses the native Spotify Connect protocol via Spirc.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_transfer_to_local(void);
+
 // ============================================================================
 // Playback settings (take effect on next player initialization)
 // ============================================================================

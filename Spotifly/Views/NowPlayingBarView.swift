@@ -223,10 +223,7 @@ struct NowPlayingBarView: View {
     }
 
     private func transferToLocalPlayback() {
-        Task {
-            let token = await session.validAccessToken()
-            await connectService.transferToLocal(playbackViewModel: playbackViewModel, accessToken: token)
-        }
+        connectService.transferToLocal()
     }
 
     private var playbackControls: some View {

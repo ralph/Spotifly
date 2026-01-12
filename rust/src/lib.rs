@@ -1579,3 +1579,27 @@ pub extern "C" fn spotifly_set_gapless(enabled: bool) {
 pub extern "C" fn spotifly_get_gapless() -> bool {
     GAPLESS_SETTING.load(Ordering::SeqCst)
 }
+
+/// Transfers playback from another device to this local player.
+/// Uses the native Spotify Connect protocol via Spirc.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_transfer_to_local() -> i32 {
+    let spirc_guard = SPIRC.lock().unwrap();
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            // Pass None to transfer from whatever device is currently playing
+            match spirc.transfer(None) {
+                Ok(_) => 0,
+                Err(e) => {
+                    eprintln!("Transfer error: {:?}", e);
+                    -1
+                }
+            }
+        }
+        None => {
+            eprintln!("Transfer error: Spirc not initialized");
+            -1
+        }
+    }
+}

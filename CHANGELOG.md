@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Transfer to local playback now uses librespot's native `Spirc.transfer()` method instead of Web API workaround
+- Removed 500ms seek delay hack - native transfer preserves playback position seamlessly
+
 ## [1.2.0] - 2026-01-12
 
 ### Added

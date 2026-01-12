@@ -402,6 +402,15 @@ enum SpotifyPlayer {
         return trackUris
     }
 
+    /// Transfers playback from another Spotify Connect device to this local player.
+    /// Uses the native Spotify Connect protocol via Spirc for seamless handoff.
+    static func transferToLocal() throws {
+        let result = spotifly_transfer_to_local()
+        guard result == 0 else {
+            throw SpotifyPlayerError.playbackFailed
+        }
+    }
+
     // MARK: - Playback Settings
 
     /// Streaming bitrate options

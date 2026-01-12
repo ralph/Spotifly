@@ -310,10 +310,10 @@ struct ThisComputerRow: View {
     }
 
     private func transferToLocalPlayback() {
+        connectService.transferToLocal()
+        // Refresh devices list so the UI updates
         Task {
             let token = await session.validAccessToken()
-            await connectService.transferToLocal(playbackViewModel: playbackViewModel, accessToken: token)
-            // Refresh devices list so the UI updates
             await deviceService.loadDevices(accessToken: token)
         }
     }
