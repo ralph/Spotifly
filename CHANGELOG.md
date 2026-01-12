@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Obsolete 500ms seek delay hack for transfer to local - native transfer preserves position seamlessly
 - Obsolete Web API transfer functions (`SpotifyAPI.transferPlayback()`, `SpotifyAPI.startPlayback()`) - replaced by native librespot calls
+- Local queue management (`QUEUE`, `CURRENT_INDEX`) - queue is now fully managed by Spirc's ConnectState
+- Fallback code for playback controls - all controls now require Spirc (no standalone player mode)
+- Rust FFI queue functions deprecated - use Spotify Web API instead (GET/POST /me/player/queue)
 
 ## [1.2.0] - 2026-01-12
 

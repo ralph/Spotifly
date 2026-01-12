@@ -4,7 +4,7 @@ use librespot_core::session::Session;
 use librespot_core::SessionConfig;
 use librespot_core::cache::Cache;
 use librespot_core::SpotifyUri;
-use librespot_metadata::{Album, Artist, Metadata, Playlist, Track};
+use librespot_metadata::{Metadata, Playlist};
 use librespot_playback::audio_backend;
 use librespot_playback::config::{AudioFormat, Bitrate, PlayerConfig};
 use librespot_playback::mixer::softmixer::SoftMixer;
@@ -13,7 +13,7 @@ use librespot_playback::player::{Player, PlayerEvent};
 use once_cell::sync::Lazy;
 use std::ffi::{c_char, CStr, CString};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
@@ -36,9 +36,8 @@ static DEVICE_ID: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
 
-// Queue state
-static QUEUE: Lazy<Mutex<Vec<QueueItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
-static CURRENT_INDEX: AtomicUsize = AtomicUsize::new(0);
+// Note: Queue state is now managed by Spirc's ConnectState.
+// Use Spotify Web API (GET/POST /me/player/queue) for queue operations.
 
 // Position tracking - updated from player events
 static POSITION_MS: AtomicU32 = AtomicU32::new(0);
@@ -64,17 +63,8 @@ fn update_position(position_ms: u32) {
     POSITION_TIMESTAMP_MS.store(current_timestamp_ms(), Ordering::SeqCst);
 }
 
-#[derive(Clone, serde::Serialize)]
-struct QueueItem {
-    uri: String,
-    track_name: String,
-    artist_name: String,
-    album_art_url: String,
-    duration_ms: u32,
-    album_id: Option<String>,
-    artist_id: Option<String>,
-    external_url: Option<String>,
-}
+// QueueItem struct removed - queue is now managed by Spirc's ConnectState.
+// Use Spotify Web API for queue operations.
 
 // Helper function to convert URL to URI
 fn url_to_uri(input: &str) -> String {
@@ -119,161 +109,17 @@ fn parse_spotify_uri(uri_str: &str) -> Result<SpotifyUri, String> {
         .map_err(|e| format!("Invalid Spotify URI: {:?}", e))
 }
 
-// Helper function to extract album art URL from track
-fn get_album_art_url(track: &Track) -> String {
-    // Try to get largest album cover from track metadata
-    track.album.covers.iter()
-        .max_by_key(|img| img.width * img.height)
-        .and_then(|img| {
-            img.id.to_base16().ok().map(|file_id_hex| {
-                format!("https://i.scdn.co/image/{}", file_id_hex)
-            })
-        })
-        .unwrap_or_default()
-}
-
-// Helper function to extract album ID from track
-fn get_album_id(track: &Track) -> Option<String> {
-    Some(track.album.id.to_id().ok()?)
-}
-
-// Helper function to extract first artist ID from track
-fn get_artist_id(track: &Track) -> Option<String> {
-    track.artists.first()
-        .and_then(|a| a.id.to_id().ok())
-}
-
-// Helper function to build external URL from track URI
-fn get_external_url(uri: &str) -> Option<String> {
-    // URI format: spotify:track:TRACKID
-    let parts: Vec<&str> = uri.split(':').collect();
-    if parts.len() == 3 && parts[1] == "track" {
-        Some(format!("https://open.spotify.com/track/{}", parts[2]))
-    } else {
-        None
-    }
-}
-
-// Load album tracks into queue
-async fn load_album(session: &Session, album_uri: SpotifyUri) -> Result<Vec<QueueItem>, String> {
-    let album = Album::get(session, &album_uri).await
-        .map_err(|e| format!("Failed to load album: {:?}", e))?;
-
-    let mut queue_items = Vec::new();
-
-    // Get track URIs from album
-    let track_uris: Vec<SpotifyUri> = album.tracks()
-        .cloned()
-        .collect();
-
-    // Fetch metadata for each track
-    for track_uri in track_uris {
-        if let Ok(track) = Track::get(session, &track_uri).await {
-            let uri_str = track_uri.to_string();
-            let track_name = track.name.clone();
-            let artist_name = track.artists.iter()
-                .map(|a| a.name.clone())
-                .collect::<Vec<_>>()
-                .join(", ");
-            let album_art_url = get_album_art_url(&track);
-            let duration_ms = track.duration as u32;
-
-            queue_items.push(QueueItem {
-                uri: uri_str.clone(),
-                track_name,
-                artist_name,
-                album_art_url,
-                duration_ms,
-                album_id: get_album_id(&track),
-                artist_id: get_artist_id(&track),
-                external_url: get_external_url(&uri_str),
-            });
-        }
-    }
-
-    Ok(queue_items)
-}
-
-// Load playlist tracks into queue
-async fn load_playlist(session: &Session, playlist_uri: SpotifyUri) -> Result<Vec<QueueItem>, String> {
+// Load playlist track URIs (for radio)
+async fn load_playlist_track_uris(session: &Session, playlist_uri: SpotifyUri) -> Result<Vec<String>, String> {
     let playlist = Playlist::get(session, &playlist_uri).await
         .map_err(|e| format!("Failed to load playlist: {:?}", e))?;
 
-    let mut queue_items = Vec::new();
-
-    for item_uri in playlist.tracks() {
-        // Only handle track URIs, skip episodes
-        if matches!(item_uri, SpotifyUri::Track { .. }) {
-            let track_uri = item_uri.clone();
-
-            // Fetch track metadata
-            if let Ok(track) = Track::get(session, &track_uri).await {
-                let uri_str = track_uri.to_string();
-                let track_name = track.name.clone();
-                let artist_name = track.artists.iter()
-                    .map(|a| a.name.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let album_art_url = get_album_art_url(&track);
-                let duration_ms = track.duration as u32;
-
-                queue_items.push(QueueItem {
-                    uri: uri_str.clone(),
-                    track_name,
-                    artist_name,
-                    album_art_url,
-                    duration_ms,
-                    album_id: get_album_id(&track),
-                    artist_id: get_artist_id(&track),
-                    external_url: get_external_url(&uri_str),
-                });
-            }
-        }
-    }
-
-    Ok(queue_items)
-}
-
-// Load artist top tracks into queue
-async fn load_artist(session: &Session, artist_uri: SpotifyUri) -> Result<Vec<QueueItem>, String> {
-    let artist = Artist::get(session, &artist_uri).await
-        .map_err(|e| format!("Failed to load artist: {:?}", e))?;
-
-    let mut queue_items = Vec::new();
-
-    // Get top tracks - artist.top_tracks is a CountryTopTracks iterator
-    // Each item has a tracks field which is Tracks(Vec<SpotifyUri>), access with .0
-    let track_uris: Vec<SpotifyUri> = artist.top_tracks
-        .iter()
-        .flat_map(|top_track| top_track.tracks.0.clone())
+    let track_uris: Vec<String> = playlist.tracks()
+        .filter(|uri| matches!(uri, SpotifyUri::Track { .. }))
+        .map(|uri| uri.to_string())
         .collect();
 
-    // Fetch metadata for each track
-    for track_uri in track_uris {
-        if let Ok(track) = Track::get(session, &track_uri).await {
-            let uri_str = track_uri.to_string();
-            let track_name = track.name.clone();
-            let artist_name = track.artists.iter()
-                .map(|a| a.name.clone())
-                .collect::<Vec<_>>()
-                .join(", ");
-            let album_art_url = get_album_art_url(&track);
-            let duration_ms = track.duration as u32;
-
-            queue_items.push(QueueItem {
-                uri: uri_str.clone(),
-                track_name,
-                artist_name,
-                album_art_url,
-                duration_ms,
-                album_id: get_album_id(&track),
-                artist_id: get_artist_id(&track),
-                external_url: get_external_url(&uri_str),
-            });
-        }
-    }
-
-    Ok(queue_items)
+    Ok(track_uris)
 }
 
 /// Frees a C string allocated by this library.
@@ -432,24 +278,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                             update_position(0);
                         }
                         Some(PlayerEvent::EndOfTrack { .. }) => {
+                            // Spirc handles auto-advance to next track automatically
+                            // We just update local state here
                             IS_PLAYING.store(false, Ordering::SeqCst);
                             update_position(0);
-                            // Auto-advance to next track if available
-                            let queue_guard = QUEUE.lock().unwrap();
-                            let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
-                            if current_idx + 1 < queue_guard.len() {
-                                let next_track = queue_guard[current_idx + 1].clone();
-                                drop(queue_guard);
-                                CURRENT_INDEX.store(current_idx + 1, Ordering::SeqCst);
-
-                                // Parse and load next track
-                                if let Ok(spotify_uri) = parse_spotify_uri(&next_track.uri) {
-                                    player_clone.load(spotify_uri, true, 0);
-                                    IS_PLAYING.store(true, Ordering::SeqCst);
-                                }
-                            } else {
-                                drop(queue_guard);
-                            }
                         }
                         None => break,
                         _ => {}
@@ -556,112 +388,31 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
         return -1;
     }
 
-    // Try to use Spirc.load() for proper Connect state sync
+    // Use Spirc.load() for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        let load_request = LoadRequest::from_tracks(
-            track_uris.clone(),
-            LoadRequestOptions {
-                start_playing: true,
-                seek_to: 0,
-                ..Default::default()
-            },
-        );
-        match spirc.load(load_request) {
-            Ok(_) => {
-                drop(spirc_guard);
-                return 0;
-            }
-            Err(e) => {
-                eprintln!("Spirc.load() failed: {:?}, falling back to direct player", e);
-            }
-        }
-    }
-    drop(spirc_guard);
-
-    // Fallback to direct player if Spirc is not available
-    let player_guard = PLAYER.lock().unwrap();
-    let player = match player_guard.as_ref() {
-        Some(p) => Arc::clone(p),
-        None => {
-            eprintln!("Play tracks error: player not initialized");
-            return -1;
-        }
-    };
-    drop(player_guard);
-
-    let session_guard = SESSION.lock().unwrap();
-    let session = match session_guard.as_ref() {
-        Some(s) => s.clone(),
-        None => {
-            eprintln!("Play tracks error: session not initialized");
-            return -1;
-        }
-    };
-    drop(session_guard);
-
-    let result: Result<(), String> = RUNTIME.block_on(async {
-        let mut queue_items = Vec::new();
-
-        // Load metadata for all tracks
-        for uri_str in &track_uris {
-            let spotify_uri = parse_spotify_uri(uri_str)?;
-
-            match spotify_uri {
-                SpotifyUri::Track { .. } => {
-                    let track = Track::get(&session, &spotify_uri).await
-                        .map_err(|e| format!("Failed to load track {}: {:?}", uri_str, e))?;
-
-                    let track_name = track.name.clone();
-                    let artist_name = track.artists.iter()
-                        .map(|a| a.name.clone())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let album_art_url = get_album_art_url(&track);
-                    let duration_ms = track.duration as u32;
-
-                    let queue_item = QueueItem {
-                        uri: uri_str.clone(),
-                        track_name,
-                        artist_name,
-                        album_art_url,
-                        duration_ms,
-                        album_id: get_album_id(&track),
-                        artist_id: get_artist_id(&track),
-                        external_url: get_external_url(&uri_str),
-                    };
-
-                    queue_items.push(queue_item);
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            let load_request = LoadRequest::from_tracks(
+                track_uris,
+                LoadRequestOptions {
+                    start_playing: true,
+                    seek_to: 0,
+                    ..Default::default()
+                },
+            );
+            match spirc.load(load_request) {
+                Ok(_) => {
+                    println!("[Spotifly] Spirc.load(tracks) succeeded");
+                    0
                 }
-                _ => {
-                    return Err(format!("Invalid track URI: {}", uri_str));
+                Err(e) => {
+                    eprintln!("Play tracks error: Spirc.load() failed: {:?}", e);
+                    -1
                 }
             }
         }
-
-        if queue_items.is_empty() {
-            return Err("No valid tracks loaded".to_string());
-        }
-
-        // Update queue (only for fallback mode without Spirc)
-        let mut queue_guard = QUEUE.lock().unwrap();
-        queue_guard.clear();
-        queue_guard.extend(queue_items);
-        drop(queue_guard);
-
-        CURRENT_INDEX.store(0, Ordering::SeqCst);
-
-        // Load and play first track
-        let first_uri = parse_spotify_uri(&track_uris[0])?;
-        player.load(first_uri, true, 0);
-
-        Ok(())
-    });
-
-    match result {
-        Ok(_) => 0,
-        Err(e) => {
-            eprintln!("Play tracks error: {}", e);
+        None => {
+            eprintln!("Play tracks error: Spirc not initialized");
             -1
         }
     }
@@ -692,178 +443,52 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
     // Convert URL to URI if needed
     let uri_str = url_to_uri(&input_str);
 
-    // Try to use Spirc.load() for proper Connect state sync
+    // Use Spirc.load() for proper Connect state sync
     // For albums, playlists, artists: use context_uri so Spirc/Spotify manages the queue
     // For single tracks: use from_tracks with single track
     let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        let load_result = if uri_str.starts_with("spotify:track:") {
-            // Single track - use from_tracks
-            let load_request = LoadRequest::from_tracks(
-                vec![uri_str.clone()],
-                LoadRequestOptions {
-                    start_playing: true,
-                    seek_to: 0,
-                    ..Default::default()
-                },
-            );
-            spirc.load(load_request)
-        } else {
-            // Albums, playlists, artists - use context_uri
-            let load_request = LoadRequest::from_context_uri(
-                uri_str.clone(),
-                LoadRequestOptions {
-                    start_playing: true,
-                    seek_to: 0,
-                    ..Default::default()
-                },
-            );
-            spirc.load(load_request)
-        };
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            let load_result = if uri_str.starts_with("spotify:track:") {
+                // Single track - use from_tracks
+                println!("[Spotifly] Loading single track via Spirc");
+                let load_request = LoadRequest::from_tracks(
+                    vec![uri_str.clone()],
+                    LoadRequestOptions {
+                        start_playing: true,
+                        seek_to: 0,
+                        ..Default::default()
+                    },
+                );
+                spirc.load(load_request)
+            } else {
+                // Albums, playlists, artists - use context_uri
+                println!("[Spotifly] Loading context via Spirc: {}", uri_str);
+                let load_request = LoadRequest::from_context_uri(
+                    uri_str.clone(),
+                    LoadRequestOptions {
+                        start_playing: true,
+                        seek_to: 0,
+                        ..Default::default()
+                    },
+                );
+                spirc.load(load_request)
+            };
 
-        match load_result {
-            Ok(_) => {
-                drop(spirc_guard);
-                IS_PLAYING.store(true, Ordering::SeqCst);
-                return 0;
-            }
-            Err(e) => {
-                eprintln!("Spirc.load() failed: {:?}, falling back to direct player", e);
+            match load_result {
+                Ok(_) => {
+                    println!("[Spotifly] Spirc.load() succeeded");
+                    IS_PLAYING.store(true, Ordering::SeqCst);
+                    0
+                }
+                Err(e) => {
+                    eprintln!("Play error: Spirc.load() failed: {:?}", e);
+                    -1
+                }
             }
         }
-    }
-    drop(spirc_guard);
-
-    // Fallback to direct player if Spirc is not available
-    let player_guard = PLAYER.lock().unwrap();
-    let player = match player_guard.as_ref() {
-        Some(p) => Arc::clone(p),
         None => {
-            eprintln!("Play error: player not initialized");
-            return -1;
-        }
-    };
-    drop(player_guard);
-
-    let session_guard = SESSION.lock().unwrap();
-    let session = match session_guard.as_ref() {
-        Some(s) => s.clone(),
-        None => {
-            eprintln!("Play error: session not initialized");
-            return -1;
-        }
-    };
-    drop(session_guard);
-
-    let result: Result<(), String> = RUNTIME.block_on(async {
-        // Parse the URI to determine type
-        let spotify_uri = parse_spotify_uri(&uri_str)?;
-
-        match spotify_uri {
-            SpotifyUri::Track { .. } => {
-                // Single track - create queue with one item (fallback mode only)
-                let track = Track::get(&session, &spotify_uri).await
-                    .map_err(|e| format!("Failed to load track: {:?}", e))?;
-
-                let track_name = track.name.clone();
-                let artist_name = track.artists.iter()
-                    .map(|a| a.name.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let album_art_url = get_album_art_url(&track);
-                let duration_ms = track.duration as u32;
-
-                let queue_item = QueueItem {
-                    uri: uri_str.clone(),
-                    track_name,
-                    artist_name,
-                    album_art_url,
-                    duration_ms,
-                    album_id: get_album_id(&track),
-                    artist_id: get_artist_id(&track),
-                    external_url: get_external_url(&uri_str),
-                };
-
-                let mut queue_guard = QUEUE.lock().unwrap();
-                queue_guard.clear();
-                queue_guard.push(queue_item);
-                drop(queue_guard);
-
-                CURRENT_INDEX.store(0, Ordering::SeqCst);
-                player.load(spotify_uri, true, 0);
-            }
-            SpotifyUri::Album { .. } => {
-                // Load album tracks (fallback mode only)
-                let queue_items = load_album(&session, spotify_uri.clone()).await?;
-
-                if queue_items.is_empty() {
-                    return Err("Album has no tracks".to_string());
-                }
-
-                let mut queue_guard = QUEUE.lock().unwrap();
-                queue_guard.clear();
-                queue_guard.extend(queue_items);
-                drop(queue_guard);
-
-                CURRENT_INDEX.store(0, Ordering::SeqCst);
-
-                // Load first track
-                let first_uri = parse_spotify_uri(&QUEUE.lock().unwrap()[0].uri)?;
-                player.load(first_uri, true, 0);
-            }
-            SpotifyUri::Playlist { .. } => {
-                // Load playlist tracks (fallback mode only)
-                let queue_items = load_playlist(&session, spotify_uri.clone()).await?;
-
-                if queue_items.is_empty() {
-                    return Err("Playlist has no tracks".to_string());
-                }
-
-                let mut queue_guard = QUEUE.lock().unwrap();
-                queue_guard.clear();
-                queue_guard.extend(queue_items);
-                drop(queue_guard);
-
-                CURRENT_INDEX.store(0, Ordering::SeqCst);
-
-                // Load first track
-                let first_uri = parse_spotify_uri(&QUEUE.lock().unwrap()[0].uri)?;
-                player.load(first_uri, true, 0);
-            }
-            SpotifyUri::Artist { .. } => {
-                // Load artist top tracks (fallback mode only)
-                let queue_items = load_artist(&session, spotify_uri.clone()).await?;
-
-                if queue_items.is_empty() {
-                    return Err("Artist has no top tracks".to_string());
-                }
-
-                let mut queue_guard = QUEUE.lock().unwrap();
-                queue_guard.clear();
-                queue_guard.extend(queue_items);
-                drop(queue_guard);
-
-                CURRENT_INDEX.store(0, Ordering::SeqCst);
-
-                // Load first track
-                let first_uri = parse_spotify_uri(&QUEUE.lock().unwrap()[0].uri)?;
-                player.load(first_uri, true, 0);
-            }
-            _ => {
-                return Err(format!("Unsupported URI type: {}", uri_str));
-            }
-        }
-
-        Ok(())
-    });
-
-    match result {
-        Ok(_) => {
-            IS_PLAYING.store(true, Ordering::SeqCst);
-            0
-        }
-        Err(e) => {
-            eprintln!("Play error: {}", e);
+            eprintln!("Play error: Spirc not initialized");
             -1
         }
     }
@@ -874,26 +499,22 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_pause() -> i32 {
     println!("[Spotifly] spotifly_pause called");
-    // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.pause().is_ok() {
-            IS_PLAYING.store(false, Ordering::SeqCst);
-            return 0;
-        }
-    }
-    drop(spirc_guard);
-
-    // Fallback to direct player control if Spirc not available
-    let player_guard = PLAYER.lock().unwrap();
-    match player_guard.as_ref() {
-        Some(player) => {
-            player.pause();
-            IS_PLAYING.store(false, Ordering::SeqCst);
-            0
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            match spirc.pause() {
+                Ok(_) => {
+                    IS_PLAYING.store(false, Ordering::SeqCst);
+                    0
+                }
+                Err(e) => {
+                    eprintln!("Pause error: {:?}", e);
+                    -1
+                }
+            }
         }
         None => {
-            eprintln!("Pause error: player not initialized");
+            eprintln!("Pause error: Spirc not initialized");
             -1
         }
     }
@@ -904,26 +525,22 @@ pub extern "C" fn spotifly_pause() -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_resume() -> i32 {
     println!("[Spotifly] spotifly_resume called");
-    // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.play().is_ok() {
-            IS_PLAYING.store(true, Ordering::SeqCst);
-            return 0;
-        }
-    }
-    drop(spirc_guard);
-
-    // Fallback to direct player control if Spirc not available
-    let player_guard = PLAYER.lock().unwrap();
-    match player_guard.as_ref() {
-        Some(player) => {
-            player.play();
-            IS_PLAYING.store(true, Ordering::SeqCst);
-            0
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            match spirc.play() {
+                Ok(_) => {
+                    IS_PLAYING.store(true, Ordering::SeqCst);
+                    0
+                }
+                Err(e) => {
+                    eprintln!("Resume error: {:?}", e);
+                    -1
+                }
+            }
         }
         None => {
-            eprintln!("Resume error: player not initialized");
+            eprintln!("Resume error: Spirc not initialized");
             -1
         }
     }
@@ -1043,52 +660,19 @@ pub extern "C" fn spotifly_get_position_ms() -> u32 {
 #[no_mangle]
 pub extern "C" fn spotifly_next() -> i32 {
     println!("[Spotifly] spotifly_next called");
-    // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.next().is_ok() {
-            return 0;
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            match spirc.next() {
+                Ok(_) => 0,
+                Err(e) => {
+                    eprintln!("Next error: {:?}", e);
+                    -1
+                }
+            }
         }
-    }
-    drop(spirc_guard);
-
-    // Fallback to local queue management if Spirc not available
-    let queue_guard = QUEUE.lock().unwrap();
-    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
-
-    if current_idx + 1 >= queue_guard.len() {
-        drop(queue_guard);
-        eprintln!("Next error: already at last track");
-        return -1;
-    }
-
-    let next_track = queue_guard[current_idx + 1].clone();
-    drop(queue_guard);
-
-    CURRENT_INDEX.store(current_idx + 1, Ordering::SeqCst);
-
-    let player_guard = PLAYER.lock().unwrap();
-    let player = match player_guard.as_ref() {
-        Some(p) => Arc::clone(p),
         None => {
-            eprintln!("Next error: player not initialized");
-            return -1;
-        }
-    };
-    drop(player_guard);
-
-    let result = RUNTIME.block_on(async {
-        parse_spotify_uri(&next_track.uri)
-    });
-
-    match result {
-        Ok(uri) => {
-            player.load(uri, true, 0);
-            IS_PLAYING.store(true, Ordering::SeqCst);
-            0
-        }
-        Err(e) => {
-            eprintln!("Next error: {}", e);
+            eprintln!("Next error: Spirc not initialized");
             -1
         }
     }
@@ -1099,51 +683,19 @@ pub extern "C" fn spotifly_next() -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_previous() -> i32 {
     println!("[Spotifly] spotifly_previous called");
-    // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.prev().is_ok() {
-            return 0;
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            match spirc.prev() {
+                Ok(_) => 0,
+                Err(e) => {
+                    eprintln!("Previous error: {:?}", e);
+                    -1
+                }
+            }
         }
-    }
-    drop(spirc_guard);
-
-    // Fallback to local queue management if Spirc not available
-    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
-
-    if current_idx == 0 {
-        eprintln!("Previous error: already at first track");
-        return -1;
-    }
-
-    let queue_guard = QUEUE.lock().unwrap();
-    let prev_track = queue_guard[current_idx - 1].clone();
-    drop(queue_guard);
-
-    CURRENT_INDEX.store(current_idx - 1, Ordering::SeqCst);
-
-    let player_guard = PLAYER.lock().unwrap();
-    let player = match player_guard.as_ref() {
-        Some(p) => Arc::clone(p),
         None => {
-            eprintln!("Previous error: player not initialized");
-            return -1;
-        }
-    };
-    drop(player_guard);
-
-    let result = RUNTIME.block_on(async {
-        parse_spotify_uri(&prev_track.uri)
-    });
-
-    match result {
-        Ok(uri) => {
-            player.load(uri, true, 0);
-            IS_PLAYING.store(true, Ordering::SeqCst);
-            0
-        }
-        Err(e) => {
-            eprintln!("Previous error: {}", e);
+            eprintln!("Previous error: Spirc not initialized");
             -1
         }
     }
@@ -1154,491 +706,171 @@ pub extern "C" fn spotifly_previous() -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
     println!("[Spotifly] spotifly_seek called: {}ms", position_ms);
-    // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.set_position_ms(position_ms).is_ok() {
-            return 0;
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            match spirc.set_position_ms(position_ms) {
+                Ok(_) => 0,
+                Err(e) => {
+                    eprintln!("Seek error: {:?}", e);
+                    -1
+                }
+            }
         }
-    }
-    drop(spirc_guard);
-
-    // Fallback to direct player seek if Spirc not available
-    let player_guard = PLAYER.lock().unwrap();
-    let player = match player_guard.as_ref() {
-        Some(p) => Arc::clone(p),
         None => {
-            eprintln!("Seek error: player not initialized");
-            return -1;
-        }
-    };
-    drop(player_guard);
-
-    player.seek(position_ms);
-    0
-}
-
-/// Jumps to a specific track in the queue by index and starts playing.
-/// Returns 0 on success, -1 on error.
-#[no_mangle]
-pub extern "C" fn spotifly_jump_to_index(index: usize) -> i32 {
-    println!("[Spotifly] spotifly_jump_to_index called: {}", index);
-    let queue_guard = QUEUE.lock().unwrap();
-
-    if index >= queue_guard.len() {
-        eprintln!("Jump error: index {} out of bounds (queue length: {})", index, queue_guard.len());
-        drop(queue_guard);
-        return -1;
-    }
-
-    let target_track = queue_guard[index].clone();
-    drop(queue_guard);
-
-    CURRENT_INDEX.store(index, Ordering::SeqCst);
-
-    let player_guard = PLAYER.lock().unwrap();
-    let player = match player_guard.as_ref() {
-        Some(p) => Arc::clone(p),
-        None => {
-            eprintln!("Jump error: player not initialized");
-            return -1;
-        }
-    };
-    drop(player_guard);
-
-    let result = RUNTIME.block_on(async {
-        parse_spotify_uri(&target_track.uri)
-    });
-
-    match result {
-        Ok(uri) => {
-            player.load(uri, true, 0);
-            IS_PLAYING.store(true, Ordering::SeqCst);
-            0
-        }
-        Err(e) => {
-            eprintln!("Jump error: {}", e);
+            eprintln!("Seek error: Spirc not initialized");
             -1
         }
     }
+}
+
+// ============================================================================
+// Queue functions - DEPRECATED
+// Queue is now managed by Spirc's ConnectState. Use Spotify Web API instead:
+// - GET /me/player/queue - to read the queue
+// - POST /me/player/queue - to add to queue
+// ============================================================================
+
+/// Jumps to a specific track in the queue by index and starts playing.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API instead.
+/// Returns -1 (not supported).
+#[no_mangle]
+pub extern "C" fn spotifly_jump_to_index(_index: usize) -> i32 {
+    println!("[Spotifly] spotifly_jump_to_index: DEPRECATED - queue managed by Spirc");
+    -1
 }
 
 /// Returns the number of tracks in the queue.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns 0.
 #[no_mangle]
 pub extern "C" fn spotifly_get_queue_length() -> usize {
-    let queue_guard = QUEUE.lock().unwrap();
-    queue_guard.len()
+    0
 }
 
 /// Returns the current track index in the queue (0-based).
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns 0.
 #[no_mangle]
 pub extern "C" fn spotifly_get_current_index() -> usize {
-    CURRENT_INDEX.load(Ordering::SeqCst)
+    0
 }
 
 /// Returns the track name at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns NULL.
 #[no_mangle]
-pub extern "C" fn spotifly_get_queue_track_name(index: usize) -> *mut c_char {
-    let queue_guard = QUEUE.lock().unwrap();
-    if index >= queue_guard.len() {
-        return ptr::null_mut();
-    }
-
-    match CString::new(queue_guard[index].track_name.clone()) {
-        Ok(cstr) => cstr.into_raw(),
-        Err(_) => ptr::null_mut(),
-    }
+pub extern "C" fn spotifly_get_queue_track_name(_index: usize) -> *mut c_char {
+    ptr::null_mut()
 }
 
 /// Returns the artist name at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns NULL.
 #[no_mangle]
-pub extern "C" fn spotifly_get_queue_artist_name(index: usize) -> *mut c_char {
-    let queue_guard = QUEUE.lock().unwrap();
-    if index >= queue_guard.len() {
-        return ptr::null_mut();
-    }
-
-    match CString::new(queue_guard[index].artist_name.clone()) {
-        Ok(cstr) => cstr.into_raw(),
-        Err(_) => ptr::null_mut(),
-    }
+pub extern "C" fn spotifly_get_queue_artist_name(_index: usize) -> *mut c_char {
+    ptr::null_mut()
 }
 
 /// Returns the album art URL at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns NULL.
 #[no_mangle]
-pub extern "C" fn spotifly_get_queue_album_art_url(index: usize) -> *mut c_char {
-    let queue_guard = QUEUE.lock().unwrap();
-    if index >= queue_guard.len() {
-        return ptr::null_mut();
-    }
-
-    match CString::new(queue_guard[index].album_art_url.clone()) {
-        Ok(cstr) => cstr.into_raw(),
-        Err(_) => ptr::null_mut(),
-    }
+pub extern "C" fn spotifly_get_queue_album_art_url(_index: usize) -> *mut c_char {
+    ptr::null_mut()
 }
 
 /// Returns the URI at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns NULL.
 #[no_mangle]
-pub extern "C" fn spotifly_get_queue_uri(index: usize) -> *mut c_char {
-    let queue_guard = QUEUE.lock().unwrap();
-    if index >= queue_guard.len() {
-        return ptr::null_mut();
-    }
-
-    match CString::new(queue_guard[index].uri.clone()) {
-        Ok(cstr) => cstr.into_raw(),
-        Err(_) => ptr::null_mut(),
-    }
+pub extern "C" fn spotifly_get_queue_uri(_index: usize) -> *mut c_char {
+    ptr::null_mut()
 }
 
 /// Returns the track duration in milliseconds at the given index.
-/// Returns 0 if index is out of bounds.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns 0.
 #[no_mangle]
-pub extern "C" fn spotifly_get_queue_duration_ms(index: usize) -> u32 {
-    let queue_guard = QUEUE.lock().unwrap();
-    if index >= queue_guard.len() {
-        return 0;
-    }
-    queue_guard[index].duration_ms
+pub extern "C" fn spotifly_get_queue_duration_ms(_index: usize) -> u32 {
+    0
 }
 
 /// Gets the album ID for a queue item by index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds or album ID is not available.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns NULL.
 #[no_mangle]
-pub extern "C" fn spotifly_get_queue_album_id(index: usize) -> *mut c_char {
-    let queue_guard = QUEUE.lock().unwrap();
-    if index >= queue_guard.len() {
-        return ptr::null_mut();
-    }
-
-    match &queue_guard[index].album_id {
-        Some(album_id) => {
-            match CString::new(album_id.clone()) {
-                Ok(cstr) => cstr.into_raw(),
-                Err(_) => ptr::null_mut(),
-            }
-        }
-        None => ptr::null_mut(),
-    }
+pub extern "C" fn spotifly_get_queue_album_id(_index: usize) -> *mut c_char {
+    ptr::null_mut()
 }
 
 /// Gets the artist ID for a queue item by index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds or artist ID is not available.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns NULL.
 #[no_mangle]
-pub extern "C" fn spotifly_get_queue_artist_id(index: usize) -> *mut c_char {
-    let queue_guard = QUEUE.lock().unwrap();
-    if index >= queue_guard.len() {
-        return ptr::null_mut();
-    }
-
-    match &queue_guard[index].artist_id {
-        Some(artist_id) => {
-            match CString::new(artist_id.clone()) {
-                Ok(cstr) => cstr.into_raw(),
-                Err(_) => ptr::null_mut(),
-            }
-        }
-        None => ptr::null_mut(),
-    }
+pub extern "C" fn spotifly_get_queue_artist_id(_index: usize) -> *mut c_char {
+    ptr::null_mut()
 }
 
 /// Gets the external URL for a queue item by index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds or external URL is not available.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns NULL.
 #[no_mangle]
-pub extern "C" fn spotifly_get_queue_external_url(index: usize) -> *mut c_char {
-    let queue_guard = QUEUE.lock().unwrap();
-    if index >= queue_guard.len() {
-        return ptr::null_mut();
-    }
-
-    match &queue_guard[index].external_url {
-        Some(external_url) => {
-            match CString::new(external_url.clone()) {
-                Ok(cstr) => cstr.into_raw(),
-                Err(_) => ptr::null_mut(),
-            }
-        }
-        None => ptr::null_mut(),
-    }
+pub extern "C" fn spotifly_get_queue_external_url(_index: usize) -> *mut c_char {
+    ptr::null_mut()
 }
 
 /// Returns all queue items as a JSON string.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL on error.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
+/// Returns NULL.
 #[no_mangle]
 pub extern "C" fn spotifly_get_all_queue_items() -> *mut c_char {
-    let queue_guard = QUEUE.lock().unwrap();
-
-    // Serialize the entire queue to JSON
-    match serde_json::to_string(&*queue_guard) {
-        Ok(json_string) => {
-            match CString::new(json_string) {
-                Ok(cstr) => cstr.into_raw(),
-                Err(_) => ptr::null_mut(),
-            }
-        }
-        Err(_) => ptr::null_mut(),
-    }
+    ptr::null_mut()
 }
 
 /// Adds a track to the end of the current queue without clearing it.
-/// Returns 0 on success, -1 on error.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API POST /me/player/queue instead.
+/// Returns -1 (not supported).
 #[no_mangle]
-pub extern "C" fn spotifly_add_to_queue(track_uri: *const c_char) -> i32 {
-    if track_uri.is_null() {
-        eprintln!("Add to queue error: track_uri is null");
-        return -1;
-    }
-
-    let uri_str = unsafe {
-        match CStr::from_ptr(track_uri).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                eprintln!("Add to queue error: invalid track_uri string");
-                return -1;
-            }
-        }
-    };
-
-    println!("[Spotifly] spotifly_add_to_queue called: {}", uri_str);
-
-    let session_guard = SESSION.lock().unwrap();
-    let session = match session_guard.as_ref() {
-        Some(s) => s.clone(),
-        None => {
-            eprintln!("Add to queue error: session not initialized");
-            return -1;
-        }
-    };
-    drop(session_guard);
-
-    let result: Result<(), String> = RUNTIME.block_on(async {
-        // Parse the URI
-        let spotify_uri = parse_spotify_uri(&uri_str)?;
-
-        // Only support tracks for add to queue
-        match spotify_uri {
-            SpotifyUri::Track { .. } => {
-                let track = Track::get(&session, &spotify_uri).await
-                    .map_err(|e| format!("Failed to load track: {:?}", e))?;
-
-                let track_name = track.name.clone();
-                let artist_name = track.artists.iter()
-                    .map(|a| a.name.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let album_art_url = get_album_art_url(&track);
-                let duration_ms = track.duration as u32;
-
-                let queue_item = QueueItem {
-                    uri: uri_str.clone(),
-                    track_name,
-                    artist_name,
-                    album_art_url,
-                    duration_ms,
-                    album_id: get_album_id(&track),
-                    artist_id: get_artist_id(&track),
-                    external_url: get_external_url(&uri_str),
-                };
-
-                // Add to queue instead of replacing
-                let mut queue_guard = QUEUE.lock().unwrap();
-                queue_guard.push(queue_item);
-                drop(queue_guard);
-
-                Ok(())
-            }
-            _ => {
-                Err(format!("Only track URIs are supported for add to queue: {}", uri_str))
-            }
-        }
-    });
-
-    match result {
-        Ok(_) => 0,
-        Err(e) => {
-            eprintln!("Add to queue error: {}", e);
-            -1
-        }
-    }
+pub extern "C" fn spotifly_add_to_queue(_track_uri: *const c_char) -> i32 {
+    println!("[Spotifly] spotifly_add_to_queue: DEPRECATED - use Web API POST /me/player/queue");
+    -1
 }
 
 /// Adds a track to play next (after the currently playing track).
-/// If nothing is playing, adds it to the queue.
-/// Returns 0 on success, -1 on error.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API POST /me/player/queue instead.
+/// Returns -1 (not supported).
 #[no_mangle]
-pub extern "C" fn spotifly_add_next_to_queue(track_uri: *const c_char) -> i32 {
-    if track_uri.is_null() {
-        eprintln!("Add next to queue error: track_uri is null");
-        return -1;
-    }
-
-    let uri_str = unsafe {
-        match CStr::from_ptr(track_uri).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                eprintln!("Add next to queue error: invalid track_uri string");
-                return -1;
-            }
-        }
-    };
-
-    println!("[Spotifly] spotifly_add_next_to_queue called: {}", uri_str);
-
-    let session_guard = SESSION.lock().unwrap();
-    let session = match session_guard.as_ref() {
-        Some(s) => s.clone(),
-        None => {
-            eprintln!("Add next to queue error: session not initialized");
-            return -1;
-        }
-    };
-    drop(session_guard);
-
-    let result: Result<(), String> = RUNTIME.block_on(async {
-        // Parse the URI
-        let spotify_uri = parse_spotify_uri(&uri_str)?;
-
-        // Only support tracks for add to queue
-        match spotify_uri {
-            SpotifyUri::Track { .. } => {
-                let track = Track::get(&session, &spotify_uri).await
-                    .map_err(|e| format!("Failed to load track: {:?}", e))?;
-
-                let track_name = track.name.clone();
-                let artist_name = track.artists.iter()
-                    .map(|a| a.name.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let album_art_url = get_album_art_url(&track);
-                let duration_ms = track.duration as u32;
-
-                let queue_item = QueueItem {
-                    uri: uri_str.clone(),
-                    track_name,
-                    artist_name,
-                    album_art_url,
-                    duration_ms,
-                    album_id: get_album_id(&track),
-                    artist_id: get_artist_id(&track),
-                    external_url: get_external_url(&uri_str),
-                };
-
-                // Insert after current index
-                let mut queue_guard = QUEUE.lock().unwrap();
-                let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
-
-                // Insert at current_index + 1, or at the end if queue is empty
-                let insert_position = if queue_guard.is_empty() {
-                    0
-                } else {
-                    (current_idx + 1).min(queue_guard.len())
-                };
-
-                queue_guard.insert(insert_position, queue_item);
-                drop(queue_guard);
-
-                Ok(())
-            }
-            _ => {
-                Err(format!("Only track URIs are supported for add next to queue: {}", uri_str))
-            }
-        }
-    });
-
-    match result {
-        Ok(_) => 0,
-        Err(e) => {
-            eprintln!("Add next to queue error: {}", e);
-            -1
-        }
-    }
+pub extern "C" fn spotifly_add_next_to_queue(_track_uri: *const c_char) -> i32 {
+    println!("[Spotifly] spotifly_add_next_to_queue: DEPRECATED - use Web API POST /me/player/queue");
+    -1
 }
 
 /// Removes a track from the queue at the given index.
-/// Only allows removing tracks AFTER the current index (unplayed tracks).
-/// Returns 0 on success, -1 on error or if trying to remove a played/playing track.
+/// DEPRECATED: Queue is now managed by Spirc. No Web API equivalent exists.
+/// Returns -1 (not supported).
 #[no_mangle]
-pub extern "C" fn spotifly_remove_from_queue(index: usize) -> i32 {
-    println!("[Spotifly] spotifly_remove_from_queue called: index={}", index);
-    let mut queue_guard = QUEUE.lock().unwrap();
-    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
-
-    // Validate index: must be after current track and within bounds
-    if index <= current_idx || index >= queue_guard.len() {
-        eprintln!(
-            "Remove from queue error: invalid index {} (current: {}, len: {})",
-            index,
-            current_idx,
-            queue_guard.len()
-        );
-        return -1;
-    }
-
-    queue_guard.remove(index);
-    0
+pub extern "C" fn spotifly_remove_from_queue(_index: usize) -> i32 {
+    println!("[Spotifly] spotifly_remove_from_queue: DEPRECATED - queue managed by Spirc");
+    -1
 }
 
 /// Moves a track from one position to another in the queue.
-/// Only allows reordering tracks AFTER the current index (unplayed tracks).
-/// Returns 0 on success, -1 on error or if trying to move played/playing tracks.
+/// DEPRECATED: Queue is now managed by Spirc. No Web API equivalent exists.
+/// Returns -1 (not supported).
 #[no_mangle]
-pub extern "C" fn spotifly_move_queue_item(from_index: usize, to_index: usize) -> i32 {
-    println!("[Spotifly] spotifly_move_queue_item called: from={} to={}", from_index, to_index);
-    let mut queue_guard = QUEUE.lock().unwrap();
-    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
-
-    // Validate indices: both must be after current track and within bounds
-    if from_index <= current_idx
-        || to_index <= current_idx
-        || from_index >= queue_guard.len()
-        || to_index >= queue_guard.len()
-    {
-        eprintln!(
-            "Move queue item error: invalid indices from={} to={} (current: {}, len: {})",
-            from_index,
-            to_index,
-            current_idx,
-            queue_guard.len()
-        );
-        return -1;
-    }
-
-    if from_index == to_index {
-        return 0; // No-op, success
-    }
-
-    let item = queue_guard.remove(from_index);
-    queue_guard.insert(to_index, item);
-    0
+pub extern "C" fn spotifly_move_queue_item(_from_index: usize, _to_index: usize) -> i32 {
+    println!("[Spotifly] spotifly_move_queue_item: DEPRECATED - queue managed by Spirc");
+    -1
 }
 
 /// Clears all tracks after the currently playing track from the queue.
-/// Keeps the currently playing track and all previously played tracks.
-/// Returns 0 on success, -1 on error.
+/// DEPRECATED: Queue is now managed by Spirc. No Web API equivalent exists.
+/// Returns -1 (not supported).
 #[no_mangle]
 pub extern "C" fn spotifly_clear_upcoming_queue() -> i32 {
-    println!("[Spotifly] spotifly_clear_upcoming_queue called");
-    let mut queue_guard = QUEUE.lock().unwrap();
-    let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
-
-    // Truncate queue to current_idx + 1 (keep current and played)
-    if current_idx + 1 < queue_guard.len() {
-        queue_guard.truncate(current_idx + 1);
-    }
-    0
+    println!("[Spotifly] spotifly_clear_upcoming_queue: DEPRECATED - queue managed by Spirc");
+    -1
 }
 
 /// Gets radio tracks for a seed track and returns them as JSON.
@@ -1696,13 +928,8 @@ pub extern "C" fn spotifly_get_radio_tracks(track_uri: *const c_char) -> *mut c_
         // Parse the playlist URI
         let playlist_spotify_uri = parse_spotify_uri(playlist_uri)?;
 
-        // Load the playlist tracks
-        let queue_items = load_playlist(&session, playlist_spotify_uri).await?;
-
-        // Extract just the track URIs
-        let track_uris: Vec<String> = queue_items.into_iter()
-            .map(|item| item.uri)
-            .collect();
+        // Load the playlist track URIs
+        let track_uris = load_playlist_track_uris(&session, playlist_spotify_uri).await?;
 
         if track_uris.is_empty() {
             return Err("Radio playlist is empty".to_string());
@@ -1735,24 +962,19 @@ pub extern "C" fn spotifly_get_radio_tracks(track_uri: *const c_char) -> *mut c_
 #[no_mangle]
 pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
     println!("[Spotifly] spotifly_set_volume called: {}", volume);
-    // Try to use Spirc for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.set_volume(volume).is_ok() {
-            return 0;
-        }
-    }
-    drop(spirc_guard);
-
-    // Fallback to direct mixer control if Spirc not available
-    let mixer_guard = MIXER.lock().unwrap();
-    match mixer_guard.as_ref() {
-        Some(mixer) => {
-            mixer.set_volume(volume);
-            0
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            match spirc.set_volume(volume) {
+                Ok(_) => 0,
+                Err(e) => {
+                    eprintln!("Set volume error: {:?}", e);
+                    -1
+                }
+            }
         }
         None => {
-            eprintln!("Set volume error: mixer not initialized");
+            eprintln!("Set volume error: Spirc not initialized");
             -1
         }
     }
