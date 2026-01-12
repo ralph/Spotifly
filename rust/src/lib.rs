@@ -977,6 +977,16 @@ pub extern "C" fn spotifly_previous() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
+    // Try to use Spirc for proper Connect state sync
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        if spirc.set_position_ms(position_ms).is_ok() {
+            return 0;
+        }
+    }
+    drop(spirc_guard);
+
+    // Fallback to direct player seek if Spirc not available
     let player_guard = PLAYER.lock().unwrap();
     let player = match player_guard.as_ref() {
         Some(p) => Arc::clone(p),

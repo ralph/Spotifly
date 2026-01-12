@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Transfer to local playback now uses librespot's native `Spirc.transfer()` method instead of Web API workaround
 - Transfer to remote devices now uses librespot's native `SpClient.transfer()` method instead of Web API workaround
 - Both transfer directions now preserve full playback context (album/playlist, shuffle, repeat modes) seamlessly
+- Seeking now uses `Spirc.set_position_ms()` to properly sync position with Spotify Connect state
 
 ### Removed
 - Obsolete 500ms seek delay hack for transfer to local - native transfer preserves position seamlessly
