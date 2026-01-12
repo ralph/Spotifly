@@ -888,6 +888,16 @@ pub extern "C" fn spotifly_get_position_ms() -> u32 {
 /// Returns 0 on success, -1 on error or if at end of queue.
 #[no_mangle]
 pub extern "C" fn spotifly_next() -> i32 {
+    // Try to use Spirc for proper Connect state sync
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        if spirc.next().is_ok() {
+            return 0;
+        }
+    }
+    drop(spirc_guard);
+
+    // Fallback to local queue management if Spirc not available
     let queue_guard = QUEUE.lock().unwrap();
     let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
 
@@ -933,6 +943,16 @@ pub extern "C" fn spotifly_next() -> i32 {
 /// Returns 0 on success, -1 on error or if at start of queue.
 #[no_mangle]
 pub extern "C" fn spotifly_previous() -> i32 {
+    // Try to use Spirc for proper Connect state sync
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        if spirc.prev().is_ok() {
+            return 0;
+        }
+    }
+    drop(spirc_guard);
+
+    // Fallback to local queue management if Spirc not available
     let current_idx = CURRENT_INDEX.load(Ordering::SeqCst);
 
     if current_idx == 0 {
