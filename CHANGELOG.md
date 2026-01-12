@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pause/resume now use `Spirc.pause()`/`Spirc.play()` to properly sync with Spotify Connect state
 - App now calls `Spirc.shutdown()` on quit to properly disconnect from Spotify Connect and notify other devices
 
+### Added
+- Shuffle support via `Spirc.shuffle()` - shuffle/unshuffle playback with Connect state sync
+- Repeat context support via `Spirc.repeat()` - repeat album/playlist with Connect state sync
+- Repeat track support via `Spirc.repeat_track()` - repeat single track with Connect state sync
+
 ### Removed
 - Obsolete 500ms seek delay hack for transfer to local - native transfer preserves position seamlessly
 - Obsolete Web API transfer functions (`SpotifyAPI.transferPlayback()`, `SpotifyAPI.startPlayback()`) - replaced by native librespot calls

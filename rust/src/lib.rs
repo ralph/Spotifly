@@ -889,6 +889,47 @@ pub extern "C" fn spotifly_shutdown() -> i32 {
     -1
 }
 
+/// Sets shuffle mode.
+/// If true, shuffles/reshuffles the playback. If false, unshuffles while resuming at current track.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_set_shuffle(shuffle: bool) -> i32 {
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        if spirc.shuffle(shuffle).is_ok() {
+            return 0;
+        }
+    }
+    -1
+}
+
+/// Sets repeat context mode (repeat album/playlist).
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_set_repeat(repeat: bool) -> i32 {
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        if spirc.repeat(repeat).is_ok() {
+            return 0;
+        }
+    }
+    -1
+}
+
+/// Sets repeat track mode (repeat single track).
+/// Skipping to the next track disables the repeating.
+/// Returns 0 on success, -1 on error.
+#[no_mangle]
+pub extern "C" fn spotifly_set_repeat_track(repeat: bool) -> i32 {
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        if spirc.repeat_track(repeat).is_ok() {
+            return 0;
+        }
+    }
+    -1
+}
+
 /// Returns 1 if currently playing, 0 otherwise.
 #[no_mangle]
 pub extern "C" fn spotifly_is_playing() -> i32 {

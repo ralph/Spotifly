@@ -185,6 +185,25 @@ enum SpotifyPlayer {
         spotifly_shutdown()
     }
 
+    /// Sets shuffle mode.
+    /// - Parameter enabled: If true, shuffles/reshuffles the playback. If false, unshuffles while resuming at current track.
+    static func setShuffle(_ enabled: Bool) {
+        spotifly_set_shuffle(enabled)
+    }
+
+    /// Sets repeat context mode (repeat album/playlist).
+    /// - Parameter enabled: If true, repeats the album/playlist.
+    static func setRepeat(_ enabled: Bool) {
+        spotifly_set_repeat(enabled)
+    }
+
+    /// Sets repeat track mode (repeat single track).
+    /// Skipping to the next track disables the repeating.
+    /// - Parameter enabled: If true, repeats the current track.
+    static func setRepeatTrack(_ enabled: Bool) {
+        spotifly_set_repeat_track(enabled)
+    }
+
     /// Returns whether the player is currently playing.
     static var isPlaying: Bool {
         spotifly_is_playing() == 1

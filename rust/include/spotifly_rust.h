@@ -48,6 +48,20 @@ int32_t spotifly_stop(void);
 /// Returns 0 on success, -1 on error.
 int32_t spotifly_shutdown(void);
 
+/// Sets shuffle mode.
+/// If true, shuffles/reshuffles the playback. If false, unshuffles while resuming at current track.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_set_shuffle(bool shuffle);
+
+/// Sets repeat context mode (repeat album/playlist).
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_set_repeat(bool repeat);
+
+/// Sets repeat track mode (repeat single track).
+/// Skipping to the next track disables the repeating.
+/// Returns 0 on success, -1 on error.
+int32_t spotifly_set_repeat_track(bool repeat);
+
 /// Returns 1 if currently playing, 0 otherwise.
 int32_t spotifly_is_playing(void);
 
