@@ -803,6 +803,17 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_pause() -> i32 {
+    // Try to use Spirc for proper Connect state sync
+    let spirc_guard = SPIRC.lock().unwrap();
+    if let Some(spirc) = spirc_guard.as_ref() {
+        if spirc.pause().is_ok() {
+            IS_PLAYING.store(false, Ordering::SeqCst);
+            return 0;
+        }
+    }
+    drop(spirc_guard);
+
+    // Fallback to direct player control if Spirc not available
     let player_guard = PLAYER.lock().unwrap();
     match player_guard.as_ref() {
         Some(player) => {
