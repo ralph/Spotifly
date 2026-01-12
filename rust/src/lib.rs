@@ -438,44 +438,39 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
         }
     };
 
-    println!("[Spotifly] spotifly_play_track called: {}", input_str);
-
     // Convert URL to URI if needed
     let uri_str = url_to_uri(&input_str);
+    println!("[Spotifly] spotifly_play_track called: {}", uri_str);
 
-    // Use Spirc.load() for proper Connect state sync
-    // For albums, playlists, artists: use context_uri so Spirc/Spotify manages the queue
-    // For single tracks: use from_tracks with single track
+    // Use Spirc.load() with LoadRequest for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => {
-            let load_result = if uri_str.starts_with("spotify:track:") {
-                // Single track - use from_tracks
-                println!("[Spotifly] Loading single track via Spirc");
-                let load_request = LoadRequest::from_tracks(
+            // Create LoadRequest - use from_context_uri for albums/playlists/artists,
+            // from_tracks for single tracks
+            let load_request = if uri_str.starts_with("spotify:track:") {
+                println!("[Spotifly] Spirc.load(LoadRequest::from_tracks([{}]))", uri_str);
+                LoadRequest::from_tracks(
                     vec![uri_str.clone()],
                     LoadRequestOptions {
                         start_playing: true,
                         seek_to: 0,
                         ..Default::default()
                     },
-                );
-                spirc.load(load_request)
+                )
             } else {
-                // Albums, playlists, artists - use context_uri
-                println!("[Spotifly] Loading context via Spirc: {}", uri_str);
-                let load_request = LoadRequest::from_context_uri(
+                println!("[Spotifly] Spirc.load(LoadRequest::from_context_uri({}))", uri_str);
+                LoadRequest::from_context_uri(
                     uri_str.clone(),
                     LoadRequestOptions {
                         start_playing: true,
                         seek_to: 0,
                         ..Default::default()
                     },
-                );
-                spirc.load(load_request)
+                )
             };
 
-            match load_result {
+            match spirc.load(load_request) {
                 Ok(_) => {
                     println!("[Spotifly] Spirc.load() succeeded");
                     IS_PLAYING.store(true, Ordering::SeqCst);

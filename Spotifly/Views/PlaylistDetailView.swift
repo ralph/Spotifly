@@ -492,12 +492,12 @@ struct PlaylistDetailView: View {
     }
 
     private func playAllTracks() {
+        guard let playlist else { return }
         Task {
             let token = await session.validAccessToken()
-            await playbackViewModel.playTracks(
-                tracks.map(\.uri),
-                accessToken: token,
-            )
+            // Use playlist URI to load via Spirc.load(LoadRequest::from_context_uri())
+            // This properly loads the playlist context instead of individual tracks
+            await playbackViewModel.play(uriOrUrl: playlist.uri, accessToken: token)
         }
     }
 

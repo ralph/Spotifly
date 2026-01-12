@@ -267,12 +267,12 @@ struct AlbumDetailView: View {
     }
 
     private func playAllTracks() {
+        guard let album else { return }
         Task {
             let token = await session.validAccessToken()
-            await playbackViewModel.playTracks(
-                tracks.map(\.uri),
-                accessToken: token,
-            )
+            // Use album URI to load via Spirc.load(LoadRequest::from_context_uri())
+            // This properly loads the album context instead of individual tracks
+            await playbackViewModel.play(uriOrUrl: album.uri, accessToken: token)
         }
     }
 

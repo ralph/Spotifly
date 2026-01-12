@@ -343,12 +343,12 @@ struct ArtistDetailView: View {
     }
 
     private func playAllTopTracks() {
+        guard let artist else { return }
         Task {
             let token = await session.validAccessToken()
-            await playbackViewModel.playTracks(
-                topTracks.map(\.uri),
-                accessToken: token,
-            )
+            // Use artist URI to load via Spirc.load(LoadRequest::from_context_uri())
+            // This properly loads the artist context instead of individual tracks
+            await playbackViewModel.play(uriOrUrl: artist.uri, accessToken: token)
         }
     }
 
