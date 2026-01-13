@@ -7,20 +7,21 @@
 
 import Foundation
 import SpotiflyRust
+import Combine
 
-/// Queue item metadata
+/// Queue item metadata (nonisolated for C callback compatibility)
 struct QueueItem: Sendable, Identifiable {
-    let id: String // uri
-    let uri: String
-    let trackName: String
-    let artistName: String
-    let albumArtURL: String
-    let durationMs: UInt32
-    let albumId: String?
-    let artistId: String?
-    let externalUrl: String?
+    nonisolated let id: String // uri
+    nonisolated let uri: String
+    nonisolated let trackName: String
+    nonisolated let artistName: String
+    nonisolated let albumArtURL: String
+    nonisolated let durationMs: UInt32
+    nonisolated let albumId: String?
+    nonisolated let artistId: String?
+    nonisolated let externalUrl: String?
 
-    var durationFormatted: String {
+    nonisolated var durationFormatted: String {
         let totalSeconds = Int(durationMs / 1000)
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
@@ -28,7 +29,7 @@ struct QueueItem: Sendable, Identifiable {
     }
 
     /// Memberwise initializer
-    init(
+    nonisolated init(
         id: String,
         uri: String,
         trackName: String,
@@ -37,7 +38,7 @@ struct QueueItem: Sendable, Identifiable {
         durationMs: UInt32,
         albumId: String?,
         artistId: String?,
-        externalUrl: String?,
+        externalUrl: String?
     ) {
         self.id = id
         self.uri = uri
@@ -51,7 +52,7 @@ struct QueueItem: Sendable, Identifiable {
     }
 
     /// Create from Spotify API APITrack
-    init(from track: APITrack) {
+    @MainActor init(from track: APITrack) {
         id = track.uri
         uri = track.uri
         trackName = track.name
@@ -61,6 +62,121 @@ struct QueueItem: Sendable, Identifiable {
         albumId = track.albumId
         artistId = track.artistId
         externalUrl = track.externalUrl ?? "https://open.spotify.com/track/\(track.id)"
+    }
+}
+
+/// Queue state containing current, next, and previous tracks (nonisolated for C callback compatibility)
+struct QueueState: Sendable {
+    nonisolated let currentTrack: QueueItem?
+    nonisolated let nextTracks: [QueueItem]
+    nonisolated let previousTracks: [QueueItem]
+}
+
+/// Global subject for queue updates (nonisolated for C callback access)
+private nonisolated(unsafe) let queueSubject = CurrentValueSubject<QueueState?, Never>(nil)
+
+/// Registers the queue callback with Rust (must be called from nonisolated context)
+private nonisolated func registerQueueCallback() {
+    spotifly_register_queue_callback { jsonPtr in
+        handleQueueCallback(jsonPtr)
+    }
+}
+
+/// Parses a queue item from a JSON dictionary (manual parsing to avoid Decodable actor isolation issues)
+private nonisolated func parseQueueItem(from dict: [String: Any]) -> QueueItem? {
+    guard let uri = dict["uri"] as? String else { return nil }
+    return QueueItem(
+        id: uri,
+        uri: uri,
+        trackName: dict["name"] as? String ?? "",
+        artistName: dict["artist"] as? String ?? "",
+        albumArtURL: dict["image_url"] as? String ?? "",
+        durationMs: (dict["duration_ms"] as? NSNumber)?.uint32Value ?? 0,
+        albumId: nil,
+        artistId: nil,
+        externalUrl: nil
+    )
+}
+
+/// C callback for queue updates from Rust
+/// Uses manual JSON parsing to avoid Decodable actor isolation issues
+private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
+    #if DEBUG
+        print("[SpotifyPlayer] handleQueueCallback called")
+    #endif
+
+    guard let jsonPtr = jsonPtr else {
+        #if DEBUG
+            print("[SpotifyPlayer] handleQueueCallback: jsonPtr is nil")
+        #endif
+        return
+    }
+
+    let jsonString = String(cString: jsonPtr)
+    #if DEBUG
+        print("[SpotifyPlayer] handleQueueCallback received JSON (\(jsonString.count) chars)")
+    #endif
+
+    guard let data = jsonString.data(using: .utf8) else {
+        #if DEBUG
+            print("[SpotifyPlayer] handleQueueCallback: failed to convert JSON to data")
+        #endif
+        return
+    }
+
+    do {
+        // Use JSONSerialization instead of Decodable to avoid actor isolation issues
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            #if DEBUG
+                print("[SpotifyPlayer] handleQueueCallback: JSON is not a dictionary")
+            #endif
+            return
+        }
+
+        // Parse current track
+        let currentTrack: QueueItem?
+        if let trackDict = json["track"] as? [String: Any] {
+            currentTrack = parseQueueItem(from: trackDict)
+        } else {
+            currentTrack = nil
+        }
+
+        // Parse next tracks
+        let nextTracks: [QueueItem]
+        if let nextArray = json["next_tracks"] as? [[String: Any]] {
+            nextTracks = nextArray.compactMap { parseQueueItem(from: $0) }
+        } else {
+            nextTracks = []
+        }
+
+        // Parse previous tracks
+        let prevTracks: [QueueItem]
+        if let prevArray = json["prev_tracks"] as? [[String: Any]] {
+            prevTracks = prevArray.compactMap { parseQueueItem(from: $0) }
+        } else {
+            prevTracks = []
+        }
+
+        let state = QueueState(
+            currentTrack: currentTrack,
+            nextTracks: nextTracks,
+            previousTracks: prevTracks
+        )
+
+        #if DEBUG
+            let trackName = state.currentTrack?.trackName ?? "none"
+            let nextCount = state.nextTracks.count
+            let prevCount = state.previousTracks.count
+            print("[SpotifyPlayer] handleQueueCallback: current='\(trackName)', next=\(nextCount), prev=\(prevCount)")
+        #endif
+
+        queueSubject.send(state)
+    } catch {
+        print("[SpotifyPlayer] Failed to parse queue JSON: \(error)")
+        #if DEBUG
+            let preview = String(jsonString.prefix(500))
+            print("[SpotifyPlayer] JSON preview: \(preview)")
+        #endif
     }
 }
 
@@ -91,6 +207,9 @@ enum SpotifyPlayer {
     /// Must be called before any playback operations.
     @SpotifyAuthActor
     static func initialize(accessToken: String) async throws {
+        // Register queue callback (via nonisolated helper to avoid actor isolation issues)
+        registerQueueCallback()
+
         // Sync playback settings from UserDefaults before initializing
         syncSettingsFromUserDefaults()
 
@@ -103,6 +222,11 @@ enum SpotifyPlayer {
         guard result == 0 else {
             throw SpotifyPlayerError.initializationFailed
         }
+    }
+
+    /// Returns a publisher for queue updates.
+    static var queue: AnyPublisher<QueueState?, Never> {
+        queueSubject.eraseToAnyPublisher()
     }
 
     /// Syncs playback settings from UserDefaults to the Rust player

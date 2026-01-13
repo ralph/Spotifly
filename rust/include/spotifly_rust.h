@@ -59,6 +59,13 @@ int32_t spotifly_is_spirc_ready(void);
 /// Returns 0 if not playing or no position available.
 uint32_t spotifly_get_position_ms(void);
 
+/// Callback function type for queue updates.
+/// Receives a JSON string containing the queue state.
+typedef void (*QueueCallback)(const char* queue_json);
+
+/// Registers a callback to receive queue updates.
+void spotifly_register_queue_callback(QueueCallback callback);
+
 /// Skips to the next track in the queue.
 /// Returns 0 on success, -1 on error or if at end of queue.
 int32_t spotifly_next(void);

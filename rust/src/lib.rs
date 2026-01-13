@@ -9,13 +9,17 @@ use librespot_playback::config::{AudioFormat, Bitrate, PlayerConfig};
 use librespot_playback::mixer::softmixer::SoftMixer;
 use librespot_playback::mixer::{Mixer, MixerConfig};
 use librespot_playback::player::{Player, PlayerEvent};
+use librespot_protocol::connect::ClusterUpdate;
+use librespot_protocol::player::PlayerState;
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use std::ffi::{c_char, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
+use futures_util::StreamExt;
 
 // Global tokio runtime for async operations
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -35,9 +39,7 @@ static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 static SPIRC_READY: AtomicBool = AtomicBool::new(false);
 static IS_ACTIVE_DEVICE: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
-
-// Note: Queue state is now managed by Spirc's ConnectState.
-// Use Spotify Web API (GET/POST /me/player/queue) for queue operations.
+static QUEUE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> = Lazy::new(|| Mutex::new(None));
 
 // Position tracking - updated from player events
 static POSITION_MS: AtomicU32 = AtomicU32::new(0);
@@ -48,6 +50,23 @@ static POSITION_TIMESTAMP_MS: AtomicU64 = AtomicU64::new(0);
 static BITRATE_SETTING: AtomicU8 = AtomicU8::new(1);
 // Gapless playback: true by default (matches librespot default)
 static GAPLESS_SETTING: AtomicBool = AtomicBool::new(true);
+
+#[derive(Serialize)]
+struct QueueItem {
+    uri: String,
+    name: String,
+    artist: String,
+    image_url: String,
+    duration_ms: u32,
+    album_name: String,
+}
+
+#[derive(Serialize)]
+struct QueueState {
+    track: Option<QueueItem>,
+    next_tracks: Vec<QueueItem>,
+    prev_tracks: Vec<QueueItem>,
+}
 
 /// Get current timestamp in milliseconds since UNIX epoch
 fn current_timestamp_ms() -> u64 {
@@ -62,9 +81,6 @@ fn update_position(position_ms: u32) {
     POSITION_MS.store(position_ms, Ordering::SeqCst);
     POSITION_TIMESTAMP_MS.store(current_timestamp_ms(), Ordering::SeqCst);
 }
-
-// QueueItem struct removed - queue is now managed by Spirc's ConnectState.
-// Use Spotify Web API for queue operations.
 
 // Helper function to convert URL to URI
 fn url_to_uri(input: &str) -> String {
@@ -117,6 +133,13 @@ pub extern "C" fn spotifly_free_string(s: *mut c_char) {
             let _ = CString::from_raw(s);
         }
     }
+}
+
+/// Registers a callback to receive queue updates (as JSON string).
+#[no_mangle]
+pub extern "C" fn spotifly_register_queue_callback(callback: extern "C" fn(*const c_char)) {
+    let mut cb = QUEUE_CALLBACK.lock().unwrap();
+    *cb = Some(callback);
 }
 
 /// Initializes the player with the given access token.
@@ -283,7 +306,6 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     });
 
     // Store session, player, mixer, and event channel first
-    // This ensures basic playback works even if Spirc initialization fails
     {
         let mut player_guard = PLAYER.lock().unwrap();
         *player_guard = Some(Arc::clone(&player));
@@ -297,6 +319,42 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         *tx_guard = Some(tx);
     }
 
+    // Setup Mercury Queue Listener
+    // Subscribe to cluster updates which contain player state (queue)
+    let queue_stream = session.dealer().listen_for(
+        "hm://connect-state/v1/cluster",
+        librespot_core::dealer::protocol::Message::from_raw::<ClusterUpdate>
+    ).map_err(|e| format!("Failed to subscribe to queue: {}", e))?;
+
+    // Spawn task to process queue updates
+    RUNTIME.spawn(async move {
+        println!("[Spotifly] Queue listener task started");
+        let mut stream = queue_stream;
+        while let Some(msg_result) = stream.next().await {
+            println!("[Spotifly] Received cluster update message");
+            match msg_result {
+                Ok(cluster_update) => {
+                    println!("[Spotifly] ClusterUpdate parsed successfully");
+                    if let Some(cluster) = cluster_update.cluster.into_option() {
+                        println!("[Spotifly] Cluster present");
+                        if let Some(player_state) = cluster.player_state.into_option() {
+                            println!("[Spotifly] PlayerState present, calling process_and_send_queue");
+                            process_and_send_queue(player_state);
+                        } else {
+                            println!("[Spotifly] No player_state in cluster");
+                        }
+                    } else {
+                        println!("[Spotifly] No cluster in update");
+                    }
+                }
+                Err(e) => {
+                    println!("[Spotifly] Failed to parse cluster update: {:?}", e);
+                }
+            }
+        }
+        println!("[Spotifly] Queue listener task ended");
+    });
+
     // Create Spirc for Spotify Connect support (makes this app appear as a Connect device)
     // Spirc::new() will connect the session - this is the proper way per librespot examples
     let connect_config = ConnectConfig {
@@ -306,12 +364,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         ..Default::default()
     };
 
-    // Use the SAME credentials for Spirc - don't create new ones
-    // Spirc::new() handles the session connection internally
     match Spirc::new(
         connect_config,
         session.clone(),
-        credentials.clone(), // Clone so we can use it for fallback if needed
+        credentials.clone(),
         player,
         mixer as Arc<dyn Mixer>,
     )
@@ -341,6 +397,55 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 
     Ok(())
 }
+
+fn process_and_send_queue(player_state: PlayerState) {
+    println!("[Spotifly] process_and_send_queue called");
+    let cb_guard = QUEUE_CALLBACK.lock().unwrap();
+    if let Some(callback) = *cb_guard {
+        println!("[Spotifly] Callback is registered, processing queue");
+        // Drop the guard before calling callback to avoid deadlocks (though unlikely here)
+        // Actually, we must hold the guard if we want to ensure callback isn't unset mid-call,
+        // but calling out to foreign code with a lock is risky.
+        // Copying the function pointer is safe (it's Copy).
+        let cb = callback;
+        drop(cb_guard);
+
+        // Map ProvidedTrack to QueueItem
+        let map_track = |t: librespot_protocol::player::ProvidedTrack| {
+            let meta = t.metadata;
+            QueueItem {
+                uri: t.uri,
+                name: meta.get("title").cloned().unwrap_or_default(),
+                artist: meta.get("artist_name").cloned().unwrap_or_default(),
+                image_url: meta.get("image_url").cloned().unwrap_or_default(),
+                duration_ms: meta.get("duration").and_then(|d| d.parse().ok()).unwrap_or(0),
+                album_name: meta.get("album_title").cloned().unwrap_or_default(),
+            }
+        };
+
+        let current_track = player_state.track.into_option().map(map_track);
+        let next_tracks: Vec<QueueItem> = player_state.next_tracks.into_iter().map(map_track).collect();
+        let prev_tracks: Vec<QueueItem> = player_state.prev_tracks.into_iter().map(map_track).collect();
+
+        let queue_state = QueueState {
+            track: current_track,
+            next_tracks,
+            prev_tracks,
+        };
+
+        if let Ok(json) = serde_json::to_string(&queue_state) {
+            println!("[Spotifly] Sending queue JSON ({} bytes) to Swift callback", json.len());
+            let c_str = CString::new(json).unwrap();
+            cb(c_str.as_ptr());
+            println!("[Spotifly] Swift callback returned");
+        } else {
+            println!("[Spotifly] Failed to serialize queue state to JSON");
+        }
+    } else {
+        println!("[Spotifly] No callback registered, skipping queue update");
+    }
+}
+
 
 /// Plays multiple tracks in sequence.
 /// Returns 0 on success, -1 on error.
@@ -924,4 +1029,3 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
 pub extern "C" fn spotifly_is_spirc_ready() -> i32 {
     if SPIRC_READY.load(Ordering::SeqCst) { 1 } else { 0 }
 }
-
