@@ -146,6 +146,7 @@ final class AppStore {
 
     var devicesIsLoading = false
     var devicesErrorMessage: String?
+    var activeDeviceId: String? // Tracks which device is currently active
 
     // MARK: - Spotify Connect State
 
@@ -549,6 +550,28 @@ final class AppStore {
             try await SpotifyPlayer.initialize(accessToken: accessToken)
             isPlayerInitialized = true
             SpotifyPlayer.setVolume(volume)
+
+            // Wait for Spirc to be ready (poll with timeout)
+            var spirReady = false
+            for _ in 0 ..< 50 { // 5 seconds max
+                if SpotifyPlayer.isSpircReady {
+                    spirReady = true
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+
+            if spirReady {
+                // Fetch devices and check if any is active
+                let response = try? await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken)
+                let hasActiveDevice = response?.devices.contains { $0.isActive } ?? false
+
+                // If no active device, activate ourselves
+                if !hasActiveDevice {
+                    print("[Spotifly] No active device found, activating local player")
+                    try? SpotifyPlayer.transferToLocal()
+                }
+            }
         } catch {
             playbackError = error.localizedDescription
         }
@@ -608,46 +631,6 @@ final class AppStore {
         }
 
         isLoading = false
-    }
-
-    func addToQueue(trackUri: String, accessToken: String) async {
-        if !isPlayerInitialized {
-            await initializePlayerIfNeeded(accessToken: accessToken)
-        }
-
-        guard isPlayerInitialized else {
-            playbackError = "Player not initialized"
-            return
-        }
-
-        playbackError = nil
-
-        do {
-            try await SpotifyPlayer.addToQueue(trackUri: trackUri)
-            updateQueueState()
-        } catch {
-            playbackError = error.localizedDescription
-        }
-    }
-
-    func playNext(trackUri: String, accessToken: String) async {
-        if !isPlayerInitialized {
-            await initializePlayerIfNeeded(accessToken: accessToken)
-        }
-
-        guard isPlayerInitialized else {
-            playbackError = "Player not initialized"
-            return
-        }
-
-        playbackError = nil
-
-        do {
-            try await SpotifyPlayer.addNextToQueue(trackUri: trackUri)
-            updateQueueState()
-        } catch {
-            playbackError = error.localizedDescription
-        }
     }
 
     func togglePlayPause(trackId: String, accessToken: String) async {

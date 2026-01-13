@@ -96,6 +96,22 @@ if let existingTask = userAlbumsTask {
 
 These services are stored as `@State` in `LoggedInView` so the task reference survives view recreation. If adding a new section that changes the column layout, use this pattern.
 
+## Debug Logging
+
+### Spirc/Connect Trace Logging
+
+To see raw Spirc state transitions during development, set the `RUST_LOG` environment variable:
+
+```bash
+RUST_LOG=librespot_connect::spirc=trace ./path/to/Spotifly.app/Contents/MacOS/Spotifly
+```
+
+Or in Xcode scheme (Edit Scheme → Run → Arguments → Environment Variables):
+- Name: `RUST_LOG`
+- Value: `librespot_connect::spirc=trace`
+
+This shows Mercury frames, Connect state changes, and device updates.
+
 ## Changelog & Releases
 
 ### Changelog Management

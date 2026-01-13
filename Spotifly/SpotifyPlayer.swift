@@ -209,6 +209,17 @@ enum SpotifyPlayer {
         spotifly_is_playing() == 1
     }
 
+    /// Returns whether Spirc is initialized and connected to Spotify Connect.
+    static var isSpircReady: Bool {
+        spotifly_is_spirc_ready() == 1
+    }
+
+    /// Returns whether this device is the active playback device.
+    /// This is best-effort based on player events - use Web API for authoritative status.
+    static var isActiveDevice: Bool {
+        spotifly_is_active_device() == 1
+    }
+
     /// Returns the current playback position in milliseconds.
     /// This is the actual position from the player, not an estimate.
     static var positionMs: UInt32 {
@@ -341,60 +352,6 @@ enum SpotifyPlayer {
                 artistId: artistId,
                 externalUrl: externalUrl,
             )
-        }
-    }
-
-    /// Adds a track to the end of the current queue without clearing it.
-    @SpotifyAuthActor
-    static func addToQueue(trackUri: String) async throws {
-        let result = await Task.detached {
-            trackUri.withCString { ptr in
-                spotifly_add_to_queue(ptr)
-            }
-        }.value
-
-        guard result == 0 else {
-            throw SpotifyPlayerError.playbackFailed
-        }
-    }
-
-    /// Adds a track to play next (after the currently playing track).
-    @SpotifyAuthActor
-    static func addNextToQueue(trackUri: String) async throws {
-        let result = await Task.detached {
-            trackUri.withCString { ptr in
-                spotifly_add_next_to_queue(ptr)
-            }
-        }.value
-
-        guard result == 0 else {
-            throw SpotifyPlayerError.playbackFailed
-        }
-    }
-
-    /// Removes a track from the queue at the given index.
-    /// Only allows removing unplayed tracks (after current index).
-    static func removeFromQueue(at index: Int) throws {
-        let result = spotifly_remove_from_queue(index)
-        guard result == 0 else {
-            throw SpotifyPlayerError.playbackFailed
-        }
-    }
-
-    /// Moves a track from one position to another in the queue.
-    /// Only allows reordering unplayed tracks (after current index).
-    static func moveQueueItem(from: Int, to: Int) throws {
-        let result = spotifly_move_queue_item(from, to)
-        guard result == 0 else {
-            throw SpotifyPlayerError.playbackFailed
-        }
-    }
-
-    /// Clears all unplayed tracks from the queue (keeps current and played).
-    static func clearUpcomingQueue() throws {
-        let result = spotifly_clear_upcoming_queue()
-        guard result == 0 else {
-            throw SpotifyPlayerError.playbackFailed
         }
     }
 

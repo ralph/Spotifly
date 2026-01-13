@@ -229,13 +229,9 @@ struct NowPlayingBarView: View {
     private var playbackControls: some View {
         HStack(spacing: 16) {
             Button {
-                if store.isSpotifyConnectActive {
-                    Task {
-                        let token = await session.validAccessToken()
-                        await connectService.skipToPrevious(accessToken: token)
-                    }
-                } else {
-                    playbackViewModel.previous()
+                Task {
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.previous(accessToken: token)
                 }
             } label: {
                 Image(systemName: "backward.fill")
@@ -245,24 +241,14 @@ struct NowPlayingBarView: View {
             .disabled(!store.isSpotifyConnectActive && !playbackViewModel.hasPrevious)
 
             Button {
-                if store.isSpotifyConnectActive {
-                    Task {
-                        let token = await session.validAccessToken()
-                        if store.isPlaying {
-                            await connectService.pause(accessToken: token)
-                        } else {
-                            await connectService.resume(accessToken: token)
-                        }
-                    }
-                } else {
-                    if playbackViewModel.isPlaying {
-                        SpotifyPlayer.pause()
-                        playbackViewModel.isPlaying = false
+                Task {
+                    let token = await session.validAccessToken()
+                    let isPlaying = store.isSpotifyConnectActive ? store.isPlaying : playbackViewModel.isPlaying
+                    if isPlaying {
+                        await playbackViewModel.pause(accessToken: token)
                     } else {
-                        SpotifyPlayer.resume()
-                        playbackViewModel.isPlaying = true
+                        await playbackViewModel.resume(accessToken: token)
                     }
-                    playbackViewModel.updateNowPlayingInfo()
                 }
             } label: {
                 let isPlaying = store.isSpotifyConnectActive ? store.isPlaying : playbackViewModel.isPlaying
@@ -272,13 +258,9 @@ struct NowPlayingBarView: View {
             .buttonStyle(.plain)
 
             Button {
-                if store.isSpotifyConnectActive {
-                    Task {
-                        let token = await session.validAccessToken()
-                        await connectService.skipToNext(accessToken: token)
-                    }
-                } else {
-                    playbackViewModel.next()
+                Task {
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.next(accessToken: token)
                 }
             } label: {
                 Image(systemName: "forward.fill")
@@ -330,7 +312,7 @@ struct NowPlayingBarView: View {
                                     await connectService.seek(to: Int(newValue), accessToken: token)
                                 }
                             } else {
-                                playbackViewModel.seek(to: UInt32(newValue))
+                                playbackViewModel.seekLocal(to: UInt32(newValue))
                             }
                         },
                     ),

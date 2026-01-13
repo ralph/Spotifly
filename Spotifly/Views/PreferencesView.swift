@@ -186,7 +186,7 @@ struct StartpageSettingsView: View {
                         item: section,
                         sections: $sections,
                         draggingSection: $draggingSection,
-                        onReorder: saveSectionOrder
+                        onReorder: saveSectionOrder,
                     ))
                 }
             } header: {

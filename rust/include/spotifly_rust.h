@@ -65,6 +65,13 @@ int32_t spotifly_set_repeat_track(bool repeat);
 /// Returns 1 if currently playing, 0 otherwise.
 int32_t spotifly_is_playing(void);
 
+/// Returns 1 if Spirc is initialized and connected, 0 otherwise.
+int32_t spotifly_is_spirc_ready(void);
+
+/// Returns 1 if this is the active playback device, 0 otherwise.
+/// This is best-effort based on player events - use Web API for authoritative status.
+int32_t spotifly_is_active_device(void);
+
 /// Returns the current playback position in milliseconds.
 /// If playing, interpolates from last known position.
 /// Returns 0 if not playing or no position available.
@@ -132,41 +139,10 @@ char* spotifly_get_queue_artist_id(size_t index);
 char* spotifly_get_queue_external_url(size_t index);
 
 /// Returns all queue items as a JSON string.
+/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
 /// Caller must free the string with spotifly_free_string().
-/// Returns NULL on error.
+/// Returns NULL.
 char* spotifly_get_all_queue_items(void);
-
-/// Adds a track to the end of the current queue without clearing it.
-/// Returns 0 on success, -1 on error.
-///
-/// @param track_uri Spotify track URI (e.g., "spotify:track:xxx")
-int32_t spotifly_add_to_queue(const char* track_uri);
-
-/// Adds a track to play next (after the currently playing track).
-/// If nothing is playing, adds it to the queue.
-/// Returns 0 on success, -1 on error.
-///
-/// @param track_uri Spotify track URI (e.g., "spotify:track:xxx")
-int32_t spotifly_add_next_to_queue(const char* track_uri);
-
-/// Removes a track from the queue at the given index.
-/// Only allows removing tracks AFTER the current index (unplayed tracks).
-/// Returns 0 on success, -1 on error.
-///
-/// @param index Index of the track to remove
-int32_t spotifly_remove_from_queue(size_t index);
-
-/// Moves a track from one position to another in the queue.
-/// Only allows reordering tracks AFTER the current index (unplayed tracks).
-/// Returns 0 on success, -1 on error.
-///
-/// @param from_index Index to move from
-/// @param to_index Index to move to
-int32_t spotifly_move_queue_item(size_t from_index, size_t to_index);
-
-/// Clears all tracks after the currently playing track from the queue.
-/// Returns 0 on success, -1 on error.
-int32_t spotifly_clear_upcoming_queue(void);
 
 /// Gets radio tracks for a seed track and returns them as JSON.
 /// Returns a JSON array of track URIs, or NULL on error.

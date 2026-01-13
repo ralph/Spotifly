@@ -113,6 +113,28 @@ final class PlaybackViewModel {
         do {
             try await SpotifyPlayer.initialize(accessToken: accessToken)
             isInitialized = true
+
+            // Wait for Spirc to be ready (poll with timeout)
+            var spircReady = false
+            for _ in 0 ..< 50 { // 5 seconds max
+                if SpotifyPlayer.isSpircReady {
+                    spircReady = true
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+
+            if spircReady {
+                // Fetch devices and check if any is active
+                let response = try? await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken)
+                let hasActiveDevice = response?.devices.contains { $0.isActive } ?? false
+
+                // If no active device, activate ourselves
+                if !hasActiveDevice {
+                    print("[Spotifly] No active device found, activating local player")
+                    try? SpotifyPlayer.transferToLocal()
+                }
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -200,32 +222,6 @@ final class PlaybackViewModel {
         }
     }
 
-    func playNext(trackUri: String, accessToken: String) async {
-        // Initialize if needed
-        if !isInitialized {
-            await initializeIfNeeded(accessToken: accessToken)
-        }
-
-        guard isInitialized else {
-            errorMessage = "Player not initialized"
-            return
-        }
-
-        errorMessage = nil
-
-        do {
-            // Note: Spotify Web API doesn't support "play next" directly.
-            // Using Rust FFI which inserts at position 0 in local queue.
-            // This works when Spirc is not active; when Spirc is active,
-            // consider using addToQueue instead (adds to end of queue).
-            try await SpotifyPlayer.addNextToQueue(trackUri: trackUri)
-            // Update queue state to reflect the change
-            updateQueueState()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     // MARK: - Playback State Helpers
 
     /// Common setup after playback has started
@@ -279,7 +275,72 @@ final class PlaybackViewModel {
         }
     }
 
-    func next() {
+    // MARK: - Web API Playback Control (async, requires token)
+
+    // Use these for UI controls - they work for both local and remote devices
+
+    func next(accessToken: String) async {
+        do {
+            try await SpotifyAPI.skipToNext(accessToken: accessToken)
+            isPlaying = true
+            updateQueueState()
+            syncPositionAnchor()
+            updateNowPlayingInfo()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func previous(accessToken: String) async {
+        do {
+            try await SpotifyAPI.skipToPrevious(accessToken: accessToken)
+            isPlaying = true
+            updateQueueState()
+            syncPositionAnchor()
+            updateNowPlayingInfo()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func seek(to positionMs: UInt32, accessToken: String) async {
+        do {
+            try await SpotifyAPI.seekToPosition(accessToken: accessToken, positionMs: Int(positionMs))
+            // Update anchor for smooth interpolation from new position
+            positionAnchorMs = positionMs
+            positionAnchorTime = CACurrentMediaTime()
+            currentPositionMs = positionMs
+            updateNowPlayingInfo()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func pause(accessToken: String) async {
+        do {
+            try await SpotifyAPI.pausePlayback(accessToken: accessToken)
+            isPlaying = false
+            updateNowPlayingInfo()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func resume(accessToken: String) async {
+        do {
+            try await SpotifyAPI.resumePlayback(accessToken: accessToken)
+            isPlaying = true
+            updateNowPlayingInfo()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Local Playback Control (sync, for remote command handlers)
+
+    // These use SpotifyPlayer FFI - only work when we're the active local device
+
+    func nextLocal() {
         do {
             try SpotifyPlayer.next()
             isPlaying = true
@@ -291,7 +352,7 @@ final class PlaybackViewModel {
         }
     }
 
-    func previous() {
+    func previousLocal() {
         do {
             try SpotifyPlayer.previous()
             isPlaying = true
@@ -303,7 +364,7 @@ final class PlaybackViewModel {
         }
     }
 
-    func seek(to positionMs: UInt32) {
+    func seekLocal(to positionMs: UInt32) {
         do {
             try SpotifyPlayer.seek(positionMs: positionMs)
             // Update anchor for smooth interpolation from new position
@@ -398,14 +459,14 @@ final class PlaybackViewModel {
         // Next track command
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            next()
+            nextLocal()
             return .success
         }
 
         // Previous track command
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            previous()
+            previousLocal()
             return .success
         }
 
@@ -415,7 +476,7 @@ final class PlaybackViewModel {
                 guard let self else { return }
                 guard let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
                 let positionMs = UInt32(seekEvent.positionTime * 1000)
-                self.seek(to: positionMs)
+                self.seekLocal(to: positionMs)
             }
             return .success
         }

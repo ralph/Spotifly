@@ -51,7 +51,7 @@ extension FocusedValues {
 // MARK: - App Delegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationWillTerminate(_ notification: Notification) {
+    func applicationWillTerminate(_: Notification) {
         // Shut down Spirc to send goodbye to other Spotify Connect devices
         SpotifyPlayer.shutdown()
     }
@@ -102,24 +102,33 @@ struct SpotiflyCommands: Commands {
         // Playback menu
         CommandMenu("menu.playback") {
             Button("menu.play_pause") {
-                if playbackViewModel.isPlaying {
-                    SpotifyPlayer.pause()
-                    playbackViewModel.isPlaying = false
-                } else {
-                    SpotifyPlayer.resume()
-                    playbackViewModel.isPlaying = true
+                guard let session else { return }
+                Task {
+                    let token = await session.validAccessToken()
+                    if playbackViewModel.isPlaying {
+                        await playbackViewModel.pause(accessToken: token)
+                    } else {
+                        await playbackViewModel.resume(accessToken: token)
+                    }
                 }
-                playbackViewModel.updateNowPlayingInfo()
             }
             .keyboardShortcut(" ", modifiers: [])
 
             Button("menu.next_track") {
-                playbackViewModel.next()
+                guard let session else { return }
+                Task {
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.next(accessToken: token)
+                }
             }
             .keyboardShortcut(.rightArrow, modifiers: .command)
 
             Button("menu.previous_track") {
-                playbackViewModel.previous()
+                guard let session else { return }
+                Task {
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.previous(accessToken: token)
+                }
             }
             .keyboardShortcut(.leftArrow, modifiers: .command)
 

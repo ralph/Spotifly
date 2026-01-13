@@ -49,26 +49,32 @@ private struct PlaybackShortcutsView: View {
         Group {
             // Space - Play/Pause
             Button("") {
-                if playbackViewModel.isPlaying {
-                    SpotifyPlayer.pause()
-                    playbackViewModel.isPlaying = false
-                } else {
-                    SpotifyPlayer.resume()
-                    playbackViewModel.isPlaying = true
+                Task {
+                    let token = await session.validAccessToken()
+                    if playbackViewModel.isPlaying {
+                        await playbackViewModel.pause(accessToken: token)
+                    } else {
+                        await playbackViewModel.resume(accessToken: token)
+                    }
                 }
-                playbackViewModel.updateNowPlayingInfo()
             }
             .keyboardShortcut(" ", modifiers: [])
 
             // Cmd+Right - Next
             Button("") {
-                playbackViewModel.next()
+                Task {
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.next(accessToken: token)
+                }
             }
             .keyboardShortcut(.rightArrow, modifiers: .command)
 
             // Cmd+Left - Previous
             Button("") {
-                playbackViewModel.previous()
+                Task {
+                    let token = await session.validAccessToken()
+                    await playbackViewModel.previous(accessToken: token)
+                }
             }
             .keyboardShortcut(.leftArrow, modifiers: .command)
 

@@ -30,16 +30,11 @@ struct TrackContextMenu: View {
     }
 
     var body: some View {
-        Button {
-            playNext()
-        } label: {
-            Label("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward")
-        }
-
+        // Single unified action - "Play Next" adds to queue (plays before context tracks)
         Button {
             addToQueue()
         } label: {
-            Label("track.menu.add_to_queue", systemImage: "text.append")
+            Label("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward")
         }
 
         Button {
@@ -125,16 +120,6 @@ struct TrackContextMenu: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(externalUrl, forType: .string)
-    }
-
-    private func playNext() {
-        Task {
-            let token = await session.validAccessToken()
-            await playbackViewModel.playNext(
-                trackUri: track.uri,
-                accessToken: token,
-            )
-        }
     }
 
     private func addToQueue() {

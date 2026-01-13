@@ -34,6 +34,8 @@ static MIXER: Lazy<Mutex<Option<Arc<SoftMixer>>>> = Lazy::new(|| Mutex::new(None
 static SPIRC: Lazy<Mutex<Option<Arc<Spirc>>>> = Lazy::new(|| Mutex::new(None));
 static DEVICE_ID: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
+static SPIRC_READY: AtomicBool = AtomicBool::new(false);
+static IS_ACTIVE_DEVICE: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
 
 // Note: Queue state is now managed by Spirc's ConnectState.
@@ -260,10 +262,12 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                     match event {
                         Some(PlayerEvent::Playing { position_ms, .. }) => {
                             IS_PLAYING.store(true, Ordering::SeqCst);
+                            IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
                             update_position(position_ms);
                         }
                         Some(PlayerEvent::Paused { position_ms, .. }) => {
                             IS_PLAYING.store(false, Ordering::SeqCst);
+                            // Still active when paused - just not playing
                             update_position(position_ms);
                         }
                         Some(PlayerEvent::PositionChanged { position_ms, .. }) => {
@@ -275,6 +279,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                         }
                         Some(PlayerEvent::Stopped { .. }) => {
                             IS_PLAYING.store(false, Ordering::SeqCst);
+                            IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
                             update_position(0);
                         }
                         Some(PlayerEvent::EndOfTrack { .. }) => {
@@ -334,7 +339,8 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 
             let mut spirc_guard = SPIRC.lock().unwrap();
             *spirc_guard = Some(spirc_arc);
-            println!("[Spotifly] Spirc initialized - Spotify Connect available");
+            SPIRC_READY.store(true, Ordering::SeqCst);
+            println!("[Spotifly] Spirc ready - connected to Spotify Connect");
         }
         Err(e) => {
             // Spirc failed - fall back to manual session connection for basic playback
@@ -823,51 +829,6 @@ pub extern "C" fn spotifly_get_all_queue_items() -> *mut c_char {
     ptr::null_mut()
 }
 
-/// Adds a track to the end of the current queue without clearing it.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API POST /me/player/queue instead.
-/// Returns -1 (not supported).
-#[no_mangle]
-pub extern "C" fn spotifly_add_to_queue(_track_uri: *const c_char) -> i32 {
-    println!("[Spotifly] spotifly_add_to_queue: DEPRECATED - use Web API POST /me/player/queue");
-    -1
-}
-
-/// Adds a track to play next (after the currently playing track).
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API POST /me/player/queue instead.
-/// Returns -1 (not supported).
-#[no_mangle]
-pub extern "C" fn spotifly_add_next_to_queue(_track_uri: *const c_char) -> i32 {
-    println!("[Spotifly] spotifly_add_next_to_queue: DEPRECATED - use Web API POST /me/player/queue");
-    -1
-}
-
-/// Removes a track from the queue at the given index.
-/// DEPRECATED: Queue is now managed by Spirc. No Web API equivalent exists.
-/// Returns -1 (not supported).
-#[no_mangle]
-pub extern "C" fn spotifly_remove_from_queue(_index: usize) -> i32 {
-    println!("[Spotifly] spotifly_remove_from_queue: DEPRECATED - queue managed by Spirc");
-    -1
-}
-
-/// Moves a track from one position to another in the queue.
-/// DEPRECATED: Queue is now managed by Spirc. No Web API equivalent exists.
-/// Returns -1 (not supported).
-#[no_mangle]
-pub extern "C" fn spotifly_move_queue_item(_from_index: usize, _to_index: usize) -> i32 {
-    println!("[Spotifly] spotifly_move_queue_item: DEPRECATED - queue managed by Spirc");
-    -1
-}
-
-/// Clears all tracks after the currently playing track from the queue.
-/// DEPRECATED: Queue is now managed by Spirc. No Web API equivalent exists.
-/// Returns -1 (not supported).
-#[no_mangle]
-pub extern "C" fn spotifly_clear_upcoming_queue() -> i32 {
-    println!("[Spotifly] spotifly_clear_upcoming_queue: DEPRECATED - queue managed by Spirc");
-    -1
-}
-
 /// Gets radio tracks for a seed track and returns them as JSON.
 /// Returns a JSON array of track URIs, or NULL on error.
 /// Caller must free the string with spotifly_free_string().
@@ -1097,6 +1058,7 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
                 player.pause();
             }
             IS_PLAYING.store(false, Ordering::SeqCst);
+            IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
             0
         }
         Err(e) => {
@@ -1104,4 +1066,17 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
             -1
         }
     }
+}
+
+/// Returns 1 if Spirc is initialized and connected to Spotify Connect, 0 otherwise.
+#[no_mangle]
+pub extern "C" fn spotifly_is_spirc_ready() -> i32 {
+    if SPIRC_READY.load(Ordering::SeqCst) { 1 } else { 0 }
+}
+
+/// Returns 1 if this device is the active playback device, 0 otherwise.
+/// This is best-effort based on player events - check Web API for authoritative status.
+#[no_mangle]
+pub extern "C" fn spotifly_is_active_device() -> i32 {
+    if IS_ACTIVE_DEVICE.load(Ordering::SeqCst) { 1 } else { 0 }
 }

@@ -189,6 +189,52 @@ struct Device: Identifiable, Sendable, Hashable {
     let volumePercent: Int?
 }
 
+// MARK: - Queue Models
+
+/// Indicates the source of a track in the queue
+enum TrackProvider: String, Codable, Sendable {
+    case queue // Manually added to queue
+    case context // From current album/playlist/artist
+    case autoplay // Autoplay suggestion
+}
+
+/// A track in the queue with provider information
+struct QueueTrack: Identifiable, Sendable {
+    let id: String // Unique ID for list diffing (track.id + index or UUID)
+    let track: Track
+    let provider: TrackProvider
+
+    /// Create from a Track with provider info
+    init(id: String = UUID().uuidString, track: Track, provider: TrackProvider) {
+        self.id = id
+        self.track = track
+        self.provider = provider
+    }
+}
+
+/// Represents the current playback queue state
+struct PlaybackQueue: Sendable {
+    var currentTrack: QueueTrack?
+    var manualQueue: [QueueTrack] // Manually queued tracks (provider: .queue)
+    var contextTracks: [QueueTrack] // Tracks from current context (provider: .context)
+
+    /// All upcoming tracks - manual queue plays first, then context
+    var allUpcoming: [QueueTrack] {
+        manualQueue + contextTracks
+    }
+
+    /// Total count of upcoming tracks
+    var upcomingCount: Int {
+        manualQueue.count + contextTracks.count
+    }
+
+    init(currentTrack: QueueTrack? = nil, manualQueue: [QueueTrack] = [], contextTracks: [QueueTrack] = []) {
+        self.currentTrack = currentTrack
+        self.manualQueue = manualQueue
+        self.contextTracks = contextTracks
+    }
+}
+
 // MARK: - Duration Formatting
 
 /// Format milliseconds as human-readable duration (e.g., "3 hr 15 min" or "45 min")
