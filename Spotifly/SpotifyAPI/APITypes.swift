@@ -211,12 +211,6 @@ struct PlaybackState: Sendable {
     let shuffleState: Bool
 }
 
-/// Queue response from Spotify
-struct QueueResponse: Sendable {
-    let currentlyPlaying: APITrack?
-    let queue: [APITrack]
-}
-
 // MARK: - User Top Items
 
 /// Time range for top items (artists/tracks)
@@ -596,6 +590,11 @@ struct ArtistTopTracksCodable: Decodable {
     let tracks: [TrackCodable]
 }
 
+// Multiple tracks (batch fetch)
+struct MultipleTracksCodable: Decodable {
+    let tracks: [TrackCodable?] // Can contain nulls for not-found tracks
+}
+
 // User albums
 struct UserAlbumsCodable: Decodable {
     let items: [UserAlbumItemCodable]
@@ -677,24 +676,6 @@ struct PlaybackStateCodable: Decodable {
             progressMs: progressMs ?? 0,
             repeatState: repeatState ?? "off",
             shuffleState: shuffleState ?? false,
-        )
-    }
-}
-
-// Queue
-struct QueueCodable: Decodable {
-    let currentlyPlaying: TrackCodable?
-    let queue: [TrackCodable]?
-
-    enum CodingKeys: String, CodingKey {
-        case currentlyPlaying = "currently_playing"
-        case queue
-    }
-
-    func toQueueResponse() -> QueueResponse {
-        QueueResponse(
-            currentlyPlaying: currentlyPlaying?.toAPITrack(),
-            queue: queue?.map { $0.toAPITrack() } ?? [],
         )
     }
 }

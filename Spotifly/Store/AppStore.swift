@@ -139,6 +139,9 @@ final class AppStore {
 
     // MARK: - Queue State
 
+    /// Queue track URIs from Mercury (source of truth for queue order)
+    private(set) var queueURIs: [String] = []
+    /// Queue items with full metadata (derived from queueURIs + tracks store)
     var queueItems: [QueueItem] = []
     var queueErrorMessage: String?
 
@@ -479,6 +482,10 @@ final class AppStore {
     }
 
     // MARK: - Queue Actions
+
+    func setQueueURIs(_ uris: [String]) {
+        queueURIs = uris
+    }
 
     func setQueueItems(_ items: [QueueItem]) {
         queueItems = items

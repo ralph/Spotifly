@@ -2,7 +2,7 @@
 //  QueueListView.swift
 //  Spotifly
 //
-//  Displays current playback queue (read-only, fetched via Web API)
+//  Displays current playback queue (real-time updates via Spirc/Mercury)
 //
 
 import SwiftUI
@@ -47,18 +47,15 @@ struct QueueListView: View {
             }
         }
         .task {
+            // Load favorites for queue items (queue itself auto-updates via Spirc subscription)
             let token = await session.validAccessToken()
-            // Always use Web API for queue (works for all devices)
-            await queueService.loadConnectQueue(accessToken: token)
             await queueService.loadFavorites(accessToken: token)
         }
-        .onChange(of: store.currentIndex) { oldIndex, newIndex in
-            // When track changes, refresh queue (track was consumed)
-            if newIndex != oldIndex {
-                Task {
-                    let token = await session.validAccessToken()
-                    await queueService.loadConnectQueue(accessToken: token)
-                }
+        .onChange(of: store.queueItems) { _, _ in
+            // When queue updates, refresh favorites for new items
+            Task {
+                let token = await session.validAccessToken()
+                await queueService.loadFavorites(accessToken: token)
             }
         }
     }
@@ -106,10 +103,10 @@ struct QueueListView: View {
                             track: trackData,
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                            currentIndex: playbackViewModel.currentIndex,
+                            currentIndex: currentIndex,
                             playbackViewModel: playbackViewModel,
                             doubleTapBehavior: .playTrack,
-                            currentSection: .queue,
+                            currentSection: .queue
                         )
                         .id(index)
 
@@ -119,11 +116,6 @@ struct QueueListView: View {
                         }
                     }
                 }
-            }
-            .refreshable {
-                let token = await session.validAccessToken()
-                await queueService.loadConnectQueue(accessToken: token)
-                await queueService.loadFavorites(accessToken: token)
             }
             .onAppear { scrollProxy = proxy }
         }
@@ -141,13 +133,6 @@ struct QueueListView: View {
             Text(error)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("action.try_again") {
-                Task {
-                    let token = await session.validAccessToken()
-                    await queueService.loadConnectQueue(accessToken: token)
-                }
-            }
-            .buttonStyle(.borderedProminent)
         }
         .padding()
         .frame(maxHeight: .infinity)

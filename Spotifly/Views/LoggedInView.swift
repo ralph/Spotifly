@@ -22,15 +22,15 @@ struct LoggedInView: View {
     // Normalized state store
     @State private var store: AppStore
 
-    // Services that need Task deduplication (must persist across view recreations)
+    // Services that need Task deduplication or subscription persistence
     @State private var playlistService: PlaylistService
     @State private var albumService: AlbumService
     @State private var artistService: ArtistService
+    @State private var queueService: QueueService
 
     // Services - stateless, created on demand (all state lives in AppStore)
     private var trackService: TrackService { TrackService(store: store) }
     private var deviceService: DeviceService { DeviceService(store: store) }
-    private var queueService: QueueService { QueueService(store: store) }
     private var recentlyPlayedService: RecentlyPlayedService { RecentlyPlayedService(store: store) }
     private var searchService: SearchService { SearchService(store: store) }
     private var topItemsService: TopItemsService { TopItemsService(store: store) }
@@ -46,13 +46,17 @@ struct LoggedInView: View {
         self.onLogout = onLogout
 
         let store = AppStore()
+        let session = SpotifySession(authResult: authResult)
         _store = State(initialValue: store)
-        _session = State(initialValue: SpotifySession(authResult: authResult))
+        _session = State(initialValue: session)
 
-        // Initialize services that need Task deduplication
+        // Initialize services that need Task deduplication or subscription persistence
         _playlistService = State(initialValue: PlaylistService(store: store))
         _albumService = State(initialValue: AlbumService(store: store))
         _artistService = State(initialValue: ArtistService(store: store))
+        _queueService = State(initialValue: QueueService(store: store, tokenProvider: {
+            await session.validAccessToken()
+        }))
     }
 
     @State private var selectedNavigationItem: NavigationItem? = .startpage

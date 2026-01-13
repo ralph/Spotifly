@@ -403,29 +403,30 @@ fn process_and_send_queue(player_state: PlayerState) {
     let cb_guard = QUEUE_CALLBACK.lock().unwrap();
     if let Some(callback) = *cb_guard {
         println!("[Spotifly] Callback is registered, processing queue");
-        // Drop the guard before calling callback to avoid deadlocks (though unlikely here)
-        // Actually, we must hold the guard if we want to ensure callback isn't unset mid-call,
-        // but calling out to foreign code with a lock is risky.
-        // Copying the function pointer is safe (it's Copy).
         let cb = callback;
         drop(cb_guard);
 
-        // Map ProvidedTrack to QueueItem
+        // Extract just the URIs - metadata will be fetched via Web API in Swift
         let map_track = |t: librespot_protocol::player::ProvidedTrack| {
-            let meta = t.metadata;
             QueueItem {
                 uri: t.uri,
-                name: meta.get("title").cloned().unwrap_or_default(),
-                artist: meta.get("artist_name").cloned().unwrap_or_default(),
-                image_url: meta.get("image_url").cloned().unwrap_or_default(),
-                duration_ms: meta.get("duration").and_then(|d| d.parse().ok()).unwrap_or(0),
-                album_name: meta.get("album_title").cloned().unwrap_or_default(),
+                name: String::new(),
+                artist: String::new(),
+                image_url: String::new(),
+                duration_ms: 0,
+                album_name: String::new(),
             }
         };
 
         let current_track = player_state.track.into_option().map(map_track);
         let next_tracks: Vec<QueueItem> = player_state.next_tracks.into_iter().map(map_track).collect();
         let prev_tracks: Vec<QueueItem> = player_state.prev_tracks.into_iter().map(map_track).collect();
+
+        println!("[Spotifly] Queue counts: current={}, next={}, prev={}",
+            if current_track.is_some() { 1 } else { 0 },
+            next_tracks.len(),
+            prev_tracks.len()
+        );
 
         let queue_state = QueueState {
             track: current_track,

@@ -10,7 +10,7 @@ import SpotiflyRust
 import Combine
 
 /// Queue item metadata (nonisolated for C callback compatibility)
-struct QueueItem: Sendable, Identifiable {
+struct QueueItem: Sendable, Identifiable, Equatable {
     nonisolated let id: String // uri
     nonisolated let uri: String
     nonisolated let trackName: String
