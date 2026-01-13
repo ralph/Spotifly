@@ -670,11 +670,6 @@ struct RecentlyPlayedCodable: Decodable {
     }
 }
 
-// Recommendations
-struct RecommendationsCodable: Decodable {
-    let tracks: [TrackCodable]
-}
-
 // Search results
 struct SearchResultsCodable: Decodable {
     let tracks: TracksPagingCodable?

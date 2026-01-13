@@ -2,59 +2,13 @@
 //  SpotifyAPI+Search.swift
 //  Spotifly
 //
-//  Search and recommendations API calls.
+//  Search API calls.
 //
 
 import Foundation
 import os
 
 extension SpotifyAPI {
-    // MARK: - Recommendations
-
-    /// Fetches track recommendations based on a seed track (for "Start Radio" feature)
-    static func fetchRecommendations(
-        accessToken: String,
-        seedTrackId: String,
-        limit: Int = 50,
-    ) async throws -> [APITrack] {
-        let urlString = "\(baseURL)/recommendations?seed_tracks=\(seedTrackId)&limit=\(limit)"
-        #if DEBUG
-            apiLogger.debug("[GET] \(urlString)")
-        #endif
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let decoded = try JSONDecoder().decode(RecommendationsCodable.self, from: data)
-                return decoded.tracks.map { $0.toAPITrack() }
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 404:
-            throw SpotifyAPIError.notFound
-        default:
-            if let errorResponse = try? JSONDecoder().decode(SpotifyErrorResponse.self, from: data) {
-                throw SpotifyAPIError.apiError(errorResponse.error.message)
-            }
-            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
-        }
-    }
-
     // MARK: - Search
 
     /// Searches Spotify for tracks, albums, artists, and playlists
