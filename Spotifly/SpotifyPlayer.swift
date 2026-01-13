@@ -121,7 +121,7 @@ enum SpotifyPlayer {
     static func play(uriOrUrl: String) async throws {
         let result = await Task.detached {
             uriOrUrl.withCString { ptr in
-                spotifly_play_track(ptr)
+                spotifly_play_uri(ptr)
             }
         }.value
 

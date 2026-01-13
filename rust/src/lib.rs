@@ -428,7 +428,7 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
 /// Supports tracks, albums, playlists, and artists.
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
-pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
+pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
     if uri_or_url.is_null() {
         eprintln!("Play error: uri_or_url is null");
         return -1;
@@ -446,7 +446,7 @@ pub extern "C" fn spotifly_play_track(uri_or_url: *const c_char) -> i32 {
 
     // Convert URL to URI if needed
     let uri_str = url_to_uri(&input_str);
-    println!("[Spotifly] spotifly_play_track called: {}", uri_str);
+    println!("[Spotifly] spotifly_play_uri called: {}", uri_str);
 
     // Use Spirc.load() with LoadRequest for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();

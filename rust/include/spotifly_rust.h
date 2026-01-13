@@ -29,7 +29,7 @@ int32_t spotifly_play_tracks(const char* track_uris_json);
 /// Plays content by its Spotify URI or URL.
 /// Supports tracks, albums, playlists, and artists.
 /// Returns 0 on success, -1 on error.
-int32_t spotifly_play_track(const char* uri_or_url);
+int32_t spotifly_play_uri(const char* uri_or_url);
 
 /// Pauses playback.
 /// Returns 0 on success, -1 on error.
