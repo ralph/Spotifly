@@ -2354,7 +2354,6 @@ dependencies = [
  "librespot-core",
  "librespot-playback",
  "once_cell",
- "serde",
  "serde_json",
  "tokio",
 ]
