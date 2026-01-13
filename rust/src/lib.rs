@@ -4,7 +4,6 @@ use librespot_core::session::Session;
 use librespot_core::SessionConfig;
 use librespot_core::cache::Cache;
 use librespot_core::SpotifyUri;
-use librespot_metadata::{Metadata, Playlist};
 use librespot_playback::audio_backend;
 use librespot_playback::config::{AudioFormat, Bitrate, PlayerConfig};
 use librespot_playback::mixer::softmixer::SoftMixer;
@@ -12,7 +11,6 @@ use librespot_playback::mixer::{Mixer, MixerConfig};
 use librespot_playback::player::{Player, PlayerEvent};
 use once_cell::sync::Lazy;
 use std::ffi::{c_char, CStr, CString};
-use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -109,19 +107,6 @@ fn url_to_uri(input: &str) -> String {
 fn parse_spotify_uri(uri_str: &str) -> Result<SpotifyUri, String> {
     SpotifyUri::from_uri(uri_str)
         .map_err(|e| format!("Invalid Spotify URI: {:?}", e))
-}
-
-// Load playlist track URIs (for radio)
-async fn load_playlist_track_uris(session: &Session, playlist_uri: SpotifyUri) -> Result<Vec<String>, String> {
-    let playlist = Playlist::get(session, &playlist_uri).await
-        .map_err(|e| format!("Failed to load playlist: {:?}", e))?;
-
-    let track_uris: Vec<String> = playlist.tracks()
-        .filter(|uri| matches!(uri, SpotifyUri::Track { .. }))
-        .map(|uri| uri.to_string())
-        .collect();
-
-    Ok(track_uris)
 }
 
 /// Frees a C string allocated by this library.
@@ -688,86 +673,93 @@ pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
 // - POST /me/player/queue - to add to queue
 // ============================================================================
 
-/// Gets radio tracks for a seed track and returns them as JSON.
-/// Returns a JSON array of track URIs, or NULL on error.
-/// Caller must free the string with spotifly_free_string().
+/// Plays radio for a seed track.
+/// Gets the radio playlist URI and loads it directly via Spirc.
+/// Returns 0 on success, -1 on error.
 #[no_mangle]
-pub extern "C" fn spotifly_get_radio_tracks(track_uri: *const c_char) -> *mut c_char {
+pub extern "C" fn spotifly_play_radio(track_uri: *const c_char) -> i32 {
     if track_uri.is_null() {
-        eprintln!("Get radio error: track_uri is null");
-        return ptr::null_mut();
+        eprintln!("Play radio error: track_uri is null");
+        return -1;
     }
 
     let uri_str = unsafe {
         match CStr::from_ptr(track_uri).to_str() {
             Ok(s) => s.to_string(),
             Err(_) => {
-                eprintln!("Get radio error: invalid track_uri string");
-                return ptr::null_mut();
+                eprintln!("Play radio error: invalid track_uri string");
+                return -1;
             }
         }
     };
+
+    println!("[Spotifly] spotifly_play_radio called: {}", uri_str);
 
     let session_guard = SESSION.lock().unwrap();
     let session = match session_guard.as_ref() {
         Some(s) => s.clone(),
         None => {
-            eprintln!("Get radio error: session not initialized");
-            return ptr::null_mut();
+            eprintln!("Play radio error: session not initialized");
+            return -1;
         }
     };
     drop(session_guard);
 
-    let result: Result<Vec<String>, String> = RUNTIME.block_on(async {
-        // Parse the URI
+    // Get the radio playlist URI
+    let playlist_uri: Result<String, String> = RUNTIME.block_on(async {
         let spotify_uri = parse_spotify_uri(&uri_str)?;
 
-        // Get radio tracks from Spotify
         let response = session.spclient().get_radio_for_track(&spotify_uri).await
             .map_err(|e| format!("Failed to get radio: {:?}", e))?;
 
-        // Parse the JSON response
         let json: serde_json::Value = serde_json::from_slice(&response)
             .map_err(|e| format!("Failed to parse radio response: {:?}", e))?;
 
-        // The API returns a playlist URI in mediaItems, not individual tracks
+        // The API returns a playlist URI in mediaItems
         // Format: { "mediaItems": [{ "uri": "spotify:playlist:xxx" }] }
-        let playlist_uri = json.get("mediaItems")
+        json.get("mediaItems")
             .and_then(|items| items.as_array())
             .and_then(|items| items.first())
             .and_then(|item| item.get("uri"))
             .and_then(|u| u.as_str())
             .filter(|uri| uri.starts_with("spotify:playlist:"))
-            .ok_or_else(|| "No radio playlist found in response".to_string())?;
-
-        // Parse the playlist URI
-        let playlist_spotify_uri = parse_spotify_uri(playlist_uri)?;
-
-        // Load the playlist track URIs
-        let track_uris = load_playlist_track_uris(&session, playlist_spotify_uri).await?;
-
-        if track_uris.is_empty() {
-            return Err("Radio playlist is empty".to_string());
-        }
-
-        Ok(track_uris)
+            .map(|s| s.to_string())
+            .ok_or_else(|| "No radio playlist found in response".to_string())
     });
 
-    match result {
-        Ok(track_uris) => {
-            match serde_json::to_string(&track_uris) {
-                Ok(json_string) => {
-                    match CString::new(json_string) {
-                        Ok(cstr) => cstr.into_raw(),
-                        Err(_) => ptr::null_mut(),
-                    }
+    let playlist_uri = match playlist_uri {
+        Ok(uri) => uri,
+        Err(e) => {
+            eprintln!("Play radio error: {}", e);
+            return -1;
+        }
+    };
+
+    println!("[Spotifly] Loading radio playlist: {}", playlist_uri);
+
+    // Load the radio playlist via Spirc
+    let spirc_guard = SPIRC.lock().unwrap();
+    match spirc_guard.as_ref() {
+        Some(spirc) => {
+            let load_request = LoadRequest::from_context_uri(
+                playlist_uri,
+                LoadRequestOptions {
+                    start_playing: true,
+                    seek_to: 0,
+                    ..Default::default()
+                },
+            );
+            match spirc.load(load_request) {
+                Ok(_) => 0,
+                Err(e) => {
+                    eprintln!("Play radio error: {:?}", e);
+                    -1
                 }
-                Err(_) => ptr::null_mut(),
             }
         }
-        Err(e) => {
-            eprintln!("Get radio error: {}", e);
-            ptr::null_mut()
+        None => {
+            eprintln!("Play radio error: Spirc not initialized");
+            -1
         }
     }
 }

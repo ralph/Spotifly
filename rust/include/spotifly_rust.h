@@ -71,12 +71,12 @@ int32_t spotifly_previous(void);
 /// Returns 0 on success, -1 on error.
 int32_t spotifly_seek(uint32_t position_ms);
 
-/// Gets radio tracks for a seed track and returns them as JSON.
-/// Returns a JSON array of track URIs, or NULL on error.
-/// Caller must free the string with spotifly_free_string().
+/// Plays radio for a seed track.
+/// Gets the radio playlist URI and loads it directly via Spirc.
+/// Returns 0 on success, -1 on error.
 ///
 /// @param track_uri Spotify track URI (e.g., "spotify:track:xxx")
-char* spotifly_get_radio_tracks(const char* track_uri);
+int32_t spotifly_play_radio(const char* track_uri);
 
 /// Sets the playback volume (0-65535).
 /// Returns 0 on success, -1 on error.

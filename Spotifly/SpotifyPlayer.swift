@@ -231,27 +231,15 @@ enum SpotifyPlayer {
         spotifly_set_volume(volumeU16)
     }
 
-    /// Gets radio track URIs for a seed track using librespot's internal API.
+    /// Plays radio for a seed track.
     /// - Parameter trackUri: The Spotify track URI to use as seed
-    /// - Returns: Array of track URIs for the radio playlist
-    static func getRadioTracks(trackUri: String) throws -> [String] {
-        let cStr: UnsafeMutablePointer<CChar>? = trackUri.withCString { ptr in
-            spotifly_get_radio_tracks(ptr)
+    static func playRadio(trackUri: String) throws {
+        let result = trackUri.withCString { ptr in
+            spotifly_play_radio(ptr)
         }
-
-        guard let cStr else {
+        guard result == 0 else {
             throw SpotifyPlayerError.playbackFailed
         }
-        defer { spotifly_free_string(cStr) }
-
-        let jsonString = String(cString: cStr)
-        guard let jsonData = jsonString.data(using: .utf8),
-              let trackUris = try? JSONDecoder().decode([String].self, from: jsonData)
-        else {
-            throw SpotifyPlayerError.playbackFailed
-        }
-
-        return trackUris
     }
 
     /// Transfers playback from another Spotify Connect device to this local player.

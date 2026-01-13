@@ -137,24 +137,9 @@ struct TrackContextMenu: View {
             do {
                 let token = await session.validAccessToken()
                 await playbackViewModel.initializeIfNeeded(accessToken: token)
-
-                let radioTrackUris = try SpotifyPlayer.getRadioTracks(trackUri: track.uri)
-
-                if !radioTrackUris.isEmpty {
-                    let filteredRadioUris = radioTrackUris.filter { $0 != track.uri }
-                    var trackUris = [track.uri]
-                    trackUris.append(contentsOf: filteredRadioUris)
-
-                    await playbackViewModel.playTracks(
-                        trackUris,
-                        accessToken: token,
-                    )
-
-                    onNavigate?()
-                    navigationCoordinator.navigateToQueue()
-                } else {
-                    playbackViewModel.errorMessage = "No radio tracks found"
-                }
+                try SpotifyPlayer.playRadio(trackUri: track.uri)
+                onNavigate?()
+                navigationCoordinator.navigateToQueue()
             } catch {
                 playbackViewModel.errorMessage = "Failed to start radio: \(error.localizedDescription)"
             }

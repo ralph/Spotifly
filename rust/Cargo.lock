@@ -2352,7 +2352,6 @@ version = "0.1.0"
 dependencies = [
  "librespot-connect",
  "librespot-core",
- "librespot-metadata",
  "librespot-playback",
  "once_cell",
  "serde",
