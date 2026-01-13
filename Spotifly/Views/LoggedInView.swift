@@ -38,9 +38,6 @@ struct LoggedInView: View {
 
     @State private var navigationCoordinator = NavigationCoordinator()
 
-    // Speaker settings
-    @AppStorage("showSpotifyConnectSpeakers") private var showConnectSpeakers: Bool = false
-
     init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
         self.authResult = authResult
         self.onLogout = onLogout

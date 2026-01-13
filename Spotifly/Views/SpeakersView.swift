@@ -13,8 +13,10 @@ struct SpeakersView: View {
     @Environment(DeviceService.self) private var deviceService
     @Bindable var playbackViewModel: PlaybackViewModel
 
-    @AppStorage("showSpotifyConnectSpeakers") private var showConnectSpeakers: Bool = false
-    @AppStorage("showAirPlaySpeakers") private var showAirPlaySpeakers: Bool = false
+    /// Whether AirPlay is available (only when Spotifly is the active device)
+    private var isAirPlayEnabled: Bool {
+        store.activeDevice?.name == "Spotifly"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,29 +26,27 @@ struct SpeakersView: View {
                     .font(.title2)
                     .fontWeight(.bold)
                 Spacer()
-                if showConnectSpeakers {
-                    Button {
-                        Task {
-                            let token = await session.validAccessToken()
-                            await deviceService.loadDevices(accessToken: token)
-                        }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
+                Button {
+                    Task {
+                        let token = await session.validAccessToken()
+                        await deviceService.loadDevices(accessToken: token)
                     }
-                    .disabled(store.devicesIsLoading)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
+                .disabled(store.devicesIsLoading)
             }
             .padding()
 
             Divider()
 
             // Content
-            if showConnectSpeakers, store.devicesIsLoading {
+            if store.devicesIsLoading {
                 Spacer()
                 ProgressView()
                     .controlSize(.large)
                 Spacer()
-            } else if showConnectSpeakers, let errorMessage = store.devicesErrorMessage {
+            } else if let errorMessage = store.devicesErrorMessage {
                 Spacer()
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
@@ -58,48 +58,52 @@ struct SpeakersView: View {
                 Spacer()
             } else {
                 List {
-                    // Spotify Connect devices (before AirPlay)
-                    if showConnectSpeakers {
-                        Section {
-                            if store.availableDevices.isEmpty {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "speaker.slash")
-                                        .font(.title2)
-                                        .foregroundStyle(.secondary)
-                                    Text("speakers.empty")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    Text("speakers.empty_hint")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                            } else {
-                                ForEach(store.availableDevices) { device in
-                                    SpeakerRow(device: device)
-                                }
+                    // Spotify Connect devices
+                    Section {
+                        if store.availableDevices.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "speaker.slash")
+                                    .font(.title2)
+                                    .foregroundStyle(.secondary)
+                                Text("speakers.empty")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Text("speakers.empty_hint")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
                             }
-                        } header: {
-                            Text("speakers.spotify_connect")
-                        } footer: {
-                            Text("speakers.spotify_connect_hint")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                        } else {
+                            ForEach(store.availableDevices) { device in
+                                SpeakerRow(device: device)
+                            }
                         }
+                    } header: {
+                        Text("speakers.spotify_connect")
+                    } footer: {
+                        Text("speakers.spotify_connect_hint")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
-                    // Audio Output section (AirPlay) - after Spotify Connect
+                    // Audio Output section (AirPlay) - only enabled when Spotifly is active
                     #if os(macOS)
-                        if showAirPlaySpeakers {
-                            Section {
-                                AirPlayRoutePickerView()
-                                    .frame(height: 30)
-                            } header: {
-                                Text("speakers.audio_output")
-                            } footer: {
+                        Section {
+                            AirPlayRoutePickerView()
+                                .frame(height: 30)
+                                .disabled(!isAirPlayEnabled)
+                                .opacity(isAirPlayEnabled ? 1.0 : 0.5)
+                        } header: {
+                            Text("speakers.audio_output")
+                        } footer: {
+                            if isAirPlayEnabled {
                                 Text("speakers.airplay_hint")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("speakers.airplay_disabled_hint")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -110,10 +114,8 @@ struct SpeakersView: View {
             }
         }
         .task {
-            if showConnectSpeakers {
-                let token = await session.validAccessToken()
-                await deviceService.loadDevices(accessToken: token)
-            }
+            let token = await session.validAccessToken()
+            await deviceService.loadDevices(accessToken: token)
         }
     }
 }

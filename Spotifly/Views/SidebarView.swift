@@ -78,21 +78,9 @@ struct SidebarView: View {
     let onLogout: () -> Void
     var hasSearchResults: Bool = false
 
-    @AppStorage("showSpotifyConnectSpeakers") private var showConnectSpeakers: Bool = false
-    @AppStorage("showAirPlaySpeakers") private var showAirPlaySpeakers: Bool = false
-
-    /// Whether to show the speakers item in the sidebar
-    private var showSpeakersItem: Bool {
-        showConnectSpeakers || showAirPlaySpeakers
-    }
-
-    /// Navigation items in the main section (conditionally includes speakers)
+    /// Navigation items in the main section
     private var mainNavItems: [NavigationItem] {
-        var items: [NavigationItem] = [.startpage, .queue]
-        if showSpeakersItem {
-            items.append(.speakers)
-        }
-        return items
+        [.startpage, .queue, .speakers]
     }
 
     var body: some View {

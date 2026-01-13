@@ -149,6 +149,7 @@
 "speakers.audio_output" = "AirPlay";
 "speakers.spotify_connect" = "Spotify Connect";
 "speakers.airplay_hint" = "Stream audio from this Mac to AirPlay speakers";
+"speakers.airplay_disabled_hint" = "AirPlay is only available when Spotifly is the active device";
 "speakers.spotify_connect_hint" = "Transfer playback to another Spotify device";
 
 /* Spotify Connect */
@@ -188,12 +189,6 @@
 "preferences.restart_note" = "Changes take effect when playback restarts.";
 "preferences.version %@ (%@)" = "Version %@ (%@)";
 "preferences.copyright %@" = "© %@ Ralph von der Heyden";
-"preferences.speakers" = "Speakers";
-"preferences.speakers.connect" = "Show Spotify Connect Speakers";
-"preferences.speakers.connect_description" = "Register Spotifly as a Spotify Connect speaker and show other Connect devices. Allows remote control from your phone.";
-"preferences.speakers.airplay" = "Show AirPlay Speakers";
-"preferences.speakers.airplay_description" = "Show AirPlay output selector to stream audio to AirPlay-compatible speakers.";
-"preferences.speakers.none_enabled" = "Enable at least one option to show the Speakers section in the sidebar.";
 
 /* Startpage Preferences */
 "preferences.startpage.sections" = "Sections";

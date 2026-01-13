@@ -16,11 +16,6 @@ struct PreferencesView: View {
                     Label("preferences.playback", systemImage: "speaker.wave.3")
                 }
 
-            SpeakersSettingsView()
-                .tabItem {
-                    Label("preferences.speakers", systemImage: "hifispeaker.2")
-                }
-
             StartpageSettingsView()
                 .tabItem {
                     Label("nav.startpage", systemImage: "house")
@@ -79,40 +74,6 @@ struct PlaybackSettingsView: View {
             SpotifyPlayer.setBitrate(selectedBitrate)
             SpotifyPlayer.setGapless(gaplessEnabled)
         }
-    }
-}
-
-// MARK: - Speakers Settings Tab
-
-struct SpeakersSettingsView: View {
-    @AppStorage("showSpotifyConnectSpeakers") private var showConnectSpeakers: Bool = false
-    @AppStorage("showAirPlaySpeakers") private var showAirPlaySpeakers: Bool = false
-
-    var body: some View {
-        Form {
-            Section {
-                Toggle("preferences.speakers.connect", isOn: $showConnectSpeakers)
-                Text("preferences.speakers.connect_description")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle("preferences.speakers.airplay", isOn: $showAirPlaySpeakers)
-                Text("preferences.speakers.airplay_description")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if !showConnectSpeakers, !showAirPlaySpeakers {
-                Section {
-                    Text("preferences.speakers.none_enabled")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .formStyle(.grouped)
     }
 }
 
