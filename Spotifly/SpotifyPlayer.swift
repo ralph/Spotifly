@@ -5,9 +5,9 @@
 //  Swift wrapper for the Rust librespot playback functionality
 //
 
+import Combine
 import Foundation
 import SpotiflyRust
-import Combine
 
 /// Queue item metadata (nonisolated for C callback compatibility)
 struct QueueItem: Sendable, Identifiable, Equatable {
@@ -38,7 +38,7 @@ struct QueueItem: Sendable, Identifiable, Equatable {
         durationMs: UInt32,
         albumId: String?,
         artistId: String?,
-        externalUrl: String?
+        externalUrl: String?,
     ) {
         self.id = id
         self.uri = uri
@@ -72,13 +72,95 @@ struct QueueState: Sendable {
     nonisolated let previousTracks: [QueueItem]
 }
 
+/// Playback state from Mercury/Spirc (nonisolated for C callback compatibility)
+struct PlaybackState: Sendable, Equatable {
+    nonisolated let isPlaying: Bool
+    nonisolated let isPaused: Bool
+    nonisolated let trackUri: String
+    nonisolated let positionMs: Int64
+    nonisolated let durationMs: Int64
+    nonisolated let shuffle: Bool
+    nonisolated let repeatTrack: Bool
+    nonisolated let repeatContext: Bool
+}
+
 /// Global subject for queue updates (nonisolated for C callback access)
 private nonisolated(unsafe) let queueSubject = CurrentValueSubject<QueueState?, Never>(nil)
+
+/// Global subject for playback state updates (nonisolated for C callback access)
+private nonisolated(unsafe) let playbackStateSubject = CurrentValueSubject<PlaybackState?, Never>(nil)
 
 /// Registers the queue callback with Rust (must be called from nonisolated context)
 private nonisolated func registerQueueCallback() {
     spotifly_register_queue_callback { jsonPtr in
         handleQueueCallback(jsonPtr)
+    }
+}
+
+/// Registers the playback state callback with Rust (must be called from nonisolated context)
+private nonisolated func registerPlaybackStateCallback() {
+    spotifly_register_playback_state_callback { jsonPtr in
+        handlePlaybackStateCallback(jsonPtr)
+    }
+}
+
+/// C callback for playback state updates from Rust
+/// Uses manual JSON parsing to avoid Decodable actor isolation issues
+private nonisolated func handlePlaybackStateCallback(_ jsonPtr: UnsafePointer<CChar>?) {
+    #if DEBUG
+        print("[SpotifyPlayer] handlePlaybackStateCallback called")
+    #endif
+
+    guard let jsonPtr else {
+        #if DEBUG
+            print("[SpotifyPlayer] handlePlaybackStateCallback: jsonPtr is nil")
+        #endif
+        return
+    }
+
+    let jsonString = String(cString: jsonPtr)
+    #if DEBUG
+        print("[SpotifyPlayer] handlePlaybackStateCallback received JSON (\(jsonString.count) chars)")
+    #endif
+
+    guard let data = jsonString.data(using: .utf8) else {
+        #if DEBUG
+            print("[SpotifyPlayer] handlePlaybackStateCallback: failed to convert JSON to data")
+        #endif
+        return
+    }
+
+    do {
+        // Use JSONSerialization instead of Decodable to avoid actor isolation issues
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            #if DEBUG
+                print("[SpotifyPlayer] handlePlaybackStateCallback: JSON is not a dictionary")
+            #endif
+            return
+        }
+
+        let state = PlaybackState(
+            isPlaying: json["is_playing"] as? Bool ?? false,
+            isPaused: json["is_paused"] as? Bool ?? false,
+            trackUri: json["track_uri"] as? String ?? "",
+            positionMs: (json["position_ms"] as? NSNumber)?.int64Value ?? 0,
+            durationMs: (json["duration_ms"] as? NSNumber)?.int64Value ?? 0,
+            shuffle: json["shuffle"] as? Bool ?? false,
+            repeatTrack: json["repeat_track"] as? Bool ?? false,
+            repeatContext: json["repeat_context"] as? Bool ?? false,
+        )
+
+        #if DEBUG
+            print("[SpotifyPlayer] PlaybackState: playing=\(state.isPlaying), paused=\(state.isPaused), pos=\(state.positionMs)ms, dur=\(state.durationMs)ms, shuffle=\(state.shuffle), repeatTrack=\(state.repeatTrack), repeatContext=\(state.repeatContext)")
+        #endif
+
+        playbackStateSubject.send(state)
+    } catch {
+        print("[SpotifyPlayer] Failed to parse playback state JSON: \(error)")
+        #if DEBUG
+            let preview = String(jsonString.prefix(500))
+            print("[SpotifyPlayer] JSON preview: \(preview)")
+        #endif
     }
 }
 
@@ -94,7 +176,7 @@ private nonisolated func parseQueueItem(from dict: [String: Any]) -> QueueItem? 
         durationMs: (dict["duration_ms"] as? NSNumber)?.uint32Value ?? 0,
         albumId: nil,
         artistId: nil,
-        externalUrl: nil
+        externalUrl: nil,
     )
 }
 
@@ -105,7 +187,7 @@ private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
         print("[SpotifyPlayer] handleQueueCallback called")
     #endif
 
-    guard let jsonPtr = jsonPtr else {
+    guard let jsonPtr else {
         #if DEBUG
             print("[SpotifyPlayer] handleQueueCallback: jsonPtr is nil")
         #endif
@@ -134,33 +216,30 @@ private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
         }
 
         // Parse current track
-        let currentTrack: QueueItem?
-        if let trackDict = json["track"] as? [String: Any] {
-            currentTrack = parseQueueItem(from: trackDict)
+        let currentTrack: QueueItem? = if let trackDict = json["track"] as? [String: Any] {
+            parseQueueItem(from: trackDict)
         } else {
-            currentTrack = nil
+            nil
         }
 
         // Parse next tracks
-        let nextTracks: [QueueItem]
-        if let nextArray = json["next_tracks"] as? [[String: Any]] {
-            nextTracks = nextArray.compactMap { parseQueueItem(from: $0) }
+        let nextTracks: [QueueItem] = if let nextArray = json["next_tracks"] as? [[String: Any]] {
+            nextArray.compactMap { parseQueueItem(from: $0) }
         } else {
-            nextTracks = []
+            []
         }
 
         // Parse previous tracks
-        let prevTracks: [QueueItem]
-        if let prevArray = json["prev_tracks"] as? [[String: Any]] {
-            prevTracks = prevArray.compactMap { parseQueueItem(from: $0) }
+        let prevTracks: [QueueItem] = if let prevArray = json["prev_tracks"] as? [[String: Any]] {
+            prevArray.compactMap { parseQueueItem(from: $0) }
         } else {
-            prevTracks = []
+            []
         }
 
         let state = QueueState(
             currentTrack: currentTrack,
             nextTracks: nextTracks,
-            previousTracks: prevTracks
+            previousTracks: prevTracks,
         )
 
         #if DEBUG
@@ -207,8 +286,9 @@ enum SpotifyPlayer {
     /// Must be called before any playback operations.
     @SpotifyAuthActor
     static func initialize(accessToken: String) async throws {
-        // Register queue callback (via nonisolated helper to avoid actor isolation issues)
+        // Register callbacks (via nonisolated helpers to avoid actor isolation issues)
         registerQueueCallback()
+        registerPlaybackStateCallback()
 
         // Sync playback settings from UserDefaults before initializing
         syncSettingsFromUserDefaults()
@@ -227,6 +307,11 @@ enum SpotifyPlayer {
     /// Returns a publisher for queue updates.
     static var queue: AnyPublisher<QueueState?, Never> {
         queueSubject.eraseToAnyPublisher()
+    }
+
+    /// Returns a publisher for playback state updates.
+    static var playbackState: AnyPublisher<PlaybackState?, Never> {
+        playbackStateSubject.eraseToAnyPublisher()
     }
 
     /// Syncs playback settings from UserDefaults to the Rust player

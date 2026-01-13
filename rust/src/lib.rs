@@ -40,6 +40,7 @@ static SPIRC_READY: AtomicBool = AtomicBool::new(false);
 static IS_ACTIVE_DEVICE: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
 static QUEUE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> = Lazy::new(|| Mutex::new(None));
+static PLAYBACK_STATE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> = Lazy::new(|| Mutex::new(None));
 
 // Position tracking - updated from player events
 static POSITION_MS: AtomicU32 = AtomicU32::new(0);
@@ -66,6 +67,18 @@ struct QueueState {
     track: Option<QueueItem>,
     next_tracks: Vec<QueueItem>,
     prev_tracks: Vec<QueueItem>,
+}
+
+#[derive(Serialize)]
+struct PlaybackStateUpdate {
+    is_playing: bool,
+    is_paused: bool,
+    track_uri: String,
+    position_ms: i64,
+    duration_ms: i64,
+    shuffle: bool,
+    repeat_track: bool,
+    repeat_context: bool,
 }
 
 /// Get current timestamp in milliseconds since UNIX epoch
@@ -139,6 +152,13 @@ pub extern "C" fn spotifly_free_string(s: *mut c_char) {
 #[no_mangle]
 pub extern "C" fn spotifly_register_queue_callback(callback: extern "C" fn(*const c_char)) {
     let mut cb = QUEUE_CALLBACK.lock().unwrap();
+    *cb = Some(callback);
+}
+
+/// Registers a callback to receive playback state updates (as JSON string).
+#[no_mangle]
+pub extern "C" fn spotifly_register_playback_state_callback(callback: extern "C" fn(*const c_char)) {
+    let mut cb = PLAYBACK_STATE_CALLBACK.lock().unwrap();
     *cb = Some(callback);
 }
 
@@ -326,9 +346,9 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         librespot_core::dealer::protocol::Message::from_raw::<ClusterUpdate>
     ).map_err(|e| format!("Failed to subscribe to queue: {}", e))?;
 
-    // Spawn task to process queue updates
+    // Spawn task to process cluster updates (queue + playback state)
     RUNTIME.spawn(async move {
-        println!("[Spotifly] Queue listener task started");
+        println!("[Spotifly] Cluster listener task started");
         let mut stream = queue_stream;
         while let Some(msg_result) = stream.next().await {
             println!("[Spotifly] Received cluster update message");
@@ -338,7 +358,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                     if let Some(cluster) = cluster_update.cluster.into_option() {
                         println!("[Spotifly] Cluster present");
                         if let Some(player_state) = cluster.player_state.into_option() {
-                            println!("[Spotifly] PlayerState present, calling process_and_send_queue");
+                            println!("[Spotifly] PlayerState present");
+                            // Send playback state update
+                            send_playback_state(&player_state);
+                            // Send queue update
                             process_and_send_queue(player_state);
                         } else {
                             println!("[Spotifly] No player_state in cluster");
@@ -352,7 +375,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                 }
             }
         }
-        println!("[Spotifly] Queue listener task ended");
+        println!("[Spotifly] Cluster listener task ended");
     });
 
     // Create Spirc for Spotify Connect support (makes this app appear as a Connect device)
@@ -396,6 +419,60 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn send_playback_state(player_state: &PlayerState) {
+    println!("[Spotifly] send_playback_state called");
+    let cb_guard = PLAYBACK_STATE_CALLBACK.lock().unwrap();
+    if let Some(callback) = *cb_guard {
+        let cb = callback;
+        drop(cb_guard);
+
+        // Extract track URI
+        let track_uri = player_state
+            .track
+            .as_ref()
+            .map(|t| t.uri.clone())
+            .unwrap_or_default();
+
+        // Extract playback options (shuffle, repeat)
+        let options = player_state.options.as_ref();
+        let shuffle = options.map(|o| o.shuffling_context).unwrap_or(false);
+        let repeat_track = options
+            .map(|o| o.repeating_track)
+            .unwrap_or(false);
+        let repeat_context = options
+            .map(|o| o.repeating_context)
+            .unwrap_or(false);
+
+        let update = PlaybackStateUpdate {
+            is_playing: player_state.is_playing,
+            is_paused: player_state.is_paused,
+            track_uri,
+            position_ms: player_state.position_as_of_timestamp,
+            duration_ms: player_state.duration,
+            shuffle,
+            repeat_track,
+            repeat_context,
+        };
+
+        println!(
+            "[Spotifly] PlaybackState: playing={}, paused={}, position={}ms, duration={}ms, shuffle={}, repeat_track={}, repeat_context={}",
+            update.is_playing, update.is_paused, update.position_ms, update.duration_ms,
+            update.shuffle, update.repeat_track, update.repeat_context
+        );
+
+        if let Ok(json) = serde_json::to_string(&update) {
+            println!("[Spotifly] Sending playback state JSON ({} bytes) to Swift callback", json.len());
+            let c_str = CString::new(json).unwrap();
+            cb(c_str.as_ptr());
+            println!("[Spotifly] Playback state callback returned");
+        } else {
+            println!("[Spotifly] Failed to serialize playback state to JSON");
+        }
+    } else {
+        println!("[Spotifly] No playback state callback registered, skipping update");
+    }
 }
 
 fn process_and_send_queue(player_state: PlayerState) {

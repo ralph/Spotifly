@@ -66,6 +66,13 @@ typedef void (*QueueCallback)(const char* queue_json);
 /// Registers a callback to receive queue updates.
 void spotifly_register_queue_callback(QueueCallback callback);
 
+/// Callback function type for playback state updates.
+/// Receives a JSON string containing playback state (is_playing, is_paused, track_uri, etc.).
+typedef void (*PlaybackStateCallback)(const char* state_json);
+
+/// Registers a callback to receive playback state updates from Mercury/Spirc.
+void spotifly_register_playback_state_callback(PlaybackStateCallback callback);
+
 /// Skips to the next track in the queue.
 /// Returns 0 on success, -1 on error or if at end of queue.
 int32_t spotifly_next(void);

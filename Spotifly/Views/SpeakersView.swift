@@ -58,7 +58,6 @@ struct SpeakersView: View {
                 Spacer()
             } else {
                 List {
-
                     // Spotify Connect devices (before AirPlay)
                     if showConnectSpeakers {
                         Section {
@@ -183,4 +182,3 @@ struct SpeakerRow: View {
         .opacity(device.isRestricted ? 0.5 : 1.0)
     }
 }
-

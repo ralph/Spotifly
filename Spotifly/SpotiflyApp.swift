@@ -102,33 +102,21 @@ struct SpotiflyCommands: Commands {
         // Playback menu
         CommandMenu("menu.playback") {
             Button("menu.play_pause") {
-                guard let session else { return }
-                Task {
-                    let token = await session.validAccessToken()
-                    if playbackViewModel.isPlaying {
-                        await playbackViewModel.pause(accessToken: token)
-                    } else {
-                        await playbackViewModel.resume(accessToken: token)
-                    }
+                if playbackViewModel.isPlaying {
+                    playbackViewModel.pause()
+                } else {
+                    playbackViewModel.resume()
                 }
             }
             .keyboardShortcut(" ", modifiers: [])
 
             Button("menu.next_track") {
-                guard let session else { return }
-                Task {
-                    let token = await session.validAccessToken()
-                    await playbackViewModel.next(accessToken: token)
-                }
+                playbackViewModel.next()
             }
             .keyboardShortcut(.rightArrow, modifiers: .command)
 
             Button("menu.previous_track") {
-                guard let session else { return }
-                Task {
-                    let token = await session.validAccessToken()
-                    await playbackViewModel.previous(accessToken: token)
-                }
+                playbackViewModel.previous()
             }
             .keyboardShortcut(.leftArrow, modifiers: .command)
 

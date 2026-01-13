@@ -201,16 +201,6 @@ struct DevicesResponse: Sendable {
     let devices: [SpotifyDevice]
 }
 
-/// Current playback state from Spotify
-struct PlaybackState: Sendable {
-    let currentTrack: APITrack?
-    let device: SpotifyDevice?
-    let isPlaying: Bool
-    let progressMs: Int
-    let repeatState: String
-    let shuffleState: Bool
-}
-
 // MARK: - User Top Items
 
 /// Time range for top items (artists/tracks)
@@ -649,35 +639,6 @@ struct UserPlaylistsCodable: Decodable {
 // Devices
 struct DevicesCodable: Decodable {
     let devices: [DeviceCodable]
-}
-
-// Playback state
-struct PlaybackStateCodable: Decodable {
-    let device: DeviceCodable?
-    let item: TrackCodable?
-    let isPlaying: Bool?
-    let progressMs: Int?
-    let shuffleState: Bool?
-    let repeatState: String?
-
-    enum CodingKeys: String, CodingKey {
-        case device, item
-        case isPlaying = "is_playing"
-        case progressMs = "progress_ms"
-        case shuffleState = "shuffle_state"
-        case repeatState = "repeat_state"
-    }
-
-    func toPlaybackState() -> PlaybackState {
-        PlaybackState(
-            currentTrack: item?.toAPITrack(),
-            device: device?.toSpotifyDevice(),
-            isPlaying: isPlaying ?? false,
-            progressMs: progressMs ?? 0,
-            repeatState: repeatState ?? "off",
-            shuffleState: shuffleState ?? false,
-        )
-    }
 }
 
 // Recently played

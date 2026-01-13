@@ -304,48 +304,6 @@ extension SpotifyAPI {
         }
     }
 
-    // MARK: - Playback State
-
-    /// Fetches the current playback state
-    static func fetchPlaybackState(accessToken: String) async throws -> PlaybackState? {
-        let urlString = "\(baseURL)/me/player"
-        #if DEBUG
-            apiLogger.debug("[GET] \(urlString)")
-        #endif
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let decoded = try JSONDecoder().decode(PlaybackStateCodable.self, from: data)
-                return decoded.toPlaybackState()
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 204:
-            return nil
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        default:
-            if let errorResponse = try? JSONDecoder().decode(SpotifyErrorResponse.self, from: data) {
-                throw SpotifyAPIError.apiError(errorResponse.error.message)
-            }
-            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
-        }
-    }
-
     /// Adds a track to the playback queue via Spotify Web API.
     /// This goes through Spotify's servers and syncs with Spirc via dealer.
     /// - Parameters:

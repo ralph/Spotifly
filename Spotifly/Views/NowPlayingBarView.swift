@@ -201,10 +201,7 @@ struct NowPlayingBarView: View {
     private var playbackControls: some View {
         HStack(spacing: 16) {
             Button {
-                Task {
-                    let token = await session.validAccessToken()
-                    await playbackViewModel.previous(accessToken: token)
-                }
+                playbackViewModel.previous()
             } label: {
                 Image(systemName: "backward.fill")
                     .font(.body)
@@ -213,13 +210,10 @@ struct NowPlayingBarView: View {
             .disabled(!playbackViewModel.hasPrevious)
 
             Button {
-                Task {
-                    let token = await session.validAccessToken()
-                    if playbackViewModel.isPlaying {
-                        await playbackViewModel.pause(accessToken: token)
-                    } else {
-                        await playbackViewModel.resume(accessToken: token)
-                    }
+                if playbackViewModel.isPlaying {
+                    playbackViewModel.pause()
+                } else {
+                    playbackViewModel.resume()
                 }
             } label: {
                 Image(systemName: playbackViewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
@@ -228,10 +222,7 @@ struct NowPlayingBarView: View {
             .buttonStyle(.plain)
 
             Button {
-                Task {
-                    let token = await session.validAccessToken()
-                    await playbackViewModel.next(accessToken: token)
-                }
+                playbackViewModel.next()
             } label: {
                 Image(systemName: "forward.fill")
                     .font(.body)
@@ -268,7 +259,7 @@ struct NowPlayingBarView: View {
                     value: Binding(
                         get: { Double(currentPositionMs) },
                         set: { newValue in
-                            playbackViewModel.seekLocal(to: UInt32(newValue))
+                            playbackViewModel.seek(to: UInt32(newValue))
                         },
                     ),
                     in: 0 ... Double(max(currentDurationMs, 1)),

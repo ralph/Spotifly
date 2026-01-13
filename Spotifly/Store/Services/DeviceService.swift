@@ -63,15 +63,6 @@ final class DeviceService {
         }
     }
 
-    /// Load playback state from Spotify API
-    func loadPlaybackState(accessToken: String) async -> PlaybackState? {
-        do {
-            return try await SpotifyAPI.fetchPlaybackState(accessToken: accessToken)
-        } catch {
-            return nil
-        }
-    }
-
     // MARK: - Helpers
 
     /// Get appropriate icon name for device type

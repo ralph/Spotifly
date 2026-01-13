@@ -5,6 +5,7 @@
 //  Created by Ralph von der Heyden on 30.12.25.
 //
 
+import Combine
 import QuartzCore
 import SwiftUI
 
@@ -84,8 +85,10 @@ final class PlaybackViewModel {
 
     private var isInitialized = false
     private var lastAlbumArtURL: String?
+    private var playbackStateSubscription: AnyCancellable?
 
     private init() {
+        setupPlaybackStateSubscription()
         setupRemoteCommandCenter()
 
         // Load saved volume (but don't apply it yet - mixer isn't initialized)
@@ -259,96 +262,29 @@ final class PlaybackViewModel {
         isPlaying = SpotifyPlayer.isPlaying
     }
 
-    // MARK: - Web API Playback Control (async, requires token)
+    // MARK: - Playback Control (via Spirc)
 
-    // Use these for UI controls - they work for both local and remote devices
+    // All playback control uses local Spirc - state updates come back via Mercury callback
 
-    func next(accessToken: String) async {
-        do {
-            try await SpotifyAPI.skipToNext(accessToken: accessToken)
-            isPlaying = true
-            updateNowPlayingInfo()
-            syncPositionAnchor()
-            updateNowPlayingInfo()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func previous(accessToken: String) async {
-        do {
-            try await SpotifyAPI.skipToPrevious(accessToken: accessToken)
-            isPlaying = true
-            updateNowPlayingInfo()
-            syncPositionAnchor()
-            updateNowPlayingInfo()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func seek(to positionMs: UInt32, accessToken: String) async {
-        do {
-            try await SpotifyAPI.seekToPosition(accessToken: accessToken, positionMs: Int(positionMs))
-            // Update anchor for smooth interpolation from new position
-            positionAnchorMs = positionMs
-            positionAnchorTime = CACurrentMediaTime()
-            currentPositionMs = positionMs
-            updateNowPlayingInfo()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func pause(accessToken: String) async {
-        do {
-            try await SpotifyAPI.pausePlayback(accessToken: accessToken)
-            isPlaying = false
-            updateNowPlayingInfo()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    func resume(accessToken: String) async {
-        do {
-            try await SpotifyAPI.resumePlayback(accessToken: accessToken)
-            isPlaying = true
-            updateNowPlayingInfo()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    // MARK: - Local Playback Control (sync, for remote command handlers)
-
-    // These use SpotifyPlayer FFI - only work when we're the active local device
-
-    func nextLocal() {
+    func next() {
         do {
             try SpotifyPlayer.next()
-            isPlaying = true
-            updateNowPlayingInfo()
-            syncPositionAnchor()
-            updateNowPlayingInfo()
+            // State update will come from Mercury callback
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    func previousLocal() {
+    func previous() {
         do {
             try SpotifyPlayer.previous()
-            isPlaying = true
-            updateNowPlayingInfo()
-            syncPositionAnchor()
-            updateNowPlayingInfo()
+            // State update will come from Mercury callback
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    func seekLocal(to positionMs: UInt32) {
+    func seek(to positionMs: UInt32) {
         do {
             try SpotifyPlayer.seek(positionMs: positionMs)
             // Update anchor for smooth interpolation from new position
@@ -359,6 +295,16 @@ final class PlaybackViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func pause() {
+        SpotifyPlayer.pause()
+        // State update will come from Mercury callback
+    }
+
+    func resume() {
+        SpotifyPlayer.resume()
+        // State update will come from Mercury callback
     }
 
     /// Always returns true - Web API handles next track availability
@@ -433,14 +379,14 @@ final class PlaybackViewModel {
         // Next track command
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            nextLocal()
+            next()
             return .success
         }
 
         // Previous track command
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            previousLocal()
+            previous()
             return .success
         }
 
@@ -450,7 +396,7 @@ final class PlaybackViewModel {
                 guard let self else { return }
                 guard let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
                 let positionMs = UInt32(seekEvent.positionTime * 1000)
-                self.seekLocal(to: positionMs)
+                self.seek(to: positionMs)
             }
             return .success
         }
@@ -503,6 +449,57 @@ final class PlaybackViewModel {
                     // Ignore album art download failures
                 }
             }
+        }
+    }
+
+    // MARK: - Playback State Subscription
+
+    /// Subscribe to playback state updates from Mercury/Spirc
+    /// This allows external control (e.g., pause from phone) to be reflected in the app
+    private func setupPlaybackStateSubscription() {
+        playbackStateSubscription = SpotifyPlayer.playbackState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                self?.handlePlaybackStateUpdate(state)
+            }
+    }
+
+    /// Handle playback state update from Spirc callback
+    private func handlePlaybackStateUpdate(_ state: PlaybackState?) {
+        guard let state else { return }
+
+        #if DEBUG
+            print("[PlaybackViewModel] Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), uri=\(state.trackUri)")
+        #endif
+
+        // Update playing state
+        // is_playing = true means actively playing audio
+        // is_paused = true means paused (not playing but has a track loaded)
+        let wasPlaying = isPlaying
+        isPlaying = state.isPlaying && !state.isPaused
+
+        // Update track if changed
+        if !state.trackUri.isEmpty, state.trackUri != currentTrackId {
+            currentTrackId = state.trackUri
+            // Note: Track metadata (name, artist, etc.) will be updated from queue
+        }
+
+        // Update duration
+        if state.durationMs > 0 {
+            trackDurationMs = UInt32(state.durationMs)
+        }
+
+        // Sync position anchor on state changes
+        if state.positionMs >= 0 {
+            let posMs = UInt32(state.positionMs)
+            positionAnchorMs = posMs
+            positionAnchorTime = CACurrentMediaTime()
+            currentPositionMs = posMs
+        }
+
+        // Update Now Playing info if state changed
+        if wasPlaying != isPlaying {
+            updateNowPlayingInfo()
         }
     }
 
