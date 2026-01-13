@@ -41,6 +41,7 @@ static IS_ACTIVE_DEVICE: AtomicBool = AtomicBool::new(false);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> = Lazy::new(|| Mutex::new(None));
 static QUEUE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> = Lazy::new(|| Mutex::new(None));
 static PLAYBACK_STATE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> = Lazy::new(|| Mutex::new(None));
+static STATE_UPDATE_CALLBACK: Lazy<Mutex<Option<extern "C" fn()>>> = Lazy::new(|| Mutex::new(None));
 
 // Position tracking - updated from player events
 static POSITION_MS: AtomicU32 = AtomicU32::new(0);
@@ -159,6 +160,14 @@ pub extern "C" fn spotifly_register_queue_callback(callback: extern "C" fn(*cons
 #[no_mangle]
 pub extern "C" fn spotifly_register_playback_state_callback(callback: extern "C" fn(*const c_char)) {
     let mut cb = PLAYBACK_STATE_CALLBACK.lock().unwrap();
+    *cb = Some(callback);
+}
+
+/// Registers a callback to receive state update notifications.
+/// This fires on track changes to signal Swift to fetch updated queue state.
+#[no_mangle]
+pub extern "C" fn spotifly_register_state_update_callback(callback: extern "C" fn()) {
+    let mut cb = STATE_UPDATE_CALLBACK.lock().unwrap();
     *cb = Some(callback);
 }
 
@@ -315,6 +324,15 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                             // We just update local state here
                             IS_PLAYING.store(false, Ordering::SeqCst);
                             update_position(0);
+                        }
+                        Some(PlayerEvent::TrackChanged { .. }) => {
+                            // Notify Swift that track changed - it should fetch updated queue
+                            println!("[Spotifly] TrackChanged event - triggering state update callback");
+                            let cb_guard = STATE_UPDATE_CALLBACK.lock().unwrap();
+                            if let Some(callback) = *cb_guard {
+                                drop(cb_guard);
+                                callback();
+                            }
                         }
                         None => break,
                         _ => {}

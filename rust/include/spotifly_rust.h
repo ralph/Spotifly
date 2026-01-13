@@ -73,6 +73,14 @@ typedef void (*PlaybackStateCallback)(const char* state_json);
 /// Registers a callback to receive playback state updates from Mercury/Spirc.
 void spotifly_register_playback_state_callback(PlaybackStateCallback callback);
 
+/// Callback function type for state update notifications.
+/// Called when a track change occurs and the queue should be refreshed.
+typedef void (*StateUpdateCallback)(void);
+
+/// Registers a callback to receive state update notifications.
+/// This fires on track changes to signal Swift to fetch updated queue state.
+void spotifly_register_state_update_callback(StateUpdateCallback callback);
+
 /// Skips to the next track in the queue.
 /// Returns 0 on success, -1 on error or if at end of queue.
 int32_t spotifly_next(void);

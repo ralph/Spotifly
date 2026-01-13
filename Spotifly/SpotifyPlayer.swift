@@ -90,6 +90,9 @@ private nonisolated(unsafe) let queueSubject = CurrentValueSubject<QueueState?, 
 /// Global subject for playback state updates (nonisolated for C callback access)
 private nonisolated(unsafe) let playbackStateSubject = CurrentValueSubject<PlaybackState?, Never>(nil)
 
+/// Token provider for fetching queue from Web API (set during initialize)
+private nonisolated(unsafe) var stateUpdateTokenProvider: (@Sendable () async -> String)?
+
 /// Registers the queue callback with Rust (must be called from nonisolated context)
 private nonisolated func registerQueueCallback() {
     spotifly_register_queue_callback { jsonPtr in
@@ -101,6 +104,102 @@ private nonisolated func registerQueueCallback() {
 private nonisolated func registerPlaybackStateCallback() {
     spotifly_register_playback_state_callback { jsonPtr in
         handlePlaybackStateCallback(jsonPtr)
+    }
+}
+
+/// Registers the state update callback with Rust (fires on track changes)
+private nonisolated func registerStateUpdateCallback() {
+    spotifly_register_state_update_callback {
+        handleStateUpdateCallback()
+    }
+}
+
+/// C callback for state update notifications from Rust
+/// Triggers a Web API fetch to get the current queue state
+private nonisolated func handleStateUpdateCallback() {
+    #if DEBUG
+        print("[SpotifyPlayer] State update callback triggered - fetching queue from Web API")
+    #endif
+
+    // Launch async task to fetch queue
+    Task {
+        await fetchAndEmitQueueState()
+    }
+}
+
+/// Fetches queue from Spotify Web API and emits via queueSubject
+private func fetchAndEmitQueueState() async {
+    guard let tokenProvider = stateUpdateTokenProvider else {
+        #if DEBUG
+            print("[SpotifyPlayer] No token provider set for queue fetch")
+        #endif
+        return
+    }
+
+    let token = await tokenProvider()
+
+    do {
+        let response = try await SpotifyAPI.fetchQueue(accessToken: token)
+
+        // Convert TrackCodable to QueueItem
+        let currentTrack = response.currentlyPlaying.map { track -> QueueItem in
+            QueueItem(
+                id: track.uri,
+                uri: track.uri,
+                trackName: track.name,
+                artistName: track.artists?.first?.name ?? "Unknown Artist",
+                albumArtURL: track.album?.images?.first?.url ?? "",
+                durationMs: UInt32(track.durationMs),
+                albumId: track.album?.id,
+                artistId: track.artists?.first?.id,
+                externalUrl: track.externalUrls?.spotify
+            )
+        }
+
+        let nextTracks = response.queue.map { track -> QueueItem in
+            QueueItem(
+                id: track.uri,
+                uri: track.uri,
+                trackName: track.name,
+                artistName: track.artists?.first?.name ?? "Unknown Artist",
+                albumArtURL: track.album?.images?.first?.url ?? "",
+                durationMs: UInt32(track.durationMs),
+                albumId: track.album?.id,
+                artistId: track.artists?.first?.id,
+                externalUrl: track.externalUrls?.spotify
+            )
+        }
+
+        let queueState = QueueState(
+            currentTrack: currentTrack,
+            nextTracks: nextTracks,
+            previousTracks: [] // Web API doesn't return previous tracks
+        )
+
+        queueSubject.send(queueState)
+
+        #if DEBUG
+            print("[SpotifyPlayer] Queue fetched from Web API: current=\(currentTrack?.trackName ?? "none"), next=\(nextTracks.count) tracks")
+        #endif
+
+        // Also emit playback state if we have a current track
+        if let current = response.currentlyPlaying {
+            let playbackState = PlaybackState(
+                isPlaying: true, // Assume playing since track changed
+                isPaused: false,
+                trackUri: current.uri,
+                positionMs: 0, // Not available from queue endpoint
+                durationMs: Int64(current.durationMs),
+                shuffle: false, // Not available from queue endpoint
+                repeatTrack: false,
+                repeatContext: false
+            )
+            playbackStateSubject.send(playbackState)
+        }
+    } catch {
+        #if DEBUG
+            print("[SpotifyPlayer] Failed to fetch queue from Web API: \(error)")
+        #endif
     }
 }
 
@@ -282,6 +381,12 @@ enum SpotifyPlayerError: Error, LocalizedError, Sendable {
 
 /// Swift wrapper for the Rust librespot playback functionality
 enum SpotifyPlayer {
+    /// Sets the token provider used for Web API calls (e.g., fetching queue on track change).
+    /// Should be called before initialize() for best results.
+    static func setTokenProvider(_ provider: @escaping @Sendable () async -> String) {
+        stateUpdateTokenProvider = provider
+    }
+
     /// Initializes the player with the given access token.
     /// Must be called before any playback operations.
     @SpotifyAuthActor
@@ -289,6 +394,7 @@ enum SpotifyPlayer {
         // Register callbacks (via nonisolated helpers to avoid actor isolation issues)
         registerQueueCallback()
         registerPlaybackStateCallback()
+        registerStateUpdateCallback()
 
         // Sync playback settings from UserDefaults before initializing
         syncSettingsFromUserDefaults()

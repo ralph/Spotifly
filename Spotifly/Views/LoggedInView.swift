@@ -126,6 +126,9 @@ struct LoggedInView: View {
 
             _ = await (favorites, topArtists, newReleases, recentlyPlayed)
 
+            // Set token provider for queue fetching on track changes
+            SpotifyPlayer.setTokenProvider { await session.validAccessToken() }
+
             // Initialize player/Spirc so Spotifly appears as a Connect device
             await playbackViewModel.initializeIfNeeded(accessToken: token)
         }
