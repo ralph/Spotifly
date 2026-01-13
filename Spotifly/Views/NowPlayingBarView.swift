@@ -10,7 +10,6 @@ import SwiftUI
 struct NowPlayingBarView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
-    @Environment(ConnectService.self) private var connectService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
     @Environment(PlaylistService.self) private var playlistService
@@ -27,18 +26,18 @@ struct NowPlayingBarView: View {
 
     /// Whether something is currently playing or queued
     private var hasPlayback: Bool {
-        playbackViewModel.queueLength > 0 || store.isSpotifyConnectActive
+        playbackViewModel.currentTrackId != nil
     }
 
     /// Current track data for the context menu
     private var currentTrackData: TrackRowData? {
-        guard let trackName = store.isSpotifyConnectActive ? store.currentTrackName : playbackViewModel.currentTrackName,
+        guard let trackName = playbackViewModel.currentTrackName,
               let trackUri = playbackViewModel.currentlyPlayingURI
         else {
             return nil
         }
 
-        let artistName = (store.isSpotifyConnectActive ? store.currentArtistName : playbackViewModel.currentArtistName) ?? ""
+        let artistName = playbackViewModel.currentArtistName ?? ""
 
         // Try to get the full queue item for extra metadata (albumId, artistId, externalUrl)
         // Queue items are now managed via Web API in store.queueItems
@@ -184,41 +183,19 @@ struct NowPlayingBarView: View {
 
     private var trackInfo: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let trackName = store.isSpotifyConnectActive ? store.currentTrackName : playbackViewModel.currentTrackName {
+            if let trackName = playbackViewModel.currentTrackName {
                 Text(trackName)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .lineLimit(1)
             }
-            if let artistName = store.isSpotifyConnectActive ? store.currentArtistName : playbackViewModel.currentArtistName {
+            if let artistName = playbackViewModel.currentArtistName {
                 Text(artistName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            // Show device indicator when Connect active - clickable to transfer back
-            if store.isSpotifyConnectActive, let deviceName = store.spotifyConnectDeviceName {
-                Button {
-                    transferToLocalPlayback()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "hifispeaker.fill")
-                            .font(.caption2)
-                        Text(deviceName)
-                            .font(.caption2)
-                        Image(systemName: "arrow.right.circle")
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(.green)
-                }
-                .buttonStyle(.plain)
-                .help("connect.transfer_to_computer")
-            }
         }
-    }
-
-    private func transferToLocalPlayback() {
-        connectService.transferToLocal()
     }
 
     private var playbackControls: some View {
@@ -233,21 +210,19 @@ struct NowPlayingBarView: View {
                     .font(.body)
             }
             .buttonStyle(.plain)
-            .disabled(!store.isSpotifyConnectActive && !playbackViewModel.hasPrevious)
+            .disabled(!playbackViewModel.hasPrevious)
 
             Button {
                 Task {
                     let token = await session.validAccessToken()
-                    let isPlaying = store.isSpotifyConnectActive ? store.isPlaying : playbackViewModel.isPlaying
-                    if isPlaying {
+                    if playbackViewModel.isPlaying {
                         await playbackViewModel.pause(accessToken: token)
                     } else {
                         await playbackViewModel.resume(accessToken: token)
                     }
                 }
             } label: {
-                let isPlaying = store.isSpotifyConnectActive ? store.isPlaying : playbackViewModel.isPlaying
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                Image(systemName: playbackViewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.title2)
             }
             .buttonStyle(.plain)
@@ -262,26 +237,18 @@ struct NowPlayingBarView: View {
                     .font(.body)
             }
             .buttonStyle(.plain)
-            .disabled(!store.isSpotifyConnectActive && !playbackViewModel.hasNext)
+            .disabled(!playbackViewModel.hasNext)
         }
     }
 
     /// Current playback position (interpolated for smooth display)
     private var currentPositionMs: UInt32 {
-        if store.isSpotifyConnectActive {
-            store.interpolatedPositionMs
-        } else {
-            playbackViewModel.interpolatedPositionMs
-        }
+        playbackViewModel.interpolatedPositionMs
     }
 
     /// Current track duration
     private var currentDurationMs: UInt32 {
-        if store.isSpotifyConnectActive {
-            store.trackDurationMs
-        } else {
-            playbackViewModel.trackDurationMs
-        }
+        playbackViewModel.trackDurationMs
     }
 
     private var progressBar: some View {
@@ -301,14 +268,7 @@ struct NowPlayingBarView: View {
                     value: Binding(
                         get: { Double(currentPositionMs) },
                         set: { newValue in
-                            if store.isSpotifyConnectActive {
-                                Task {
-                                    let token = await session.validAccessToken()
-                                    await connectService.seek(to: Int(newValue), accessToken: token)
-                                }
-                            } else {
-                                playbackViewModel.seekLocal(to: UInt32(newValue))
-                            }
+                            playbackViewModel.seekLocal(to: UInt32(newValue))
                         },
                     ),
                     in: 0 ... Double(max(currentDurationMs, 1)),
@@ -377,29 +337,13 @@ struct NowPlayingBarView: View {
         .buttonStyle(.plain)
     }
 
-    /// Unified volume (0-100 scale, like Spotify API)
+    /// Unified volume (0-100 scale)
     private var currentVolume: Double {
-        let vol = if store.isSpotifyConnectActive {
-            store.spotifyConnectVolume
-        } else {
-            playbackViewModel.volume * 100
-        }
-        #if DEBUG
-            // Uncomment to debug volume issues
-            // print("[NowPlayingBar] currentVolume: \(vol), isConnect=\(store.isSpotifyConnectActive), connectVol=\(store.spotifyConnectVolume), localVol=\(playbackViewModel.volume)")
-        #endif
-        return vol
+        playbackViewModel.volume * 100
     }
 
     private func setVolume(_ volume: Double) {
-        if store.isSpotifyConnectActive {
-            Task {
-                let token = await session.validAccessToken()
-                connectService.setVolume(volume, accessToken: token)
-            }
-        } else {
-            playbackViewModel.volume = volume / 100
-        }
+        playbackViewModel.volume = volume / 100
     }
 
     private var volumeControl: some View {
@@ -408,7 +352,7 @@ struct NowPlayingBarView: View {
         } label: {
             Image(systemName: currentVolume == 0 ? "speaker.fill" : currentVolume < 50 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
                 .font(.body)
-                .foregroundStyle(store.isSpotifyConnectActive ? .green : .secondary)
+                .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {

@@ -35,7 +35,6 @@ struct LoggedInView: View {
     private var searchService: SearchService { SearchService(store: store) }
     private var topItemsService: TopItemsService { TopItemsService(store: store) }
     private var newReleasesService: NewReleasesService { NewReleasesService(store: store) }
-    private var connectService: ConnectService { ConnectService(store: store, deviceService: deviceService, queueService: queueService) }
 
     @State private var navigationCoordinator = NavigationCoordinator()
 
@@ -104,7 +103,6 @@ struct LoggedInView: View {
         .environment(newReleasesService)
         .environment(navigationCoordinator)
         .environment(store)
-        .environment(connectService)
         .environment(trackService)
         .environment(playlistService)
         .environment(albumService)
@@ -127,14 +125,8 @@ struct LoggedInView: View {
 
             _ = await (favorites, topArtists, newReleases, recentlyPlayed)
 
-            // Only initialize player/Spirc and sync Connect if the setting is enabled
-            if showConnectSpeakers {
-                // Initialize player early so Spotifly appears as a Connect device immediately
-                await playbackViewModel.initializeIfNeeded(accessToken: token)
-
-                // Check if there's already active remote playback to sync with
-                await connectService.checkAndSyncRemotePlayback(accessToken: token)
-            }
+            // Initialize player/Spirc so Spotifly appears as a Connect device
+            await playbackViewModel.initializeIfNeeded(accessToken: token)
         }
         .onChange(of: navigationCoordinator.pendingNavigationItem) { _, newValue in
             if let pendingItem = newValue {

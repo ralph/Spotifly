@@ -11,7 +11,6 @@ struct SpeakersView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
-    @Environment(ConnectService.self) private var connectService
     @Bindable var playbackViewModel: PlaybackViewModel
 
     @AppStorage("showSpotifyConnectSpeakers") private var showConnectSpeakers: Bool = false
@@ -30,8 +29,6 @@ struct SpeakersView: View {
                         Task {
                             let token = await session.validAccessToken()
                             await deviceService.loadDevices(accessToken: token)
-                            // Also refresh playback state and queue if Connect is active
-                            await connectService.refreshPlaybackState(accessToken: token)
                         }
                     } label: {
                         Image(systemName: "arrow.clockwise")
@@ -61,81 +58,6 @@ struct SpeakersView: View {
                 Spacer()
             } else {
                 List {
-                    // Now Playing section (only when Connect is active)
-                    if showConnectSpeakers, store.isSpotifyConnectActive,
-                       let deviceName = store.spotifyConnectDeviceName
-                    {
-                        Section {
-                            HStack(spacing: 12) {
-                                // Album art
-                                if let artURL = store.currentAlbumArtURL,
-                                   let url = URL(string: artURL)
-                                {
-                                    AsyncImage(url: url) { phase in
-                                        switch phase {
-                                        case let .success(image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 50, height: 50)
-                                                .cornerRadius(6)
-                                        default:
-                                            Image(systemName: "music.note")
-                                                .font(.title2)
-                                                .frame(width: 50, height: 50)
-                                                .background(Color.gray.opacity(0.2))
-                                                .cornerRadius(6)
-                                        }
-                                    }
-                                } else {
-                                    Image(systemName: "music.note")
-                                        .font(.title2)
-                                        .frame(width: 50, height: 50)
-                                        .background(Color.gray.opacity(0.2))
-                                        .cornerRadius(6)
-                                }
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    if let trackName = store.currentTrackName {
-                                        Text(trackName)
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                            .lineLimit(1)
-                                    }
-                                    if let artistName = store.currentArtistName {
-                                        Text(artistName)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "hifispeaker.fill")
-                                            .font(.caption2)
-                                        Text(deviceName)
-                                            .font(.caption)
-                                    }
-                                    .foregroundStyle(.green)
-                                }
-
-                                Spacer()
-                            }
-                            .padding(.vertical, 4)
-                        } header: {
-                            Text("speakers.now_playing")
-                        }
-                    }
-
-                    // This Computer (local playback) - only when Connect is active on a REMOTE device
-                    // Don't show when Spotifly itself is the active device (we're already here)
-                    if showConnectSpeakers, store.isSpotifyConnectActive,
-                       store.spotifyConnectDeviceName != "Spotifly"
-                    {
-                        Section {
-                            ThisComputerRow(playbackViewModel: playbackViewModel)
-                        } header: {
-                            Text("speakers.this_computer")
-                        }
-                    }
 
                     // Spotify Connect devices (before AirPlay)
                     if showConnectSpeakers {
@@ -200,22 +122,13 @@ struct SpeakersView: View {
 struct SpeakerRow: View {
     let device: Device
     @Environment(SpotifySession.self) private var session
-    @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
-    @Environment(ConnectService.self) private var connectService
 
     var body: some View {
         Button {
             Task {
                 let token = await session.validAccessToken()
-                let success = await deviceService.transferPlayback(to: device, accessToken: token)
-                if success {
-                    connectService.activateConnect(
-                        deviceId: device.id,
-                        deviceName: device.name,
-                        accessToken: token,
-                    )
-                }
+                _ = await deviceService.transferPlayback(to: device, accessToken: token)
             }
         } label: {
             HStack(spacing: 12) {
@@ -271,50 +184,3 @@ struct SpeakerRow: View {
     }
 }
 
-struct ThisComputerRow: View {
-    @Environment(SpotifySession.self) private var session
-    @Environment(AppStore.self) private var store
-    @Environment(ConnectService.self) private var connectService
-    @Environment(DeviceService.self) private var deviceService
-    @Bindable var playbackViewModel: PlaybackViewModel
-
-    var body: some View {
-        Button {
-            transferToLocalPlayback()
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "desktopcomputer")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("speakers.this_computer.name")
-                        .font(.body)
-                        .foregroundStyle(.primary)
-
-                    Text("speakers.this_computer.hint")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Image(systemName: "arrow.left.circle")
-                    .foregroundStyle(.green)
-            }
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func transferToLocalPlayback() {
-        connectService.transferToLocal()
-        // Refresh devices list so the UI updates
-        Task {
-            let token = await session.validAccessToken()
-            await deviceService.loadDevices(accessToken: token)
-        }
-    }
-}
