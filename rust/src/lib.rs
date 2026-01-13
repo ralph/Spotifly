@@ -581,50 +581,6 @@ pub extern "C" fn spotifly_shutdown() -> i32 {
     -1
 }
 
-/// Sets shuffle mode.
-/// If true, shuffles/reshuffles the playback. If false, unshuffles while resuming at current track.
-/// Returns 0 on success, -1 on error.
-#[no_mangle]
-pub extern "C" fn spotifly_set_shuffle(shuffle: bool) -> i32 {
-    println!("[Spotifly] spotifly_set_shuffle called: {}", shuffle);
-    let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.shuffle(shuffle).is_ok() {
-            return 0;
-        }
-    }
-    -1
-}
-
-/// Sets repeat context mode (repeat album/playlist).
-/// Returns 0 on success, -1 on error.
-#[no_mangle]
-pub extern "C" fn spotifly_set_repeat(repeat: bool) -> i32 {
-    println!("[Spotifly] spotifly_set_repeat called: {}", repeat);
-    let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.repeat(repeat).is_ok() {
-            return 0;
-        }
-    }
-    -1
-}
-
-/// Sets repeat track mode (repeat single track).
-/// Skipping to the next track disables the repeating.
-/// Returns 0 on success, -1 on error.
-#[no_mangle]
-pub extern "C" fn spotifly_set_repeat_track(repeat: bool) -> i32 {
-    println!("[Spotifly] spotifly_set_repeat_track called: {}", repeat);
-    let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.repeat_track(repeat).is_ok() {
-            return 0;
-        }
-    }
-    -1
-}
-
 /// Returns 1 if currently playing, 0 otherwise.
 #[no_mangle]
 pub extern "C" fn spotifly_is_playing() -> i32 {
@@ -731,103 +687,6 @@ pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
 // - GET /me/player/queue - to read the queue
 // - POST /me/player/queue - to add to queue
 // ============================================================================
-
-/// Jumps to a specific track in the queue by index and starts playing.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API instead.
-/// Returns -1 (not supported).
-#[no_mangle]
-pub extern "C" fn spotifly_jump_to_index(_index: usize) -> i32 {
-    println!("[Spotifly] spotifly_jump_to_index: DEPRECATED - queue managed by Spirc");
-    -1
-}
-
-/// Returns the number of tracks in the queue.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns 0.
-#[no_mangle]
-pub extern "C" fn spotifly_get_queue_length() -> usize {
-    0
-}
-
-/// Returns the current track index in the queue (0-based).
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns 0.
-#[no_mangle]
-pub extern "C" fn spotifly_get_current_index() -> usize {
-    0
-}
-
-/// Returns the track name at the given index.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns NULL.
-#[no_mangle]
-pub extern "C" fn spotifly_get_queue_track_name(_index: usize) -> *mut c_char {
-    ptr::null_mut()
-}
-
-/// Returns the artist name at the given index.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns NULL.
-#[no_mangle]
-pub extern "C" fn spotifly_get_queue_artist_name(_index: usize) -> *mut c_char {
-    ptr::null_mut()
-}
-
-/// Returns the album art URL at the given index.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns NULL.
-#[no_mangle]
-pub extern "C" fn spotifly_get_queue_album_art_url(_index: usize) -> *mut c_char {
-    ptr::null_mut()
-}
-
-/// Returns the URI at the given index.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns NULL.
-#[no_mangle]
-pub extern "C" fn spotifly_get_queue_uri(_index: usize) -> *mut c_char {
-    ptr::null_mut()
-}
-
-/// Returns the track duration in milliseconds at the given index.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns 0.
-#[no_mangle]
-pub extern "C" fn spotifly_get_queue_duration_ms(_index: usize) -> u32 {
-    0
-}
-
-/// Gets the album ID for a queue item by index.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns NULL.
-#[no_mangle]
-pub extern "C" fn spotifly_get_queue_album_id(_index: usize) -> *mut c_char {
-    ptr::null_mut()
-}
-
-/// Gets the artist ID for a queue item by index.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns NULL.
-#[no_mangle]
-pub extern "C" fn spotifly_get_queue_artist_id(_index: usize) -> *mut c_char {
-    ptr::null_mut()
-}
-
-/// Gets the external URL for a queue item by index.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns NULL.
-#[no_mangle]
-pub extern "C" fn spotifly_get_queue_external_url(_index: usize) -> *mut c_char {
-    ptr::null_mut()
-}
-
-/// Returns all queue items as a JSON string.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Returns NULL.
-#[no_mangle]
-pub extern "C" fn spotifly_get_all_queue_items() -> *mut c_char {
-    ptr::null_mut()
-}
 
 /// Gets radio tracks for a seed track and returns them as JSON.
 /// Returns a JSON array of track URIs, or NULL on error.
@@ -1074,9 +933,3 @@ pub extern "C" fn spotifly_is_spirc_ready() -> i32 {
     if SPIRC_READY.load(Ordering::SeqCst) { 1 } else { 0 }
 }
 
-/// Returns 1 if this device is the active playback device, 0 otherwise.
-/// This is best-effort based on player events - check Web API for authoritative status.
-#[no_mangle]
-pub extern "C" fn spotifly_is_active_device() -> i32 {
-    if IS_ACTIVE_DEVICE.load(Ordering::SeqCst) { 1 } else { 0 }
-}

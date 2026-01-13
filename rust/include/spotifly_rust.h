@@ -48,29 +48,11 @@ int32_t spotifly_stop(void);
 /// Returns 0 on success, -1 on error.
 int32_t spotifly_shutdown(void);
 
-/// Sets shuffle mode.
-/// If true, shuffles/reshuffles the playback. If false, unshuffles while resuming at current track.
-/// Returns 0 on success, -1 on error.
-int32_t spotifly_set_shuffle(bool shuffle);
-
-/// Sets repeat context mode (repeat album/playlist).
-/// Returns 0 on success, -1 on error.
-int32_t spotifly_set_repeat(bool repeat);
-
-/// Sets repeat track mode (repeat single track).
-/// Skipping to the next track disables the repeating.
-/// Returns 0 on success, -1 on error.
-int32_t spotifly_set_repeat_track(bool repeat);
-
 /// Returns 1 if currently playing, 0 otherwise.
 int32_t spotifly_is_playing(void);
 
 /// Returns 1 if Spirc is initialized and connected, 0 otherwise.
 int32_t spotifly_is_spirc_ready(void);
-
-/// Returns 1 if this is the active playback device, 0 otherwise.
-/// This is best-effort based on player events - use Web API for authoritative status.
-int32_t spotifly_is_active_device(void);
 
 /// Returns the current playback position in milliseconds.
 /// If playing, interpolates from last known position.
@@ -88,61 +70,6 @@ int32_t spotifly_previous(void);
 /// Seeks to the given position in milliseconds.
 /// Returns 0 on success, -1 on error.
 int32_t spotifly_seek(uint32_t position_ms);
-
-/// Jumps to a specific track in the queue by index and starts playing.
-/// Returns 0 on success, -1 on error.
-int32_t spotifly_jump_to_index(size_t index);
-
-/// Returns the number of tracks in the queue.
-size_t spotifly_get_queue_length(void);
-
-/// Returns the current track index in the queue (0-based).
-size_t spotifly_get_current_index(void);
-
-/// Returns the track name at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds.
-char* spotifly_get_queue_track_name(size_t index);
-
-/// Returns the artist name at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds.
-char* spotifly_get_queue_artist_name(size_t index);
-
-/// Returns the album art URL at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds.
-char* spotifly_get_queue_album_art_url(size_t index);
-
-/// Returns the URI at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds.
-char* spotifly_get_queue_uri(size_t index);
-
-/// Returns the track duration in milliseconds at the given index.
-/// Returns 0 if index is out of bounds.
-uint32_t spotifly_get_queue_duration_ms(size_t index);
-
-/// Returns the album ID at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds or album ID is not available.
-char* spotifly_get_queue_album_id(size_t index);
-
-/// Returns the artist ID at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds or artist ID is not available.
-char* spotifly_get_queue_artist_id(size_t index);
-
-/// Returns the external URL (Spotify web link) at the given index.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL if index is out of bounds or external URL is not available.
-char* spotifly_get_queue_external_url(size_t index);
-
-/// Returns all queue items as a JSON string.
-/// DEPRECATED: Queue is now managed by Spirc. Use Web API GET /me/player/queue instead.
-/// Caller must free the string with spotifly_free_string().
-/// Returns NULL.
-char* spotifly_get_all_queue_items(void);
 
 /// Gets radio tracks for a seed track and returns them as JSON.
 /// Returns a JSON array of track URIs, or NULL on error.

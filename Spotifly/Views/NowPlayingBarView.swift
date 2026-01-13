@@ -41,13 +41,8 @@ struct NowPlayingBarView: View {
         let artistName = (store.isSpotifyConnectActive ? store.currentArtistName : playbackViewModel.currentArtistName) ?? ""
 
         // Try to get the full queue item for extra metadata (albumId, artistId, externalUrl)
-        let queueItem: QueueItem? = {
-            guard playbackViewModel.queueLength > 0 else { return nil }
-            guard let items = try? SpotifyPlayer.getAllQueueItems(),
-                  playbackViewModel.currentIndex < items.count
-            else { return nil }
-            return items[playbackViewModel.currentIndex]
-        }()
+        // Queue items are now managed via Web API in store.queueItems
+        let queueItem: QueueItem? = store.queueItems.first { $0.uri == trackUri }
 
         return TrackRowData(
             id: playbackViewModel.currentTrackId ?? trackUri,

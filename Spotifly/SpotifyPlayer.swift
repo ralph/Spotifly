@@ -185,25 +185,6 @@ enum SpotifyPlayer {
         spotifly_shutdown()
     }
 
-    /// Sets shuffle mode.
-    /// - Parameter enabled: If true, shuffles/reshuffles the playback. If false, unshuffles while resuming at current track.
-    static func setShuffle(_ enabled: Bool) {
-        spotifly_set_shuffle(enabled)
-    }
-
-    /// Sets repeat context mode (repeat album/playlist).
-    /// - Parameter enabled: If true, repeats the album/playlist.
-    static func setRepeat(_ enabled: Bool) {
-        spotifly_set_repeat(enabled)
-    }
-
-    /// Sets repeat track mode (repeat single track).
-    /// Skipping to the next track disables the repeating.
-    /// - Parameter enabled: If true, repeats the current track.
-    static func setRepeatTrack(_ enabled: Bool) {
-        spotifly_set_repeat_track(enabled)
-    }
-
     /// Returns whether the player is currently playing.
     static var isPlaying: Bool {
         spotifly_is_playing() == 1
@@ -212,12 +193,6 @@ enum SpotifyPlayer {
     /// Returns whether Spirc is initialized and connected to Spotify Connect.
     static var isSpircReady: Bool {
         spotifly_is_spirc_ready() == 1
-    }
-
-    /// Returns whether this device is the active playback device.
-    /// This is best-effort based on player events - use Web API for authoritative status.
-    static var isActiveDevice: Bool {
-        spotifly_is_active_device() == 1
     }
 
     /// Returns the current playback position in milliseconds.
@@ -247,111 +222,6 @@ enum SpotifyPlayer {
         let result = spotifly_seek(positionMs)
         guard result == 0 else {
             throw SpotifyPlayerError.playbackFailed
-        }
-    }
-
-    /// Jumps to a specific track in the queue by index and starts playing.
-    static func jumpToIndex(_ index: Int) throws {
-        let result = spotifly_jump_to_index(index)
-        guard result == 0 else {
-            throw SpotifyPlayerError.playbackFailed
-        }
-    }
-
-    /// Returns the number of tracks in the queue.
-    static var queueLength: Int {
-        spotifly_get_queue_length()
-    }
-
-    /// Returns the current track index in the queue (0-based).
-    static var currentIndex: Int {
-        spotifly_get_current_index()
-    }
-
-    /// Returns the track name at the given index in the queue.
-    static func queueTrackName(at index: Int) -> String? {
-        guard let cStr = spotifly_get_queue_track_name(index) else {
-            return nil
-        }
-        defer { spotifly_free_string(cStr) }
-        return String(cString: cStr)
-    }
-
-    /// Returns the artist name at the given index in the queue.
-    static func queueArtistName(at index: Int) -> String? {
-        guard let cStr = spotifly_get_queue_artist_name(index) else {
-            return nil
-        }
-        defer { spotifly_free_string(cStr) }
-        return String(cString: cStr)
-    }
-
-    /// Returns the album art URL at the given index in the queue.
-    static func queueAlbumArtUrl(at index: Int) -> String? {
-        guard let cStr = spotifly_get_queue_album_art_url(index) else {
-            return nil
-        }
-        defer { spotifly_free_string(cStr) }
-        return String(cString: cStr)
-    }
-
-    /// Returns the URI at the given index in the queue.
-    static func queueUri(at index: Int) -> String? {
-        guard let cStr = spotifly_get_queue_uri(index) else {
-            return nil
-        }
-        defer { spotifly_free_string(cStr) }
-        return String(cString: cStr)
-    }
-
-    /// Returns the track duration in milliseconds at the given index.
-    static func queueDurationMs(at index: Int) -> UInt32 {
-        spotifly_get_queue_duration_ms(index)
-    }
-
-    /// Fetches all queue items.
-    static func getAllQueueItems() throws -> [QueueItem] {
-        guard let cStr = spotifly_get_all_queue_items() else {
-            throw SpotifyPlayerError.queueFetchFailed
-        }
-        defer { spotifly_free_string(cStr) }
-
-        let jsonString = String(cString: cStr)
-        guard let jsonData = jsonString.data(using: .utf8) else {
-            throw SpotifyPlayerError.queueFetchFailed
-        }
-
-        // Parse JSON manually since we're getting snake_case from Rust
-        guard let jsonArray = try? JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]] else {
-            throw SpotifyPlayerError.queueFetchFailed
-        }
-
-        return jsonArray.compactMap { item in
-            guard let uri = item["uri"] as? String,
-                  let trackName = item["track_name"] as? String,
-                  let artistName = item["artist_name"] as? String,
-                  let albumArtURL = item["album_art_url"] as? String,
-                  let durationMs = item["duration_ms"] as? UInt32
-            else {
-                return nil
-            }
-
-            // Optional fields for navigation
-            let albumId = item["album_id"] as? String
-            let artistId = item["artist_id"] as? String
-            let externalUrl = item["external_url"] as? String
-
-            return QueueItem(
-                id: uri,
-                uri: uri,
-                trackName: trackName,
-                artistName: artistName,
-                albumArtURL: albumArtURL,
-                durationMs: durationMs,
-                albumId: albumId,
-                artistId: artistId,
-                externalUrl: externalUrl,
-            )
         }
     }
 

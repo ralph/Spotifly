@@ -108,7 +108,7 @@ struct QueueListView: View {
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             currentIndex: playbackViewModel.currentIndex,
                             playbackViewModel: playbackViewModel,
-                            doubleTapBehavior: .jumpToQueueIndex,
+                            doubleTapBehavior: .playTrack,
                             currentSection: .queue,
                         )
                         .id(index)

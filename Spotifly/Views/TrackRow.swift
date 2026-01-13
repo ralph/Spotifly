@@ -40,7 +40,6 @@ struct TrackRowData: Identifiable {
 /// Double-tap behavior for TrackRow
 enum TrackRowDoubleTapBehavior {
     case playTrack // Play just this track
-    case jumpToQueueIndex // Jump to this index in the queue (for QueueListView)
 }
 
 /// Reusable track row view
@@ -248,14 +247,6 @@ struct TrackRow: View {
                     uriOrUrl: track.uri,
                     accessToken: token,
                 )
-            }
-        case .jumpToQueueIndex:
-            guard let index else { return }
-            do {
-                try SpotifyPlayer.jumpToIndex(index)
-                playbackViewModel.updateQueueState()
-            } catch {
-                playbackViewModel.errorMessage = error.localizedDescription
             }
         }
     }

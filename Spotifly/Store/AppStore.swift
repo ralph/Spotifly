@@ -206,7 +206,7 @@ final class AppStore {
 
     /// Returns the URI of the currently playing track
     var currentlyPlayingURI: String? {
-        SpotifyPlayer.queueUri(at: currentIndex) ?? currentTrackId
+        currentTrackId
     }
 
     /// User's playlists in display order
@@ -655,7 +655,7 @@ final class AppStore {
         do {
             try SpotifyPlayer.next()
             isPlaying = true
-            updateQueueState()
+            updateNowPlayingInfo()
             syncPositionAnchor()
             updateNowPlayingInfo()
         } catch {
@@ -667,7 +667,7 @@ final class AppStore {
         do {
             try SpotifyPlayer.previous()
             isPlaying = true
-            updateQueueState()
+            updateNowPlayingInfo()
             syncPositionAnchor()
             updateNowPlayingInfo()
         } catch {
@@ -687,39 +687,18 @@ final class AppStore {
         }
     }
 
-    func getQueueTrackName(at index: Int) -> String? {
-        SpotifyPlayer.queueTrackName(at: index)
-    }
-
-    func getQueueArtistName(at index: Int) -> String? {
-        SpotifyPlayer.queueArtistName(at: index)
-    }
-
     // MARK: - Private Playback Helpers
 
     private func handlePlaybackStarted(trackId: String) {
         currentTrackId = trackId
         isPlaying = true
         SpotifyPlayer.setVolume(volume)
-        updateQueueState()
+        updateNowPlayingInfo()
         syncPositionAnchor()
     }
 
     func updatePlayingState() {
         isPlaying = SpotifyPlayer.isPlaying
-    }
-
-    func updateQueueState() {
-        queueLength = SpotifyPlayer.queueLength
-        currentIndex = SpotifyPlayer.currentIndex
-
-        if queueLength > 0, currentIndex < queueLength {
-            currentTrackName = SpotifyPlayer.queueTrackName(at: currentIndex)
-            currentArtistName = SpotifyPlayer.queueArtistName(at: currentIndex)
-            currentAlbumArtURL = SpotifyPlayer.queueAlbumArtUrl(at: currentIndex)
-            trackDurationMs = SpotifyPlayer.queueDurationMs(at: currentIndex)
-            updateNowPlayingInfo()
-        }
     }
 
     private func syncPositionAnchor() {
@@ -755,27 +734,22 @@ final class AppStore {
             return
         }
 
-        let rustCurrentIndex = SpotifyPlayer.currentIndex
-        if rustCurrentIndex != currentIndex {
-            currentIndex = rustCurrentIndex
-            isPlaying = SpotifyPlayer.isPlaying
-            updateQueueState()
-            syncPositionAnchor()
-            return
-        }
-
+        // Sync playing state with Rust
         let rustIsPlaying = SpotifyPlayer.isPlaying
         if rustIsPlaying != isPlaying {
             isPlaying = rustIsPlaying
             syncPositionAnchor()
         }
 
+        // Update currentPositionMs for non-TimelineView consumers
         currentPositionMs = interpolatedPositionMs
 
+        // Check for significant drift from Rust position
         let rustPosition = SpotifyPlayer.positionMs
         if rustPosition != lastRustPosition {
             let drift = abs(Int32(rustPosition) - Int32(interpolatedPositionMs))
             if drift > 500 {
+                // More than 500ms drift - resync anchor
                 positionAnchorMs = rustPosition
                 positionAnchorTime = CACurrentMediaTime()
                 currentPositionMs = min(rustPosition, trackDurationMs)

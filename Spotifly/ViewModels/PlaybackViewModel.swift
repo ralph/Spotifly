@@ -58,8 +58,7 @@ final class PlaybackViewModel {
 
     /// Returns the URI of the currently playing track
     var currentlyPlayingURI: String? {
-        // Try to get URI from queue first, fallback to currentTrackId for single tracks
-        SpotifyPlayer.queueUri(at: currentIndex) ?? currentTrackId
+        currentTrackId
     }
 
     // Track metadata for Now Playing
@@ -216,7 +215,7 @@ final class PlaybackViewModel {
             // and syncs with Spirc via dealer for proper Connect state
             try await SpotifyAPI.addToQueue(trackUri: trackUri, accessToken: accessToken)
             // Update queue state to reflect the change
-            updateQueueState()
+            updateNowPlayingInfo()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -230,7 +229,7 @@ final class PlaybackViewModel {
         isPlaying = true
         // Apply volume after playback starts (mixer is now initialized)
         SpotifyPlayer.setVolume(volume)
-        updateQueueState()
+        updateNowPlayingInfo()
         syncPositionAnchor()
         // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackId changes
     }
@@ -260,21 +259,6 @@ final class PlaybackViewModel {
         isPlaying = SpotifyPlayer.isPlaying
     }
 
-    func updateQueueState() {
-        queueLength = SpotifyPlayer.queueLength
-        currentIndex = SpotifyPlayer.currentIndex
-
-        // Update current track metadata
-        if queueLength > 0, currentIndex < queueLength {
-            currentTrackName = SpotifyPlayer.queueTrackName(at: currentIndex)
-            currentArtistName = SpotifyPlayer.queueArtistName(at: currentIndex)
-            currentAlbumArtURL = SpotifyPlayer.queueAlbumArtUrl(at: currentIndex)
-            trackDurationMs = SpotifyPlayer.queueDurationMs(at: currentIndex)
-            // Position is synced separately via syncPositionAnchor()
-            updateNowPlayingInfo()
-        }
-    }
-
     // MARK: - Web API Playback Control (async, requires token)
 
     // Use these for UI controls - they work for both local and remote devices
@@ -283,7 +267,7 @@ final class PlaybackViewModel {
         do {
             try await SpotifyAPI.skipToNext(accessToken: accessToken)
             isPlaying = true
-            updateQueueState()
+            updateNowPlayingInfo()
             syncPositionAnchor()
             updateNowPlayingInfo()
         } catch {
@@ -295,7 +279,7 @@ final class PlaybackViewModel {
         do {
             try await SpotifyAPI.skipToPrevious(accessToken: accessToken)
             isPlaying = true
-            updateQueueState()
+            updateNowPlayingInfo()
             syncPositionAnchor()
             updateNowPlayingInfo()
         } catch {
@@ -344,7 +328,7 @@ final class PlaybackViewModel {
         do {
             try SpotifyPlayer.next()
             isPlaying = true
-            updateQueueState()
+            updateNowPlayingInfo()
             syncPositionAnchor()
             updateNowPlayingInfo()
         } catch {
@@ -356,7 +340,7 @@ final class PlaybackViewModel {
         do {
             try SpotifyPlayer.previous()
             isPlaying = true
-            updateQueueState()
+            updateNowPlayingInfo()
             syncPositionAnchor()
             updateNowPlayingInfo()
         } catch {
@@ -377,21 +361,11 @@ final class PlaybackViewModel {
         }
     }
 
-    func getQueueTrackName(at index: Int) -> String? {
-        SpotifyPlayer.queueTrackName(at: index)
-    }
+    /// Always returns true - Web API handles next track availability
+    var hasNext: Bool { true }
 
-    func getQueueArtistName(at index: Int) -> String? {
-        SpotifyPlayer.queueArtistName(at: index)
-    }
-
-    var hasNext: Bool {
-        currentIndex + 1 < queueLength
-    }
-
-    var hasPrevious: Bool {
-        currentIndex > 0
-    }
+    /// Always returns true - Web API handles previous track availability
+    var hasPrevious: Bool { true }
 
     // MARK: - Media Keys & Now Playing
 
@@ -581,18 +555,6 @@ final class PlaybackViewModel {
 
     /// Called every second to check for drift and sync state
     private func checkDriftAndSync() {
-        // Check if track changed (auto-advance)
-        let rustCurrentIndex = SpotifyPlayer.currentIndex
-        if rustCurrentIndex != currentIndex {
-            currentIndex = rustCurrentIndex
-            isPlaying = SpotifyPlayer.isPlaying
-            updateQueueState()
-            syncPositionAnchor()
-            // Update currentTrackId to trigger favorite status check in NowPlayingBarView
-            currentTrackId = SpotifyPlayer.queueUri(at: currentIndex)
-            return
-        }
-
         // Sync playing state with Rust
         let rustIsPlaying = SpotifyPlayer.isPlaying
         if rustIsPlaying != isPlaying {
