@@ -191,6 +191,16 @@ final class QueueService {
 
         store.setQueueItems(items)
 
+        // Update PlaybackViewModel with current track metadata for Now Playing info
+        if store.currentIndex < items.count {
+            let currentItem = items[store.currentIndex]
+            PlaybackViewModel.shared.setCurrentTrackMetadata(
+                name: currentItem.trackName.isEmpty ? nil : currentItem.trackName,
+                artist: currentItem.artistName.isEmpty ? nil : currentItem.artistName,
+                artURL: currentItem.albumArtURL.isEmpty ? nil : currentItem.albumArtURL,
+            )
+        }
+
         #if DEBUG
             let populated = items.count(where: { !$0.trackName.isEmpty })
             print("[QueueService] Queue items updated: \(populated)/\(items.count) with metadata")

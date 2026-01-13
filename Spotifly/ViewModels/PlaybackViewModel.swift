@@ -52,22 +52,22 @@ final class PlaybackViewModel {
 
     var isPlaying = false
     var isLoading = false
-    var currentTrackId: String?
+    var currentTrackUri: String?
     var errorMessage: String?
-    var queueLength: Int = 0
-    var currentIndex: Int = 0
 
-    /// Returns the URI of the currently playing track
+    /// Returns the URI of the currently playing track (alias for currentTrackUri)
     var currentlyPlayingURI: String? {
-        currentTrackId
+        currentTrackUri
     }
 
-    // Track metadata for Now Playing
-    var currentTrackName: String?
-    var currentArtistName: String?
-    var currentAlbumArtURL: String?
+    // Playback state from Mercury (duration/position for progress bar)
     var trackDurationMs: UInt32 = 0
     var currentPositionMs: UInt32 = 0
+
+    // Current track metadata for Now Playing info (set by QueueService)
+    private(set) var currentTrackName: String?
+    private(set) var currentArtistName: String?
+    private(set) var currentAlbumArtURL: String?
 
     // Volume (0.0 - 1.0)
     var volume: Double = 0.5 {
@@ -228,21 +228,21 @@ final class PlaybackViewModel {
 
     /// Common setup after playback has started
     private func handlePlaybackStarted(trackId: String) {
-        currentTrackId = trackId
+        currentTrackUri = trackId
         isPlaying = true
         // Apply volume after playback starts (mixer is now initialized)
         SpotifyPlayer.setVolume(volume)
         updateNowPlayingInfo()
         syncPositionAnchor()
-        // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackId changes
+        // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackUri changes
     }
 
     func togglePlayPause(trackId: String, accessToken: String) async {
-        if isPlaying, currentTrackId == trackId {
+        if isPlaying, currentTrackUri == trackId {
             // Pause current track
             SpotifyPlayer.pause()
             isPlaying = false
-        } else if !isPlaying, currentTrackId == trackId {
+        } else if !isPlaying, currentTrackUri == trackId {
             // Resume current track
             SpotifyPlayer.resume()
             isPlaying = true
@@ -255,11 +255,20 @@ final class PlaybackViewModel {
     func stop() {
         SpotifyPlayer.stop()
         isPlaying = false
-        currentTrackId = nil
+        currentTrackUri = nil
     }
 
     func updatePlayingState() {
         isPlaying = SpotifyPlayer.isPlaying
+    }
+
+    /// Updates current track metadata for Now Playing info center.
+    /// Called by QueueService when the current track changes.
+    func setCurrentTrackMetadata(name: String?, artist: String?, artURL: String?) {
+        currentTrackName = name
+        currentArtistName = artist
+        currentAlbumArtURL = artURL
+        updateNowPlayingInfo()
     }
 
     // MARK: - Playback Control (via Spirc)
@@ -479,8 +488,8 @@ final class PlaybackViewModel {
         isPlaying = state.isPlaying && !state.isPaused
 
         // Update track if changed
-        if !state.trackUri.isEmpty, state.trackUri != currentTrackId {
-            currentTrackId = state.trackUri
+        if !state.trackUri.isEmpty, state.trackUri != currentTrackUri {
+            currentTrackUri = state.trackUri
             // Note: Track metadata (name, artist, etc.) will be updated from queue
         }
 
@@ -581,7 +590,7 @@ final class PlaybackViewModel {
     // MARK: - Favorite Management
 
     func checkCurrentTrackFavoriteStatus(accessToken: String) async {
-        guard let trackId = extractTrackId(from: currentTrackId) else {
+        guard let trackId = extractTrackId(from: currentTrackUri) else {
             isCurrentTrackFavorited = false
             return
         }
@@ -598,7 +607,7 @@ final class PlaybackViewModel {
     }
 
     func toggleCurrentTrackFavorite(accessToken: String) async {
-        guard let trackId = extractTrackId(from: currentTrackId) else {
+        guard let trackId = extractTrackId(from: currentTrackUri) else {
             return
         }
 

@@ -489,6 +489,7 @@ final class AppStore {
 
     func setQueueItems(_ items: [QueueItem]) {
         queueItems = items
+        queueLength = items.count
     }
 
     // MARK: - Playback Control

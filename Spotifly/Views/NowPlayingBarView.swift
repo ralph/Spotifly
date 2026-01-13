@@ -26,34 +26,44 @@ struct NowPlayingBarView: View {
 
     /// Whether something is currently playing or queued
     private var hasPlayback: Bool {
-        playbackViewModel.currentTrackId != nil
+        playbackViewModel.currentTrackUri != nil
+    }
+
+    /// Extract track ID from URI (spotify:track:XXXX -> XXXX)
+    private var currentTrackId: String? {
+        guard let uri = playbackViewModel.currentTrackUri,
+              uri.hasPrefix("spotify:track:")
+        else {
+            return nil
+        }
+        return String(uri.dropFirst("spotify:track:".count))
+    }
+
+    /// Current track from global store (populated by QueueService)
+    private var currentTrack: Track? {
+        guard let trackId = currentTrackId else { return nil }
+        return store.tracks[trackId]
     }
 
     /// Current track data for the context menu
     private var currentTrackData: TrackRowData? {
-        guard let trackName = playbackViewModel.currentTrackName,
-              let trackUri = playbackViewModel.currentlyPlayingURI
+        guard let track = currentTrack,
+              let uri = playbackViewModel.currentTrackUri
         else {
             return nil
         }
 
-        let artistName = playbackViewModel.currentArtistName ?? ""
-
-        // Try to get the full queue item for extra metadata (albumId, artistId, externalUrl)
-        // Queue items are now managed via Web API in store.queueItems
-        let queueItem: QueueItem? = store.queueItems.first { $0.uri == trackUri }
-
         return TrackRowData(
-            id: playbackViewModel.currentTrackId ?? trackUri,
-            uri: trackUri,
-            name: trackName,
-            artistName: artistName,
-            albumArtURL: playbackViewModel.currentAlbumArtURL,
-            durationMs: Int(currentDurationMs),
-            trackNumber: nil,
-            albumId: queueItem?.albumId,
-            artistId: queueItem?.artistId,
-            externalUrl: queueItem?.externalUrl,
+            id: track.id,
+            uri: uri,
+            name: track.name,
+            artistName: track.artistName,
+            albumArtURL: track.imageURL?.absoluteString,
+            durationMs: track.durationMs,
+            trackNumber: track.trackNumber,
+            albumId: track.albumId,
+            artistId: track.artistId,
+            externalUrl: track.externalUrl,
         )
     }
 
@@ -132,39 +142,37 @@ struct NowPlayingBarView: View {
 
     private func albumArt(size: CGFloat) -> some View {
         Group {
-            if let cachedImage = cachedAlbumArtImage,
-               cachedAlbumArtURL == playbackViewModel.currentAlbumArtURL
-            {
-                // Use cached image
-                cachedImage
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: size, height: size)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-            } else if let artURL = playbackViewModel.currentAlbumArtURL,
-                      !artURL.isEmpty,
-                      let url = URL(string: artURL)
-            {
-                // Load new image
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .frame(width: size, height: size)
-                    case let .success(image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: size, height: size)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .onAppear {
-                                cachedAlbumArtImage = image
-                                cachedAlbumArtURL = artURL
-                            }
-                    case .failure:
-                        placeholderAlbumArt(size: size)
-                    @unknown default:
-                        EmptyView()
+            if let url = currentTrack?.imageURL {
+                let urlString = url.absoluteString
+                if let cachedImage = cachedAlbumArtImage, cachedAlbumArtURL == urlString {
+                    // Use cached image
+                    cachedImage
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: size, height: size)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                } else {
+                    // Load new image
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                                .frame(width: size, height: size)
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: size, height: size)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .onAppear {
+                                    cachedAlbumArtImage = image
+                                    cachedAlbumArtURL = urlString
+                                }
+                        case .failure:
+                            placeholderAlbumArt(size: size)
+                        @unknown default:
+                            EmptyView()
+                        }
                     }
                 }
             } else {
@@ -183,14 +191,12 @@ struct NowPlayingBarView: View {
 
     private var trackInfo: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let trackName = playbackViewModel.currentTrackName {
-                Text(trackName)
+            if let track = currentTrack {
+                Text(track.name)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .lineLimit(1)
-            }
-            if let artistName = playbackViewModel.currentArtistName {
-                Text(artistName)
+                Text(track.artistName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -237,9 +243,12 @@ struct NowPlayingBarView: View {
         playbackViewModel.interpolatedPositionMs
     }
 
-    /// Current track duration
+    /// Current track duration (from store, fallback to playback state)
     private var currentDurationMs: UInt32 {
-        playbackViewModel.trackDurationMs
+        if let track = currentTrack {
+            return UInt32(track.durationMs)
+        }
+        return playbackViewModel.trackDurationMs
     }
 
     private var progressBar: some View {
@@ -289,7 +298,7 @@ struct NowPlayingBarView: View {
             exitMiniPlayerIfNeeded()
             navigationCoordinator.navigateToQueue()
         } label: {
-            Text("\(playbackViewModel.currentIndex + 1)/\(playbackViewModel.queueLength)")
+            Text("\(store.currentIndex + 1)/\(store.queueLength)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 50, alignment: .trailing)
@@ -297,14 +306,9 @@ struct NowPlayingBarView: View {
         .buttonStyle(.plain)
     }
 
-    /// Current track ID for favorite operations (extracted from URI if needed)
+    /// Current track ID for favorite operations (uses currentTrackId computed property)
     private var currentTrackIdForFavorite: String? {
-        guard let trackId = playbackViewModel.currentTrackId else { return nil }
-        // Handle URI format: spotify:track:TRACK_ID
-        if trackId.hasPrefix("spotify:track:") {
-            return String(trackId.dropFirst("spotify:track:".count))
-        }
-        return trackId
+        currentTrackId
     }
 
     /// Whether the current track is favorited (from global store)
