@@ -420,6 +420,12 @@ enum SpotifyPlayer {
         playbackStateSubject.eraseToAnyPublisher()
     }
 
+    /// Refreshes the queue from Spotify Web API.
+    /// Call this to manually update the queue display.
+    static func refreshQueue() async {
+        await fetchAndEmitQueueState()
+    }
+
     /// Syncs playback settings from UserDefaults to the Rust player
     private nonisolated static func syncSettingsFromUserDefaults() {
         let bitrateRawValue = UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1

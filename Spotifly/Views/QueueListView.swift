@@ -14,6 +14,7 @@ struct QueueListView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
 
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var isRefreshing = false
 
     /// Currently playing index from store
     private var currentIndex: Int {
@@ -77,6 +78,16 @@ struct QueueListView: View {
 
             Spacer()
 
+            // Refresh button
+            Button {
+                refreshQueue()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.bordered)
+            .disabled(isRefreshing)
+            .help("queue.refresh")
+
             // Scroll to current button
             Button {
                 scrollToCurrentTrack()
@@ -89,6 +100,14 @@ struct QueueListView: View {
         }
         .padding()
         .background(.regularMaterial)
+    }
+
+    private func refreshQueue() {
+        isRefreshing = true
+        Task {
+            await SpotifyPlayer.refreshQueue()
+            isRefreshing = false
+        }
     }
 
     // MARK: - Normal Mode Content
