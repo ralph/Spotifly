@@ -406,33 +406,63 @@ fn process_and_send_queue(player_state: PlayerState) {
         let cb = callback;
         drop(cb_guard);
 
-        // Extract URIs, filtering out non-track entries (separators, autoplay markers, etc.)
-        let map_track = |t: librespot_protocol::player::ProvidedTrack, index: usize, label: &str| -> Option<QueueItem> {
-            // Log first few and any non-standard URIs for debugging
-            let is_track = t.uri.starts_with("spotify:track:");
-            if index < 3 || !is_track {
-                println!("[Spotifly] {} track[{}] uri='{}' provider='{}'", label, index, t.uri, t.provider);
-            }
-
-            // Skip non-track URIs (separators, delimiter markers, etc.)
-            if !is_track {
-                println!("[Spotifly] Skipping non-track URI: {}", t.uri);
-                return None;
-            }
-
-            Some(QueueItem {
-                uri: t.uri,
+        // Helper to convert ProvidedTrack to QueueItem
+        let to_queue_item = |t: &librespot_protocol::player::ProvidedTrack| -> QueueItem {
+            QueueItem {
+                uri: t.uri.clone(),
                 name: String::new(),
                 artist: String::new(),
                 image_url: String::new(),
                 duration_ms: 0,
                 album_name: String::new(),
-            })
+            }
         };
 
-        let current_track = player_state.track.into_option().and_then(|t| map_track(t, 0, "current"));
-        let next_tracks: Vec<QueueItem> = player_state.next_tracks.into_iter().enumerate().filter_map(|(i, t)| map_track(t, i, "next")).collect();
-        let prev_tracks: Vec<QueueItem> = player_state.prev_tracks.into_iter().enumerate().filter_map(|(i, t)| map_track(t, i, "prev")).collect();
+        // Process current track
+        let current_track = player_state.track.into_option().and_then(|t| {
+            println!("[Spotifly] current track[0] uri='{}' provider='{}'", t.uri, t.provider);
+            if t.uri.starts_with("spotify:track:") {
+                Some(to_queue_item(&t))
+            } else {
+                None
+            }
+        });
+
+        // Process next_tracks - stop at first delimiter (autoplay boundary)
+        let mut next_tracks: Vec<QueueItem> = Vec::new();
+        for (i, t) in player_state.next_tracks.iter().enumerate() {
+            if i < 3 || !t.uri.starts_with("spotify:track:") {
+                println!("[Spotifly] next track[{}] uri='{}' provider='{}'", i, t.uri, t.provider);
+            }
+
+            // Stop at first delimiter - everything after is autoplay content
+            if t.uri == "spotify:delimiter" {
+                println!("[Spotifly] Stopping at delimiter (index {}), hiding {} autoplay tracks", i, player_state.next_tracks.len() - i - 1);
+                break;
+            }
+
+            if t.uri.starts_with("spotify:track:") {
+                next_tracks.push(to_queue_item(t));
+            }
+        }
+
+        // Process prev_tracks - also stop at delimiter (in reverse, it marks context boundary)
+        let mut prev_tracks: Vec<QueueItem> = Vec::new();
+        for (i, t) in player_state.prev_tracks.iter().enumerate() {
+            if i < 3 || !t.uri.starts_with("spotify:track:") {
+                println!("[Spotifly] prev track[{}] uri='{}' provider='{}'", i, t.uri, t.provider);
+            }
+
+            // Stop at delimiter
+            if t.uri == "spotify:delimiter" {
+                println!("[Spotifly] Stopping prev at delimiter (index {})", i);
+                break;
+            }
+
+            if t.uri.starts_with("spotify:track:") {
+                prev_tracks.push(to_queue_item(t));
+            }
+        }
 
         println!("[Spotifly] Queue counts: current={}, next={}, prev={}",
             if current_track.is_some() { 1 } else { 0 },
