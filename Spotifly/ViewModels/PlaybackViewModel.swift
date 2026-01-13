@@ -217,9 +217,11 @@ final class PlaybackViewModel {
             // Use Web API to add to queue - this goes through Spotify's servers
             // and syncs with Spirc via dealer for proper Connect state
             try await SpotifyAPI.addToQueue(trackUri: trackUri, accessToken: accessToken)
+            // Small delay for Spotify's servers to process the queue addition
+            try? await Task.sleep(for: .milliseconds(500))
             // Refresh queue from Web API since Mercury doesn't notify us of queue changes
             await SpotifyPlayer.refreshQueue()
-            updateNowPlayingInfo()
+            // updateNowPlayingInfo()
         } catch {
             errorMessage = error.localizedDescription
         }

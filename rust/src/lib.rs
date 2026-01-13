@@ -909,13 +909,6 @@ pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
     }
 }
 
-// ============================================================================
-// Queue functions - DEPRECATED
-// Queue is now managed by Spirc's ConnectState. Use Spotify Web API instead:
-// - GET /me/player/queue - to read the queue
-// - POST /me/player/queue - to add to queue
-// ============================================================================
-
 /// Plays radio for a seed track.
 /// Gets the radio playlist URI and loads it directly via Spirc.
 /// Returns 0 on success, -1 on error.
