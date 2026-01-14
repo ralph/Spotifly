@@ -221,7 +221,8 @@ final class PlaybackViewModel {
             try? await Task.sleep(for: .milliseconds(500))
             // Refresh queue from Web API since Mercury doesn't notify us of queue changes
             await SpotifyPlayer.refreshQueue()
-            // updateNowPlayingInfo()
+            // Update now playing metadata (e.g., queue count) - position update skipped by default
+            updateNowPlayingInfo()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -235,7 +236,7 @@ final class PlaybackViewModel {
         isPlaying = true
         // Apply volume after playback starts (mixer is now initialized)
         SpotifyPlayer.setVolume(volume)
-        updateNowPlayingInfo()
+        updateNowPlayingInfo(forcePositionUpdate: true)
         syncPositionAnchor()
         // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackUri changes
     }
@@ -303,7 +304,7 @@ final class PlaybackViewModel {
             positionAnchorMs = positionMs
             positionAnchorTime = CACurrentMediaTime()
             currentPositionMs = positionMs
-            updateNowPlayingInfo()
+            updateNowPlayingInfo(forcePositionUpdate: true)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -353,7 +354,7 @@ final class PlaybackViewModel {
                 if !self.isPlaying {
                     SpotifyPlayer.resume()
                     self.isPlaying = true
-                    self.updateNowPlayingInfo()
+                    self.updateNowPlayingInfo(forcePositionUpdate: true)
                 }
             }
             return .success
@@ -366,7 +367,7 @@ final class PlaybackViewModel {
                 if self.isPlaying {
                     SpotifyPlayer.pause()
                     self.isPlaying = false
-                    self.updateNowPlayingInfo()
+                    self.updateNowPlayingInfo(forcePositionUpdate: true)
                 }
             }
             return .success
@@ -383,7 +384,7 @@ final class PlaybackViewModel {
                     SpotifyPlayer.resume()
                     self.isPlaying = true
                 }
-                self.updateNowPlayingInfo()
+                self.updateNowPlayingInfo(forcePositionUpdate: true)
             }
             return .success
         }
@@ -414,7 +415,10 @@ final class PlaybackViewModel {
         }
     }
 
-    func updateNowPlayingInfo() {
+    /// Updates the system's Now Playing info (Control Center, Lock Screen).
+    /// - Parameter forcePositionUpdate: When true, updates elapsed time. When false (default),
+    ///   skips elapsed time to prevent seek bar flicker. Pass true for: new track, seek, play/pause.
+    func updateNowPlayingInfo(forcePositionUpdate: Bool = false) {
         // Don't update Now Playing with invalid data - causes --:-- display
         guard trackDurationMs > 0 else { return }
 
@@ -428,10 +432,16 @@ final class PlaybackViewModel {
             nowPlayingInfo[MPMediaItemPropertyArtist] = artistName
         }
 
-        // Duration and position - ensure position doesn't exceed duration
-        let validPosition = min(currentPositionMs, trackDurationMs)
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = Double(trackDurationMs) / 1000.0
-        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(validPosition) / 1000.0
+
+        // Only update elapsed time when explicitly requested to prevent seek bar flicker.
+        // The system smoothly interpolates position based on playback rate, so setting
+        // elapsed time unnecessarily resets that interpolation and causes a visible jump.
+        if forcePositionUpdate {
+            let validPosition = min(currentPositionMs, trackDurationMs)
+            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(validPosition) / 1000.0
+        }
+
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
 
         // Update Now Playing (preserves existing artwork)
@@ -564,11 +574,14 @@ final class PlaybackViewModel {
 
     /// Called every second to check for drift and sync state
     private func checkDriftAndSync() {
+        var didCorrectDrift = false
+
         // Sync playing state with Rust
         let rustIsPlaying = SpotifyPlayer.isPlaying
         if rustIsPlaying != isPlaying {
             isPlaying = rustIsPlaying
             syncPositionAnchor()
+            didCorrectDrift = true
         }
 
         // Update currentPositionMs for non-TimelineView consumers
@@ -583,11 +596,12 @@ final class PlaybackViewModel {
                 positionAnchorMs = rustPosition
                 positionAnchorTime = CACurrentMediaTime()
                 currentPositionMs = min(rustPosition, trackDurationMs)
+                didCorrectDrift = true
             }
             lastRustPosition = rustPosition
         }
 
-        updateNowPlayingInfo()
+        updateNowPlayingInfo(forcePositionUpdate: didCorrectDrift)
     }
 
     // MARK: - Favorite Management
