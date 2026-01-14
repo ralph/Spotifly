@@ -84,7 +84,8 @@ struct NowPlayingBarView: View {
             .frame(width: windowState.isMiniPlayerMode ? nil : barWidth, height: windowState.isMiniPlayerMode ? nil : barHeight)
             .frame(maxWidth: windowState.isMiniPlayerMode ? .infinity : nil, maxHeight: windowState.isMiniPlayerMode ? .infinity : nil)
             .modifier(NowPlayingBarBackground(isMiniPlayerMode: windowState.isMiniPlayerMode))
-            .padding(windowState.isMiniPlayerMode ? 0 : 10)
+            .padding([.leading, .trailing], windowState.isMiniPlayerMode ? 0 : 40)
+            .padding([.bottom], windowState.isMiniPlayerMode ? 0 : 20)
             .alert("playlist.new.title", isPresented: $showNewPlaylistDialog) {
                 TextField("playlist.new.placeholder", text: $newPlaylistName)
                 Button("action.cancel", role: .cancel) {
