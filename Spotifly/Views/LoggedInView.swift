@@ -43,6 +43,9 @@ struct LoggedInView: View {
         self.onLogout = onLogout
 
         let store = AppStore()
+        #if DEBUG
+            AppStore.current = store
+        #endif
         let session = SpotifySession(authResult: authResult)
         _store = State(initialValue: store)
         _session = State(initialValue: session)

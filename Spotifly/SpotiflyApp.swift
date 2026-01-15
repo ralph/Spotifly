@@ -170,5 +170,14 @@ struct SpotiflyCommands: Commands {
             }
             .keyboardShortcut("r", modifiers: .command)
         }
+
+        #if DEBUG
+            CommandMenu("Debug") {
+                Button("Dump Store to Clipboard") {
+                    AppStore.current?.debugDumpJSON()
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+            }
+        #endif
     }
 }

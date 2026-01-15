@@ -155,7 +155,7 @@ enum SearchType: String, Sendable {
 }
 
 /// Search results wrapper (uses unified Entity types)
-struct SearchResults: Sendable {
+struct SearchResults: Sendable, Encodable {
     let albums: [Album]
     let artists: [Artist]
     let playlists: [Playlist]

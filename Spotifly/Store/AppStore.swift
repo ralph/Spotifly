@@ -12,7 +12,7 @@ import SwiftUI
 // MARK: - Recent Item
 
 /// Mixed type for recently played albums, artists, and playlists
-enum RecentItem: Identifiable, Sendable {
+enum RecentItem: Identifiable, Sendable, Encodable {
     case album(Album)
     case artist(Artist)
     case playlist(Playlist)
@@ -36,6 +36,11 @@ enum RecentItem: Identifiable, Sendable {
 @MainActor
 @Observable
 final class AppStore {
+    #if DEBUG
+        /// Debug-only reference for menu commands
+        weak static var current: AppStore?
+    #endif
+
     // MARK: - Entity Tables (Normalized)
 
     /// All tracks indexed by ID - single source of truth
@@ -387,4 +392,86 @@ final class AppStore {
         queueItems = items
         queueLength = items.count
     }
+
+    // MARK: - Debug
+
+    #if DEBUG
+        /// Dumps the entire store state as pretty-printed JSON to the console
+        func debugDumpJSON() {
+            struct StoreSnapshot: Encodable {
+                let tracks: [String: Track]
+                let albums: [String: Album]
+                let artists: [String: Artist]
+                let playlists: [String: Playlist]
+                let devices: [String: Device]
+
+                let userPlaylistIds: [String]
+                let userAlbumIds: [String]
+                let userArtistIds: [String]
+                let favoriteTrackIds: [String]
+                let savedTrackIds: [String]
+
+                let playlistsPagination: PaginationState
+                let albumsPagination: PaginationState
+                let artistsPagination: PaginationState
+                let favoritesPagination: PaginationState
+
+                let searchResults: SearchResults?
+
+                let recentTrackIds: [String]
+                let recentItems: [RecentItem]
+
+                let topArtistIds: [String]
+                let newReleaseAlbumIds: [String]
+
+                let queueURIs: [String]
+                let queueItems: [QueueItem]
+                let queueLength: Int
+                let currentIndex: Int
+
+                let activeDeviceId: String?
+            }
+
+            let snapshot = StoreSnapshot(
+                tracks: tracks,
+                albums: albums,
+                artists: artists,
+                playlists: playlists,
+                devices: devices,
+                userPlaylistIds: userPlaylistIds,
+                userAlbumIds: userAlbumIds,
+                userArtistIds: userArtistIds,
+                favoriteTrackIds: Array(favoriteTrackIds),
+                savedTrackIds: savedTrackIds,
+                playlistsPagination: playlistsPagination,
+                albumsPagination: albumsPagination,
+                artistsPagination: artistsPagination,
+                favoritesPagination: favoritesPagination,
+                searchResults: searchResults,
+                recentTrackIds: recentTrackIds,
+                recentItems: recentItems,
+                topArtistIds: topArtistIds,
+                newReleaseAlbumIds: newReleaseAlbumIds,
+                queueURIs: queueURIs,
+                queueItems: queueItems,
+                queueLength: queueLength,
+                currentIndex: currentIndex,
+                activeDeviceId: activeDeviceId,
+            )
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+
+            do {
+                let data = try encoder.encode(snapshot)
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(jsonString, forType: .string)
+                    print("[Debug] AppStore state copied to clipboard (\(jsonString.count) chars)")
+                }
+            } catch {
+                print("[Debug] Failed to encode AppStore state: \(error)")
+            }
+        }
+    #endif
 }

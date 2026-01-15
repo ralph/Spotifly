@@ -12,7 +12,7 @@ import Foundation
 
 /// Unified track entity - single source of truth for all track data.
 /// Constructed from APITrack or TrackMetadata via EntityConversions.
-struct Track: Identifiable, Sendable, Hashable {
+struct Track: Identifiable, Sendable, Hashable, Encodable {
     let id: String
     let name: String
     let uri: String
@@ -37,7 +37,7 @@ struct Track: Identifiable, Sendable, Hashable {
 // MARK: - Album
 
 /// Unified album entity.
-struct Album: Identifiable, Sendable, Hashable {
+struct Album: Identifiable, Sendable, Hashable, Encodable {
     let id: String
     let name: String
     let uri: String
@@ -103,7 +103,7 @@ struct Album: Identifiable, Sendable, Hashable {
 // MARK: - Artist
 
 /// Unified artist entity.
-struct Artist: Identifiable, Sendable, Hashable {
+struct Artist: Identifiable, Sendable, Hashable, Encodable {
     let id: String
     let name: String
     let uri: String
@@ -115,7 +115,7 @@ struct Artist: Identifiable, Sendable, Hashable {
 // MARK: - Playlist
 
 /// Unified playlist entity.
-struct Playlist: Identifiable, Sendable, Hashable {
+struct Playlist: Identifiable, Sendable, Hashable, Encodable {
     let id: String
     var name: String // Mutable - can be edited
     var description: String?
@@ -176,7 +176,7 @@ struct Playlist: Identifiable, Sendable, Hashable {
 // MARK: - Device
 
 /// Spotify Connect device.
-struct Device: Identifiable, Sendable, Hashable {
+struct Device: Identifiable, Sendable, Hashable, Encodable {
     let id: String
     let name: String
     let type: String
@@ -264,7 +264,7 @@ func totalDuration(of tracks: some Sequence<Track>) -> String {
 // MARK: - Pagination State
 
 /// Tracks pagination state for a collection.
-struct PaginationState: Sendable {
+struct PaginationState: Sendable, Encodable {
     var isLoaded = false
     var isLoading = false
     var hasMore = true
