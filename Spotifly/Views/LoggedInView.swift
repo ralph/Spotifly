@@ -43,9 +43,6 @@ struct LoggedInView: View {
         self.onLogout = onLogout
 
         let store = AppStore()
-        #if DEBUG
-            AppStore.current = store
-        #endif
         let session = SpotifySession(authResult: authResult)
         _store = State(initialValue: store)
         _session = State(initialValue: session)
@@ -116,6 +113,11 @@ struct LoggedInView: View {
         .focusedValue(\.session, session)
         .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
         .task {
+            #if DEBUG
+                // Set debug reference to actual @State stored instance
+                AppStore.current = store
+            #endif
+
             // Load startup data
             let token = await session.validAccessToken()
 
