@@ -26,11 +26,7 @@ struct TrackRowData: Identifiable {
 
     /// Extracts the track ID for API calls (handles both plain IDs and URIs)
     var trackId: String {
-        // If id looks like a URI (spotify:track:xxx), extract just the ID
-        if id.hasPrefix("spotify:track:") {
-            return String(id.dropFirst("spotify:track:".count))
-        }
-        return id
+        SpotifyAPI.parseTrackURI(id) ?? id
     }
 }
 

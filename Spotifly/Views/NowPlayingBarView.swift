@@ -31,12 +31,8 @@ struct NowPlayingBarView: View {
 
     /// Extract track ID from URI (spotify:track:XXXX -> XXXX)
     private var currentTrackId: String? {
-        guard let uri = playbackViewModel.currentTrackUri,
-              uri.hasPrefix("spotify:track:")
-        else {
-            return nil
-        }
-        return String(uri.dropFirst("spotify:track:".count))
+        guard let uri = playbackViewModel.currentTrackUri else { return nil }
+        return SpotifyAPI.parseTrackURI(uri)
     }
 
     /// Current track from global store (populated by QueueService)

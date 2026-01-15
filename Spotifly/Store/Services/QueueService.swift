@@ -82,13 +82,10 @@ final class QueueService {
         // Extract unique track IDs from URIs (queue can have duplicates)
         var seenIds = Set<String>()
         let uniqueTrackIds = uris.compactMap { uri -> String? in
-            if uri.hasPrefix("spotify:track:") {
-                let trackId = String(uri.dropFirst("spotify:track:".count))
-                if seenIds.insert(trackId).inserted {
-                    return trackId
-                }
-            }
-            return nil
+            guard let trackId = SpotifyAPI.parseTrackURI(uri),
+                  seenIds.insert(trackId).inserted
+            else { return nil }
+            return trackId
         }
 
         guard !uniqueTrackIds.isEmpty else { return }
@@ -158,22 +155,21 @@ final class QueueService {
     /// Build queue items from cached track data in store
     private func updateQueueItemsFromStore() {
         let items: [QueueItem] = store.queueURIs.map { uri in
-            // Extract track ID from URI
-            if uri.hasPrefix("spotify:track:") {
-                let trackId = String(uri.dropFirst("spotify:track:".count))
-                if let track = store.tracks[trackId] {
-                    return QueueItem(
-                        id: uri,
-                        uri: uri,
-                        trackName: track.name,
-                        artistName: track.artistName,
-                        albumArtURL: track.imageURL?.absoluteString ?? "",
-                        durationMs: UInt32(track.durationMs),
-                        albumId: track.albumId,
-                        artistId: track.artistId,
-                        externalUrl: track.externalUrl,
-                    )
-                }
+            // Extract track ID from URI and look up in store
+            if let trackId = SpotifyAPI.parseTrackURI(uri),
+               let track = store.tracks[trackId]
+            {
+                return QueueItem(
+                    id: uri,
+                    uri: uri,
+                    trackName: track.name,
+                    artistName: track.artistName,
+                    albumArtURL: track.imageURL?.absoluteString ?? "",
+                    durationMs: UInt32(track.durationMs),
+                    albumId: track.albumId,
+                    artistId: track.artistId,
+                    externalUrl: track.externalUrl,
+                )
             }
             // Fallback for tracks not in store (shouldn't happen after fetch)
             return QueueItem(
@@ -214,14 +210,10 @@ final class QueueService {
         // Extract unique track IDs from URIs (queue can have duplicates)
         var seenIds = Set<String>()
         let trackIds = store.queueItems.compactMap { item -> String? in
-            let uri = item.uri
-            if uri.hasPrefix("spotify:track:") {
-                let trackId = String(uri.dropFirst("spotify:track:".count))
-                if seenIds.insert(trackId).inserted {
-                    return trackId
-                }
-            }
-            return nil
+            guard let trackId = SpotifyAPI.parseTrackURI(item.uri),
+                  seenIds.insert(trackId).inserted
+            else { return nil }
+            return trackId
         }
 
         guard !trackIds.isEmpty else { return }
