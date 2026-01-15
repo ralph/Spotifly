@@ -13,6 +13,11 @@ import SwiftUI
 @MainActor
 @Observable
 final class SpotifySession {
+    #if DEBUG
+        /// Debug-only reference for menu commands
+        weak static var current: SpotifySession?
+    #endif
+
     /// The current access token
     private(set) var accessToken: String
 

@@ -20,9 +20,6 @@ struct StartpageView: View {
     @AppStorage("showRecentlyPlayed") private var showRecentlyPlayed: Bool = true
     @AppStorage("showNewReleases") private var showNewReleases: Bool = true
 
-    @State private var versionTapCount = 0
-    @State private var showTokenInfo = false
-
     /// Whether any section is enabled
     private var hasAnySectionEnabled: Bool {
         showTopArtists || showRecentlyPlayed || showNewReleases
@@ -50,9 +47,6 @@ struct StartpageView: View {
                     // Empty state when no sections are enabled
                     emptyStateView
                 }
-
-                // Version Section
-                versionSection
             }
             .padding(.vertical)
         }
@@ -195,77 +189,6 @@ struct StartpageView: View {
         } else if !store.recentAlbumsAndPlaylists.isEmpty {
             RecentContentSection(items: store.recentAlbumsAndPlaylists)
         }
-    }
-
-    // MARK: - Version Section
-
-    private var versionSection: some View {
-        VStack(spacing: 12) {
-            Divider()
-
-            Button {
-                versionTapCount += 1
-                if versionTapCount >= 7 {
-                    showTokenInfo = true
-                    Task {
-                        try? await Task.sleep(for: .seconds(10))
-                        showTokenInfo = false
-                        versionTapCount = 0
-                    }
-                }
-            } label: {
-                Text("Version \(appVersion)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal)
-
-            if showTokenInfo {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("version.oauth_token")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-
-                    HStack(spacing: 8) {
-                        Text(session.accessToken)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .textSelection(.enabled)
-
-                        Button {
-                            copyTokenToClipboard()
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.bordered)
-                        .help("action.copy_token")
-                    }
-
-                    Text(String(format: String(localized: "version.tap_count"), versionTapCount))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding()
-                .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(8)
-                .padding(.horizontal)
-            }
-        }
-        .padding(.bottom)
-    }
-
-    private var appVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
-    }
-
-    private func copyTokenToClipboard() {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(session.accessToken, forType: .string)
     }
 }
 

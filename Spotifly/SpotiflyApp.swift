@@ -177,6 +177,13 @@ struct SpotiflyCommands: Commands {
                     AppStore.current?.debugDumpJSON()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+
+                Button("Copy OAuth Token") {
+                    if let token = SpotifySession.current?.accessToken {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(token, forType: .string)
+                    }
+                }
             }
         #endif
     }

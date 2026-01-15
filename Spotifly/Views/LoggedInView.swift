@@ -114,8 +114,9 @@ struct LoggedInView: View {
         .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
         .task {
             #if DEBUG
-                // Set debug reference to actual @State stored instance
+                // Set debug references to actual @State stored instances
                 AppStore.current = store
+                SpotifySession.current = session
             #endif
 
             // Load startup data
