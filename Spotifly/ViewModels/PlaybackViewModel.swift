@@ -133,7 +133,9 @@ final class PlaybackViewModel {
 
                 // If no active device, activate ourselves
                 if !hasActiveDevice {
-                    print("[Spotifly] No active device found, activating local player")
+                    #if DEBUG
+                        print("[Spotifly] No active device found, activating local player")
+                    #endif
                     try? SpotifyPlayer.transferToLocal()
                 }
             }
@@ -618,7 +620,9 @@ final class PlaybackViewModel {
                 trackId: trackId,
             )
         } catch {
-            print("Error checking favorite status: \(error)")
+            #if DEBUG
+                print("Error checking favorite status: \(error)")
+            #endif
             isCurrentTrackFavorited = false
         }
     }

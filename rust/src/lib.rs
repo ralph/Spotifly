@@ -1,3 +1,11 @@
+/// Debug-only println! macro - compiles to nothing in release builds
+macro_rules! debug_println {
+    ($($arg:tt)*) => {
+        #[cfg(debug_assertions)]
+        println!($($arg)*);
+    };
+}
+
 use librespot_connect::{ConnectConfig, LoadRequest, LoadRequestOptions, Spirc};
 use librespot_core::config::DeviceType;
 use librespot_core::session::Session;
@@ -177,7 +185,7 @@ pub extern "C" fn spotifly_register_state_update_callback(callback: extern "C" f
 #[no_mangle]
 pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
     if access_token.is_null() {
-        eprintln!("Player init error: access_token is null");
+        debug_println!("Player init error: access_token is null");
         return -1;
     }
 
@@ -185,7 +193,7 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
         match CStr::from_ptr(access_token).to_str() {
             Ok(s) => s.to_string(),
             Err(_) => {
-                eprintln!("Player init error: invalid access_token string");
+                debug_println!("Player init error: invalid access_token string");
                 return -1;
             }
         }
@@ -207,7 +215,7 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
     match result {
         Ok(_) => 0,
         Err(e) => {
-            eprintln!("Player init error: {}", e);
+            debug_println!("Player init error: {}", e);
             -1
         }
     }
@@ -261,7 +269,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         2 => 320,
         _ => 160,
     };
-    println!("[Spotifly] Player initialized: bitrate={}kbps, gapless={}", bitrate_kbps, gapless);
+    debug_println!("[Spotifly] Player initialized: bitrate={}kbps, gapless={}", bitrate_kbps, gapless);
 
     let player_config = PlayerConfig {
         bitrate,
@@ -327,7 +335,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                         }
                         Some(PlayerEvent::TrackChanged { .. }) => {
                             // Notify Swift that track changed - it should fetch updated queue
-                            println!("[Spotifly] TrackChanged event - triggering state update callback");
+                            debug_println!("[Spotifly] TrackChanged event - triggering state update callback");
                             let cb_guard = STATE_UPDATE_CALLBACK.lock().unwrap();
                             if let Some(callback) = *cb_guard {
                                 drop(cb_guard);
@@ -366,34 +374,34 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 
     // Spawn task to process cluster updates (queue + playback state)
     RUNTIME.spawn(async move {
-        println!("[Spotifly] Cluster listener task started");
+        debug_println!("[Spotifly] Cluster listener task started");
         let mut stream = queue_stream;
         while let Some(msg_result) = stream.next().await {
-            println!("[Spotifly] Received cluster update message");
+            debug_println!("[Spotifly] Received cluster update message");
             match msg_result {
                 Ok(cluster_update) => {
-                    println!("[Spotifly] ClusterUpdate parsed successfully");
+                    debug_println!("[Spotifly] ClusterUpdate parsed successfully");
                     if let Some(cluster) = cluster_update.cluster.into_option() {
-                        println!("[Spotifly] Cluster present");
+                        debug_println!("[Spotifly] Cluster present");
                         if let Some(player_state) = cluster.player_state.into_option() {
-                            println!("[Spotifly] PlayerState present");
+                            debug_println!("[Spotifly] PlayerState present");
                             // Send playback state update
                             send_playback_state(&player_state);
                             // Send queue update
                             process_and_send_queue(player_state);
                         } else {
-                            println!("[Spotifly] No player_state in cluster");
+                            debug_println!("[Spotifly] No player_state in cluster");
                         }
                     } else {
-                        println!("[Spotifly] No cluster in update");
+                        debug_println!("[Spotifly] No cluster in update");
                     }
                 }
                 Err(e) => {
-                    println!("[Spotifly] Failed to parse cluster update: {:?}", e);
+                    debug_println!("[Spotifly] Failed to parse cluster update: {:?}", e);
                 }
             }
         }
-        println!("[Spotifly] Cluster listener task ended");
+        debug_println!("[Spotifly] Cluster listener task ended");
     });
 
     // Create Spirc for Spotify Connect support (makes this app appear as a Connect device)
@@ -422,12 +430,12 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
             let mut spirc_guard = SPIRC.lock().unwrap();
             *spirc_guard = Some(spirc_arc);
             SPIRC_READY.store(true, Ordering::SeqCst);
-            println!("[Spotifly] Spirc ready - connected to Spotify Connect");
+            debug_println!("[Spotifly] Spirc ready - connected to Spotify Connect");
         }
         Err(e) => {
             // Spirc failed - fall back to manual session connection for basic playback
-            eprintln!("Spirc init failed: {:?}", e);
-            eprintln!("[Spotifly] Falling back to basic playback (Connect won't be available)");
+            debug_println!("[Spotifly] Spirc init failed: {:?}", e);
+            debug_println!("[Spotifly] Falling back to basic playback (Connect won't be available)");
 
             // Connect session manually so basic playback works
             if let Err(connect_err) = session.connect(credentials, true).await {
@@ -440,7 +448,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 }
 
 fn send_playback_state(player_state: &PlayerState) {
-    println!("[Spotifly] send_playback_state called");
+    debug_println!("[Spotifly] send_playback_state called");
     let cb_guard = PLAYBACK_STATE_CALLBACK.lock().unwrap();
     if let Some(callback) = *cb_guard {
         let cb = callback;
@@ -474,30 +482,30 @@ fn send_playback_state(player_state: &PlayerState) {
             repeat_context,
         };
 
-        println!(
+        debug_println!(
             "[Spotifly] PlaybackState: playing={}, paused={}, position={}ms, duration={}ms, shuffle={}, repeat_track={}, repeat_context={}",
             update.is_playing, update.is_paused, update.position_ms, update.duration_ms,
             update.shuffle, update.repeat_track, update.repeat_context
         );
 
         if let Ok(json) = serde_json::to_string(&update) {
-            println!("[Spotifly] Sending playback state JSON ({} bytes) to Swift callback", json.len());
+            debug_println!("[Spotifly] Sending playback state JSON ({} bytes) to Swift callback", json.len());
             let c_str = CString::new(json).unwrap();
             cb(c_str.as_ptr());
-            println!("[Spotifly] Playback state callback returned");
+            debug_println!("[Spotifly] Playback state callback returned");
         } else {
-            println!("[Spotifly] Failed to serialize playback state to JSON");
+            debug_println!("[Spotifly] Failed to serialize playback state to JSON");
         }
     } else {
-        println!("[Spotifly] No playback state callback registered, skipping update");
+        debug_println!("[Spotifly] No playback state callback registered, skipping update");
     }
 }
 
 fn process_and_send_queue(player_state: PlayerState) {
-    println!("[Spotifly] process_and_send_queue called");
+    debug_println!("[Spotifly] process_and_send_queue called");
     let cb_guard = QUEUE_CALLBACK.lock().unwrap();
     if let Some(callback) = *cb_guard {
-        println!("[Spotifly] Callback is registered, processing queue");
+        debug_println!("[Spotifly] Callback is registered, processing queue");
         let cb = callback;
         drop(cb_guard);
 
@@ -515,7 +523,7 @@ fn process_and_send_queue(player_state: PlayerState) {
 
         // Process current track
         let current_track = player_state.track.into_option().and_then(|t| {
-            println!("[Spotifly] current track[0] uri='{}' provider='{}'", t.uri, t.provider);
+            debug_println!("[Spotifly] current track[0] uri='{}' provider='{}'", t.uri, t.provider);
             if t.uri.starts_with("spotify:track:") {
                 Some(to_queue_item(&t))
             } else {
@@ -527,12 +535,12 @@ fn process_and_send_queue(player_state: PlayerState) {
         let mut next_tracks: Vec<QueueItem> = Vec::new();
         for (i, t) in player_state.next_tracks.iter().enumerate() {
             if i < 3 || !t.uri.starts_with("spotify:track:") {
-                println!("[Spotifly] next track[{}] uri='{}' provider='{}'", i, t.uri, t.provider);
+                debug_println!("[Spotifly] next track[{}] uri='{}' provider='{}'", i, t.uri, t.provider);
             }
 
             // Stop at first delimiter - everything after is autoplay content
             if t.uri == "spotify:delimiter" {
-                println!("[Spotifly] Stopping at delimiter (index {}), hiding {} autoplay tracks", i, player_state.next_tracks.len() - i - 1);
+                debug_println!("[Spotifly] Stopping at delimiter (index {}), hiding {} autoplay tracks", i, player_state.next_tracks.len() - i - 1);
                 break;
             }
 
@@ -545,12 +553,12 @@ fn process_and_send_queue(player_state: PlayerState) {
         let mut prev_tracks: Vec<QueueItem> = Vec::new();
         for (i, t) in player_state.prev_tracks.iter().enumerate() {
             if i < 3 || !t.uri.starts_with("spotify:track:") {
-                println!("[Spotifly] prev track[{}] uri='{}' provider='{}'", i, t.uri, t.provider);
+                debug_println!("[Spotifly] prev track[{}] uri='{}' provider='{}'", i, t.uri, t.provider);
             }
 
             // Stop at delimiter
             if t.uri == "spotify:delimiter" {
-                println!("[Spotifly] Stopping prev at delimiter (index {})", i);
+                debug_println!("[Spotifly] Stopping prev at delimiter (index {})", i);
                 break;
             }
 
@@ -559,7 +567,7 @@ fn process_and_send_queue(player_state: PlayerState) {
             }
         }
 
-        println!("[Spotifly] Queue counts: current={}, next={}, prev={}",
+        debug_println!("[Spotifly] Queue counts: current={}, next={}, prev={}",
             if current_track.is_some() { 1 } else { 0 },
             next_tracks.len(),
             prev_tracks.len()
@@ -572,15 +580,15 @@ fn process_and_send_queue(player_state: PlayerState) {
         };
 
         if let Ok(json) = serde_json::to_string(&queue_state) {
-            println!("[Spotifly] Sending queue JSON ({} bytes) to Swift callback", json.len());
+            debug_println!("[Spotifly] Sending queue JSON ({} bytes) to Swift callback", json.len());
             let c_str = CString::new(json).unwrap();
             cb(c_str.as_ptr());
-            println!("[Spotifly] Swift callback returned");
+            debug_println!("[Spotifly] Swift callback returned");
         } else {
-            println!("[Spotifly] Failed to serialize queue state to JSON");
+            debug_println!("[Spotifly] Failed to serialize queue state to JSON");
         }
     } else {
-        println!("[Spotifly] No callback registered, skipping queue update");
+        debug_println!("[Spotifly] No callback registered, skipping queue update");
     }
 }
 
@@ -592,9 +600,9 @@ fn process_and_send_queue(player_state: PlayerState) {
 /// - track_uris_json: JSON array of track URIs as a C string (e.g., "[\"spotify:track:xxx\", \"spotify:track:yyy\"]")
 #[no_mangle]
 pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
-    println!("[Spotifly] spotifly_play_tracks called");
+    debug_println!("[Spotifly] spotifly_play_tracks called");
     if track_uris_json.is_null() {
-        eprintln!("Play tracks error: track_uris_json is null");
+        debug_println!("Play tracks error: track_uris_json is null");
         return -1;
     }
 
@@ -602,7 +610,7 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
         match CStr::from_ptr(track_uris_json).to_str() {
             Ok(s) => s.to_string(),
             Err(_) => {
-                eprintln!("Play tracks error: invalid track_uris_json string");
+                debug_println!("Play tracks error: invalid track_uris_json string");
                 return -1;
             }
         }
@@ -612,13 +620,13 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
     let track_uris: Vec<String> = match serde_json::from_str(&track_uris_str) {
         Ok(uris) => uris,
         Err(e) => {
-            eprintln!("Play tracks error: failed to parse JSON: {:?}", e);
+            debug_println!("Play tracks error: failed to parse JSON: {:?}", e);
             return -1;
         }
     };
 
     if track_uris.is_empty() {
-        eprintln!("Play tracks error: empty track URIs array");
+        debug_println!("Play tracks error: empty track URIs array");
         return -1;
     }
 
@@ -636,17 +644,17 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
             );
             match spirc.load(load_request) {
                 Ok(_) => {
-                    println!("[Spotifly] Spirc.load(tracks) succeeded");
+                    debug_println!("[Spotifly] Spirc.load(tracks) succeeded");
                     0
                 }
                 Err(e) => {
-                    eprintln!("Play tracks error: Spirc.load() failed: {:?}", e);
+                    debug_println!("Play tracks error: Spirc.load() failed: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Play tracks error: Spirc not initialized");
+            debug_println!("Play tracks error: Spirc not initialized");
             -1
         }
     }
@@ -658,7 +666,7 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
     if uri_or_url.is_null() {
-        eprintln!("Play error: uri_or_url is null");
+        debug_println!("Play error: uri_or_url is null");
         return -1;
     }
 
@@ -666,7 +674,7 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
         match CStr::from_ptr(uri_or_url).to_str() {
             Ok(s) => s.to_string(),
             Err(_) => {
-                eprintln!("Play error: invalid uri_or_url string");
+                debug_println!("Play error: invalid uri_or_url string");
                 return -1;
             }
         }
@@ -674,7 +682,7 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
 
     // Convert URL to URI if needed
     let uri_str = url_to_uri(&input_str);
-    println!("[Spotifly] spotifly_play_uri called: {}", uri_str);
+    debug_println!("[Spotifly] spotifly_play_uri called: {}", uri_str);
 
     // Use Spirc.load() with LoadRequest for proper Connect state sync
     let spirc_guard = SPIRC.lock().unwrap();
@@ -683,7 +691,7 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
             // Create LoadRequest - use from_context_uri for albums/playlists/artists,
             // from_tracks for single tracks
             let load_request = if uri_str.starts_with("spotify:track:") {
-                println!("[Spotifly] Spirc.load(LoadRequest::from_tracks([{}]))", uri_str);
+                debug_println!("[Spotifly] Spirc.load(LoadRequest::from_tracks([{}]))", uri_str);
                 LoadRequest::from_tracks(
                     vec![uri_str.clone()],
                     LoadRequestOptions {
@@ -693,7 +701,7 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
                     },
                 )
             } else {
-                println!("[Spotifly] Spirc.load(LoadRequest::from_context_uri({}))", uri_str);
+                debug_println!("[Spotifly] Spirc.load(LoadRequest::from_context_uri({}))", uri_str);
                 LoadRequest::from_context_uri(
                     uri_str.clone(),
                     LoadRequestOptions {
@@ -706,18 +714,18 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
 
             match spirc.load(load_request) {
                 Ok(_) => {
-                    println!("[Spotifly] Spirc.load() succeeded");
+                    debug_println!("[Spotifly] Spirc.load() succeeded");
                     IS_PLAYING.store(true, Ordering::SeqCst);
                     0
                 }
                 Err(e) => {
-                    eprintln!("Play error: Spirc.load() failed: {:?}", e);
+                    debug_println!("Play error: Spirc.load() failed: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Play error: Spirc not initialized");
+            debug_println!("Play error: Spirc not initialized");
             -1
         }
     }
@@ -727,7 +735,7 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_pause() -> i32 {
-    println!("[Spotifly] spotifly_pause called");
+    debug_println!("[Spotifly] spotifly_pause called");
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => {
@@ -737,13 +745,13 @@ pub extern "C" fn spotifly_pause() -> i32 {
                     0
                 }
                 Err(e) => {
-                    eprintln!("Pause error: {:?}", e);
+                    debug_println!("Pause error: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Pause error: Spirc not initialized");
+            debug_println!("Pause error: Spirc not initialized");
             -1
         }
     }
@@ -753,7 +761,7 @@ pub extern "C" fn spotifly_pause() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_resume() -> i32 {
-    println!("[Spotifly] spotifly_resume called");
+    debug_println!("[Spotifly] spotifly_resume called");
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => {
@@ -763,13 +771,13 @@ pub extern "C" fn spotifly_resume() -> i32 {
                     0
                 }
                 Err(e) => {
-                    eprintln!("Resume error: {:?}", e);
+                    debug_println!("Resume error: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Resume error: Spirc not initialized");
+            debug_println!("Resume error: Spirc not initialized");
             -1
         }
     }
@@ -779,7 +787,7 @@ pub extern "C" fn spotifly_resume() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_stop() -> i32 {
-    println!("[Spotifly] spotifly_stop called");
+    debug_println!("[Spotifly] spotifly_stop called");
     let player_guard = PLAYER.lock().unwrap();
     match player_guard.as_ref() {
         Some(player) => {
@@ -788,7 +796,7 @@ pub extern "C" fn spotifly_stop() -> i32 {
             0
         }
         None => {
-            eprintln!("Stop error: player not initialized");
+            debug_println!("Stop error: player not initialized");
             -1
         }
     }
@@ -799,7 +807,7 @@ pub extern "C" fn spotifly_stop() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_shutdown() -> i32 {
-    println!("[Spotifly] spotifly_shutdown called");
+    debug_println!("[Spotifly] spotifly_shutdown called");
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
         if spirc.shutdown().is_ok() {
@@ -844,20 +852,20 @@ pub extern "C" fn spotifly_get_position_ms() -> u32 {
 /// Returns 0 on success, -1 on error or if at end of queue.
 #[no_mangle]
 pub extern "C" fn spotifly_next() -> i32 {
-    println!("[Spotifly] spotifly_next called");
+    debug_println!("[Spotifly] spotifly_next called");
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => {
             match spirc.next() {
                 Ok(_) => 0,
                 Err(e) => {
-                    eprintln!("Next error: {:?}", e);
+                    debug_println!("Next error: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Next error: Spirc not initialized");
+            debug_println!("Next error: Spirc not initialized");
             -1
         }
     }
@@ -867,20 +875,20 @@ pub extern "C" fn spotifly_next() -> i32 {
 /// Returns 0 on success, -1 on error or if at start of queue.
 #[no_mangle]
 pub extern "C" fn spotifly_previous() -> i32 {
-    println!("[Spotifly] spotifly_previous called");
+    debug_println!("[Spotifly] spotifly_previous called");
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => {
             match spirc.prev() {
                 Ok(_) => 0,
                 Err(e) => {
-                    eprintln!("Previous error: {:?}", e);
+                    debug_println!("Previous error: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Previous error: Spirc not initialized");
+            debug_println!("Previous error: Spirc not initialized");
             -1
         }
     }
@@ -890,20 +898,20 @@ pub extern "C" fn spotifly_previous() -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
-    println!("[Spotifly] spotifly_seek called: {}ms", position_ms);
+    debug_println!("[Spotifly] spotifly_seek called: {}ms", position_ms);
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => {
             match spirc.set_position_ms(position_ms) {
                 Ok(_) => 0,
                 Err(e) => {
-                    eprintln!("Seek error: {:?}", e);
+                    debug_println!("Seek error: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Seek error: Spirc not initialized");
+            debug_println!("Seek error: Spirc not initialized");
             -1
         }
     }
@@ -915,7 +923,7 @@ pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_play_radio(track_uri: *const c_char) -> i32 {
     if track_uri.is_null() {
-        eprintln!("Play radio error: track_uri is null");
+        debug_println!("Play radio error: track_uri is null");
         return -1;
     }
 
@@ -923,19 +931,19 @@ pub extern "C" fn spotifly_play_radio(track_uri: *const c_char) -> i32 {
         match CStr::from_ptr(track_uri).to_str() {
             Ok(s) => s.to_string(),
             Err(_) => {
-                eprintln!("Play radio error: invalid track_uri string");
+                debug_println!("Play radio error: invalid track_uri string");
                 return -1;
             }
         }
     };
 
-    println!("[Spotifly] spotifly_play_radio called: {}", uri_str);
+    debug_println!("[Spotifly] spotifly_play_radio called: {}", uri_str);
 
     let session_guard = SESSION.lock().unwrap();
     let session = match session_guard.as_ref() {
         Some(s) => s.clone(),
         None => {
-            eprintln!("Play radio error: session not initialized");
+            debug_println!("Play radio error: session not initialized");
             return -1;
         }
     };
@@ -966,12 +974,12 @@ pub extern "C" fn spotifly_play_radio(track_uri: *const c_char) -> i32 {
     let playlist_uri = match playlist_uri {
         Ok(uri) => uri,
         Err(e) => {
-            eprintln!("Play radio error: {}", e);
+            debug_println!("Play radio error: {}", e);
             return -1;
         }
     };
 
-    println!("[Spotifly] Loading radio playlist: {}", playlist_uri);
+    debug_println!("[Spotifly] Loading radio playlist: {}", playlist_uri);
 
     // Load the radio playlist via Spirc
     let spirc_guard = SPIRC.lock().unwrap();
@@ -988,13 +996,13 @@ pub extern "C" fn spotifly_play_radio(track_uri: *const c_char) -> i32 {
             match spirc.load(load_request) {
                 Ok(_) => 0,
                 Err(e) => {
-                    eprintln!("Play radio error: {:?}", e);
+                    debug_println!("Play radio error: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Play radio error: Spirc not initialized");
+            debug_println!("Play radio error: Spirc not initialized");
             -1
         }
     }
@@ -1004,20 +1012,20 @@ pub extern "C" fn spotifly_play_radio(track_uri: *const c_char) -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
-    println!("[Spotifly] spotifly_set_volume called: {}", volume);
+    debug_println!("[Spotifly] spotifly_set_volume called: {}", volume);
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => {
             match spirc.set_volume(volume) {
                 Ok(_) => 0,
                 Err(e) => {
-                    eprintln!("Set volume error: {:?}", e);
+                    debug_println!("Set volume error: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Set volume error: Spirc not initialized");
+            debug_println!("Set volume error: Spirc not initialized");
             -1
         }
     }
@@ -1032,7 +1040,7 @@ pub extern "C" fn spotifly_set_bitrate(bitrate: u8) {
     let old_value = BITRATE_SETTING.swap(value, Ordering::SeqCst);
     if old_value != value {
         let kbps = match value { 0 => 96, 2 => 320, _ => 160 };
-        println!("[Spotifly] Bitrate changed to {}kbps (restart playback to apply)", kbps);
+        debug_println!("[Spotifly] Bitrate changed to {}kbps (restart playback to apply)", kbps);
     }
 }
 
@@ -1049,7 +1057,7 @@ pub extern "C" fn spotifly_get_bitrate() -> u8 {
 pub extern "C" fn spotifly_set_gapless(enabled: bool) {
     let old_value = GAPLESS_SETTING.swap(enabled, Ordering::SeqCst);
     if old_value != enabled {
-        println!("[Spotifly] Gapless playback changed to {} (restart playback to apply)", enabled);
+        debug_println!("[Spotifly] Gapless playback changed to {} (restart playback to apply)", enabled);
     }
 }
 
@@ -1064,7 +1072,7 @@ pub extern "C" fn spotifly_get_gapless() -> bool {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_transfer_to_local() -> i32 {
-    println!("[Spotifly] spotifly_transfer_to_local called");
+    debug_println!("[Spotifly] spotifly_transfer_to_local called");
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => {
@@ -1072,13 +1080,13 @@ pub extern "C" fn spotifly_transfer_to_local() -> i32 {
             match spirc.transfer(None) {
                 Ok(_) => 0,
                 Err(e) => {
-                    eprintln!("Transfer error: {:?}", e);
+                    debug_println!("Transfer error: {:?}", e);
                     -1
                 }
             }
         }
         None => {
-            eprintln!("Transfer error: Spirc not initialized");
+            debug_println!("Transfer error: Spirc not initialized");
             -1
         }
     }
@@ -1093,7 +1101,7 @@ pub extern "C" fn spotifly_transfer_to_local() -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32 {
     if to_device_id.is_null() {
-        eprintln!("Transfer playback error: to_device_id is null");
+        debug_println!("Transfer playback error: to_device_id is null");
         return -1;
     }
 
@@ -1101,19 +1109,19 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
         match CStr::from_ptr(to_device_id).to_str() {
             Ok(s) => s.to_string(),
             Err(_) => {
-                eprintln!("Transfer playback error: invalid to_device_id string");
+                debug_println!("Transfer playback error: invalid to_device_id string");
                 return -1;
             }
         }
     };
 
-    println!("[Spotifly] spotifly_transfer_playback called: {}", to_device_str);
+    debug_println!("[Spotifly] spotifly_transfer_playback called: {}", to_device_str);
 
     let session_guard = SESSION.lock().unwrap();
     let session = match session_guard.as_ref() {
         Some(s) => s.clone(),
         None => {
-            eprintln!("Transfer playback error: session not initialized");
+            debug_println!("Transfer playback error: session not initialized");
             return -1;
         }
     };
@@ -1123,7 +1131,7 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
     let from_device_id = match device_id_guard.as_ref() {
         Some(id) => id.clone(),
         None => {
-            eprintln!("Transfer playback error: device ID not initialized");
+            debug_println!("Transfer playback error: device ID not initialized");
             return -1;
         }
     };
@@ -1149,7 +1157,7 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
             0
         }
         Err(e) => {
-            eprintln!("Transfer playback error: {}", e);
+            debug_println!("Transfer playback error: {}", e);
             -1
         }
     }

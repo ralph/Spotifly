@@ -51,7 +51,9 @@ final class AuthViewModel {
                 do {
                     try KeychainManager.saveAuthResult(result)
                 } catch {
-                    print("Failed to save to keychain: \(error)")
+                    #if DEBUG
+                        print("Failed to save to keychain: \(error)")
+                    #endif
                 }
             } catch {
                 self.errorMessage = "Authentication failed: \(error.localizedDescription)"

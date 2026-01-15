@@ -91,7 +91,9 @@ enum KeychainManager {
 
                 return newResult
             } catch {
-                print("Failed to refresh token: \(error)")
+                #if DEBUG
+                    print("Failed to refresh token: \(error)")
+                #endif
                 // If refresh fails, clear the stored credentials
                 clearAuthResult()
                 return nil
