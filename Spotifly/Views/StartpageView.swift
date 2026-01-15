@@ -179,11 +179,6 @@ struct StartpageView: View {
 
     // MARK: - Recently Played Section
 
-    /// Filter recent items to only albums and playlists
-    private var recentAlbumsAndPlaylists: [RecentItem] {
-        store.recentItems.filter { !$0.isArtist }
-    }
-
     @ViewBuilder
     private var recentlyPlayedSection: some View {
         if store.recentlyPlayedIsLoading {
@@ -197,8 +192,8 @@ struct StartpageView: View {
             Text(String(format: String(localized: "error.load_recently_played"), error))
                 .foregroundStyle(.red)
                 .padding()
-        } else if !recentAlbumsAndPlaylists.isEmpty {
-            RecentContentSection(items: recentAlbumsAndPlaylists)
+        } else if !store.recentAlbumsAndPlaylists.isEmpty {
+            RecentContentSection(items: store.recentAlbumsAndPlaylists)
         }
     }
 
@@ -277,7 +272,7 @@ struct StartpageView: View {
 // MARK: - Recently Played Section
 
 struct RecentContentSection: View {
-    let items: [RecentItem]
+    let items: [(id: String, album: Album?, playlist: Playlist?)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -287,17 +282,11 @@ struct RecentContentSection: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(items) { item in
-                        switch item {
-                        case let .album(album):
+                    ForEach(items, id: \.id) { item in
+                        if let album = item.album {
                             AlbumCard(album: album)
-
-                        case let .playlist(playlist):
+                        } else if let playlist = item.playlist {
                             PlaylistCard(playlist: playlist)
-
-                        case .artist:
-                            // Artists are filtered out by recentAlbumsAndPlaylists
-                            EmptyView()
                         }
                     }
                 }

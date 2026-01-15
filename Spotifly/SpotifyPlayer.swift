@@ -66,7 +66,8 @@ struct QueueItem: Sendable, Identifiable, Equatable, Encodable {
 struct QueueState: Sendable {
     nonisolated let currentTrack: QueueItem?
     nonisolated let nextTracks: [QueueItem]
-    nonisolated let previousTracks: [QueueItem]
+    /// Previous tracks (nil when from Web API, which doesn't provide history)
+    nonisolated let previousTracks: [QueueItem]?
 }
 
 /// Playback state from Mercury/Spirc (nonisolated for C callback compatibility)
@@ -170,7 +171,7 @@ private func fetchAndEmitQueueState() async {
         let queueState = QueueState(
             currentTrack: currentTrack,
             nextTracks: nextTracks,
-            previousTracks: [], // Web API doesn't return previous tracks
+            previousTracks: nil, // Web API doesn't provide history
         )
 
         queueSubject.send(queueState)
@@ -341,7 +342,7 @@ private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
         #if DEBUG
             let trackName = state.currentTrack?.trackName ?? "none"
             let nextCount = state.nextTracks.count
-            let prevCount = state.previousTracks.count
+            let prevCount = state.previousTracks?.count ?? 0
             print("[SpotifyPlayer] handleQueueCallback: current='\(trackName)', next=\(nextCount), prev=\(prevCount)")
         #endif
 

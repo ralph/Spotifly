@@ -35,41 +35,32 @@ final class QueueService {
             }
     }
 
-    /// Handle queue update from Spirc callback
+    /// Handle queue update from Spirc callback or Web API
     private func handleQueueUpdate(_ queueState: QueueState?) {
         guard let state = queueState else {
-            store.setQueueItems([])
-            store.currentIndex = 0
+            store.setQueue(previous: [], current: nil, next: [])
             return
         }
 
-        // Build queue URIs list: previous + current + next
-        var uris: [String] = []
-
-        // Add previous tracks
-        uris.append(contentsOf: state.previousTracks.map(\.uri))
-
-        // Track the current index (after previous tracks)
-        let currentIndex = uris.count
-
-        // Add current track
-        if let current = state.currentTrack {
-            uris.append(current.uri)
-        }
-
-        // Add next tracks
-        uris.append(contentsOf: state.nextTracks.map(\.uri))
+        // Extract URIs from queue state
+        let currentURI = state.currentTrack?.uri
+        let nextURIs = state.nextTracks.map(\.uri)
+        // previousTracks is nil when from Web API (which doesn't provide history)
+        let previousURIs = state.previousTracks?.map(\.uri)
 
         #if DEBUG
-            print("[QueueService] Queue updated from Mercury: prev=\(state.previousTracks.count), current=\(state.currentTrack != nil ? 1 : 0), next=\(state.nextTracks.count), total=\(uris.count)")
+            if let prevCount = previousURIs?.count {
+                print("[QueueService] Queue updated from Mercury: prev=\(prevCount), current=\(currentURI != nil ? 1 : 0), next=\(nextURIs.count)")
+            } else {
+                print("[QueueService] Queue updated from Web API: current=\(currentURI != nil ? 1 : 0), next=\(nextURIs.count) (preserving previous)")
+            }
         #endif
 
-        // Store queue URIs and current index
-        store.setQueueURIs(uris)
-        store.currentIndex = state.currentTrack != nil ? currentIndex : 0
+        store.setQueue(previous: previousURIs, current: currentURI, next: nextURIs)
 
-        // Fetch track metadata from Web API (uses store cache)
-        fetchTrackMetadata(for: uris)
+        // Fetch track metadata (uses store cache)
+        let allURIs = (previousURIs ?? []) + (currentURI.map { [$0] } ?? []) + nextURIs
+        fetchTrackMetadata(for: allURIs)
     }
 
     // MARK: - Metadata Fetching
@@ -98,7 +89,7 @@ final class QueueService {
                 print("[QueueService] All \(uniqueTrackIds.count) unique tracks already cached in store")
             #endif
             // Update queue items from cached data
-            updateQueueItemsFromStore()
+            updateNowPlayingMetadata()
             return
         }
 
@@ -142,7 +133,7 @@ final class QueueService {
                 #endif
 
                 // Update queue items from store
-                updateQueueItemsFromStore()
+                updateNowPlayingMetadata()
 
             } catch {
                 #if DEBUG
@@ -152,65 +143,40 @@ final class QueueService {
         }
     }
 
-    /// Build queue items from cached track data in store
-    private func updateQueueItemsFromStore() {
-        let items: [QueueItem] = store.queueURIs.map { uri in
-            // Extract track ID from URI and look up in store
-            if let trackId = SpotifyAPI.parseTrackURI(uri),
-               let track = store.tracks[trackId]
-            {
-                return QueueItem(
-                    id: uri,
-                    uri: uri,
-                    trackName: track.name,
-                    artistName: track.artistName,
-                    albumArtURL: track.imageURL?.absoluteString ?? "",
-                    durationMs: UInt32(track.durationMs),
-                    albumId: track.albumId,
-                    artistId: track.artistId,
-                    externalUrl: track.externalUrl,
-                )
-            }
-            // Fallback for tracks not in store (shouldn't happen after fetch)
-            return QueueItem(
-                id: uri,
-                uri: uri,
-                trackName: "",
-                artistName: "",
-                albumArtURL: "",
-                durationMs: 0,
-                albumId: nil,
-                artistId: nil,
-                externalUrl: nil,
-            )
-        }
-
-        store.setQueueItems(items)
-
-        // Update PlaybackViewModel with current track metadata for Now Playing info
-        if store.currentIndex < items.count {
-            let currentItem = items[store.currentIndex]
+    /// Update PlaybackViewModel with current track metadata for Now Playing info
+    private func updateNowPlayingMetadata() {
+        // Use computed property to get current track from store
+        if let track = store.currentTrack {
             PlaybackViewModel.shared.setCurrentTrackMetadata(
-                name: currentItem.trackName.isEmpty ? nil : currentItem.trackName,
-                artist: currentItem.artistName.isEmpty ? nil : currentItem.artistName,
-                artURL: currentItem.albumArtURL.isEmpty ? nil : currentItem.albumArtURL,
+                name: track.name,
+                artist: track.artistName,
+                artURL: track.imageURL?.absoluteString,
             )
         }
 
         #if DEBUG
-            let populated = items.count(where: { !$0.trackName.isEmpty })
-            print("[QueueService] Queue items updated: \(populated)/\(items.count) with metadata")
+            let prevCount = store.previousTracks.count
+            let nextCount = store.nextTracks.count
+            let total = prevCount + (store.currentTrack != nil ? 1 : 0) + nextCount
+            print("[QueueService] Queue tracks resolved: \(total) with metadata (prev=\(prevCount), next=\(nextCount))")
         #endif
     }
 
     // MARK: - Favorites Loading
 
-    /// Batch check favorite status for all queue items and store in AppStore
+    /// Batch check favorite status for all queue tracks and store in AppStore
     func loadFavorites(accessToken: String) async {
+        // Collect all queue URIs
+        var allURIs = store.previousTrackURIs
+        if let current = store.currentTrackURI {
+            allURIs.append(current)
+        }
+        allURIs.append(contentsOf: store.nextTrackURIs)
+
         // Extract unique track IDs from URIs (queue can have duplicates)
         var seenIds = Set<String>()
-        let trackIds = store.queueItems.compactMap { item -> String? in
-            guard let trackId = SpotifyAPI.parseTrackURI(item.uri),
+        let trackIds = allURIs.compactMap { uri -> String? in
+            guard let trackId = SpotifyAPI.parseTrackURI(uri),
                   seenIds.insert(trackId).inserted
             else { return nil }
             return trackId

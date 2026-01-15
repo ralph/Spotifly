@@ -183,8 +183,8 @@ final class RecentlyPlayedService {
             }
             store.upsertArtists(Array(fetchedArtists.values))
 
-            // Build final items list in correct order
-            var finalItems: [RecentItem] = []
+            // Build final URIs list in correct order (entities already upserted to stores above)
+            var finalURIs: [String] = []
             var addedIds: Set<String> = []
 
             for item in response.items {
@@ -193,19 +193,20 @@ final class RecentlyPlayedService {
 
                 guard !addedIds.contains(itemId) else { continue }
 
-                if context.type == "album", let album = fetchedAlbums[itemId] {
-                    finalItems.append(.album(album))
+                // Only add URI if entity was successfully fetched
+                if context.type == "album", fetchedAlbums[itemId] != nil {
+                    finalURIs.append(context.uri)
                     addedIds.insert(itemId)
-                } else if context.type == "playlist", let playlist = fetchedPlaylists[itemId] {
-                    finalItems.append(.playlist(playlist))
+                } else if context.type == "playlist", fetchedPlaylists[itemId] != nil {
+                    finalURIs.append(context.uri)
                     addedIds.insert(itemId)
-                } else if context.type == "artist", let artist = fetchedArtists[itemId] {
-                    finalItems.append(.artist(artist))
+                } else if context.type == "artist", fetchedArtists[itemId] != nil {
+                    finalURIs.append(context.uri)
                     addedIds.insert(itemId)
                 }
             }
 
-            store.setRecentItems(finalItems)
+            store.setRecentItemURIs(finalURIs)
 
             // Mark as loaded only after successful completion
             store.hasLoadedRecentlyPlayed = true

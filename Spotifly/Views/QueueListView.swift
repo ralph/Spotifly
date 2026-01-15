@@ -16,19 +16,29 @@ struct QueueListView: View {
     @State private var scrollProxy: ScrollViewProxy?
     @State private var isRefreshing = false
 
-    /// Currently playing index from store
+    /// Flattened queue: previous + current + next
+    private var allTracks: [Track] {
+        var tracks = store.previousTracks
+        if let current = store.currentTrack {
+            tracks.append(current)
+        }
+        tracks.append(contentsOf: store.nextTracks)
+        return tracks
+    }
+
+    /// Currently playing index (position after previous tracks)
     private var currentIndex: Int {
         store.currentIndex
     }
 
     /// Total song count for header
     private var totalSongCount: Int {
-        store.queueItems.count
+        store.queueLength
     }
 
-    /// Unplayed song count for header
+    /// Unplayed song count for header (next tracks only)
     private var unplayedSongCount: Int {
-        max(0, store.queueItems.count - currentIndex - 1)
+        store.nextTracks.count
     }
 
     var body: some View {
@@ -41,7 +51,7 @@ struct QueueListView: View {
             // Scrollable content
             if let error = store.queueErrorMessage {
                 errorView(error)
-            } else if store.queueItems.isEmpty {
+            } else if allTracks.isEmpty {
                 emptyView
             } else {
                 normalModeContent
@@ -52,7 +62,7 @@ struct QueueListView: View {
             let token = await session.validAccessToken()
             await queueService.loadFavorites(accessToken: token)
         }
-        .onChange(of: store.queueItems) { _, _ in
+        .onChange(of: store.currentTrackURI) { _, _ in
             // When queue updates, refresh favorites for new items
             Task {
                 let token = await session.validAccessToken()
@@ -95,7 +105,7 @@ struct QueueListView: View {
                 Image(systemName: "arrow.down.to.line")
             }
             .buttonStyle(.bordered)
-            .disabled(store.queueItems.isEmpty)
+            .disabled(allTracks.isEmpty)
             .help("queue.scroll_to_current")
         }
         .padding()
@@ -116,8 +126,8 @@ struct QueueListView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(store.queueItems.enumerated()), id: \.offset) { index, item in
-                        let trackData = item.toTrackRowData()
+                    ForEach(Array(allTracks.enumerated()), id: \.offset) { index, track in
+                        let trackData = track.toTrackRowData()
                         TrackRow(
                             track: trackData,
                             index: index,
@@ -129,7 +139,7 @@ struct QueueListView: View {
                         )
                         .id(index)
 
-                        if index < store.queueItems.count - 1 {
+                        if index < allTracks.count - 1 {
                             Divider()
                                 .padding(.leading, 78)
                         }
@@ -175,7 +185,7 @@ struct QueueListView: View {
     // MARK: - Navigation
 
     private func scrollToCurrentTrack() {
-        guard currentIndex < store.queueItems.count else { return }
+        guard currentIndex < allTracks.count else { return }
         withAnimation {
             scrollProxy?.scrollTo(currentIndex, anchor: .center)
         }

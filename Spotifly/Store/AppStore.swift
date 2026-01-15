@@ -9,28 +9,6 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Recent Item
-
-/// Mixed type for recently played albums, artists, and playlists
-enum RecentItem: Identifiable, Sendable, Encodable {
-    case album(Album)
-    case artist(Artist)
-    case playlist(Playlist)
-
-    var id: String {
-        switch self {
-        case let .album(album): "album_\(album.id)"
-        case let .artist(artist): "artist_\(artist.id)"
-        case let .playlist(playlist): "playlist_\(playlist.id)"
-        }
-    }
-
-    var isArtist: Bool {
-        if case .artist = self { return true }
-        return false
-    }
-}
-
 // MARK: - App Store
 
 @MainActor
@@ -91,7 +69,8 @@ final class AppStore {
     // MARK: - Recently Played State
 
     private(set) var recentTrackIds: [String] = []
-    private(set) var recentItems: [RecentItem] = []
+    /// URIs of recent albums/artists/playlists (e.g., "spotify:album:123")
+    private(set) var recentItemURIs: [String] = []
     var recentlyPlayedIsLoading = false
     var recentlyPlayedErrorMessage: String?
     var hasLoadedRecentlyPlayed = false
@@ -110,12 +89,14 @@ final class AppStore {
     var newReleasesErrorMessage: String?
     var hasLoadedNewReleases = false
 
-    // MARK: - Queue State
+    // MARK: - Queue State (matches Spotify's prev/current/next structure)
 
-    /// Queue track URIs from Mercury (source of truth for queue order)
-    private(set) var queueURIs: [String] = []
-    /// Queue items with full metadata (derived from queueURIs + tracks store)
-    var queueItems: [QueueItem] = []
+    /// Current track URI (from Mercury or Web API)
+    private(set) var currentTrackURI: String?
+    /// Previously played track URIs (from Mercury only - Web API doesn't provide this)
+    private(set) var previousTrackURIs: [String] = []
+    /// Next track URIs (from Mercury or Web API)
+    private(set) var nextTrackURIs: [String] = []
     var queueErrorMessage: String?
 
     // MARK: - Device Loading State
@@ -123,11 +104,6 @@ final class AppStore {
     var devicesIsLoading = false
     var devicesErrorMessage: String?
     var activeDeviceId: String? // Tracks which device is currently active
-
-    // MARK: - Playback State (used by QueueService and UI)
-
-    var queueLength: Int = 0
-    var currentIndex: Int = 0
 
     // MARK: - Computed Properties (Derived State)
 
@@ -169,6 +145,58 @@ final class AppStore {
     /// New release albums from the store
     var newReleaseAlbums: [Album] {
         newReleaseAlbumIds.compactMap { albums[$0] }
+    }
+
+    /// Recent albums and playlists (excludes artists) from URIs
+    var recentAlbumsAndPlaylists: [(id: String, album: Album?, playlist: Playlist?)] {
+        recentItemURIs.compactMap { uri -> (id: String, album: Album?, playlist: Playlist?)? in
+            if uri.hasPrefix("spotify:album:") {
+                let id = String(uri.dropFirst("spotify:album:".count))
+                guard let album = albums[id] else { return nil }
+                return (id: uri, album: album, playlist: nil)
+            } else if uri.hasPrefix("spotify:playlist:") {
+                let id = String(uri.dropFirst("spotify:playlist:".count))
+                guard let playlist = playlists[id] else { return nil }
+                return (id: uri, album: nil, playlist: playlist)
+            }
+            // Skip artists
+            return nil
+        }
+    }
+
+    // MARK: - Queue Computed Properties
+
+    /// Current track from the tracks store
+    var currentTrack: Track? {
+        guard let uri = currentTrackURI,
+              let id = SpotifyAPI.parseTrackURI(uri) else { return nil }
+        return tracks[id]
+    }
+
+    /// Previously played tracks from the tracks store
+    var previousTracks: [Track] {
+        previousTrackURIs.compactMap { uri in
+            guard let id = SpotifyAPI.parseTrackURI(uri) else { return nil }
+            return tracks[id]
+        }
+    }
+
+    /// Next tracks from the tracks store
+    var nextTracks: [Track] {
+        nextTrackURIs.compactMap { uri in
+            guard let id = SpotifyAPI.parseTrackURI(uri) else { return nil }
+            return tracks[id]
+        }
+    }
+
+    /// Total queue length
+    var queueLength: Int {
+        previousTrackURIs.count + (currentTrackURI != nil ? 1 : 0) + nextTrackURIs.count
+    }
+
+    /// Current track index within the full queue
+    var currentIndex: Int {
+        previousTrackURIs.count
     }
 
     /// Active device (if any)
@@ -366,8 +394,8 @@ final class AppStore {
         recentTrackIds = ids
     }
 
-    func setRecentItems(_ items: [RecentItem]) {
-        recentItems = items
+    func setRecentItemURIs(_ uris: [String]) {
+        recentItemURIs = uris
     }
 
     // MARK: - Top Items Actions
@@ -384,13 +412,13 @@ final class AppStore {
 
     // MARK: - Queue Actions
 
-    func setQueueURIs(_ uris: [String]) {
-        queueURIs = uris
-    }
-
-    func setQueueItems(_ items: [QueueItem]) {
-        queueItems = items
-        queueLength = items.count
+    /// Set queue state. If `previous` is nil, preserves existing previousTrackURIs (Web API case).
+    func setQueue(previous: [String]?, current: String?, next: [String]) {
+        if let previous {
+            previousTrackURIs = previous
+        }
+        currentTrackURI = current
+        nextTrackURIs = next
     }
 
     // MARK: - Debug
@@ -419,15 +447,14 @@ final class AppStore {
                 let searchResults: SearchResults?
 
                 let recentTrackIds: [String]
-                let recentItems: [RecentItem]
+                let recentItemURIs: [String]
 
                 let topArtistIds: [String]
                 let newReleaseAlbumIds: [String]
 
-                let queueURIs: [String]
-                let queueItems: [QueueItem]
-                let queueLength: Int
-                let currentIndex: Int
+                let currentTrackURI: String?
+                let previousTrackURIs: [String]
+                let nextTrackURIs: [String]
 
                 let activeDeviceId: String?
             }
@@ -449,13 +476,12 @@ final class AppStore {
                 favoritesPagination: favoritesPagination,
                 searchResults: searchResults,
                 recentTrackIds: recentTrackIds,
-                recentItems: recentItems,
+                recentItemURIs: recentItemURIs,
                 topArtistIds: topArtistIds,
                 newReleaseAlbumIds: newReleaseAlbumIds,
-                queueURIs: queueURIs,
-                queueItems: queueItems,
-                queueLength: queueLength,
-                currentIndex: currentIndex,
+                currentTrackURI: currentTrackURI,
+                previousTrackURIs: previousTrackURIs,
+                nextTrackURIs: nextTrackURIs,
                 activeDeviceId: activeDeviceId,
             )
 
