@@ -223,10 +223,7 @@ struct TrackMetadata: Sendable {
     let previewURL: URL?
 
     var durationFormatted: String {
-        let totalSeconds = durationMs / 1000
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        formatTrackTime(milliseconds: durationMs)
     }
 }
 

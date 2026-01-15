@@ -121,7 +121,6 @@ final class AppStore {
 
     // MARK: - Playback State (used by QueueService and UI)
 
-    var currentTrackId: String?
     var queueLength: Int = 0
     var currentIndex: Int = 0
 

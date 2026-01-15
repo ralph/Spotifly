@@ -607,7 +607,7 @@ final class PlaybackViewModel {
     // MARK: - Favorite Management
 
     func checkCurrentTrackFavoriteStatus(accessToken: String) async {
-        guard let trackId = extractTrackId(from: currentTrackUri) else {
+        guard let uri = currentTrackUri, let trackId = SpotifyAPI.parseTrackURI(uri) else {
             isCurrentTrackFavorited = false
             return
         }
@@ -624,7 +624,7 @@ final class PlaybackViewModel {
     }
 
     func toggleCurrentTrackFavorite(accessToken: String) async {
-        guard let trackId = extractTrackId(from: currentTrackUri) else {
+        guard let uri = currentTrackUri, let trackId = SpotifyAPI.parseTrackURI(uri) else {
             return
         }
 
@@ -639,18 +639,6 @@ final class PlaybackViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    private func extractTrackId(from uri: String?) -> String? {
-        guard let uri else { return nil }
-
-        // URI format: spotify:track:TRACK_ID
-        let components = uri.split(separator: ":")
-        guard components.count >= 3, components[0] == "spotify", components[1] == "track" else {
-            return nil
-        }
-
-        return String(components[2])
     }
 
     // MARK: - Volume Persistence

@@ -22,10 +22,7 @@ struct QueueItem: Sendable, Identifiable, Equatable {
     nonisolated let externalUrl: String?
 
     nonisolated var durationFormatted: String {
-        let totalSeconds = Int(durationMs / 1000)
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        formatTrackTime(milliseconds: Int(durationMs))
     }
 
     /// Memberwise initializer
@@ -152,7 +149,7 @@ private func fetchAndEmitQueueState() async {
                 durationMs: UInt32(track.durationMs),
                 albumId: track.album?.id,
                 artistId: track.artists?.first?.id,
-                externalUrl: track.externalUrls?.spotify
+                externalUrl: track.externalUrls?.spotify,
             )
         }
 
@@ -166,14 +163,14 @@ private func fetchAndEmitQueueState() async {
                 durationMs: UInt32(track.durationMs),
                 albumId: track.album?.id,
                 artistId: track.artists?.first?.id,
-                externalUrl: track.externalUrls?.spotify
+                externalUrl: track.externalUrls?.spotify,
             )
         }
 
         let queueState = QueueState(
             currentTrack: currentTrack,
             nextTracks: nextTracks,
-            previousTracks: [] // Web API doesn't return previous tracks
+            previousTracks: [], // Web API doesn't return previous tracks
         )
 
         queueSubject.send(queueState)
@@ -192,7 +189,7 @@ private func fetchAndEmitQueueState() async {
                 durationMs: Int64(current.durationMs),
                 shuffle: false, // Not available from queue endpoint
                 repeatTrack: false,
-                repeatContext: false
+                repeatContext: false,
             )
             playbackStateSubject.send(playbackState)
         }

@@ -14,6 +14,14 @@ let apiLogger = Logger(subsystem: "com.spotifly.app", category: "SpotifyAPI")
 enum SpotifyAPI {
     static let baseURL = "https://api.spotify.com/v1"
 
+    /// Helper to throw appropriate error from API error response data
+    static func throwAPIError(data: Data, statusCode: Int) throws -> Never {
+        if let errorResponse = try? JSONDecoder().decode(SpotifyErrorResponse.self, from: data) {
+            throw SpotifyAPIError.apiError(errorResponse.error.message)
+        }
+        throw SpotifyAPIError.apiError("HTTP \(statusCode)")
+    }
+
     /// Parses a Spotify URI (spotify:track:xxx) and returns the track ID
     static func parseTrackURI(_ uri: String) -> String? {
         let trimmed = uri.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -104,14 +104,6 @@ final class TrackService {
         }
     }
 
-    /// Toggle favorite for currently playing track
-    func toggleCurrentTrackFavorite(accessToken: String) async throws {
-        guard let trackId = extractTrackId(from: store.currentTrackId) else {
-            return
-        }
-        try await toggleFavorite(trackId: trackId, accessToken: accessToken)
-    }
-
     // MARK: - Favorite Status Check
 
     /// Check favorite status for a single track
@@ -136,14 +128,6 @@ final class TrackService {
         store.updateFavoriteStatuses(statuses)
     }
 
-    /// Check favorite status for current track
-    func checkCurrentTrackFavoriteStatus(accessToken: String) async throws {
-        guard let trackId = extractTrackId(from: store.currentTrackId) else {
-            return
-        }
-        try await checkFavoriteStatus(trackId: trackId, accessToken: accessToken)
-    }
-
     // MARK: - Track Lookup
 
     /// Fetch and store a single track by ID
@@ -156,16 +140,5 @@ final class TrackService {
         let track = Track(from: metadata)
         store.upsertTrack(track)
         return track
-    }
-
-    // MARK: - Helpers
-
-    private func extractTrackId(from uri: String?) -> String? {
-        guard let uri else { return nil }
-        let components = uri.split(separator: ":")
-        guard components.count >= 3, components[0] == "spotify", components[1] == "track" else {
-            return nil
-        }
-        return String(components[2])
     }
 }

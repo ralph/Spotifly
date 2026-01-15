@@ -47,10 +47,7 @@ extension SpotifyAPI {
         case 404:
             throw SpotifyAPIError.notFound
         default:
-            if let errorResponse = try? JSONDecoder().decode(SpotifyErrorResponse.self, from: data) {
-                throw SpotifyAPIError.apiError(errorResponse.error.message)
-            }
-            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
         }
     }
 
@@ -99,10 +96,7 @@ extension SpotifyAPI {
         case 404:
             throw SpotifyAPIError.notFound
         default:
-            if let errorResponse = try? JSONDecoder().decode(SpotifyErrorResponse.self, from: data) {
-                throw SpotifyAPIError.apiError(errorResponse.error.message)
-            }
-            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
         }
     }
 
@@ -154,10 +148,7 @@ extension SpotifyAPI {
         case 404:
             throw SpotifyAPIError.notFound
         default:
-            if let errorResponse = try? JSONDecoder().decode(SpotifyErrorResponse.self, from: data) {
-                throw SpotifyAPIError.apiError(errorResponse.error.message)
-            }
-            throw SpotifyAPIError.apiError("HTTP \(httpResponse.statusCode)")
+            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
         }
     }
 }

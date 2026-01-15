@@ -67,14 +67,6 @@ struct NowPlayingBarView: View {
         )
     }
 
-    // Helper function for time formatting
-    private func formatTime(_ milliseconds: UInt32) -> String {
-        let totalSeconds = Int(milliseconds / 1000)
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
     // Fixed dimensions for the now playing bar (in points)
     private let barWidth: CGFloat = 700
     private let barHeight: CGFloat = 60
@@ -258,7 +250,7 @@ struct NowPlayingBarView: View {
             HStack(spacing: 8) {
                 // Show timestamp only on hover
                 if isHoveringSeekBar {
-                    Text(formatTime(currentPositionMs))
+                    Text(formatTrackTime(milliseconds: Int(currentPositionMs)))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -279,7 +271,7 @@ struct NowPlayingBarView: View {
 
                 // Show timestamp only on hover
                 if isHoveringSeekBar {
-                    Text(formatTime(currentDurationMs))
+                    Text(formatTrackTime(milliseconds: Int(currentDurationMs)))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -307,21 +299,16 @@ struct NowPlayingBarView: View {
         .buttonStyle(.plain)
     }
 
-    /// Current track ID for favorite operations (uses currentTrackId computed property)
-    private var currentTrackIdForFavorite: String? {
-        currentTrackId
-    }
-
     /// Whether the current track is favorited (from global store)
     private var isCurrentTrackFavorited: Bool {
-        guard let trackId = currentTrackIdForFavorite else { return false }
+        guard let trackId = currentTrackId else { return false }
         return store.isFavorite(trackId)
     }
 
     private var favoriteButton: some View {
         Button {
             Task {
-                guard let trackId = currentTrackIdForFavorite else { return }
+                guard let trackId = currentTrackId else { return }
                 let token = await session.validAccessToken()
                 try? await trackService.toggleFavorite(trackId: trackId, accessToken: token)
             }

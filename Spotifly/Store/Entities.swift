@@ -30,10 +30,7 @@ struct Track: Identifiable, Sendable, Hashable {
     let imageURL: URL?
 
     var durationFormatted: String {
-        let totalSeconds = durationMs / 1000
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        formatTrackTime(milliseconds: durationMs)
     }
 }
 
@@ -236,6 +233,14 @@ struct PlaybackQueue: Sendable {
 }
 
 // MARK: - Duration Formatting
+
+/// Format milliseconds as track time (e.g., "3:45")
+nonisolated func formatTrackTime(milliseconds: Int) -> String {
+    let totalSeconds = milliseconds / 1000
+    let minutes = totalSeconds / 60
+    let seconds = totalSeconds % 60
+    return String(format: "%d:%02d", minutes, seconds)
+}
 
 /// Format milliseconds as human-readable duration (e.g., "3 hr 15 min" or "45 min")
 func formatDuration(milliseconds: Int) -> String {
