@@ -214,7 +214,7 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
 
     match result {
         Ok(_) => 0,
-        Err(e) => {
+        Err(_e) => {
             debug_println!("Player init error: {}", e);
             -1
         }
@@ -264,12 +264,12 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     };
     let gapless = GAPLESS_SETTING.load(Ordering::SeqCst);
 
-    let bitrate_kbps = match bitrate_setting {
+    let _bitrate_kbps = match bitrate_setting {
         0 => 96,
         2 => 320,
         _ => 160,
     };
-    debug_println!("[Spotifly] Player initialized: bitrate={}kbps, gapless={}", bitrate_kbps, gapless);
+    debug_println!("[Spotifly] Player initialized: bitrate={}kbps, gapless={}", _bitrate_kbps, gapless);
 
     let player_config = PlayerConfig {
         bitrate,
@@ -396,7 +396,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                         debug_println!("[Spotifly] No cluster in update");
                     }
                 }
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("[Spotifly] Failed to parse cluster update: {:?}", e);
                 }
             }
@@ -432,7 +432,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
             SPIRC_READY.store(true, Ordering::SeqCst);
             debug_println!("[Spotifly] Spirc ready - connected to Spotify Connect");
         }
-        Err(e) => {
+        Err(_e) => {
             // Spirc failed - fall back to manual session connection for basic playback
             debug_println!("[Spotifly] Spirc init failed: {:?}", e);
             debug_println!("[Spotifly] Falling back to basic playback (Connect won't be available)");
@@ -619,7 +619,7 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
     // Parse JSON array of track URIs
     let track_uris: Vec<String> = match serde_json::from_str(&track_uris_str) {
         Ok(uris) => uris,
-        Err(e) => {
+        Err(_e) => {
             debug_println!("Play tracks error: failed to parse JSON: {:?}", e);
             return -1;
         }
@@ -647,7 +647,7 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
                     debug_println!("[Spotifly] Spirc.load(tracks) succeeded");
                     0
                 }
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Play tracks error: Spirc.load() failed: {:?}", e);
                     -1
                 }
@@ -718,7 +718,7 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
                     IS_PLAYING.store(true, Ordering::SeqCst);
                     0
                 }
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Play error: Spirc.load() failed: {:?}", e);
                     -1
                 }
@@ -744,7 +744,7 @@ pub extern "C" fn spotifly_pause() -> i32 {
                     IS_PLAYING.store(false, Ordering::SeqCst);
                     0
                 }
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Pause error: {:?}", e);
                     -1
                 }
@@ -770,7 +770,7 @@ pub extern "C" fn spotifly_resume() -> i32 {
                     IS_PLAYING.store(true, Ordering::SeqCst);
                     0
                 }
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Resume error: {:?}", e);
                     -1
                 }
@@ -858,7 +858,7 @@ pub extern "C" fn spotifly_next() -> i32 {
         Some(spirc) => {
             match spirc.next() {
                 Ok(_) => 0,
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Next error: {:?}", e);
                     -1
                 }
@@ -881,7 +881,7 @@ pub extern "C" fn spotifly_previous() -> i32 {
         Some(spirc) => {
             match spirc.prev() {
                 Ok(_) => 0,
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Previous error: {:?}", e);
                     -1
                 }
@@ -904,7 +904,7 @@ pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
         Some(spirc) => {
             match spirc.set_position_ms(position_ms) {
                 Ok(_) => 0,
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Seek error: {:?}", e);
                     -1
                 }
@@ -973,7 +973,7 @@ pub extern "C" fn spotifly_play_radio(track_uri: *const c_char) -> i32 {
 
     let playlist_uri = match playlist_uri {
         Ok(uri) => uri,
-        Err(e) => {
+        Err(_e) => {
             debug_println!("Play radio error: {}", e);
             return -1;
         }
@@ -995,7 +995,7 @@ pub extern "C" fn spotifly_play_radio(track_uri: *const c_char) -> i32 {
             );
             match spirc.load(load_request) {
                 Ok(_) => 0,
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Play radio error: {:?}", e);
                     -1
                 }
@@ -1018,7 +1018,7 @@ pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
         Some(spirc) => {
             match spirc.set_volume(volume) {
                 Ok(_) => 0,
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Set volume error: {:?}", e);
                     -1
                 }
@@ -1039,8 +1039,8 @@ pub extern "C" fn spotifly_set_bitrate(bitrate: u8) {
     let value = bitrate.min(2); // Clamp to valid range
     let old_value = BITRATE_SETTING.swap(value, Ordering::SeqCst);
     if old_value != value {
-        let kbps = match value { 0 => 96, 2 => 320, _ => 160 };
-        debug_println!("[Spotifly] Bitrate changed to {}kbps (restart playback to apply)", kbps);
+        let _kbps = match value { 0 => 96, 2 => 320, _ => 160 };
+        debug_println!("[Spotifly] Bitrate changed to {}kbps (restart playback to apply)", _kbps);
     }
 }
 
@@ -1079,7 +1079,7 @@ pub extern "C" fn spotifly_transfer_to_local() -> i32 {
             // Pass None to transfer from whatever device is currently playing
             match spirc.transfer(None) {
                 Ok(_) => 0,
-                Err(e) => {
+                Err(_e) => {
                     debug_println!("Transfer error: {:?}", e);
                     -1
                 }
@@ -1156,7 +1156,7 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
             IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
             0
         }
-        Err(e) => {
+        Err(_e) => {
             debug_println!("Transfer playback error: {}", e);
             -1
         }
