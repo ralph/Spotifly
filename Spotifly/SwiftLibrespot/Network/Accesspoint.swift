@@ -545,9 +545,10 @@ public actor Accesspoint {
             pendingAudioKeyRequests[seqId] = continuation
 
             // Add timeout
-            Task {
+            Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
-                if let cont = await removePendingAudioKeyRequest(seqId) {
+                guard let self else { return }
+                if let cont = await self.removePendingAudioKeyRequest(seqId) {
                     cont.resume(throwing: LibrespotError.timeout("Audio key request timed out"))
                 }
             }
