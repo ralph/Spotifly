@@ -13,9 +13,9 @@ import Foundation
 public final class ShannonCipher: @unchecked Sendable {
     // MARK: - Constants
 
-    private nonisolated(unsafe) static let n: Int = 16
-    private nonisolated(unsafe) static let initKonst: UInt32 = 0x6996_C53A
-    private nonisolated(unsafe) static let keyP: Int = 13
+    private nonisolated static let n: Int = 16
+    private nonisolated static let initKonst: UInt32 = 0x6996_C53A
+    private nonisolated static let keyP: Int = 13
 
     // MARK: - State
 

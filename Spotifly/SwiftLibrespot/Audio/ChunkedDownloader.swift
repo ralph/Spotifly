@@ -10,13 +10,13 @@ import Foundation
 /// Configuration for chunk downloading
 public enum DownloadConfig: Sendable {
     /// Size of each chunk in bytes
-    public nonisolated(unsafe) static let chunkSize = 512 * 1024 // 512 KB
+    public nonisolated static let chunkSize = 512 * 1024 // 512 KB
 
     /// Number of chunks to prefetch ahead
-    public nonisolated(unsafe) static let prefetchCount = 3
+    public nonisolated static let prefetchCount = 3
 
     /// Number of bytes to preload before playback can start
-    public nonisolated(unsafe) static let preloadBeforePlay = 44100 * 2 * 2 // 1 second of 44.1kHz stereo 16-bit
+    public nonisolated static let preloadBeforePlay = 44100 * 2 * 2 // 1 second of 44.1kHz stereo 16-bit
 }
 
 /// Downloads audio files in chunks from CDN

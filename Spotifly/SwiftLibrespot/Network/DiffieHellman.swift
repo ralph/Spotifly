@@ -14,10 +14,10 @@ public final class DiffieHellman: @unchecked Sendable {
     // MARK: - Constants
 
     /// Generator (g = 2)
-    private nonisolated(unsafe) static let generator = BigUInt(2)
+    private nonisolated static let generator = BigUInt(2)
 
     /// 1536-bit MODP prime (from Spotify protocol)
-    private nonisolated(unsafe) static let prime: BigUInt = {
+    private nonisolated static let prime: BigUInt = {
         let primeBytes: [UInt8] = [
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
             0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1, 0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
