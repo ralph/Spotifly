@@ -27,6 +27,7 @@ public enum LibrespotError: Error, LocalizedError, Sendable {
 
     case trackNotFound(String)
     case audioKeyFailed(String)
+    case audioKeyError(Int)
     case decryptionFailed(String)
     case decodingFailed(String)
     case cdnError(String)
@@ -67,6 +68,8 @@ public enum LibrespotError: Error, LocalizedError, Sendable {
             "Track not found: \(uri)"
         case let .audioKeyFailed(message):
             "Failed to get audio key: \(message)"
+        case let .audioKeyError(code):
+            "Audio key error: \(code)"
         case let .decryptionFailed(message):
             "Decryption failed: \(message)"
         case let .decodingFailed(message):

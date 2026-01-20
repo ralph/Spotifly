@@ -38,6 +38,10 @@ public actor Accesspoint {
     private var pendingRequests: [UInt64: CheckedContinuation<MercuryResponse, Error>] = [:]
     private var nextSequenceId: UInt64 = 1
 
+    /// Pending audio key requests awaiting response
+    private var pendingAudioKeyRequests: [UInt32: CheckedContinuation<Data, Error>] = [:]
+    private var nextAudioKeySeq: UInt32 = 1
+
     /// Spotify version code (matching go-librespot)
     private static let spotifyVersionCode: UInt64 = 121_300_618
 
@@ -469,16 +473,65 @@ public actor Accesspoint {
 
     /// Request an audio key for a track
     public func requestAudioKey(fileId: Data, trackId: Data) async throws -> Data {
+        guard isConnected else {
+            throw LibrespotError.notInitialized
+        }
+
+        let seqId = nextAudioKeySeq
+        nextAudioKeySeq += 1
+
+        // Build request payload:
+        // - 20 bytes: file ID
+        // - 16 bytes: track ID (gid)
+        // - 4 bytes: sequence ID (big-endian)
+        // - 2 bytes: 0x00 0x00 (unknown)
         var payload = Data()
-        payload.append(fileId)
-        payload.append(trackId)
+
+        // Ensure file ID is exactly 20 bytes
+        if fileId.count >= 20 {
+            payload.append(fileId.prefix(20))
+        } else {
+            payload.append(fileId)
+            payload.append(Data(repeating: 0, count: 20 - fileId.count))
+        }
+
+        // Ensure track ID is exactly 16 bytes
+        if trackId.count >= 16 {
+            payload.append(trackId.prefix(16))
+        } else {
+            payload.append(trackId)
+            payload.append(Data(repeating: 0, count: 16 - trackId.count))
+        }
+
+        // Sequence ID (big-endian)
+        var seqBE = seqId.bigEndian
+        payload.append(Data(bytes: &seqBE, count: 4))
+
+        // Unknown bytes
+        payload.append(contentsOf: [0x00, 0x00])
+
+        debugLog("Accesspoint", "Requesting audio key, seq=\(seqId), fileId=\(fileId.prefix(8).hexString)")
 
         let packet = SpotifyPacket(command: .requestKey, payload: payload)
         try await sendPacket(packet)
 
-        // Wait for response (handled in receive loop)
-        // TODO: Implement proper request/response tracking
-        throw LibrespotError.notInitialized
+        // Wait for response
+        return try await withCheckedThrowingContinuation { continuation in
+            pendingAudioKeyRequests[seqId] = continuation
+
+            // Add timeout
+            Task {
+                try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+                if let cont = await removePendingAudioKeyRequest(seqId) {
+                    cont.resume(throwing: LibrespotError.timeout("Audio key request timed out"))
+                }
+            }
+        }
+    }
+
+    /// Remove and return a pending audio key request
+    private func removePendingAudioKeyRequest(_ seqId: UInt32) -> CheckedContinuation<Data, Error>? {
+        pendingAudioKeyRequests.removeValue(forKey: seqId)
     }
 
     // MARK: - Low-level I/O
@@ -554,8 +607,44 @@ public actor Accesspoint {
             break
 
         case .aesKey:
-            // TODO: Handle audio key response
-            break
+            // Audio key response format:
+            // - 4 bytes: sequence ID (big-endian)
+            // - 16 bytes: AES key
+            guard packet.payload.count >= 20 else {
+                debugLog("Accesspoint", "Invalid audio key response length: \(packet.payload.count)")
+                return
+            }
+
+            let seqId = packet.payload.subdata(in: 0 ..< 4).withUnsafeBytes {
+                UInt32(bigEndian: $0.load(as: UInt32.self))
+            }
+            let audioKey = packet.payload.subdata(in: 4 ..< 20)
+
+            debugLog("Accesspoint", "Received audio key for seq=\(seqId), key=\(audioKey.prefix(4).hexString)...")
+
+            if let continuation = pendingAudioKeyRequests.removeValue(forKey: seqId) {
+                continuation.resume(returning: audioKey)
+            }
+
+        case .aesKeyError:
+            // Audio key error response
+            guard packet.payload.count >= 6 else {
+                debugLog("Accesspoint", "Invalid audio key error response")
+                return
+            }
+
+            let seqId = packet.payload.subdata(in: 0 ..< 4).withUnsafeBytes {
+                UInt32(bigEndian: $0.load(as: UInt32.self))
+            }
+            let errorCode = packet.payload.subdata(in: 4 ..< 6).withUnsafeBytes {
+                UInt16(bigEndian: $0.load(as: UInt16.self))
+            }
+
+            debugLog("Accesspoint", "Audio key error for seq=\(seqId), code=\(errorCode)")
+
+            if let continuation = pendingAudioKeyRequests.removeValue(forKey: seqId) {
+                continuation.resume(throwing: LibrespotError.audioKeyError(Int(errorCode)))
+            }
 
         default:
             debugLog("Accesspoint", "Unhandled packet type: \(packet.command)")

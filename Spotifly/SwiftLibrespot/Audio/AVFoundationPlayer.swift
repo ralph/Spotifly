@@ -11,7 +11,9 @@ import Foundation
 
 /// Audio output using AVAudioEngine
 /// Supports AirPlay 2 and system audio routing
-public actor AVFoundationPlayer {
+/// Note: AVAudioEngine requires main thread execution
+@MainActor
+public final class AVFoundationPlayer: Sendable {
     // MARK: - Properties
 
     private var engine: AVAudioEngine
@@ -36,9 +38,9 @@ public actor AVFoundationPlayer {
 
     // MARK: - Publishers
 
-    private nonisolated(unsafe) let playbackEndedSubject = PassthroughSubject<Void, Never>()
+    private let playbackEndedSubject = PassthroughSubject<Void, Never>()
 
-    public nonisolated var playbackEnded: AnyPublisher<Void, Never> {
+    public var playbackEnded: AnyPublisher<Void, Never> {
         playbackEndedSubject.eraseToAnyPublisher()
     }
 
@@ -92,8 +94,9 @@ public actor AVFoundationPlayer {
     /// Schedule a buffer for playback
     public func scheduleBuffer(_ buffer: AVAudioPCMBuffer) {
         playerNode.scheduleBuffer(buffer) { [weak self] in
-            Task { [weak self] in
-                await self?.bufferCompleted()
+            // Callback runs on audio thread, dispatch to main
+            Task { @MainActor [weak self] in
+                self?.bufferCompleted()
             }
         }
     }

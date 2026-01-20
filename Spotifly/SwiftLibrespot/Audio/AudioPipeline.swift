@@ -5,9 +5,20 @@
 //  Orchestrates audio decryption, decoding, and playback
 //
 
+import AudioToolbox
 import AVFoundation
 import Combine
 import Foundation
+
+/// Wrapper to allow AVAudioPCMBuffer to cross actor boundaries
+/// Safe because the buffer is only accessed from one context at a time
+struct SendableBuffer: @unchecked Sendable {
+    nonisolated(unsafe) let buffer: AVAudioPCMBuffer
+
+    nonisolated init(buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
+    }
+}
 
 /// Main audio pipeline for Spotify playback
 /// Coordinates downloading, decryption, decoding, and playback
@@ -18,15 +29,32 @@ public actor AudioPipeline {
     private let audioKeyProvider: AudioKeyProvider
     private let decryptor: AESDecryptor
     private let downloader: ChunkedDownloader
-    private let player: AVFoundationPlayer
+    private var player: AVFoundationPlayer?
+    private let simpleDecoder: SimpleAudioDecoder
+
+    /// SPClient for track metadata and CDN resolution
+    private var spclient: SPClient?
 
     /// Current track being played
     private var currentTrack: TrackInfo?
+
+    /// Current audio format
+    private var currentFormat: SPClient.TrackMetadata.AudioFormat?
 
     /// Playback state
     private var isPlaying = false
     private var isPaused = false
     private var positionMs: UInt64 = 0
+
+    /// Streaming task
+    private var streamingTask: Task<Void, Never>?
+
+    /// Position update timer
+    private var positionTimer: Task<Void, Never>?
+
+    /// Decoded buffers ready for playback
+    private var decodedBuffers: [AVAudioPCMBuffer] = []
+    private var bufferScheduleIndex = 0
 
     // MARK: - Publishers
 
@@ -61,25 +89,81 @@ public actor AudioPipeline {
         public let uri: String
         public let fileId: Data
         public let durationMs: UInt64
+        public let cdnUrl: URL?
     }
 
     // MARK: - Initialization
 
-    public init(accesspoint: Accesspoint) {
+    public init(accesspoint: Accesspoint, accessToken: String? = nil, spclientHost: String? = nil) {
         self.accesspoint = accesspoint
         audioKeyProvider = AudioKeyProvider(accesspoint: accesspoint)
         decryptor = AESDecryptor()
         downloader = ChunkedDownloader()
-        player = AVFoundationPlayer()
+        simpleDecoder = SimpleAudioDecoder()
+
+        if let token = accessToken {
+            spclient = SPClient(accessToken: token, spclientHost: spclientHost)
+        }
 
         debugLog("AudioPipeline", "Initialized")
     }
 
+    /// Set SPClient for track resolution
+    public func setSPClient(_ client: SPClient) {
+        spclient = client
+    }
+
+    /// Start the audio engine (must be called before playback)
+    public func start() async {
+        // Create player on MainActor
+        let newPlayer = await AVFoundationPlayer()
+        player = newPlayer
+        await newPlayer.start()
+    }
+
     // MARK: - Playback Control
 
-    /// Start playing a track
-    public func play(trackUri: String, fileId: Data, positionMs: UInt64 = 0) async throws {
+    /// Play a track by URI (resolves metadata and CDN automatically)
+    public func playTrack(uri: String, positionMs: UInt64 = 0) async throws {
+        guard let spclient else {
+            throw LibrespotError.invalidState("SPClient not configured")
+        }
+
+        debugLog("AudioPipeline", "Playing track: \(uri)")
+        playbackStateSubject.send(.loading(trackUri: uri))
+
+        // Get track ID from URI
+        let trackId = extractTrackId(from: uri)
+
+        // Fetch track metadata
+        let metadata = try await spclient.getTrackMetadata(trackId: trackId)
+        debugLog("AudioPipeline", "Track: \(metadata.name), duration: \(metadata.durationMs)ms, files: \(metadata.files.count)")
+
+        // Select best audio file (prefer MP3 for native decoding support)
+        guard let audioFile = metadata.selectFile(allowMP3: true) else {
+            throw LibrespotError.trackNotFound("No compatible audio format")
+        }
+
+        let isMP3 = SPClient.TrackMetadata.isMP3Format(audioFile.format)
+        debugLog("AudioPipeline", "Selected format: \(audioFile.format), isMP3: \(isMP3)")
+
+        currentFormat = audioFile.format
+
+        // Start playback with file ID
+        try await play(
+            trackUri: uri,
+            fileId: audioFile.fileId,
+            durationMs: UInt64(metadata.durationMs),
+            positionMs: positionMs,
+        )
+    }
+
+    /// Start playing a track with known file ID
+    public func play(trackUri: String, fileId: Data, durationMs: UInt64 = 0, positionMs: UInt64 = 0) async throws {
         debugLog("AudioPipeline", "Playing: \(trackUri) from \(positionMs)ms")
+
+        // Stop any existing playback
+        await stopInternal()
 
         playbackStateSubject.send(.loading(trackUri: trackUri))
 
@@ -93,19 +177,29 @@ public actor AudioPipeline {
         // Initialize decryptor with key
         decryptor.setKey(audioKey)
 
-        // TODO: Resolve CDN URL and start downloading
-        // TODO: Feed decrypted chunks to decoder
-        // TODO: Feed decoded PCM to player
+        // Resolve CDN URL
+        guard let spclient else {
+            throw LibrespotError.invalidState("SPClient not configured")
+        }
 
-        currentTrack = TrackInfo(uri: trackUri, fileId: fileId, durationMs: 0)
+        let cdnInfo = try await spclient.resolveCDNUrl(fileId: fileId)
+        debugLog("AudioPipeline", "CDN URL resolved: \(cdnInfo.url.host ?? "?")")
+
+        // Store track info
+        currentTrack = TrackInfo(uri: trackUri, fileId: fileId, durationMs: durationMs, cdnUrl: cdnInfo.url)
         self.positionMs = positionMs
         isPlaying = true
         isPaused = false
 
-        playbackStateSubject.send(.playing(trackUri: trackUri))
-        positionSubject.send(positionMs)
+        // Start streaming and decoding
+        streamingTask = Task {
+            await streamAndDecode(cdnUrl: cdnInfo.url, startPositionMs: positionMs)
+        }
 
-        debugLog("AudioPipeline", "Playback started (stub)")
+        // Start position tracking
+        startPositionTimer()
+
+        playbackStateSubject.send(.buffering(trackUri: trackUri))
     }
 
     /// Pause playback
@@ -115,7 +209,8 @@ public actor AudioPipeline {
         debugLog("AudioPipeline", "Pausing")
         isPlaying = false
         isPaused = true
-        await player.pause()
+        await player?.pause()
+        stopPositionTimer()
         playbackStateSubject.send(.paused(trackUri: track.uri))
     }
 
@@ -126,19 +221,34 @@ public actor AudioPipeline {
         debugLog("AudioPipeline", "Resuming")
         isPlaying = true
         isPaused = false
-        await player.resume()
+        await player?.resume()
+        startPositionTimer()
         playbackStateSubject.send(.playing(trackUri: track.uri))
     }
 
     /// Stop playback
     public func stop() async {
         debugLog("AudioPipeline", "Stopping")
+        await stopInternal()
+        playbackStateSubject.send(.idle)
+        positionSubject.send(0)
+    }
+
+    /// Internal stop (doesn't send state updates)
+    private func stopInternal() async {
+        streamingTask?.cancel()
+        streamingTask = nil
+        stopPositionTimer()
+
         isPlaying = false
         isPaused = false
         currentTrack = nil
-        await player.stop()
-        playbackStateSubject.send(.idle)
-        positionSubject.send(0)
+        currentFormat = nil
+        decodedBuffers.removeAll()
+        bufferScheduleIndex = 0
+
+        await downloader.cancelDownload()
+        await player?.stop()
     }
 
     /// Seek to position
@@ -149,7 +259,10 @@ public actor AudioPipeline {
 
         debugLog("AudioPipeline", "Seeking to \(positionMs)ms")
         self.positionMs = positionMs
-        await player.seek(to: positionMs)
+
+        // For now, seeking requires restarting the stream
+        // A proper implementation would support seeking within the encrypted file
+        await player?.seek(to: positionMs)
         positionSubject.send(positionMs)
 
         if isPaused {
@@ -161,12 +274,176 @@ public actor AudioPipeline {
 
     /// Set playback volume (0.0 - 1.0)
     public func setVolume(_ volume: Float) async {
-        await player.setVolume(volume)
+        await player?.setVolume(volume)
     }
 
     /// Get current position in milliseconds
     public func getCurrentPosition() -> UInt64 {
         positionMs
+    }
+
+    // MARK: - Streaming & Decoding
+
+    /// Main streaming and decoding loop
+    private func streamAndDecode(cdnUrl: URL, startPositionMs _: UInt64) async {
+        do {
+            // Start downloading from CDN
+            try await downloader.startDownload(cdnUrl: cdnUrl, fileId: currentTrack?.fileId ?? Data())
+
+            debugLog("AudioPipeline", "Download started, waiting for data...")
+
+            // Wait for initial data to be ready
+            var waitCount = 0
+            while await !downloader.isReadyForPlayback() {
+                try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                waitCount += 1
+                if waitCount > 50 { // 5 seconds timeout
+                    throw LibrespotError.timeout("Timed out waiting for initial data")
+                }
+                if Task.isCancelled { return }
+            }
+
+            debugLog("AudioPipeline", "Initial data ready, starting decode")
+
+            // Download and decrypt all data (simplified approach for MP3)
+            // A more sophisticated implementation would stream chunks
+            let encryptedData = try await downloadAllData()
+
+            if Task.isCancelled { return }
+
+            debugLog("AudioPipeline", "Downloaded \(encryptedData.count) bytes")
+
+            // Decrypt the data
+            // Spotify files have a 167-byte header that should not be decrypted
+            let headerSize = 167
+            // Header contains OGG/MP3 metadata - skip it for decryption
+            let encryptedAudio = encryptedData.dropFirst(headerSize)
+
+            decryptor.reset()
+            let decryptedAudio = decryptor.decrypt(Data(encryptedAudio))
+
+            debugLog("AudioPipeline", "Decrypted \(decryptedAudio.count) bytes")
+
+            if Task.isCancelled { return }
+
+            // Determine file type and decode
+            let fileType: AudioFileType = if let format = currentFormat, SPClient.TrackMetadata.isMP3Format(format) {
+                .mp3
+            } else {
+                .oggVorbis
+            }
+
+            // Decode to PCM
+            let buffers = try simpleDecoder.decode(data: decryptedAudio, fileType: fileType)
+
+            if Task.isCancelled { return }
+
+            debugLog("AudioPipeline", "Decoded \(buffers.count) buffers")
+
+            // Store decoded buffers
+            decodedBuffers = buffers
+
+            // Schedule initial buffers for playback
+            await scheduleBuffers()
+
+            // Start playback
+            await player?.play()
+
+            if let track = currentTrack {
+                playbackStateSubject.send(.playing(trackUri: track.uri))
+            }
+
+            debugLog("AudioPipeline", "Playback started")
+
+        } catch {
+            if !Task.isCancelled {
+                debugLog("AudioPipeline", "Streaming error: \(error)")
+                playbackStateSubject.send(.error(error.localizedDescription))
+                errorSubject.send(LibrespotError.unknown(error.localizedDescription))
+            }
+        }
+    }
+
+    /// Download all audio data
+    private func downloadAllData() async throws -> Data {
+        var allData = Data()
+        var chunkIndex = 0
+
+        while true {
+            do {
+                let chunkData = try await downloader.downloadChunk(index: chunkIndex)
+                if chunkData.isEmpty {
+                    break
+                }
+                allData.append(chunkData)
+                chunkIndex += 1
+
+                // Check if we've downloaded everything
+                let progress = await downloader.downloadProgress()
+                if progress >= 1.0 {
+                    break
+                }
+
+                if Task.isCancelled { break }
+            } catch {
+                // Reached end of file or error
+                break
+            }
+        }
+
+        return allData
+    }
+
+    /// Schedule decoded buffers to player
+    private func scheduleBuffers() async {
+        let buffersToSchedule = min(10, decodedBuffers.count - bufferScheduleIndex)
+
+        for _ in 0 ..< buffersToSchedule {
+            guard bufferScheduleIndex < decodedBuffers.count else { break }
+            let buffer = decodedBuffers[bufferScheduleIndex]
+            // Wrap in SendableBuffer to safely cross actor boundary
+            let sendable = SendableBuffer(buffer: buffer)
+            await player?.scheduleBuffer(sendable.buffer)
+            bufferScheduleIndex += 1
+        }
+    }
+
+    // MARK: - Position Tracking
+
+    private func startPositionTimer() {
+        stopPositionTimer()
+
+        positionTimer = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
+
+                if isPlaying, !isPaused {
+                    if let playerPosition = await player?.currentPositionMs() {
+                        positionMs = playerPosition
+                    }
+                    positionSubject.send(positionMs)
+
+                    // Check if playback finished
+                    if let track = currentTrack,
+                       track.durationMs > 0,
+                       positionMs >= track.durationMs
+                    {
+                        debugLog("AudioPipeline", "Track finished")
+                        await stop()
+                    }
+
+                    // Schedule more buffers if needed
+                    if bufferScheduleIndex < decodedBuffers.count {
+                        await scheduleBuffers()
+                    }
+                }
+            }
+        }
+    }
+
+    private func stopPositionTimer() {
+        positionTimer?.cancel()
+        positionTimer = nil
     }
 
     // MARK: - Helpers
