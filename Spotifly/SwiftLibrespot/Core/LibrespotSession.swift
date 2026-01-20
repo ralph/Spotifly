@@ -220,6 +220,11 @@ public actor LibrespotSession {
         resolvedEndpoints?.dealers.first
     }
 
+    /// SPClient host for track metadata and CDN resolution
+    public var spclientHost: String? {
+        resolvedEndpoints?.spclients.first
+    }
+
     // MARK: - SPIRC Publishers (forwarded from SpircController)
 
     /// Player state updates from SPIRC

@@ -20,6 +20,7 @@ public final class LibrespotClient: @unchecked Sendable {
 
     private var session: LibrespotSession?
     private var audioPipeline: AudioPipeline?
+    private var spclient: SPClient?
     private var subscriptions: Set<AnyCancellable> = []
 
     /// Device information
@@ -27,6 +28,9 @@ public final class LibrespotClient: @unchecked Sendable {
 
     /// Current connection state
     private var connectionState: LibrespotConnectionState?
+
+    /// Cached position from audio pipeline
+    private var cachedPositionMs: UInt32 = 0
 
     // MARK: - Publishers (matching SpotifyPlayer API)
 
@@ -112,9 +116,25 @@ public final class LibrespotClient: @unchecked Sendable {
         // Connect
         try await session?.connect(accessToken: accessToken)
 
-        // Create audio pipeline
+        // Get spclient host from session
+        let spclientHost = await session?.spclientHost
+
+        // Create SPClient for track metadata and CDN resolution
+        spclient = SPClient(accessToken: accessToken, spclientHost: spclientHost)
+
+        // Create audio pipeline with accesspoint and SPClient
         if let accesspoint = await session?.accesspoint {
-            audioPipeline = AudioPipeline(accesspoint: accesspoint)
+            audioPipeline = AudioPipeline(
+                accesspoint: accesspoint,
+                accessToken: accessToken,
+                spclientHost: spclientHost
+            )
+
+            // Start the audio engine
+            await audioPipeline?.start()
+
+            // Subscribe to audio pipeline events
+            subscribeToAudioPipelineEvents()
         }
 
         // Update connection state
@@ -134,8 +154,10 @@ public final class LibrespotClient: @unchecked Sendable {
         await session?.disconnect()
 
         audioPipeline = nil
+        spclient = nil
         session = nil
         subscriptions.removeAll()
+        cachedPositionMs = 0
 
         updateConnectionState(connected: false)
     }
@@ -210,24 +232,34 @@ public final class LibrespotClient: @unchecked Sendable {
     // MARK: - Playback Control
 
     /// Play a URI (track, album, playlist)
-    public func play(uri: String) async throws {
+    public func play(uri: String, positionMs: UInt32 = 0) async throws {
         debugLog("LibrespotClient", "Playing: \(uri)")
 
         guard session != nil else {
             throw LibrespotError.notInitialized
         }
 
-        // TODO: Resolve track metadata and file ID via session
-        // TODO: Start audio pipeline
+        guard let audioPipeline else {
+            throw LibrespotError.notInitialized
+        }
 
-        loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: 0))
+        // Emit loading notification for fast UI update
+        loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: positionMs))
+
+        // Start playback via audio pipeline
+        do {
+            try await audioPipeline.playTrack(uri: uri, positionMs: UInt64(positionMs))
+        } catch {
+            debugLog("LibrespotClient", "Playback error: \(error)")
+            throw error
+        }
     }
 
     /// Play multiple tracks
     public func playTracks(_ uris: [String]) async throws {
         guard let first = uris.first else { return }
         try await play(uri: first)
-        // TODO: Queue remaining tracks
+        // TODO: Queue remaining tracks via SPIRC
     }
 
     /// Pause playback
@@ -323,8 +355,7 @@ public final class LibrespotClient: @unchecked Sendable {
     /// Current position in milliseconds
     /// Note: This is a sync property, can't call actor method. Returns cached value.
     public var positionMs: UInt32 {
-        // TODO: Track position locally instead of querying actor
-        0
+        cachedPositionMs
     }
 
     /// Get current connection state
@@ -380,6 +411,85 @@ public final class LibrespotClient: @unchecked Sendable {
             .store(in: &subscriptions)
     }
 
+    /// Subscribe to audio pipeline events
+    private func subscribeToAudioPipelineEvents() {
+        guard let audioPipeline else { return }
+
+        // Subscribe to playback state changes
+        audioPipeline.playbackState
+            .sink { [weak self] state in
+                self?.handleAudioPipelineState(state)
+            }
+            .store(in: &subscriptions)
+
+        // Subscribe to position updates
+        audioPipeline.position
+            .sink { [weak self] positionMs in
+                self?.cachedPositionMs = UInt32(positionMs)
+            }
+            .store(in: &subscriptions)
+
+        // Subscribe to errors
+        audioPipeline.errors
+            .sink { [weak self] error in
+                debugLog("LibrespotClient", "Audio pipeline error: \(error)")
+                self?.playbackStateSubject.send(PlaybackState(
+                    isPlaying: false,
+                    isPaused: false,
+                    trackUri: self?.playbackStateSubject.value?.trackUri ?? "",
+                    positionMs: 0,
+                    durationMs: 0,
+                    shuffle: false,
+                    repeatTrack: false,
+                    repeatContext: false
+                ))
+            }
+            .store(in: &subscriptions)
+    }
+
+    /// Handle audio pipeline state changes
+    private func handleAudioPipelineState(_ state: AudioPipeline.AudioPlaybackState) {
+        switch state {
+        case .idle:
+            playbackStateSubject.send(nil)
+
+        case let .loading(trackUri):
+            loadingSubject.send(LoadingNotification(trackUri: trackUri, positionMs: 0))
+
+        case let .playing(trackUri):
+            let current = playbackStateSubject.value
+            playbackStateSubject.send(PlaybackState(
+                isPlaying: true,
+                isPaused: false,
+                trackUri: trackUri,
+                positionMs: Int64(cachedPositionMs),
+                durationMs: current?.durationMs ?? 0,
+                shuffle: current?.shuffle ?? false,
+                repeatTrack: current?.repeatTrack ?? false,
+                repeatContext: current?.repeatContext ?? false
+            ))
+
+        case let .paused(trackUri):
+            let current = playbackStateSubject.value
+            playbackStateSubject.send(PlaybackState(
+                isPlaying: false,
+                isPaused: true,
+                trackUri: trackUri,
+                positionMs: Int64(cachedPositionMs),
+                durationMs: current?.durationMs ?? 0,
+                shuffle: current?.shuffle ?? false,
+                repeatTrack: current?.repeatTrack ?? false,
+                repeatContext: current?.repeatContext ?? false
+            ))
+
+        case let .buffering(trackUri):
+            loadingSubject.send(LoadingNotification(trackUri: trackUri, positionMs: cachedPositionMs))
+
+        case let .error(message):
+            debugLog("LibrespotClient", "Playback error: \(message)")
+        }
+    }
+
     // MARK: - SPIRC Event Handlers
 
     private func handleSpircPlayerState(_ state: SpircController.SpircPlayerState?) {
@@ -415,14 +525,29 @@ public final class LibrespotClient: @unchecked Sendable {
     private func handleSpircCommand(_ command: SpircCommand) {
         debugLog("LibrespotClient", "SPIRC command: \(command)")
 
+        // Execute commands on audio pipeline via a Task
+        Task { [weak self] in
+            await self?.executeSpircCommand(command)
+        }
+    }
+
+    /// Execute SPIRC command on audio pipeline
+    private func executeSpircCommand(_ command: SpircCommand) async {
         switch command {
         case let .play(cmd):
             // Emit loading notification for fast UI update
             if let uri = cmd.trackUri ?? cmd.trackUris?.first {
                 loadingSubject.send(LoadingNotification(
                     trackUri: uri,
-                    positionMs: UInt32(cmd.positionMs ?? 0),
+                    positionMs: UInt32(cmd.positionMs ?? 0)
                 ))
+
+                // Start playback via audio pipeline
+                do {
+                    try await audioPipeline?.playTrack(uri: uri, positionMs: UInt64(cmd.positionMs ?? 0))
+                } catch {
+                    debugLog("LibrespotClient", "SPIRC play error: \(error)")
+                }
             }
 
             // Also emit context loaded if we have a context
@@ -434,20 +559,37 @@ public final class LibrespotClient: @unchecked Sendable {
                     nextTrackUris: [],
                     nextTrackProviders: [],
                     prevTrackUris: [],
-                    prevTrackProviders: [],
+                    prevTrackProviders: []
                 )
                 contextLoadedSubject.send(notification)
             }
 
+        case .pause:
+            await audioPipeline?.pause()
+
+        case .resume:
+            await audioPipeline?.resume()
+
+        case let .seekTo(positionMs):
+            try? await audioPipeline?.seek(positionMs: UInt64(positionMs))
+
+        case .next:
+            // TODO: Implement queue-based next track
+            debugLog("LibrespotClient", "SPIRC next not yet implemented")
+
+        case .prev:
+            // TODO: Implement queue-based previous track
+            debugLog("LibrespotClient", "SPIRC prev not yet implemented")
+
         case let .setVolume(volume):
+            // Volume is 0-65535, convert to 0.0-1.0
+            let normalizedVolume = Float(volume) / 65535.0
+            await audioPipeline?.setVolume(normalizedVolume)
             volumeSubject.send(UInt16(volume))
 
         case let .addToQueue(uri):
+            // TODO: Implement queue management
             queueChangedSubject.send(QueueChangedNotification(trackUri: uri))
-
-        case .pause, .resume, .seekTo, .next, .prev:
-            // These update player state which is handled by playerStatePublisher
-            break
 
         case let .setShuffle(enabled):
             // Update playback state with new shuffle value
@@ -460,7 +602,7 @@ public final class LibrespotClient: @unchecked Sendable {
                     durationMs: current.durationMs,
                     shuffle: enabled,
                     repeatTrack: current.repeatTrack,
-                    repeatContext: current.repeatContext,
+                    repeatContext: current.repeatContext
                 )
                 playbackStateSubject.send(updated)
             }
@@ -476,7 +618,7 @@ public final class LibrespotClient: @unchecked Sendable {
                     durationMs: current.durationMs,
                     shuffle: current.shuffle,
                     repeatTrack: mode == .track,
-                    repeatContext: mode == .context,
+                    repeatContext: mode == .context
                 )
                 playbackStateSubject.send(updated)
             }
