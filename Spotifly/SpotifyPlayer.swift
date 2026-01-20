@@ -2,12 +2,231 @@
 //  SpotifyPlayer.swift
 //  Spotifly
 //
-//  Swift wrapper for the Rust librespot playback functionality
+//  Swift wrapper for the librespot playback functionality
+//  STUB IMPLEMENTATION - FFI calls replaced with no-ops
 //
 
 import Combine
 import Foundation
-import SpotiflyRust
+
+// MARK: - Stub FFI Functions (nonisolated to match original FFI behavior)
+
+/// Stub: Initialize the player with an access token
+private nonisolated func spotifly_init_player(_: UnsafePointer<CChar>?) -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: init_player called")
+    return 0
+}
+
+/// Stub: Register queue callback
+private nonisolated func spotifly_register_queue_callback(_: (@convention(c) (UnsafePointer<CChar>?) -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_queue_callback called")
+}
+
+/// Stub: Register playback state callback
+private nonisolated func spotifly_register_playback_state_callback(_: (@convention(c) (UnsafePointer<CChar>?) -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_playback_state_callback called")
+}
+
+/// Stub: Register state update callback
+private nonisolated func spotifly_register_state_update_callback(_: (@convention(c) () -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_state_update_callback called")
+}
+
+/// Stub: Register volume callback
+private nonisolated func spotifly_register_volume_callback(_: (@convention(c) (UInt16) -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_volume_callback called")
+}
+
+/// Stub: Register loading callback
+private nonisolated func spotifly_register_loading_callback(_: (@convention(c) (UnsafePointer<CChar>?) -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_loading_callback called")
+}
+
+/// Stub: Register queue changed callback
+private nonisolated func spotifly_register_queue_changed_callback(_: (@convention(c) (UnsafePointer<CChar>?) -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_queue_changed_callback called")
+}
+
+/// Stub: Register session disconnected callback
+private nonisolated func spotifly_register_session_disconnected_callback(_: (@convention(c) () -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_session_disconnected_callback called")
+}
+
+/// Stub: Register session connected callback
+private nonisolated func spotifly_register_session_connected_callback(_: (@convention(c) () -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_session_connected_callback called")
+}
+
+/// Stub: Register session client changed callback
+private nonisolated func spotifly_register_session_client_changed_callback(_: (@convention(c) (UnsafePointer<CChar>?) -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_session_client_changed_callback called")
+}
+
+/// Stub: Register connection state callback
+private nonisolated func spotifly_register_connection_state_callback(_: (@convention(c) (UnsafePointer<CChar>?) -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_connection_state_callback called")
+}
+
+/// Stub: Register context loaded callback
+private nonisolated func spotifly_register_context_loaded_callback(_: (@convention(c) (UnsafePointer<CChar>?) -> Void)?) {
+    debugLog("SpotifyPlayer", "STUB: register_context_loaded_callback called")
+}
+
+/// Stub: Cleanup player
+private nonisolated func spotifly_cleanup() {
+    debugLog("SpotifyPlayer", "STUB: cleanup called")
+}
+
+/// Stub: Soft cleanup (preserve player during reconnect)
+private nonisolated func spotifly_soft_cleanup() {
+    debugLog("SpotifyPlayer", "STUB: soft_cleanup called")
+}
+
+/// Stub: Play URI
+private nonisolated func spotifly_play_uri(_: UnsafePointer<CChar>?) -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: play_uri called")
+    return 0
+}
+
+/// Stub: Play multiple tracks
+private nonisolated func spotifly_play_tracks(_: UnsafePointer<CChar>?) -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: play_tracks called")
+    return 0
+}
+
+/// Stub: Pause playback
+private nonisolated func spotifly_pause() -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: pause called")
+    return 0
+}
+
+/// Stub: Resume playback
+private nonisolated func spotifly_resume() -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: resume called")
+    return 0
+}
+
+/// Stub: Stop playback
+private nonisolated func spotifly_stop() {
+    debugLog("SpotifyPlayer", "STUB: stop called")
+}
+
+/// Stub: Shutdown spirc
+private nonisolated func spotifly_shutdown() {
+    debugLog("SpotifyPlayer", "STUB: shutdown called")
+}
+
+/// Stub: Check if playing
+private nonisolated func spotifly_is_playing() -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: is_playing called")
+    return 0
+}
+
+/// Stub: Check if spirc is ready
+private nonisolated func spotifly_is_spirc_ready() -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: is_spirc_ready called")
+    return 0
+}
+
+/// Stub: Check if session is connected
+private nonisolated func spotifly_is_session_connected() -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: is_session_connected called")
+    return 0
+}
+
+/// Stub: Get playback position
+private nonisolated func spotifly_get_position_ms() -> UInt32 {
+    debugLog("SpotifyPlayer", "STUB: get_position_ms called")
+    return 0
+}
+
+/// Stub: Skip to next track
+private nonisolated func spotifly_next() -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: next called")
+    return 0
+}
+
+/// Stub: Skip to previous track
+private nonisolated func spotifly_previous() -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: previous called")
+    return 0
+}
+
+/// Stub: Seek to position
+private nonisolated func spotifly_seek(_: UInt32) -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: seek called")
+    return 0
+}
+
+/// Stub: Set volume
+private nonisolated func spotifly_set_volume(_: UInt16) -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: set_volume called")
+    return 0
+}
+
+/// Stub: Play radio for seed track
+private nonisolated func spotifly_play_radio(_: UnsafePointer<CChar>?) -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: play_radio called")
+    return 0
+}
+
+/// Stub: Transfer playback to local device
+private nonisolated func spotifly_transfer_to_local() -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: transfer_to_local called")
+    return 0
+}
+
+/// Stub: Transfer playback to another device
+private nonisolated func spotifly_transfer_playback(_: UnsafePointer<CChar>?) -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: transfer_playback called")
+    return 0
+}
+
+/// Stub: Add item to queue
+private nonisolated func spotifly_add_to_queue(_: UnsafePointer<CChar>?) -> Int32 {
+    debugLog("SpotifyPlayer", "STUB: add_to_queue called")
+    return 0
+}
+
+/// Stub: Set bitrate
+private nonisolated func spotifly_set_bitrate(_: UInt8) {
+    debugLog("SpotifyPlayer", "STUB: set_bitrate called")
+}
+
+/// Stub: Get bitrate
+private nonisolated func spotifly_get_bitrate() -> UInt8 {
+    debugLog("SpotifyPlayer", "STUB: get_bitrate called")
+    return 1 // normal
+}
+
+/// Stub: Set gapless playback
+private nonisolated func spotifly_set_gapless(_: Bool) {
+    debugLog("SpotifyPlayer", "STUB: set_gapless called")
+}
+
+/// Stub: Get gapless playback
+private nonisolated func spotifly_get_gapless() -> Bool {
+    debugLog("SpotifyPlayer", "STUB: get_gapless called")
+    return true
+}
+
+/// Stub: Set initial volume
+private nonisolated func spotifly_set_initial_volume(_: UInt16) {
+    debugLog("SpotifyPlayer", "STUB: set_initial_volume called")
+}
+
+/// Stub: Get connection state as JSON
+private nonisolated func spotifly_get_connection_state() -> UnsafeMutablePointer<CChar>? {
+    debugLog("SpotifyPlayer", "STUB: get_connection_state called")
+    return nil
+}
+
+/// Stub: Free string allocated by Rust
+private nonisolated func spotifly_free_string(_: UnsafeMutablePointer<CChar>?) {
+    debugLog("SpotifyPlayer", "STUB: free_string called")
+}
+
+// MARK: - Data Types
 
 /// Queue item metadata (nonisolated for C callback compatibility)
 /// Field names aligned with Track for consistency
