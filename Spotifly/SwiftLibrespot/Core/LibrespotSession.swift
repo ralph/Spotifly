@@ -92,7 +92,7 @@ public actor LibrespotSession {
         debugLog("LibrespotSession", "Connecting with access token...")
         credentials = SpotifyCredentials(accessToken: accessToken)
 
-        await updateState(.connecting)
+        updateState(.connecting)
 
         do {
             // Step 1: Resolve AP endpoints
@@ -104,7 +104,7 @@ public actor LibrespotSession {
             guard let apEndpoint = resolvedEndpoints?.accesspoints.first else {
                 throw LibrespotError.connectionFailed("No accesspoints available")
             }
-            await updateState(.authenticating)
+            updateState(.authenticating)
 
             accesspoint = Accesspoint(endpoint: apEndpoint)
             try await accesspoint!.connect(credentials: credentials!)
@@ -132,11 +132,11 @@ public actor LibrespotSession {
             setupSpircSubscriptions()
             debugLog("LibrespotSession", "SPIRC controller initialized")
 
-            await updateState(.connected)
+            updateState(.connected)
             debugLog("LibrespotSession", "Session fully connected")
 
         } catch {
-            await updateState(.failed(error.localizedDescription))
+            updateState(.failed(error.localizedDescription))
             throw error
         }
     }
@@ -156,7 +156,7 @@ public actor LibrespotSession {
         credentials = nil
         connectionId = nil
 
-        await updateState(.disconnected)
+        updateState(.disconnected)
         debugLog("LibrespotSession", "Disconnected")
     }
 
@@ -171,7 +171,7 @@ public actor LibrespotSession {
         var delay: UInt64 = 1_000_000_000 // 1 second
 
         while attempt <= maxAttempts {
-            await updateState(.reconnecting(attempt: attempt))
+            updateState(.reconnecting(attempt: attempt))
             debugLog("LibrespotSession", "Reconnection attempt \(attempt)/\(maxAttempts)")
 
             do {
