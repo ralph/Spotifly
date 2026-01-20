@@ -111,44 +111,37 @@ public final class ShannonCipher: @unchecked Sendable {
             macFunc(mbuf)
         }
 
-        // Generate MAC
+        // Perturb the MAC to mark end of input
         cycle()
-        addKey(Self.initKonst)
-        var crcSave = crc
-
-        for _ in 0 ..< Self.n {
-            crcFunc(0)
-        }
-
-        for i in 0 ..< Self.n {
-            crc[i] ^= crcSave[i]
-        }
-
-        crcSave = crc
-
-        for _ in 0 ..< Self.n {
-            cycle()
-        }
-
-        for i in 0 ..< Self.n {
-            crc[i] ^= r[i]
-        }
-
-        // Extract MAC bytes
-        var mac = Data(count: macLen)
+        r[Self.keyP] ^= Self.initKonst ^ (UInt32(nbuf) << 3)
         nbuf = 0
-        for i in 0 ..< macLen {
-            if nbuf == 0 {
-                crc[0] ^= crc[2] ^ crc[15] ^ 1
-                for j in 1 ..< Self.n {
-                    crc[j - 1] = crc[j]
+
+        // Add the CRC to the stream register and diffuse it
+        for i in 0 ..< Self.n {
+            r[i] ^= crc[i]
+        }
+        diffuse()
+
+        // Produce output from the stream buffer
+        var mac = Data(count: macLen)
+        var offset = 0
+        while offset < macLen {
+            cycle()
+            let remaining = macLen - offset
+            if remaining >= 4 {
+                // Write full word in little-endian
+                mac[offset] = UInt8(sbuf & 0xFF)
+                mac[offset + 1] = UInt8((sbuf >> 8) & 0xFF)
+                mac[offset + 2] = UInt8((sbuf >> 16) & 0xFF)
+                mac[offset + 3] = UInt8((sbuf >> 24) & 0xFF)
+                offset += 4
+            } else {
+                // Write partial word in little-endian
+                for i in 0 ..< remaining {
+                    mac[offset + i] = UInt8((sbuf >> (i * 8)) & 0xFF)
                 }
-                crc[Self.n - 1] = sbuf
-                sbuf = crc[0] ^ crcSave[0]
-                nbuf = 32
+                offset += remaining
             }
-            mac[i] = UInt8((sbuf >> (32 - nbuf)) & 0xFF)
-            nbuf -= 8
         }
 
         return mac
@@ -356,7 +349,7 @@ public actor CipherPair {
         recvCipher = ShannonCipher(key: recvKey)
     }
 
-    /// Encrypt data for sending
+    /// Encrypt data for sending (complete packet in one call)
     public func encrypt(_ data: Data, nonce: UInt32) -> (encrypted: Data, mac: Data) {
         sendCipher.nonceU32(nonce)
         var encrypted = data
@@ -365,18 +358,33 @@ public actor CipherPair {
         return (encrypted, mac)
     }
 
-    /// Decrypt received data
+    // MARK: - Streaming Decryption (for receiving packets in parts)
+
+    /// Begin decryption session with nonce
+    public func beginDecrypt(nonce: UInt32) {
+        recvCipher.nonceU32(nonce)
+    }
+
+    /// Decrypt a part of the stream (call after beginDecrypt, can call multiple times)
+    public func decryptPart(_ data: Data) -> Data {
+        var decrypted = data
+        recvCipher.decrypt(&decrypted)
+        return decrypted
+    }
+
+    /// Finish decryption and return expected MAC (call once after all parts decrypted)
+    public func finishDecrypt() -> Data {
+        recvCipher.finish(4)
+    }
+
+    // MARK: - Legacy single-shot decrypt (kept for compatibility)
+
+    /// Decrypt received data (single shot - sets nonce, decrypts, finishes)
     public func decrypt(_ data: Data, nonce: UInt32) -> Data {
         recvCipher.nonceU32(nonce)
         var decrypted = data
         recvCipher.decrypt(&decrypted)
         _ = recvCipher.finish(4) // Consume MAC state
         return decrypted
-    }
-
-    /// Verify MAC matches expected
-    public func checkMac(_ expectedMac: Data, nonce: UInt32) -> Error? {
-        recvCipher.nonceU32(nonce)
-        return recvCipher.checkMac(expectedMac)
     }
 }

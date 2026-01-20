@@ -88,29 +88,48 @@ public actor LibrespotSession {
     // MARK: - Connection Management
 
     /// Connect to Spotify with the given access token
-    public func connect(accessToken: String) async throws {
-        debugLog("LibrespotSession", "Connecting with access token...")
-        credentials = SpotifyCredentials(accessToken: accessToken)
+    /// - Parameters:
+    ///   - accessToken: The OAuth access token
+    ///   - username: The Spotify username (required for AP authentication)
+    public func connect(accessToken: String, username: String) async throws {
+        debugLog("LibrespotSession", "Connecting with access token for user: \(username)...")
+        credentials = SpotifyCredentials(accessToken: accessToken, username: username)
 
         updateState(.connecting)
 
         do {
-            // Step 1: Resolve AP endpoints
+            // Step 1: Resolve AP endpoints AND pre-generate DH keys in parallel
             apResolver = APResolver()
-            resolvedEndpoints = try await apResolver!.resolve()
+            var preGeneratedDH: DiffieHellman?
+
+            async let resolveTask = apResolver!.resolve()
+            async let dhTask: DiffieHellman? = {
+                do {
+                    return try DiffieHellman()
+                } catch {
+                    debugLog("LibrespotSession", "Failed to pre-generate DH: \(error)")
+                    return nil
+                }
+            }()
+
+            resolvedEndpoints = try await resolveTask
+            preGeneratedDH = await dhTask
             debugLog("LibrespotSession", "Resolved \(resolvedEndpoints!.accesspoints.count) accesspoints, \(resolvedEndpoints!.dealers.count) dealers")
 
-            // Step 2: Connect to Accesspoint
+            // Step 2: Skip client token for now - it's used for spclient, not AP auth
+            // try await requestClientToken()
+
+            // Step 3: Connect to Accesspoint
             guard let apEndpoint = resolvedEndpoints?.accesspoints.first else {
                 throw LibrespotError.connectionFailed("No accesspoints available")
             }
             updateState(.authenticating)
 
-            accesspoint = Accesspoint(endpoint: apEndpoint)
-            try await accesspoint!.connect(credentials: credentials!)
+            accesspoint = Accesspoint(endpoint: apEndpoint, preGeneratedDH: preGeneratedDH)
+            try await accesspoint!.connect(credentials: credentials!, deviceId: deviceInfo.deviceId)
             debugLog("LibrespotSession", "Connected to accesspoint")
 
-            // Step 3: Connect to Dealer
+            // Step 4: Connect to Dealer
             guard let dealerHost = resolvedEndpoints?.dealers.first else {
                 throw LibrespotError.connectionFailed("No dealers available")
             }
@@ -122,7 +141,7 @@ public actor LibrespotSession {
             try await dealerConnection!.connect()
             debugLog("LibrespotSession", "Connected to dealer")
 
-            // Step 4: Initialize SPIRC controller
+            // Step 5: Initialize SPIRC controller
             spircController = SpircController(
                 deviceInfo: deviceInfo,
                 accesspoint: accesspoint!,
@@ -175,7 +194,11 @@ public actor LibrespotSession {
             debugLog("LibrespotSession", "Reconnection attempt \(attempt)/\(maxAttempts)")
 
             do {
-                try await connect(accessToken: creds.accessToken)
+                // Username should be set from initial connect
+                guard let username = creds.username else {
+                    throw LibrespotError.authenticationFailed("No username available for reconnection")
+                }
+                try await connect(accessToken: creds.accessToken, username: username)
                 return
             } catch {
                 debugLog("LibrespotSession", "Reconnection attempt \(attempt) failed: \(error)")
@@ -276,5 +299,209 @@ public actor LibrespotSession {
                 self?.spircCommandSubject.send(command)
             }
             .store(in: &spircSubscriptions)
+    }
+
+    // MARK: - Client Token
+
+    /// Request a client token from Spotify before AP authentication
+    /// This is required on macOS/Windows to "register" the session
+    private func requestClientToken() async throws {
+        let clientId = SpotifyConfig.getClientId()
+        debugLog("LibrespotSession", "Requesting client token with clientId: \(clientId.prefix(8))...")
+
+        // Build the ClientTokenRequest protobuf (proto3)
+        let requestData = buildClientTokenRequest(clientId: clientId)
+
+        // Make HTTP request
+        var request = URLRequest(url: URL(string: "https://clienttoken.spotify.com/v1/clienttoken")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
+        request.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
+        request.httpBody = requestData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            debugLog("LibrespotSession", "Client token request failed: invalid response")
+            return
+        }
+
+        if httpResponse.statusCode == 200 {
+            // Parse response to check if we got a granted token
+            if let tokenInfo = parseClientTokenResponse(data) {
+                debugLog("LibrespotSession", "Received client token (expires in \(tokenInfo.expiresAfterSeconds)s)")
+            } else {
+                debugLog("LibrespotSession", "Received client token response (unparsed)")
+            }
+        } else {
+            debugLog("LibrespotSession", "Client token request failed: HTTP \(httpResponse.statusCode)")
+            // Don't throw - continue anyway and see if AP auth works
+        }
+    }
+
+    /// Build ClientTokenRequest protobuf for macOS
+    private nonisolated func buildClientTokenRequest(clientId: String) -> Data {
+        var data = Data()
+
+        // Helper to encode varint
+        func encodeVarint(_ value: UInt64) -> [UInt8] {
+            var result: [UInt8] = []
+            var v = value
+            while v > 127 {
+                result.append(UInt8(v & 0x7F) | 0x80)
+                v >>= 7
+            }
+            result.append(UInt8(v))
+            return result
+        }
+
+        // Helper to encode string field
+        func encodeString(_ fieldNum: Int, _ str: String) -> Data {
+            var fieldData = Data()
+            let tag = (fieldNum << 3) | 2 // wire type 2 = length-delimited
+            fieldData.append(contentsOf: encodeVarint(UInt64(tag)))
+            let strData = str.data(using: .utf8)!
+            fieldData.append(contentsOf: encodeVarint(UInt64(strData.count)))
+            fieldData.append(strData)
+            return fieldData
+        }
+
+        // Helper to encode embedded message field
+        func encodeMessage(_ fieldNum: Int, _ msgData: Data) -> Data {
+            var fieldData = Data()
+            let tag = (fieldNum << 3) | 2
+            fieldData.append(contentsOf: encodeVarint(UInt64(tag)))
+            fieldData.append(contentsOf: encodeVarint(UInt64(msgData.count)))
+            fieldData.append(msgData)
+            return fieldData
+        }
+
+        // Build NativeDesktopMacOSData (fields: system_version=1, hw_model=2, compiled_cpu_type=3)
+        var macosData = Data()
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
+        macosData.append(encodeString(1, osVersion))
+        macosData.append(encodeString(2, "iMac21,1"))
+        #if arch(arm64)
+        macosData.append(encodeString(3, "arm64"))
+        #else
+        macosData.append(encodeString(3, "x86_64"))
+        #endif
+
+        // Build PlatformSpecificData with desktop_macos (field 3)
+        var platformData = Data()
+        platformData.append(encodeMessage(3, macosData))
+
+        // Build ConnectivitySdkData (platform_specific_data=1, device_id=2)
+        var connectivityData = Data()
+        connectivityData.append(encodeMessage(1, platformData))
+        connectivityData.append(encodeString(2, deviceInfo.deviceId))
+
+        // Build ClientDataRequest (client_version=1, client_id=2, connectivity_sdk_data=3)
+        var clientData = Data()
+        clientData.append(encodeString(1, "1.2.52.442")) // Spotify desktop version
+        clientData.append(encodeString(2, clientId))
+        clientData.append(encodeMessage(3, connectivityData))
+
+        // Build ClientTokenRequest (request_type=1 as varint, client_data=2 as message)
+        // request_type = 1 (REQUEST_CLIENT_DATA_REQUEST)
+        let requestTypeTag = (1 << 3) | 0 // field 1, wire type 0 (varint)
+        data.append(contentsOf: encodeVarint(UInt64(requestTypeTag)))
+        data.append(contentsOf: encodeVarint(1)) // value = 1
+
+        data.append(encodeMessage(2, clientData))
+
+        return data
+    }
+
+    /// Parse ClientTokenResponse to extract token info
+    private nonisolated func parseClientTokenResponse(_ data: Data) -> (token: String, expiresAfterSeconds: Int)? {
+        // Simple parsing - look for response_type=1 (granted) and extract token
+        var offset = 0
+
+        func readVarint() -> UInt64? {
+            guard offset < data.count else { return nil }
+            var result: UInt64 = 0
+            var shift = 0
+            while offset < data.count {
+                let byte = data[offset]
+                offset += 1
+                result |= UInt64(byte & 0x7F) << shift
+                if byte & 0x80 == 0 { break }
+                shift += 7
+            }
+            return result
+        }
+
+        func readLengthDelimited() -> Data? {
+            guard let length = readVarint(), offset + Int(length) <= data.count else { return nil }
+            let result = data.subdata(in: offset..<(offset + Int(length)))
+            offset += Int(length)
+            return result
+        }
+
+        // Parse top-level message
+        while offset < data.count {
+            guard let tag = readVarint() else { break }
+            let fieldNum = Int(tag >> 3)
+            let wireType = Int(tag & 0x7)
+
+            switch (fieldNum, wireType) {
+            case (1, 0): // response_type (varint)
+                guard let responseType = readVarint() else { break }
+                if responseType != 1 { return nil } // Not a granted token
+            case (2, 2): // granted_token (message)
+                guard let grantedData = readLengthDelimited() else { break }
+                // Parse GrantedTokenResponse
+                var gOffset = 0
+                var token: String?
+                var expires: Int = 0
+                while gOffset < grantedData.count {
+                    var gResult: UInt64 = 0
+                    var gShift = 0
+                    while gOffset < grantedData.count {
+                        let byte = grantedData[gOffset]
+                        gOffset += 1
+                        gResult |= UInt64(byte & 0x7F) << gShift
+                        if byte & 0x80 == 0 { break }
+                        gShift += 7
+                    }
+                    let gFieldNum = Int(gResult >> 3)
+                    let gWireType = Int(gResult & 0x7)
+                    if gWireType == 2 { // string
+                        var len: UInt64 = 0
+                        var lenShift = 0
+                        while gOffset < grantedData.count {
+                            let byte = grantedData[gOffset]
+                            gOffset += 1
+                            len |= UInt64(byte & 0x7F) << lenShift
+                            if byte & 0x80 == 0 { break }
+                            lenShift += 7
+                        }
+                        if gFieldNum == 1 && gOffset + Int(len) <= grantedData.count {
+                            token = String(data: grantedData.subdata(in: gOffset..<(gOffset + Int(len))), encoding: .utf8)
+                        }
+                        gOffset += Int(len)
+                    } else if gWireType == 0 { // varint
+                        var val: UInt64 = 0
+                        var valShift = 0
+                        while gOffset < grantedData.count {
+                            let byte = grantedData[gOffset]
+                            gOffset += 1
+                            val |= UInt64(byte & 0x7F) << valShift
+                            if byte & 0x80 == 0 { break }
+                            valShift += 7
+                        }
+                        if gFieldNum == 2 { expires = Int(val) }
+                    }
+                }
+                if let t = token { return (t, expires) }
+            default:
+                // Skip unknown fields
+                if wireType == 0 { _ = readVarint() }
+                else if wireType == 2 { _ = readLengthDelimited() }
+                else { break }
+            }
+        }
+        return nil
     }
 }

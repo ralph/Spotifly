@@ -22,6 +22,7 @@ public enum LibrespotError: Error, LocalizedError, Sendable {
     case invalidPacket(String)
     case encryptionError(String)
     case protobufError(String)
+    case macMismatch
 
     // MARK: - Playback Errors
 
@@ -64,6 +65,8 @@ public enum LibrespotError: Error, LocalizedError, Sendable {
             "Encryption error: \(message)"
         case let .protobufError(message):
             "Protobuf error: \(message)"
+        case .macMismatch:
+            "MAC verification failed"
         case let .trackNotFound(uri):
             "Track not found: \(uri)"
         case let .audioKeyFailed(message):

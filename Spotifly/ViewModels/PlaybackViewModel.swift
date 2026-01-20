@@ -82,6 +82,7 @@ final class PlaybackViewModel {
     var isCurrentTrackFavorited = false
 
     private var isInitialized = false
+    private var isInitializing = false
     private var lastAlbumArtURL: String?
     private var playbackStateSubscription: AnyCancellable?
     private var volumeSubscription: AnyCancellable?
@@ -94,6 +95,10 @@ final class PlaybackViewModel {
     private var volumeDebounceTask: Task<Void, Never>?
     /// Token provider for reinitialization after session disconnect
     private var tokenProvider: (@Sendable () async -> String)?
+    /// Username provider for reinitialization after session disconnect
+    private var usernameProvider: (@Sendable () async -> String?)?
+    /// Cached username from last successful initialization
+    private var cachedUsername: String?
 
     /// State to restore after seamless reconnection
     private var pendingResumeTrackUri: String?
@@ -133,17 +138,23 @@ final class PlaybackViewModel {
         startPositionTimer()
     }
 
-    /// Sets the token provider for automatic reinitialization after session disconnect.
-    func setTokenProvider(_ provider: @escaping @Sendable () async -> String) {
-        tokenProvider = provider
+    /// Sets the token and username providers for automatic reinitialization after session disconnect.
+    func setProviders(
+        tokenProvider: @escaping @Sendable () async -> String,
+        usernameProvider: @escaping @Sendable () async -> String?
+    ) {
+        self.tokenProvider = tokenProvider
+        self.usernameProvider = usernameProvider
     }
 
-    func initializeIfNeeded(accessToken: String) async {
-        guard !isInitialized else { return }
+    func initializeIfNeeded(accessToken: String, username: String) async {
+        guard !isInitialized, !isInitializing else { return }
 
+        isInitializing = true
         isLoading = true
+        cachedUsername = username
         do {
-            try await SpotifyPlayer.initialize(accessToken: accessToken)
+            try await SpotifyPlayer.initialize(accessToken: accessToken, username: username)
             isInitialized = true
 
             // Wait for Spirc to be ready (poll with timeout)
@@ -163,13 +174,25 @@ final class PlaybackViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+        isInitializing = false
         isLoading = false
     }
 
     func play(uriOrUrl: String, accessToken: String) async {
-        // Initialize if needed
+        // Initialize if needed - use cached or provided username
         if !isInitialized {
-            await initializeIfNeeded(accessToken: accessToken)
+            var username = cachedUsername
+            if username == nil {
+                username = await usernameProvider?()
+            }
+            if let username {
+                await initializeIfNeeded(accessToken: accessToken, username: username)
+            }
+        }
+
+        // Wait for initialization if in progress
+        while isInitializing {
+            try? await Task.sleep(for: .milliseconds(100))
         }
 
         guard isInitialized else {
@@ -195,9 +218,15 @@ final class PlaybackViewModel {
     }
 
     func playTracks(_ trackUris: [String], accessToken: String) async {
-        // Initialize if needed
+        // Initialize if needed - use cached or provided username
         if !isInitialized {
-            await initializeIfNeeded(accessToken: accessToken)
+            var username = cachedUsername
+            if username == nil {
+                username = await usernameProvider?()
+            }
+            if let username {
+                await initializeIfNeeded(accessToken: accessToken, username: username)
+            }
         }
 
         guard isInitialized else {
@@ -224,9 +253,15 @@ final class PlaybackViewModel {
     }
 
     func addToQueue(uri: String, accessToken: String) async {
-        // Initialize if needed
+        // Initialize if needed - use cached or provided username
         if !isInitialized {
-            await initializeIfNeeded(accessToken: accessToken)
+            var username = cachedUsername
+            if username == nil {
+                username = await usernameProvider?()
+            }
+            if let username {
+                await initializeIfNeeded(accessToken: accessToken, username: username)
+            }
         }
 
         guard isInitialized else {
@@ -614,9 +649,15 @@ final class PlaybackViewModel {
                         // Check for cancellation again
                         if Task.isCancelled { break }
 
-                        // Attempt reconnection
+                        // Attempt reconnection - use cached or provided username
                         let token = await tokenProvider()
-                        await initializeIfNeeded(accessToken: token)
+                        var username = cachedUsername
+                        if username == nil {
+                            username = await usernameProvider?()
+                        }
+                        if let username {
+                            await initializeIfNeeded(accessToken: token, username: username)
+                        }
 
                         // If initialized, we're done - SessionConnected callback will handle the rest
                         if isInitialized {

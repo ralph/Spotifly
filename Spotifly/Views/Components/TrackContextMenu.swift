@@ -136,7 +136,10 @@ struct TrackContextMenu: View {
         Task {
             do {
                 let token = await session.validAccessToken()
-                await playbackViewModel.initializeIfNeeded(accessToken: token)
+                // Username comes from providers set in LoggedInView
+                if let userId = session.userId {
+                    await playbackViewModel.initializeIfNeeded(accessToken: token, username: userId)
+                }
                 try SpotifyPlayer.playRadio(trackUri: track.uri)
                 onNavigate?()
                 navigationCoordinator.navigateToQueue()

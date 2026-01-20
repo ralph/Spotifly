@@ -42,11 +42,43 @@ public actor Accesspoint {
     private var pendingAudioKeyRequests: [UInt32: CheckedContinuation<Data, Error>] = [:]
     private var nextAudioKeySeq: UInt32 = 1
 
-    /// Spotify version code (matching go-librespot)
-    private static let spotifyVersionCode: UInt64 = 121_300_618
+    /// Spotify version code (matching librespot-rs)
+    private static let spotifyVersionCode: UInt64 = 124_200_290
 
-    /// Version string
-    private static let versionString = "spotifly-swift/0.1.0"
+    /// Version string (matching librespot-rs format)
+    private static let versionString = "librespot 0.8.0"
+
+    // MARK: - Shannon Cipher Test
+
+    /// Test Shannon cipher with known test vectors
+    /// Call this to verify the cipher implementation is correct
+    public static func testShannonCipher() -> Bool {
+        // Test vectors from https://github.com/twonky4/shannon
+        let key = Data([0x65, 0x87, 0xd8, 0x8f, 0x6c, 0x32, 0x9d, 0x8a, 0xe4, 0x6b])
+        let plaintext = "My secret message".data(using: .utf8)!
+        let expectedCiphertext = Data([0x91, 0x9d, 0xa9, 0xb6, 0x29, 0xfc, 0x9c, 0xdd, 0x17, 0x8c, 0x15, 0x31, 0x9a, 0xae, 0xcc, 0x6e, 0xd4])
+        let expectedMac = Data([0xbe, 0x7b, 0xef, 0x39, 0xee, 0xfe, 0x54, 0xfd, 0x8d, 0xb0, 0xbc, 0x6f, 0xd5, 0x30, 0x35, 0x19])
+
+        // Test WITHOUT nonce (raw encryption)
+        let cipher = ShannonCipher(key: key)
+        var data = plaintext
+        cipher.encrypt(&data)
+        let mac = cipher.finish(16)
+
+        debugLog("Accesspoint", "=== SHANNON CIPHER TEST ===")
+        debugLog("Accesspoint", "Key: \(key.hexString)")
+        debugLog("Accesspoint", "Plaintext: \(String(data: plaintext, encoding: .utf8) ?? "?")")
+        debugLog("Accesspoint", "Plaintext hex: \(plaintext.hexString)")
+        debugLog("Accesspoint", "Expected ciphertext: \(expectedCiphertext.hexString)")
+        debugLog("Accesspoint", "Actual ciphertext:   \(data.hexString)")
+        debugLog("Accesspoint", "Expected MAC: \(expectedMac.hexString)")
+        debugLog("Accesspoint", "Actual MAC:   \(mac.hexString)")
+        debugLog("Accesspoint", "Ciphertext match: \(data == expectedCiphertext)")
+        debugLog("Accesspoint", "MAC match: \(mac == expectedMac)")
+        debugLog("Accesspoint", "=== END TEST ===")
+
+        return data == expectedCiphertext && mac == expectedMac
+    }
 
     // MARK: - RSA Public Key for Signature Verification
 
@@ -78,15 +110,16 @@ public actor Accesspoint {
 
     // MARK: - Initialization
 
-    public init(endpoint: String) {
+    public init(endpoint: String, preGeneratedDH: DiffieHellman? = nil) {
         self.endpoint = endpoint
-        debugLog("Accesspoint", "Created for endpoint: \(endpoint)")
+        self.dh = preGeneratedDH
+        debugLog("Accesspoint", "Created for endpoint: \(endpoint), pre-generated DH: \(preGeneratedDH != nil)")
     }
 
     // MARK: - Connection
 
     /// Connect and authenticate with credentials
-    public func connect(credentials: SpotifyCredentials) async throws {
+    public func connect(credentials: SpotifyCredentials, deviceId: String) async throws {
         debugLog("Accesspoint", "Connecting to \(endpoint)...")
 
         // Parse endpoint (format: "host:port")
@@ -148,13 +181,13 @@ public actor Accesspoint {
 
         debugLog("Accesspoint", "TCP connected, performing handshake...")
 
-        // Perform Diffie-Hellman key exchange
+        // Perform Diffie-Hellman key exchange (keys were pre-generated)
         try await performKeyExchange()
 
         debugLog("Accesspoint", "Handshake complete, authenticating...")
 
-        // Authenticate with token
-        try await authenticate(token: credentials.accessToken)
+        // Authenticate with credentials and device ID
+        try await authenticate(credentials: credentials, deviceId: deviceId)
 
         isConnected = true
         debugLog("Accesspoint", "Connected and authenticated")
@@ -193,12 +226,25 @@ public actor Accesspoint {
         _ = nonce.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
         clientNonce = nonce
 
-        // Generate DH key pair
-        dh = try DiffieHellman()
+        // Use pre-generated DH key pair if available, otherwise generate now
+        if dh == nil {
+            debugLog("Accesspoint", "DH keys not pre-generated, generating now...")
+            dh = try DiffieHellman()
+        } else {
+            debugLog("Accesspoint", "Using pre-generated DH keys")
+        }
 
         // Build ClientHello
+        // Platform must match librespot-rs for handshake HMAC to succeed
+        // On macOS Apple Silicon, librespot-rs uses OSX_X86 (falls through to default)
+        // because there's no explicit ARM case in their match statement
         #if os(macOS)
-            let platform = SpotifyPlatform.osxX8664
+            #if arch(x86_64)
+                let platform = SpotifyPlatform.osxX8664
+            #else
+                // Apple Silicon (arm64) - librespot uses osxX86 as default fallthrough
+                let platform = SpotifyPlatform.osxX86
+            #endif
         #elseif os(iOS)
             let platform = SpotifyPlatform.iphoneArm64
         #else
@@ -228,6 +274,9 @@ public actor Accesspoint {
         // Serialize and send ClientHello
         let clientHelloData = clientHello.serialize()
 
+        debugLog("Accesspoint", "ClientHello protobuf: \(clientHelloData.count) bytes, first 32: \(clientHelloData.prefix(32).hexString)")
+        debugLog("Accesspoint", "DH public key: \(dh!.publicKeyBytes.count) bytes, first 16: \(dh!.publicKeyBytes.prefix(16).hexString)")
+
         // Write with hello prefix (0x00, 0x04) and length
         var message = Data()
         message.append(contentsOf: [0x00, 0x04]) // Hello prefix
@@ -235,7 +284,10 @@ public actor Accesspoint {
         message.append(contentsOf: withUnsafeBytes(of: totalLength.bigEndian) { Data($0) })
         message.append(clientHelloData)
 
-        // Track for challenge
+        debugLog("Accesspoint", "Full message: \(message.count) bytes, first 32: \(message.prefix(32).hexString)")
+
+        // Track for challenge - include the FULL message with framing (per librespot)
+        // The accumulator must include: 0x00 0x04 prefix + 4-byte length + protobuf
         handshakeAccumulator.append(message)
 
         try await sendRaw(message)
@@ -243,16 +295,15 @@ public actor Accesspoint {
         debugLog("Accesspoint", "Sent ClientHello (\(message.count) bytes)")
 
         // Read APResponseMessage
-        let responseLength = try await readRawLength()
+        debugLog("Accesspoint", "Waiting for server response...")
+        let responseLengthBytes = try await readRawBytes(count: 4)
+        let responseLength = Int(responseLengthBytes[0]) << 24 | Int(responseLengthBytes[1]) << 16 |
+            Int(responseLengthBytes[2]) << 8 | Int(responseLengthBytes[3])
+        debugLog("Accesspoint", "Got response length: \(responseLength)")
         let responseData = try await readRawBytes(count: responseLength - 4) // Length includes itself
 
-        // Track for challenge
-        var responseLengthData = Data(count: 4)
-        responseLengthData[0] = UInt8((responseLength >> 24) & 0xFF)
-        responseLengthData[1] = UInt8((responseLength >> 16) & 0xFF)
-        responseLengthData[2] = UInt8((responseLength >> 8) & 0xFF)
-        responseLengthData[3] = UInt8(responseLength & 0xFF)
-        handshakeAccumulator.append(responseLengthData)
+        // Track for challenge - include the 4-byte length prefix AND protobuf data (per librespot)
+        handshakeAccumulator.append(responseLengthBytes)
         handshakeAccumulator.append(responseData)
 
         debugLog("Accesspoint", "Received APResponseMessage (\(responseData.count) bytes)")
@@ -277,6 +328,7 @@ public actor Accesspoint {
         debugLog("Accesspoint", "Server signature verified")
 
         // Exchange keys
+        debugLog("Accesspoint", "Server DH public key: \(dhChallenge.gs.count) bytes, first 16: \(dhChallenge.gs.prefix(16).hexString)")
         let sharedSecret = dh!.exchange(remotePublicKeyBytes: dhChallenge.gs)
 
         // Derive keys using HMAC-SHA1
@@ -291,6 +343,9 @@ public actor Accesspoint {
     }
 
     private func deriveKeys(sharedSecret: Data, exchangeData: Data) -> (challenge: Data, sendKey: Data, recvKey: Data) {
+        debugLog("Accesspoint", "Deriving keys from shared secret (\(sharedSecret.count) bytes), exchange data (\(exchangeData.count) bytes)")
+        debugLog("Accesspoint", "Shared secret (first 16): \(sharedSecret.prefix(16).hexString)")
+
         // Generate 5 blocks of HMAC-SHA1 output (100 bytes)
         var macData = Data()
 
@@ -299,18 +354,32 @@ public actor Accesspoint {
             dataToMac.append(i)
             let hmac = hmacSHA1(key: sharedSecret, data: dataToMac)
             macData.append(hmac)
+            if i == 1 {
+                debugLog("Accesspoint", "HMAC input 1 size: \(dataToMac.count), last 8 bytes: \(dataToMac.suffix(8).hexString)")
+                debugLog("Accesspoint", "HMAC output 1: \(hmac.hexString)")
+            }
         }
 
         // macData[0:20] = challenge key
         // macData[20:52] = send key (32 bytes)
         // macData[52:84] = recv key (32 bytes)
 
-        let challengeKey = macData[0 ..< 20]
-        let sendKey = macData[20 ..< 52]
-        let recvKey = macData[52 ..< 84]
+        let challengeKey = Data(macData[0 ..< 20])
+        let sendKey = Data(macData[20 ..< 52])
+        let recvKey = Data(macData[52 ..< 84])
 
-        // Compute challenge HMAC
-        let challenge = hmacSHA1(key: Data(challengeKey), data: handshakeAccumulator)
+        let sendKeyHex = sendKey.prefix(16).map { String(format: "%02x", $0) }.joined()
+        let recvKeyHex = recvKey.prefix(16).map { String(format: "%02x", $0) }.joined()
+        debugLog("Accesspoint", "Send key (first 16): \(sendKeyHex)")
+        debugLog("Accesspoint", "Recv key (first 16): \(recvKeyHex)")
+
+        // Compute challenge HMAC using the same exchange data (not the actor property)
+        debugLog("Accesspoint", "Challenge key (20 bytes): \(challengeKey.hexString)")
+        debugLog("Accesspoint", "Accumulator size: \(exchangeData.count) bytes")
+        debugLog("Accesspoint", "Accumulator first 32: \(exchangeData.prefix(32).hexString)")
+        debugLog("Accesspoint", "Accumulator last 32: \(exchangeData.suffix(32).hexString)")
+        let challenge = hmacSHA1(key: Data(challengeKey), data: exchangeData)
+        debugLog("Accesspoint", "Challenge HMAC: \(challenge.hexString)")
 
         return (challenge, Data(sendKey), Data(recvKey))
     }
@@ -343,6 +412,7 @@ public actor Accesspoint {
         )
 
         let responseData = response.serialize()
+        debugLog("Accesspoint", "ClientResponsePlaintext protobuf: \(responseData.count) bytes, hex: \(responseData.hexString)")
 
         // Send without hello prefix, just length + data
         var message = Data()
@@ -352,7 +422,7 @@ public actor Accesspoint {
 
         try await sendRaw(message)
 
-        debugLog("Accesspoint", "Sent ClientResponsePlaintext (\(message.count) bytes)")
+        debugLog("Accesspoint", "Sent ClientResponsePlaintext (\(message.count) bytes, including 4-byte length)")
 
         // Initialize cipher pair
         cipherPair = CipherPair(sendKey: keys.sendKey, recvKey: keys.recvKey)
@@ -375,54 +445,193 @@ public actor Accesspoint {
         return true
     }
 
+    // MARK: - Stored Credentials (DEBUG)
+
+    /// Stored credentials loaded from librespot cache
+    private struct StoredCredentials {
+        let username: String
+        let authData: Data
+    }
+
+    /// Load stored credentials from librespot cache file (DEBUG)
+    private nonisolated func loadStoredCredentials() -> StoredCredentials? {
+        let path = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/spotify/credentials.json")
+
+        print("[DEBUG Accesspoint] Looking for credentials at: \(path.path)")
+
+        guard let data = try? Data(contentsOf: path) else {
+            print("[DEBUG Accesspoint] Failed to read credentials file")
+            return nil
+        }
+        print("[DEBUG Accesspoint] Read \(data.count) bytes from credentials file")
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            print("[DEBUG Accesspoint] Failed to parse credentials JSON")
+            return nil
+        }
+        print("[DEBUG Accesspoint] Parsed JSON with keys: \(json.keys)")
+
+        guard let username = json["username"] as? String else {
+            print("[DEBUG Accesspoint] Missing username in credentials")
+            return nil
+        }
+
+        guard let authDataB64 = json["auth_data"] as? String else {
+            print("[DEBUG Accesspoint] Missing auth_data in credentials")
+            return nil
+        }
+        print("[DEBUG Accesspoint] auth_data base64 length: \(authDataB64.count)")
+
+        guard let authData = Data(base64Encoded: authDataB64) else {
+            print("[DEBUG Accesspoint] Failed to decode auth_data base64")
+            return nil
+        }
+        print("[DEBUG Accesspoint] Decoded auth_data: \(authData.count) bytes")
+
+        return StoredCredentials(username: username, authData: authData)
+    }
+
     // MARK: - Authentication
 
-    private func authenticate(token: String) async throws {
+    private func authenticate(credentials: SpotifyCredentials, deviceId: String) async throws {
         guard let cipher = cipherPair else {
             throw LibrespotError.notInitialized
         }
 
         // Build ClientResponseEncrypted
-        #if os(macOS)
+        // CPU family must match the actual architecture (ARM for Apple Silicon, x86_64 for Intel)
+        #if arch(arm64)
+            let cpuFamily = CpuFamily.arm
+        #elseif arch(x86_64)
             let cpuFamily = CpuFamily.x8664
+        #else
+            let cpuFamily = CpuFamily.unknown
+        #endif
+
+        #if os(macOS)
             let os = SpotifyOS.osx
         #elseif os(iOS)
-            let cpuFamily = CpuFamily.arm
             let os = SpotifyOS.iphone
         #else
-            let cpuFamily = CpuFamily.x8664
             let os = SpotifyOS.linux
         #endif
 
-        let credentials = LoginCredentials(
-            username: nil, // Not needed for token auth
-            typ: .spotifyToken,
-            authData: token.data(using: .utf8),
-        )
+        // Try stored credentials first (from librespot cache)
+        let storedCreds = loadStoredCredentials()
+        let loginCredentials: LoginCredentials
+        if let storedCreds = storedCreds {
+            debugLog("Accesspoint", "Using STORED CREDENTIALS for \(storedCreds.username)")
+            loginCredentials = LoginCredentials(
+                username: storedCreds.username,
+                typ: .storedSpotifyCredentials,
+                authData: storedCreds.authData
+            )
+            debugLog("Accesspoint", "Stored credentials auth_data: \(storedCreds.authData.count) bytes, first 16: \(storedCreds.authData.prefix(16).hexString)")
+        } else {
+            debugLog("Accesspoint", "No stored credentials found, using OAuth token for \(credentials.username ?? "unknown")")
+            loginCredentials = LoginCredentials(
+                username: credentials.username,
+                typ: .spotifyToken,
+                authData: credentials.accessToken.data(using: .utf8)
+            )
+        }
 
+        // DEBUG: Use exact same system_information_string as librespot for testing
+        let sysInfoString = "librespot-fd61ce1-RY6kyO9B"
+        // DEBUG: Use SHA1("test") = the device_id librespot-rs used when run with --name test
+        let actualDeviceId = "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3" // SHA1("test")
+        debugLog("Accesspoint", "Using device_id: \(actualDeviceId) (original: \(deviceId))")
         let systemInfo = SystemInfo(
             cpuFamily: cpuFamily,
             os: os,
-            systemInformationString: "spotifly-swift",
-            deviceId: nil, // Will be set by session
+            systemInformationString: sysInfoString,
+            deviceId: actualDeviceId,
         )
 
         let loginRequest = ClientResponseEncrypted(
-            loginCredentials: credentials,
+            loginCredentials: loginCredentials,
             systemInfo: systemInfo,
             versionString: Self.versionString,
         )
 
         let payload = loginRequest.serialize()
 
+        // Detailed debug: match librespot-rs trace logging format
+        let credsData = loginCredentials.serialize()
+        let sysData = systemInfo.serialize()
+        debugLog("Accesspoint", "=== LOGIN PACKET DEBUG ===")
+        debugLog("Accesspoint", "Command: 0xAB (PacketType::Login)")
+        debugLog("Accesspoint", "Payload length: \(payload.count) bytes")
+        debugLog("Accesspoint", "Payload hex (first 64): \(payload.prefix(64).hexString)")
+        debugLog("Accesspoint", "Payload hex (full): \(payload.hexString)")
+        debugLog("Accesspoint", "LoginCredentials:")
+        debugLog("Accesspoint", "  username: \(loginCredentials.username ?? "None")")
+        debugLog("Accesspoint", "  auth_type: \(loginCredentials.typ) (storedSpotifyCredentials=1, spotifyToken=3)")
+        debugLog("Accesspoint", "  auth_data length: \(loginCredentials.authData?.count ?? 0) bytes")
+        if let authData = loginCredentials.authData {
+            debugLog("Accesspoint", "  auth_data hex (first 32): \(authData.prefix(32).hexString)")
+        }
+        // Dump the raw LoginCredentials protobuf
+        let credsProto = loginCredentials.serialize()
+        debugLog("Accesspoint", "  LoginCredentials protobuf: \(credsProto.count) bytes")
+        debugLog("Accesspoint", "  LoginCredentials hex: \(credsProto.hexString)")
+        debugLog("Accesspoint", "  auth_data length: \(credentials.accessToken.count) bytes")
+        debugLog("Accesspoint", "  auth_data (first 20): \(Data(credentials.accessToken.prefix(20).utf8).hexString)")
+        debugLog("Accesspoint", "SystemInfo:")
+        debugLog("Accesspoint", "  cpu_family: \(cpuFamily) (arm=5, x86_64=2)")
+        debugLog("Accesspoint", "  os: \(os) (osx=2)")
+        debugLog("Accesspoint", "  system_information_string: \(sysInfoString)")
+        debugLog("Accesspoint", "  device_id: \(deviceId)")
+        debugLog("Accesspoint", "version_string: \(Self.versionString)")
+        debugLog("Accesspoint", "=== END LOGIN PACKET DEBUG ===")
+
         // Send as encrypted Login packet
         let packet = SpotifyPacket(command: .login, payload: payload)
         try await sendPacket(packet)
 
-        debugLog("Accesspoint", "Sent Login packet")
+        debugLog("Accesspoint", "Sent Login packet (\(payload.count) bytes payload)")
 
-        // Wait for response
-        let response = try await receivePacket()
+        debugLog("Accesspoint", "Waiting for authentication response...")
+
+        // Check if server sent unencrypted error response
+        // The server uses a 4-byte big-endian length prefix for unencrypted messages
+        // vs 3-byte encrypted header for Shannon packets
+        let firstFourBytes = try await readRawBytes(count: 4)
+        let potentialLength = Int(firstFourBytes[0]) << 24 | Int(firstFourBytes[1]) << 16 |
+            Int(firstFourBytes[2]) << 8 | Int(firstFourBytes[3])
+
+        debugLog("Accesspoint", "First 4 bytes: \(firstFourBytes.map { String(format: "%02X", $0) }.joined(separator: " ")), as length: \(potentialLength)")
+
+        // If the first 3 bytes are zeros, this is likely an unencrypted length-prefixed message
+        // (encrypted headers would never be 00 00 00 XX unless by extreme coincidence)
+        if firstFourBytes[0] == 0 && firstFourBytes[1] == 0 && firstFourBytes[2] == 0 && potentialLength < 1000 {
+            // This is an unencrypted error response with 4-byte length prefix
+            // The length INCLUDES the 4-byte prefix itself, so read (length - 4) more bytes
+            let dataLength = potentialLength - 4
+            debugLog("Accesspoint", "Detected unencrypted error response (total length: \(potentialLength), data: \(dataLength) bytes)")
+
+            let errorData = try await readRawBytes(count: dataLength)
+            debugLog("Accesspoint", "Error response data: \(errorData.hexString)")
+
+            if let errorResponse = try? APResponseMessage.parse(from: errorData) {
+                if let loginFailed = errorResponse.loginFailed {
+                    debugLog("Accesspoint", "Login failed: \(loginFailed.errorCode), desc: \(loginFailed.errorDescription ?? "none")")
+                    throw LibrespotError.authenticationFailed("Server rejected: \(loginFailed.errorCode)")
+                }
+            }
+            throw LibrespotError.authenticationFailed("Challenge verification failed (unencrypted error)")
+        }
+
+        // Not an unencrypted error - decrypt as normal Shannon packet
+        // The first 4 bytes include 3 bytes of header and 1 byte that might be start of payload
+        let response: SpotifyPacket
+        do {
+            response = try await receivePacketWithPrefix(firstFourBytes)
+        } catch {
+            debugLog("Accesspoint", "Authentication failed: \(error)")
+            throw error
+        }
 
         switch response.command {
         case .apWelcome:
@@ -444,11 +653,16 @@ public actor Accesspoint {
         }
 
         let serialized = packet.serialize()
+        debugLog("Accesspoint", "Sending packet: cmd=0x\(String(format: "%02X", packet.rawCommand)), payload=\(packet.payload.count) bytes, serialized=\(serialized.count) bytes, nonce=\(sendNonce)")
+        debugLog("Accesspoint", "Serialized packet header: \(serialized.prefix(3).hexString)")
+        debugLog("Accesspoint", "Pre-encryption frame: \(serialized.count) bytes, first 16: \(serialized.prefix(16).hexString)")
         let (encrypted, mac) = await cipher.encrypt(serialized, nonce: sendNonce)
         sendNonce += 1
 
         var frame = encrypted
         frame.append(mac)
+        debugLog("Accesspoint", "Encrypted frame: \(frame.count) bytes (encrypted=\(encrypted.count), mac=\(mac.count))")
+        debugLog("Accesspoint", "Post-encryption first 16: \(frame.prefix(16).hexString), mac: \(mac.hexString)")
         try await sendRaw(frame)
     }
 
@@ -458,20 +672,88 @@ public actor Accesspoint {
             throw LibrespotError.notInitialized
         }
 
-        // Read header (3 bytes: command + 2-byte length) + MAC
+        // Begin decryption session with current nonce
+        await cipher.beginDecrypt(nonce: recvNonce)
+
+        // Read and decrypt header (3 bytes: command + 2-byte length)
         let headerEncrypted = try await readRawBytes(count: 3)
-        let headerDecrypted = await cipher.decrypt(headerEncrypted, nonce: recvNonce)
+        debugLog("Accesspoint", "Header encrypted: \(headerEncrypted.map { String(format: "%02X", $0) }.joined(separator: " ")), nonce=\(recvNonce)")
+        let headerDecrypted = await cipher.decryptPart(headerEncrypted)
+        debugLog("Accesspoint", "Header decrypted: \(headerDecrypted.map { String(format: "%02X", $0) }.joined(separator: " "))")
 
         let command = headerDecrypted[0]
         let length = Int(headerDecrypted[1]) << 8 | Int(headerDecrypted[2])
+        debugLog("Accesspoint", "Packet header: cmd=0x\(String(format: "%02X", command)), length=\(length)")
 
-        // Read payload
-        let payloadEncrypted = try await readRawBytes(count: length)
-        let payloadDecrypted = await cipher.decrypt(payloadEncrypted, nonce: recvNonce)
+        // Read and decrypt payload (continues cipher stream from header)
+        let payloadDecrypted: Data
+        if length > 0 {
+            let payloadEncrypted = try await readRawBytes(count: length)
+            payloadDecrypted = await cipher.decryptPart(payloadEncrypted)
+        } else {
+            payloadDecrypted = Data()
+        }
+
+        // Finish decryption and get expected MAC
+        let expectedMac = await cipher.finishDecrypt()
 
         // Read and verify MAC
-        let mac = try await readRawBytes(count: 4)
-        // MAC verification happens implicitly in finish() during decrypt
+        let receivedMac = try await readRawBytes(count: 4)
+        if expectedMac != receivedMac {
+            debugLog("Accesspoint", "MAC mismatch! expected=\(expectedMac.hexString) received=\(receivedMac.hexString)")
+            throw LibrespotError.macMismatch
+        }
+
+        recvNonce += 1
+
+        return SpotifyPacket(rawCommand: command, payload: payloadDecrypted)
+    }
+
+    /// Receive and decrypt a packet where we've already read the first 4 bytes
+    /// This handles the case where we needed to peek at bytes to check for unencrypted error
+    private func receivePacketWithPrefix(_ prefixBytes: Data) async throws -> SpotifyPacket {
+        guard let cipher = cipherPair else {
+            throw LibrespotError.notInitialized
+        }
+
+        // Begin decryption session with current nonce
+        await cipher.beginDecrypt(nonce: recvNonce)
+
+        // First 3 bytes are the encrypted header
+        let headerEncrypted = Data(prefixBytes.prefix(3))
+        debugLog("Accesspoint", "Header encrypted (from prefix): \(headerEncrypted.map { String(format: "%02X", $0) }.joined(separator: " ")), nonce=\(recvNonce)")
+        let headerDecrypted = await cipher.decryptPart(headerEncrypted)
+        debugLog("Accesspoint", "Header decrypted: \(headerDecrypted.map { String(format: "%02X", $0) }.joined(separator: " "))")
+
+        let command = headerDecrypted[0]
+        let length = Int(headerDecrypted[1]) << 8 | Int(headerDecrypted[2])
+        debugLog("Accesspoint", "Packet header: cmd=0x\(String(format: "%02X", command)), length=\(length)")
+
+        // The 4th prefix byte is the first payload byte (if any)
+        var payloadParts = Data()
+        if prefixBytes.count > 3 {
+            payloadParts.append(prefixBytes[3])
+        }
+
+        // Read remaining payload bytes if needed
+        let remainingPayloadBytes = length - payloadParts.count
+        if remainingPayloadBytes > 0 {
+            let morePayload = try await readRawBytes(count: remainingPayloadBytes)
+            payloadParts.append(morePayload)
+        }
+
+        // Decrypt payload
+        let payloadDecrypted = payloadParts.isEmpty ? Data() : await cipher.decryptPart(payloadParts)
+
+        // Finish decryption and get expected MAC
+        let expectedMac = await cipher.finishDecrypt()
+
+        // Read and verify MAC
+        let receivedMac = try await readRawBytes(count: 4)
+        if expectedMac != receivedMac {
+            debugLog("Accesspoint", "MAC mismatch! expected=\(expectedMac.hexString) received=\(receivedMac.hexString)")
+            throw LibrespotError.macMismatch
+        }
 
         recvNonce += 1
 
@@ -583,22 +865,137 @@ public actor Accesspoint {
         return Int(data[0]) << 24 | Int(data[1]) << 16 | Int(data[2]) << 8 | Int(data[3])
     }
 
-    private func readRawBytes(count: Int) async throws -> Data {
+    private func readRawBytes(count: Int, timeout: TimeInterval = 10.0) async throws -> Data {
         guard let conn = connection else {
             throw LibrespotError.notInitialized
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            conn.receive(minimumIncompleteLength: count, maximumLength: count) { content, _, _, error in
+        // Use actor-based result holder
+        actor ReadResult {
+            var data: Data?
+            var error: Error?
+            var completed = false
+
+            func setResult(_ data: Data) {
+                if !completed {
+                    self.data = data
+                    completed = true
+                }
+            }
+
+            func setError(_ error: Error) {
+                if !completed {
+                    self.error = error
+                    completed = true
+                }
+            }
+
+            func getState() -> (completed: Bool, data: Data?, error: Error?) {
+                return (completed, data, error)
+            }
+        }
+
+        let result = ReadResult()
+
+        // Start the read on the connection
+        debugLog("Accesspoint", "Starting receive for \(count) bytes, conn state: \(conn.state)")
+        conn.receive(minimumIncompleteLength: count, maximumLength: count) { [result] content, _, isComplete, error in
+            debugLog("Accesspoint", "Receive callback fired! content=\(content?.count ?? 0) isComplete=\(isComplete) error=\(String(describing: error))")
+            Task {
                 if let error {
-                    continuation.resume(throwing: LibrespotError.connectionFailed(error.localizedDescription))
+                    debugLog("Accesspoint", "readRawBytes(\(count)) error: \(error)")
+                    await result.setError(LibrespotError.connectionFailed(error.localizedDescription))
                 } else if let data = content, data.count >= count {
-                    continuation.resume(returning: data)
+                    await result.setResult(data)
                 } else {
-                    continuation.resume(throwing: LibrespotError.connectionFailed("Incomplete data received"))
+                    let receivedCount = content?.count ?? 0
+                    debugLog("Accesspoint", "readRawBytes(\(count)) incomplete: got \(receivedCount) bytes, isComplete=\(isComplete)")
+                    await result.setError(LibrespotError.connectionFailed("Incomplete data received (expected \(count), got \(receivedCount))"))
                 }
             }
         }
+
+        // Poll for result with timeout
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let state = await result.getState()
+            if state.completed {
+                if let data = state.data {
+                    return data
+                } else if let error = state.error {
+                    throw error
+                }
+            }
+            try await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
+
+        throw LibrespotError.connectionFailed("Read timeout after \(timeout) seconds")
+    }
+
+    /// Peek raw bytes without consuming them (for error detection)
+    private func peekRawBytes(count: Int) async throws -> Data {
+        // NWConnection doesn't support peek natively, so we read the bytes
+        // and the caller must pass them to receivePacketWithPeeked
+        try await readRawBytes(count: count)
+    }
+
+    /// Receive and decrypt a packet, using already-peeked data for the start
+    private func receivePacketWithPeeked(_ peekedData: Data) async throws -> SpotifyPacket {
+        debugLog("Accesspoint", "receivePacketWithPeeked called with \(peekedData.count) bytes")
+        guard let cipher = cipherPair else {
+            debugLog("Accesspoint", "ERROR: cipher not initialized")
+            throw LibrespotError.notInitialized
+        }
+
+        debugLog("Accesspoint", "About to beginDecrypt with nonce=\(recvNonce)")
+        // Begin decryption session with current nonce
+        await cipher.beginDecrypt(nonce: recvNonce)
+        debugLog("Accesspoint", "beginDecrypt complete")
+
+        // Use the first 3 bytes from peeked data as header
+        let headerEncrypted = peekedData.prefix(3)
+        debugLog("Accesspoint", "Header encrypted (from peek): \(headerEncrypted.map { String(format: "%02X", $0) }.joined(separator: " ")), nonce=\(recvNonce)")
+        let headerDecrypted = await cipher.decryptPart(Data(headerEncrypted))
+        debugLog("Accesspoint", "Header decrypted: \(headerDecrypted.map { String(format: "%02X", $0) }.joined(separator: " "))")
+
+        let command = headerDecrypted[0]
+        let length = Int(headerDecrypted[1]) << 8 | Int(headerDecrypted[2])
+        debugLog("Accesspoint", "Packet header: cmd=0x\(String(format: "%02X", command)), length=\(length)")
+
+        // Calculate how many more bytes we need for the payload
+        // We already have (peekedData.count - 3) bytes that are part of the payload
+        let peekedPayloadBytes = peekedData.count - 3
+        var payloadParts = Data()
+
+        // Use any payload bytes we already have from peeked data
+        if peekedPayloadBytes > 0 {
+            let availablePayload = peekedData.dropFirst(3)
+            payloadParts.append(contentsOf: availablePayload)
+        }
+
+        // Read remaining payload bytes if needed
+        let remainingPayloadBytes = length - peekedPayloadBytes
+        if remainingPayloadBytes > 0 {
+            let morePayload = try await readRawBytes(count: remainingPayloadBytes)
+            payloadParts.append(morePayload)
+        }
+
+        // Decrypt the payload
+        let payloadDecrypted = payloadParts.isEmpty ? Data() : await cipher.decryptPart(payloadParts)
+
+        // Finish decryption and get expected MAC
+        let expectedMac = await cipher.finishDecrypt()
+
+        // Read and verify MAC
+        let receivedMac = try await readRawBytes(count: 4)
+        if expectedMac != receivedMac {
+            debugLog("Accesspoint", "MAC mismatch! expected=\(expectedMac.hexString) received=\(receivedMac.hexString)")
+            throw LibrespotError.macMismatch
+        }
+
+        recvNonce += 1
+
+        return SpotifyPacket(rawCommand: command, payload: payloadDecrypted)
     }
 
     // MARK: - Background Tasks

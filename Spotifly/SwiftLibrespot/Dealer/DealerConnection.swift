@@ -220,7 +220,16 @@ public actor DealerConnection {
         // Route message based on URI
         guard let uri = dealerMsg.uri else { return }
 
-        if uri.starts(with: "hm://connect-state/v1/cluster") {
+        if uri.starts(with: "hm://pusher/v1/connections/") {
+            // Extract connection ID from URI path (it's URL-encoded base64)
+            let prefix = "hm://pusher/v1/connections/"
+            let encoded = String(uri.dropFirst(prefix.count))
+            if let decoded = encoded.removingPercentEncoding {
+                connectionId = decoded
+                connectionIdSubject.send(decoded)
+                debugLog("DealerConnection", "Connection ID from pusher: \(decoded.prefix(50))...")
+            }
+        } else if uri.starts(with: "hm://connect-state/v1/cluster") {
             await handleClusterUpdate(dealerMsg)
         } else if uri.starts(with: "hm://connect-state/v1/player/command") {
             await handleCommand(dealerMsg)
@@ -475,9 +484,20 @@ public actor DealerConnection {
 
     private func buildWebSocketURL() -> URL {
         // Format: wss://dealer.spotify.com/?access_token=...
+        // Endpoint may include port (e.g., "gew4-dealer.spotify.com:443")
         var components = URLComponents()
         components.scheme = "wss"
-        components.host = endpoint
+
+        // Parse host and port from endpoint
+        if let colonIndex = endpoint.lastIndex(of: ":"),
+           let port = Int(endpoint[endpoint.index(after: colonIndex)...])
+        {
+            components.host = String(endpoint[..<colonIndex])
+            components.port = port
+        } else {
+            components.host = endpoint
+        }
+
         components.queryItems = [
             URLQueryItem(name: "access_token", value: accessToken),
         ]

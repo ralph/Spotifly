@@ -21,16 +21,21 @@ public struct SpotifyCredentials: Sendable {
     /// Scopes granted by this token
     public let scopes: [String]
 
+    /// Username (required for access token auth per go-librespot)
+    public let username: String?
+
     public nonisolated init(
         accessToken: String,
         expiresAt: UInt64? = nil,
         tokenType: String = "Bearer",
         scopes: [String] = [],
+        username: String? = nil,
     ) {
         self.accessToken = accessToken
         self.expiresAt = expiresAt
         self.tokenType = tokenType
         self.scopes = scopes
+        self.username = username
     }
 
     /// Returns true if the token has expired

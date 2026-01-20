@@ -96,12 +96,16 @@ public final class LibrespotClient: @unchecked Sendable {
 
     // MARK: - Session Management
 
-    /// Initialize with an access token
-    public func initialize(accessToken: String) async throws {
-        debugLog("LibrespotClient", "Initializing with access token...")
+    /// Initialize with an access token and username
+    /// - Parameters:
+    ///   - accessToken: The OAuth access token
+    ///   - username: The Spotify username (required for AP authentication)
+    public func initialize(accessToken: String, username: String) async throws {
+        debugLog("LibrespotClient", "Initializing with access token for user: \(username)...")
 
-        // Store token for reconnection
+        // Store token and username for reconnection
         lastAccessToken = accessToken
+        lastUsername = username
 
         // Cancel any pending reconnect
         reconnectTask?.cancel()
@@ -113,8 +117,8 @@ public final class LibrespotClient: @unchecked Sendable {
         // Subscribe to session state
         await subscribeToSessionEvents()
 
-        // Connect
-        try await session?.connect(accessToken: accessToken)
+        // Connect with username (required for AP auth)
+        try await session?.connect(accessToken: accessToken, username: username)
 
         // Get spclient host from session
         let spclientHost = await session?.spclientHost
@@ -186,6 +190,7 @@ public final class LibrespotClient: @unchecked Sendable {
     private var autoReconnectEnabled = true
     private var reconnectTask: Task<Void, Never>?
     private var lastAccessToken: String?
+    private var lastUsername: String?
     /// Track if we've ever successfully connected (to avoid reconnect loops on initial connect)
     private var hasEverConnected = false
 
@@ -209,10 +214,10 @@ public final class LibrespotClient: @unchecked Sendable {
         try await session.reconnect()
     }
 
-    /// Start auto-reconnect loop with the last used token
+    /// Start auto-reconnect loop with the last used token and username
     private func startAutoReconnect() {
-        guard autoReconnectEnabled, let token = lastAccessToken else {
-            debugLog("LibrespotClient", "Auto-reconnect disabled or no token available")
+        guard autoReconnectEnabled, let token = lastAccessToken, let username = lastUsername else {
+            debugLog("LibrespotClient", "Auto-reconnect disabled or no token/username available")
             return
         }
 
@@ -226,8 +231,8 @@ public final class LibrespotClient: @unchecked Sendable {
             try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
 
             do {
-                // Try to reinitialize with the stored token
-                try await initialize(accessToken: token)
+                // Try to reinitialize with the stored token and username
+                try await initialize(accessToken: token, username: username)
                 debugLog("LibrespotClient", "Auto-reconnect successful")
             } catch {
                 debugLog("LibrespotClient", "Auto-reconnect failed: \(error)")

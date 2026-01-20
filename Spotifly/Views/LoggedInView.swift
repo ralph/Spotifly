@@ -140,11 +140,31 @@ struct LoggedInView: View {
 
             _ = await (favorites, topArtists, newReleases, recentlyPlayed)
 
-            // Set token provider for automatic reinitialization on session disconnect
-            playbackViewModel.setTokenProvider { await session.validAccessToken() }
+            // Load user ID for player authentication
+            await session.loadUserIdIfNeeded()
+
+            // Set providers for automatic reinitialization on session disconnect
+            playbackViewModel.setProviders(
+                tokenProvider: { await session.validAccessToken() },
+                usernameProvider: { await MainActor.run { session.userId } }
+            )
 
             // Initialize player/Spirc so Spotifly appears as a Connect device
-            await playbackViewModel.initializeIfNeeded(accessToken: token)
+            if let userId = session.userId {
+                await playbackViewModel.initializeIfNeeded(accessToken: token, username: userId)
+            }
+
+            #if DEBUG
+            // AUTO-PLAY TEST: Play a track 3 seconds after launch to test playback
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                debugLog("TEST", "Auto-play test starting...")
+                let testToken = await session.validAccessToken()
+                // Play "Never Gonna Give You Up" by Rick Astley as a test track
+                await playbackViewModel.play(uriOrUrl: "spotify:track:4PTG3Z6ehGkBFwjybzWkR8", accessToken: testToken)
+                debugLog("TEST", "Auto-play test initiated")
+            }
+            #endif
         }
         .onChange(of: navigationCoordinator.pendingNavigationItem) { _, newValue in
             if let pendingItem = newValue {

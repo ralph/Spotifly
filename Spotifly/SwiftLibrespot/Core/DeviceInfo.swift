@@ -110,10 +110,10 @@ public struct DeviceInfo: Sendable {
         if let existing = UserDefaults.standard.string(forKey: key) {
             return existing
         }
-        // Generate a random 40-character hex string (like librespot)
-        var bytes = [UInt8](repeating: 0, count: 20)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        let deviceId = bytes.map { String(format: "%02x", $0) }.joined()
+        // Use format matching the working Rust FFI: "spotifly_{pid}"
+        // But since PID changes, use a random number instead
+        let randomNum = UInt32.random(in: 10000...99999)
+        let deviceId = "spotifly_\(randomNum)"
         UserDefaults.standard.set(deviceId, forKey: key)
         return deviceId
     }

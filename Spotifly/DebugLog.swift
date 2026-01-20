@@ -19,6 +19,7 @@ import Foundation
     nonisolated func debugLog(_ module: String, _ message: String) {
         let timestamp = iso8601Formatter.string(from: Date())
         print("[\(timestamp) DEBUG \(module)] \(message)")
+        fflush(stdout)
     }
 #else
     @inlinable

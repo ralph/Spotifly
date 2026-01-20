@@ -536,21 +536,17 @@ public struct ClientResponsePlaintext: Sendable {
         data.append(contentsOf: encodeVarint(UInt64(cryptoData.count)))
         data.append(cryptoData)
 
-        // Field 20 (0x14): pow_response (message) - empty
+        // Field 20 (0x14): pow_response (message) - MUST include even when empty (required field)
         let powData = powResponse.serialize()
-        if !powData.isEmpty {
-            data.append(contentsOf: [0xA2, 0x01]) // wire type 2, field 20
-            data.append(contentsOf: encodeVarint(UInt64(powData.count)))
-            data.append(powData)
-        }
+        data.append(contentsOf: [0xA2, 0x01]) // wire type 2, field 20
+        data.append(contentsOf: encodeVarint(UInt64(powData.count)))
+        data.append(powData)
 
-        // Field 30 (0x1e): crypto_response (message) - empty
+        // Field 30 (0x1e): crypto_response (message) - MUST include even when empty (required field)
         let cryptoRespData = cryptoResponse.serialize()
-        if !cryptoRespData.isEmpty {
-            data.append(contentsOf: [0xF2, 0x01]) // wire type 2, field 30
-            data.append(contentsOf: encodeVarint(UInt64(cryptoRespData.count)))
-            data.append(cryptoRespData)
-        }
+        data.append(contentsOf: [0xF2, 0x01]) // wire type 2, field 30
+        data.append(contentsOf: encodeVarint(UInt64(cryptoRespData.count)))
+        data.append(cryptoRespData)
 
         return data
     }

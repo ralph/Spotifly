@@ -187,19 +187,22 @@ enum SpotifyPlayer {
     /// Subscriptions for forwarding LibrespotClient events
     private nonisolated(unsafe) static var subscriptions: Set<AnyCancellable> = []
 
-    /// Initializes the player with the given access token.
+    /// Initializes the player with the given access token and username.
     /// Must be called before any playback operations.
+    /// - Parameters:
+    ///   - accessToken: The OAuth access token
+    ///   - username: The Spotify username (required for AP authentication)
     @SpotifyAuthActor
-    static func initialize(accessToken: String) async throws {
-        debugLog("SpotifyPlayer", "Initializing via LibrespotClient...")
+    static func initialize(accessToken: String, username: String) async throws {
+        debugLog("SpotifyPlayer", "Initializing via LibrespotClient for user: \(username)...")
 
         // Wire up LibrespotClient publishers to global subjects (on main actor)
         await MainActor.run {
             setupPublisherForwarding()
         }
 
-        // Initialize LibrespotClient
-        try await client.initialize(accessToken: accessToken)
+        // Initialize LibrespotClient with username (required for AP auth)
+        try await client.initialize(accessToken: accessToken, username: username)
 
         debugLog("SpotifyPlayer", "LibrespotClient initialization complete")
     }

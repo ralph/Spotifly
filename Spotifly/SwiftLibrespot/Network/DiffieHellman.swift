@@ -16,9 +16,10 @@ public final class DiffieHellman: @unchecked Sendable {
     /// Generator (g = 2)
     private nonisolated static let generator = BigUInt(2)
 
-    /// 1536-bit MODP prime (from Spotify protocol)
+    /// 768-bit MODP prime (Spotify's custom prime, same as librespot)
     private nonisolated static let prime: BigUInt = {
         let primeBytes: [UInt8] = [
+            // Spotify's 768-bit prime (96 bytes) - from librespot source
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
             0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1, 0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
             0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22, 0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
@@ -49,7 +50,7 @@ public final class DiffieHellman: @unchecked Sendable {
 
     /// Create a new DH key pair
     public nonisolated init() throws {
-        // Generate 95 random bytes for private key (760 bits)
+        // Generate 95 random bytes for private key (760 bits, matching go-librespot)
         var privateKeyData = Data(count: 95)
         let result = privateKeyData.withUnsafeMutableBytes { bytes in
             SecRandomCopyBytes(kSecRandomDefault, 95, bytes.baseAddress!)
@@ -71,13 +72,16 @@ public final class DiffieHellman: @unchecked Sendable {
 
     /// Exchange keys with the server and compute shared secret
     /// - Parameter remotePublicKeyBytes: Server's public key
-    /// - Returns: Shared secret bytes
+    /// - Returns: Shared secret bytes (minimal representation, like librespot)
     public nonisolated func exchange(remotePublicKeyBytes: Data) -> Data {
         let remotePublicKey = BigUInt(remotePublicKeyBytes)
 
         // sharedSecret = remotePublicKey^privateKey mod prime
         let secret = Self.modPow(base: remotePublicKey, exponent: privateKey, modulus: Self.prime)
-        _sharedSecret = secret.toData()
+        let secretData = secret.toData()
+
+        // Use minimal representation (like librespot's to_bytes_be)
+        _sharedSecret = secretData
 
         debugLog("DiffieHellman", "Key exchange complete, shared secret: \(_sharedSecret!.count) bytes")
 
@@ -311,26 +315,30 @@ public struct BigUInt: Sendable, Comparable, Equatable {
         for i in 0 ..< lhs.words.count {
             var carry: UInt64 = 0
             for j in 0 ..< rhs.words.count {
+                let pos = i + j
                 let (high, low) = lhs.words[i].multipliedFullWidth(by: rhs.words[j])
 
-                var pos = i + j
+                // Add low part + previous carry
                 let (sum1, o1) = result[pos].addingReportingOverflow(low)
                 let (sum2, o2) = sum1.addingReportingOverflow(carry)
                 result[pos] = sum2
 
+                // Compute new carry (includes high bits and any overflow)
                 carry = high + (o1 ? 1 : 0) + (o2 ? 1 : 0)
+            }
 
-                pos += 1
-                if carry > 0, pos < result.count {
-                    let (sum3, o3) = result[pos].addingReportingOverflow(carry)
-                    result[pos] = sum3
-                    carry = o3 ? 1 : 0
-                }
+            // Propagate remaining carry AFTER inner loop completes
+            var carryPos = i + rhs.words.count
+            while carry > 0, carryPos < result.count {
+                let (sum, overflow) = result[carryPos].addingReportingOverflow(carry)
+                result[carryPos] = sum
+                carry = overflow ? 1 : 0
+                carryPos += 1
             }
         }
 
         // Remove leading zeros
-        while result.last == 0 {
+        while result.last == 0, !result.isEmpty {
             result.removeLast()
         }
 
