@@ -180,7 +180,7 @@ public actor Accesspoint {
             product: .client,
             productFlags: [.none],
             platform: platform,
-            version: Self.spotifyVersionCode
+            version: Self.spotifyVersionCode,
         )
 
         let clientHello = ClientHello(
@@ -189,11 +189,11 @@ public actor Accesspoint {
             loginCryptoHello: LoginCryptoHelloUnion(
                 diffieHellman: LoginCryptoDiffieHellmanHello(
                     gc: dh!.publicKeyBytes,
-                    serverKeysKnown: 1
-                )
+                    serverKeysKnown: 1,
+                ),
             ),
             clientNonce: nonce,
-            padding: Data([0x1E])
+            padding: Data([0x1E]),
         )
 
         // Serialize and send ClientHello
@@ -297,7 +297,7 @@ public actor Accesspoint {
                     key.count,
                     dataPtr.baseAddress,
                     data.count,
-                    &hmac
+                    &hmac,
                 )
             }
         }
@@ -309,8 +309,8 @@ public actor Accesspoint {
         // Build ClientResponsePlaintext
         let response = ClientResponsePlaintext(
             loginCryptoResponse: LoginCryptoResponseUnion(
-                diffieHellman: LoginCryptoDiffieHellmanResponse(hmac: keys.challenge)
-            )
+                diffieHellman: LoginCryptoDiffieHellmanResponse(hmac: keys.challenge),
+            ),
         )
 
         let responseData = response.serialize()
@@ -329,7 +329,7 @@ public actor Accesspoint {
         cipherPair = CipherPair(sendKey: keys.sendKey, recvKey: keys.recvKey)
     }
 
-    private func verifySignature(data: Data, signature: Data) -> Bool {
+    private func verifySignature(data: Data, signature _: Data) -> Bool {
         // Compute SHA1 hash of data
         var hash = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
         data.withUnsafeBytes { ptr in
@@ -368,20 +368,20 @@ public actor Accesspoint {
         let credentials = LoginCredentials(
             username: nil, // Not needed for token auth
             typ: .spotifyToken,
-            authData: token.data(using: .utf8)
+            authData: token.data(using: .utf8),
         )
 
         let systemInfo = SystemInfo(
             cpuFamily: cpuFamily,
             os: os,
             systemInformationString: "spotifly-swift",
-            deviceId: nil // Will be set by session
+            deviceId: nil, // Will be set by session
         )
 
         let loginRequest = ClientResponseEncrypted(
             loginCredentials: credentials,
             systemInfo: systemInfo,
-            versionString: Self.versionString
+            versionString: Self.versionString,
         )
 
         let payload = loginRequest.serialize()

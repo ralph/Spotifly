@@ -8,6 +8,7 @@
 import Foundation
 
 /// Builder for PutStateRequest messages
+/// Note: Primary building is now done in SpircController. This provides convenience helpers.
 public struct ConnectStateBuilder: Sendable {
     private let deviceInfo: DeviceInfo
 
@@ -16,169 +17,123 @@ public struct ConnectStateBuilder: Sendable {
     }
 
     /// Build initial registration state (inactive device)
-    public func buildRegistrationState() -> PutStateRequest {
-        buildState(
-            isActive: false,
-            playerState: nil,
-            startedPlayingAt: nil,
-        )
+    public func buildRegistrationState() -> PutStateRequestProto {
+        var request = PutStateRequestProto()
+        request.device = buildDevice(playerState: nil)
+        request.memberType = .connectState
+        request.isActive = false
+        request.putStateReason = .spircHello
+        request.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
+        return request
     }
 
     /// Build active playback state
-    func buildPlaybackState(
-        playerState: SpircController.PlayerState,
-        queue: SpircQueueState,
+    public func buildPlaybackState(
+        playerState: SpircController.SpircPlayerState,
         startedPlayingAt: UInt64,
-    ) -> PutStateRequest {
-        let psProto = convertPlayerState(playerState, queue: queue)
-        return buildState(
-            isActive: true,
-            playerState: psProto,
-            startedPlayingAt: startedPlayingAt,
-        )
+    ) -> PutStateRequestProto {
+        var request = PutStateRequestProto()
+        request.device = buildDevice(playerState: playerState)
+        request.memberType = .connectState
+        request.isActive = true
+        request.putStateReason = .playerStateChanged
+        request.startedPlayingAt = startedPlayingAt
+        request.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
+        return request
     }
 
     /// Build paused state (still active but not playing)
-    func buildPausedState(
-        playerState: SpircController.PlayerState,
-        queue: SpircQueueState,
-    ) -> PutStateRequest {
-        let psProto = convertPlayerState(playerState, queue: queue)
-        return buildState(
-            isActive: true,
-            playerState: psProto,
-            startedPlayingAt: nil,
-        )
+    public func buildPausedState(
+        playerState: SpircController.SpircPlayerState,
+    ) -> PutStateRequestProto {
+        var request = PutStateRequestProto()
+        request.device = buildDevice(playerState: playerState)
+        request.memberType = .connectState
+        request.isActive = true
+        request.putStateReason = .playerStateChanged
+        request.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
+        return request
     }
 
     // MARK: - Private
 
-    private func buildState(
-        isActive: Bool,
-        playerState: PutStateRequest.PutStatePlayerState?,
-        startedPlayingAt: UInt64?,
-    ) -> PutStateRequest {
-        let deviceInfoProto = PutStateRequest.PutStateDeviceInfo(
-            canPlay: deviceInfo.supportsPlayback,
-            volume: 32768, // Default 50%
-            name: deviceInfo.deviceName,
-            deviceId: deviceInfo.deviceId,
-            deviceType: deviceTypeString(deviceInfo.deviceType),
-            deviceSoftwareVersion: deviceInfo.softwareVersion,
-            clientId: "spotifly",
-            brand: deviceInfo.brandName,
-            model: deviceInfo.modelName,
-            capabilities: PutStateRequest.PutStateCapabilities(
-                canBePlayer: deviceInfo.supportsPlayback,
-                gaplessTrack: deviceInfo.supportsGapless,
-                supportsLogout: false,
-                isObservable: true,
-                volumeSteps: 64,
-                supportedTypes: ["audio/track", "audio/episode", "audio/ad"],
-                commandAcks: true,
-            ),
-        )
+    private func buildDevice(playerState: SpircController.SpircPlayerState?) -> ConnectDevice {
+        var deviceInfoProto = ConnectDeviceInfo()
+        deviceInfoProto.canPlay = deviceInfo.supportsPlayback
+        deviceInfoProto.volume = 32768 // Default 50%
+        deviceInfoProto.name = deviceInfo.deviceName
+        deviceInfoProto.deviceId = deviceInfo.deviceId
+        deviceInfoProto.deviceType = convertDeviceType(deviceInfo.deviceType)
+        deviceInfoProto.deviceSoftwareVersion = deviceInfo.softwareVersion
+        deviceInfoProto.clientId = "spotifly"
+        deviceInfoProto.brand = deviceInfo.brandName
+        deviceInfoProto.model = deviceInfo.modelName
 
-        return PutStateRequest(
-            memberType: "CONNECT_STATE",
-            device: PutStateRequest.PutStateDevice(
-                deviceInfo: deviceInfoProto,
-                playerState: playerState,
-            ),
-            isActive: isActive,
-            startedPlayingAt: startedPlayingAt,
-            lastCommandMessageId: nil,
-            lastCommandSentByDeviceId: nil,
-        )
+        var caps = ConnectCapabilities()
+        caps.canBePlayer = deviceInfo.supportsPlayback
+        caps.isObservable = true
+        caps.volumeSteps = 64
+        caps.supportedTypes = ["audio/track", "audio/episode", "audio/ad"]
+        caps.commandAcks = true
+        caps.supportsGzipPushes = true
+        caps.supportsTransferCommand = true
+        caps.supportsCommandRequest = true
+        deviceInfoProto.capabilities = caps
+
+        var device = ConnectDevice()
+        device.deviceInfo = deviceInfoProto
+
+        if let ps = playerState {
+            device.playerState = convertPlayerState(ps)
+        }
+
+        return device
     }
 
-    private func convertPlayerState(
-        _ ps: SpircController.PlayerState,
-        queue: SpircQueueState,
-    ) -> PutStateRequest.PutStatePlayerState {
-        let track: ClusterUpdate.TrackProto? = if let uri = ps.trackUri {
-            ClusterUpdate.TrackProto(
-                uri: uri,
-                uid: nil,
-                metadata: nil,
-                provider: "context",
-            )
-        } else {
-            nil
+    private func convertPlayerState(_ ps: SpircController.SpircPlayerState) -> PlayerState {
+        var state = PlayerState()
+        state.timestamp = Int64(ps.timestamp)
+        state.positionAsOfTimestamp = Int64(ps.positionMs)
+        state.duration = Int64(ps.durationMs)
+        state.isPlaying = ps.isPlaying
+        state.isPaused = ps.isPaused
+
+        if let uri = ps.trackUri {
+            var track = ProvidedTrack()
+            track.uri = uri
+            track.provider = "context"
+            state.track = track
         }
 
-        let nextTracks = queue.nextTracks.map { item in
-            ClusterUpdate.TrackProto(
-                uri: item.uri,
-                uid: nil,
-                metadata: ClusterUpdate.TrackMetadata(
-                    title: item.name,
-                    artist: item.artistName,
-                    album: nil,
-                    imageUri: item.imageURLString,
-                    durationMs: UInt64(item.durationMs),
-                ),
-                provider: item.provider,
-            )
-        }
+        var options = ContextPlayerOptions()
+        options.shufflingContext = ps.shuffle
+        options.repeatingContext = ps.repeatMode == .context
+        options.repeatingTrack = ps.repeatMode == .track
+        state.options = options
 
-        let prevTracks = (queue.previousTracks ?? []).map { item in
-            ClusterUpdate.TrackProto(
-                uri: item.uri,
-                uid: nil,
-                metadata: ClusterUpdate.TrackMetadata(
-                    title: item.name,
-                    artist: item.artistName,
-                    album: nil,
-                    imageUri: item.imageURLString,
-                    durationMs: UInt64(item.durationMs),
-                ),
-                provider: item.provider,
-            )
-        }
-
-        return PutStateRequest.PutStatePlayerState(
-            timestamp: ps.timestamp,
-            positionAsOfTimestamp: ps.positionMs,
-            isPaused: ps.isPaused,
-            isPlaying: ps.isPlaying,
-            track: track,
-            contextUri: nil,
-            shuffle: ps.shuffle,
-            repeatMode: convertRepeatMode(ps.repeatMode),
-            nextTracks: nextTracks,
-            prevTracks: prevTracks,
-        )
+        return state
     }
 
-    private func convertRepeatMode(_ mode: SpircController.PlayerState.RepeatMode) -> ClusterUpdate.RepeatMode {
-        switch mode {
-        case .off: .off
-        case .context: .context
-        case .track: .track
-        }
-    }
-
-    private func deviceTypeString(_ type: SpotifyDeviceType) -> String {
+    private func convertDeviceType(_ type: SpotifyDeviceType) -> DeviceType {
         switch type {
-        case .computer: "COMPUTER"
-        case .tablet: "TABLET"
-        case .smartphone: "SMARTPHONE"
-        case .speaker: "SPEAKER"
-        case .tv: "TV"
-        case .avr: "AVR"
-        case .stb: "STB"
-        case .audiodongle: "AUDIO_DONGLE"
-        case .gameconsole: "GAME_CONSOLE"
-        case .castvideo: "CAST_VIDEO"
-        case .castaudio: "CAST_AUDIO"
-        case .automobile: "AUTOMOBILE"
-        case .smartwatch: "SMARTWATCH"
-        case .chromebook: "CHROMEBOOK"
-        case .carThing: "CAR_THING"
-        case .observer: "OBSERVER"
-        case .homeThing: "HOME_THING"
-        default: "UNKNOWN"
+        case .computer: .computer
+        case .tablet: .tablet
+        case .smartphone: .smartphone
+        case .speaker: .speaker
+        case .tv: .tv
+        case .avr: .avr
+        case .stb: .stb
+        case .audiodongle: .audioDongle
+        case .gameconsole: .gameConsole
+        case .castvideo: .castVideo
+        case .castaudio: .castAudio
+        case .automobile: .automobile
+        case .smartwatch: .smartwatch
+        case .chromebook: .chromebook
+        case .carThing: .carThing
+        case .observer: .observer
+        case .homeThing: .homeThing
+        default: .unknown
         }
     }
 }

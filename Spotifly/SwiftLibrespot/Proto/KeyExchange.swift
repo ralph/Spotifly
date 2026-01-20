@@ -69,7 +69,7 @@ public struct BuildInfo: Sendable {
         product: SpotifyProduct = .client,
         productFlags: [SpotifyProductFlags] = [.none],
         platform: SpotifyPlatform,
-        version: UInt64
+        version: UInt64,
     ) {
         self.product = product
         self.productFlags = productFlags
@@ -169,7 +169,7 @@ public struct ClientHello: Sendable {
         cryptosuitesSupported: [Cryptosuite] = [.shannon],
         loginCryptoHello: LoginCryptoHelloUnion,
         clientNonce: Data,
-        padding: Data? = Data([0x1E])
+        padding: Data? = Data([0x1E]),
     ) {
         self.buildInfo = buildInfo
         self.cryptosuitesSupported = cryptosuitesSupported
@@ -265,7 +265,7 @@ public struct APLoginFailed: Sendable {
         errorCode: SpotifyErrorCode,
         retryDelay: Int32? = nil,
         expiry: Int32? = nil,
-        errorDescription: String? = nil
+        errorDescription: String? = nil,
     ) {
         self.errorCode = errorCode
         self.retryDelay = retryDelay
@@ -285,7 +285,7 @@ public struct APResponseMessage: Sendable {
     }
 
     /// Parse from protobuf binary data
-    public static nonisolated func parse(from data: Data) throws -> APResponseMessage {
+    public nonisolated static func parse(from data: Data) throws -> APResponseMessage {
         var challenge: APChallenge?
         var loginFailed: APLoginFailed?
 
@@ -314,7 +314,7 @@ public struct APResponseMessage: Sendable {
         return APResponseMessage(challenge: challenge, loginFailed: loginFailed)
     }
 
-    private static nonisolated func parseAPChallenge(from data: Data) throws -> APChallenge {
+    private nonisolated static func parseAPChallenge(from data: Data) throws -> APChallenge {
         var loginCryptoChallenge: LoginCryptoChallengeUnion?
         var serverNonce = Data()
 
@@ -346,7 +346,7 @@ public struct APResponseMessage: Sendable {
         return APChallenge(loginCryptoChallenge: crypto, serverNonce: serverNonce)
     }
 
-    private static nonisolated func parseLoginCryptoChallengeUnion(from data: Data) throws -> LoginCryptoChallengeUnion {
+    private nonisolated static func parseLoginCryptoChallengeUnion(from data: Data) throws -> LoginCryptoChallengeUnion {
         var diffieHellman: LoginCryptoDiffieHellmanChallenge?
 
         var offset = 0
@@ -368,7 +368,7 @@ public struct APResponseMessage: Sendable {
         return LoginCryptoChallengeUnion(diffieHellman: diffieHellman)
     }
 
-    private static nonisolated func parseDHChallenge(from data: Data) throws -> LoginCryptoDiffieHellmanChallenge {
+    private nonisolated static func parseDHChallenge(from data: Data) throws -> LoginCryptoDiffieHellmanChallenge {
         var gs = Data()
         var serverSignatureKey: Int32 = 0
         var gsSignature = Data()
@@ -402,11 +402,11 @@ public struct APResponseMessage: Sendable {
         return LoginCryptoDiffieHellmanChallenge(
             gs: gs,
             serverSignatureKey: serverSignatureKey,
-            gsSignature: gsSignature
+            gsSignature: gsSignature,
         )
     }
 
-    private static nonisolated func parseAPLoginFailed(from data: Data) throws -> APLoginFailed {
+    private nonisolated static func parseAPLoginFailed(from data: Data) throws -> APLoginFailed {
         var errorCode: SpotifyErrorCode = .protocolError
         var retryDelay: Int32?
         var expiry: Int32?
@@ -447,7 +447,7 @@ public struct APResponseMessage: Sendable {
             errorCode: errorCode,
             retryDelay: retryDelay,
             expiry: expiry,
-            errorDescription: errorDescription
+            errorDescription: errorDescription,
         )
     }
 }
@@ -520,7 +520,7 @@ public struct ClientResponsePlaintext: Sendable {
     public nonisolated init(
         loginCryptoResponse: LoginCryptoResponseUnion,
         powResponse: PoWResponseUnion = PoWResponseUnion(),
-        cryptoResponse: CryptoResponseUnion = CryptoResponseUnion()
+        cryptoResponse: CryptoResponseUnion = CryptoResponseUnion(),
     ) {
         self.loginCryptoResponse = loginCryptoResponse
         self.powResponse = powResponse

@@ -108,7 +108,7 @@ public struct SystemInfo: Sendable {
         cpuFamily: CpuFamily,
         os: SpotifyOS,
         systemInformationString: String? = nil,
-        deviceId: String? = nil
+        deviceId: String? = nil,
     ) {
         self.cpuFamily = cpuFamily
         self.os = os
@@ -158,7 +158,7 @@ public struct ClientResponseEncrypted: Sendable {
     public nonisolated init(
         loginCredentials: LoginCredentials,
         systemInfo: SystemInfo,
-        versionString: String? = nil
+        versionString: String? = nil,
     ) {
         self.loginCredentials = loginCredentials
         self.systemInfo = systemInfo
@@ -207,7 +207,7 @@ public struct APWelcome: Sendable {
         accountTypeLoggedIn: AccountType,
         credentialsTypeLoggedIn: AccountType,
         reusableAuthCredentialsType: AuthenticationType,
-        reusableAuthCredentials: Data
+        reusableAuthCredentials: Data,
     ) {
         self.canonicalUsername = canonicalUsername
         self.accountTypeLoggedIn = accountTypeLoggedIn
@@ -217,7 +217,7 @@ public struct APWelcome: Sendable {
     }
 
     /// Parse from protobuf binary data
-    public static nonisolated func parse(from data: Data) throws -> APWelcome {
+    public nonisolated static func parse(from data: Data) throws -> APWelcome {
         var canonicalUsername: String?
         var accountTypeLoggedIn: AccountType = .spotify
         var credentialsTypeLoggedIn: AccountType = .spotify
@@ -269,7 +269,7 @@ public struct APWelcome: Sendable {
             accountTypeLoggedIn: accountTypeLoggedIn,
             credentialsTypeLoggedIn: credentialsTypeLoggedIn,
             reusableAuthCredentialsType: reusableAuthCredentialsType,
-            reusableAuthCredentials: reusableAuthCredentials
+            reusableAuthCredentials: reusableAuthCredentials,
         )
     }
 }

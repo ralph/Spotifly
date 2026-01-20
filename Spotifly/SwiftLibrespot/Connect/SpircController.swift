@@ -17,7 +17,7 @@ public actor SpircController {
     private let accesspoint: Accesspoint
     private let dealerConnection: DealerConnection
 
-    private var playerState: PlayerState?
+    private var playerState: SpircPlayerState?
     private var clusterState: ClusterState?
     private var subscriptions: Set<AnyCancellable> = []
 
@@ -29,11 +29,11 @@ public actor SpircController {
 
     // MARK: - Publishers
 
-    private nonisolated(unsafe) let playerStateSubject = CurrentValueSubject<PlayerState?, Never>(nil)
+    private nonisolated(unsafe) let playerStateSubject = CurrentValueSubject<SpircPlayerState?, Never>(nil)
     private nonisolated(unsafe) let clusterStateSubject = CurrentValueSubject<ClusterState?, Never>(nil)
     private nonisolated(unsafe) let commandSubject = PassthroughSubject<SpircCommand, Never>()
 
-    public nonisolated var playerStatePublisher: AnyPublisher<PlayerState?, Never> {
+    public nonisolated var playerStatePublisher: AnyPublisher<SpircPlayerState?, Never> {
         playerStateSubject.eraseToAnyPublisher()
     }
 
@@ -47,17 +47,17 @@ public actor SpircController {
 
     // MARK: - State Types
 
-    public struct PlayerState: Sendable, Equatable {
+    public struct SpircPlayerState: Sendable, Equatable {
         public var isPlaying: Bool
         public var isPaused: Bool
         public var trackUri: String?
         public var positionMs: UInt64
         public var durationMs: UInt64
         public var shuffle: Bool
-        public var repeatMode: RepeatMode
+        public var repeatMode: SpircRepeatMode
         public var timestamp: UInt64
 
-        public enum RepeatMode: Sendable, Equatable {
+        public enum SpircRepeatMode: Sendable, Equatable {
             case off
             case context
             case track
@@ -128,65 +128,76 @@ public actor SpircController {
         debugLog("SpircController", "Device registered")
     }
 
-    private func buildPutStateRequest(isActive: Bool) -> PutStateRequest {
-        let deviceInfoState = PutStateRequest.PutStateDeviceInfo(
-            canPlay: deviceInfo.supportsPlayback,
-            volume: 65535 / 2, // 50%
-            name: deviceInfo.deviceName,
-            deviceId: deviceInfo.deviceId,
-            deviceType: "COMPUTER",
-            deviceSoftwareVersion: deviceInfo.softwareVersion,
-            clientId: "spotifly",
-            brand: deviceInfo.brandName,
-            model: deviceInfo.modelName,
-            capabilities: PutStateRequest.PutStateCapabilities(
-                canBePlayer: deviceInfo.supportsPlayback,
-                gaplessTrack: deviceInfo.supportsGapless,
-                supportsLogout: false,
-                isObservable: true,
-                volumeSteps: 64,
-                supportedTypes: ["audio/track", "audio/episode"],
-                commandAcks: true,
-            ),
-        )
+    private func buildPutStateRequest(isActive: Bool) -> PutStateRequestProto {
+        // Build device info
+        var deviceInfoProto = ConnectDeviceInfo()
+        deviceInfoProto.canPlay = deviceInfo.supportsPlayback
+        deviceInfoProto.volume = 65535 / 2 // 50%
+        deviceInfoProto.name = deviceInfo.deviceName
+        deviceInfoProto.deviceId = deviceInfo.deviceId
+        deviceInfoProto.deviceType = .computer
+        deviceInfoProto.deviceSoftwareVersion = deviceInfo.softwareVersion
+        deviceInfoProto.clientId = "spotifly"
+        deviceInfoProto.brand = deviceInfo.brandName
+        deviceInfoProto.model = deviceInfo.modelName
 
-        var playerStateProto: PutStateRequest.PutStatePlayerState?
+        // Build capabilities
+        var caps = ConnectCapabilities()
+        caps.canBePlayer = deviceInfo.supportsPlayback
+        caps.isObservable = true
+        caps.volumeSteps = 64
+        caps.supportedTypes = ["audio/track", "audio/episode"]
+        caps.commandAcks = true
+        caps.supportsGzipPushes = true
+        caps.supportsTransferCommand = true
+        caps.supportsCommandRequest = true
+        deviceInfoProto.capabilities = caps
+
+        // Build device
+        var device = ConnectDevice()
+        device.deviceInfo = deviceInfoProto
+
+        // Build player state if we have one
         if let ps = playerState {
-            playerStateProto = PutStateRequest.PutStatePlayerState(
-                timestamp: ps.timestamp,
-                positionAsOfTimestamp: ps.positionMs,
-                isPaused: ps.isPaused,
-                isPlaying: ps.isPlaying,
-                track: ps.trackUri.map { uri in
-                    ClusterUpdate.TrackProto(uri: uri, uid: nil, metadata: nil, provider: "context")
-                },
-                contextUri: nil,
-                shuffle: ps.shuffle,
-                repeatMode: convertRepeatMode(ps.repeatMode),
-                nextTracks: [],
-                prevTracks: [],
-            )
+            var playerStateProto = PlayerState()
+            playerStateProto.timestamp = Int64(ps.timestamp)
+            playerStateProto.positionAsOfTimestamp = Int64(ps.positionMs)
+            playerStateProto.isPaused = ps.isPaused
+            playerStateProto.isPlaying = ps.isPlaying
+
+            if let uri = ps.trackUri {
+                var track = ProvidedTrack()
+                track.uri = uri
+                track.provider = "context"
+                playerStateProto.track = track
+            }
+
+            var options = ContextPlayerOptions()
+            options.shufflingContext = ps.shuffle
+            options.repeatingContext = ps.repeatMode == .context
+            options.repeatingTrack = ps.repeatMode == .track
+            playerStateProto.options = options
+
+            device.playerState = playerStateProto
         }
 
-        return PutStateRequest(
-            memberType: "CONNECT_STATE",
-            device: PutStateRequest.PutStateDevice(
-                deviceInfo: deviceInfoState,
-                playerState: playerStateProto,
-            ),
-            isActive: isActive,
-            startedPlayingAt: isActive ? UInt64(Date().timeIntervalSince1970 * 1000) : nil,
-            lastCommandMessageId: lastCommandMessageId,
-            lastCommandSentByDeviceId: nil,
-        )
-    }
+        // Build request
+        var request = PutStateRequestProto()
+        request.device = device
+        request.memberType = .connectState
+        request.isActive = isActive
+        request.putStateReason = isActive ? .newDevice : .spircHello
+        request.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
 
-    private func convertRepeatMode(_ mode: PlayerState.RepeatMode) -> ClusterUpdate.RepeatMode {
-        switch mode {
-        case .off: .off
-        case .context: .context
-        case .track: .track
+        if isActive {
+            request.startedPlayingAt = UInt64(Date().timeIntervalSince1970 * 1000)
         }
+
+        if let msgId = lastCommandMessageId {
+            request.lastCommandMessageId = UInt32(msgId)
+        }
+
+        return request
     }
 
     // MARK: - Dealer Subscriptions
@@ -211,50 +222,53 @@ public actor SpircController {
             .store(in: &subscriptions)
     }
 
-    private func handleClusterUpdate(_ update: ClusterUpdate) async {
+    private func handleClusterUpdate(_ update: ClusterUpdateProto) async {
         debugLog("SpircController", "Cluster update received")
 
-        // Update cluster state
-        let devices = update.cluster.devices.map { device in
+        // Update cluster state from parsed proto
+        let cluster = update.cluster
+        let devices = cluster.devices.map { deviceId, deviceInfoProto in
             ClusterState.ConnectedDevice(
-                id: device.deviceId,
-                name: device.deviceName,
-                deviceType: SpotifyDeviceType(rawValue: Int(device.deviceType) ?? 0) ?? .unknown,
-                isActive: device.isActive,
-                volume: device.volume,
+                id: deviceId,
+                name: deviceInfoProto.name,
+                deviceType: SpotifyDeviceType(rawValue: Int(deviceInfoProto.deviceType.rawValue)) ?? .unknown,
+                isActive: deviceId == cluster.activeDeviceId,
+                volume: deviceInfoProto.volume,
             )
         }
 
         clusterState = ClusterState(
-            activeDeviceId: update.cluster.activeDeviceId,
+            activeDeviceId: cluster.activeDeviceId,
             devices: devices,
-            timestamp: update.cluster.transferDataTimestamp ?? UInt64(Date().timeIntervalSince1970 * 1000),
+            timestamp: cluster.transferDataTimestamp,
         )
         clusterStateSubject.send(clusterState)
 
         // Update player state if this device is active
-        if let ps = update.cluster.playerState,
-           update.cluster.activeDeviceId == deviceInfo.deviceId
+        if let ps = cluster.playerState,
+           cluster.activeDeviceId == deviceInfo.deviceId
         {
-            playerState = PlayerState(
+            playerState = SpircPlayerState(
                 isPlaying: ps.isPlaying,
                 isPaused: ps.isPaused,
                 trackUri: ps.track?.uri,
-                positionMs: ps.positionAsOfTimestamp,
-                durationMs: ps.track?.metadata?.durationMs ?? 0,
-                shuffle: ps.shuffle,
-                repeatMode: convertFromClusterRepeatMode(ps.repeatMode),
-                timestamp: ps.timestamp,
+                positionMs: UInt64(bitPattern: ps.positionAsOfTimestamp),
+                durationMs: UInt64(bitPattern: ps.duration),
+                shuffle: ps.options.shufflingContext,
+                repeatMode: convertFromProtoOptions(ps.options),
+                timestamp: UInt64(bitPattern: ps.timestamp),
             )
             playerStateSubject.send(playerState)
         }
     }
 
-    private func convertFromClusterRepeatMode(_ mode: ClusterUpdate.RepeatMode) -> PlayerState.RepeatMode {
-        switch mode {
-        case .off: .off
-        case .context: .context
-        case .track: .track
+    private func convertFromProtoOptions(_ options: ContextPlayerOptions) -> SpircPlayerState.SpircRepeatMode {
+        if options.repeatingTrack {
+            .track
+        } else if options.repeatingContext {
+            .context
+        } else {
+            .off
         }
     }
 
@@ -345,7 +359,13 @@ public actor SpircController {
 
     private func handleRepeatCommand(_ mode: ClusterUpdate.RepeatMode) async {
         debugLog("SpircController", "Repeat: \(mode)")
-        playerState?.repeatMode = convertFromClusterRepeatMode(mode)
+        // Convert from ClusterUpdate.RepeatMode to SpircPlayerState.SpircRepeatMode
+        let spircMode: SpircPlayerState.SpircRepeatMode = switch mode {
+        case .off: .off
+        case .context: .context
+        case .track: .track
+        }
+        playerState?.repeatMode = spircMode
         playerStateSubject.send(playerState)
     }
 

@@ -211,7 +211,7 @@ public struct BigUInt: Sendable, Comparable, Equatable {
 
         for i in wordShift ..< lhs.words.count {
             var word = lhs.words[i] >> bitShift
-            if bitShift > 0 && i + 1 < lhs.words.count {
+            if bitShift > 0, i + 1 < lhs.words.count {
                 word |= lhs.words[i + 1] << (64 - bitShift)
             }
             result.append(word)
@@ -321,7 +321,7 @@ public struct BigUInt: Sendable, Comparable, Equatable {
                 carry = high + (o1 ? 1 : 0) + (o2 ? 1 : 0)
 
                 pos += 1
-                if carry > 0 && pos < result.count {
+                if carry > 0, pos < result.count {
                     let (sum3, o3) = result[pos].addingReportingOverflow(carry)
                     result[pos] = sum3
                     carry = o3 ? 1 : 0
@@ -391,7 +391,7 @@ public struct BigUInt: Sendable, Comparable, Equatable {
 
         for i in 0 ..< lhs.words.count {
             result[i + wordShift] |= lhs.words[i] << bitShift
-            if bitShift > 0 && i + wordShift + 1 < result.count {
+            if bitShift > 0, i + wordShift + 1 < result.count {
                 result[i + wordShift + 1] |= lhs.words[i] >> (64 - bitShift)
             }
         }

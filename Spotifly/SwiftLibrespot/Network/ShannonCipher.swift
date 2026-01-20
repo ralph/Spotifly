@@ -85,7 +85,7 @@ public final class ShannonCipher: @unchecked Sendable {
             partial: { cipher, byte in
                 cipher.mbuf ^= UInt32(byte.pointee) << (32 - cipher.nbuf)
                 byte.pointee ^= UInt8((cipher.sbuf >> (32 - cipher.nbuf)) & 0xFF)
-            }
+            },
         )
     }
 
@@ -100,7 +100,7 @@ public final class ShannonCipher: @unchecked Sendable {
             partial: { cipher, byte in
                 byte.pointee ^= UInt8((cipher.sbuf >> (32 - cipher.nbuf)) & 0xFF)
                 cipher.mbuf ^= UInt32(byte.pointee) << (32 - cipher.nbuf)
-            }
+            },
         )
     }
 
@@ -282,13 +282,13 @@ public final class ShannonCipher: @unchecked Sendable {
     private nonisolated func process(
         _ buf: inout Data,
         fullWord: (ShannonCipher, UnsafeMutablePointer<UInt32>) -> Void,
-        partial: (ShannonCipher, UnsafeMutablePointer<UInt8>) -> Void
+        partial: (ShannonCipher, UnsafeMutablePointer<UInt8>) -> Void,
     ) {
         var offset = 0
 
         // Handle previously buffered bytes
         if nbuf != 0 {
-            while nbuf > 0 && offset < buf.count {
+            while nbuf > 0, offset < buf.count {
                 buf.withUnsafeMutableBytes { ptr in
                     partial(self, ptr.baseAddress!.advanced(by: offset).assumingMemoryBound(to: UInt8.self))
                 }

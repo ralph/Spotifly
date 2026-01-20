@@ -16,6 +16,7 @@ public struct DealerMessage: Sendable {
     public let headers: [String: String]?
     public let payloads: [DealerPayload]?
     public let method: String?
+    public let key: String?
 
     /// Connection info message
     public nonisolated var connectionId: String? {
@@ -28,7 +29,7 @@ public struct DealerMessage: Sendable {
 
 extension DealerMessage: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case type, uri, headers, payloads, method
+        case type, uri, headers, payloads, method, key
     }
 
     public nonisolated init(from decoder: Decoder) throws {
@@ -38,6 +39,7 @@ extension DealerMessage: Decodable {
         headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
         payloads = try container.decodeIfPresent([DealerPayload].self, forKey: .payloads)
         method = try container.decodeIfPresent(String.self, forKey: .method)
+        key = try container.decodeIfPresent(String.self, forKey: .key)
     }
 }
 
