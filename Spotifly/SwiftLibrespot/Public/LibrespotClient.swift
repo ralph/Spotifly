@@ -323,16 +323,34 @@ public final class LibrespotClient: @unchecked Sendable {
 
     // MARK: - Transfer
 
-    /// Transfer playback to local
+    /// Transfer playback to local (this device becomes active)
     public func transferToLocal() async throws {
         debugLog("LibrespotClient", "Transferring to local")
-        // TODO: Implement transfer
+
+        guard let token = lastAccessToken else {
+            throw LibrespotError.invalidState("Not authenticated")
+        }
+
+        guard let deviceId = connectionState?.deviceId else {
+            throw LibrespotError.invalidState("Device ID not available")
+        }
+
+        // Use Web API to transfer playback to this device
+        try await SpotifyAPI.transferPlayback(toDeviceId: deviceId, accessToken: token, play: true)
+        debugLog("LibrespotClient", "Transfer to local complete")
     }
 
     /// Transfer playback to another device
     public func transferPlayback(toDeviceId deviceId: String) async throws {
         debugLog("LibrespotClient", "Transferring to device: \(deviceId)")
-        // TODO: Implement transfer
+
+        guard let token = lastAccessToken else {
+            throw LibrespotError.invalidState("Not authenticated")
+        }
+
+        // Use Web API to transfer playback to target device
+        try await SpotifyAPI.transferPlayback(toDeviceId: deviceId, accessToken: token, play: true)
+        debugLog("LibrespotClient", "Transfer complete")
     }
 
     // MARK: - State

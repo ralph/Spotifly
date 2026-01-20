@@ -58,6 +58,52 @@ extension SpotifyAPI {
         }
     }
 
+    // MARK: - Transfer Playback
+
+    /// Transfers playback to a different device
+    /// - Parameters:
+    ///   - deviceId: The device ID to transfer playback to
+    ///   - accessToken: The access token for authentication
+    ///   - play: Whether to start playing on the target device (default true)
+    static func transferPlayback(toDeviceId deviceId: String, accessToken: String, play: Bool = true) async throws {
+        let urlString = "\(baseURL)/me/player"
+
+        debugLog("SpotifyAPI", "[PUT] \(urlString)")
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "device_ids": [deviceId],
+            "play": play,
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 204:
+            // Success - no content returned
+            return
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.notFound
+        default:
+            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
+        }
+    }
+
     /// Fetches the current playback queue from Spotify Web API.
     /// Returns the currently playing track and upcoming queue.
     /// - Parameter accessToken: The access token for authentication
