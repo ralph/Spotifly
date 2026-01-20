@@ -400,8 +400,9 @@ public final class LibrespotClient: @unchecked Sendable {
 
         // Subscribe to session state changes
         session.statePublisher
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                Task { [weak self] in
+                Task { @MainActor [weak self] in
                     await self?.handleSessionStateChange(state)
                 }
             }
@@ -409,6 +410,7 @@ public final class LibrespotClient: @unchecked Sendable {
 
         // Subscribe to SPIRC player state updates
         session.playerStatePublisher
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.handleSpircPlayerState(state)
             }
@@ -416,6 +418,7 @@ public final class LibrespotClient: @unchecked Sendable {
 
         // Subscribe to SPIRC cluster state updates
         session.clusterStatePublisher
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.handleSpircClusterState(state)
             }
@@ -423,6 +426,7 @@ public final class LibrespotClient: @unchecked Sendable {
 
         // Subscribe to SPIRC commands
         session.commandsPublisher
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] command in
                 self?.handleSpircCommand(command)
             }
@@ -435,6 +439,7 @@ public final class LibrespotClient: @unchecked Sendable {
 
         // Subscribe to playback state changes
         audioPipeline.playbackState
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.handleAudioPipelineState(state)
             }
@@ -442,6 +447,7 @@ public final class LibrespotClient: @unchecked Sendable {
 
         // Subscribe to position updates
         audioPipeline.position
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] positionMs in
                 self?.cachedPositionMs = UInt32(positionMs)
             }
@@ -449,6 +455,7 @@ public final class LibrespotClient: @unchecked Sendable {
 
         // Subscribe to errors
         audioPipeline.errors
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
                 debugLog("LibrespotClient", "Audio pipeline error: \(error)")
                 self?.playbackStateSubject.send(PlaybackState(
