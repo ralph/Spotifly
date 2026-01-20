@@ -105,20 +105,45 @@ public actor Accesspoint {
         connection = NWConnection(host: nwHost, port: nwPort, using: .tcp)
 
         // Wait for connection to be ready
+        // Use a class wrapper to safely track if continuation was resumed (thread-safe)
+        final class ResumeState: @unchecked Sendable {
+            private var hasResumed = false
+            private let lock = NSLock()
+
+            func tryResume(_ continuation: CheckedContinuation<Void, Error>, with result: Result<Void, Error>) -> Bool {
+                lock.lock()
+                defer { lock.unlock() }
+                guard !hasResumed else { return false }
+                hasResumed = true
+                switch result {
+                case .success:
+                    continuation.resume()
+                case let .failure(error):
+                    continuation.resume(throwing: error)
+                }
+                return true
+            }
+        }
+
+        let resumeState = ResumeState()
+        let conn = connection
+
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            connection?.stateUpdateHandler = { state in
+            conn?.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
-                    continuation.resume()
+                    // Clear handler and resume
+                    conn?.stateUpdateHandler = nil
+                    _ = resumeState.tryResume(continuation, with: .success(()))
                 case let .failed(error):
-                    continuation.resume(throwing: LibrespotError.connectionFailed(error.localizedDescription))
+                    _ = resumeState.tryResume(continuation, with: .failure(LibrespotError.connectionFailed(error.localizedDescription)))
                 case .cancelled:
-                    continuation.resume(throwing: LibrespotError.connectionFailed("Connection cancelled"))
+                    _ = resumeState.tryResume(continuation, with: .failure(LibrespotError.connectionFailed("Connection cancelled")))
                 default:
                     break
                 }
             }
-            connection?.start(queue: .global())
+            conn?.start(queue: .global())
         }
 
         debugLog("Accesspoint", "TCP connected, performing handshake...")

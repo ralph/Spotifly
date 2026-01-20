@@ -677,16 +677,17 @@ public final class LibrespotClient: @unchecked Sendable {
             sessionConnectedSubject.send()
         case .disconnected:
             updateConnectionState(connected: false)
-            sessionDisconnectedSubject.send()
-            // Only auto-reconnect if we were previously connected
+            // Only emit disconnect and auto-reconnect if we were previously connected
+            // This prevents spurious disconnect events during initial connection failures
             if hasEverConnected {
+                sessionDisconnectedSubject.send()
                 startAutoReconnect()
             }
         case let .failed(message):
             updateConnectionState(connected: false, error: message)
-            sessionDisconnectedSubject.send()
-            // Only auto-reconnect if we were previously connected
+            // Only emit disconnect and auto-reconnect if we were previously connected
             if hasEverConnected {
+                sessionDisconnectedSubject.send()
                 startAutoReconnect()
             }
         case let .reconnecting(attempt):
