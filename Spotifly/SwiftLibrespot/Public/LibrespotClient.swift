@@ -150,6 +150,10 @@ public final class LibrespotClient: @unchecked Sendable {
     public func cleanup() async {
         debugLog("LibrespotClient", "Cleaning up...")
 
+        // Cancel any pending reconnect
+        reconnectTask?.cancel()
+        reconnectTask = nil
+
         await audioPipeline?.stop()
         await session?.disconnect()
 
@@ -158,6 +162,7 @@ public final class LibrespotClient: @unchecked Sendable {
         session = nil
         subscriptions.removeAll()
         cachedPositionMs = 0
+        hasEverConnected = false
 
         updateConnectionState(connected: false)
     }
@@ -181,6 +186,8 @@ public final class LibrespotClient: @unchecked Sendable {
     private var autoReconnectEnabled = true
     private var reconnectTask: Task<Void, Never>?
     private var lastAccessToken: String?
+    /// Track if we've ever successfully connected (to avoid reconnect loops on initial connect)
+    private var hasEverConnected = false
 
     /// Enable or disable auto-reconnection
     public func setAutoReconnect(_ enabled: Bool) {
@@ -398,8 +405,13 @@ public final class LibrespotClient: @unchecked Sendable {
     private func subscribeToSessionEvents() async {
         guard let session else { return }
 
+        // Clear any existing subscriptions before adding new ones
+        subscriptions.removeAll()
+
         // Subscribe to session state changes
+        // Use dropFirst to skip the initial .disconnected state that CurrentValueSubject emits
         session.statePublisher
+            .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 Task { @MainActor [weak self] in
@@ -660,18 +672,23 @@ public final class LibrespotClient: @unchecked Sendable {
     private func handleSessionStateChange(_ state: SessionState) async {
         switch state {
         case .connected:
+            hasEverConnected = true
             updateConnectionState(connected: true)
             sessionConnectedSubject.send()
         case .disconnected:
             updateConnectionState(connected: false)
             sessionDisconnectedSubject.send()
-            // Trigger auto-reconnect
-            startAutoReconnect()
+            // Only auto-reconnect if we were previously connected
+            if hasEverConnected {
+                startAutoReconnect()
+            }
         case let .failed(message):
             updateConnectionState(connected: false, error: message)
             sessionDisconnectedSubject.send()
-            // Trigger auto-reconnect on failure
-            startAutoReconnect()
+            // Only auto-reconnect if we were previously connected
+            if hasEverConnected {
+                startAutoReconnect()
+            }
         case let .reconnecting(attempt):
             connectionState = LibrespotConnectionState(
                 sessionConnected: false,
