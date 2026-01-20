@@ -53,6 +53,9 @@ public actor LibrespotSession {
     /// AP resolver for endpoint discovery
     private var apResolver: APResolver?
 
+    /// Cached resolved endpoints
+    private var resolvedEndpoints: ResolvedEndpoints?
+
     /// Accesspoint connection for protocol communication
     public private(set) var accesspoint: Accesspoint?
 
@@ -94,11 +97,11 @@ public actor LibrespotSession {
         do {
             // Step 1: Resolve AP endpoints
             apResolver = APResolver()
-            let endpoints = try await apResolver!.resolve()
-            debugLog("LibrespotSession", "Resolved \(endpoints.accesspoints.count) accesspoints, \(endpoints.dealers.count) dealers")
+            resolvedEndpoints = try await apResolver!.resolve()
+            debugLog("LibrespotSession", "Resolved \(resolvedEndpoints!.accesspoints.count) accesspoints, \(resolvedEndpoints!.dealers.count) dealers")
 
             // Step 2: Connect to Accesspoint
-            guard let apEndpoint = endpoints.accesspoints.first else {
+            guard let apEndpoint = resolvedEndpoints?.accesspoints.first else {
                 throw LibrespotError.connectionFailed("No accesspoints available")
             }
             await updateState(.authenticating)
@@ -108,12 +111,12 @@ public actor LibrespotSession {
             debugLog("LibrespotSession", "Connected to accesspoint")
 
             // Step 3: Connect to Dealer
-            guard let dealerEndpoint = endpoints.dealers.first else {
+            guard let dealerHost = resolvedEndpoints?.dealers.first else {
                 throw LibrespotError.connectionFailed("No dealers available")
             }
 
             dealerConnection = DealerConnection(
-                endpoint: dealerEndpoint,
+                endpoint: dealerHost,
                 accessToken: accessToken,
             )
             try await dealerConnection!.connect()
@@ -126,6 +129,7 @@ public actor LibrespotSession {
                 dealerConnection: dealerConnection!,
             )
             try await spircController!.initialize()
+            setupSpircSubscriptions()
             debugLog("LibrespotSession", "SPIRC controller initialized")
 
             await updateState(.connected)
@@ -208,5 +212,64 @@ public actor LibrespotSession {
     /// Current connection ID
     public var currentConnectionId: String? {
         connectionId
+    }
+
+    /// Dealer endpoint for direct connection info
+    public var dealerEndpoint: String? {
+        // Return the endpoint that was used for dealer connection
+        resolvedEndpoints?.dealers.first
+    }
+
+    // MARK: - SPIRC Publishers (forwarded from SpircController)
+
+    /// Player state updates from SPIRC
+    public nonisolated var playerStatePublisher: AnyPublisher<SpircController.SpircPlayerState?, Never> {
+        spircPlayerStateSubject.eraseToAnyPublisher()
+    }
+
+    /// Cluster state updates from SPIRC
+    public nonisolated var clusterStatePublisher: AnyPublisher<SpircController.ClusterState?, Never> {
+        spircClusterStateSubject.eraseToAnyPublisher()
+    }
+
+    /// SPIRC commands from remote devices
+    public nonisolated var commandsPublisher: AnyPublisher<SpircCommand, Never> {
+        spircCommandSubject.eraseToAnyPublisher()
+    }
+
+    // Internal subjects for SPIRC events
+    private nonisolated(unsafe) let spircPlayerStateSubject = CurrentValueSubject<SpircController.SpircPlayerState?, Never>(nil)
+    private nonisolated(unsafe) let spircClusterStateSubject = CurrentValueSubject<SpircController.ClusterState?, Never>(nil)
+    private nonisolated(unsafe) let spircCommandSubject = PassthroughSubject<SpircCommand, Never>()
+
+    /// Subscriptions for SPIRC controller
+    private var spircSubscriptions: Set<AnyCancellable> = []
+
+    /// Setup subscriptions to SPIRC controller publishers
+    private func setupSpircSubscriptions() {
+        spircSubscriptions.removeAll()
+
+        guard let spirc = spircController else { return }
+
+        // Forward player state
+        spirc.playerStatePublisher
+            .sink { [weak self] state in
+                self?.spircPlayerStateSubject.send(state)
+            }
+            .store(in: &spircSubscriptions)
+
+        // Forward cluster state
+        spirc.clusterStatePublisher
+            .sink { [weak self] state in
+                self?.spircClusterStateSubject.send(state)
+            }
+            .store(in: &spircSubscriptions)
+
+        // Forward commands
+        spirc.commands
+            .sink { [weak self] command in
+                self?.spircCommandSubject.send(command)
+            }
+            .store(in: &spircSubscriptions)
     }
 }

@@ -96,6 +96,13 @@ public final class LibrespotClient: @unchecked Sendable {
     public func initialize(accessToken: String) async throws {
         debugLog("LibrespotClient", "Initializing with access token...")
 
+        // Store token for reconnection
+        lastAccessToken = accessToken
+
+        // Cancel any pending reconnect
+        reconnectTask?.cancel()
+        reconnectTask = nil
+
         // Create session
         session = LibrespotSession(deviceInfo: deviceInfo)
 
@@ -146,17 +153,71 @@ public final class LibrespotClient: @unchecked Sendable {
         await cleanup()
     }
 
+    // MARK: - Reconnection
+
+    /// Auto-reconnect state
+    private var autoReconnectEnabled = true
+    private var reconnectTask: Task<Void, Never>?
+    private var lastAccessToken: String?
+
+    /// Enable or disable auto-reconnection
+    public func setAutoReconnect(_ enabled: Bool) {
+        autoReconnectEnabled = enabled
+        if !enabled {
+            reconnectTask?.cancel()
+            reconnectTask = nil
+        }
+    }
+
+    /// Attempt to reconnect with exponential backoff
+    /// Uses the session's built-in reconnection logic
+    public func reconnect() async throws {
+        guard let session else {
+            throw LibrespotError.notInitialized
+        }
+
+        debugLog("LibrespotClient", "Initiating reconnection...")
+        try await session.reconnect()
+    }
+
+    /// Start auto-reconnect loop with the last used token
+    private func startAutoReconnect() {
+        guard autoReconnectEnabled, let token = lastAccessToken else {
+            debugLog("LibrespotClient", "Auto-reconnect disabled or no token available")
+            return
+        }
+
+        // Cancel any existing reconnect task
+        reconnectTask?.cancel()
+
+        reconnectTask = Task { [weak self] in
+            guard let self else { return }
+
+            // Small delay before first attempt to avoid tight loops
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+
+            do {
+                // Try to reinitialize with the stored token
+                try await initialize(accessToken: token)
+                debugLog("LibrespotClient", "Auto-reconnect successful")
+            } catch {
+                debugLog("LibrespotClient", "Auto-reconnect failed: \(error)")
+                // Session's reconnect already handles exponential backoff
+            }
+        }
+    }
+
     // MARK: - Playback Control
 
     /// Play a URI (track, album, playlist)
     public func play(uri: String) async throws {
         debugLog("LibrespotClient", "Playing: \(uri)")
 
-        guard let session else {
+        guard session != nil else {
             throw LibrespotError.notInitialized
         }
 
-        // TODO: Resolve track metadata and file ID
+        // TODO: Resolve track metadata and file ID via session
         // TODO: Start audio pipeline
 
         loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: 0))
@@ -296,6 +357,137 @@ public final class LibrespotClient: @unchecked Sendable {
                 }
             }
             .store(in: &subscriptions)
+
+        // Subscribe to SPIRC player state updates
+        session.playerStatePublisher
+            .sink { [weak self] state in
+                self?.handleSpircPlayerState(state)
+            }
+            .store(in: &subscriptions)
+
+        // Subscribe to SPIRC cluster state updates
+        session.clusterStatePublisher
+            .sink { [weak self] state in
+                self?.handleSpircClusterState(state)
+            }
+            .store(in: &subscriptions)
+
+        // Subscribe to SPIRC commands
+        session.commandsPublisher
+            .sink { [weak self] command in
+                self?.handleSpircCommand(command)
+            }
+            .store(in: &subscriptions)
+    }
+
+    // MARK: - SPIRC Event Handlers
+
+    private func handleSpircPlayerState(_ state: SpircController.SpircPlayerState?) {
+        guard let state else {
+            playbackStateSubject.send(nil)
+            return
+        }
+
+        // Convert SpircPlayerState to PlaybackState
+        let playbackState = PlaybackState(
+            isPlaying: state.isPlaying,
+            isPaused: state.isPaused,
+            trackUri: state.trackUri ?? "",
+            positionMs: Int64(state.positionMs),
+            durationMs: Int64(state.durationMs),
+            shuffle: state.shuffle,
+            repeatTrack: state.repeatMode == .track,
+            repeatContext: state.repeatMode == .context,
+        )
+
+        debugLog("LibrespotClient", "SPIRC player state: playing=\(playbackState.isPlaying), uri=\(playbackState.trackUri.prefix(50))")
+        playbackStateSubject.send(playbackState)
+    }
+
+    private func handleSpircClusterState(_ state: SpircController.ClusterState?) {
+        guard let state else { return }
+
+        debugLog("LibrespotClient", "SPIRC cluster: \(state.devices.count) devices, active=\(state.activeDeviceId ?? "none")")
+
+        // TODO: Emit device list updates if we add a devices publisher
+    }
+
+    private func handleSpircCommand(_ command: SpircCommand) {
+        debugLog("LibrespotClient", "SPIRC command: \(command)")
+
+        switch command {
+        case let .play(cmd):
+            // Emit loading notification for fast UI update
+            if let uri = cmd.trackUri ?? cmd.trackUris?.first {
+                loadingSubject.send(LoadingNotification(
+                    trackUri: uri,
+                    positionMs: UInt32(cmd.positionMs ?? 0),
+                ))
+            }
+
+            // Also emit context loaded if we have a context
+            if let contextUri = cmd.contextUri {
+                let notification = ContextLoadedNotification(
+                    contextUri: contextUri,
+                    currentTrackUri: cmd.trackUri ?? cmd.trackUris?.first,
+                    currentTrackProvider: "context",
+                    nextTrackUris: [],
+                    nextTrackProviders: [],
+                    prevTrackUris: [],
+                    prevTrackProviders: [],
+                )
+                contextLoadedSubject.send(notification)
+            }
+
+        case let .setVolume(volume):
+            volumeSubject.send(UInt16(volume))
+
+        case let .addToQueue(uri):
+            queueChangedSubject.send(QueueChangedNotification(trackUri: uri))
+
+        case .pause, .resume, .seekTo, .next, .prev:
+            // These update player state which is handled by playerStatePublisher
+            break
+
+        case let .setShuffle(enabled):
+            // Update playback state with new shuffle value
+            if let current = playbackStateSubject.value {
+                let updated = PlaybackState(
+                    isPlaying: current.isPlaying,
+                    isPaused: current.isPaused,
+                    trackUri: current.trackUri,
+                    positionMs: current.positionMs,
+                    durationMs: current.durationMs,
+                    shuffle: enabled,
+                    repeatTrack: current.repeatTrack,
+                    repeatContext: current.repeatContext,
+                )
+                playbackStateSubject.send(updated)
+            }
+
+        case let .setRepeat(mode):
+            // Update playback state with new repeat value
+            if let current = playbackStateSubject.value {
+                let updated = PlaybackState(
+                    isPlaying: current.isPlaying,
+                    isPaused: current.isPaused,
+                    trackUri: current.trackUri,
+                    positionMs: current.positionMs,
+                    durationMs: current.durationMs,
+                    shuffle: current.shuffle,
+                    repeatTrack: mode == .track,
+                    repeatContext: mode == .context,
+                )
+                playbackStateSubject.send(updated)
+            }
+
+        case .transfer:
+            // Transfer command - session connected/disconnected events handle this
+            break
+
+        case .unknown:
+            break
+        }
     }
 
     private func handleSessionStateChange(_ state: SessionState) async {
@@ -306,9 +498,13 @@ public final class LibrespotClient: @unchecked Sendable {
         case .disconnected:
             updateConnectionState(connected: false)
             sessionDisconnectedSubject.send()
+            // Trigger auto-reconnect
+            startAutoReconnect()
         case let .failed(message):
             updateConnectionState(connected: false, error: message)
             sessionDisconnectedSubject.send()
+            // Trigger auto-reconnect on failure
+            startAutoReconnect()
         case let .reconnecting(attempt):
             connectionState = LibrespotConnectionState(
                 sessionConnected: false,
