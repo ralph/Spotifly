@@ -300,6 +300,8 @@ struct PlaylistDetailView: View {
             playbackViewModel: playbackViewModel,
             currentSection: .playlists,
             selectionId: playlistId,
+            contextUri: playlist?.uri,
+            trackIndexInContext: index,
         )
 
         if isOwner {

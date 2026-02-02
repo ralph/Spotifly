@@ -1,7 +1,7 @@
 mod proxy_sink;
 
 use futures_util::StreamExt;
-use librespot_connect::{ConnectConfig, LoadRequest, LoadRequestOptions, Spirc};
+use librespot_connect::{ConnectConfig, LoadRequest, LoadRequestOptions, PlayingTrack, Spirc};
 use librespot_core::cache::Cache;
 use librespot_core::config::DeviceType;
 use librespot_core::session::Session;
@@ -1727,10 +1727,12 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
 }
 
 /// Plays content by its Spotify URI or URL.
-/// Supports tracks, albums, playlists, and artists.
+/// Supports albums, playlists, and artists (context URIs).
+/// @param uri_or_url Spotify URI or URL (e.g., "spotify:album:xxx")
+/// @param track_index Track index to start at (-1 = from beginning, 0+ = specific track)
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
-pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
+pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char, track_index: i32) -> i32 {
     if uri_or_url.is_null() {
         debug!("Play error: uri_or_url is null");
         return -1;
@@ -1748,7 +1750,7 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
 
     // Convert URL to URI if needed
     let uri_str = url_to_uri(&input_str);
-    debug!("spotifly_play_uri called: {}", uri_str);
+    debug!("spotifly_play_uri called: uri={}, track_index={}", uri_str, track_index);
 
     if let Err(e) = require_session_connected() {
         return e;
@@ -1763,9 +1765,17 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
                 return e;
             }
 
+            // Determine playing_track option based on track_index
+            let playing_track = if track_index >= 0 {
+                Some(PlayingTrack::Index(track_index as u32))
+            } else {
+                None
+            };
+
             // Create LoadRequest - use from_context_uri for albums/playlists/artists,
-            // from_tracks for single tracks
+            // from_tracks for single tracks (legacy behavior, prefer using radio for tracks)
             let load_request = if uri_str.starts_with("spotify:track:") {
+                // Legacy single-track behavior - prefer using spotifly_play_radio instead
                 debug!("Spirc.load(LoadRequest::from_tracks([{}]))", uri_str);
                 LoadRequest::from_tracks(
                     vec![uri_str.clone()],
@@ -1776,12 +1786,17 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char) -> i32 {
                     },
                 )
             } else {
-                debug!("Spirc.load(LoadRequest::from_context_uri({}))", uri_str);
+                // Context-based playback with optional starting track
+                debug!(
+                    "Spirc.load(LoadRequest::from_context_uri({}, playing_track={:?}))",
+                    uri_str, playing_track
+                );
                 LoadRequest::from_context_uri(
                     uri_str.clone(),
                     LoadRequestOptions {
                         start_playing: true,
                         seek_to: 0,
+                        playing_track,
                         ..Default::default()
                     },
                 )

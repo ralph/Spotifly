@@ -24,6 +24,8 @@ struct TrackRow: View {
     let doubleTapBehavior: TrackRowDoubleTapBehavior
     let currentSection: NavigationItem // Current sidebar section (for "Go to" navigation)
     let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
+    let contextUri: String? // Album/playlist/artist URI for context-aware playback
+    let trackIndexInContext: Int? // Index within the context for starting playback
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(SpotifySession.self) private var session
@@ -68,6 +70,8 @@ struct TrackRow: View {
         doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
         currentSection: NavigationItem = .startpage,
         selectionId: String? = nil,
+        contextUri: String? = nil,
+        trackIndexInContext: Int? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -83,6 +87,8 @@ struct TrackRow: View {
         self.doubleTapBehavior = doubleTapBehavior
         self.currentSection = currentSection
         self.selectionId = selectionId
+        self.contextUri = contextUri
+        self.trackIndexInContext = trackIndexInContext
     }
 
     var body: some View {
@@ -242,10 +248,33 @@ struct TrackRow: View {
         case .playTrack:
             Task {
                 let token = await session.validAccessToken()
-                await playbackViewModel.play(
-                    uriOrUrl: track.uri,
-                    accessToken: token,
-                )
+
+                // Context-aware playback: if we have a context URI and track index, use them
+                if let contextUri, let index = trackIndexInContext {
+                    await playbackViewModel.play(
+                        uriOrUrl: contextUri,
+                        trackIndex: index,
+                        accessToken: token,
+                    )
+                } else if currentSection == .queue {
+                    // Queue: skip to this track within current context
+                    if let queueContextUri = store.queue.contextUri, let index = trackIndexInContext {
+                        await playbackViewModel.play(
+                            uriOrUrl: queueContextUri,
+                            trackIndex: index,
+                            accessToken: token,
+                        )
+                    }
+                } else if currentSection == .searchResults {
+                    // Search results: start radio for the track
+                    SpotifyPlayer.playRadio(trackUri: track.uri)
+                } else {
+                    // Fallback: single track playback (legacy behavior)
+                    await playbackViewModel.play(
+                        uriOrUrl: track.uri,
+                        accessToken: token,
+                    )
+                }
             }
         }
     }

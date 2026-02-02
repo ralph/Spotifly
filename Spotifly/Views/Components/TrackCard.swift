@@ -78,9 +78,7 @@ struct TrackCard: View {
     }
 
     private func playTrack() {
-        Task {
-            let token = await session.validAccessToken()
-            await playbackViewModel.playTracks([track.uri], accessToken: token)
-        }
+        // Start radio for the track (search result cards don't have context)
+        SpotifyPlayer.playRadio(trackUri: track.uri)
     }
 }

@@ -801,12 +801,15 @@ enum SpotifyPlayer {
     }
 
     /// Plays content by its Spotify URI or URL.
-    /// Supports tracks, albums, playlists, and artists.
+    /// Supports albums, playlists, and artists (context URIs).
+    /// - Parameters:
+    ///   - uriOrUrl: Spotify URI or URL (e.g., "spotify:album:xxx")
+    ///   - trackIndex: Track index to start at (-1 = from beginning, 0+ = specific track)
     @SpotifyAuthActor
-    static func play(uriOrUrl: String) async throws {
+    static func play(uriOrUrl: String, trackIndex: Int = -1) async throws {
         let result = await Task.detached {
             uriOrUrl.withCString { ptr in
-                spotifly_play_uri(ptr)
+                spotifly_play_uri(ptr, Int32(trackIndex))
             }
         }.value
 

@@ -188,6 +188,8 @@ struct ArtistDetailView: View {
                                     playbackViewModel: playbackViewModel,
                                     currentSection: .artists,
                                     selectionId: artistId,
+                                    contextUri: artist.uri,
+                                    trackIndexInContext: index,
                                 )
 
                                 if track.id != displayedTracks.last?.id {

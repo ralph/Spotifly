@@ -63,6 +63,8 @@ struct FavoritesListView: View {
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
                                 currentSection: .favorites,
+                                contextUri: "spotify:collection:tracks",
+                                trackIndexInContext: index,
                             )
 
                             if index < store.favoriteTracks.count - 1 {

@@ -219,6 +219,7 @@ struct QueueListView: View {
                             playbackViewModel: playbackViewModel,
                             doubleTapBehavior: .playTrack,
                             currentSection: .queue,
+                            trackIndexInContext: index,
                         )
                         .id(index)
 

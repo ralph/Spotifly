@@ -44,9 +44,11 @@ int32_t spotifly_init_player(const char* access_token);
 int32_t spotifly_play_tracks(const char* track_uris_json);
 
 /// Plays content by its Spotify URI or URL.
-/// Supports tracks, albums, playlists, and artists.
+/// Supports albums, playlists, and artists (context URIs).
+/// @param uri_or_url Spotify URI or URL (e.g., "spotify:album:xxx")
+/// @param track_index Track index to start at (-1 = from beginning, 0+ = specific track)
 /// Returns 0 on success, -1 on error.
-int32_t spotifly_play_uri(const char* uri_or_url);
+int32_t spotifly_play_uri(const char* uri_or_url, int32_t track_index);
 
 /// Pauses playback.
 /// Returns 0 on success, -1 on error, -2 if session disconnected.
