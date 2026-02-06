@@ -158,20 +158,18 @@ struct ProfileAvatarView: View {
     var size: CGFloat = 32
 
     var body: some View {
-        if let profile = userProfile {
-            if let imageURL = profile.imageURL {
-                AsyncImage(url: imageURL) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
-                } placeholder: {
-                    initialsView(for: profile.displayName)
-                }
-                .frame(width: size, height: size)
-                .clipShape(Circle())
-            } else {
-                initialsView(for: profile.displayName)
+        if let imageURL = userProfile?.imageURL {
+            AsyncImage(url: imageURL) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                initialsView(for: userProfile?.displayName)
             }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+        } else if let displayName = userProfile?.displayName {
+            initialsView(for: displayName)
         } else {
             Circle()
                 .fill(.quaternary)
@@ -179,8 +177,8 @@ struct ProfileAvatarView: View {
         }
     }
 
-    private func initialsView(for name: String) -> some View {
-        let initials = String(name.prefix(2)).uppercased()
+    private func initialsView(for name: String?) -> some View {
+        let initials = String((name ?? "?").prefix(2)).uppercased()
         return Circle()
             .fill(.green.gradient)
             .frame(width: size, height: size)

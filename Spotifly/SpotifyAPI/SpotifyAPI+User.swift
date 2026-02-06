@@ -10,40 +10,6 @@ import Foundation
 extension SpotifyAPI {
     // MARK: - User Profile
 
-    /// Gets the current user's Spotify user ID
-    static func getCurrentUserId(accessToken: String) async throws -> String {
-        let urlString = "\(baseURL)/me"
-
-        debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let profile = try JSONDecoder().decode(UserProfileCodable.self, from: data)
-                return profile.id
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
-
     /// Gets the current user's full profile
     static func getCurrentUserProfile(accessToken: String) async throws -> UserProfile {
         let urlString = "\(baseURL)/me"
@@ -66,18 +32,8 @@ extension SpotifyAPI {
         switch httpResponse.statusCode {
         case 200:
             do {
-                let profile = try JSONDecoder().decode(UserProfileCodable.self, from: data)
-                return UserProfile(
-                    id: profile.id,
-                    displayName: profile.displayName ?? profile.id,
-                    email: profile.email,
-                    imageURL: profile.images?.first.flatMap { URL(string: $0.url) },
-                    externalUrl: profile.externalUrls?.spotify,
-                    followers: profile.followers?.total,
-                    product: profile.product,
-                    country: profile.country,
-                    uri: profile.uri,
-                )
+                let codable = try JSONDecoder().decode(UserProfileCodable.self, from: data)
+                return UserProfile(from: codable)
             } catch {
                 throw SpotifyAPIError.invalidResponse
             }

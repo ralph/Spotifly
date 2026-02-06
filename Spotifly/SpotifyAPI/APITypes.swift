@@ -720,7 +720,7 @@ enum SpotifyAPIError: Error, LocalizedError {
         case let .apiError(message):
             "Spotify API error: \(message)"
         case .forbidden:
-            "Forbidden - user not registered for this app"
+            "Forbidden - access denied"
         case .invalidResponse:
             "Invalid response from Spotify"
         case .invalidURI:
