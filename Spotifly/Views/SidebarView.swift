@@ -125,19 +125,27 @@ struct SidebarView: View {
             } header: {
                 Text("nav.library")
             }
-
-            Section {
-                Button {
-                    selection = .profile
-                } label: {
-                    HStack(spacing: 8) {
-                        ProfileAvatarView(userProfile: userProfile, size: 28)
-                        Text(userProfile?.displayName ?? String(localized: "nav.profile"))
-                            .lineLimit(1)
-                    }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                selection = .profile
+            } label: {
+                HStack(spacing: 8) {
+                    ProfileAvatarView(userProfile: userProfile, size: 28)
+                    Text(userProfile?.displayName ?? String(localized: "nav.profile"))
+                        .lineLimit(1)
+                    Spacer()
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(selection == .profile ? AnyShapeStyle(.selection.opacity(0.8)) : AnyShapeStyle(.clear)),
+                )
             }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
         }
         .navigationTitle("app.name")
     }
