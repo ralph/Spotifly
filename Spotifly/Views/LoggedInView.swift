@@ -88,8 +88,13 @@ struct LoggedInView: View {
     @State private var selectedArtistId: String?
     @State private var selectedPlaylistId: String?
 
-    /// Premium check
-    @State private var showPremiumRequired = false
+    /// Blocking state shown instead of the main app
+    enum BlockingState {
+        case premiumRequired
+        case userNotWhitelisted
+    }
+
+    @State private var blockingState: BlockingState?
 
     // Sidebar width for dynamic now playing bar positioning
     @State private var sidebarWidth: CGFloat = 0
@@ -107,13 +112,20 @@ struct LoggedInView: View {
     }
 
     var body: some View {
-        if showPremiumRequired {
+        switch blockingState {
+        case .premiumRequired:
             PremiumRequiredView(
                 displayName: store.userProfile?.displayName,
                 onLogout: onLogout,
             )
             .frame(minWidth: 500, minHeight: 400)
-        } else {
+        case .userNotWhitelisted:
+            UserNotWhitelistedView(
+                clientId: SpotifyConfig.getClientId(),
+                onLogout: onLogout,
+            )
+            .frame(minWidth: 500, minHeight: 400)
+        case nil:
             mainAppView
         }
     }
@@ -160,15 +172,21 @@ struct LoggedInView: View {
             // Load startup data
             let token = await session.validAccessToken()
 
-            // Load user profile first (provides userId + premium check)
-            if let profile = try? await SpotifyAPI.getCurrentUserProfile(accessToken: token) {
+            // Load user profile first (provides userId + premium check + whitelist check)
+            do {
+                let profile = try await SpotifyAPI.getCurrentUserProfile(accessToken: token)
                 store.setUserProfile(profile)
 
                 // Require Spotify Premium (librespot only works with Premium accounts)
                 guard profile.product == "premium" else {
-                    showPremiumRequired = true
+                    blockingState = .premiumRequired
                     return
                 }
+            } catch SpotifyAPIError.forbidden {
+                blockingState = .userNotWhitelisted
+                return
+            } catch {
+                // Profile load failed for other reasons - continue without profile
             }
 
             // Load favorites so heart indicators work everywhere

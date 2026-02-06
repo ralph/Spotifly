@@ -83,6 +83,8 @@ extension SpotifyAPI {
             }
         case 401:
             throw SpotifyAPIError.unauthorized
+        case 403:
+            throw SpotifyAPIError.forbidden
         default:
             try throwAPIError(data: data, statusCode: httpResponse.statusCode)
         }

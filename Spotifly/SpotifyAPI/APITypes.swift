@@ -708,6 +708,7 @@ struct SearchResultsCodable: Decodable {
 /// Errors from Spotify API
 enum SpotifyAPIError: Error, LocalizedError {
     case apiError(String)
+    case forbidden
     case invalidResponse
     case invalidURI
     case networkError(Error)
@@ -718,6 +719,8 @@ enum SpotifyAPIError: Error, LocalizedError {
         switch self {
         case let .apiError(message):
             "Spotify API error: \(message)"
+        case .forbidden:
+            "Forbidden - user not registered for this app"
         case .invalidResponse:
             "Invalid response from Spotify"
         case .invalidURI:
