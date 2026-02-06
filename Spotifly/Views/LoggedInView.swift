@@ -148,6 +148,13 @@ struct LoggedInView: View {
             // Load user ID first (needed for playlist ownership checks)
             await session.loadUserIdIfNeeded()
 
+            // Load user profile
+            async let userProfileLoad: () = {
+                if let profile = try? await SpotifyAPI.getCurrentUserProfile(accessToken: token) {
+                    await MainActor.run { store.setUserProfile(profile) }
+                }
+            }()
+
             // Load favorites so heart indicators work everywhere
             async let favorites: () = { try? await trackService.loadFavorites(accessToken: token) }()
 
@@ -158,7 +165,7 @@ struct LoggedInView: View {
             async let newReleases: () = newReleasesService.loadNewReleases(accessToken: token)
             async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
 
-            _ = await (favorites, topArtists, topTracks, newReleases, recentlyPlayed)
+            _ = await (userProfileLoad, favorites, topArtists, topTracks, newReleases, recentlyPlayed)
 
             // Set token provider for automatic reconnection
             playbackViewModel.setTokenProvider { await session.validAccessToken() }
@@ -531,6 +538,7 @@ struct LoggedInView: View {
                 onLogout()
             },
             hasSearchResults: store.searchResults != nil,
+            userProfile: store.userProfile,
         )
         .background {
             GeometryReader { geometry in
@@ -658,6 +666,14 @@ struct LoggedInView: View {
                         case .speakers:
                             SpeakersView(playbackViewModel: playbackViewModel)
                                 .navigationTitle("nav.speakers")
+
+                        case .profile:
+                            if let profile = store.userProfile {
+                                UserProfileView(userProfile: profile, onLogout: {
+                                    playbackViewModel.stop()
+                                    onLogout()
+                                })
+                            }
 
                         case .searchResults:
                             // Handled in outer if statement

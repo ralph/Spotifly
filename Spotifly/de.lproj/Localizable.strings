@@ -22,6 +22,7 @@
 "nav.queue" = "Warteschlange";
 "nav.speakers" = "Lautsprecher";
 "nav.library" = "Bibliothek";
+"nav.profile" = "Profil";
 "nav.back_to %@" = "Zurück zu %@";
 "nav.currently_viewing" = "Aktuelle Ansicht";
 "nav.your_library" = "Deine Bibliothek";
@@ -265,3 +266,11 @@
 "error.remove_album %@" = "Album konnte nicht entfernt werden: %@";
 "error.unfollow_artist %@" = "Künstler konnte nicht entfolgt werden: %@";
 "error.follow_artist %@" = "Künstler konnte nicht gefolgt werden: %@";
+
+/* Profile */
+"profile.logged_in_as %@" = "Angemeldet als %@";
+"profile.open_in_spotify" = "In Spotify öffnen";
+"profile.email" = "E-Mail";
+"profile.country" = "Land";
+"profile.subscription" = "Abo";
+"profile.followers" = "Follower";

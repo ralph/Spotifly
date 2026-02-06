@@ -479,6 +479,26 @@ struct DeviceCodable: Decodable {
 /// User profile
 struct UserProfileCodable: Decodable {
     let id: String
+    let displayName: String?
+    let email: String?
+    let images: [ImageCodable]?
+    let externalUrls: ExternalUrlsCodable?
+    let followers: FollowersCodable?
+    let product: String?
+    let country: String?
+    let uri: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+        case email
+        case images
+        case externalUrls = "external_urls"
+        case followers
+        case product
+        case country
+        case uri
+    }
 }
 
 /// Saved tracks
