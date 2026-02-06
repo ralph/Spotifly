@@ -457,7 +457,7 @@ struct NowPlayingBarView: View {
 
                 // Create the playlist using PlaylistService
                 let newPlaylist = try await playlistService.createPlaylist(
-                    userId: session.userId ?? "",
+                    userId: store.userId ?? "",
                     name: trimmedName,
                     accessToken: token,
                 )

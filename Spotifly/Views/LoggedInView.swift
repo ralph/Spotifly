@@ -145,10 +145,7 @@ struct LoggedInView: View {
             // Load startup data
             let token = await session.validAccessToken()
 
-            // Load user ID first (needed for playlist ownership checks)
-            await session.loadUserIdIfNeeded()
-
-            // Load user profile
+            // Load user profile (also provides userId for playlist ownership checks)
             async let userProfileLoad: () = {
                 if let profile = try? await SpotifyAPI.getCurrentUserProfile(accessToken: token) {
                     await MainActor.run { store.setUserProfile(profile) }
@@ -418,7 +415,7 @@ struct LoggedInView: View {
     }
 
     private func playlistContextMenu(playlist: Playlist) -> some View {
-        let isOwner = playlist.ownerId == session.userId
+        let isOwner = playlist.ownerId == store.userId
         let isInLibrary = store.userPlaylistIds.contains(playlist.id)
 
         return Menu {

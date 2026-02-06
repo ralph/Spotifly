@@ -59,7 +59,7 @@ struct PlaylistDetailView: View {
 
     /// Whether the current user owns this playlist
     private var isOwner: Bool {
-        playlist?.ownerId == session.userId
+        playlist?.ownerId == store.userId
     }
 
     /// Whether this playlist is in the user's library

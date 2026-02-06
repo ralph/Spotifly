@@ -205,7 +205,7 @@ private struct PlaylistSubmenuContent: View {
     @State private var hasTriggeredLoad = false
 
     private var ownedPlaylists: [Playlist] {
-        store.userPlaylists.filter { $0.ownerId == session.userId }
+        store.userPlaylists.filter { $0.ownerId == store.userId }
     }
 
     var body: some View {
@@ -240,7 +240,6 @@ private struct PlaylistSubmenuContent: View {
         hasTriggeredLoad = true
 
         Task {
-            await session.loadUserIdIfNeeded()
             if store.userPlaylists.isEmpty, !store.playlistsPagination.isLoading {
                 let token = await session.validAccessToken()
                 try? await playlistService.loadUserPlaylists(accessToken: token)

@@ -131,6 +131,11 @@ final class AppStore {
     /// Current user's profile (singleton)
     private(set) var userProfile: UserProfile?
 
+    /// Current user's Spotify ID (derived from profile)
+    var userId: String? {
+        userProfile?.id
+    }
+
     // MARK: - Connection State
 
     /// Our connection to Spotify (single source of truth for connection info)
