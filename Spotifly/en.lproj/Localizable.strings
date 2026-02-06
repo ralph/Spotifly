@@ -262,6 +262,11 @@
 "error.unfollow_artist %@" = "Failed to unfollow artist: %@";
 "error.follow_artist %@" = "Failed to follow artist: %@";
 
+/* Premium Required */
+"premium.required.title" = "Spotify Premium Required";
+"premium.required.logged_in_as %@" = "Logged in as %@";
+"premium.required.message" = "Spotifly requires a Spotify Premium account. It uses Spotify Connect to stream music, which is only available with Premium.";
+
 /* Profile */
 "profile.logged_in_as %@" = "Logged in as %@";
 "profile.open_in_spotify" = "Open in Spotify";

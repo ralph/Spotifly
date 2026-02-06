@@ -88,6 +88,9 @@ struct LoggedInView: View {
     @State private var selectedArtistId: String?
     @State private var selectedPlaylistId: String?
 
+    /// Premium check
+    @State private var showPremiumRequired = false
+
     // Sidebar width for dynamic now playing bar positioning
     @State private var sidebarWidth: CGFloat = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -104,6 +107,18 @@ struct LoggedInView: View {
     }
 
     var body: some View {
+        if showPremiumRequired {
+            PremiumRequiredView(
+                displayName: store.userProfile?.displayName,
+                onLogout: onLogout,
+            )
+            .frame(minWidth: 500, minHeight: 400)
+        } else {
+            mainAppView
+        }
+    }
+
+    private var mainAppView: some View {
         ZStack(alignment: .bottom) {
             if !windowState.isMiniPlayerMode {
                 mainLayoutView
@@ -145,12 +160,16 @@ struct LoggedInView: View {
             // Load startup data
             let token = await session.validAccessToken()
 
-            // Load user profile (also provides userId for playlist ownership checks)
-            async let userProfileLoad: () = {
-                if let profile = try? await SpotifyAPI.getCurrentUserProfile(accessToken: token) {
-                    await MainActor.run { store.setUserProfile(profile) }
+            // Load user profile first (provides userId + premium check)
+            if let profile = try? await SpotifyAPI.getCurrentUserProfile(accessToken: token) {
+                store.setUserProfile(profile)
+
+                // Require Spotify Premium (librespot only works with Premium accounts)
+                guard profile.product == "premium" else {
+                    showPremiumRequired = true
+                    return
                 }
-            }()
+            }
 
             // Load favorites so heart indicators work everywhere
             async let favorites: () = { try? await trackService.loadFavorites(accessToken: token) }()
@@ -162,7 +181,7 @@ struct LoggedInView: View {
             async let newReleases: () = newReleasesService.loadNewReleases(accessToken: token)
             async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
 
-            _ = await (userProfileLoad, favorites, topArtists, topTracks, newReleases, recentlyPlayed)
+            _ = await (favorites, topArtists, topTracks, newReleases, recentlyPlayed)
 
             // Set token provider for automatic reconnection
             playbackViewModel.setTokenProvider { await session.validAccessToken() }

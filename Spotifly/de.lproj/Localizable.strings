@@ -267,6 +267,11 @@
 "error.unfollow_artist %@" = "Künstler konnte nicht entfolgt werden: %@";
 "error.follow_artist %@" = "Künstler konnte nicht gefolgt werden: %@";
 
+/* Premium Required */
+"premium.required.title" = "Spotify Premium erforderlich";
+"premium.required.logged_in_as %@" = "Angemeldet als %@";
+"premium.required.message" = "Spotifly benötigt ein Spotify Premium-Konto. Die App nutzt Spotify Connect zum Musikstreaming, was nur mit Premium verfügbar ist.";
+
 /* Profile */
 "profile.logged_in_as %@" = "Angemeldet als %@";
 "profile.open_in_spotify" = "In Spotify öffnen";
