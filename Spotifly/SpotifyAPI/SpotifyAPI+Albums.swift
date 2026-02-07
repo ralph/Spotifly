@@ -137,7 +137,7 @@ extension SpotifyAPI {
 
     /// Removes an album from the user's library
     static func removeUserAlbum(accessToken: String, albumId: String) async throws {
-        let urlString = "\(baseURL)/me/albums?ids=\(albumId)"
+        let urlString = "\(baseURL)/me/library"
 
         debugLog("SpotifyAPI", "[DELETE] \(urlString)")
 
@@ -148,6 +148,8 @@ extension SpotifyAPI {
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["uris": ["spotify:album:\(albumId)"]])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -171,7 +173,7 @@ extension SpotifyAPI {
 
     /// Saves an album to the user's library
     static func saveUserAlbum(accessToken: String, albumId: String) async throws {
-        let urlString = "\(baseURL)/me/albums?ids=\(albumId)"
+        let urlString = "\(baseURL)/me/library"
 
         debugLog("SpotifyAPI", "[PUT] \(urlString)")
 
@@ -182,6 +184,8 @@ extension SpotifyAPI {
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["uris": ["spotify:album:\(albumId)"]])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
