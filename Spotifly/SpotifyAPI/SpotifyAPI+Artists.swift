@@ -12,7 +12,7 @@ extension SpotifyAPI {
 
     /// Fetches a single artist's details from Spotify Web API
     static func fetchArtistDetails(accessToken: String, artistId: String) async throws -> APIArtist {
-        let urlString = "\(baseURL)/artists/\(artistId)?fields=id,name,uri,genres,followers(total),images"
+        let urlString = "\(baseURL)/artists/\(artistId)?fields=id,name,uri,genres,images"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 

@@ -92,7 +92,6 @@ extension Artist {
         uri = artist.uri
         imageURL = artist.imageURL
         genres = artist.genres
-        followers = artist.followers
         externalUrl = artist.externalUrl
     }
 }

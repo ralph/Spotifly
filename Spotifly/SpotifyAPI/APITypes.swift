@@ -87,7 +87,6 @@ struct NewReleasesResponse: Sendable {
 /// Artist metadata from Spotify API
 struct APIArtist: Sendable, Identifiable {
     let id: String
-    let followers: Int
     let genres: [String]
     let imageURL: URL?
     let name: String
@@ -264,12 +263,11 @@ struct ArtistCodable: Decodable {
     let name: String
     let uri: String?
     let genres: [String]?
-    let followers: FollowersCodable?
     let images: [ImageCodable]?
     let externalUrls: ExternalUrlsCodable?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, uri, genres, followers, images
+        case id, name, uri, genres, images
         case externalUrls = "external_urls"
     }
 }
@@ -279,7 +277,6 @@ extension ArtistCodable {
         guard let id, let uri else { return nil }
         return APIArtist(
             id: id,
-            followers: followers?.total ?? 0,
             genres: genres ?? [],
             imageURL: (images?.first?.url).flatMap { URL(string: $0) },
             name: name,

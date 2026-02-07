@@ -116,7 +116,6 @@ struct Artist: Identifiable, Sendable, Hashable, Encodable {
     let uri: String
     let imageURL: URL?
     let genres: [String]
-    let followers: Int?
     let externalUrl: String?
 }
 

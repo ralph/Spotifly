@@ -142,11 +142,6 @@ struct ArtistDetailView: View {
                                 .multilineTextAlignment(.center)
                         }
 
-                        if let followers = artist.followers {
-                            Text(String(format: String(localized: "metadata.followers"), formatFollowers(followers)))
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
-                        }
                     }
 
                     // Play Top Tracks button
@@ -374,16 +369,6 @@ struct ArtistDetailView: View {
             // Use artist URI to load via Spirc.load(LoadRequest::from_context_uri())
             // This properly loads the artist context instead of individual tracks
             await playbackViewModel.play(uriOrUrl: artist.uri, accessToken: token)
-        }
-    }
-
-    private func formatFollowers(_ count: Int) -> String {
-        if count >= 1_000_000 {
-            String(format: "%.1fM", Double(count) / 1_000_000.0)
-        } else if count >= 1000 {
-            String(format: "%.1fK", Double(count) / 1000.0)
-        } else {
-            "\(count)"
         }
     }
 
