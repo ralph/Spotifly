@@ -568,11 +568,6 @@ struct ArtistTopTracksCodable: Decodable {
     let tracks: [TrackCodable]
 }
 
-/// Multiple tracks (batch fetch)
-struct MultipleTracksCodable: Decodable {
-    let tracks: [TrackCodable?] // Can contain nulls for not-found tracks
-}
-
 /// User albums
 struct UserAlbumsCodable: Decodable {
     let items: [UserAlbumItemCodable]

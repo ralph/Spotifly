@@ -48,58 +48,31 @@ extension SpotifyAPI {
 
     // MARK: - Multiple Tracks
 
-    /// Fetches multiple tracks by their IDs (batch fetch, up to 50 at a time)
-    /// Returns a dictionary mapping track ID to APITrack (for found tracks)
+    /// Fetches multiple tracks by their IDs using parallel individual requests.
+    /// Returns a dictionary mapping track ID to APITrack (for found tracks).
     static func fetchTracks(accessToken: String, trackIds: [String]) async throws -> [String: APITrack] {
         guard !trackIds.isEmpty else { return [:] }
 
-        // Spotify API allows max 50 tracks per request
-        let batchSize = 50
-        var result: [String: APITrack] = [:]
-
-        for batchStart in stride(from: 0, to: trackIds.count, by: batchSize) {
-            let batchEnd = min(batchStart + batchSize, trackIds.count)
-            let batch = Array(trackIds[batchStart ..< batchEnd])
-            let ids = batch.joined(separator: ",")
-
-            let urlString = "\(baseURL)/tracks?ids=\(ids)"
-
-            debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-            guard let url = URL(string: urlString) else {
-                throw SpotifyAPIError.invalidURI
-            }
-
-            var request = URLRequest(url: url)
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw SpotifyAPIError.invalidResponse
-            }
-
-            switch httpResponse.statusCode {
-            case 200:
-                do {
-                    let decoded = try JSONDecoder().decode(MultipleTracksCodable.self, from: data)
-                    for track in decoded.tracks {
-                        // track can be null if not found
-                        if let track {
-                            result[track.id] = track.toAPITrack()
-                        }
+        return try await withThrowingTaskGroup(of: (String, APITrack?).self) { group in
+            for trackId in trackIds {
+                group.addTask {
+                    do {
+                        let track = try await fetchTrack(trackId: trackId, accessToken: accessToken)
+                        return (trackId, track)
+                    } catch SpotifyAPIError.notFound {
+                        return (trackId, nil)
                     }
-                } catch {
-                    throw SpotifyAPIError.invalidResponse
                 }
-            case 401:
-                throw SpotifyAPIError.unauthorized
-            default:
-                try throwAPIError(data: data, statusCode: httpResponse.statusCode)
             }
-        }
 
-        return result
+            var result: [String: APITrack] = [:]
+            for try await (id, track) in group {
+                if let track {
+                    result[id] = track
+                }
+            }
+            return result
+        }
     }
 
     // MARK: - Saved Tracks (Favorites)
