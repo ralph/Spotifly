@@ -109,13 +109,6 @@ final class AppStore {
     var topTrackAlbumsPagination = PaginationState()
     var topTrackAlbumsErrorMessage: String?
 
-    // MARK: - New Releases State
-
-    private(set) var newReleaseAlbumIds: [String] = []
-    var newReleasesIsLoading = false
-    var newReleasesErrorMessage: String?
-    var hasLoadedNewReleases = false
-
     // MARK: - Queue State
 
     /// Queue state (previous/current/next track IDs + loading state)
@@ -181,11 +174,6 @@ final class AppStore {
     /// Top albums derived from top tracks
     var topTrackAlbums: [Album] {
         topTrackAlbumIds.compactMap { albums[$0] }
-    }
-
-    /// New release albums from the store
-    var newReleaseAlbums: [Album] {
-        newReleaseAlbumIds.compactMap { albums[$0] }
     }
 
     /// Recent albums and playlists (excludes artists) from URIs
@@ -527,12 +515,6 @@ final class AppStore {
         recentItemURIs = uris
     }
 
-    // MARK: - New Releases Actions
-
-    func setNewReleaseAlbumIds(_ ids: [String]) {
-        newReleaseAlbumIds = ids
-    }
-
     // MARK: - Queue Actions
 
     /// Set queue state with queue entries. If `previous` is nil, preserves existing (Web API doesn't provide history).
@@ -614,7 +596,6 @@ final class AppStore {
                 let topArtistsPagination: PaginationState
                 let topTrackAlbumIds: [String]
                 let topTrackAlbumsPagination: PaginationState
-                let newReleaseAlbumIds: [String]
 
                 let queue: QueueSnapshot
 
@@ -658,7 +639,6 @@ final class AppStore {
                 topArtistsPagination: topArtistsPagination,
                 topTrackAlbumIds: topTrackAlbumIds,
                 topTrackAlbumsPagination: topTrackAlbumsPagination,
-                newReleaseAlbumIds: newReleaseAlbumIds,
                 queue: StoreSnapshot.QueueSnapshot(
                     previousTracks: queue.previousTracks.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
                     currentTrack: queue.currentTrack.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },

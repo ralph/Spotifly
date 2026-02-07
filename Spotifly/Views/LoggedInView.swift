@@ -48,10 +48,6 @@ struct LoggedInView: View {
         TopItemsService(store: store)
     }
 
-    private var newReleasesService: NewReleasesService {
-        NewReleasesService(store: store)
-    }
-
     @State private var navigationCoordinator = NavigationCoordinator()
 
     init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
@@ -151,7 +147,6 @@ struct LoggedInView: View {
         .environment(recentlyPlayedService)
         .environment(searchService)
         .environment(topItemsService)
-        .environment(newReleasesService)
         .environment(navigationCoordinator)
         .environment(store)
         .environment(trackService)
@@ -197,14 +192,13 @@ struct LoggedInView: View {
             // Load favorites so heart indicators work everywhere
             async let favorites: () = { try? await trackService.loadFavorites(accessToken: token) }()
 
-            // Load startpage data (top artists, top tracks, new releases, recently played)
+            // Load startpage data (top artists, top tracks, recently played)
             let timeRange = TopItemsTimeRange(rawValue: topItemsTimeRange) ?? .mediumTerm
             async let topArtists: () = topItemsService.loadTopArtists(accessToken: token, timeRange: timeRange)
             async let topTracks: () = topItemsService.loadTopTracks(accessToken: token, timeRange: timeRange)
-            async let newReleases: () = newReleasesService.loadNewReleases(accessToken: token)
             async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
 
-            _ = await (favorites, topArtists, topTracks, newReleases, recentlyPlayed)
+            _ = await (favorites, topArtists, topTracks, recentlyPlayed)
 
             // Set token provider for automatic reconnection
             playbackViewModel.setTokenProvider { await session.validAccessToken() }

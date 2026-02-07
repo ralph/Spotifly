@@ -74,14 +74,6 @@ struct AlbumsResponse: Sendable {
     let total: Int
 }
 
-/// Response wrapper for new releases endpoint
-struct NewReleasesResponse: Sendable {
-    let albums: [APIAlbum]
-    let hasMore: Bool
-    let nextOffset: Int?
-    let total: Int
-}
-
 // MARK: - Artist Types
 
 /// Artist metadata from Spotify API
@@ -578,15 +570,6 @@ struct ArtistAlbumsCodable: Decodable {
 }
 
 /// New releases
-struct NewReleasesCodable: Decodable {
-    let albums: AlbumsPagingCodable
-
-    struct AlbumsPagingCodable: Decodable {
-        let items: [AlbumCodable]
-        let total: Int
-    }
-}
-
 /// User artists (followed)
 struct UserArtistsCodable: Decodable {
     let artists: ArtistsPagingCodable

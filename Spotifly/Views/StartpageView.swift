@@ -13,12 +13,9 @@ struct StartpageView: View {
     @Environment(AppStore.self) private var store
     @Environment(RecentlyPlayedService.self) private var recentlyPlayedService
     @Environment(TopItemsService.self) private var topItemsService
-    @Environment(NewReleasesService.self) private var newReleasesService
-
     // Startpage section preferences
     @AppStorage("showTopArtists") private var showTopArtists: Bool = true
     @AppStorage("showRecentlyPlayed") private var showRecentlyPlayed: Bool = true
-    @AppStorage("showNewReleases") private var showNewReleases: Bool = true
     @AppStorage("showTopAlbums") private var showTopAlbums: Bool = true
     @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
 
@@ -29,7 +26,7 @@ struct StartpageView: View {
 
     /// Whether any section is enabled
     private var hasAnySectionEnabled: Bool {
-        showTopArtists || showRecentlyPlayed || showNewReleases || showTopAlbums
+        showTopArtists || showRecentlyPlayed || showTopAlbums
     }
 
     /// Check if a section is enabled
@@ -37,7 +34,6 @@ struct StartpageView: View {
         switch section {
         case .topArtists: showTopArtists
         case .recentlyPlayed: showRecentlyPlayed
-        case .newReleases: showNewReleases
         case .topAlbums: showTopAlbums
         }
     }
@@ -63,9 +59,6 @@ struct StartpageView: View {
             if showTopArtists {
                 await topItemsService.refreshTopArtists(accessToken: token, timeRange: timeRange)
             }
-            if showNewReleases {
-                await newReleasesService.refresh(accessToken: token)
-            }
             if showRecentlyPlayed {
                 await recentlyPlayedService.refresh(accessToken: token)
             }
@@ -82,8 +75,6 @@ struct StartpageView: View {
             topArtistsSection
         case .recentlyPlayed:
             recentlyPlayedSection
-        case .newReleases:
-            newReleasesSection
         case .topAlbums:
             topAlbumsSection
         }
@@ -122,20 +113,6 @@ struct StartpageView: View {
             },
         ) { artist in
             ArtistCard(artist: artist)
-        }
-    }
-
-    // MARK: - New Releases Section
-
-    private var newReleasesSection: some View {
-        HorizontalCardSection(
-            titleKey: "startpage.new_releases",
-            items: store.newReleaseAlbums,
-            isLoading: store.newReleasesIsLoading,
-            errorMessage: store.newReleasesErrorMessage,
-            emptyKey: "startpage.new_releases.empty",
-        ) { album in
-            AlbumCard(album: album)
         }
     }
 
