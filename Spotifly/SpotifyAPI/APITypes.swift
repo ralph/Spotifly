@@ -398,22 +398,22 @@ struct PlaylistCodable: Decodable {
     let images: [ImageCodable]?
     let owner: OwnerCodable
     let `public`: Bool?
-    let tracks: PlaylistTracksCodable?
+    let items: PlaylistItemsCodable?
     let externalUrls: ExternalUrlsCodable?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, uri, description, images, owner, tracks
+        case id, name, uri, description, images, owner, items
         case `public`
         case externalUrls = "external_urls"
     }
 
-    struct PlaylistTracksCodable: Decodable {
+    struct PlaylistItemsCodable: Decodable {
         let total: Int?
-        let items: [PlaylistTrackItemCodable]?
+        let items: [PlaylistItemWrapperCodable]?
     }
 
-    struct PlaylistTrackItemCodable: Decodable {
-        let track: TrackDurationCodable?
+    struct PlaylistItemWrapperCodable: Decodable {
+        let item: TrackDurationCodable?
         struct TrackDurationCodable: Decodable {
             let durationMs: Int?
             enum CodingKeys: String, CodingKey {
@@ -423,7 +423,7 @@ struct PlaylistCodable: Decodable {
     }
 
     func toAPIPlaylist() -> APIPlaylist {
-        let durations = tracks?.items?.compactMap { $0.track?.durationMs } ?? []
+        let durations = items?.items?.compactMap { $0.item?.durationMs } ?? []
         let totalDurationMs = durations.isEmpty ? nil : durations.reduce(0, +)
         return APIPlaylist(
             id: id,
@@ -434,7 +434,7 @@ struct PlaylistCodable: Decodable {
             ownerId: owner.id,
             ownerName: owner.displayName ?? owner.id,
             totalDurationMs: totalDurationMs,
-            trackCount: tracks?.total ?? 0,
+            trackCount: items?.total ?? 0,
             uri: uri,
             externalUrl: externalUrls?.spotify,
         )
@@ -561,17 +561,17 @@ struct AlbumTracksCodable: Decodable {
     }
 }
 
-/// Playlist tracks
-struct PlaylistTracksCodable: Decodable {
-    let items: [PlaylistTrackItemCodable]
+/// Playlist items
+struct PlaylistItemsCodable: Decodable {
+    let items: [PlaylistItemWrapperCodable]
 
-    struct PlaylistTrackItemCodable: Decodable {
+    struct PlaylistItemWrapperCodable: Decodable {
         let addedAt: String?
-        let track: TrackCodable?
+        let item: TrackCodable?
 
         enum CodingKeys: String, CodingKey {
             case addedAt = "added_at"
-            case track
+            case item
         }
     }
 }

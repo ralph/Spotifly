@@ -327,9 +327,9 @@ extension SpotifyAPI {
         switch httpResponse.statusCode {
         case 200:
             do {
-                let decoded = try JSONDecoder().decode(PlaylistTracksCodable.self, from: data)
+                let decoded = try JSONDecoder().decode(PlaylistItemsCodable.self, from: data)
                 return decoded.items.compactMap { item in
-                    item.track?.toAPITrack(addedAt: item.addedAt)
+                    item.item?.toAPITrack(addedAt: item.addedAt)
                 }
             } catch {
                 throw SpotifyAPIError.invalidResponse
