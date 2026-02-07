@@ -475,7 +475,6 @@ struct UserProfileCodable: Decodable {
     let displayName: String?
     let images: [ImageCodable]?
     let externalUrls: ExternalUrlsCodable?
-    let product: String?
     let uri: String?
 
     enum CodingKeys: String, CodingKey {
@@ -483,7 +482,6 @@ struct UserProfileCodable: Decodable {
         case displayName = "display_name"
         case images
         case externalUrls = "external_urls"
-        case product
         case uri
     }
 }

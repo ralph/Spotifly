@@ -172,21 +172,26 @@ struct LoggedInView: View {
             // Load startup data
             let token = await session.validAccessToken()
 
-            // Load user profile first (provides userId + premium check + whitelist check)
+            // Load user profile (provides userId + whitelist check)
             do {
                 let profile = try await SpotifyAPI.getCurrentUserProfile(accessToken: token)
                 store.setUserProfile(profile)
-
-                // Require Spotify Premium (librespot only works with Premium accounts)
-                guard profile.product == "premium" else {
-                    blockingState = .premiumRequired
-                    return
-                }
             } catch SpotifyAPIError.forbidden {
                 blockingState = .userNotWhitelisted
                 return
             } catch {
                 // Profile load failed for other reasons - continue without profile
+            }
+
+            // Require Spotify Premium (librespot only works with Premium accounts).
+            // The product field was removed from /me, so we probe a premium-only endpoint.
+            do {
+                _ = try await SpotifyAPI.fetchAvailableDevices(accessToken: token)
+            } catch SpotifyAPIError.forbidden {
+                blockingState = .premiumRequired
+                return
+            } catch {
+                // Network/other errors - don't block startup, playback will fail later if not premium
             }
 
             // Load favorites so heart indicators work everywhere

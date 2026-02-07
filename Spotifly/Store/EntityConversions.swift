@@ -105,7 +105,6 @@ extension UserProfile {
         displayName = profile.displayName ?? profile.id
         imageURL = profile.images?.first.flatMap { URL(string: $0.url) }
         externalUrl = profile.externalUrls?.spotify
-        product = profile.product
         uri = profile.uri
     }
 }

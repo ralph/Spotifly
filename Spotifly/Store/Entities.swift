@@ -193,7 +193,6 @@ struct UserProfile: Sendable {
     let displayName: String
     let imageURL: URL?
     let externalUrl: String?
-    let product: String?
     let uri: String?
 }
 
