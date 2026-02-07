@@ -561,11 +561,6 @@ struct PlaylistItemsCodable: Decodable {
     }
 }
 
-/// Artist top tracks
-struct ArtistTopTracksCodable: Decodable {
-    let tracks: [TrackCodable]
-}
-
 /// User albums
 struct UserAlbumsCodable: Decodable {
     let items: [UserAlbumItemCodable]

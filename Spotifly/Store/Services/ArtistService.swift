@@ -112,20 +112,6 @@ final class ArtistService {
 
     // MARK: - Artist Content
 
-    /// Fetch artist's top tracks
-    func fetchArtistTopTracks(artistId: String, accessToken: String) async throws -> [Track] {
-        let searchTracks = try await SpotifyAPI.fetchArtistTopTracks(
-            accessToken: accessToken,
-            artistId: artistId,
-        )
-
-        // Convert to unified Track entities
-        let tracks = searchTracks.map { Track(from: $0) }
-        store.upsertTracks(tracks)
-
-        return tracks
-    }
-
     /// Fetch artist's albums
     func fetchArtistAlbums(
         artistId: String,

@@ -316,41 +316,4 @@ extension SpotifyAPI {
         }
     }
 
-    // MARK: - Artist Top Tracks
-
-    /// Fetches top tracks for a specific artist
-    static func fetchArtistTopTracks(accessToken: String, artistId: String) async throws -> [APITrack] {
-        let urlString = "\(baseURL)/artists/\(artistId)/top-tracks?market=from_token"
-
-        debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let decoded = try JSONDecoder().decode(ArtistTopTracksCodable.self, from: data)
-                return decoded.tracks.map { $0.toAPITrack() }
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 404:
-            throw SpotifyAPIError.notFound
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
 }

@@ -21,10 +21,8 @@ struct ArtistDetailView: View {
     @Environment(ArtistService.self) private var artistService
 
     @State private var artist: Artist?
-    @State private var topTracks: [Track] = []
     @State private var albums: [Album] = []
     @State private var isLoadingArtist = false
-    @State private var isLoading = false
     @State private var isLoadingAlbums = false
     @State private var errorMessage: String?
     @State private var showAllAlbums = false
@@ -77,7 +75,6 @@ struct ArtistDetailView: View {
             } else {
                 await loadArtist()
             }
-            await loadTopTracks()
             await loadAlbums()
         }
         .alert("artist.unfollow.title", isPresented: $showUnfollowConfirmation) {
@@ -144,58 +141,8 @@ struct ArtistDetailView: View {
 
                     }
 
-                    // Play Top Tracks button
-                    Button {
-                        playAllTopTracks()
-                    } label: {
-                        Label("playback.play_top_tracks", systemImage: "play.fill")
-                            .font(.headline)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .disabled(topTracks.isEmpty)
                 }
                 .padding(.top, 24)
-
-                // Top Tracks
-                if isLoading {
-                    ProgressView("loading.top_tracks")
-                        .padding()
-                } else if let errorMessage {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                        .padding()
-                } else if !topTracks.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("section.top_tracks")
-                            .font(.headline)
-                            .padding(.horizontal)
-
-                        let displayedTracks = Array(topTracks.prefix(5))
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(displayedTracks.enumerated()), id: \.element.id) { index, track in
-                                TrackRow(
-                                    track: track,
-                                    index: index,
-                                    currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                                    playbackViewModel: playbackViewModel,
-                                    currentSection: .artists,
-                                    selectionId: artistId,
-                                )
-
-                                if track.id != displayedTracks.last?.id {
-                                    Divider()
-                                        .padding(.leading, 94)
-                                }
-                            }
-                        }
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(8)
-                        .padding(.horizontal)
-                    }
-                }
 
                 // Albums Section
                 if isLoadingAlbums {
@@ -325,25 +272,6 @@ struct ArtistDetailView: View {
         isLoadingArtist = false
     }
 
-    private func loadTopTracks() async {
-        topTracks = []
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let token = await session.validAccessToken()
-            // Load via service (stores tracks in AppStore)
-            topTracks = try await artistService.fetchArtistTopTracks(
-                artistId: artistId,
-                accessToken: token,
-            )
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-
-        isLoading = false
-    }
-
     private func loadAlbums() async {
         albums = []
         isLoadingAlbums = true
@@ -360,16 +288,6 @@ struct ArtistDetailView: View {
         }
 
         isLoadingAlbums = false
-    }
-
-    private func playAllTopTracks() {
-        guard let artist else { return }
-        Task {
-            let token = await session.validAccessToken()
-            // Use artist URI to load via Spirc.load(LoadRequest::from_context_uri())
-            // This properly loads the artist context instead of individual tracks
-            await playbackViewModel.play(uriOrUrl: artist.uri, accessToken: token)
-        }
     }
 
     private func unfollowArtist() {
