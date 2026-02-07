@@ -105,7 +105,7 @@ extension SpotifyAPI {
                         externalUrl: playlist.externalUrls?.spotify,
                         trackIds: [],
                         totalDurationMs: nil,
-                        knownTrackCount: playlist.tracks?.total ?? 0,
+                        knownTrackCount: playlist.items?.total ?? 0,
                     )
                 } ?? []
 
