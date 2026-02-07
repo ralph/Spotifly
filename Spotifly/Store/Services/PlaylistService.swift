@@ -137,14 +137,12 @@ final class PlaylistService {
 
     /// Create a new playlist
     func createPlaylist(
-        userId: String,
         name: String,
         description: String? = nil,
         accessToken: String,
     ) async throws -> Playlist {
         let response = try await SpotifyAPI.createPlaylist(
             accessToken: accessToken,
-            userId: userId,
             name: name,
             description: description,
         )

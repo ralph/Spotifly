@@ -93,15 +93,14 @@ extension SpotifyAPI {
 
     // MARK: - Playlist Management
 
-    /// Creates a new playlist for the user
+    /// Creates a new playlist for the current user
     static func createPlaylist(
         accessToken: String,
-        userId: String,
         name: String,
         description: String? = nil,
         isPublic: Bool = false,
     ) async throws -> APIPlaylist {
-        let urlString = "\(baseURL)/users/\(userId)/playlists"
+        let urlString = "\(baseURL)/me/playlists"
 
         debugLog("SpotifyAPI", "[POST] \(urlString)")
 
