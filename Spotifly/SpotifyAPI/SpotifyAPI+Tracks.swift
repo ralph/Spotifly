@@ -151,7 +151,7 @@ extension SpotifyAPI {
 
     /// Saves a track to user's library
     static func saveTrack(accessToken: String, trackId: String) async throws {
-        let urlString = "\(baseURL)/me/tracks?ids=\(trackId)"
+        let urlString = "\(baseURL)/me/library"
 
         debugLog("SpotifyAPI", "[PUT] \(urlString)")
 
@@ -163,6 +163,7 @@ extension SpotifyAPI {
         request.httpMethod = "PUT"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["uris": ["spotify:track:\(trackId)"]])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -229,7 +230,7 @@ extension SpotifyAPI {
 
     /// Removes a track from user's library
     static func removeSavedTrack(accessToken: String, trackId: String) async throws {
-        let urlString = "\(baseURL)/me/tracks?ids=\(trackId)"
+        let urlString = "\(baseURL)/me/library"
 
         debugLog("SpotifyAPI", "[DELETE] \(urlString)")
 
@@ -241,6 +242,7 @@ extension SpotifyAPI {
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["uris": ["spotify:track:\(trackId)"]])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
