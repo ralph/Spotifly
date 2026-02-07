@@ -103,12 +103,9 @@ extension UserProfile {
     init(from profile: UserProfileCodable) {
         id = profile.id
         displayName = profile.displayName ?? profile.id
-        email = profile.email
         imageURL = profile.images?.first.flatMap { URL(string: $0.url) }
         externalUrl = profile.externalUrls?.spotify
-        followers = profile.followers?.total
         product = profile.product
-        country = profile.country
         uri = profile.uri
     }
 }

@@ -26,18 +26,7 @@ struct UserProfileView: View {
                 // Account info
                 GroupBox {
                     VStack(spacing: 0) {
-                        if let email = userProfile.email {
-                            profileRow(label: "profile.email", value: email)
-                        }
-                        if let country = userProfile.country {
-                            profileRow(label: "profile.country", value: country)
-                        }
-                        if let product = userProfile.product {
-                            profileRow(label: "profile.subscription", value: product.capitalized)
-                        }
-                        if let followers = userProfile.followers {
-                            profileRow(label: "profile.followers", value: "\(followers)")
-                        }
+                        profileRow(label: "profile.id", value: userProfile.id)
                     }
                 }
                 .frame(maxWidth: 400)
