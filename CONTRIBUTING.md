@@ -16,7 +16,7 @@ The fork adds `PlayerEvent::SetQueue` and `QueueTrack` types for queue state upd
 Clone the fork as a sibling to this repository:
 
 ```bash
-git clone https://github.com/ralph/librespot.git
+git clone -b spotifly-dev https://github.com/ralph/librespot.git
 ```
 
 Expected directory structure:
