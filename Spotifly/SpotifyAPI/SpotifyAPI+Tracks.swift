@@ -48,58 +48,31 @@ extension SpotifyAPI {
 
     // MARK: - Multiple Tracks
 
-    /// Fetches multiple tracks by their IDs (batch fetch, up to 50 at a time)
-    /// Returns a dictionary mapping track ID to APITrack (for found tracks)
+    /// Fetches multiple tracks by their IDs using parallel individual requests.
+    /// Returns a dictionary mapping track ID to APITrack (for found tracks).
     static func fetchTracks(accessToken: String, trackIds: [String]) async throws -> [String: APITrack] {
         guard !trackIds.isEmpty else { return [:] }
 
-        // Spotify API allows max 50 tracks per request
-        let batchSize = 50
-        var result: [String: APITrack] = [:]
-
-        for batchStart in stride(from: 0, to: trackIds.count, by: batchSize) {
-            let batchEnd = min(batchStart + batchSize, trackIds.count)
-            let batch = Array(trackIds[batchStart ..< batchEnd])
-            let ids = batch.joined(separator: ",")
-
-            let urlString = "\(baseURL)/tracks?ids=\(ids)"
-
-            debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-            guard let url = URL(string: urlString) else {
-                throw SpotifyAPIError.invalidURI
-            }
-
-            var request = URLRequest(url: url)
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw SpotifyAPIError.invalidResponse
-            }
-
-            switch httpResponse.statusCode {
-            case 200:
-                do {
-                    let decoded = try JSONDecoder().decode(MultipleTracksCodable.self, from: data)
-                    for track in decoded.tracks {
-                        // track can be null if not found
-                        if let track {
-                            result[track.id] = track.toAPITrack()
-                        }
+        return try await withThrowingTaskGroup(of: (String, APITrack?).self) { group in
+            for trackId in trackIds {
+                group.addTask {
+                    do {
+                        let track = try await fetchTrack(trackId: trackId, accessToken: accessToken)
+                        return (trackId, track)
+                    } catch SpotifyAPIError.notFound {
+                        return (trackId, nil)
                     }
-                } catch {
-                    throw SpotifyAPIError.invalidResponse
                 }
-            case 401:
-                throw SpotifyAPIError.unauthorized
-            default:
-                try throwAPIError(data: data, statusCode: httpResponse.statusCode)
             }
-        }
 
-        return result
+            var result: [String: APITrack] = [:]
+            for try await (id, track) in group {
+                if let track {
+                    result[id] = track
+                }
+            }
+            return result
+        }
     }
 
     // MARK: - Saved Tracks (Favorites)
@@ -151,7 +124,7 @@ extension SpotifyAPI {
 
     /// Saves a track to user's library
     static func saveTrack(accessToken: String, trackId: String) async throws {
-        let urlString = "\(baseURL)/me/tracks?ids=\(trackId)"
+        let urlString = "\(baseURL)/me/library"
 
         debugLog("SpotifyAPI", "[PUT] \(urlString)")
 
@@ -163,6 +136,7 @@ extension SpotifyAPI {
         request.httpMethod = "PUT"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["uris": ["spotify:track:\(trackId)"]])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -229,7 +203,7 @@ extension SpotifyAPI {
 
     /// Removes a track from user's library
     static func removeSavedTrack(accessToken: String, trackId: String) async throws {
-        let urlString = "\(baseURL)/me/tracks?ids=\(trackId)"
+        let urlString = "\(baseURL)/me/library"
 
         debugLog("SpotifyAPI", "[DELETE] \(urlString)")
 
@@ -241,6 +215,7 @@ extension SpotifyAPI {
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["uris": ["spotify:track:\(trackId)"]])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -305,7 +280,7 @@ extension SpotifyAPI {
 
     /// Fetches tracks for a specific playlist
     static func fetchPlaylistTracks(accessToken: String, playlistId: String) async throws -> [APITrack] {
-        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks?limit=100&fields=items(added_at,track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify)))&market=from_token"
+        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks?limit=100&fields=items(added_at,item(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify)))&market=from_token"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 
@@ -325,9 +300,9 @@ extension SpotifyAPI {
         switch httpResponse.statusCode {
         case 200:
             do {
-                let decoded = try JSONDecoder().decode(PlaylistTracksCodable.self, from: data)
+                let decoded = try JSONDecoder().decode(PlaylistItemsCodable.self, from: data)
                 return decoded.items.compactMap { item in
-                    item.track?.toAPITrack(addedAt: item.addedAt)
+                    item.item?.toAPITrack(addedAt: item.addedAt)
                 }
             } catch {
                 throw SpotifyAPIError.invalidResponse
@@ -341,41 +316,4 @@ extension SpotifyAPI {
         }
     }
 
-    // MARK: - Artist Top Tracks
-
-    /// Fetches top tracks for a specific artist
-    static func fetchArtistTopTracks(accessToken: String, artistId: String) async throws -> [APITrack] {
-        let urlString = "\(baseURL)/artists/\(artistId)/top-tracks?market=from_token"
-
-        debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let decoded = try JSONDecoder().decode(ArtistTopTracksCodable.self, from: data)
-                return decoded.tracks.map { $0.toAPITrack() }
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 404:
-            throw SpotifyAPIError.notFound
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
 }

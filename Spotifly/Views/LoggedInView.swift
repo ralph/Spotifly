@@ -48,10 +48,6 @@ struct LoggedInView: View {
         TopItemsService(store: store)
     }
 
-    private var newReleasesService: NewReleasesService {
-        NewReleasesService(store: store)
-    }
-
     @State private var navigationCoordinator = NavigationCoordinator()
 
     init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
@@ -77,6 +73,8 @@ struct LoggedInView: View {
         playbackViewModel.setStore(store)
     }
 
+    @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
+
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var searchText = ""
     @State private var searchFieldFocused = false
@@ -85,6 +83,14 @@ struct LoggedInView: View {
     @State private var selectedAlbumId: String?
     @State private var selectedArtistId: String?
     @State private var selectedPlaylistId: String?
+
+    /// Blocking state shown instead of the main app
+    enum BlockingState {
+        case premiumRequired
+        case userNotWhitelisted
+    }
+
+    @State private var blockingState: BlockingState?
 
     // Sidebar width for dynamic now playing bar positioning
     @State private var sidebarWidth: CGFloat = 0
@@ -102,6 +108,25 @@ struct LoggedInView: View {
     }
 
     var body: some View {
+        switch blockingState {
+        case .premiumRequired:
+            PremiumRequiredView(
+                displayName: store.userProfile?.displayName,
+                onLogout: onLogout,
+            )
+            .frame(minWidth: 500, minHeight: 400)
+        case .userNotWhitelisted:
+            UserNotWhitelistedView(
+                clientId: SpotifyConfig.getClientId(),
+                onLogout: onLogout,
+            )
+            .frame(minWidth: 500, minHeight: 400)
+        case nil:
+            mainAppView
+        }
+    }
+
+    private var mainAppView: some View {
         ZStack(alignment: .bottom) {
             if !windowState.isMiniPlayerMode {
                 mainLayoutView
@@ -122,7 +147,6 @@ struct LoggedInView: View {
         .environment(recentlyPlayedService)
         .environment(searchService)
         .environment(topItemsService)
-        .environment(newReleasesService)
         .environment(navigationCoordinator)
         .environment(store)
         .environment(trackService)
@@ -143,18 +167,38 @@ struct LoggedInView: View {
             // Load startup data
             let token = await session.validAccessToken()
 
-            // Load user ID first (needed for playlist ownership checks)
-            await session.loadUserIdIfNeeded()
+            // Load user profile (provides userId + whitelist check)
+            do {
+                let profile = try await SpotifyAPI.getCurrentUserProfile(accessToken: token)
+                store.setUserProfile(profile)
+            } catch SpotifyAPIError.forbidden {
+                blockingState = .userNotWhitelisted
+                return
+            } catch {
+                // Profile load failed for other reasons - continue without profile
+            }
+
+            // Require Spotify Premium (librespot only works with Premium accounts).
+            // The product field was removed from /me, so we probe a premium-only endpoint.
+            do {
+                _ = try await SpotifyAPI.fetchAvailableDevices(accessToken: token)
+            } catch SpotifyAPIError.forbidden {
+                blockingState = .premiumRequired
+                return
+            } catch {
+                // Network/other errors - don't block startup, playback will fail later if not premium
+            }
 
             // Load favorites so heart indicators work everywhere
             async let favorites: () = { try? await trackService.loadFavorites(accessToken: token) }()
 
-            // Load startpage data (top artists, new releases, recently played)
-            async let topArtists: () = topItemsService.loadTopArtists(accessToken: token)
-            async let newReleases: () = newReleasesService.loadNewReleases(accessToken: token)
+            // Load startpage data (top artists, top tracks, recently played)
+            let timeRange = TopItemsTimeRange(rawValue: topItemsTimeRange) ?? .mediumTerm
+            async let topArtists: () = topItemsService.loadTopArtists(accessToken: token, timeRange: timeRange)
+            async let topTracks: () = topItemsService.loadTopTracks(accessToken: token, timeRange: timeRange)
             async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
 
-            _ = await (favorites, topArtists, newReleases, recentlyPlayed)
+            _ = await (favorites, topArtists, topTracks, recentlyPlayed)
 
             // Set token provider for automatic reconnection
             playbackViewModel.setTokenProvider { await session.validAccessToken() }
@@ -269,7 +313,7 @@ struct LoggedInView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Refresh")
+                .help("menu.refresh")
             }
         }
         ToolbarItem(placement: .navigation) {
@@ -279,7 +323,7 @@ struct LoggedInView: View {
                 } label: {
                     Image(systemName: "arrow.down.to.line")
                 }
-                .help("Scroll to Current Track")
+                .help("queue.scroll_to_current")
             }
         }
         ToolbarItem(placement: .navigation) {
@@ -319,7 +363,7 @@ struct LoggedInView: View {
                     await playbackViewModel.addToQueue(uri: album.uri, accessToken: token)
                 }
             } label: {
-                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                Label("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
 
             Divider()
@@ -331,7 +375,7 @@ struct LoggedInView: View {
                     pasteboard.setString(externalUrl, forType: .string)
                 }
             } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
+                Label("action.share", systemImage: "square.and.arrow.up")
             }
             .disabled(album.externalUrl == nil)
 
@@ -339,7 +383,7 @@ struct LoggedInView: View {
                 Button {
                     navigationCoordinator.push(.artist(id: artistId))
                 } label: {
-                    Label("Go to Artist", systemImage: "person")
+                    Label("track.menu.go_to_artist", systemImage: "person")
                 }
             }
 
@@ -349,7 +393,7 @@ struct LoggedInView: View {
                 Button(role: .destructive) {
                     NotificationCenter.default.post(name: .showAlbumRemoveConfirmation, object: album.id)
                 } label: {
-                    Label("Remove from Library", systemImage: "minus.circle")
+                    Label("album.menu.remove_from_library", systemImage: "minus.circle")
                 }
             } else {
                 Button {
@@ -358,7 +402,7 @@ struct LoggedInView: View {
                         try? await albumService.saveAlbumToLibrary(albumId: album.id, accessToken: token)
                     }
                 } label: {
-                    Label("Add to Library", systemImage: "plus.circle")
+                    Label("album.menu.add_to_library", systemImage: "plus.circle")
                 }
             }
         } label: {
@@ -378,7 +422,7 @@ struct LoggedInView: View {
                     pasteboard.setString(externalUrl, forType: .string)
                 }
             } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
+                Label("action.share", systemImage: "square.and.arrow.up")
             }
             .disabled(artist.externalUrl == nil)
 
@@ -388,7 +432,7 @@ struct LoggedInView: View {
                 Button(role: .destructive) {
                     NotificationCenter.default.post(name: .showArtistUnfollowConfirmation, object: artist.id)
                 } label: {
-                    Label("Unfollow", systemImage: "person.badge.minus")
+                    Label("artist.menu.unfollow", systemImage: "person.badge.minus")
                 }
             } else {
                 Button {
@@ -397,7 +441,7 @@ struct LoggedInView: View {
                         try? await artistService.followArtist(artistId: artist.id, accessToken: token)
                     }
                 } label: {
-                    Label("Follow", systemImage: "person.badge.plus")
+                    Label("artist.menu.follow", systemImage: "person.badge.plus")
                 }
             }
         } label: {
@@ -407,7 +451,7 @@ struct LoggedInView: View {
     }
 
     private func playlistContextMenu(playlist: Playlist) -> some View {
-        let isOwner = playlist.ownerId == session.userId
+        let isOwner = playlist.ownerId == store.userId
         let isInLibrary = store.userPlaylistIds.contains(playlist.id)
 
         return Menu {
@@ -417,7 +461,7 @@ struct LoggedInView: View {
                     await playbackViewModel.addToQueue(uri: playlist.uri, accessToken: token)
                 }
             } label: {
-                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                Label("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
 
             Divider()
@@ -429,7 +473,7 @@ struct LoggedInView: View {
                     pasteboard.setString(externalUrl, forType: .string)
                 }
             } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
+                Label("action.share", systemImage: "square.and.arrow.up")
             }
             .disabled(playlist.externalUrl == nil)
 
@@ -439,7 +483,7 @@ struct LoggedInView: View {
                 Button {
                     NotificationCenter.default.post(name: .showPlaylistEditDetails, object: playlist.id)
                 } label: {
-                    Label("Edit Details", systemImage: "pencil")
+                    Label("playlist.menu.edit_details", systemImage: "pencil")
                 }
 
                 Divider()
@@ -447,7 +491,7 @@ struct LoggedInView: View {
                 Button(role: .destructive) {
                     NotificationCenter.default.post(name: .showPlaylistDeleteConfirmation, object: playlist.id)
                 } label: {
-                    Label("Delete Playlist", systemImage: "trash")
+                    Label("playlist.menu.delete", systemImage: "trash")
                 }
             } else {
                 Divider()
@@ -456,7 +500,7 @@ struct LoggedInView: View {
                     Button(role: .destructive) {
                         NotificationCenter.default.post(name: .showPlaylistUnfollowConfirmation, object: playlist.id)
                     } label: {
-                        Label("Unfollow Playlist", systemImage: "minus.circle")
+                        Label("playlist.menu.unfollow", systemImage: "minus.circle")
                     }
                 } else {
                     Button {
@@ -465,7 +509,7 @@ struct LoggedInView: View {
                             try? await playlistService.followPlaylist(playlistId: playlist.id, accessToken: token)
                         }
                     } label: {
-                        Label("Follow Playlist", systemImage: "plus.circle")
+                        Label("playlist.menu.follow", systemImage: "plus.circle")
                     }
                 }
             }
@@ -527,6 +571,7 @@ struct LoggedInView: View {
                 onLogout()
             },
             hasSearchResults: store.searchResults != nil,
+            userProfile: store.userProfile,
         )
         .background {
             GeometryReader { geometry in
@@ -654,6 +699,14 @@ struct LoggedInView: View {
                         case .speakers:
                             SpeakersView(playbackViewModel: playbackViewModel)
                                 .navigationTitle("nav.speakers")
+
+                        case .profile:
+                            if let profile = store.userProfile {
+                                UserProfileView(userProfile: profile, onLogout: {
+                                    playbackViewModel.stop()
+                                    onLogout()
+                                })
+                            }
 
                         case .searchResults:
                             // Handled in outer if statement

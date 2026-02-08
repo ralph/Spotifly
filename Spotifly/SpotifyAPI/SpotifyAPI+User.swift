@@ -10,8 +10,8 @@ import Foundation
 extension SpotifyAPI {
     // MARK: - User Profile
 
-    /// Gets the current user's Spotify user ID
-    static func getCurrentUserId(accessToken: String) async throws -> String {
+    /// Gets the current user's full profile
+    static func getCurrentUserProfile(accessToken: String) async throws -> UserProfile {
         let urlString = "\(baseURL)/me"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
@@ -32,13 +32,15 @@ extension SpotifyAPI {
         switch httpResponse.statusCode {
         case 200:
             do {
-                let profile = try JSONDecoder().decode(UserProfileCodable.self, from: data)
-                return profile.id
+                let codable = try JSONDecoder().decode(UserProfileCodable.self, from: data)
+                return UserProfile(from: codable)
             } catch {
                 throw SpotifyAPIError.invalidResponse
             }
         case 401:
             throw SpotifyAPIError.unauthorized
+        case 403:
+            throw SpotifyAPIError.forbidden
         default:
             try throwAPIError(data: data, statusCode: httpResponse.statusCode)
         }

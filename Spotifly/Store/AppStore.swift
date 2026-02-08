@@ -99,19 +99,15 @@ final class AppStore {
     var recentlyPlayedErrorMessage: String?
     var hasLoadedRecentlyPlayed = false
 
-    // MARK: - Top Artists State
+    // MARK: - Top Items State
 
-    private(set) var topArtistIds: [String] = []
-    var topArtistsIsLoading = false
+    var topArtistIds: [String] = []
+    var topArtistsPagination = PaginationState()
     var topArtistsErrorMessage: String?
-    var hasLoadedTopArtists = false
 
-    // MARK: - New Releases State
-
-    private(set) var newReleaseAlbumIds: [String] = []
-    var newReleasesIsLoading = false
-    var newReleasesErrorMessage: String?
-    var hasLoadedNewReleases = false
+    var topTrackAlbumIds: [String] = []
+    var topTrackAlbumsPagination = PaginationState()
+    var topTrackAlbumsErrorMessage: String?
 
     // MARK: - Queue State
 
@@ -122,6 +118,16 @@ final class AppStore {
 
     var devicesIsLoading = false
     var devicesErrorMessage: String?
+
+    // MARK: - User Profile
+
+    /// Current user's profile (singleton)
+    private(set) var userProfile: UserProfile?
+
+    /// Current user's Spotify ID (derived from profile)
+    var userId: String? {
+        userProfile?.id
+    }
 
     // MARK: - Connection State
 
@@ -165,9 +171,9 @@ final class AppStore {
         topArtistIds.compactMap { artists[$0] }
     }
 
-    /// New release albums from the store
-    var newReleaseAlbums: [Album] {
-        newReleaseAlbumIds.compactMap { albums[$0] }
+    /// Top albums derived from top tracks
+    var topTrackAlbums: [Album] {
+        topTrackAlbumIds.compactMap { albums[$0] }
     }
 
     /// Recent albums and playlists (excludes artists) from URIs
@@ -509,18 +515,6 @@ final class AppStore {
         recentItemURIs = uris
     }
 
-    // MARK: - Top Items Actions
-
-    func setTopArtistIds(_ ids: [String]) {
-        topArtistIds = ids
-    }
-
-    // MARK: - New Releases Actions
-
-    func setNewReleaseAlbumIds(_ ids: [String]) {
-        newReleaseAlbumIds = ids
-    }
-
     // MARK: - Queue Actions
 
     /// Set queue state with queue entries. If `previous` is nil, preserves existing (Web API doesn't provide history).
@@ -554,6 +548,13 @@ final class AppStore {
     /// Set queue error message
     func setQueueError(_ message: String?) {
         queue.errorMessage = message
+    }
+
+    // MARK: - User Profile Actions
+
+    /// Set user profile
+    func setUserProfile(_ profile: UserProfile?) {
+        userProfile = profile
     }
 
     // MARK: - Connection State Actions
@@ -592,7 +593,9 @@ final class AppStore {
                 let recentItemURIs: [String]
 
                 let topArtistIds: [String]
-                let newReleaseAlbumIds: [String]
+                let topArtistsPagination: PaginationState
+                let topTrackAlbumIds: [String]
+                let topTrackAlbumsPagination: PaginationState
 
                 let queue: QueueSnapshot
 
@@ -633,7 +636,9 @@ final class AppStore {
                 recentTrackIds: recentTrackIds,
                 recentItemURIs: recentItemURIs,
                 topArtistIds: topArtistIds,
-                newReleaseAlbumIds: newReleaseAlbumIds,
+                topArtistsPagination: topArtistsPagination,
+                topTrackAlbumIds: topTrackAlbumIds,
+                topTrackAlbumsPagination: topTrackAlbumsPagination,
                 queue: StoreSnapshot.QueueSnapshot(
                     previousTracks: queue.previousTracks.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
                     currentTrack: queue.currentTrack.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },

@@ -123,9 +123,7 @@ final class RecentlyPlayedService {
                                 accessToken: accessToken,
                                 playlistId: playlistId,
                             )
-                            if playlistDetails.trackCount > 0 {
-                                return (playlistId, playlistDetails)
-                            }
+                            return (playlistId, playlistDetails)
                         } catch {
                             // Skip playlists that can't be fetched
                         }

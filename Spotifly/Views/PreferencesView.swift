@@ -81,9 +81,9 @@ struct PlaybackSettingsView: View {
 
 /// Identifiers for startpage sections
 enum StartpageSection: String, CaseIterable, Identifiable {
+    case topAlbums
     case topArtists
     case recentlyPlayed
-    case newReleases
 
     var id: String {
         rawValue
@@ -93,7 +93,7 @@ enum StartpageSection: String, CaseIterable, Identifiable {
         switch self {
         case .topArtists: "startpage.top_artists"
         case .recentlyPlayed: "recently_played.content"
-        case .newReleases: "startpage.new_releases"
+        case .topAlbums: "startpage.top_albums"
         }
     }
 }
@@ -101,11 +101,12 @@ enum StartpageSection: String, CaseIterable, Identifiable {
 struct StartpageSettingsView: View {
     @AppStorage("showTopArtists") private var showTopArtists: Bool = true
     @AppStorage("showRecentlyPlayed") private var showRecentlyPlayed: Bool = true
-    @AppStorage("showNewReleases") private var showNewReleases: Bool = true
+    @AppStorage("showTopAlbums") private var showTopAlbums: Bool = true
+    @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
 
     /// Whether any section is enabled
     private var hasAnySectionEnabled: Bool {
-        showTopArtists || showRecentlyPlayed || showNewReleases
+        showTopArtists || showRecentlyPlayed || showTopAlbums
     }
 
     var body: some View {
@@ -116,6 +117,14 @@ struct StartpageSettingsView: View {
                 }
             } header: {
                 Text("preferences.startpage.sections")
+            }
+
+            Section {
+                Picker("preferences.top_items_time_range", selection: $topItemsTimeRange) {
+                    Text("preferences.time_range.short_term").tag(TopItemsTimeRange.shortTerm.rawValue)
+                    Text("preferences.time_range.medium_term").tag(TopItemsTimeRange.mediumTerm.rawValue)
+                    Text("preferences.time_range.long_term").tag(TopItemsTimeRange.longTerm.rawValue)
+                }
             }
 
             if !hasAnySectionEnabled {
@@ -135,8 +144,8 @@ struct StartpageSettingsView: View {
             $showTopArtists
         case .recentlyPlayed:
             $showRecentlyPlayed
-        case .newReleases:
-            $showNewReleases
+        case .topAlbums:
+            $showTopAlbums
         }
     }
 }

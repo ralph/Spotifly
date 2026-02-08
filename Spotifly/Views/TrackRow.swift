@@ -311,7 +311,6 @@ struct TrackRow: View {
 
                 // Create the playlist using PlaylistService
                 let newPlaylist = try await playlistService.createPlaylist(
-                    userId: session.userId ?? "",
                     name: trimmedName,
                     accessToken: token,
                 )

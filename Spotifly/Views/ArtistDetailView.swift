@@ -21,10 +21,8 @@ struct ArtistDetailView: View {
     @Environment(ArtistService.self) private var artistService
 
     @State private var artist: Artist?
-    @State private var topTracks: [Track] = []
     @State private var albums: [Album] = []
     @State private var isLoadingArtist = false
-    @State private var isLoading = false
     @State private var isLoadingAlbums = false
     @State private var errorMessage: String?
     @State private var showAllAlbums = false
@@ -77,16 +75,15 @@ struct ArtistDetailView: View {
             } else {
                 await loadArtist()
             }
-            await loadTopTracks()
             await loadAlbums()
         }
-        .alert("Unfollow Artist", isPresented: $showUnfollowConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Unfollow", role: .destructive) {
+        .alert("artist.unfollow.title", isPresented: $showUnfollowConfirmation) {
+            Button("action.cancel", role: .cancel) {}
+            Button("artist.unfollow.action", role: .destructive) {
                 unfollowArtist()
             }
         } message: {
-            Text("Are you sure you want to unfollow \"\(artist?.name ?? "")\"?")
+            Text("artist.unfollow.message \(artist?.name ?? "")")
         }
         .onReceive(NotificationCenter.default.publisher(for: .showArtistUnfollowConfirmation)) { notification in
             if let notificationArtistId = notification.object as? String, notificationArtistId == artistId {
@@ -142,67 +139,10 @@ struct ArtistDetailView: View {
                                 .multilineTextAlignment(.center)
                         }
 
-                        if let followers = artist.followers {
-                            Text(String(format: String(localized: "metadata.followers"), formatFollowers(followers)))
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
-                        }
                     }
 
-                    // Play Top Tracks button
-                    Button {
-                        playAllTopTracks()
-                    } label: {
-                        Label("playback.play_top_tracks", systemImage: "play.fill")
-                            .font(.headline)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .disabled(topTracks.isEmpty)
                 }
                 .padding(.top, 24)
-
-                // Top Tracks
-                if isLoading {
-                    ProgressView("loading.top_tracks")
-                        .padding()
-                } else if let errorMessage {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                        .padding()
-                } else if !topTracks.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("section.top_tracks")
-                            .font(.headline)
-                            .padding(.horizontal)
-
-                        let displayedTracks = Array(topTracks.prefix(5))
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(displayedTracks.enumerated()), id: \.element.id) { index, track in
-                                TrackRow(
-                                    track: track,
-                                    index: index,
-                                    currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                                    playbackViewModel: playbackViewModel,
-                                    currentSection: .artists,
-                                    selectionId: artistId,
-                                    contextUri: artist.uri,
-                                    trackIndexInContext: index,
-                                )
-
-                                if track.id != displayedTracks.last?.id {
-                                    Divider()
-                                        .padding(.leading, 94)
-                                }
-                            }
-                        }
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(8)
-                        .padding(.horizontal)
-                    }
-                }
 
                 // Albums Section
                 if isLoadingAlbums {
@@ -217,9 +157,15 @@ struct ArtistDetailView: View {
                             Spacer()
 
                             if albums.count > 5 {
-                                Button(showAllAlbums ? "Show Less" : "Show All (\(albums.count))") {
+                                Button {
                                     withAnimation {
                                         showAllAlbums.toggle()
+                                    }
+                                } label: {
+                                    if showAllAlbums {
+                                        Text("artist.show_less")
+                                    } else {
+                                        Text("artist.show_all \(albums.count)")
                                     }
                                 }
                                 .font(.subheadline)
@@ -326,25 +272,6 @@ struct ArtistDetailView: View {
         isLoadingArtist = false
     }
 
-    private func loadTopTracks() async {
-        topTracks = []
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let token = await session.validAccessToken()
-            // Load via service (stores tracks in AppStore)
-            topTracks = try await artistService.fetchArtistTopTracks(
-                artistId: artistId,
-                accessToken: token,
-            )
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-
-        isLoading = false
-    }
-
     private func loadAlbums() async {
         albums = []
         isLoadingAlbums = true
@@ -363,26 +290,6 @@ struct ArtistDetailView: View {
         isLoadingAlbums = false
     }
 
-    private func playAllTopTracks() {
-        guard let artist else { return }
-        Task {
-            let token = await session.validAccessToken()
-            // Use artist URI to load via Spirc.load(LoadRequest::from_context_uri())
-            // This properly loads the artist context instead of individual tracks
-            await playbackViewModel.play(uriOrUrl: artist.uri, accessToken: token)
-        }
-    }
-
-    private func formatFollowers(_ count: Int) -> String {
-        if count >= 1_000_000 {
-            String(format: "%.1fM", Double(count) / 1_000_000.0)
-        } else if count >= 1000 {
-            String(format: "%.1fK", Double(count) / 1000.0)
-        } else {
-            "\(count)"
-        }
-    }
-
     private func unfollowArtist() {
         Task {
             do {
@@ -394,7 +301,7 @@ struct ArtistDetailView: View {
                 // Navigate away from the unfollowed artist
                 navigationCoordinator.clearArtistSelection()
             } catch {
-                errorMessage = "Failed to unfollow artist: \(error.localizedDescription)"
+                errorMessage = String(localized: "error.unfollow_artist \(error.localizedDescription)")
             }
         }
     }
@@ -408,7 +315,7 @@ struct ArtistDetailView: View {
                     accessToken: token,
                 )
             } catch {
-                errorMessage = "Failed to follow artist: \(error.localizedDescription)"
+                errorMessage = String(localized: "error.follow_artist \(error.localizedDescription)")
             }
         }
     }

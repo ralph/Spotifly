@@ -877,7 +877,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     // tightly coupled to Session's ChannelManager for decryption key requests
     let player = create_new_player(&session, &mixer)?;
 
-    // Get event channel from player
+    // Get event channel from player, opting in to SetQueue events
     let mut event_channel = player.get_player_event_channel();
 
     // Create channel for stopping event listener
@@ -1266,6 +1266,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         name: "Spotifly".to_string(),
         device_type: DeviceType::Computer,
         initial_volume,
+        emit_set_queue_events: true,
         ..Default::default()
     };
 

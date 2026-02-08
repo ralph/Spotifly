@@ -116,7 +116,6 @@ struct Artist: Identifiable, Sendable, Hashable, Encodable {
     let uri: String
     let imageURL: URL?
     let genres: [String]
-    let followers: Int?
     let externalUrl: String?
 }
 
@@ -184,6 +183,17 @@ struct Playlist: Identifiable, Sendable, Hashable, Encodable {
         self.totalDurationMs = totalDurationMs
         _knownTrackCount = knownTrackCount
     }
+}
+
+// MARK: - User Profile
+
+/// User profile (singleton, not stored in entity table).
+struct UserProfile: Sendable {
+    let id: String
+    let displayName: String
+    let imageURL: URL?
+    let externalUrl: String?
+    let uri: String?
 }
 
 // MARK: - Device

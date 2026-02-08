@@ -22,6 +22,7 @@
 "nav.queue" = "Queue";
 "nav.speakers" = "Speakers";
 "nav.library" = "Library";
+"nav.profile" = "Profile";
 "nav.back_to %@" = "Back to %@";
 "nav.currently_viewing" = "Currently Viewing";
 "nav.your_library" = "Your Library";
@@ -115,6 +116,8 @@
 "startpage.top_artists.empty" = "Listen to more music to see your top artists";
 "startpage.new_releases" = "New Releases";
 "startpage.new_releases.empty" = "No new releases available";
+"startpage.top_albums" = "Your Top Albums";
+"startpage.top_albums.empty" = "Listen to more music to see your top albums";
 "startpage.empty" = "No sections enabled";
 "startpage.empty.description" = "Enable sections in Preferences → Startpage";
 
@@ -196,3 +199,86 @@
 /* Startpage Preferences */
 "preferences.startpage.sections" = "Sections";
 "preferences.startpage.none_enabled" = "The startpage will be empty. Enable at least one section to show content.";
+"preferences.top_items_time_range" = "Top Items Time Range";
+"preferences.time_range.short_term" = "Last 4 Weeks";
+"preferences.time_range.medium_term" = "Last 6 Months";
+"preferences.time_range.long_term" = "Last Year";
+
+/* Album Context Menu & Alerts */
+"album.menu.remove_from_library" = "Remove from Library";
+"album.menu.add_to_library" = "Add to Library";
+"album.remove.title" = "Remove from Library";
+"album.remove.action" = "Remove";
+"album.remove.message %@" = "Are you sure you want to remove \"%@\" from your library?";
+
+/* Artist Context Menu & Alerts */
+"artist.menu.unfollow" = "Unfollow";
+"artist.menu.follow" = "Follow";
+"artist.unfollow.title" = "Unfollow Artist";
+"artist.unfollow.action" = "Unfollow";
+"artist.unfollow.message %@" = "Are you sure you want to unfollow \"%@\"?";
+"artist.show_less" = "Show Less";
+"artist.show_all %lld" = "Show All (%lld)";
+
+/* Playlist Context Menu & Alerts */
+"playlist.menu.edit_details" = "Edit Details";
+"playlist.menu.delete" = "Delete Playlist";
+"playlist.menu.unfollow" = "Unfollow Playlist";
+"playlist.menu.follow" = "Follow Playlist";
+"playlist.edit_details.title" = "Edit Playlist";
+"playlist.edit_details.name" = "Name";
+"playlist.edit_details.description" = "Description";
+"playlist.edit_details.message" = "Edit playlist name and description";
+"playlist.edit_details.save" = "Save";
+"playlist.delete.title" = "Delete Playlist";
+"playlist.delete.action" = "Delete";
+"playlist.delete.message %@" = "Are you sure you want to delete \"%@\"? This action cannot be undone.";
+"playlist.unfollow.title" = "Unfollow Playlist";
+"playlist.unfollow.action" = "Unfollow";
+"playlist.unfollow.message %@" = "Are you sure you want to unfollow \"%@\"?";
+
+/* Connection Status */
+"connection.status" = "Connection Status";
+"connection.session" = "Session";
+"connection.spirc" = "Spirc";
+"connection.spirc_ready" = "Ready";
+"connection.spirc_not_ready" = "Not Ready";
+"connection.uptime" = "Uptime";
+"connection.reconnect_attempts" = "Reconnect Attempts";
+"connection.device_id" = "Device ID";
+"connection.reconnect" = "Reconnect";
+"connection.no_data" = "No Connection Data";
+"connection.connected" = "Connected";
+"connection.disconnected" = "Disconnected";
+
+/* Speakers */
+"speakers.librespot_connection" = "Librespot Connection";
+
+/* Error Messages - Actions */
+"error.delete_playlist %@" = "Failed to delete playlist: %@";
+"error.unfollow_playlist %@" = "Failed to unfollow playlist: %@";
+"error.update_playlist %@" = "Failed to update playlist: %@";
+"error.remove_album %@" = "Failed to remove album: %@";
+"error.unfollow_artist %@" = "Failed to unfollow artist: %@";
+"error.follow_artist %@" = "Failed to follow artist: %@";
+
+/* Premium Required */
+"premium.required.title" = "Spotify Premium Required";
+"premium.required.logged_in_as %@" = "Logged in as %@";
+"premium.required.message" = "Spotifly requires a Spotify Premium account. It uses Spotify Connect to stream music, which is only available with Premium.";
+
+/* User Not Whitelisted */
+"whitelist.title" = "User Not Registered";
+"whitelist.message" = "Your Spotify account is not registered for this app. Each user must be added to the allowlist in the Spotify Developer Dashboard.";
+"whitelist.steps" = "How to fix this";
+"whitelist.step1 %@" = "Only the owner of the app with Client ID %@ can add users.";
+"whitelist.open_dashboard" = "Open Spotify Developer Dashboard";
+"whitelist.step2" = "Ask the app owner to add your Spotify email address under \"User Management\".";
+
+/* Profile */
+"profile.logged_in_as %@" = "Logged in as %@";
+"profile.open_in_spotify" = "Open in Spotify";
+"profile.email" = "Email";
+"profile.country" = "Country";
+"profile.subscription" = "Subscription";
+"profile.followers" = "Followers";

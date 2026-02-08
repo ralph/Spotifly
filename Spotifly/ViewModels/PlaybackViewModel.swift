@@ -128,6 +128,22 @@ final class PlaybackViewModel {
         tokenProvider = provider
     }
 
+    func forceReinitialize(accessToken: String) async {
+        isInitialized = false
+        isLoading = true
+        do {
+            try await SpotifyPlayer.initialize(accessToken: accessToken)
+            isInitialized = true
+            for _ in 0 ..< 50 {
+                if SpotifyPlayer.isSpircReady { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
     func initializeIfNeeded(accessToken: String) async {
         guard !isInitialized else { return }
 

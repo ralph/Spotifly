@@ -82,13 +82,13 @@ struct AlbumDetailView: View {
             }
             await loadTracks()
         }
-        .alert("Remove from Library", isPresented: $showRemoveConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Remove", role: .destructive) {
+        .alert("album.remove.title", isPresented: $showRemoveConfirmation) {
+            Button("action.cancel", role: .cancel) {}
+            Button("album.remove.action", role: .destructive) {
                 removeFromLibrary()
             }
         } message: {
-            Text("Are you sure you want to remove \"\(album?.name ?? "")\" from your library?")
+            Text("album.remove.message \(album?.name ?? "")")
         }
         .onReceive(NotificationCenter.default.publisher(for: .showAlbumRemoveConfirmation)) { notification in
             if let notificationAlbumId = notification.object as? String, notificationAlbumId == albumId {
@@ -293,7 +293,7 @@ struct AlbumDetailView: View {
                 // Navigate away from the removed album
                 navigationCoordinator.clearAlbumSelection()
             } catch {
-                errorMessage = "Failed to remove album: \(error.localizedDescription)"
+                errorMessage = String(localized: "error.remove_album \(error.localizedDescription)")
             }
         }
     }

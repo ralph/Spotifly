@@ -137,7 +137,7 @@ extension SpotifyAPI {
 
     /// Removes an album from the user's library
     static func removeUserAlbum(accessToken: String, albumId: String) async throws {
-        let urlString = "\(baseURL)/me/albums?ids=\(albumId)"
+        let urlString = "\(baseURL)/me/library"
 
         debugLog("SpotifyAPI", "[DELETE] \(urlString)")
 
@@ -148,6 +148,8 @@ extension SpotifyAPI {
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["uris": ["spotify:album:\(albumId)"]])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -171,7 +173,7 @@ extension SpotifyAPI {
 
     /// Saves an album to the user's library
     static func saveUserAlbum(accessToken: String, albumId: String) async throws {
-        let urlString = "\(baseURL)/me/albums?ids=\(albumId)"
+        let urlString = "\(baseURL)/me/library"
 
         debugLog("SpotifyAPI", "[PUT] \(urlString)")
 
@@ -182,6 +184,8 @@ extension SpotifyAPI {
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["uris": ["spotify:album:\(albumId)"]])
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -196,52 +200,6 @@ extension SpotifyAPI {
             throw SpotifyAPIError.unauthorized
         case 403:
             throw SpotifyAPIError.apiError("Not authorized to modify library")
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
-
-    // MARK: - New Releases
-
-    /// Fetches new album releases from Spotify Web API
-    static func fetchNewReleases(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> NewReleasesResponse {
-        let urlString = "\(baseURL)/browse/new-releases?limit=\(limit)&offset=\(offset)"
-
-        debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let decoded = try JSONDecoder().decode(NewReleasesCodable.self, from: data)
-                let albums = decoded.albums.items.map { $0.toAPIAlbum() }
-                let nextOffset = offset + limit
-                let hasMore = nextOffset < decoded.albums.total
-                return NewReleasesResponse(
-                    albums: albums,
-                    hasMore: hasMore,
-                    nextOffset: hasMore ? nextOffset : nil,
-                    total: decoded.albums.total,
-                )
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 404:
-            throw SpotifyAPIError.notFound
         default:
             try throwAPIError(data: data, statusCode: httpResponse.statusCode)
         }

@@ -59,7 +59,7 @@ struct PlaylistDetailView: View {
 
     /// Whether the current user owns this playlist
     private var isOwner: Bool {
-        playlist?.ownerId == session.userId
+        playlist?.ownerId == store.userId
     }
 
     /// Whether this playlist is in the user's library
@@ -105,35 +105,35 @@ struct PlaylistDetailView: View {
                 playlistDescription = playlist.description ?? ""
             }
         }
-        .alert("Edit Playlist", isPresented: $showEditDetailsDialog) {
-            TextField("Name", text: $editingPlaylistName)
-            TextField("Description", text: $editingPlaylistDescription)
-            Button("Cancel", role: .cancel) {
+        .alert("playlist.edit_details.title", isPresented: $showEditDetailsDialog) {
+            TextField("playlist.edit_details.name", text: $editingPlaylistName)
+            TextField("playlist.edit_details.description", text: $editingPlaylistDescription)
+            Button("action.cancel", role: .cancel) {
                 editingPlaylistName = ""
                 editingPlaylistDescription = ""
             }
-            Button("Save") {
+            Button("playlist.edit_details.save") {
                 savePlaylistDetails()
             }
             .disabled(editingPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
         } message: {
-            Text("Edit playlist name and description")
+            Text("playlist.edit_details.message")
         }
-        .alert("Delete Playlist", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
+        .alert("playlist.delete.title", isPresented: $showDeleteConfirmation) {
+            Button("action.cancel", role: .cancel) {}
+            Button("playlist.delete.action", role: .destructive) {
                 deletePlaylist()
             }
         } message: {
-            Text("Are you sure you want to delete \"\(playlistName)\"? This action cannot be undone.")
+            Text("playlist.delete.message \(playlistName)")
         }
-        .alert("Unfollow Playlist", isPresented: $showUnfollowConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Unfollow", role: .destructive) {
+        .alert("playlist.unfollow.title", isPresented: $showUnfollowConfirmation) {
+            Button("action.cancel", role: .cancel) {}
+            Button("playlist.unfollow.action", role: .destructive) {
                 unfollowPlaylist()
             }
         } message: {
-            Text("Are you sure you want to unfollow \"\(playlistName)\"?")
+            Text("playlist.unfollow.message \(playlistName)")
         }
         .onReceive(NotificationCenter.default.publisher(for: .showPlaylistEditDetails)) { notification in
             if let notificationPlaylistId = notification.object as? String, notificationPlaylistId == playlistId {
@@ -343,7 +343,7 @@ struct PlaylistDetailView: View {
                 // Navigate away from the deleted playlist
                 navigationCoordinator.clearPlaylistSelection()
             } catch {
-                errorMessage = "Failed to delete playlist: \(error.localizedDescription)"
+                errorMessage = String(localized: "error.delete_playlist \(error.localizedDescription)")
             }
         }
     }
@@ -360,7 +360,7 @@ struct PlaylistDetailView: View {
                 // Navigate away from the unfollowed playlist
                 navigationCoordinator.clearPlaylistSelection()
             } catch {
-                errorMessage = "Failed to unfollow playlist: \(error.localizedDescription)"
+                errorMessage = String(localized: "error.unfollow_playlist \(error.localizedDescription)")
             }
         }
     }
@@ -381,7 +381,7 @@ struct PlaylistDetailView: View {
                 playlistName = trimmedName
                 playlistDescription = editingPlaylistDescription
             } catch {
-                errorMessage = "Failed to update playlist: \(error.localizedDescription)"
+                errorMessage = String(localized: "error.update_playlist \(error.localizedDescription)")
             }
             editingPlaylistName = ""
             editingPlaylistDescription = ""

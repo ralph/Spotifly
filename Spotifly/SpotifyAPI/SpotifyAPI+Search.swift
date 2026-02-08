@@ -86,7 +86,6 @@ extension SpotifyAPI {
                         uri: uri,
                         imageURL: (artist.images?.first?.url).flatMap { URL(string: $0) },
                         genres: artist.genres ?? [],
-                        followers: artist.followers?.total ?? 0,
                         externalUrl: artist.externalUrls?.spotify,
                     )
                 } ?? []
@@ -106,7 +105,7 @@ extension SpotifyAPI {
                         externalUrl: playlist.externalUrls?.spotify,
                         trackIds: [],
                         totalDurationMs: nil,
-                        knownTrackCount: playlist.tracks?.total ?? 0,
+                        knownTrackCount: playlist.items?.total ?? 0,
                     )
                 } ?? []
 

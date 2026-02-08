@@ -7,42 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Automatic reconnection with exponential backoff when session disconnects (Rust handles reconnection loop, Swift provides fresh tokens on request)
-
 ### Changed
-- Transfer to local playback now uses librespot's native `Spirc.transfer()` method instead of Web API workaround
-- Transfer to remote devices now uses librespot's native `SpClient.transfer()` method instead of Web API workaround
-- Both transfer directions now preserve full playback context (album/playlist, shuffle, repeat modes) seamlessly
-- Seeking now uses `Spirc.set_position_ms()` to properly sync position with Spotify Connect state
-- Volume changes now use `Spirc.set_volume()` to properly sync volume with Spotify Connect state
-- Next/previous track now use `Spirc.next()`/`Spirc.prev()` to properly sync with Spotify Connect state
-- Pause/resume now use `Spirc.pause()`/`Spirc.play()` to properly sync with Spotify Connect state
-- App now calls `Spirc.shutdown()` on quit to properly disconnect from Spotify Connect and notify other devices
-- Playing albums/playlists/artists now uses `Spirc.load()` with context URI for proper Connect state sync
-- Playing track lists now uses `Spirc.load()` with track URIs for proper Connect state sync
-- Add to queue now uses Spotify Web API (POST /me/player/queue) which syncs to Spirc via dealer
-
-### Added
-- Shuffle support via `Spirc.shuffle()` - shuffle/unshuffle playback with Connect state sync
-- Repeat context support via `Spirc.repeat()` - repeat album/playlist with Connect state sync
-- Repeat track support via `Spirc.repeat_track()` - repeat single track with Connect state sync
-- Web API method `SpotifyAPI.addToQueue()` for adding tracks to queue with Connect sync
-
-### Fixed
-- App now fetches initial playback state from Web API when Spirc connects, so remote device playback (queue, position, track) shows immediately instead of requiring a state change
-- Transfer from phone to Spotifly now works correctly - added transfer protection to auto-resume playback when Spotify Connect sends a spurious pause command immediately after load
-- Playback state (play/pause) now updates correctly in the UI when controlled locally - player events now send state updates to Swift
-- After transferring playback to another device, the remote device is now shown as active immediately in the Speakers view - uses optimistic UI updates with delayed confirmation
+- Adapt to [Spotify Web API breaking changes (February 2026)](https://developer.spotify.com/documentation/web-api/references/changes/february-2026): migrate removed endpoints, update playlist response structure, and replace batch fetches with parallel individual requests
 
 ### Removed
-- Manual session disconnect handling in Swift playback commands (pause/resume/setVolume) - Rust now handles reconnection automatically
-- `SpotifyPlayerError.sessionDisconnected` error case - no longer needed since Rust handles reconnection
-- Obsolete 500ms seek delay hack for transfer to local - native transfer preserves position seamlessly
-- Obsolete Web API transfer functions (`SpotifyAPI.transferPlayback()`, `SpotifyAPI.startPlayback()`) - replaced by native librespot calls
-- Local queue management (`QUEUE`, `CURRENT_INDEX`) - queue is now fully managed by Spirc's ConnectState
-- Fallback code for playback controls - all controls now require Spirc (no standalone player mode)
-- Rust FFI queue functions deprecated - use Spotify Web API instead (GET/POST /me/player/queue)
+- Artist top tracks section (endpoint removed by Spotify with no alternative)
+- New Releases section (endpoint removed by Spotify with no alternative)
+- Artist follower counts, user email/country/follower display (fields removed from API responses)
+
+## [1.2.1] - 2026-02-06
+
+### Added
+- 🎉 Spotify Connect support — Spotifly now shows up as a real Spotify Connect device
+- Seamless playback transfer between Spotifly and other Spotify devices (phone, desktop, etc.)
+- Automatic session reconnection with exponential backoff
+
+### Changed
+- All playback controls (play, pause, seek, volume, next, previous) now go through Spotify Connect for proper state sync across devices
+
+### Fixed
+- Remote playback state (queue, position, track) now shows immediately on launch
+- Playback state updates correctly in the UI when controlled locally
 
 ## [1.2.0] - 2026-01-12
 

@@ -12,7 +12,7 @@ extension SpotifyAPI {
 
     /// Fetches user's playlists from Spotify Web API
     static func fetchUserPlaylists(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> PlaylistsResponse {
-        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,tracks(total,items(track(duration_ms))),public,owner(id,display_name)),total,next"
+        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,items(total,items(item(duration_ms))),public,owner(id,display_name)),total,next"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 
@@ -57,7 +57,7 @@ extension SpotifyAPI {
 
     /// Fetches a single playlist's details from Spotify Web API
     static func fetchPlaylistDetails(accessToken: String, playlistId: String) async throws -> APIPlaylist {
-        let urlString = "\(baseURL)/playlists/\(playlistId)?fields=id,name,description,images,tracks(total,items(track(duration_ms))),uri,public,owner(id,display_name)&market=from_token"
+        let urlString = "\(baseURL)/playlists/\(playlistId)?fields=id,name,description,images,items(total,items(item(duration_ms))),uri,public,owner(id,display_name)&market=from_token"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 
@@ -93,15 +93,14 @@ extension SpotifyAPI {
 
     // MARK: - Playlist Management
 
-    /// Creates a new playlist for the user
+    /// Creates a new playlist for the current user
     static func createPlaylist(
         accessToken: String,
-        userId: String,
         name: String,
         description: String? = nil,
         isPublic: Bool = false,
     ) async throws -> APIPlaylist {
-        let urlString = "\(baseURL)/users/\(userId)/playlists"
+        let urlString = "\(baseURL)/me/playlists"
 
         debugLog("SpotifyAPI", "[POST] \(urlString)")
 

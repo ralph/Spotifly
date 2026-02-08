@@ -16,6 +16,7 @@ enum NavigationItem: Hashable, Identifiable {
     case artists
     case queue
     case speakers
+    case profile
 
     var id: String {
         switch self {
@@ -27,6 +28,7 @@ enum NavigationItem: Hashable, Identifiable {
         case .artists: "artists"
         case .queue: "queue"
         case .speakers: "speakers"
+        case .profile: "profile"
         }
     }
 
@@ -48,6 +50,8 @@ enum NavigationItem: Hashable, Identifiable {
             String(localized: "nav.queue")
         case .speakers:
             String(localized: "nav.speakers")
+        case .profile:
+            String(localized: "nav.profile")
         }
     }
 
@@ -69,6 +73,8 @@ enum NavigationItem: Hashable, Identifiable {
             "list.bullet"
         case .speakers:
             "hifispeaker.2.fill"
+        case .profile:
+            "person.circle.fill"
         }
     }
 }
@@ -77,6 +83,7 @@ struct SidebarView: View {
     @Binding var selection: NavigationItem?
     let onLogout: () -> Void
     var hasSearchResults: Bool = false
+    var userProfile: UserProfile?
 
     /// Navigation items in the main section
     private var mainNavItems: [NavigationItem] {
@@ -118,14 +125,67 @@ struct SidebarView: View {
             } header: {
                 Text("nav.library")
             }
-
-            Section {
-                Button(action: onLogout) {
-                    Label("auth.logout", systemImage: "rectangle.portrait.and.arrow.right")
-                        .foregroundStyle(.red)
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                selection = .profile
+            } label: {
+                HStack(spacing: 8) {
+                    ProfileAvatarView(userProfile: userProfile, size: 28)
+                    Text(userProfile?.displayName ?? String(localized: "nav.profile"))
+                        .lineLimit(1)
+                    Spacer()
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(selection == .profile ? AnyShapeStyle(.selection.opacity(0.8)) : AnyShapeStyle(.clear)),
+                )
             }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
         }
         .navigationTitle("app.name")
+    }
+}
+
+// MARK: - Profile Avatar
+
+struct ProfileAvatarView: View {
+    let userProfile: UserProfile?
+    var size: CGFloat = 32
+
+    var body: some View {
+        if let imageURL = userProfile?.imageURL {
+            AsyncImage(url: imageURL) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                initialsView(for: userProfile?.displayName)
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+        } else if let displayName = userProfile?.displayName {
+            initialsView(for: displayName)
+        } else {
+            Circle()
+                .fill(.quaternary)
+                .frame(width: size, height: size)
+        }
+    }
+
+    private func initialsView(for name: String?) -> some View {
+        let initials = String((name ?? "?").prefix(2)).uppercased()
+        return Circle()
+            .fill(.green.gradient)
+            .frame(width: size, height: size)
+            .overlay {
+                Text(initials)
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
     }
 }

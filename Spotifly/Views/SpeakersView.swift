@@ -103,9 +103,12 @@ struct SpeakersView: View {
 
                     // Librespot Connection Status
                     Section {
-                        ConnectionStatusView()
+                        ConnectionStatusView {
+                            let token = await session.validAccessToken()
+                            await playbackViewModel.forceReinitialize(accessToken: token)
+                        }
                     } header: {
-                        Text("Librespot Connection")
+                        Text("speakers.librespot_connection")
                     }
                 }
                 .listStyle(.inset)

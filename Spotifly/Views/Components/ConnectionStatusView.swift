@@ -40,7 +40,7 @@ private struct ConnectionStatusRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             } else {
-                Text(isConnected ? "Connected" : "Disconnected")
+                Text(isConnected ? String(localized: "connection.connected") : String(localized: "connection.disconnected"))
                     .font(.caption)
                     .foregroundStyle(isConnected ? .green : .secondary)
             }
@@ -82,7 +82,7 @@ private struct UptimeDisplay: View {
 
     var body: some View {
         HStack {
-            Text("Uptime")
+            Text("connection.uptime")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -121,13 +121,15 @@ private struct UptimeDisplay: View {
 /// Main dashboard showing librespot connection status
 struct ConnectionStatusView: View {
     @Environment(AppStore.self) private var store
+    var onReconnect: (@Sendable () async -> Void)?
+    @State private var isReconnecting = false
 
     var body: some View {
         if let connection = store.connection {
             VStack(alignment: .leading, spacing: 12) {
                 // Overall status header
                 HStack {
-                    Text("Connection Status")
+                    Text("connection.status")
                         .font(.headline)
                     Spacer()
                     statusBadge(isConnected: connection.isConnected && connection.spircReady)
@@ -138,15 +140,15 @@ struct ConnectionStatusView: View {
                 // Status indicators
                 VStack(spacing: 8) {
                     ConnectionStatusRow(
-                        label: "Session",
+                        label: String(localized: "connection.session"),
                         isConnected: connection.isConnected,
                         detail: connection.connectionId.map { truncateId($0) },
                     )
 
                     ConnectionStatusRow(
-                        label: "Spirc",
+                        label: String(localized: "connection.spirc"),
                         isConnected: connection.spircReady,
-                        detail: connection.spircReady ? "Ready" : "Not Ready",
+                        detail: connection.spircReady ? String(localized: "connection.spirc_ready") : String(localized: "connection.spirc_not_ready"),
                     )
                 }
 
@@ -157,17 +159,17 @@ struct ConnectionStatusView: View {
                     if connection.isConnected, let connectedSince = connection.connectedSince {
                         UptimeDisplay(connectedSince: connectedSince)
                     } else {
-                        MetadataRow(label: "Uptime", value: "--")
+                        MetadataRow(label: String(localized: "connection.uptime"), value: "--")
                     }
 
                     MetadataRow(
-                        label: "Reconnect Attempts",
+                        label: String(localized: "connection.reconnect_attempts"),
                         value: "\(connection.reconnectAttempts)",
                     )
 
                     if let deviceId = connection.deviceId {
                         MetadataRow(
-                            label: "Device ID",
+                            label: String(localized: "connection.device_id"),
                             value: truncateId(deviceId),
                         )
                     }
@@ -185,6 +187,32 @@ struct ConnectionStatusView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                // Reconnect button
+                if let onReconnect {
+                    Divider()
+                    Button {
+                        isReconnecting = true
+                        Task {
+                            await onReconnect()
+                            isReconnecting = false
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isReconnecting {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                            }
+                            Text("connection.reconnect")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isReconnecting)
+                }
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
@@ -194,7 +222,7 @@ struct ConnectionStatusView: View {
                 Image(systemName: "network.slash")
                     .font(.title2)
                     .foregroundStyle(.secondary)
-                Text("No Connection Data")
+                Text("connection.no_data")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -208,7 +236,7 @@ struct ConnectionStatusView: View {
             Circle()
                 .fill(isConnected ? Color.green : Color.orange)
                 .frame(width: 8, height: 8)
-            Text(isConnected ? "Connected" : "Disconnected")
+            Text(isConnected ? String(localized: "connection.connected") : String(localized: "connection.disconnected"))
                 .font(.caption)
                 .fontWeight(.medium)
                 .foregroundStyle(isConnected ? .green : .orange)

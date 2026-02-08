@@ -22,6 +22,7 @@
 "nav.queue" = "Warteschlange";
 "nav.speakers" = "Lautsprecher";
 "nav.library" = "Bibliothek";
+"nav.profile" = "Profil";
 "nav.back_to %@" = "Zurück zu %@";
 "nav.currently_viewing" = "Aktuelle Ansicht";
 "nav.your_library" = "Deine Bibliothek";
@@ -115,6 +116,8 @@
 "startpage.top_artists.empty" = "Höre mehr Musik, um deine Top-Künstler zu sehen";
 "startpage.new_releases" = "Neuerscheinungen";
 "startpage.new_releases.empty" = "Keine Neuerscheinungen verfügbar";
+"startpage.top_albums" = "Deine Top-Alben";
+"startpage.top_albums.empty" = "Höre mehr Musik, um deine Top-Alben zu sehen";
 "startpage.empty" = "Keine Bereiche aktiviert";
 "startpage.empty.description" = "Aktiviere Bereiche in Einstellungen → Startseite";
 
@@ -201,3 +204,86 @@
 /* Startpage Preferences */
 "preferences.startpage.sections" = "Bereiche";
 "preferences.startpage.none_enabled" = "Die Startseite wird leer sein. Aktiviere mindestens einen Bereich, um Inhalte anzuzeigen.";
+"preferences.top_items_time_range" = "Top-Items-Zeitraum";
+"preferences.time_range.short_term" = "Letzte 4 Wochen";
+"preferences.time_range.medium_term" = "Letzte 6 Monate";
+"preferences.time_range.long_term" = "Letztes Jahr";
+
+/* Album Context Menu & Alerts */
+"album.menu.remove_from_library" = "Aus Bibliothek entfernen";
+"album.menu.add_to_library" = "Zur Bibliothek hinzufügen";
+"album.remove.title" = "Aus Bibliothek entfernen";
+"album.remove.action" = "Entfernen";
+"album.remove.message %@" = "Bist du sicher, dass du \"%@\" aus deiner Bibliothek entfernen möchtest?";
+
+/* Artist Context Menu & Alerts */
+"artist.menu.unfollow" = "Entfolgen";
+"artist.menu.follow" = "Folgen";
+"artist.unfollow.title" = "Künstler entfolgen";
+"artist.unfollow.action" = "Entfolgen";
+"artist.unfollow.message %@" = "Bist du sicher, dass du \"%@\" entfolgen möchtest?";
+"artist.show_less" = "Weniger anzeigen";
+"artist.show_all %lld" = "Alle anzeigen (%lld)";
+
+/* Playlist Context Menu & Alerts */
+"playlist.menu.edit_details" = "Details bearbeiten";
+"playlist.menu.delete" = "Playlist löschen";
+"playlist.menu.unfollow" = "Playlist entfolgen";
+"playlist.menu.follow" = "Playlist folgen";
+"playlist.edit_details.title" = "Playlist bearbeiten";
+"playlist.edit_details.name" = "Name";
+"playlist.edit_details.description" = "Beschreibung";
+"playlist.edit_details.message" = "Name und Beschreibung der Playlist bearbeiten";
+"playlist.edit_details.save" = "Speichern";
+"playlist.delete.title" = "Playlist löschen";
+"playlist.delete.action" = "Löschen";
+"playlist.delete.message %@" = "Bist du sicher, dass du \"%@\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.";
+"playlist.unfollow.title" = "Playlist entfolgen";
+"playlist.unfollow.action" = "Entfolgen";
+"playlist.unfollow.message %@" = "Bist du sicher, dass du \"%@\" entfolgen möchtest?";
+
+/* Connection Status */
+"connection.status" = "Verbindungsstatus";
+"connection.session" = "Sitzung";
+"connection.spirc" = "Spirc";
+"connection.spirc_ready" = "Bereit";
+"connection.spirc_not_ready" = "Nicht bereit";
+"connection.uptime" = "Laufzeit";
+"connection.reconnect_attempts" = "Wiederverbindungsversuche";
+"connection.device_id" = "Geräte-ID";
+"connection.reconnect" = "Neu verbinden";
+"connection.no_data" = "Keine Verbindungsdaten";
+"connection.connected" = "Verbunden";
+"connection.disconnected" = "Getrennt";
+
+/* Speakers */
+"speakers.librespot_connection" = "Librespot-Verbindung";
+
+/* Error Messages - Actions */
+"error.delete_playlist %@" = "Playlist konnte nicht gelöscht werden: %@";
+"error.unfollow_playlist %@" = "Playlist konnte nicht entfolgt werden: %@";
+"error.update_playlist %@" = "Playlist konnte nicht aktualisiert werden: %@";
+"error.remove_album %@" = "Album konnte nicht entfernt werden: %@";
+"error.unfollow_artist %@" = "Künstler konnte nicht entfolgt werden: %@";
+"error.follow_artist %@" = "Künstler konnte nicht gefolgt werden: %@";
+
+/* Premium Required */
+"premium.required.title" = "Spotify Premium erforderlich";
+"premium.required.logged_in_as %@" = "Angemeldet als %@";
+"premium.required.message" = "Spotifly benötigt ein Spotify Premium-Konto. Die App nutzt Spotify Connect zum Musikstreaming, was nur mit Premium verfügbar ist.";
+
+/* User Not Whitelisted */
+"whitelist.title" = "Benutzer nicht registriert";
+"whitelist.message" = "Dein Spotify-Konto ist nicht für diese App registriert. Jeder Benutzer muss in der Spotify Developer Dashboard Allowlist eingetragen werden.";
+"whitelist.steps" = "So behebst du das";
+"whitelist.step1 %@" = "Nur der Besitzer der App mit Client-ID %@ kann Benutzer hinzufügen.";
+"whitelist.open_dashboard" = "Spotify Developer Dashboard öffnen";
+"whitelist.step2" = "Bitte den App-Besitzer, deine Spotify-E-Mail-Adresse unter \"User Management\" hinzuzufügen.";
+
+/* Profile */
+"profile.logged_in_as %@" = "Angemeldet als %@";
+"profile.open_in_spotify" = "In Spotify öffnen";
+"profile.email" = "E-Mail";
+"profile.country" = "Land";
+"profile.subscription" = "Abo";
+"profile.followers" = "Follower";

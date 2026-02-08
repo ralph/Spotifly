@@ -59,7 +59,7 @@ final class QueueService {
         let contextInfo = notification.contextUri.isEmpty ? "" : " context=\(notification.contextUri),"
         debugLog("QueueService", "Set queue:\(contextInfo) prev=\(notification.prevTracks.count), current=\(notification.currentTrack != nil ? 1 : 0), next=\(notification.nextTracks.count)")
 
-        // Convert to QueueEntries
+        /// Convert to QueueEntries
         func toQueueEntry(_ trackInfo: SetQueueTrackInfo) -> QueueEntry? {
             guard let trackId = SpotifyAPI.parseTrackURI(trackInfo.uri) else { return nil }
             return QueueEntry(trackId: trackId, provider: TrackProvider(from: trackInfo.provider))
@@ -88,7 +88,7 @@ final class QueueService {
             return
         }
 
-        // Convert QueueItem to QueueEntry (extract track ID and provider)
+        /// Convert QueueItem to QueueEntry (extract track ID and provider)
         func toQueueEntry(_ item: QueueItem) -> QueueEntry? {
             guard let trackId = SpotifyAPI.parseTrackURI(item.uri) else { return nil }
             return QueueEntry(trackId: trackId, provider: TrackProvider(from: item.provider))

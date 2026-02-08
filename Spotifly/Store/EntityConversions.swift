@@ -92,8 +92,20 @@ extension Artist {
         uri = artist.uri
         imageURL = artist.imageURL
         genres = artist.genres
-        followers = artist.followers
         externalUrl = artist.externalUrl
+    }
+}
+
+// MARK: - User Profile Conversions
+
+extension UserProfile {
+    /// Convert from UserProfileCodable
+    init(from profile: UserProfileCodable) {
+        id = profile.id
+        displayName = profile.displayName ?? profile.id
+        imageURL = profile.images?.first.flatMap { URL(string: $0.url) }
+        externalUrl = profile.externalUrls?.spotify
+        uri = profile.uri
     }
 }
 

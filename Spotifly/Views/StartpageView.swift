@@ -13,16 +13,20 @@ struct StartpageView: View {
     @Environment(AppStore.self) private var store
     @Environment(RecentlyPlayedService.self) private var recentlyPlayedService
     @Environment(TopItemsService.self) private var topItemsService
-    @Environment(NewReleasesService.self) private var newReleasesService
-
     // Startpage section preferences
     @AppStorage("showTopArtists") private var showTopArtists: Bool = true
     @AppStorage("showRecentlyPlayed") private var showRecentlyPlayed: Bool = true
-    @AppStorage("showNewReleases") private var showNewReleases: Bool = true
+    @AppStorage("showTopAlbums") private var showTopAlbums: Bool = true
+    @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
+
+    /// Parsed time range from AppStorage
+    private var timeRange: TopItemsTimeRange {
+        TopItemsTimeRange(rawValue: topItemsTimeRange) ?? .mediumTerm
+    }
 
     /// Whether any section is enabled
     private var hasAnySectionEnabled: Bool {
-        showTopArtists || showRecentlyPlayed || showNewReleases
+        showTopArtists || showRecentlyPlayed || showTopAlbums
     }
 
     /// Check if a section is enabled
@@ -30,7 +34,7 @@ struct StartpageView: View {
         switch section {
         case .topArtists: showTopArtists
         case .recentlyPlayed: showRecentlyPlayed
-        case .newReleases: showNewReleases
+        case .topAlbums: showTopAlbums
         }
     }
 
@@ -44,7 +48,6 @@ struct StartpageView: View {
                         }
                     }
                 } else {
-                    // Empty state when no sections are enabled
                     emptyStateView
                 }
             }
@@ -54,13 +57,13 @@ struct StartpageView: View {
         .refreshable {
             let token = await session.validAccessToken()
             if showTopArtists {
-                await topItemsService.refreshTopArtists(accessToken: token)
-            }
-            if showNewReleases {
-                await newReleasesService.refresh(accessToken: token)
+                await topItemsService.refreshTopArtists(accessToken: token, timeRange: timeRange)
             }
             if showRecentlyPlayed {
                 await recentlyPlayedService.refresh(accessToken: token)
+            }
+            if showTopAlbums {
+                await topItemsService.refreshTopTracks(accessToken: token, timeRange: timeRange)
             }
         }
     }
@@ -72,8 +75,8 @@ struct StartpageView: View {
             topArtistsSection
         case .recentlyPlayed:
             recentlyPlayedSection
-        case .newReleases:
-            newReleasesSection
+        case .topAlbums:
+            topAlbumsSection
         }
     }
 
@@ -97,76 +100,38 @@ struct StartpageView: View {
     // MARK: - Top Artists Section
 
     private var topArtistsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("startpage.top_artists")
-                .font(.headline)
-                .padding(.horizontal)
-
-            if store.topArtistsIsLoading {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                }
-                .frame(height: 160)
-            } else if let error = store.topArtistsErrorMessage {
-                Text(error)
-                    .foregroundStyle(.red)
-                    .font(.caption)
-                    .padding(.horizontal)
-            } else if store.topArtists.isEmpty {
-                Text("startpage.top_artists.empty")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-                    .padding(.horizontal)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(store.topArtists) { artist in
-                            ArtistCard(artist: artist)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
+        HorizontalCardSection(
+            titleKey: "startpage.top_artists",
+            items: store.topArtists,
+            isLoading: store.topArtistsPagination.isLoading,
+            errorMessage: store.topArtistsErrorMessage,
+            emptyKey: "startpage.top_artists.empty",
+            hasMore: store.topArtistsPagination.hasMore,
+            loadMore: {
+                let token = await session.validAccessToken()
+                await topItemsService.loadMoreTopArtists(accessToken: token, timeRange: timeRange)
+            },
+        ) { artist in
+            ArtistCard(artist: artist)
         }
     }
 
-    // MARK: - New Releases Section
+    // MARK: - Top Albums Section
 
-    private var newReleasesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("startpage.new_releases")
-                .font(.headline)
-                .padding(.horizontal)
-
-            if store.newReleasesIsLoading {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                }
-                .frame(height: 160)
-            } else if let error = store.newReleasesErrorMessage {
-                Text(error)
-                    .foregroundStyle(.red)
-                    .font(.caption)
-                    .padding(.horizontal)
-            } else if store.newReleaseAlbums.isEmpty {
-                Text("startpage.new_releases.empty")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-                    .padding(.horizontal)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(store.newReleaseAlbums) { album in
-                            AlbumCard(album: album)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-            }
+    private var topAlbumsSection: some View {
+        HorizontalCardSection(
+            titleKey: "startpage.top_albums",
+            items: store.topTrackAlbums,
+            isLoading: store.topTrackAlbumsPagination.isLoading,
+            errorMessage: store.topTrackAlbumsErrorMessage,
+            emptyKey: "startpage.top_albums.empty",
+            hasMore: store.topTrackAlbumsPagination.hasMore,
+            loadMore: {
+                let token = await session.validAccessToken()
+                await topItemsService.loadMoreTopTracks(accessToken: token, timeRange: timeRange)
+            },
+        ) { album in
+            AlbumCard(album: album)
         }
     }
 
@@ -187,6 +152,66 @@ struct StartpageView: View {
                 .padding()
         } else if !store.recentAlbumsAndPlaylists.isEmpty {
             RecentContentSection(items: store.recentAlbumsAndPlaylists)
+        }
+    }
+}
+
+// MARK: - Horizontal Card Section
+
+/// Reusable horizontal scrolling section with loading, error, and empty states.
+/// Supports optional pagination via `hasMore` and `loadMore`.
+struct HorizontalCardSection<Item: Identifiable, CardContent: View>: View {
+    let titleKey: LocalizedStringKey
+    let items: [Item]
+    let isLoading: Bool
+    let errorMessage: String?
+    let emptyKey: LocalizedStringKey
+    var hasMore: Bool = false
+    var loadMore: (() async -> Void)?
+    @ViewBuilder let card: (Item) -> CardContent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(titleKey)
+                .font(.headline)
+                .padding(.horizontal)
+
+            if isLoading, items.isEmpty {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                }
+                .frame(height: 160)
+            } else if let error = errorMessage {
+                Text(error)
+                    .foregroundStyle(.red)
+                    .font(.caption)
+                    .padding(.horizontal)
+            } else if items.isEmpty {
+                Text(emptyKey)
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .padding(.horizontal)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 12) {
+                        ForEach(items) { item in
+                            card(item)
+                        }
+                        if hasMore {
+                            ProgressView()
+                                .frame(width: 120, height: 120)
+                                .onAppear {
+                                    Task {
+                                        await loadMore?()
+                                    }
+                                }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
         }
     }
 }

@@ -30,12 +30,6 @@ final class SpotifySession {
     /// When the current token was obtained
     private var tokenObtainedAt: Date
 
-    /// The current user's Spotify ID (loaded lazily)
-    private(set) var userId: String?
-
-    /// Whether we're currently loading the user ID
-    private var isLoadingUserId = false
-
     /// Whether a token refresh is currently in progress
     private var isRefreshing = false
 
@@ -151,18 +145,5 @@ final class SpotifySession {
 
             return token
         }
-    }
-
-    /// Loads the current user's ID if not already loaded
-    func loadUserIdIfNeeded() async {
-        guard userId == nil, !isLoadingUserId else { return }
-        isLoadingUserId = true
-        do {
-            let token = await validAccessToken()
-            userId = try await SpotifyAPI.getCurrentUserId(accessToken: token)
-        } catch {
-            // Silently fail - userId will remain nil
-        }
-        isLoadingUserId = false
     }
 }
