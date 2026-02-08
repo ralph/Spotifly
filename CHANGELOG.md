@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Adapt to [Spotify Web API breaking changes (February 2026)](https://developer.spotify.com/documentation/web-api/references/changes/february-2026): migrate removed endpoints, update playlist response structure, and replace batch fetches with parallel individual requests
+
+### Removed
+- Artist top tracks section (endpoint removed by Spotify with no alternative)
+- New Releases section (endpoint removed by Spotify with no alternative)
+- Artist follower counts, user email/country/follower display (fields removed from API responses)
+
 ## [1.2.1] - 2026-02-06
 
 ### Added
