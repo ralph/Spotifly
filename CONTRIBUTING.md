@@ -27,3 +27,7 @@ YourProjects/
 ```
 
 Then build Rust (`cd rust && ./build.sh`) and open Xcode.
+
+## Contributors
+
+- [@vitbashy](https://github.com/vitbashy) — context-aware track playback (#15)
