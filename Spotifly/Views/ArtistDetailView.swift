@@ -138,9 +138,7 @@ struct ArtistDetailView: View {
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                         }
-
                     }
-
                 }
                 .padding(.top, 24)
 

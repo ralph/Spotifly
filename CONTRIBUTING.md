@@ -22,7 +22,7 @@ git clone https://github.com/ralph/librespot.git
 Expected directory structure:
 ```
 YourProjects/
-├── Spotifly/       # This repo
+├── repos/          # This repo
 └── librespot/      # Ralph's fork
 ```
 

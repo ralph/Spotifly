@@ -300,8 +300,15 @@ struct PlaylistDetailView: View {
             playbackViewModel: playbackViewModel,
             currentSection: .playlists,
             selectionId: playlistId,
-            contextUri: playlist?.uri,
-            trackIndexInContext: index,
+            onDoubleTap: {
+                guard let uri = playlist?.uri else { return }
+                let token = await session.validAccessToken()
+                await playbackViewModel.play(
+                    uriOrUrl: uri,
+                    trackIndex: index,
+                    accessToken: token,
+                )
+            },
         )
 
         if isOwner {

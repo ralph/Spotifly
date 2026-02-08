@@ -315,5 +315,4 @@ extension SpotifyAPI {
             try throwAPIError(data: data, statusCode: httpResponse.statusCode)
         }
     }
-
 }

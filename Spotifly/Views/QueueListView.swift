@@ -217,9 +217,22 @@ struct QueueListView: View {
                             currentIndex: currentIndex,
                             provider: item.provider,
                             playbackViewModel: playbackViewModel,
-                            doubleTapBehavior: .playTrack,
                             currentSection: .queue,
-                            trackIndexInContext: index,
+                            onDoubleTap: {
+                                let token = await session.validAccessToken()
+                                if let contextUri = store.queue.contextUri {
+                                    await playbackViewModel.play(
+                                        uriOrUrl: contextUri,
+                                        trackIndex: index,
+                                        accessToken: token,
+                                    )
+                                } else {
+                                    await playbackViewModel.play(
+                                        uriOrUrl: item.track.uri,
+                                        accessToken: token,
+                                    )
+                                }
+                            },
                         )
                         .id(index)
 

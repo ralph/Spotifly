@@ -7,11 +7,6 @@
 
 import SwiftUI
 
-/// Double-tap behavior for TrackRow
-enum TrackRowDoubleTapBehavior {
-    case playTrack // Play just this track
-}
-
 /// Reusable track row view
 struct TrackRow: View {
     let track: Track
@@ -21,11 +16,9 @@ struct TrackRow: View {
     let isPlayedTrack: Bool // For queue - tracks that have already played
     let provider: TrackProvider? // Optional provider (queue, context, autoplay, unavailable)
     @Bindable var playbackViewModel: PlaybackViewModel
-    let doubleTapBehavior: TrackRowDoubleTapBehavior
     let currentSection: NavigationItem // Current sidebar section (for "Go to" navigation)
     let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
-    let contextUri: String? // Album/playlist/artist URI for context-aware playback
-    let trackIndexInContext: Int? // Index within the context for starting playback
+    let onDoubleTap: (@MainActor () async -> Void)? // Playback action on double-tap
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(SpotifySession.self) private var session
@@ -67,11 +60,9 @@ struct TrackRow: View {
         currentIndex: Int? = nil,
         provider: TrackProvider? = nil,
         playbackViewModel: PlaybackViewModel,
-        doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
         currentSection: NavigationItem = .startpage,
         selectionId: String? = nil,
-        contextUri: String? = nil,
-        trackIndexInContext: Int? = nil,
+        onDoubleTap: (@MainActor () async -> Void)? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
@@ -84,11 +75,9 @@ struct TrackRow: View {
         }
         self.provider = provider
         self.playbackViewModel = playbackViewModel
-        self.doubleTapBehavior = doubleTapBehavior
         self.currentSection = currentSection
         self.selectionId = selectionId
-        self.contextUri = contextUri
-        self.trackIndexInContext = trackIndexInContext
+        self.onDoubleTap = onDoubleTap
     }
 
     var body: some View {
@@ -226,7 +215,8 @@ struct TrackRow: View {
             )
         }
         .onTapGesture(count: 2) {
-            handleDoubleTap()
+            guard let onDoubleTap else { return }
+            Task { await onDoubleTap() }
         }
         .alert("playlist.new.title", isPresented: $showNewPlaylistDialog) {
             TextField("playlist.new.placeholder", text: $newPlaylistName)
@@ -240,42 +230,6 @@ struct TrackRow: View {
             .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
         } message: {
             Text("playlist.new.message")
-        }
-    }
-
-    private func handleDoubleTap() {
-        switch doubleTapBehavior {
-        case .playTrack:
-            Task {
-                let token = await session.validAccessToken()
-
-                // Context-aware playback: if we have a context URI and track index, use them
-                if let contextUri, let index = trackIndexInContext {
-                    await playbackViewModel.play(
-                        uriOrUrl: contextUri,
-                        trackIndex: index,
-                        accessToken: token,
-                    )
-                } else if currentSection == .queue {
-                    // Queue: skip to this track within current context
-                    if let queueContextUri = store.queue.contextUri, let index = trackIndexInContext {
-                        await playbackViewModel.play(
-                            uriOrUrl: queueContextUri,
-                            trackIndex: index,
-                            accessToken: token,
-                        )
-                    }
-                } else if currentSection == .searchResults {
-                    // Search results: start radio for the track
-                    SpotifyPlayer.playRadio(trackUri: track.uri)
-                } else {
-                    // Fallback: single track playback (legacy behavior)
-                    await playbackViewModel.play(
-                        uriOrUrl: track.uri,
-                        accessToken: token,
-                    )
-                }
-            }
         }
     }
 
