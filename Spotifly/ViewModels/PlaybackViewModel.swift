@@ -95,8 +95,28 @@ final class PlaybackViewModel {
     private let seekSubject = PassthroughSubject<UInt32, Never>()
     /// Subscription for debounced seek operations
     private var seekSubscription: AnyCancellable?
+    /// Subscription for session disconnected failure signal from Rust
+    private var sessionDisconnectedSubscription: AnyCancellable?
+    /// Subscription for session connected signal (used to replay deferred transport commands)
+    private var sessionConnectedSubscription: AnyCancellable?
+    /// Subscription for connection-state updates (tracks reconnect transitions)
+    private var connectionStateSubscription: AnyCancellable?
     /// Token provider for reinitialization after session disconnect
     private var tokenProvider: (@Sendable () async -> String)?
+    /// Whether local librespot transport is currently recovering the session.
+    private var isRecoveringSession = false
+    /// Last local transport command deferred while waiting for reconnect.
+    private var deferredTransportCommand: DeferredTransportCommand?
+    private let reconnectFailureMessage = "Spotify session disconnected and automatic reconnect failed."
+
+    /// Local transport commands that may be replayed once after session reconnect.
+    private enum DeferredTransportCommand: Sendable {
+        case pause
+        case resume
+        case next
+        case previous
+        case seek(UInt32)
+    }
 
     private init() {
         setupPlaybackStateSubscription()
@@ -104,6 +124,7 @@ final class PlaybackViewModel {
         setupVolumeDebounceSubscription()
         setupLoadingSubscription()
         setupSeekSubscription()
+        setupSessionRecoverySubscriptions()
         setupRemoteCommandCenter()
 
         // Load saved volume (but don't apply it yet - mixer isn't initialized)
@@ -262,12 +283,11 @@ final class PlaybackViewModel {
     func togglePlayPause(trackId: String, accessToken: String) async {
         if isPlaying, currentTrackUri == trackId {
             // Pause current track
-            SpotifyPlayer.pause()
+            pause()
             isPlaying = false
         } else if !isPlaying, currentTrackUri == trackId {
             // Resume current track
-            SpotifyPlayer.resume()
-            isPlaying = true
+            resume()
         } else {
             // Play new track
             await playTrack(trackId: trackId, accessToken: accessToken)
@@ -287,17 +307,124 @@ final class PlaybackViewModel {
 
     // MARK: - Playback Control (via Spirc or Web API)
 
+    /// Subscribe to session lifecycle signals so local transport commands can defer and retry
+    /// once when the session becomes ready again.
+    private func setupSessionRecoverySubscriptions() {
+        sessionDisconnectedSubscription = SpotifyPlayer.sessionDisconnected
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.handleSessionDisconnectedFailure()
+            }
+
+        sessionConnectedSubscription = SpotifyPlayer.sessionConnected
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.handleSessionConnectedForRecovery()
+            }
+
+        connectionStateSubscription = SpotifyPlayer.connectionState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                self?.handleConnectionStateTransition(state)
+            }
+    }
+
+    private func handleSessionDisconnectedFailure() {
+        debugLog("PlaybackViewModel", "Session disconnected failure signal received from Rust")
+        isRecoveringSession = false
+        deferredTransportCommand = nil
+        isPlaying = false
+        isLoading = false
+        errorMessage = reconnectFailureMessage
+        updateNowPlayingInfo(forcePositionUpdate: true)
+    }
+
+    private func handleSessionConnectedForRecovery() {
+        isRecoveringSession = false
+        if errorMessage == reconnectFailureMessage {
+            errorMessage = nil
+        }
+
+        guard let deferredTransportCommand else { return }
+        self.deferredTransportCommand = nil
+        debugLog("PlaybackViewModel", "Replaying deferred transport command after session reconnect")
+        runLocalTransportCommand(deferredTransportCommand, allowDeferral: false)
+    }
+
+    private func handleConnectionStateTransition(_ state: LibrespotConnectionState?) {
+        guard let state else { return }
+        if state.sessionConnected {
+            isRecoveringSession = false
+            return
+        }
+        if state.reconnectAttempt > 0 {
+            isRecoveringSession = true
+            isPlaying = false
+        }
+    }
+
+    private func runLocalTransportCommand(
+        _ command: DeferredTransportCommand,
+        allowDeferral: Bool = true,
+    ) {
+        if isRecoveringSession, allowDeferral {
+            deferredTransportCommand = command
+            debugLog("PlaybackViewModel", "Queuing transport command while reconnect is in progress")
+            return
+        }
+        Task { @MainActor in
+            let result = await executeLocalTransportCommand(command)
+            handleLocalTransportResult(result, for: command, allowDeferral: allowDeferral)
+        }
+    }
+
+    private func executeLocalTransportCommand(
+        _ command: DeferredTransportCommand,
+    ) async -> SpotifyPlayer.TransportCommandResult {
+        switch command {
+        case .pause:
+            await SpotifyPlayer.pauseWithRecovery()
+        case .resume:
+            await SpotifyPlayer.resumeWithRecovery()
+        case .next:
+            await SpotifyPlayer.nextWithRecovery()
+        case .previous:
+            await SpotifyPlayer.previousWithRecovery()
+        case let .seek(positionMs):
+            await SpotifyPlayer.seekWithRecovery(positionMs: positionMs)
+        }
+    }
+
+    private func handleLocalTransportResult(
+        _ result: SpotifyPlayer.TransportCommandResult,
+        for command: DeferredTransportCommand,
+        allowDeferral: Bool,
+    ) {
+        switch result {
+        case .success:
+            if !allowDeferral {
+                debugLog("PlaybackViewModel", "Deferred transport command replay succeeded")
+            }
+        case .deferred, .reconnecting:
+            guard allowDeferral else {
+                debugLog("PlaybackViewModel", "Deferred transport replay still blocked; dropping command")
+                return
+            }
+            isRecoveringSession = true
+            deferredTransportCommand = command
+            debugLog("PlaybackViewModel", "Transport command deferred until session reconnect")
+        case let .failed(code):
+            debugLog("PlaybackViewModel", "Transport command failed with code \(code)")
+            errorMessage = "Playback command failed (\(code))"
+        }
+    }
+
     // Uses local Spirc when active device, Web API otherwise
     // State updates come back via Mercury callback
 
     func next() {
         if SpotifyPlayer.isActiveDevice {
-            // During reconnection, session may not be fully connected yet
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "next() ignored - session not connected yet")
-                return
-            }
-            SpotifyPlayer.next()
+            runLocalTransportCommand(.next)
         } else {
             // Remote control via Web API
             Task {
@@ -318,12 +445,7 @@ final class PlaybackViewModel {
 
     func previous() {
         if SpotifyPlayer.isActiveDevice {
-            // During reconnection, session may not be fully connected yet
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "previous() ignored - session not connected yet")
-                return
-            }
-            SpotifyPlayer.previous()
+            runLocalTransportCommand(.previous)
         } else {
             // Remote control via Web API
             Task {
@@ -355,12 +477,7 @@ final class PlaybackViewModel {
 
     func pause() {
         if SpotifyPlayer.isActiveDevice {
-            // During reconnection, session may not be fully connected yet
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "pause() ignored - session not connected yet")
-                return
-            }
-            SpotifyPlayer.pause()
+            runLocalTransportCommand(.pause)
         } else {
             // Remote control via Web API
             Task {
@@ -377,12 +494,7 @@ final class PlaybackViewModel {
 
     func resume() {
         if SpotifyPlayer.isActiveDevice {
-            // During reconnection, session may not be fully connected yet
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "resume() ignored - session not connected yet")
-                return
-            }
-            SpotifyPlayer.resume()
+            runLocalTransportCommand(.resume)
         } else {
             // Remote control via Web API
             Task {
@@ -439,13 +551,8 @@ final class PlaybackViewModel {
         commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                // During reconnection, session may not be fully connected yet
-                guard SpotifyPlayer.isSessionConnected else {
-                    debugLog("PlaybackViewModel", "Media key play ignored - session not connected yet")
-                    return
-                }
                 if !self.isPlaying {
-                    SpotifyPlayer.resume()
+                    self.runLocalTransportCommand(.resume)
                     // Keep current position anchor, just update time
                     self.positionAnchorTime = CACurrentMediaTime()
                     self.isPlaying = true
@@ -459,13 +566,8 @@ final class PlaybackViewModel {
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                // During reconnection, session may not be fully connected yet
-                guard SpotifyPlayer.isSessionConnected else {
-                    debugLog("PlaybackViewModel", "Media key pause ignored - session not connected yet")
-                    return
-                }
                 if self.isPlaying {
-                    SpotifyPlayer.pause()
+                    self.runLocalTransportCommand(.pause)
                     self.isPlaying = false
                     self.updateNowPlayingInfo(forcePositionUpdate: true)
                 }
@@ -477,16 +579,11 @@ final class PlaybackViewModel {
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                // During reconnection, session may not be fully connected yet
-                guard SpotifyPlayer.isSessionConnected else {
-                    debugLog("PlaybackViewModel", "Media key toggle ignored - session not connected yet")
-                    return
-                }
                 if self.isPlaying {
-                    SpotifyPlayer.pause()
+                    self.runLocalTransportCommand(.pause)
                     self.isPlaying = false
                 } else {
-                    SpotifyPlayer.resume()
+                    self.runLocalTransportCommand(.resume)
                     // Keep current position anchor, just update time
                     self.positionAnchorTime = CACurrentMediaTime()
                     self.isPlaying = true
@@ -655,7 +752,7 @@ final class PlaybackViewModel {
     /// Perform the actual seek operation (called after debouncing)
     private func performSeek(to positionMs: UInt32) {
         if SpotifyPlayer.isActiveDevice {
-            SpotifyPlayer.seek(positionMs: positionMs)
+            runLocalTransportCommand(.seek(positionMs))
         } else {
             // Remote control via Web API
             Task {

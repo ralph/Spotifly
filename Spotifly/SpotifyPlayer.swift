@@ -659,6 +659,90 @@ private nonisolated(unsafe) let sessionConnectedSubject = PassthroughSubject<Voi
 
 /// Swift wrapper for the Rust librespot playback functionality
 enum SpotifyPlayer {
+    /// Result for local transport commands issued through librespot FFI.
+    enum TransportCommandResult: Sendable, Equatable {
+        case success
+        case deferred
+        case reconnecting
+        case failed(Int32)
+    }
+
+    private enum TransportCommandCode: Int32 {
+        case success = 0
+        case generalError = -1
+        case needsReinit = -2
+        case notConnected = -3
+    }
+
+    /// Runs a local transport command and maps raw FFI return codes into reconnect-aware outcomes.
+    private nonisolated static func runTransportCommand(
+        _ commandName: String,
+        operation: @escaping @Sendable () -> Int32,
+    ) async -> TransportCommandResult {
+        let traceId = currentReconnectTraceId() ?? "none"
+        let result = await Task.detached(priority: .userInitiated) {
+            operation()
+        }.value
+
+        switch result {
+        case TransportCommandCode.success.rawValue:
+            return .success
+        case TransportCommandCode.notConnected.rawValue:
+            debugLog(
+                "SpotifyPlayer",
+                "Transport command \(commandName) deferred: session not connected yet (trace=\(traceId))",
+            )
+            return .deferred
+        case TransportCommandCode.needsReinit.rawValue:
+            let reconnectResult = spotifly_force_reconnect()
+            debugLog(
+                "SpotifyPlayer",
+                "Transport command \(commandName) needs reconnect; forceReconnect result=\(reconnectResult) (trace=\(traceId))",
+            )
+            if reconnectResult == 0 || reconnectResult == 1 {
+                return .reconnecting
+            }
+            return .failed(result)
+        default:
+            debugLog(
+                "SpotifyPlayer",
+                "Transport command \(commandName) failed with code \(result) (trace=\(traceId))",
+            )
+            return .failed(result)
+        }
+    }
+
+    /// Executes pause with reconnect-aware return code handling.
+    static func pauseWithRecovery() async -> TransportCommandResult {
+        await runTransportCommand("pause") { spotifly_pause() }
+    }
+
+    /// Executes resume with reconnect-aware return code handling.
+    static func resumeWithRecovery() async -> TransportCommandResult {
+        await runTransportCommand("resume") { spotifly_resume() }
+    }
+
+    /// Executes next-track with reconnect-aware return code handling.
+    static func nextWithRecovery() async -> TransportCommandResult {
+        await runTransportCommand("next") { spotifly_next() }
+    }
+
+    /// Executes previous-track with reconnect-aware return code handling.
+    static func previousWithRecovery() async -> TransportCommandResult {
+        await runTransportCommand("previous") { spotifly_previous() }
+    }
+
+    /// Executes seek with reconnect-aware return code handling.
+    static func seekWithRecovery(positionMs: UInt32) async -> TransportCommandResult {
+        await runTransportCommand("seek") { spotifly_seek(positionMs) }
+    }
+
+    /// Executes volume set with reconnect-aware return code handling.
+    static func setVolumeWithRecovery(_ volume: Double) async -> TransportCommandResult {
+        let volumeU16 = UInt16(max(0, min(1, volume)) * 65535.0)
+        return await runTransportCommand("set_volume") { spotifly_set_volume(volumeU16) }
+    }
+
     /// Initializes the player with the given access token.
     /// Must be called before any playback operations.
     @SpotifyAuthActor
@@ -873,7 +957,7 @@ enum SpotifyPlayer {
     /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
     static func pause() {
         Task.detached(priority: .userInitiated) {
-            spotifly_pause()
+            _ = await pauseWithRecovery()
         }
     }
 
@@ -890,7 +974,7 @@ enum SpotifyPlayer {
     /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
     static func resume() {
         Task.detached(priority: .userInitiated) {
-            spotifly_resume()
+            _ = await resumeWithRecovery()
         }
     }
 
@@ -948,7 +1032,7 @@ enum SpotifyPlayer {
     /// State updates come back via Mercury callback.
     static func next() {
         Task.detached(priority: .userInitiated) {
-            spotifly_next()
+            _ = await nextWithRecovery()
         }
     }
 
@@ -957,7 +1041,7 @@ enum SpotifyPlayer {
     /// State updates come back via Mercury callback.
     static func previous() {
         Task.detached(priority: .userInitiated) {
-            spotifly_previous()
+            _ = await previousWithRecovery()
         }
     }
 
@@ -966,16 +1050,15 @@ enum SpotifyPlayer {
     /// State updates come back via Mercury callback.
     static func seek(positionMs: UInt32) {
         Task.detached(priority: .userInitiated) {
-            spotifly_seek(positionMs)
+            _ = await seekWithRecovery(positionMs: positionMs)
         }
     }
 
     /// Sets the playback volume (0.0 - 1.0).
     /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
     static func setVolume(_ volume: Double) {
-        let volumeU16 = UInt16(max(0, min(1, volume)) * 65535.0)
         Task.detached(priority: .userInitiated) {
-            spotifly_set_volume(volumeU16)
+            _ = await setVolumeWithRecovery(volume)
         }
     }
 

@@ -221,6 +221,17 @@ struct LoggedInView: View {
                 await deviceService.loadDevices(accessToken: token)
             }
         }
+        .onReceive(SpotifyPlayer.sessionDisconnected) {
+            // Rust emits this when automatic reconnect exhausts all attempts.
+            // Refresh app-facing state so connection/device UI stays coherent.
+            Task {
+                debugLog("LoggedInView", "Session reconnect failed - refreshing connection/device/playback state")
+                connectionService.refreshConnectionState()
+                let token = await session.validAccessToken()
+                await deviceService.loadDevices(accessToken: token)
+                await queueService.fetchInitialPlaybackState(accessToken: token)
+            }
+        }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
             // Disconnect from Spotify Connect before sleep so the device disappears immediately.
             // This is better than pause because a paused device still appears "active" in Spotify

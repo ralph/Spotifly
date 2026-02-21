@@ -30,7 +30,7 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
   - Avoid unnecessary `transfer(None)` calls that can disturb active playback state.
   - Keep device activation semantics correct for fresh start vs reconnect.
 
-- [ ] #6 Swift-side recovery hardening
+- [x] #6 Swift-side recovery hardening
   - Subscribe to and handle session-disconnected failure signals in Swift.
   - Handle actionable FFI return codes in transport controls with reconnect-aware retry/defer behavior.
   - Keep UI/store connection state coherent during reconnect transitions.
