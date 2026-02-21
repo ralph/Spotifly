@@ -133,9 +133,25 @@ struct LibrespotConnectionState: Sendable, Equatable, Encodable {
     nonisolated let spircReady: Bool
     nonisolated let deviceId: String?
     nonisolated let deviceName: String
+    nonisolated let reconnectPhase: String
+    nonisolated let reconnectTrigger: String?
     nonisolated let reconnectAttempt: UInt32
+    nonisolated let reconnectTotalStarted: UInt32
+    nonisolated let reconnectTotalSucceeded: UInt32
+    nonisolated let reconnectTotalFailed: UInt32
+    nonisolated let reconnectTotalHardFallbacks: UInt32
+    nonisolated let audioInterruptionsTotal: UInt32
     nonisolated let lastError: String?
     nonisolated let connectedSinceMs: UInt64?
+    nonisolated let playbackContinuitySinceMs: UInt64?
+    nonisolated let lastReconnectTrigger: String?
+    nonisolated let lastReconnectCompletedMs: UInt64?
+    nonisolated let lastReconnectSucceeded: Bool?
+    nonisolated let lastReconnectAttempts: UInt32?
+    nonisolated let lastReconnectUsedHardFallback: Bool?
+    nonisolated let lastReconnectTimeToReadyMs: UInt64?
+    nonisolated let lastReconnectTimeToFirstPlayingMs: UInt64?
+    nonisolated let lastReconnectFailureReason: String?
 }
 
 /// Global subject for queue changed notifications (nonisolated for C callback access)
@@ -260,9 +276,25 @@ private nonisolated func handleConnectionStateCallback(_ jsonPtr: UnsafePointer<
             spircReady: json["spirc_ready"] as? Bool ?? false,
             deviceId: json["device_id"] as? String,
             deviceName: json["device_name"] as? String ?? "Spotifly",
+            reconnectPhase: json["reconnect_phase"] as? String ?? "disconnected",
+            reconnectTrigger: json["reconnect_trigger"] as? String,
             reconnectAttempt: (json["reconnect_attempt"] as? NSNumber)?.uint32Value ?? 0,
+            reconnectTotalStarted: (json["reconnect_total_started"] as? NSNumber)?.uint32Value ?? 0,
+            reconnectTotalSucceeded: (json["reconnect_total_succeeded"] as? NSNumber)?.uint32Value ?? 0,
+            reconnectTotalFailed: (json["reconnect_total_failed"] as? NSNumber)?.uint32Value ?? 0,
+            reconnectTotalHardFallbacks: (json["reconnect_total_hard_fallbacks"] as? NSNumber)?.uint32Value ?? 0,
+            audioInterruptionsTotal: (json["audio_interruptions_total"] as? NSNumber)?.uint32Value ?? 0,
             lastError: json["last_error"] as? String,
             connectedSinceMs: (json["connected_since_ms"] as? NSNumber)?.uint64Value,
+            playbackContinuitySinceMs: (json["playback_continuity_since_ms"] as? NSNumber)?.uint64Value,
+            lastReconnectTrigger: json["last_reconnect_trigger"] as? String,
+            lastReconnectCompletedMs: (json["last_reconnect_completed_ms"] as? NSNumber)?.uint64Value,
+            lastReconnectSucceeded: json["last_reconnect_succeeded"] as? Bool,
+            lastReconnectAttempts: (json["last_reconnect_attempts"] as? NSNumber)?.uint32Value,
+            lastReconnectUsedHardFallback: json["last_reconnect_used_hard_fallback"] as? Bool,
+            lastReconnectTimeToReadyMs: (json["last_reconnect_time_to_ready_ms"] as? NSNumber)?.uint64Value,
+            lastReconnectTimeToFirstPlayingMs: (json["last_reconnect_time_to_first_playing_ms"] as? NSNumber)?.uint64Value,
+            lastReconnectFailureReason: json["last_reconnect_failure_reason"] as? String,
         )
 
         connectionStateSubject.send(state)
@@ -881,9 +913,25 @@ enum SpotifyPlayer {
             spircReady: json["spirc_ready"] as? Bool ?? false,
             deviceId: json["device_id"] as? String,
             deviceName: json["device_name"] as? String ?? "Spotifly",
+            reconnectPhase: json["reconnect_phase"] as? String ?? "disconnected",
+            reconnectTrigger: json["reconnect_trigger"] as? String,
             reconnectAttempt: (json["reconnect_attempt"] as? NSNumber)?.uint32Value ?? 0,
+            reconnectTotalStarted: (json["reconnect_total_started"] as? NSNumber)?.uint32Value ?? 0,
+            reconnectTotalSucceeded: (json["reconnect_total_succeeded"] as? NSNumber)?.uint32Value ?? 0,
+            reconnectTotalFailed: (json["reconnect_total_failed"] as? NSNumber)?.uint32Value ?? 0,
+            reconnectTotalHardFallbacks: (json["reconnect_total_hard_fallbacks"] as? NSNumber)?.uint32Value ?? 0,
+            audioInterruptionsTotal: (json["audio_interruptions_total"] as? NSNumber)?.uint32Value ?? 0,
             lastError: json["last_error"] as? String,
             connectedSinceMs: (json["connected_since_ms"] as? NSNumber)?.uint64Value,
+            playbackContinuitySinceMs: (json["playback_continuity_since_ms"] as? NSNumber)?.uint64Value,
+            lastReconnectTrigger: json["last_reconnect_trigger"] as? String,
+            lastReconnectCompletedMs: (json["last_reconnect_completed_ms"] as? NSNumber)?.uint64Value,
+            lastReconnectSucceeded: json["last_reconnect_succeeded"] as? Bool,
+            lastReconnectAttempts: (json["last_reconnect_attempts"] as? NSNumber)?.uint32Value,
+            lastReconnectUsedHardFallback: json["last_reconnect_used_hard_fallback"] as? Bool,
+            lastReconnectTimeToReadyMs: (json["last_reconnect_time_to_ready_ms"] as? NSNumber)?.uint64Value,
+            lastReconnectTimeToFirstPlayingMs: (json["last_reconnect_time_to_first_playing_ms"] as? NSNumber)?.uint64Value,
+            lastReconnectFailureReason: json["last_reconnect_failure_reason"] as? String,
         )
     }
 

@@ -250,11 +250,37 @@
 "connection.spirc_not_ready" = "Nicht bereit";
 "connection.uptime" = "Laufzeit";
 "connection.reconnect_attempts" = "Wiederverbindungsversuche";
+"connection.session_uptime" = "Sitzungslaufzeit";
+"connection.continuity_uptime" = "Wiedergabe-Kontinuität";
+"connection.reconnect_phase" = "Wiederverbindungsphase";
+"connection.reconnect_trigger" = "Wiederverbindungs-Auslöser";
+"connection.reconnect_current_attempt" = "Aktueller Versuch";
+"connection.reconnect_total_started" = "Gestartete Wiederverbindungen";
+"connection.reconnect_total_succeeded" = "Erfolgreiche Wiederverbindungen";
+"connection.reconnect_total_failed" = "Fehlgeschlagene Wiederverbindungen";
+"connection.reconnect_total_hard_fallbacks" = "Harte Fallbacks";
+"connection.audio_interruptions_total" = "Audio-Unterbrechungen";
+"connection.last_reconnect" = "Letzte Wiederverbindung";
+"connection.last_ready_time" = "Letzte Zeit bis bereit";
+"connection.last_first_audio_time" = "Letzte Zeit bis erstes Audio";
+"connection.last_reconnect_trigger" = "Auslöser der letzten Wiederverbindung";
+"connection.last_reconnect_failure" = "Letzter Fehlergrund";
 "connection.device_id" = "Geräte-ID";
 "connection.reconnect" = "Neu verbinden";
+"connection.hard_reset" = "Harter Reset";
 "connection.no_data" = "Keine Verbindungsdaten";
 "connection.connected" = "Verbunden";
 "connection.disconnected" = "Getrennt";
+"connection.phase.connected" = "Verbunden";
+"connection.phase.reconnecting" = "Wiederverbinden";
+"connection.phase.failed" = "Fehlgeschlagen";
+"connection.phase.sleeping" = "Im Ruhezustand";
+"connection.phase.shutting_down" = "Wird beendet";
+"connection.phase.disconnected" = "Getrennt";
+"connection.result.success" = "Erfolg";
+"connection.result.failed" = "Fehlgeschlagen";
+"connection.reconnect_mode.soft" = "Soft";
+"connection.reconnect_mode.hard" = "Harter Fallback";
 
 /* Speakers */
 "speakers.librespot_connection" = "Librespot-Verbindung";

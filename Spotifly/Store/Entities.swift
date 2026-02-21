@@ -220,7 +220,23 @@ struct SpotifyConnection: Sendable, Equatable, Encodable {
     let connectionId: String?
     let connectedSince: Date?
     let spircReady: Bool
+    let reconnectPhase: String
+    let reconnectTrigger: String?
     let reconnectAttempts: UInt32
+    let reconnectTotalStarted: UInt32
+    let reconnectTotalSucceeded: UInt32
+    let reconnectTotalFailed: UInt32
+    let reconnectTotalHardFallbacks: UInt32
+    let audioInterruptionsTotal: UInt32
+    let playbackContinuitySince: Date?
+    let lastReconnectTrigger: String?
+    let lastReconnectCompletedAt: Date?
+    let lastReconnectSucceeded: Bool?
+    let lastReconnectAttempts: UInt32?
+    let lastReconnectUsedHardFallback: Bool?
+    let lastReconnectTimeToReadyMs: UInt64?
+    let lastReconnectTimeToFirstPlayingMs: UInt64?
+    let lastReconnectFailureReason: String?
     let lastError: String?
 }
 

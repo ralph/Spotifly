@@ -103,10 +103,17 @@ struct SpeakersView: View {
 
                     // Librespot Connection Status
                     Section {
-                        ConnectionStatusView {
-                            let token = await session.validAccessToken()
-                            await playbackViewModel.forceReinitialize(accessToken: token)
-                        }
+                        ConnectionStatusView(
+                            onReconnect: {
+                                Task { @MainActor in
+                                    _ = SpotifyPlayer.forceReconnect()
+                                }
+                            },
+                            onHardReset: {
+                                let token = await session.validAccessToken()
+                                await playbackViewModel.forceReinitialize(accessToken: token)
+                            },
+                        )
                     } header: {
                         Text("speakers.librespot_connection")
                     }

@@ -40,6 +40,12 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
   - Compare against baseline metrics and document results.
   - Record residual risks and follow-up items.
   - Note: validation report + metrics tooling added in `docs/network-session-stability-validation.md`; live scenario execution still pending on a machine with Spotify/network control.
+  - Dashboard transparency follow-up (current request):
+    - [x] `#7.1` Audit current speakers/devices stability metrics for semantic correctness.
+    - [x] `#7.2` Extend Rust connection-state payload with cumulative reconnect metrics and last reconnect summary.
+    - [x] `#7.3` Extend Swift connection model/store mapping to carry new reconnect/session-transparency fields.
+    - [x] `#7.4` Update speakers/devices dashboard UI (explicit reconnect phase, session vs continuity uptime, richer reconnect stats, soft reconnect + hard reset actions).
+    - [x] `#7.5` Add localization strings and run a warning-free Swift 6.2 build verification.
 
 ## Execution Rules
 

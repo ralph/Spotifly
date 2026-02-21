@@ -113,6 +113,12 @@ static CURRENT_TRACK_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(
 static RECONNECT_ATTEMPT: AtomicU32 = AtomicU32::new(0);
 static CONNECTED_SINCE_MS: AtomicU64 = AtomicU64::new(0);
 static LAST_ERROR: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+static RECONNECT_TOTAL_STARTED: AtomicU32 = AtomicU32::new(0);
+static RECONNECT_TOTAL_SUCCEEDED: AtomicU32 = AtomicU32::new(0);
+static RECONNECT_TOTAL_FAILED: AtomicU32 = AtomicU32::new(0);
+static RECONNECT_TOTAL_HARD_FALLBACKS: AtomicU32 = AtomicU32::new(0);
+static AUDIO_INTERRUPTIONS_TOTAL: AtomicU32 = AtomicU32::new(0);
+static PLAYBACK_CONTINUITY_SINCE_MS: AtomicU64 = AtomicU64::new(0);
 static CONNECTION_STATE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
 
@@ -132,6 +138,7 @@ struct ReconnectTraceContext {
     trigger: String,
     started_at_ms: u64,
     attempt: u32,
+    success_recorded: bool,
     expect_first_playing: bool,
     hard_fallback_started_at_ms: Option<u64>,
     token_requested_at_ms: Option<u64>,
@@ -139,6 +146,21 @@ struct ReconnectTraceContext {
     reconnect_ready_at_ms: Option<u64>,
     first_playing_at_ms: Option<u64>,
 }
+
+#[derive(Clone)]
+struct LastReconnectSummary {
+    trigger: String,
+    completed_at_ms: u64,
+    succeeded: bool,
+    attempts: u32,
+    used_hard_fallback: bool,
+    time_to_ready_ms: Option<u64>,
+    time_to_first_playing_ms: Option<u64>,
+    failure_reason: Option<String>,
+}
+
+static LAST_RECONNECT_SUMMARY: Lazy<Mutex<Option<LastReconnectSummary>>> =
+    Lazy::new(|| Mutex::new(None));
 
 /// Returns milliseconds elapsed since wake was triggered (force_reconnect called).
 /// Returns 0 if no wake timestamp recorded.
@@ -161,6 +183,7 @@ fn reconnect_trace_start(trigger: &str) -> String {
         trigger: trigger.to_string(),
         started_at_ms: now,
         attempt: 0,
+        success_recorded: false,
         expect_first_playing: false,
         hard_fallback_started_at_ms: None,
         token_requested_at_ms: None,
@@ -239,6 +262,51 @@ fn reconnect_trace_log(phase: &str, detail: &str) {
 fn reconnect_trace_clear() {
     let mut trace = RECONNECT_TRACE.lock().unwrap();
     *trace = None;
+}
+
+/// Captures the current reconnect trace context as the latest reconnect summary.
+fn update_last_reconnect_summary(success: bool, failure_reason: Option<String>) {
+    let Some(context) = reconnect_trace_context() else {
+        return;
+    };
+
+    let summary = LastReconnectSummary {
+        trigger: context.trigger,
+        completed_at_ms: current_timestamp_ms(),
+        succeeded: success,
+        attempts: context.attempt,
+        used_hard_fallback: context.hard_fallback_started_at_ms.is_some(),
+        time_to_ready_ms: context
+            .reconnect_ready_at_ms
+            .map(|ready| ready.saturating_sub(context.started_at_ms)),
+        time_to_first_playing_ms: context
+            .first_playing_at_ms
+            .map(|playing| playing.saturating_sub(context.started_at_ms)),
+        failure_reason,
+    };
+
+    let mut last_summary = LAST_RECONNECT_SUMMARY.lock().unwrap();
+    *last_summary = Some(summary);
+}
+
+/// Returns a coarse reconnect phase for the connection dashboard.
+fn reconnect_phase(session_connected: bool, spirc_ready: bool, last_failed: bool) -> String {
+    if RECONNECTING.load(Ordering::SeqCst) {
+        return "reconnecting".to_string();
+    }
+    if SHUTTING_DOWN.load(Ordering::SeqCst) {
+        return "shutting_down".to_string();
+    }
+    if SLEEPING.load(Ordering::SeqCst) {
+        return "sleeping".to_string();
+    }
+    if session_connected && spirc_ready {
+        return "connected".to_string();
+    }
+    if last_failed {
+        return "failed".to_string();
+    }
+    "disconnected".to_string()
 }
 
 /// Returns true while soft reconnect attempts are still within budget.
@@ -339,9 +407,25 @@ struct ConnectionStateInfo {
     spirc_ready: bool,
     device_id: Option<String>,
     device_name: String,
+    reconnect_phase: String,
+    reconnect_trigger: Option<String>,
     reconnect_attempt: u32,
+    reconnect_total_started: u32,
+    reconnect_total_succeeded: u32,
+    reconnect_total_failed: u32,
+    reconnect_total_hard_fallbacks: u32,
+    audio_interruptions_total: u32,
     last_error: Option<String>,
     connected_since_ms: Option<u64>,
+    playback_continuity_since_ms: Option<u64>,
+    last_reconnect_trigger: Option<String>,
+    last_reconnect_completed_ms: Option<u64>,
+    last_reconnect_succeeded: Option<bool>,
+    last_reconnect_attempts: Option<u32>,
+    last_reconnect_used_hard_fallback: Option<bool>,
+    last_reconnect_time_to_ready_ms: Option<u64>,
+    last_reconnect_time_to_first_playing_ms: Option<u64>,
+    last_reconnect_failure_reason: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -615,24 +699,70 @@ pub extern "C" fn spotifly_get_connection_state() -> *mut c_char {
 
 /// Builds the current connection state info struct
 fn build_connection_state_info() -> ConnectionStateInfo {
-    let session_state = SESSION_CONNECTION_STATE.lock().unwrap();
+    let (session_connected, session_connection_id) = {
+        let session_state = SESSION_CONNECTION_STATE.lock().unwrap();
+        (
+            session_state.is_connected,
+            session_state.connection_id.clone(),
+        )
+    };
+    let spirc_ready = SPIRC_READY.load(Ordering::SeqCst);
     let device_id = DEVICE_ID.lock().unwrap().clone();
     let last_error = LAST_ERROR.lock().unwrap().clone();
     let connected_since = CONNECTED_SINCE_MS.load(Ordering::SeqCst);
+    let continuity_since = PLAYBACK_CONTINUITY_SINCE_MS.load(Ordering::SeqCst);
+    let reconnect_trace = reconnect_trace_context();
+    let last_summary = LAST_RECONNECT_SUMMARY.lock().unwrap().clone();
+    let reconnect_trigger = reconnect_trace
+        .as_ref()
+        .map(|ctx| ctx.trigger.clone())
+        .or_else(|| last_summary.as_ref().map(|summary| summary.trigger.clone()));
+    let last_failed = last_summary
+        .as_ref()
+        .map(|summary| !summary.succeeded)
+        .unwrap_or(false);
 
     ConnectionStateInfo {
-        session_connected: session_state.is_connected,
-        session_connection_id: session_state.connection_id.clone(),
-        spirc_ready: SPIRC_READY.load(Ordering::SeqCst),
+        session_connected,
+        session_connection_id,
+        spirc_ready,
         device_id,
         device_name: "Spotifly".to_string(),
+        reconnect_phase: reconnect_phase(session_connected, spirc_ready, last_failed),
+        reconnect_trigger,
         reconnect_attempt: RECONNECT_ATTEMPT.load(Ordering::SeqCst),
+        reconnect_total_started: RECONNECT_TOTAL_STARTED.load(Ordering::SeqCst),
+        reconnect_total_succeeded: RECONNECT_TOTAL_SUCCEEDED.load(Ordering::SeqCst),
+        reconnect_total_failed: RECONNECT_TOTAL_FAILED.load(Ordering::SeqCst),
+        reconnect_total_hard_fallbacks: RECONNECT_TOTAL_HARD_FALLBACKS.load(Ordering::SeqCst),
+        audio_interruptions_total: AUDIO_INTERRUPTIONS_TOTAL.load(Ordering::SeqCst),
         last_error,
         connected_since_ms: if connected_since > 0 {
             Some(connected_since)
         } else {
             None
         },
+        playback_continuity_since_ms: if continuity_since > 0 {
+            Some(continuity_since)
+        } else {
+            None
+        },
+        last_reconnect_trigger: last_summary.as_ref().map(|summary| summary.trigger.clone()),
+        last_reconnect_completed_ms: last_summary.as_ref().map(|summary| summary.completed_at_ms),
+        last_reconnect_succeeded: last_summary.as_ref().map(|summary| summary.succeeded),
+        last_reconnect_attempts: last_summary.as_ref().map(|summary| summary.attempts),
+        last_reconnect_used_hard_fallback: last_summary
+            .as_ref()
+            .map(|summary| summary.used_hard_fallback),
+        last_reconnect_time_to_ready_ms: last_summary
+            .as_ref()
+            .and_then(|summary| summary.time_to_ready_ms),
+        last_reconnect_time_to_first_playing_ms: last_summary
+            .as_ref()
+            .and_then(|summary| summary.time_to_first_playing_ms),
+        last_reconnect_failure_reason: last_summary
+            .as_ref()
+            .and_then(|summary| summary.failure_reason.clone()),
     }
 }
 
@@ -681,6 +811,7 @@ fn spawn_reconnection_loop(trigger: &str) {
     }
 
     let trace_id = reconnect_trace_start(trigger);
+    RECONNECT_TOTAL_STARTED.fetch_add(1, Ordering::SeqCst);
     debug!(
         "[RECONNECT_TRACE] started trace_id={} trigger={}",
         trace_id, trigger
@@ -697,6 +828,10 @@ fn spawn_reconnection_loop(trigger: &str) {
         let was_playing = IS_PLAYING.load(Ordering::SeqCst);
         debug!("[WAKE +{}ms] Captured was_playing={} before reconnection", elapsed_since_wake_ms(), was_playing);
         reconnect_trace_update(|ctx| ctx.expect_first_playing = was_playing);
+        if was_playing {
+            AUDIO_INTERRUPTIONS_TOTAL.fetch_add(1, Ordering::SeqCst);
+            PLAYBACK_CONTINUITY_SINCE_MS.store(0, Ordering::SeqCst);
+        }
         reconnect_trace_log(
             "captured_playback_state",
             if was_playing {
@@ -774,6 +909,7 @@ fn spawn_reconnection_loop(trigger: &str) {
             let use_soft_cleanup = !hard_fallback_active && can_use_soft_reconnect(attempt_num);
             if !use_soft_cleanup && !hard_fallback_active {
                 hard_fallback_active = true;
+                RECONNECT_TOTAL_HARD_FALLBACKS.fetch_add(1, Ordering::SeqCst);
                 reconnect_trace_update(|ctx| {
                     ctx.hard_fallback_started_at_ms = Some(current_timestamp_ms());
                 });
@@ -842,7 +978,12 @@ fn spawn_reconnection_loop(trigger: &str) {
         // All attempts exhausted
         debug!("All reconnection attempts exhausted");
         RECONNECTING.store(false, Ordering::SeqCst);
+        RECONNECT_TOTAL_FAILED.fetch_add(1, Ordering::SeqCst);
         reconnect_trace_log("reconnect_exhausted", "all reconnect attempts exhausted");
+        update_last_reconnect_summary(
+            false,
+            Some("Reconnection failed after 10 attempts".to_string()),
+        );
         {
             let mut last_error = LAST_ERROR.lock().unwrap();
             *last_error = Some("Reconnection failed after 10 attempts".to_string());
@@ -1329,8 +1470,12 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                                 }
                             });
                             if mark_first_playing {
+                                PLAYBACK_CONTINUITY_SINCE_MS
+                                    .store(current_timestamp_ms(), Ordering::SeqCst);
+                                update_last_reconnect_summary(true, None);
                                 reconnect_trace_log("first_playing", "first playable event after reconnect");
                                 reconnect_trace_clear();
+                                notify_connection_state_change();
                             }
                         }
                         Some(PlayerEvent::Paused { position_ms, .. }) => {
@@ -1534,7 +1679,14 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                         Some(PlayerEvent::SessionConnected { connection_id, user_name }) => {
                             debug!("[WAKE +{}ms] SessionConnected event: connection_id={}, user={}", elapsed_since_wake_ms(), connection_id, user_name);
                             let mut clear_trace_after_ready = false;
-                            reconnect_trace_update(|ctx| ctx.reconnect_ready_at_ms = Some(current_timestamp_ms()));
+                            let mut record_reconnect_success = false;
+                            reconnect_trace_update(|ctx| {
+                                ctx.reconnect_ready_at_ms = Some(current_timestamp_ms());
+                                if !ctx.success_recorded {
+                                    ctx.success_recorded = true;
+                                    record_reconnect_success = true;
+                                }
+                            });
                             reconnect_trace_update(|ctx| {
                                 if !ctx.expect_first_playing {
                                     clear_trace_after_ready = true;
@@ -1544,6 +1696,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                                 "session_connected_event",
                                 "received PlayerEvent::SessionConnected (session ready)",
                             );
+                            if record_reconnect_success {
+                                RECONNECT_TOTAL_SUCCEEDED.fetch_add(1, Ordering::SeqCst);
+                                update_last_reconnect_summary(true, None);
+                            }
                             if clear_trace_after_ready {
                                 reconnect_trace_log(
                                     "trace_completed",
@@ -1559,6 +1715,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                             }
                             // Set connected timestamp and reset reconnect counter
                             CONNECTED_SINCE_MS.store(current_timestamp_ms(), Ordering::SeqCst);
+                            if PLAYBACK_CONTINUITY_SINCE_MS.load(Ordering::SeqCst) == 0 {
+                                PLAYBACK_CONTINUITY_SINCE_MS
+                                    .store(current_timestamp_ms(), Ordering::SeqCst);
+                            }
                             RECONNECT_ATTEMPT.store(0, Ordering::SeqCst);
                             // Clear last error on successful connect
                             {
@@ -1832,17 +1992,11 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
             match spirc_for_post_connect.activate() {
                 Ok(_) => {
                     debug!("Post-connect activate() succeeded");
-                    reconnect_trace_log(
-                        "post_connect_activate",
-                        "activate() succeeded",
-                    );
+                    reconnect_trace_log("post_connect_activate", "activate() succeeded");
                 }
                 Err(e) => {
                     debug!("Post-connect activate() failed: {:?}", e);
-                    reconnect_trace_log(
-                        "post_connect_activate_failed",
-                        "activate() failed",
-                    );
+                    reconnect_trace_log("post_connect_activate_failed", "activate() failed");
                 }
             }
 
@@ -1893,6 +2047,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                 return Err(format!("Session connect error: {}", connect_err));
             }
         }
+    }
+
+    if PLAYBACK_CONTINUITY_SINCE_MS.load(Ordering::SeqCst) == 0 {
+        PLAYBACK_CONTINUITY_SINCE_MS.store(current_timestamp_ms(), Ordering::SeqCst);
     }
 
     Ok(())

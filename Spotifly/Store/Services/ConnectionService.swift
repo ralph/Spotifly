@@ -46,6 +46,18 @@ final class ConnectionService {
             nil
         }
 
+        let playbackContinuitySince: Date? = if let ms = state.playbackContinuitySinceMs {
+            Date(timeIntervalSince1970: Double(ms) / 1000.0)
+        } else {
+            nil
+        }
+
+        let lastReconnectCompletedAt: Date? = if let ms = state.lastReconnectCompletedMs {
+            Date(timeIntervalSince1970: Double(ms) / 1000.0)
+        } else {
+            nil
+        }
+
         return SpotifyConnection(
             deviceId: state.deviceId,
             deviceName: state.deviceName,
@@ -53,7 +65,23 @@ final class ConnectionService {
             connectionId: state.sessionConnectionId,
             connectedSince: connectedSince,
             spircReady: state.spircReady,
+            reconnectPhase: state.reconnectPhase,
+            reconnectTrigger: state.reconnectTrigger,
             reconnectAttempts: state.reconnectAttempt,
+            reconnectTotalStarted: state.reconnectTotalStarted,
+            reconnectTotalSucceeded: state.reconnectTotalSucceeded,
+            reconnectTotalFailed: state.reconnectTotalFailed,
+            reconnectTotalHardFallbacks: state.reconnectTotalHardFallbacks,
+            audioInterruptionsTotal: state.audioInterruptionsTotal,
+            playbackContinuitySince: playbackContinuitySince,
+            lastReconnectTrigger: state.lastReconnectTrigger,
+            lastReconnectCompletedAt: lastReconnectCompletedAt,
+            lastReconnectSucceeded: state.lastReconnectSucceeded,
+            lastReconnectAttempts: state.lastReconnectAttempts,
+            lastReconnectUsedHardFallback: state.lastReconnectUsedHardFallback,
+            lastReconnectTimeToReadyMs: state.lastReconnectTimeToReadyMs,
+            lastReconnectTimeToFirstPlayingMs: state.lastReconnectTimeToFirstPlayingMs,
+            lastReconnectFailureReason: state.lastReconnectFailureReason,
             lastError: state.lastError,
         )
     }

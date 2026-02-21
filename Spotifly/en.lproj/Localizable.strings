@@ -245,11 +245,37 @@
 "connection.spirc_not_ready" = "Not Ready";
 "connection.uptime" = "Uptime";
 "connection.reconnect_attempts" = "Reconnect Attempts";
+"connection.session_uptime" = "Session Uptime";
+"connection.continuity_uptime" = "Playback Continuity";
+"connection.reconnect_phase" = "Reconnect Phase";
+"connection.reconnect_trigger" = "Reconnect Trigger";
+"connection.reconnect_current_attempt" = "Current Attempt";
+"connection.reconnect_total_started" = "Reconnects Started";
+"connection.reconnect_total_succeeded" = "Reconnects Succeeded";
+"connection.reconnect_total_failed" = "Reconnects Failed";
+"connection.reconnect_total_hard_fallbacks" = "Hard Fallbacks";
+"connection.audio_interruptions_total" = "Audio Interruptions";
+"connection.last_reconnect" = "Last Reconnect";
+"connection.last_ready_time" = "Last Time to Ready";
+"connection.last_first_audio_time" = "Last Time to First Audio";
+"connection.last_reconnect_trigger" = "Last Reconnect Trigger";
+"connection.last_reconnect_failure" = "Last Failure Reason";
 "connection.device_id" = "Device ID";
 "connection.reconnect" = "Reconnect";
+"connection.hard_reset" = "Hard Reset";
 "connection.no_data" = "No Connection Data";
 "connection.connected" = "Connected";
 "connection.disconnected" = "Disconnected";
+"connection.phase.connected" = "Connected";
+"connection.phase.reconnecting" = "Reconnecting";
+"connection.phase.failed" = "Failed";
+"connection.phase.sleeping" = "Sleeping";
+"connection.phase.shutting_down" = "Shutting Down";
+"connection.phase.disconnected" = "Disconnected";
+"connection.result.success" = "Success";
+"connection.result.failed" = "Failed";
+"connection.reconnect_mode.soft" = "Soft";
+"connection.reconnect_mode.hard" = "Hard Fallback";
 
 /* Speakers */
 "speakers.librespot_connection" = "Librespot Connection";
