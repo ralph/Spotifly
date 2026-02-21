@@ -15,7 +15,7 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
   - Recreate only `Session` + `Spirc`, then rebind `Player` via `player.set_session(new_session)`.
   - Recreate dealer/cluster listeners for the new session generation.
 
-- [ ] #3 Keep hard reconnect as fallback
+- [x] #3 Keep hard reconnect as fallback
   - Preserve current full cleanup path as fallback when soft reconnect fails.
   - Add bounded retry/timeout policy for soft reconnect before fallback is triggered.
   - Ensure fallback path remains deterministic and observable in logs.

@@ -121,6 +121,9 @@ static WAKE_TIMESTAMP_MS: AtomicU64 = AtomicU64::new(0);
 static RECONNECT_TRACE_SEQ: AtomicU64 = AtomicU64::new(0);
 // Active reconnect trace context (if reconnection is in progress or recently completed)
 static RECONNECT_TRACE: Lazy<Mutex<Option<ReconnectTraceContext>>> = Lazy::new(|| Mutex::new(None));
+// Soft reconnect policy before falling back to full hard cleanup
+const SOFT_RECONNECT_MAX_ATTEMPTS: u32 = 3;
+const SOFT_RECONNECT_MAX_WINDOW_MS: u64 = 15_000;
 
 #[derive(Clone)]
 struct ReconnectTraceContext {
@@ -129,6 +132,7 @@ struct ReconnectTraceContext {
     started_at_ms: u64,
     attempt: u32,
     expect_first_playing: bool,
+    hard_fallback_started_at_ms: Option<u64>,
     token_requested_at_ms: Option<u64>,
     token_received_at_ms: Option<u64>,
     reconnect_ready_at_ms: Option<u64>,
@@ -157,6 +161,7 @@ fn reconnect_trace_start(trigger: &str) -> String {
         started_at_ms: now,
         attempt: 0,
         expect_first_playing: false,
+        hard_fallback_started_at_ms: None,
         token_requested_at_ms: None,
         token_received_at_ms: None,
         reconnect_ready_at_ms: None,
@@ -199,11 +204,16 @@ fn reconnect_trace_log(phase: &str, detail: &str) {
             "detail": detail,
             "attempt": context.attempt,
             "expect_first_playing": context.expect_first_playing,
+            "hard_fallback_active": context.hard_fallback_started_at_ms.is_some(),
             "since_trace_start_ms": now.saturating_sub(context.started_at_ms),
             "wake_elapsed_ms": wake_elapsed_ms,
             "token_latency_ms": match (context.token_requested_at_ms, context.token_received_at_ms) {
                 (Some(requested), Some(received)) => Some(received.saturating_sub(requested)),
                 _ => None,
+            },
+            "soft_reconnect_budget": {
+                "max_attempts": SOFT_RECONNECT_MAX_ATTEMPTS,
+                "max_window_ms": SOFT_RECONNECT_MAX_WINDOW_MS,
             },
             "time_to_ready_ms": context
                 .reconnect_ready_at_ms
@@ -228,6 +238,19 @@ fn reconnect_trace_log(phase: &str, detail: &str) {
 fn reconnect_trace_clear() {
     let mut trace = RECONNECT_TRACE.lock().unwrap();
     *trace = None;
+}
+
+/// Returns true while soft reconnect attempts are still within budget.
+fn can_use_soft_reconnect(attempt: u32) -> bool {
+    if attempt > SOFT_RECONNECT_MAX_ATTEMPTS {
+        return false;
+    }
+    if let Some(context) = reconnect_trace_context() {
+        let elapsed_ms = current_timestamp_ms().saturating_sub(context.started_at_ms);
+        elapsed_ms <= SOFT_RECONNECT_MAX_WINDOW_MS
+    } else {
+        true
+    }
 }
 
 // Generation counter for reconnection - prevents old cluster listeners from triggering reconnects
@@ -655,6 +678,7 @@ fn spawn_reconnection_loop(trigger: &str) {
     reconnect_trace_log("reconnect_loop_started", "reconnect loop task spawned");
 
     RUNTIME.spawn(async {
+        let mut hard_fallback_active = false;
         // Capture playing state BEFORE any cleanup - we'll use this to auto-resume after reconnection
         let was_playing = IS_PLAYING.load(Ordering::SeqCst);
         debug!("[WAKE +{}ms] Captured was_playing={} before reconnection", elapsed_since_wake_ms(), was_playing);
@@ -731,11 +755,35 @@ fn spawn_reconnection_loop(trigger: &str) {
             reconnect_trace_update(|ctx| ctx.token_received_at_ms = Some(current_timestamp_ms()));
             reconnect_trace_log("token_received", "received token from Swift");
 
-            // Perform soft cleanup before reconnecting.
-            // Keep Player/Mixer/ProxySink alive and rotate only Session/Spirc.
+            // Use soft reconnect while within bounded budget; otherwise switch to hard fallback.
+            let attempt_num = attempt as u32 + 1;
+            let use_soft_cleanup = !hard_fallback_active && can_use_soft_reconnect(attempt_num);
+            if !use_soft_cleanup && !hard_fallback_active {
+                hard_fallback_active = true;
+                reconnect_trace_update(|ctx| {
+                    ctx.hard_fallback_started_at_ms = Some(current_timestamp_ms());
+                });
+                reconnect_trace_log(
+                    "fallback_to_hard",
+                    "soft reconnect budget exhausted; switching to hard cleanup fallback",
+                );
+            }
+
             debug!("[WAKE +{}ms] Starting cleanup", elapsed_since_wake_ms());
             reconnect_trace_log("cleanup_start", "starting reconnect cleanup");
-            do_soft_reconnect_cleanup();
+            if use_soft_cleanup {
+                reconnect_trace_log(
+                    "cleanup_mode_soft",
+                    &format!("using soft cleanup on attempt {}", attempt_num),
+                );
+                do_soft_reconnect_cleanup();
+            } else {
+                reconnect_trace_log(
+                    "cleanup_mode_hard",
+                    &format!("using hard cleanup fallback on attempt {}", attempt_num),
+                );
+                do_reconnect_cleanup();
+            }
             debug!("[WAKE +{}ms] Cleanup complete, calling init_player_async", elapsed_since_wake_ms());
             reconnect_trace_log("cleanup_complete", "cleanup complete, starting init_player_async");
 
@@ -928,7 +976,6 @@ fn do_soft_reconnect_cleanup() {
 /// Performs full cleanup for reconnection.
 /// Clears Session, Spirc, Player, and Mixer because Player is tightly coupled
 /// to the Session's ChannelManager for decryption key requests.
-#[allow(dead_code)]
 fn do_reconnect_cleanup() {
     debug!("do_reconnect_cleanup: full cleanup for reconnection");
     reconnect_trace_log("do_reconnect_cleanup", "performing full reconnect cleanup");
