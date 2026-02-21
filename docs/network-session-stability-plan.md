@@ -46,6 +46,7 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
     - [x] `#7.3` Extend Swift connection model/store mapping to carry new reconnect/session-transparency fields.
     - [x] `#7.4` Update speakers/devices dashboard UI (explicit reconnect phase, session vs continuity uptime, richer reconnect stats, soft reconnect + hard reset actions).
     - [x] `#7.5` Add localization strings and run a warning-free Swift 6.2 build verification.
+    - [x] `#7.6` Add a one-click copy-to-clipboard connection debug snapshot in the speakers/devices dashboard.
 
 ## Execution Rules
 

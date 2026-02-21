@@ -7,6 +7,9 @@
 
 import Combine
 import SwiftUI
+#if os(macOS)
+    import AppKit
+#endif
 
 // MARK: - Connection Status Row
 
@@ -125,6 +128,7 @@ struct ConnectionStatusView: View {
     var onReconnect: (@Sendable () -> Void)?
     var onHardReset: (@Sendable () async -> Void)?
     @State private var isHardResetting = false
+    @State private var didCopyDebugInfo = false
 
     var body: some View {
         if let connection = store.connection {
@@ -317,6 +321,19 @@ struct ConnectionStatusView: View {
                         }
                     }
                 }
+
+                Divider()
+                Button {
+                    copyDebugInfo(connection)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: didCopyDebugInfo ? "checkmark.circle.fill" : "doc.on.doc")
+                        Text(didCopyDebugInfo ? "connection.copied" : "connection.copy_debug_info")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
@@ -392,6 +409,71 @@ struct ConnectionStatusView: View {
             return String(format: "%.2fs", seconds)
         }
         return "\(ms)ms"
+    }
+
+    private func copyDebugInfo(_ connection: SpotifyConnection) {
+        let snapshot = buildDebugSnapshot(connection)
+
+        #if os(macOS)
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(snapshot, forType: .string)
+        #endif
+
+        didCopyDebugInfo = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            await MainActor.run {
+                didCopyDebugInfo = false
+            }
+        }
+    }
+
+    private func buildDebugSnapshot(_ connection: SpotifyConnection) -> String {
+        var lines: [String] = []
+        lines.append("spotifly_connection_snapshot")
+        lines.append("timestamp=\(Date().ISO8601Format())")
+        lines.append("phase=\(connection.reconnectPhase)")
+        lines.append("session_connected=\(connection.isConnected)")
+        lines.append("spirc_ready=\(connection.spircReady)")
+        lines.append("session_connection_id=\(optionalValue(connection.connectionId))")
+        lines.append("device_id=\(optionalValue(connection.deviceId))")
+        lines.append("reconnect_trigger=\(optionalValue(connection.reconnectTrigger))")
+        lines.append("session_uptime_seconds=\(elapsedSeconds(from: connection.connectedSince))")
+        lines.append("continuity_uptime_seconds=\(elapsedSeconds(from: connection.playbackContinuitySince))")
+        lines.append("reconnect_current_attempt=\(connection.reconnectAttempts)")
+        lines.append("reconnect_total_started=\(connection.reconnectTotalStarted)")
+        lines.append("reconnect_total_succeeded=\(connection.reconnectTotalSucceeded)")
+        lines.append("reconnect_total_failed=\(connection.reconnectTotalFailed)")
+        lines.append("reconnect_total_hard_fallbacks=\(connection.reconnectTotalHardFallbacks)")
+        lines.append("audio_interruptions_total=\(connection.audioInterruptionsTotal)")
+        lines.append("last_reconnect_trigger=\(optionalValue(connection.lastReconnectTrigger))")
+        lines.append("last_reconnect_completed_at=\(optionalDate(connection.lastReconnectCompletedAt))")
+        lines.append("last_reconnect_succeeded=\(optionalValue(connection.lastReconnectSucceeded))")
+        lines.append("last_reconnect_attempts=\(optionalValue(connection.lastReconnectAttempts))")
+        lines.append("last_reconnect_used_hard_fallback=\(optionalValue(connection.lastReconnectUsedHardFallback))")
+        lines.append("last_reconnect_time_to_ready_ms=\(optionalValue(connection.lastReconnectTimeToReadyMs))")
+        lines.append("last_reconnect_time_to_first_audio_ms=\(optionalValue(connection.lastReconnectTimeToFirstPlayingMs))")
+        lines.append("last_reconnect_failure_reason=\(optionalValue(connection.lastReconnectFailureReason))")
+        lines.append("last_error=\(optionalValue(connection.lastError))")
+        return lines.joined(separator: "\n")
+    }
+
+    private func elapsedSeconds(from date: Date?) -> String {
+        guard let date else { return "nil" }
+        let seconds = Int(Date().timeIntervalSince(date))
+        guard seconds >= 0 else { return "nil" }
+        return "\(seconds)"
+    }
+
+    private func optionalDate(_ date: Date?) -> String {
+        guard let date else { return "nil" }
+        return date.ISO8601Format()
+    }
+
+    private func optionalValue<T>(_ value: T?) -> String {
+        guard let value else { return "nil" }
+        return "\(value)"
     }
 
     /// Truncate long IDs for display

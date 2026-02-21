@@ -281,6 +281,8 @@
 "connection.result.failed" = "Fehlgeschlagen";
 "connection.reconnect_mode.soft" = "Soft";
 "connection.reconnect_mode.hard" = "Harter Fallback";
+"connection.copy_debug_info" = "Debug-Snapshot kopieren";
+"connection.copied" = "Kopiert";
 
 /* Speakers */
 "speakers.librespot_connection" = "Librespot-Verbindung";
