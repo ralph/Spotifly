@@ -39,6 +39,7 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
   - Run repeatable scenarios: local playback, remote-controlled playback, sleep/wake, forced network drop.
   - Compare against baseline metrics and document results.
   - Record residual risks and follow-up items.
+  - Note: validation report + metrics tooling added in `docs/network-session-stability-validation.md`; live scenario execution still pending on a machine with Spotify/network control.
 
 ## Execution Rules
 
