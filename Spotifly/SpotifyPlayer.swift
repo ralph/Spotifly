@@ -377,10 +377,19 @@ private nonisolated func registerSessionDisconnectedCallback() {
     }
 }
 
+/// Returns the active reconnect trace ID from Rust, if available.
+private nonisolated func currentReconnectTraceId() -> String? {
+    let ptr = spotifly_get_reconnect_trace_id()
+    guard ptr != nil else { return nil }
+    defer { spotifly_free_string(ptr) }
+    return String(cString: ptr!)
+}
+
 /// C callback for session disconnection notifications from Rust
 /// Fires when the Spotify session disconnects (e.g., idle timeout)
 private nonisolated func handleSessionDisconnectedCallback() {
-    debugLog("SpotifyPlayer", "Session disconnected event received - triggering reinit")
+    let traceId = currentReconnectTraceId() ?? "none"
+    debugLog("SpotifyPlayer", "Session disconnected event received (trace=\(traceId))")
     DispatchQueue.main.async {
         sessionDisconnectedSubject.send()
     }
@@ -396,7 +405,8 @@ private nonisolated func registerSessionConnectedCallback() {
 /// C callback for session connection notifications from Rust
 /// Fires when the Spotify session is connected and ready for playback commands
 private nonisolated func handleSessionConnectedCallback() {
-    debugLog("SpotifyPlayer", "Session connected event received - ready for commands")
+    let traceId = currentReconnectTraceId() ?? "none"
+    debugLog("SpotifyPlayer", "Session connected event received - ready for commands (trace=\(traceId))")
     DispatchQueue.main.async {
         sessionConnectedSubject.send()
     }
@@ -415,22 +425,29 @@ private nonisolated func registerTokenRequestCallback() {
 /// C callback for token request notifications from Rust
 /// Fires when Rust's reconnection loop needs a fresh access token
 private nonisolated func handleTokenRequestCallback() {
-    debugLog("SpotifyPlayer", "Token request received from Rust")
+    let traceId = currentReconnectTraceId() ?? "none"
+    let startTime = Date()
+    debugLog("SpotifyPlayer", "Token request received from Rust (trace=\(traceId))")
     DispatchQueue.main.async {
         Task { @MainActor in
             guard let session = tokenProviderSession else {
-                debugLog("SpotifyPlayer", "No session available for token request")
+                debugLog("SpotifyPlayer", "No session available for token request (trace=\(traceId))")
                 return
             }
 
             let token = await session.validAccessToken()
-            debugLog("SpotifyPlayer", "Providing fresh token to Rust (\(token.prefix(20))...)")
+            let elapsedMs = Int(Date().timeIntervalSince(startTime) * 1000)
+            debugLog(
+                "SpotifyPlayer",
+                "Providing fresh token to Rust (trace=\(traceId), elapsed=\(elapsedMs)ms, token=\(token.prefix(20))...)",
+            )
 
             // Call Rust FFI on background thread
             Task.detached {
                 token.withCString { tokenPtr in
                     spotifly_set_token(tokenPtr)
                 }
+                debugLog("SpotifyPlayer", "Token delivered to Rust via FFI (trace=\(traceId))")
             }
         }
     }

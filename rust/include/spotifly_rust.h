@@ -186,6 +186,10 @@ void spotifly_register_token_request_callback(TokenRequestCallback callback);
 /// The token is passed to the pending reconnection attempt.
 void spotifly_set_token(const char* token);
 
+/// Returns the active reconnect trace ID, or NULL if no reconnect trace is active.
+/// Caller must free returned string using spotifly_free_string().
+char* spotifly_get_reconnect_trace_id(void);
+
 /// Forces a reconnection to Spotify servers.
 /// Use this after system wake to ensure a fresh connection before playback.
 /// Returns:

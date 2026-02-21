@@ -5,7 +5,7 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
 
 ## Checklist
 
-- [ ] #1 Baseline instrumentation
+- [x] #1 Baseline instrumentation
   - Add reconnect lifecycle timing logs (disconnect detected, token requested/received, reconnect start, reconnect ready, first playable event).
   - Emit one structured reconnect trace ID per reconnect attempt for correlation across Swift + Rust logs.
   - Define baseline metrics we will compare after each change (time-to-ready, time-to-first-audio, reconnect success rate).
@@ -46,3 +46,22 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
 2. After each step, stop for user inspection before commit.
 3. Keep this file current by checking off completed steps.
 4. If scope changes, update this plan first, then implement.
+
+## Baseline Metrics
+
+- `time_to_ready_ms`
+  - Definition: elapsed time from `trace_started` to `session_connected_event`.
+  - Source: Rust reconnect trace log (`[RECONNECT_TRACE]`).
+
+- `time_to_first_playing_ms`
+  - Definition: elapsed time from `trace_started` to first local `PlayerEvent::Playing` after reconnect.
+  - Source: Rust reconnect trace log (`[RECONNECT_TRACE]`).
+  - Note: present only when reconnect is expected to resume active playback.
+
+- `token_latency_ms`
+  - Definition: elapsed time from token request to token receipt (`token_requested` → `token_received`).
+  - Source: Rust reconnect trace log + Swift token callback logs.
+
+- `reconnect_success_rate`
+  - Definition: successful reconnect traces / started reconnect traces.
+  - Source: count of `trace_started` vs `session_connected_event`/`reconnect_exhausted` phases.

@@ -11,11 +11,11 @@ use librespot_playback::config::{AudioFormat, Bitrate, PlayerConfig};
 use librespot_playback::mixer::softmixer::SoftMixer;
 use librespot_playback::mixer::{Mixer, MixerConfig};
 use librespot_playback::player::{Player, PlayerEvent};
-use proxy_sink::mk_proxy_sink;
 use librespot_protocol::connect::ClusterUpdate;
 use librespot_protocol::player::PlayerState;
 use log::debug;
 use once_cell::sync::Lazy;
+use proxy_sink::mk_proxy_sink;
 use serde::Serialize;
 use std::ffi::{c_char, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering};
@@ -117,6 +117,23 @@ static CONNECTION_STATE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)
 
 // Wake timing tracking - for debugging reconnection timing issues
 static WAKE_TIMESTAMP_MS: AtomicU64 = AtomicU64::new(0);
+// Reconnect trace sequence (for correlation IDs)
+static RECONNECT_TRACE_SEQ: AtomicU64 = AtomicU64::new(0);
+// Active reconnect trace context (if reconnection is in progress or recently completed)
+static RECONNECT_TRACE: Lazy<Mutex<Option<ReconnectTraceContext>>> = Lazy::new(|| Mutex::new(None));
+
+#[derive(Clone)]
+struct ReconnectTraceContext {
+    trace_id: String,
+    trigger: String,
+    started_at_ms: u64,
+    attempt: u32,
+    expect_first_playing: bool,
+    token_requested_at_ms: Option<u64>,
+    token_received_at_ms: Option<u64>,
+    reconnect_ready_at_ms: Option<u64>,
+    first_playing_at_ms: Option<u64>,
+}
 
 /// Returns milliseconds elapsed since wake was triggered (force_reconnect called).
 /// Returns 0 if no wake timestamp recorded.
@@ -127,6 +144,90 @@ fn elapsed_since_wake_ms() -> u64 {
     }
     let now = current_timestamp_ms();
     now.saturating_sub(wake_ts)
+}
+
+/// Starts a new reconnect trace and returns the generated trace ID.
+fn reconnect_trace_start(trigger: &str) -> String {
+    let now = current_timestamp_ms();
+    let seq = RECONNECT_TRACE_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
+    let trace_id = format!("rc-{}-{}", now, seq);
+    let context = ReconnectTraceContext {
+        trace_id: trace_id.clone(),
+        trigger: trigger.to_string(),
+        started_at_ms: now,
+        attempt: 0,
+        expect_first_playing: false,
+        token_requested_at_ms: None,
+        token_received_at_ms: None,
+        reconnect_ready_at_ms: None,
+        first_playing_at_ms: None,
+    };
+    {
+        let mut trace = RECONNECT_TRACE.lock().unwrap();
+        *trace = Some(context);
+    }
+    reconnect_trace_log("trace_started", "reconnect trace created");
+    trace_id
+}
+
+/// Returns a clone of the current reconnect trace context.
+fn reconnect_trace_context() -> Option<ReconnectTraceContext> {
+    RECONNECT_TRACE.lock().unwrap().clone()
+}
+
+/// Updates the current reconnect trace context in-place.
+fn reconnect_trace_update<F>(update: F)
+where
+    F: FnOnce(&mut ReconnectTraceContext),
+{
+    let mut trace = RECONNECT_TRACE.lock().unwrap();
+    if let Some(context) = trace.as_mut() {
+        update(context);
+    }
+}
+
+/// Logs a structured reconnect trace event.
+fn reconnect_trace_log(phase: &str, detail: &str) {
+    let now = current_timestamp_ms();
+    let wake_elapsed_ms = elapsed_since_wake_ms();
+
+    if let Some(context) = reconnect_trace_context() {
+        let payload = serde_json::json!({
+            "trace_id": context.trace_id,
+            "trigger": context.trigger,
+            "phase": phase,
+            "detail": detail,
+            "attempt": context.attempt,
+            "expect_first_playing": context.expect_first_playing,
+            "since_trace_start_ms": now.saturating_sub(context.started_at_ms),
+            "wake_elapsed_ms": wake_elapsed_ms,
+            "token_latency_ms": match (context.token_requested_at_ms, context.token_received_at_ms) {
+                (Some(requested), Some(received)) => Some(received.saturating_sub(requested)),
+                _ => None,
+            },
+            "time_to_ready_ms": context
+                .reconnect_ready_at_ms
+                .map(|ready| ready.saturating_sub(context.started_at_ms)),
+            "time_to_first_playing_ms": context
+                .first_playing_at_ms
+                .map(|playing| playing.saturating_sub(context.started_at_ms)),
+        });
+        debug!("[RECONNECT_TRACE] {}", payload);
+    } else {
+        let payload = serde_json::json!({
+            "trace_id": Option::<String>::None,
+            "phase": phase,
+            "detail": detail,
+            "wake_elapsed_ms": wake_elapsed_ms,
+        });
+        debug!("[RECONNECT_TRACE] {}", payload);
+    }
+}
+
+/// Clears the active reconnect trace context.
+fn reconnect_trace_clear() {
+    let mut trace = RECONNECT_TRACE.lock().unwrap();
+    *trace = None;
 }
 
 // Generation counter for reconnection - prevents old cluster listeners from triggering reconnects
@@ -415,6 +516,10 @@ pub extern "C" fn spotifly_set_token(token: *const c_char) {
         "spotifly_set_token: received token ({} chars)",
         token_str.len()
     );
+    reconnect_trace_log(
+        "token_delivered_from_swift",
+        "Swift delivered token via spotifly_set_token",
+    );
 
     // Send token to waiting reconnection task
     let mut pending = PENDING_TOKEN.lock().unwrap();
@@ -424,6 +529,19 @@ pub extern "C" fn spotifly_set_token(token: *const c_char) {
         }
     } else {
         debug!("spotifly_set_token: no pending token request");
+    }
+}
+
+/// Returns the active reconnect trace ID as a C string.
+/// Caller must free the returned string using spotifly_free_string().
+/// Returns null if no reconnect trace is currently active.
+#[no_mangle]
+pub extern "C" fn spotifly_get_reconnect_trace_id() -> *mut c_char {
+    let trace = RECONNECT_TRACE.lock().unwrap();
+    if let Some(context) = trace.as_ref() {
+        CString::new(context.trace_id.clone()).unwrap().into_raw()
+    } else {
+        std::ptr::null_mut()
     }
 }
 
@@ -493,7 +611,7 @@ fn request_token_from_swift() {
     if let Some(callback) = *cb_guard {
         let cb = callback;
         drop(cb_guard);
-        debug!("Requesting fresh token from Swift");
+        reconnect_trace_log("token_requested", "requesting fresh token from Swift");
         cb();
     } else {
         debug!("No token request callback registered");
@@ -502,31 +620,66 @@ fn request_token_from_swift() {
 
 /// Spawns the reconnection loop task.
 /// Uses exponential backoff and requests fresh tokens from Swift.
-fn spawn_reconnection_loop() {
+fn spawn_reconnection_loop(trigger: &str) {
     // Check if already reconnecting
     if RECONNECTING.swap(true, Ordering::SeqCst) {
-        debug!("[WAKE +{}ms] Reconnection already in progress, skipping", elapsed_since_wake_ms());
+        reconnect_trace_log(
+            "reconnect_skip",
+            "reconnect request ignored because one is already in progress",
+        );
+        debug!(
+            "[WAKE +{}ms] Reconnection already in progress, skipping",
+            elapsed_since_wake_ms()
+        );
         return;
     }
 
-    debug!("[WAKE +{}ms] spawn_reconnection_loop started", elapsed_since_wake_ms());
+    let trace_id = reconnect_trace_start(trigger);
+    debug!(
+        "[RECONNECT_TRACE] started trace_id={} trigger={}",
+        trace_id, trigger
+    );
+    debug!(
+        "[WAKE +{}ms] spawn_reconnection_loop started",
+        elapsed_since_wake_ms()
+    );
+    reconnect_trace_log("reconnect_loop_started", "reconnect loop task spawned");
 
     RUNTIME.spawn(async {
         // Capture playing state BEFORE any cleanup - we'll use this to auto-resume after reconnection
         let was_playing = IS_PLAYING.load(Ordering::SeqCst);
         debug!("[WAKE +{}ms] Captured was_playing={} before reconnection", elapsed_since_wake_ms(), was_playing);
+        reconnect_trace_update(|ctx| ctx.expect_first_playing = was_playing);
+        reconnect_trace_log(
+            "captured_playback_state",
+            if was_playing {
+                "captured was_playing=true before cleanup"
+            } else {
+                "captured was_playing=false before cleanup"
+            },
+        );
 
         // Backoff delays in seconds: immediate, then 2, 5, 10, then 30s intervals
         let delays = [0u64, 2, 5, 10, 30, 30, 30, 30, 30, 30];
 
         for (attempt, delay) in delays.iter().enumerate() {
+            reconnect_trace_update(|ctx| {
+                ctx.attempt = attempt as u32 + 1;
+                ctx.token_requested_at_ms = None;
+                ctx.token_received_at_ms = None;
+            });
             // Wait before this attempt (skip delay on first attempt)
             if *delay > 0 {
                 debug!("[WAKE +{}ms] Reconnect attempt {} waiting {}s", elapsed_since_wake_ms(), attempt + 1, delay);
+                reconnect_trace_log(
+                    "attempt_wait",
+                    &format!("waiting {}s before attempt {}", delay, attempt + 1),
+                );
                 tokio::time::sleep(Duration::from_secs(*delay)).await;
             }
 
             debug!("[WAKE +{}ms] Starting reconnect attempt {}", elapsed_since_wake_ms(), attempt + 1);
+            reconnect_trace_log("attempt_start", &format!("starting reconnect attempt {}", attempt + 1));
 
             // Update reconnect attempt counter and notify UI
             RECONNECT_ATTEMPT.store(attempt as u32 + 1, Ordering::SeqCst);
@@ -545,6 +698,7 @@ fn spawn_reconnection_loop() {
 
             // Request fresh token from Swift
             debug!("[WAKE +{}ms] Requesting token from Swift", elapsed_since_wake_ms());
+            reconnect_trace_update(|ctx| ctx.token_requested_at_ms = Some(current_timestamp_ms()));
             request_token_from_swift();
 
             // Wait for token with timeout
@@ -554,26 +708,33 @@ fn spawn_reconnection_loop() {
                 Ok(Ok(t)) => t,
                 Ok(Err(_)) => {
                     debug!("[WAKE +{}ms] Token channel closed", elapsed_since_wake_ms());
+                    reconnect_trace_log("token_channel_closed", "token channel closed before token arrived");
                     continue;
                 }
                 Err(_) => {
                     debug!("[WAKE +{}ms] Token request timed out", elapsed_since_wake_ms());
+                    reconnect_trace_log("token_timeout", "timed out waiting for token from Swift");
                     continue;
                 }
             };
 
             debug!("[WAKE +{}ms] Received token for reconnect attempt {}", elapsed_since_wake_ms(), attempt + 1);
+            reconnect_trace_update(|ctx| ctx.token_received_at_ms = Some(current_timestamp_ms()));
+            reconnect_trace_log("token_received", "received token from Swift");
 
             // Perform full cleanup before reconnecting - must create new Player with new Session
             // because Player is tightly coupled to Session's ChannelManager for key requests
             debug!("[WAKE +{}ms] Starting cleanup", elapsed_since_wake_ms());
+            reconnect_trace_log("cleanup_start", "starting reconnect cleanup");
             do_reconnect_cleanup();
             debug!("[WAKE +{}ms] Cleanup complete, calling init_player_async", elapsed_since_wake_ms());
+            reconnect_trace_log("cleanup_complete", "cleanup complete, starting init_player_async");
 
             // Attempt to reinitialize with fresh token
             match init_player_async(&token).await {
                 Ok(_) => {
                     debug!("[WAKE +{}ms] Reconnection successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
+                    reconnect_trace_log("attempt_success", &format!("reconnect attempt {} succeeded", attempt + 1));
                     RECONNECTING.store(false, Ordering::SeqCst);
 
                     // If we were playing before disconnect, set up auto-resume
@@ -583,6 +744,10 @@ fn spawn_reconnection_loop() {
                         let resume_until = current_timestamp_ms() + 5000; // 5 second window
                         RESUME_AFTER_RECONNECT_UNTIL_MS.store(resume_until, Ordering::SeqCst);
                         debug!("[WAKE +{}ms] Will auto-resume after track loads (was playing before disconnect)", elapsed_since_wake_ms());
+                        reconnect_trace_log(
+                            "auto_resume_armed",
+                            "armed auto-resume window because playback was active before disconnect",
+                        );
                     }
 
                     // SessionConnected event will reset RECONNECT_ATTEMPT and notify
@@ -590,6 +755,10 @@ fn spawn_reconnection_loop() {
                 }
                 Err(e) => {
                     debug!("[WAKE +{}ms] Reconnection attempt {} failed: {}", elapsed_since_wake_ms(), attempt + 1, e);
+                    reconnect_trace_log(
+                        "attempt_failed",
+                        &format!("reconnect attempt {} failed: {}", attempt + 1, e),
+                    );
                     {
                         let mut last_error = LAST_ERROR.lock().unwrap();
                         *last_error = Some(format!("Reconnect failed: {}", e));
@@ -602,6 +771,7 @@ fn spawn_reconnection_loop() {
         // All attempts exhausted
         debug!("All reconnection attempts exhausted");
         RECONNECTING.store(false, Ordering::SeqCst);
+        reconnect_trace_log("reconnect_exhausted", "all reconnect attempts exhausted");
         {
             let mut last_error = LAST_ERROR.lock().unwrap();
             *last_error = Some("Reconnection failed after 10 attempts".to_string());
@@ -616,6 +786,7 @@ fn spawn_reconnection_loop() {
             debug!("Notifying Swift of reconnection failure");
             cb();
         }
+        reconnect_trace_clear();
     });
 }
 
@@ -634,6 +805,10 @@ pub extern "C" fn spotifly_force_reconnect() -> i32 {
     let wake_ts = current_timestamp_ms();
     WAKE_TIMESTAMP_MS.store(wake_ts, Ordering::SeqCst);
     debug!("[WAKE +0ms] spotifly_force_reconnect called at {}", wake_ts);
+    reconnect_trace_log(
+        "force_reconnect_called",
+        "explicit force reconnect requested",
+    );
 
     // Check if we even have a session
     let has_session = {
@@ -642,17 +817,34 @@ pub extern "C" fn spotifly_force_reconnect() -> i32 {
     };
 
     if !has_session {
-        debug!("[WAKE +{}ms] Force reconnect: no session initialized", elapsed_since_wake_ms());
+        debug!(
+            "[WAKE +{}ms] Force reconnect: no session initialized",
+            elapsed_since_wake_ms()
+        );
+        reconnect_trace_log(
+            "force_reconnect_no_session",
+            "force reconnect rejected: no session",
+        );
         return 2;
     }
 
     // Check if already reconnecting
     if RECONNECTING.load(Ordering::SeqCst) {
-        debug!("[WAKE +{}ms] Force reconnect: reconnection already in progress", elapsed_since_wake_ms());
+        debug!(
+            "[WAKE +{}ms] Force reconnect: reconnection already in progress",
+            elapsed_since_wake_ms()
+        );
+        reconnect_trace_log(
+            "force_reconnect_already_reconnecting",
+            "force reconnect ignored: reconnect already in progress",
+        );
         return 1;
     }
 
-    debug!("[WAKE +{}ms] Force reconnect: triggering reconnection", elapsed_since_wake_ms());
+    debug!(
+        "[WAKE +{}ms] Force reconnect: triggering reconnection",
+        elapsed_since_wake_ms()
+    );
 
     // Update session state to reflect disconnect
     {
@@ -668,7 +860,7 @@ pub extern "C" fn spotifly_force_reconnect() -> i32 {
     notify_connection_state_change();
 
     // Spawn reconnection loop
-    spawn_reconnection_loop();
+    spawn_reconnection_loop("force_reconnect");
 
     0
 }
@@ -678,6 +870,7 @@ pub extern "C" fn spotifly_force_reconnect() -> i32 {
 /// to the Session's ChannelManager for decryption key requests.
 fn do_reconnect_cleanup() {
     debug!("do_reconnect_cleanup: full cleanup for reconnection");
+    reconnect_trace_log("do_reconnect_cleanup", "performing full reconnect cleanup");
 
     // Signal event listener to stop
     {
@@ -733,6 +926,10 @@ fn do_reconnect_cleanup() {
     CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
 
     debug!("do_reconnect_cleanup complete");
+    reconnect_trace_log(
+        "do_reconnect_cleanup_complete",
+        "full reconnect cleanup complete",
+    );
 }
 
 /// Initializes the player with the given access token.
@@ -838,9 +1035,17 @@ fn create_new_player(session: &Session, mixer: &Arc<SoftMixer>) -> Result<Arc<Pl
 }
 
 async fn init_player_async(access_token: &str) -> Result<(), String> {
+    reconnect_trace_log(
+        "init_player_async_start",
+        "initializing session/player/spirc",
+    );
     // Increment session generation - this invalidates any old cluster listeners
     let current_generation = SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    debug!("[WAKE +{}ms] init_player_async starting, generation={}", elapsed_since_wake_ms(), current_generation);
+    debug!(
+        "[WAKE +{}ms] init_player_async starting, generation={}",
+        elapsed_since_wake_ms(),
+        current_generation
+    );
 
     let device_id = format!("spotifly_{}", std::process::id());
     let session_config = SessionConfig {
@@ -906,6 +1111,19 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                             update_position(position_ms);
                             // Send playback state update to Swift
                             send_local_playback_state(true, position_ms);
+
+                            // First playable event after reconnect (for audible-gap timing)
+                            let mut mark_first_playing = false;
+                            reconnect_trace_update(|ctx| {
+                                if ctx.expect_first_playing && ctx.first_playing_at_ms.is_none() {
+                                    ctx.first_playing_at_ms = Some(current_timestamp_ms());
+                                    mark_first_playing = true;
+                                }
+                            });
+                            if mark_first_playing {
+                                reconnect_trace_log("first_playing", "first playable event after reconnect");
+                                reconnect_trace_clear();
+                            }
                         }
                         Some(PlayerEvent::Paused { position_ms, .. }) => {
                             debug!("PlayerEvent::Paused at {}ms", position_ms);
@@ -1067,6 +1285,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                         Some(PlayerEvent::SessionDisconnected { connection_id, user_name }) => {
                             debug!("[WAKE +{}ms] SessionDisconnected event: connection_id={}, user={}, listener_generation={}",
                                    elapsed_since_wake_ms(), connection_id, user_name, event_listener_generation);
+                            reconnect_trace_log(
+                                "session_disconnected_event",
+                                "received PlayerEvent::SessionDisconnected",
+                            );
 
                             // Check if this event is from a stale session
                             let current_gen = SESSION_GENERATION.load(Ordering::SeqCst);
@@ -1098,11 +1320,29 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                             } else if SLEEPING.load(Ordering::SeqCst) {
                                 debug!("[WAKE +{}ms] SessionDisconnected during sleep - not reconnecting", elapsed_since_wake_ms());
                             } else {
-                                spawn_reconnection_loop();
+                                spawn_reconnection_loop("player_event_session_disconnected");
                             }
                         }
                         Some(PlayerEvent::SessionConnected { connection_id, user_name }) => {
                             debug!("[WAKE +{}ms] SessionConnected event: connection_id={}, user={}", elapsed_since_wake_ms(), connection_id, user_name);
+                            let mut clear_trace_after_ready = false;
+                            reconnect_trace_update(|ctx| ctx.reconnect_ready_at_ms = Some(current_timestamp_ms()));
+                            reconnect_trace_update(|ctx| {
+                                if !ctx.expect_first_playing {
+                                    clear_trace_after_ready = true;
+                                }
+                            });
+                            reconnect_trace_log(
+                                "session_connected_event",
+                                "received PlayerEvent::SessionConnected (session ready)",
+                            );
+                            if clear_trace_after_ready {
+                                reconnect_trace_log(
+                                    "trace_completed",
+                                    "session reconnected while not expecting auto-play; closing trace",
+                                );
+                                reconnect_trace_clear();
+                            }
                             // Update session state
                             {
                                 let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
@@ -1178,7 +1418,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 
     // Setup Mercury Queue Listener
     // Subscribe to cluster updates which contain player state (queue)
-    debug!("[WAKE +{}ms] Setting up dealer listener", elapsed_since_wake_ms());
+    debug!(
+        "[WAKE +{}ms] Setting up dealer listener",
+        elapsed_since_wake_ms()
+    );
     let queue_stream = session
         .dealer()
         .listen_for(
@@ -1186,13 +1429,21 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
             librespot_core::dealer::protocol::Message::from_raw::<ClusterUpdate>,
         )
         .map_err(|e| format!("Failed to subscribe to queue: {}", e))?;
-    debug!("[WAKE +{}ms] Dealer listener created", elapsed_since_wake_ms());
+    debug!(
+        "[WAKE +{}ms] Dealer listener created",
+        elapsed_since_wake_ms()
+    );
 
     // Spawn task to process cluster updates (queue + playback state + volume)
     // Capture the current generation so we can detect if this listener is stale
     let listener_generation = current_generation;
     RUNTIME.spawn(async move {
-        debug!("[WAKE +{}ms] Cluster listener task started (generation={})", elapsed_since_wake_ms(), listener_generation);
+        debug!(
+            "[WAKE +{}ms] Cluster listener task started (generation={})",
+            elapsed_since_wake_ms(),
+            listener_generation
+        );
+        reconnect_trace_log("cluster_listener_started", "cluster listener task started");
         let mut stream = queue_stream;
         while let Some(msg_result) = stream.next().await {
             debug!("Received cluster update message");
@@ -1200,11 +1451,16 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                 Ok(cluster_update) => {
                     debug!("ClusterUpdate parsed successfully");
                     if let Some(cluster) = cluster_update.cluster.into_option() {
-                        debug!("Cluster present, active_device_id: '{}'", cluster.active_device_id);
+                        debug!(
+                            "Cluster present, active_device_id: '{}'",
+                            cluster.active_device_id
+                        );
 
                         if let Some(player_state) = cluster.player_state.into_option() {
-                            debug!("ClusterUpdate: position_as_of_timestamp={}ms, is_playing={}",
-                                   player_state.position_as_of_timestamp, player_state.is_playing);
+                            debug!(
+                                "ClusterUpdate: position_as_of_timestamp={}ms, is_playing={}",
+                                player_state.position_as_of_timestamp, player_state.is_playing
+                            );
                             // Send playback state update
                             send_playback_state(&player_state);
                             // Send queue update
@@ -1221,13 +1477,26 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                 }
             }
         }
-        debug!("[WAKE +{}ms] Cluster listener task ended (generation={})", elapsed_since_wake_ms(), listener_generation);
+        debug!(
+            "[WAKE +{}ms] Cluster listener task ended (generation={})",
+            elapsed_since_wake_ms(),
+            listener_generation
+        );
+        reconnect_trace_log("cluster_listener_ended", "cluster listener task ended");
 
         // Check if this listener is from a stale session (a newer session has been created)
         let current_gen = SESSION_GENERATION.load(Ordering::SeqCst);
         if listener_generation != current_gen {
-            debug!("[WAKE +{}ms] Cluster listener from old generation {} ended (current={}), ignoring",
-                   elapsed_since_wake_ms(), listener_generation, current_gen);
+            debug!(
+                "[WAKE +{}ms] Cluster listener from old generation {} ended (current={}), ignoring",
+                elapsed_since_wake_ms(),
+                listener_generation,
+                current_gen
+            );
+            reconnect_trace_log(
+                "cluster_listener_stale",
+                "cluster listener ended for stale generation; ignoring",
+            );
             return;
         }
 
@@ -1235,11 +1504,32 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         // unless we're intentionally shutting down or sleeping. The spawn_reconnection_loop()
         // function already guards against duplicate attempts via RECONNECTING flag.
         if SHUTTING_DOWN.load(Ordering::SeqCst) {
-            debug!("[WAKE +{}ms] Cluster listener ended during shutdown - not reconnecting", elapsed_since_wake_ms());
+            debug!(
+                "[WAKE +{}ms] Cluster listener ended during shutdown - not reconnecting",
+                elapsed_since_wake_ms()
+            );
+            reconnect_trace_log(
+                "cluster_listener_shutdown",
+                "cluster listener ended during shutdown; not reconnecting",
+            );
         } else if SLEEPING.load(Ordering::SeqCst) {
-            debug!("[WAKE +{}ms] Cluster listener ended during sleep - not reconnecting", elapsed_since_wake_ms());
+            debug!(
+                "[WAKE +{}ms] Cluster listener ended during sleep - not reconnecting",
+                elapsed_since_wake_ms()
+            );
+            reconnect_trace_log(
+                "cluster_listener_sleeping",
+                "cluster listener ended during sleep; not reconnecting",
+            );
         } else {
-            debug!("[WAKE +{}ms] Cluster listener ended - triggering reconnect", elapsed_since_wake_ms());
+            debug!(
+                "[WAKE +{}ms] Cluster listener ended - triggering reconnect",
+                elapsed_since_wake_ms()
+            );
+            reconnect_trace_log(
+                "cluster_listener_trigger_reconnect",
+                "cluster listener ended unexpectedly; triggering reconnect",
+            );
             // Update session state
             {
                 let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
@@ -1254,14 +1544,19 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
             notify_connection_state_change();
 
             // Spawn reconnection loop
-            spawn_reconnection_loop();
+            spawn_reconnection_loop("cluster_listener_ended");
         }
     });
 
     // Create Spirc for Spotify Connect support (makes this app appear as a Connect device)
     // Spirc::new() will connect the session - this is the proper way per librespot examples
     let initial_volume = INITIAL_VOLUME_SETTING.load(Ordering::SeqCst);
-    debug!("[WAKE +{}ms] Creating Spirc with initial volume: {}", elapsed_since_wake_ms(), initial_volume);
+    debug!(
+        "[WAKE +{}ms] Creating Spirc with initial volume: {}",
+        elapsed_since_wake_ms(),
+        initial_volume
+    );
+    reconnect_trace_log("spirc_create_start", "creating Spirc");
     let connect_config = ConnectConfig {
         name: "Spotifly".to_string(),
         device_type: DeviceType::Computer,
@@ -1292,6 +1587,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                 SPIRC_READY.store(true, Ordering::SeqCst);
                 debug!("SPIRC_READY set to true");
             }
+            reconnect_trace_log("spirc_ready", "Spirc created and ready");
 
             // Mark session as connected immediately - Spirc is ready for commands
             // The SessionConnected event will update connection_id when it arrives
@@ -1301,7 +1597,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                 debug!("Session state: is_connected = true");
             }
 
-            debug!("[WAKE +{}ms] Spirc ready - connected to Spotify Connect", elapsed_since_wake_ms());
+            debug!(
+                "[WAKE +{}ms] Spirc ready - connected to Spotify Connect",
+                elapsed_since_wake_ms()
+            );
 
             // Auto-activate if needed
             // We do this after Spirc is ready because librespot's initial cluster check
@@ -1333,11 +1632,19 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
 
             // Notify Swift that we're connected (Spirc is ready)
             notify_connection_state_change();
+            reconnect_trace_log(
+                "notify_connection_state",
+                "notified Swift of updated connection state",
+            );
         }
         Err(_e) => {
             // Spirc failed - fall back to manual session connection for basic playback
             debug!("Spirc init failed: {:?}", _e);
             debug!("Falling back to basic playback (Connect won't be available)");
+            reconnect_trace_log(
+                "spirc_init_failed",
+                "Spirc init failed, falling back to session.connect",
+            );
 
             // Connect session manually so basic playback works
             if let Err(connect_err) = session.connect(credentials, true).await {
@@ -1751,7 +2058,10 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char, track_index: i32)
 
     // Convert URL to URI if needed
     let uri_str = url_to_uri(&input_str);
-    debug!("spotifly_play_uri called: uri={}, track_index={}", uri_str, track_index);
+    debug!(
+        "spotifly_play_uri called: uri={}, track_index={}",
+        uri_str, track_index
+    );
 
     if let Err(e) = require_session_connected() {
         return e;
