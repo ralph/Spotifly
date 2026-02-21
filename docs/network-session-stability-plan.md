@@ -25,7 +25,7 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
   - Validate that tuning does not regress startup latency or seek responsiveness.
   - Log effective buffering parameters at init for reproducibility.
 
-- [ ] #5 Reduce reconnect-induced playback jolts
+- [x] #5 Reduce reconnect-induced playback jolts
   - Make post-reconnect activation/transfer behavior conditional.
   - Avoid unnecessary `transfer(None)` calls that can disturb active playback state.
   - Keep device activation semantics correct for fresh start vs reconnect.

@@ -254,6 +254,15 @@ fn can_use_soft_reconnect(attempt: u32) -> bool {
     }
 }
 
+/// Returns true when reconnect recovery should force a transfer to this device.
+/// We only force transfer when reconnect is expected to resume local playback
+/// that was interrupted by AP disconnect.
+fn should_force_transfer_after_reconnect() -> bool {
+    reconnect_trace_context()
+        .map(|context| context.expect_first_playing)
+        .unwrap_or(false)
+}
+
 // Generation counter for reconnection - prevents old cluster listeners from triggering reconnects
 // Incremented each time a new session is created (in spawn_reconnection_loop or init_player)
 static SESSION_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -1776,7 +1785,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         Ok((spirc, spirc_task)) => {
             // Spawn Spirc background task
             let spirc_arc = Arc::new(spirc);
-            let spirc_for_activation = spirc_arc.clone();
+            let spirc_for_post_connect = spirc_arc.clone();
             RUNTIME.spawn(spirc_task);
 
             // Store Spirc and update state (in a scope to drop the guard before await)
@@ -1801,32 +1810,66 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                 elapsed_since_wake_ms()
             );
 
-            // Auto-activate if needed
+            // Post-connect activation policy
             // We do this after Spirc is ready because librespot's initial cluster check
-            // doesn't activate when there's a stale session ID (common case)
+            // may keep us passive when there is a stale session ID.
 
             // Small delay to let librespot's initial cluster processing complete
             tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
-            // Always activate after connection - whether fresh start or reconnect.
-            // Staying passive after reconnect can leave the app in a stuck state where
-            // no device is active and Web API returns 204.
             let is_reconnect = RECONNECTING.load(Ordering::SeqCst);
-            if is_reconnect {
-                debug!("Reconnect: activating to restore active status");
-            } else {
-                debug!("Fresh start: activating Spotifly via transfer");
-            }
+            let force_transfer = is_reconnect && should_force_transfer_after_reconnect();
+            reconnect_trace_log(
+                "post_connect_activation_policy",
+                &format!(
+                    "is_reconnect={}, force_transfer={}",
+                    is_reconnect, force_transfer
+                ),
+            );
 
-            // Use transfer(None) to become the active device
-            match spirc_for_activation.transfer(None) {
+            // First try non-transfer activation to avoid disturbing active playback on
+            // other devices during reconnect.
+            match spirc_for_post_connect.activate() {
                 Ok(_) => {
-                    debug!("Auto-activation via transfer succeeded");
-                    IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                    debug!("Post-connect activate() succeeded");
+                    reconnect_trace_log(
+                        "post_connect_activate",
+                        "activate() succeeded",
+                    );
                 }
                 Err(e) => {
-                    debug!("Auto-activation via transfer failed: {:?}", e);
+                    debug!("Post-connect activate() failed: {:?}", e);
+                    reconnect_trace_log(
+                        "post_connect_activate_failed",
+                        "activate() failed",
+                    );
                 }
+            }
+
+            // Only force transfer when reconnect should recover interrupted local playback.
+            if force_transfer {
+                match spirc_for_post_connect.transfer(None) {
+                    Ok(_) => {
+                        debug!("Post-connect transfer(None) succeeded");
+                        reconnect_trace_log(
+                            "post_connect_transfer",
+                            "forced transfer(None) succeeded",
+                        );
+                        IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                    }
+                    Err(e) => {
+                        debug!("Post-connect transfer(None) failed: {:?}", e);
+                        reconnect_trace_log(
+                            "post_connect_transfer_failed",
+                            "forced transfer(None) failed",
+                        );
+                    }
+                }
+            } else {
+                reconnect_trace_log(
+                    "post_connect_transfer_skipped",
+                    "transfer(None) skipped by policy",
+                );
             }
 
             // Notify Swift that we're connected (Spirc is ready)
