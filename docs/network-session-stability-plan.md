@@ -20,7 +20,7 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
   - Add bounded retry/timeout policy for soft reconnect before fallback is triggered.
   - Ensure fallback path remains deterministic and observable in logs.
 
-- [ ] #4 Improve short-outage tolerance
+- [x] #4 Improve short-outage tolerance
   - Tune buffering/read-ahead behavior to better survive brief AP disruptions.
   - Validate that tuning does not regress startup latency or seek responsiveness.
   - Log effective buffering parameters at init for reproducibility.

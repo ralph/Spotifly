@@ -1,6 +1,7 @@
 mod proxy_sink;
 
 use futures_util::StreamExt;
+use librespot_audio::AudioFetchParams;
 use librespot_connect::{ConnectConfig, LoadRequest, LoadRequestOptions, PlayingTrack, Spirc};
 use librespot_core::cache::Cache;
 use librespot_core::config::DeviceType;
@@ -264,6 +265,10 @@ static BITRATE_SETTING: AtomicU8 = AtomicU8::new(1);
 static GAPLESS_SETTING: AtomicBool = AtomicBool::new(true);
 // Initial volume (0-65535), default 50%
 static INITIAL_VOLUME_SETTING: AtomicU16 = AtomicU16::new(65535 / 2);
+// Audio fetch tuning: keep startup read-ahead conservative while extending runtime tolerance
+// for brief AP disconnects.
+const AUDIO_READ_AHEAD_BEFORE_PLAYBACK_MS: u64 = 1_000;
+const AUDIO_READ_AHEAD_DURING_PLAYBACK_MS: u64 = 8_000;
 
 #[derive(Serialize)]
 struct QueueItem {
@@ -1136,6 +1141,42 @@ fn create_new_player(session: &Session, mixer: &Arc<SoftMixer>) -> Result<Arc<Pl
     Ok(player)
 }
 
+/// Logs the effective audio fetch parameters used by librespot.
+fn log_audio_fetch_params(params: &AudioFetchParams) {
+    debug!(
+        "Audio fetch params (effective): min_download_size={}B, min_throughput={}B/s, read_ahead_before={}ms, read_ahead_during={}ms, prefetch_threshold_factor={}, download_timeout_ms={}",
+        params.minimum_download_size,
+        params.minimum_throughput,
+        params.read_ahead_before_playback.as_millis(),
+        params.read_ahead_during_playback.as_millis(),
+        params.prefetch_threshold_factor,
+        params.download_timeout.as_millis(),
+    );
+}
+
+/// Applies once-per-process tuning for audio fetch buffering/read-ahead behavior.
+fn configure_audio_fetch_params() {
+    let tuned_params = AudioFetchParams {
+        read_ahead_before_playback: Duration::from_millis(AUDIO_READ_AHEAD_BEFORE_PLAYBACK_MS),
+        read_ahead_during_playback: Duration::from_millis(AUDIO_READ_AHEAD_DURING_PLAYBACK_MS),
+        ..AudioFetchParams::default()
+    };
+
+    match AudioFetchParams::set(tuned_params) {
+        Ok(()) => {
+            debug!(
+                "Configured audio fetch read-ahead tuning (before={}ms, during={}ms)",
+                AUDIO_READ_AHEAD_BEFORE_PLAYBACK_MS, AUDIO_READ_AHEAD_DURING_PLAYBACK_MS
+            );
+        }
+        Err(_) => {
+            debug!("Audio fetch params already initialized; retaining existing values");
+        }
+    }
+
+    log_audio_fetch_params(AudioFetchParams::get());
+}
+
 /// Returns an existing mixer if present, otherwise creates and stores a new one.
 fn get_or_create_mixer() -> Result<Arc<SoftMixer>, String> {
     {
@@ -1184,6 +1225,10 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         "init_player_async_start",
         "initializing session/player/spirc",
     );
+
+    // Ensure buffering/read-ahead parameters are configured before any decoder fetches.
+    configure_audio_fetch_params();
+
     // Increment session generation - this invalidates any old cluster listeners
     let current_generation = SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     debug!(

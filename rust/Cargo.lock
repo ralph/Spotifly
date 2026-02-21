@@ -2476,6 +2476,7 @@ dependencies = [
  "cpal",
  "env_logger",
  "futures-util",
+ "librespot-audio",
  "librespot-connect",
  "librespot-core",
  "librespot-playback",
