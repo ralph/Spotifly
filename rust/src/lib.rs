@@ -385,6 +385,15 @@ fn shutdown_spirc(context: &str) {
     }
 }
 
+/// Signals the current player event listener task to stop, if present.
+fn stop_player_event_listener(context: &str) {
+    let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
+    if let Some(tx) = tx_guard.take() {
+        let _ = tx.send(());
+        debug!("{}: player event listener stop signal sent", context);
+    }
+}
+
 /// Frees a C string allocated by this library.
 #[no_mangle]
 pub extern "C" fn spotifly_free_string(s: *mut c_char) {
@@ -722,11 +731,11 @@ fn spawn_reconnection_loop(trigger: &str) {
             reconnect_trace_update(|ctx| ctx.token_received_at_ms = Some(current_timestamp_ms()));
             reconnect_trace_log("token_received", "received token from Swift");
 
-            // Perform full cleanup before reconnecting - must create new Player with new Session
-            // because Player is tightly coupled to Session's ChannelManager for key requests
+            // Perform soft cleanup before reconnecting.
+            // Keep Player/Mixer/ProxySink alive and rotate only Session/Spirc.
             debug!("[WAKE +{}ms] Starting cleanup", elapsed_since_wake_ms());
             reconnect_trace_log("cleanup_start", "starting reconnect cleanup");
-            do_reconnect_cleanup();
+            do_soft_reconnect_cleanup();
             debug!("[WAKE +{}ms] Cleanup complete, calling init_player_async", elapsed_since_wake_ms());
             reconnect_trace_log("cleanup_complete", "cleanup complete, starting init_player_async");
 
@@ -868,17 +877,63 @@ pub extern "C" fn spotifly_force_reconnect() -> i32 {
 /// Performs full cleanup for reconnection.
 /// Clears Session, Spirc, Player, and Mixer because Player is tightly coupled
 /// to the Session's ChannelManager for decryption key requests.
+fn do_soft_reconnect_cleanup() {
+    debug!("do_soft_reconnect_cleanup: preserving player/mixer, rotating session/spirc");
+    reconnect_trace_log(
+        "do_soft_reconnect_cleanup",
+        "soft reconnect cleanup: preserving player/mixer",
+    );
+
+    // Replace the player event listener so it captures the new session generation.
+    stop_player_event_listener("do_soft_reconnect_cleanup");
+
+    // Drop Spirc reference without sending shutdown to avoid forcing a pause.
+    // The old Spirc task will naturally terminate once the old session is invalid.
+    {
+        let mut spirc_guard = SPIRC.lock().unwrap();
+        if spirc_guard.is_some() {
+            debug!("do_soft_reconnect_cleanup: dropping stale spirc reference");
+        }
+        *spirc_guard = None;
+    }
+    SPIRC_READY.store(false, Ordering::SeqCst);
+
+    // Invalidate the old session, then drop it. This nudges stale tasks to exit
+    // without forcing a playback pause.
+    {
+        let mut session_guard = SESSION.lock().unwrap();
+        if let Some(old_session) = session_guard.as_ref() {
+            if !old_session.is_invalid() {
+                old_session.shutdown();
+                debug!("do_soft_reconnect_cleanup: invalidated old session");
+            }
+        }
+        *session_guard = None;
+    }
+
+    // Reset session connection state.
+    {
+        let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
+        state.is_connected = false;
+        state.connection_id = None;
+    }
+
+    CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
+    reconnect_trace_log(
+        "do_soft_reconnect_cleanup_complete",
+        "soft reconnect cleanup complete",
+    );
+}
+
+/// Performs full cleanup for reconnection.
+/// Clears Session, Spirc, Player, and Mixer because Player is tightly coupled
+/// to the Session's ChannelManager for decryption key requests.
+#[allow(dead_code)]
 fn do_reconnect_cleanup() {
     debug!("do_reconnect_cleanup: full cleanup for reconnection");
     reconnect_trace_log("do_reconnect_cleanup", "performing full reconnect cleanup");
 
-    // Signal event listener to stop
-    {
-        let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
-        if let Some(tx) = tx_guard.take() {
-            let _ = tx.send(());
-        }
-    }
+    stop_player_event_listener("do_reconnect_cleanup");
 
     // Shutdown Spirc first - this terminates the spirc_task and closes the dealer,
     // which will cause the cluster listener stream to end. Without this, old tasks
@@ -1034,6 +1089,49 @@ fn create_new_player(session: &Session, mixer: &Arc<SoftMixer>) -> Result<Arc<Pl
     Ok(player)
 }
 
+/// Returns an existing mixer if present, otherwise creates and stores a new one.
+fn get_or_create_mixer() -> Result<Arc<SoftMixer>, String> {
+    {
+        let mixer_guard = MIXER.lock().unwrap();
+        if let Some(existing_mixer) = mixer_guard.as_ref() {
+            debug!("Reusing existing mixer for reconnect");
+            return Ok(Arc::clone(existing_mixer));
+        }
+    }
+
+    let mixer_config = MixerConfig::default();
+    let mixer: Arc<SoftMixer> =
+        Arc::new(SoftMixer::open(mixer_config).map_err(|e| format!("Mixer error: {}", e))?);
+    {
+        let mut mixer_guard = MIXER.lock().unwrap();
+        *mixer_guard = Some(Arc::clone(&mixer));
+    }
+    debug!("Created new mixer");
+    Ok(mixer)
+}
+
+/// Returns an existing player if present, rebinding it to the provided session.
+/// Otherwise creates and stores a new player.
+fn get_or_create_player(
+    session: &Session,
+    mixer: &Arc<SoftMixer>,
+) -> Result<(Arc<Player>, bool), String> {
+    {
+        let player_guard = PLAYER.lock().unwrap();
+        if let Some(existing_player) = player_guard.as_ref() {
+            let player = Arc::clone(existing_player);
+            drop(player_guard);
+            player.set_session(session.clone());
+            debug!("Reusing existing player with new session binding");
+            return Ok((player, false));
+        }
+    }
+
+    let player = create_new_player(session, mixer)?;
+    debug!("Created new player");
+    Ok((player, true))
+}
+
 async fn init_player_async(access_token: &str) -> Result<(), String> {
     reconnect_trace_log(
         "init_player_async_start",
@@ -1047,7 +1145,14 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         current_generation
     );
 
-    let device_id = format!("spotifly_{}", std::process::id());
+    let device_id = {
+        let device_id_guard = DEVICE_ID.lock().unwrap();
+        if let Some(existing_id) = device_id_guard.as_ref() {
+            existing_id.clone()
+        } else {
+            format!("spotifly_{}", std::process::id())
+        }
+    };
     let session_config = SessionConfig {
         device_id: device_id.clone(),
         ..Default::default()
@@ -1069,18 +1174,20 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     // This is important for Spirc to work properly with OAuth tokens
     let session = Session::new(session_config, Some(cache));
 
-    // Create new mixer
-    let mixer_config = MixerConfig::default();
-    let mixer: Arc<SoftMixer> =
-        Arc::new(SoftMixer::open(mixer_config).map_err(|e| format!("Mixer error: {}", e))?);
-    {
-        let mut mixer_guard = MIXER.lock().unwrap();
-        *mixer_guard = Some(Arc::clone(&mixer));
+    // Reuse mixer/player when available to preserve audio pipeline continuity.
+    let mixer = get_or_create_mixer()?;
+    let (player, created_new_player) = get_or_create_player(&session, &mixer)?;
+    if created_new_player {
+        reconnect_trace_log("player_created", "created new player");
+    } else {
+        reconnect_trace_log(
+            "player_reused",
+            "reused existing player and updated session binding",
+        );
     }
 
-    // Create new player - must be created with the new session because Player is
-    // tightly coupled to Session's ChannelManager for decryption key requests
-    let player = create_new_player(&session, &mixer)?;
+    // Replace any previous event listener so this one captures current generation.
+    stop_player_event_listener("init_player_async");
 
     // Get event channel from player, opting in to SetQueue events
     let mut event_channel = player.get_player_event_channel();

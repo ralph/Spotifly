@@ -10,7 +10,7 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
   - Emit one structured reconnect trace ID per reconnect attempt for correlation across Swift + Rust logs.
   - Define baseline metrics we will compare after each change (time-to-ready, time-to-first-audio, reconnect success rate).
 
-- [ ] #2 Implement soft reconnect in Rust FFI
+- [x] #2 Implement soft reconnect in Rust FFI
   - Keep existing `Player`, `Mixer`, and `ProxySink` alive across AP disconnects.
   - Recreate only `Session` + `Spirc`, then rebind `Player` via `player.set_session(new_session)`.
   - Recreate dealer/cluster listeners for the new session generation.
