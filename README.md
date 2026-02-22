@@ -6,7 +6,7 @@ A lightweight Spotify player for macOS.
 
 > [!IMPORTANT]
 > **Spotify Client ID Required**
-> This app requires your own Spotify Client ID to function. See [Setting Up Your Client ID](#setting-up-your-client-id) below for instructions.
+> This app requires your own Spotify Client ID to function. Spotify has [re-enabled developer access](https://developer.spotify.com/blog/2026-02-06-update-on-developer-access-and-platform-security) — you can create a Client ID for free in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). See [Setting Up Your Client ID](#setting-up-your-client-id) below for instructions and the [February 2026 API changes](https://developer.spotify.com/documentation/web-api/references/changes/february-2026) for details on the current Web API.
 
 ## Screenshots
 
