@@ -487,9 +487,15 @@ private struct NowPlayingBarBackground: ViewModifier {
             content
                 .background(Color(NSColor.windowBackgroundColor))
         } else {
-            content
-                .glassEffect(.regular, in: .capsule)
-                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+            if #available(macOS 26.0, *) {
+                content
+                    .glassEffect(.regular, in: .capsule)
+                    .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+            } else {
+                content
+                    .background(.ultraThinMaterial, in: .capsule)
+                    .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+            }
         }
     }
 }
