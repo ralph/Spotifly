@@ -131,6 +131,9 @@ static RECONNECT_TRACE: Lazy<Mutex<Option<ReconnectTraceContext>>> = Lazy::new(|
 // Soft reconnect policy before falling back to full hard cleanup
 const SOFT_RECONNECT_MAX_ATTEMPTS: u32 = 3;
 const SOFT_RECONNECT_MAX_WINDOW_MS: u64 = 15_000;
+const RECONNECT_AUTO_RESUME_WINDOW_MS: u64 = 8_000;
+const RECONNECT_AUTO_RESUME_SETTLE_MS: u64 = 200;
+const RECONNECT_AUTO_RESUME_RETRY_DELAYS_MS: [u64; 5] = [0, 250, 500, 1_000, 2_000];
 
 #[derive(Clone)]
 struct ReconnectTraceContext {
@@ -329,6 +332,142 @@ fn should_force_transfer_after_reconnect() -> bool {
     reconnect_trace_context()
         .map(|context| context.expect_first_playing)
         .unwrap_or(false)
+}
+
+/// Returns true when reconnect recovery is still waiting for the first local playable event.
+/// If `trace_id` is provided, only matches that reconnect trace.
+fn reconnect_waiting_for_first_playing(trace_id: Option<&str>) -> bool {
+    reconnect_trace_context()
+        .map(|context| {
+            if let Some(expected_trace_id) = trace_id {
+                if context.trace_id != expected_trace_id {
+                    return false;
+                }
+            }
+            context.expect_first_playing && context.first_playing_at_ms.is_none()
+        })
+        .unwrap_or(false)
+}
+
+/// Marks continuity uptime if no reconnect audio recovery is pending.
+fn maybe_mark_playback_continuity(reason: &str) {
+    if PLAYBACK_CONTINUITY_SINCE_MS.load(Ordering::SeqCst) > 0 {
+        return;
+    }
+    if reconnect_waiting_for_first_playing(None) {
+        reconnect_trace_log(
+            "continuity_pending_first_playing",
+            &format!("continuity pending first audio ({reason})"),
+        );
+        return;
+    }
+    PLAYBACK_CONTINUITY_SINCE_MS.store(current_timestamp_ms(), Ordering::SeqCst);
+}
+
+/// Proactively retries play() during reconnect recovery so first audio does not depend
+/// solely on observing a Paused event after reconnect.
+fn spawn_reconnect_audio_recovery_watchdog(trace_id: String) {
+    RUNTIME.spawn(async move {
+        reconnect_trace_log(
+            "auto_resume_watchdog_started",
+            "starting proactive reconnect audio recovery watchdog",
+        );
+
+        for (attempt_idx, delay_ms) in RECONNECT_AUTO_RESUME_RETRY_DELAYS_MS.iter().enumerate() {
+            if *delay_ms > 0 {
+                tokio::time::sleep(Duration::from_millis(*delay_ms)).await;
+            }
+
+            let resume_until = RESUME_AFTER_RECONNECT_UNTIL_MS.load(Ordering::SeqCst);
+            if resume_until == 0 {
+                reconnect_trace_log(
+                    "auto_resume_watchdog_cancelled",
+                    "auto-resume watchdog cancelled (resume window cleared)",
+                );
+                return;
+            }
+            if current_timestamp_ms() >= resume_until {
+                reconnect_trace_log(
+                    "auto_resume_watchdog_window_expired",
+                    "auto-resume watchdog stopped because resume window expired",
+                );
+                return;
+            }
+
+            if !reconnect_waiting_for_first_playing(Some(trace_id.as_str())) {
+                reconnect_trace_log(
+                    "auto_resume_watchdog_complete",
+                    "auto-resume watchdog exiting because reconnect trace no longer awaits first audio",
+                );
+                return;
+            }
+
+            let spirc = {
+                let spirc_guard = SPIRC.lock().unwrap();
+                spirc_guard.as_ref().cloned()
+            };
+            let Some(spirc) = spirc else {
+                reconnect_trace_log(
+                    "auto_resume_watchdog_no_spirc",
+                    "auto-resume watchdog could not access Spirc; stopping",
+                );
+                return;
+            };
+
+            // Reassert active ownership halfway through retry budget.
+            if attempt_idx == 2 {
+                match spirc.transfer(None) {
+                    Ok(_) => {
+                        IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                        reconnect_trace_log(
+                            "auto_resume_watchdog_transfer",
+                            "auto-resume watchdog forced transfer(None) before retry",
+                        );
+                    }
+                    Err(e) => {
+                        reconnect_trace_log(
+                            "auto_resume_watchdog_transfer_failed",
+                            &format!("auto-resume watchdog transfer(None) failed: {e:?}"),
+                        );
+                    }
+                }
+            }
+
+            match spirc.play() {
+                Ok(_) => reconnect_trace_log(
+                    "auto_resume_watchdog_play",
+                    &format!(
+                        "auto-resume watchdog issued play() attempt {}",
+                        attempt_idx + 1
+                    ),
+                ),
+                Err(e) => reconnect_trace_log(
+                    "auto_resume_watchdog_play_failed",
+                    &format!(
+                        "auto-resume watchdog play() attempt {} failed: {e:?}",
+                        attempt_idx + 1
+                    ),
+                ),
+            }
+
+            tokio::time::sleep(Duration::from_millis(RECONNECT_AUTO_RESUME_SETTLE_MS)).await;
+            if !reconnect_waiting_for_first_playing(Some(trace_id.as_str())) {
+                reconnect_trace_log(
+                    "auto_resume_watchdog_recovered",
+                    "auto-resume watchdog observed first audio recovery",
+                );
+                return;
+            }
+        }
+
+        if reconnect_waiting_for_first_playing(Some(trace_id.as_str())) {
+            reconnect_trace_log(
+                "auto_resume_watchdog_timeout",
+                "auto-resume watchdog exhausted retries without first audio event",
+            );
+            notify_connection_state_change();
+        }
+    });
 }
 
 // Generation counter for reconnection - prevents old cluster listeners from triggering reconnects
@@ -946,15 +1085,24 @@ fn spawn_reconnection_loop(trigger: &str) {
 
                     // If we were playing before disconnect, set up auto-resume
                     // The track will load paused (Spotify's transfer state has is_paused=true)
-                    // When we receive the Paused event, we'll auto-resume if within this window
+                    // We proactively retry play() as well so recovery does not depend only on
+                    // receiving a Paused event.
                     if was_playing {
-                        let resume_until = current_timestamp_ms() + 5000; // 5 second window
+                        let resume_until =
+                            current_timestamp_ms() + RECONNECT_AUTO_RESUME_WINDOW_MS;
                         RESUME_AFTER_RECONNECT_UNTIL_MS.store(resume_until, Ordering::SeqCst);
                         debug!("[WAKE +{}ms] Will auto-resume after track loads (was playing before disconnect)", elapsed_since_wake_ms());
                         reconnect_trace_log(
                             "auto_resume_armed",
                             "armed auto-resume window because playback was active before disconnect",
                         );
+                        if let Some(active_trace_id) =
+                            reconnect_trace_context().map(|ctx| ctx.trace_id)
+                        {
+                            spawn_reconnect_audio_recovery_watchdog(active_trace_id);
+                        }
+                    } else {
+                        RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
                     }
 
                     // SessionConnected event will reset RECONNECT_ATTEMPT and notify
@@ -1489,19 +1637,30 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                             // Auto-resume after reconnection if we were playing before disconnect
                             let resume_until = RESUME_AFTER_RECONNECT_UNTIL_MS.load(Ordering::SeqCst);
                             if resume_until > 0 && current_timestamp_ms() < resume_until {
-                                // Clear the flag first to prevent multiple resume attempts
-                                RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
                                 debug!("[WAKE +{}ms] Auto-resuming playback after reconnection", elapsed_since_wake_ms());
+                                reconnect_trace_log(
+                                    "auto_resume_paused_event",
+                                    "paused event observed during resume window; issuing play()",
+                                );
 
                                 let spirc_guard = SPIRC.lock().unwrap();
                                 if let Some(spirc) = spirc_guard.as_ref() {
                                     match spirc.play() {
                                         Ok(_) => {
-                                            IS_PLAYING.store(true, Ordering::SeqCst);
                                             debug!("[WAKE +{}ms] Auto-resume succeeded", elapsed_since_wake_ms());
+                                            reconnect_trace_log(
+                                                "auto_resume_paused_event_play",
+                                                "play() issued from paused-event auto-resume path",
+                                            );
                                         }
                                         Err(e) => {
                                             debug!("[WAKE +{}ms] Auto-resume failed: {:?}", elapsed_since_wake_ms(), e);
+                                            reconnect_trace_log(
+                                                "auto_resume_paused_event_play_failed",
+                                                &format!(
+                                                    "paused-event auto-resume play() failed: {e:?}"
+                                                ),
+                                            );
                                         }
                                     }
                                 }
@@ -1715,10 +1874,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                             }
                             // Set connected timestamp and reset reconnect counter
                             CONNECTED_SINCE_MS.store(current_timestamp_ms(), Ordering::SeqCst);
-                            if PLAYBACK_CONTINUITY_SINCE_MS.load(Ordering::SeqCst) == 0 {
-                                PLAYBACK_CONTINUITY_SINCE_MS
-                                    .store(current_timestamp_ms(), Ordering::SeqCst);
-                            }
+                            maybe_mark_playback_continuity("session_connected_event");
                             RECONNECT_ATTEMPT.store(0, Ordering::SeqCst);
                             // Clear last error on successful connect
                             {
@@ -2049,9 +2205,7 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
         }
     }
 
-    if PLAYBACK_CONTINUITY_SINCE_MS.load(Ordering::SeqCst) == 0 {
-        PLAYBACK_CONTINUITY_SINCE_MS.store(current_timestamp_ms(), Ordering::SeqCst);
-    }
+    maybe_mark_playback_continuity("init_player_async_complete");
 
     Ok(())
 }
@@ -2546,6 +2700,12 @@ pub extern "C" fn spotifly_pause() -> i32 {
         Some(spirc) => match spirc.pause() {
             Ok(_) => {
                 IS_PLAYING.store(false, Ordering::SeqCst);
+                // Respect explicit user pause and cancel pending reconnect auto-resume.
+                RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
+                reconnect_trace_log(
+                    "manual_pause",
+                    "manual pause command acknowledged; auto-resume window cleared",
+                );
                 0
             }
             Err(e) => {
@@ -2583,20 +2743,48 @@ pub extern "C" fn spotifly_resume() -> i32 {
     }
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
-        Some(spirc) => match spirc.play() {
-            Ok(_) => {
-                IS_PLAYING.store(true, Ordering::SeqCst);
-                0
-            }
-            Err(e) => {
-                debug!("Resume error: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    ERROR_NEEDS_REINIT
-                } else {
-                    ERROR_GENERAL
+        Some(spirc) => {
+            // If reconnect is still waiting for first audio, force ownership before play().
+            if reconnect_waiting_for_first_playing(None) {
+                reconnect_trace_log(
+                    "manual_resume_recovery",
+                    "manual resume while waiting for first audio; forcing transfer(None)",
+                );
+                match spirc.transfer(None) {
+                    Ok(_) => {
+                        IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                    }
+                    Err(e) => {
+                        reconnect_trace_log(
+                            "manual_resume_transfer_failed",
+                            &format!("manual resume transfer(None) failed: {e:?}"),
+                        );
+                    }
                 }
             }
-        },
+
+            if let Err(e) = ensure_active_for_playback(spirc) {
+                return e;
+            }
+
+            match spirc.play() {
+                Ok(_) => {
+                    reconnect_trace_log(
+                        "manual_resume_play",
+                        "manual resume issued play(); waiting for PlayerEvent::Playing confirmation",
+                    );
+                    0
+                }
+                Err(e) => {
+                    debug!("Resume error: {:?}", e);
+                    if is_channel_closed_error(&e) {
+                        ERROR_NEEDS_REINIT
+                    } else {
+                        ERROR_GENERAL
+                    }
+                }
+            }
+        }
         None => {
             debug!("Resume error: Spirc not initialized");
             ERROR_GENERAL
@@ -2727,6 +2915,7 @@ pub extern "C" fn spotifly_cleanup() {
     // Reset state flags
     IS_PLAYING.store(false, Ordering::SeqCst);
     IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
+    RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
     POSITION_MS.store(0, Ordering::SeqCst);
     POSITION_TIMESTAMP_MS.store(0, Ordering::SeqCst);
     LAST_VOLUME.store(0, Ordering::SeqCst);

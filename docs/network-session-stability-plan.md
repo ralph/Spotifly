@@ -47,6 +47,11 @@ Review mode: Step-by-step (one numbered item at a time, user review before commi
     - [x] `#7.4` Update speakers/devices dashboard UI (explicit reconnect phase, session vs continuity uptime, richer reconnect stats, soft reconnect + hard reset actions).
     - [x] `#7.5` Add localization strings and run a warning-free Swift 6.2 build verification.
     - [x] `#7.6` Add a one-click copy-to-clipboard connection debug snapshot in the speakers/devices dashboard.
+    - [ ] `#7.7` Reconnect playback recovery regression (new finding):
+      - [x] Implement proactive reconnect audio recovery (bounded play retries + transfer reassertion) when reconnect expects first audio.
+      - [x] Harden local transport semantics (`resume`/`pause`) to avoid optimistic "playing" state and to support stalled reconnect recovery.
+      - [x] Align continuity semantics with audible recovery (continuity stays pending until first local `PlayerEvent::Playing`).
+      - [ ] Run live reconnect scenario and confirm: playback resumes audibly, manual play recovers if needed, and dashboard reports first-audio timing.
 
 ## Execution Rules
 
