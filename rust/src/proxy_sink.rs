@@ -65,7 +65,9 @@ fn ensure_audio_thread() -> Result<SyncSender<AudioCommand>, SinkError> {
         .spawn(move || {
             audio_thread_main(rx);
         })
-        .map_err(|e| SinkError::ConnectionRefused(format!("Failed to spawn audio thread: {}", e)))?;
+        .map_err(|e| {
+            SinkError::ConnectionRefused(format!("Failed to spawn audio thread: {}", e))
+        })?;
 
     let state = AudioThreadState {
         command_tx: tx.clone(),
@@ -129,7 +131,10 @@ fn audio_thread_main(rx: Receiver<AudioCommand>) {
     {
         Ok(s) => s,
         Err(e) => {
-            warn!("ProxySink: Failed to create exact stream, trying fallback: {}", e);
+            warn!(
+                "ProxySink: Failed to create exact stream, trying fallback: {}",
+                e
+            );
             match rodio::OutputStreamBuilder::from_device(cpal_device) {
                 Ok(builder) => match builder.open_stream_or_fallback() {
                     Ok(s) => s,
@@ -176,11 +181,17 @@ fn audio_thread_main(rx: Receiver<AudioCommand>) {
                 sink.pause();
             }
             Ok(AudioCommand::Clear) => {
-                debug!("ProxySink: Clear command received, flushing {} buffered sources", sink.len());
+                debug!(
+                    "ProxySink: Clear command received, flushing {} buffered sources",
+                    sink.len()
+                );
                 sink.clear();
             }
             Ok(AudioCommand::ClearSync(ack_tx)) => {
-                debug!("ProxySink: ClearSync command received, flushing {} buffered sources", sink.len());
+                debug!(
+                    "ProxySink: ClearSync command received, flushing {} buffered sources",
+                    sink.len()
+                );
                 sink.clear();
                 let _ = ack_tx.send(()); // Acknowledge completion
             }
@@ -211,7 +222,10 @@ pub struct ProxySink {
 impl ProxySink {
     pub fn new(format: AudioFormat) -> Result<Self, SinkError> {
         let command_tx = ensure_audio_thread()?;
-        debug!("ProxySink: Created new proxy instance (format: {:?})", format);
+        debug!(
+            "ProxySink: Created new proxy instance (format: {:?})",
+            format
+        );
         Ok(Self { command_tx, format })
     }
 
