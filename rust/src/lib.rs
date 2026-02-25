@@ -1393,14 +1393,45 @@ pub extern "C" fn spotifly_is_session_connected() -> i32 {
 }
 
 /// Helper to check if session is connected. Returns ERROR_NOT_CONNECTED if not.
+///
+/// Also detects zombie sessions: the Session object may have been invalidated
+/// (e.g. server closed the connection overnight) without the event listener
+/// ever firing SessionDisconnected (because the Spirc task was idle).
+/// When detected, updates state and triggers reconnection proactively.
 fn require_session_connected() -> Result<(), i32> {
-    let state = SESSION_CONNECTION_STATE.lock().unwrap();
-    if state.is_connected {
-        Ok(())
-    } else {
+    let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
+    if !state.is_connected {
         debug!("Command rejected: session not connected");
-        Err(ERROR_NOT_CONNECTED)
+        return Err(ERROR_NOT_CONNECTED);
     }
+
+    // Check if the actual Session object is still valid
+    let session_invalid = {
+        let session_guard = SESSION.lock().unwrap();
+        match session_guard.as_ref() {
+            Some(session) => session.is_invalid(),
+            None => true,
+        }
+    };
+
+    if session_invalid {
+        debug!("Detected stale session (is_connected=true but Session is invalid), triggering reconnect");
+        state.is_connected = false;
+        state.connection_id = None;
+        drop(state); // Release lock before spawning reconnect
+
+        CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
+        {
+            let mut last_error = LAST_ERROR.lock().unwrap();
+            *last_error = Some("Session expired".to_string());
+        }
+        notify_connection_state_change();
+        spawn_reconnection_loop();
+
+        return Err(ERROR_NOT_CONNECTED);
+    }
+
+    Ok(())
 }
 
 fn send_playback_state(player_state: &PlayerState) {
