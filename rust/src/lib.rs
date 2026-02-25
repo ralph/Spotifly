@@ -133,6 +133,11 @@ fn elapsed_since_wake_ms() -> u64 {
 // Incremented each time a new session is created (in spawn_reconnection_loop or init_player)
 static SESSION_GENERATION: AtomicU64 = AtomicU64::new(0);
 
+// The generation that the current event listener belongs to. Updated on soft reconnect
+// so the existing event listener accepts SessionDisconnected events from the new session.
+// On hard reconnect, a new event listener is created that captures SESSION_GENERATION directly.
+static EVENT_LISTENER_GENERATION: AtomicU64 = AtomicU64::new(0);
+
 // Playback settings (applied on player init)
 // Bitrate: 0 = 96kbps, 1 = 160kbps (default), 2 = 320kbps
 static BITRATE_SETTING: AtomicU8 = AtomicU8::new(1);
@@ -570,32 +575,49 @@ fn spawn_reconnection_loop() {
 
             debug!("[WAKE +{}ms] Received token for reconnect attempt {}", elapsed_since_wake_ms(), attempt + 1);
 
-            // Perform full cleanup before reconnecting - must create new Player with new Session
-            // because Player is tightly coupled to Session's ChannelManager for key requests
-            debug!("[WAKE +{}ms] Starting cleanup", elapsed_since_wake_ms());
+            // Try soft reconnect first (keeps Player alive, audio uninterrupted).
+            // Fall back to hard reconnect if soft fails (e.g. Player is gone).
+            let has_player = PLAYER.lock().unwrap().is_some();
+
+            if has_player {
+                debug!("[WAKE +{}ms] Attempting soft reconnect (keeping Player alive)", elapsed_since_wake_ms());
+                do_soft_reconnect_cleanup();
+
+                match soft_reconnect_async(&token).await {
+                    Ok(_) => {
+                        debug!("[WAKE +{}ms] Soft reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
+                        RECONNECTING.store(false, Ordering::SeqCst);
+                        // No auto-resume needed — the Player is still playing
+                        return;
+                    }
+                    Err(e) => {
+                        debug!("[WAKE +{}ms] Soft reconnect failed: {}, falling back to hard reconnect", elapsed_since_wake_ms(), e);
+                    }
+                }
+            }
+
+            // Hard reconnect: full cleanup and rebuild
+            debug!("[WAKE +{}ms] Starting hard reconnect cleanup", elapsed_since_wake_ms());
             do_reconnect_cleanup();
             debug!("[WAKE +{}ms] Cleanup complete, calling init_player_async", elapsed_since_wake_ms());
 
-            // Attempt to reinitialize with fresh token
             match init_player_async(&token).await {
                 Ok(_) => {
-                    debug!("[WAKE +{}ms] Reconnection successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
+                    debug!("[WAKE +{}ms] Hard reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
                     RECONNECTING.store(false, Ordering::SeqCst);
 
-                    // If we were playing before disconnect, set up auto-resume
-                    // The track will load paused (Spotify's transfer state has is_paused=true)
-                    // When we receive the Paused event, we'll auto-resume if within this window
+                    // Auto-resume: the track will load paused via transfer(None).
+                    // When we receive the Paused event, we'll auto-resume if within this window.
                     if was_playing {
                         let resume_until = current_timestamp_ms() + 5000; // 5 second window
                         RESUME_AFTER_RECONNECT_UNTIL_MS.store(resume_until, Ordering::SeqCst);
                         debug!("[WAKE +{}ms] Will auto-resume after track loads (was playing before disconnect)", elapsed_since_wake_ms());
                     }
 
-                    // SessionConnected event will reset RECONNECT_ATTEMPT and notify
                     return;
                 }
                 Err(e) => {
-                    debug!("[WAKE +{}ms] Reconnection attempt {} failed: {}", elapsed_since_wake_ms(), attempt + 1, e);
+                    debug!("[WAKE +{}ms] Hard reconnect attempt {} failed: {}", elapsed_since_wake_ms(), attempt + 1, e);
                     {
                         let mut last_error = LAST_ERROR.lock().unwrap();
                         *last_error = Some(format!("Reconnect failed: {}", e));
@@ -748,6 +770,271 @@ fn do_reconnect_cleanup() {
     CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
 
     debug!("do_reconnect_cleanup complete");
+}
+
+/// Soft reconnect: keeps Player, Mixer, and event listener alive.
+/// Only shuts down Spirc/Session and creates new ones. The Player continues
+/// playing uninterrupted because it doesn't need the Session for an
+/// already-loaded track.
+fn do_soft_reconnect_cleanup() {
+    debug!("do_soft_reconnect_cleanup: keeping Player/Mixer alive");
+
+    // Shutdown Spirc - this terminates the spirc_task and closes the dealer,
+    // which will cause the cluster listener stream to end.
+    shutdown_spirc("do_soft_reconnect_cleanup");
+
+    // Clear Spirc reference
+    {
+        let mut spirc_guard = SPIRC.lock().unwrap();
+        *spirc_guard = None;
+    }
+    SPIRC_READY.store(false, Ordering::SeqCst);
+
+    // Clear Session (but keep Player and Mixer)
+    {
+        let mut session_guard = SESSION.lock().unwrap();
+        *session_guard = None;
+    }
+
+    // Reset session connection state
+    {
+        let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
+        state.is_connected = false;
+        state.connection_id = None;
+    }
+
+    CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
+
+    debug!("do_soft_reconnect_cleanup complete");
+}
+
+/// Soft reconnect: creates new Session + Spirc while keeping the existing
+/// Player and Mixer alive. Audio continues playing during reconnection.
+async fn soft_reconnect_async(access_token: &str) -> Result<(), String> {
+    // Increment session generation to invalidate old cluster listeners
+    let current_generation = SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    // Update the event listener's generation so it accepts events from the new session
+    EVENT_LISTENER_GENERATION.store(current_generation, Ordering::SeqCst);
+    debug!(
+        "[WAKE +{}ms] soft_reconnect_async starting, generation={}",
+        elapsed_since_wake_ms(),
+        current_generation
+    );
+
+    // Reuse device ID from existing session
+    let device_id = {
+        let device_id_guard = DEVICE_ID.lock().unwrap();
+        device_id_guard
+            .clone()
+            .unwrap_or_else(|| format!("spotifly_{}", std::process::id()))
+    };
+
+    let session_config = SessionConfig {
+        device_id: device_id.clone(),
+        ..Default::default()
+    };
+
+    let credentials =
+        librespot_core::authentication::Credentials::with_access_token(access_token);
+
+    let cache = Cache::new(None::<std::path::PathBuf>, None, None, None)
+        .map_err(|e| format!("Cache error: {}", e))?;
+
+    // Create new session (not connected yet — Spirc will connect it)
+    let session = Session::new(session_config, Some(cache));
+
+    // Get references to existing Player and Mixer
+    let player = {
+        let player_guard = PLAYER.lock().unwrap();
+        player_guard
+            .clone()
+            .ok_or_else(|| "Player not available for soft reconnect".to_string())?
+    };
+    let mixer = {
+        let mixer_guard = MIXER.lock().unwrap();
+        mixer_guard
+            .clone()
+            .ok_or_else(|| "Mixer not available for soft reconnect".to_string())?
+    };
+
+    // Swap the session on the existing Player so future track loads
+    // (including preloads for the next track) use the new session
+    player.set_session(session.clone());
+    debug!(
+        "[WAKE +{}ms] Swapped session on existing Player",
+        elapsed_since_wake_ms()
+    );
+
+    // Store new session
+    {
+        let mut session_guard = SESSION.lock().unwrap();
+        *session_guard = Some(session.clone());
+    }
+
+    // Set up cluster listener on the new session's dealer
+    debug!(
+        "[WAKE +{}ms] Setting up dealer listener",
+        elapsed_since_wake_ms()
+    );
+    let queue_stream = session
+        .dealer()
+        .listen_for(
+            "hm://connect-state/v1/cluster",
+            librespot_core::dealer::protocol::Message::from_raw::<ClusterUpdate>,
+        )
+        .map_err(|e| format!("Failed to subscribe to queue: {}", e))?;
+    debug!(
+        "[WAKE +{}ms] Dealer listener created",
+        elapsed_since_wake_ms()
+    );
+
+    // Spawn cluster listener task
+    let listener_generation = current_generation;
+    RUNTIME.spawn(async move {
+        debug!(
+            "[WAKE +{}ms] Cluster listener task started (generation={})",
+            elapsed_since_wake_ms(),
+            listener_generation
+        );
+        let mut stream = queue_stream;
+        while let Some(msg_result) = stream.next().await {
+            debug!("Received cluster update message");
+            match msg_result {
+                Ok(cluster_update) => {
+                    debug!("ClusterUpdate parsed successfully");
+                    if let Some(cluster) = cluster_update.cluster.into_option() {
+                        debug!(
+                            "Cluster present, active_device_id: '{}'",
+                            cluster.active_device_id
+                        );
+
+                        if let Some(player_state) = cluster.player_state.into_option() {
+                            debug!(
+                                "ClusterUpdate: position_as_of_timestamp={}ms, is_playing={}",
+                                player_state.position_as_of_timestamp, player_state.is_playing
+                            );
+                            send_playback_state(&player_state);
+                            process_and_send_queue(player_state);
+                        }
+                    }
+                }
+                Err(_e) => {
+                    debug!("Failed to parse cluster update: {:?}", _e);
+                }
+            }
+        }
+        debug!(
+            "[WAKE +{}ms] Cluster listener task ended (generation={})",
+            elapsed_since_wake_ms(),
+            listener_generation
+        );
+
+        let current_gen = SESSION_GENERATION.load(Ordering::SeqCst);
+        if listener_generation != current_gen {
+            debug!(
+                "[WAKE +{}ms] Cluster listener from old generation {} ended (current={}), ignoring",
+                elapsed_since_wake_ms(),
+                listener_generation,
+                current_gen
+            );
+            return;
+        }
+
+        if SHUTTING_DOWN.load(Ordering::SeqCst) || SLEEPING.load(Ordering::SeqCst) {
+            return;
+        }
+
+        debug!(
+            "[WAKE +{}ms] Cluster listener ended - triggering reconnect",
+            elapsed_since_wake_ms()
+        );
+        {
+            let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
+            state.is_connected = false;
+            state.connection_id = None;
+        }
+        CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
+        {
+            let mut last_error = LAST_ERROR.lock().unwrap();
+            *last_error = Some("Cluster listener ended unexpectedly".to_string());
+        }
+        notify_connection_state_change();
+        spawn_reconnection_loop();
+    });
+
+    // Create Spirc with the EXISTING player and mixer but NEW session
+    let initial_volume = INITIAL_VOLUME_SETTING.load(Ordering::SeqCst);
+    debug!(
+        "[WAKE +{}ms] Creating Spirc with initial volume: {}",
+        elapsed_since_wake_ms(),
+        initial_volume
+    );
+    let connect_config = ConnectConfig {
+        name: "Spotifly".to_string(),
+        device_type: DeviceType::Computer,
+        initial_volume,
+        emit_set_queue_events: true,
+        ..Default::default()
+    };
+
+    match Spirc::new(
+        connect_config,
+        session.clone(),
+        credentials.clone(),
+        player,
+        mixer as Arc<dyn Mixer>,
+    )
+    .await
+    {
+        Ok((spirc, spirc_task)) => {
+            let spirc_arc = Arc::new(spirc);
+            let spirc_for_activation = spirc_arc.clone();
+            RUNTIME.spawn(spirc_task);
+
+            {
+                let mut spirc_guard = SPIRC.lock().unwrap();
+                *spirc_guard = Some(spirc_arc);
+                SPIRC_READY.store(true, Ordering::SeqCst);
+                debug!("SPIRC_READY set to true");
+            }
+
+            {
+                let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
+                state.is_connected = true;
+                debug!("Session state: is_connected = true");
+            }
+
+            debug!(
+                "[WAKE +{}ms] Spirc ready - connected to Spotify Connect",
+                elapsed_since_wake_ms()
+            );
+
+            // Small delay to let librespot's initial cluster processing complete
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+            // Use activate() instead of transfer(None) — the Player is already
+            // playing the correct track so we just need to re-register as active.
+            // transfer(None) would re-fetch state from the server and re-load
+            // the track, causing unnecessary interruption.
+            debug!("Soft reconnect: activating device without transfer");
+            match spirc_for_activation.activate() {
+                Ok(_) => {
+                    debug!("Soft reconnect: activate succeeded");
+                    IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                }
+                Err(e) => {
+                    debug!("Soft reconnect: activate failed: {:?}", e);
+                }
+            }
+
+            notify_connection_state_change();
+        }
+        Err(e) => {
+            return Err(format!("Spirc init failed during soft reconnect: {:?}", e));
+        }
+    }
+
+    Ok(())
 }
 
 /// Initializes the player with the given access token.
@@ -903,7 +1190,9 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
     let (tx, mut rx) = mpsc::unbounded_channel::<()>();
 
     // Spawn event listener task
-    // Capture generation for stale session detection in SessionDisconnected handler
+    // Set the shared generation so the event listener knows which generation it belongs to.
+    // On soft reconnect, this is updated without replacing the listener.
+    EVENT_LISTENER_GENERATION.store(current_generation, Ordering::SeqCst);
     let player_clone = Arc::clone(&player);
     let event_listener_generation = current_generation;
     RUNTIME.spawn(async move {
@@ -1084,14 +1373,17 @@ async fn init_player_async(access_token: &str) -> Result<(), String> {
                             }
                         }
                         Some(PlayerEvent::SessionDisconnected { connection_id, user_name }) => {
+                            // Read generation dynamically so soft reconnects can update it
+                            // without replacing the event listener
+                            let my_gen = EVENT_LISTENER_GENERATION.load(Ordering::SeqCst);
                             debug!("[WAKE +{}ms] SessionDisconnected event: connection_id={}, user={}, listener_generation={}",
-                                   elapsed_since_wake_ms(), connection_id, user_name, event_listener_generation);
+                                   elapsed_since_wake_ms(), connection_id, user_name, my_gen);
 
                             // Check if this event is from a stale session
                             let current_gen = SESSION_GENERATION.load(Ordering::SeqCst);
-                            if event_listener_generation != current_gen {
+                            if my_gen != current_gen {
                                 debug!("[WAKE +{}ms] SessionDisconnected from old generation {} (current={}), ignoring",
-                                       elapsed_since_wake_ms(), event_listener_generation, current_gen);
+                                       elapsed_since_wake_ms(), my_gen, current_gen);
                                 continue;
                             }
 
