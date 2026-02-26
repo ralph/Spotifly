@@ -2,6 +2,7 @@
 #define SPOTIFLY_RUST_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -226,6 +227,30 @@ typedef void (*ConnectionStateCallback)(const char* state_json);
 /// Registers a callback to receive connection state change notifications.
 /// Called whenever the connection state changes (connect, disconnect, error, etc.).
 void spotifly_register_connection_state_callback(ConnectionStateCallback callback);
+
+// ============================================================================
+// Audio output callbacks
+// ============================================================================
+
+/// Callback function type for receiving raw PCM audio data.
+/// Audio format: 44100 Hz, 2 channels (stereo), Float32, interleaved.
+/// Called from a background thread - must be thread-safe.
+///
+/// @param samples Pointer to interleaved f32 samples
+/// @param sample_count Number of f32 values (frames * 2 for stereo)
+typedef void (*AudioDataCallback)(const float* samples, size_t sample_count);
+
+/// Callback function type for audio control events.
+/// Events: 0 = stop, 1 = start/resume, 2 = clear/flush.
+/// Called from a background thread - must be thread-safe.
+typedef void (*AudioControlCallback)(uint8_t event);
+
+/// Registers a callback to receive raw PCM audio data from the decoder.
+/// The callback is called for each decoded audio chunk (~4096 samples).
+void spotifly_register_audio_data_callback(AudioDataCallback callback);
+
+/// Registers a callback for audio playback control events (start/stop/clear).
+void spotifly_register_audio_control_callback(AudioControlCallback callback);
 
 /// Returns the current connection state as a JSON string.
 /// Caller must free the returned string using spotifly_free_string().

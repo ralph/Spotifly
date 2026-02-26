@@ -21,8 +21,6 @@ tokio-stream = "0.1"
 futures-util = "0.3"
 env_logger = "0.11"
 log = "0.4"
-rodio = { version = "0.21", default-features = false, features = ["playback"] }
-cpal = "0.16"
 
 [profile.release]
 opt-level = 3

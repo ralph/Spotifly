@@ -150,6 +150,29 @@ private nonisolated(unsafe) let connectionStateSubject = CurrentValueSubject<Lib
 /// Global subject for session client changed notifications (nonisolated for C callback access)
 private nonisolated(unsafe) let sessionClientChangedSubject = PassthroughSubject<SessionClientChangedNotification, Never>()
 
+/// Global audio renderer for AirPlay-compatible playback via AVSampleBufferAudioRenderer
+private nonisolated(unsafe) let audioRenderer = AudioRenderer()
+
+/// Registers the audio data callback with Rust (must be called from nonisolated context)
+private nonisolated func registerAudioDataCallback() {
+    spotifly_register_audio_data_callback { samples, count in
+        guard let samples else { return }
+        audioRenderer.writeAudioData(samples, count: count)
+    }
+}
+
+/// Registers the audio control callback with Rust (must be called from nonisolated context)
+private nonisolated func registerAudioControlCallback() {
+    spotifly_register_audio_control_callback { event in
+        switch event {
+        case 0: audioRenderer.stop()
+        case 1: audioRenderer.start()
+        case 2: audioRenderer.flush()
+        default: break
+        }
+    }
+}
+
 /// Registers the queue callback with Rust (must be called from nonisolated context)
 private nonisolated func registerQueueCallback() {
     spotifly_register_queue_callback { jsonPtr in
@@ -647,6 +670,8 @@ enum SpotifyPlayer {
     @SpotifyAuthActor
     static func initialize(accessToken: String) async throws {
         // Register callbacks (via nonisolated helpers to avoid actor isolation issues)
+        registerAudioDataCallback()
+        registerAudioControlCallback()
         registerQueueCallback()
         registerPlaybackStateCallback()
         registerStateUpdateCallback()

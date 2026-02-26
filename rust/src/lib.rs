@@ -443,6 +443,24 @@ pub extern "C" fn spotifly_register_connection_state_callback(
     *cb = Some(callback);
 }
 
+/// Registers a callback to receive raw PCM audio data (f32, 44100Hz, stereo interleaved).
+/// Called from librespot's player thread for each decoded audio chunk.
+/// The callback receives a pointer to f32 samples and the number of f32 values.
+#[no_mangle]
+pub extern "C" fn spotifly_register_audio_data_callback(
+    callback: extern "C" fn(*const f32, usize),
+) {
+    proxy_sink::register_audio_data_callback(callback);
+}
+
+/// Registers a callback for audio control events (start/stop/clear).
+/// Called from librespot's player thread.
+/// Events: 0 = stop, 1 = start/resume, 2 = clear/flush
+#[no_mangle]
+pub extern "C" fn spotifly_register_audio_control_callback(callback: extern "C" fn(u8)) {
+    proxy_sink::register_audio_control_callback(callback);
+}
+
 /// Returns the current connection state as a JSON string.
 /// Caller must free the returned string using spotifly_free_string().
 #[no_mangle]

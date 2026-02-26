@@ -500,6 +500,10 @@
 					AudioUnit,
 					"-framework",
 					CoreAudio,
+					"-framework",
+					AVFoundation,
+					"-framework",
+					CoreMedia,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -587,6 +591,10 @@
 					AudioUnit,
 					"-framework",
 					CoreAudio,
+					"-framework",
+					AVFoundation,
+					"-framework",
+					CoreMedia,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
