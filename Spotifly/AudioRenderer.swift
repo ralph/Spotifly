@@ -164,8 +164,14 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     // MARK: - Pull Side (called on renderQueue by AVSampleBufferAudioRenderer)
 
     private func startRequestingData() {
-        guard isRendering, !isRequestingData else { return }
+        bufferLock.lock()
+        guard isRendering, !isRequestingData else {
+            bufferLock.unlock()
+            return
+        }
         isRequestingData = true
+        bufferLock.unlock()
+
         renderer.requestMediaDataWhenReady(on: renderQueue) { [weak self] in
             self?.feedRenderer()
         }
@@ -269,8 +275,13 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     /// (e.g. spotifly_disconnect expects flush to complete before proceeding).
     func start() {
         renderQueue.sync { [self] in
-            guard !isRendering else { return }
+            bufferLock.lock()
+            guard !isRendering else {
+                bufferLock.unlock()
+                return
+            }
             isRendering = true
+            bufferLock.unlock()
 
             // Clear stale data from previous playback to prevent timestamp conflicts
             // and loss of real-time pacing (28x speed bug).
@@ -283,11 +294,17 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
 
     func stop() {
         renderQueue.sync { [self] in
-            guard isRendering else { return }
+            bufferLock.lock()
+            guard isRendering else {
+                bufferLock.unlock()
+                return
+            }
             isRendering = false
+            isRequestingData = false
+            bufferLock.unlock()
+
             synchronizer.setRate(0.0, time: synchronizer.currentTime())
             renderer.stopRequestingMediaData()
-            isRequestingData = false
             debugLog("AudioRenderer", "Stopped playback")
         }
     }
@@ -296,7 +313,12 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
         renderQueue.sync { [self] in
             debugLog("AudioRenderer", "Flushing audio buffer")
             resetAudioPipeline()
-            if isRendering {
+
+            bufferLock.lock()
+            let rendering = isRendering
+            bufferLock.unlock()
+
+            if rendering {
                 synchronizer.setRate(1.0, time: .zero)
                 startRequestingData()
             }
@@ -307,10 +329,10 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     /// Must be called on renderQueue.
     private func resetAudioPipeline() {
         renderer.stopRequestingMediaData()
-        isRequestingData = false
         renderer.flush()
 
         bufferLock.lock()
+        isRequestingData = false
         readIndex = 0
         writeIndex = 0
         if writerIsWaiting {
