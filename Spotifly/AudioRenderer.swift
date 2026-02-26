@@ -264,8 +264,11 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
 
     // MARK: - Playback Control
 
+    /// Called from Rust player thread via FFI callback. Synchronous dispatch
+    /// ensures the caller can rely on state being fully updated on return
+    /// (e.g. spotifly_disconnect expects flush to complete before proceeding).
     func start() {
-        renderQueue.async { [self] in
+        renderQueue.sync { [self] in
             guard !isRendering else { return }
             isRendering = true
 
@@ -279,7 +282,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     }
 
     func stop() {
-        renderQueue.async { [self] in
+        renderQueue.sync { [self] in
             guard isRendering else { return }
             isRendering = false
             synchronizer.setRate(0.0, time: synchronizer.currentTime())
@@ -290,7 +293,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     }
 
     func flush() {
-        renderQueue.async { [self] in
+        renderQueue.sync { [self] in
             debugLog("AudioRenderer", "Flushing audio buffer")
             resetAudioPipeline()
             if isRendering {
