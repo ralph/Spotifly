@@ -58,11 +58,9 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     // MARK: - Init
 
     init() {
-        // Allocate ring buffer
         ringBuffer = .allocate(capacity: Self.ringBufferCapacity)
         ringBuffer.initialize(repeating: 0, count: Self.ringBufferCapacity)
 
-        // Create audio format description: Float32, 44100Hz, stereo, interleaved
         var asbd = AudioStreamBasicDescription(
             mSampleRate: Self.sampleRate,
             mFormatID: kAudioFormatLinearPCM,
@@ -90,8 +88,6 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
             fatalError("AudioRenderer: Failed to create audio format description: \(status)")
         }
         formatDescription = formatDesc
-
-        // Wire up renderer to synchronizer
         synchronizer.addRenderer(renderer)
 
         debugLog("AudioRenderer", "Initialized (44100Hz, 2ch, Float32)")
@@ -105,12 +101,14 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
 
     // MARK: - Ring Buffer Helpers
 
+    /// Number of samples available for reading. Must be called with bufferLock held.
     private var availableSamples: Int {
-        let w = writeIndex
-        let r = readIndex
-        return w >= r ? w - r : Self.ringBufferCapacity - r + w
+        writeIndex >= readIndex
+            ? writeIndex - readIndex
+            : Self.ringBufferCapacity - readIndex + writeIndex
     }
 
+    /// Free space in the ring buffer (-1 to distinguish full from empty). Must be called with bufferLock held.
     private var freeSpace: Int {
         Self.ringBufferCapacity - 1 - availableSamples
     }
@@ -270,7 +268,10 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
         renderQueue.async { [self] in
             guard !isRendering else { return }
             isRendering = true
-            currentPTS = .zero
+
+            // Clear stale data from previous playback to prevent timestamp conflicts
+            // and loss of real-time pacing (28x speed bug).
+            resetAudioPipeline()
             synchronizer.setRate(1.0, time: .zero)
             startRequestingData()
             debugLog("AudioRenderer", "Started playback")
@@ -291,28 +292,32 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     func flush() {
         renderQueue.async { [self] in
             debugLog("AudioRenderer", "Flushing audio buffer")
-            renderer.stopRequestingMediaData()
-            isRequestingData = false
-            renderer.flush()
-
-            // Reset ring buffer
-            bufferLock.lock()
-            readIndex = 0
-            writeIndex = 0
-            if writerIsWaiting {
-                writerIsWaiting = false
-                bufferLock.unlock()
-                spaceAvailable.signal()
-            } else {
-                bufferLock.unlock()
-            }
-
-            // Reset presentation time
-            currentPTS = .zero
+            resetAudioPipeline()
             if isRendering {
                 synchronizer.setRate(1.0, time: .zero)
                 startRequestingData()
             }
         }
+    }
+
+    /// Flushes the renderer, resets the ring buffer, and resets PTS.
+    /// Must be called on renderQueue.
+    private func resetAudioPipeline() {
+        renderer.stopRequestingMediaData()
+        isRequestingData = false
+        renderer.flush()
+
+        bufferLock.lock()
+        readIndex = 0
+        writeIndex = 0
+        if writerIsWaiting {
+            writerIsWaiting = false
+            bufferLock.unlock()
+            spaceAvailable.signal()
+        } else {
+            bufferLock.unlock()
+        }
+
+        currentPTS = .zero
     }
 }

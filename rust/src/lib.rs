@@ -1943,13 +1943,13 @@ pub extern "C" fn spotifly_pause() -> i32 {
     }
 }
 
-/// Clears any buffered audio samples synchronously.
-/// Blocks until the audio buffer is flushed.
+/// Clears any buffered audio samples.
+/// The Swift-side callback handles the flush synchronously before returning.
 /// Note: spotifly_disconnect() already handles this internally.
 #[no_mangle]
 pub extern "C" fn spotifly_clear_audio_buffer() {
     debug!("spotifly_clear_audio_buffer called");
-    proxy_sink::ProxySink::clear_buffer_sync();
+    proxy_sink::ProxySink::clear_buffer();
 }
 
 /// Resumes playback.
@@ -2039,7 +2039,7 @@ pub extern "C" fn spotifly_disconnect() -> i32 {
         // Clear the audio buffer synchronously to flush any remaining samples
         // This must complete before we return, otherwise stale audio plays on wake
         drop(spirc_guard); // Release lock before blocking call
-        proxy_sink::ProxySink::clear_buffer_sync();
+        proxy_sink::ProxySink::clear_buffer();
         debug!("spotifly_disconnect: audio buffer cleared");
 
         // Now shutdown Spirc (disconnect from Spotify Connect)

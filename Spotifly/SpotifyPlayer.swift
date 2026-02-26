@@ -150,10 +150,15 @@ private nonisolated(unsafe) let connectionStateSubject = CurrentValueSubject<Lib
 /// Global subject for session client changed notifications (nonisolated for C callback access)
 private nonisolated(unsafe) let sessionClientChangedSubject = PassthroughSubject<SessionClientChangedNotification, Never>()
 
-/// Global audio renderer for AirPlay-compatible playback via AVSampleBufferAudioRenderer
+/// Audio renderer for AirPlay-compatible playback via AVSampleBufferAudioRenderer
 private nonisolated(unsafe) let audioRenderer = AudioRenderer()
 
-/// Registers the audio data callback with Rust (must be called from nonisolated context)
+/// Audio control event codes (must match Rust proxy_sink constants)
+private let audioControlStop: UInt8 = 0
+private let audioControlStart: UInt8 = 1
+private let audioControlClear: UInt8 = 2
+
+/// Registers the audio data callback with Rust
 private nonisolated func registerAudioDataCallback() {
     spotifly_register_audio_data_callback { samples, count in
         guard let samples else { return }
@@ -161,13 +166,13 @@ private nonisolated func registerAudioDataCallback() {
     }
 }
 
-/// Registers the audio control callback with Rust (must be called from nonisolated context)
+/// Registers the audio control callback with Rust
 private nonisolated func registerAudioControlCallback() {
     spotifly_register_audio_control_callback { event in
         switch event {
-        case 0: audioRenderer.stop()
-        case 1: audioRenderer.start()
-        case 2: audioRenderer.flush()
+        case audioControlStop: audioRenderer.stop()
+        case audioControlStart: audioRenderer.start()
+        case audioControlClear: audioRenderer.flush()
         default: break
         }
     }
