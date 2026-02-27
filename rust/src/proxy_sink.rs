@@ -44,7 +44,7 @@ pub fn register_audio_control_callback(callback: AudioControlCallback) {
 }
 
 /// Send a control event to Swift.
-/// Copies the callback before dropping the lock so Swift can call back into Rust.
+/// Copies the callback ref before invoking to avoid holding the lock during the call.
 fn send_control(event: u8) {
     let cb = {
         let guard = AUDIO_CONTROL_CALLBACK.lock().unwrap();
@@ -89,13 +89,12 @@ impl Sink for ProxySink {
 
         let samples_f32: Vec<f32> = converter.f64_to_f32(samples).to_vec();
 
-        // Copy callback ref before dropping lock so Swift can call back into Rust
+        // Copy callback ref before invoking — avoids holding lock during call to Swift
         let cb = {
             let guard = AUDIO_DATA_CALLBACK.lock().unwrap();
             *guard
         };
         if let Some(callback) = cb {
-            // May block if Swift's ring buffer is full (backpressure)
             callback(samples_f32.as_ptr(), samples_f32.len());
         }
 

@@ -219,14 +219,12 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
             }
 
             readIndex = (readIndex + toRead) % Self.ringBufferCapacity
+            let shouldSignal = writerIsWaiting
+            writerIsWaiting = false
+            bufferLock.unlock()
 
-            // Signal writer if waiting for space
-            if writerIsWaiting {
-                writerIsWaiting = false
-                bufferLock.unlock()
+            if shouldSignal {
                 spaceAvailable.signal()
-            } else {
-                bufferLock.unlock()
             }
 
             // Create CMBlockBuffer from chunk data
@@ -345,16 +343,12 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
         routeChangeObserver = NotificationCenter.default.addObserver(
             forName: .AVSampleBufferAudioRendererWasFlushedAutomatically,
             object: renderer,
-            queue: nil
+            queue: nil,
         ) { [weak self] notification in
             guard let self else { return }
 
-            let flushTime: CMTime
-            if let timeValue = notification.userInfo?[AVSampleBufferAudioRendererFlushTimeKey] as? NSValue {
-                flushTime = timeValue.timeValue
-            } else {
-                flushTime = .zero
-            }
+            let flushTime = (notification.userInfo?[AVSampleBufferAudioRendererFlushTimeKey] as? NSValue)?
+                .timeValue ?? .zero
             debugLog("AudioRenderer", "Renderer auto-flushed (output device changed, time: \(flushTime))")
 
             // Recreate pipeline on renderQueue (async since this fires on an arbitrary thread)
@@ -374,41 +368,24 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     }
 
     /// Tear down the old renderer/synchronizer and create fresh ones.
-    /// Needed because an output device change leaves the CoreAudio context
-    /// in a broken state where the renderer accepts data but doesn't pace it.
+    /// An output device change leaves the CoreAudio context in a broken state
+    /// where the renderer accepts data but doesn't pace it.
     /// Must be called on renderQueue.
     private func recreateRenderPipeline() {
-        // Tear down old pipeline
         renderer.stopRequestingMediaData()
         renderer.flush()
         synchronizer.removeRenderer(renderer, at: .invalid)
 
-        // Remove observer on old renderer
         if let observer = routeChangeObserver {
             NotificationCenter.default.removeObserver(observer)
             routeChangeObserver = nil
         }
 
-        // Create fresh pipeline
         renderer = AVSampleBufferAudioRenderer()
         synchronizer = AVSampleBufferRenderSynchronizer()
         synchronizer.addRenderer(renderer)
 
-        // Reset ring buffer and PTS
-        bufferLock.lock()
-        isRequestingData = false
-        readIndex = 0
-        writeIndex = 0
-        if writerIsWaiting {
-            writerIsWaiting = false
-            bufferLock.unlock()
-            spaceAvailable.signal()
-        } else {
-            bufferLock.unlock()
-        }
-        currentPTS = .zero
-
-        // Re-register observer on new renderer
+        resetRingBuffer()
         observeRouteChanges()
 
         debugLog("AudioRenderer", "Render pipeline recreated")
@@ -416,24 +393,29 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
 
     // MARK: - Internal
 
-    /// Flushes the renderer, resets the ring buffer, and resets PTS.
+    /// Resets the ring buffer indices, PTS, and unblocks any waiting writer.
     /// Must be called on renderQueue.
-    private func resetAudioPipeline() {
-        renderer.stopRequestingMediaData()
-        renderer.flush()
-
+    private func resetRingBuffer() {
         bufferLock.lock()
         isRequestingData = false
         readIndex = 0
         writeIndex = 0
-        if writerIsWaiting {
-            writerIsWaiting = false
-            bufferLock.unlock()
+        let shouldSignal = writerIsWaiting
+        writerIsWaiting = false
+        bufferLock.unlock()
+
+        if shouldSignal {
             spaceAvailable.signal()
-        } else {
-            bufferLock.unlock()
         }
 
         currentPTS = .zero
+    }
+
+    /// Flushes the renderer and resets the ring buffer.
+    /// Must be called on renderQueue.
+    private func resetAudioPipeline() {
+        renderer.stopRequestingMediaData()
+        renderer.flush()
+        resetRingBuffer()
     }
 }
