@@ -28,10 +28,10 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     /// Chunk size for feeding renderer (~1024 frames = 2048 stereo samples)
     private static let feedChunkSamples = 2048
 
-    // MARK: - AVFoundation Objects
+    // MARK: - AVFoundation Objects (recreated on output device change)
 
-    private let renderer = AVSampleBufferAudioRenderer()
-    private let synchronizer = AVSampleBufferRenderSynchronizer()
+    private var renderer = AVSampleBufferAudioRenderer()
+    private var synchronizer = AVSampleBufferRenderSynchronizer()
 
     // MARK: - Ring Buffer
 
@@ -339,8 +339,8 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
 
     /// Observe the renderer's auto-flush notification, which fires when the
     /// output device changes (e.g. AirPlay ↔ local speaker). After an auto-flush
-    /// the renderer has discarded its enqueued buffers, so we must reset our
-    /// ring buffer / PTS and restart feeding.
+    /// the renderer's internal CoreAudio context is broken (FigSync/timebase errors),
+    /// so we must recreate the renderer and synchronizer entirely.
     private func observeRouteChanges() {
         routeChangeObserver = NotificationCenter.default.addObserver(
             forName: .AVSampleBufferAudioRendererWasFlushedAutomatically,
@@ -357,7 +357,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
             }
             debugLog("AudioRenderer", "Renderer auto-flushed (output device changed, time: \(flushTime))")
 
-            // Restart on renderQueue (async since this fires on an arbitrary thread)
+            // Recreate pipeline on renderQueue (async since this fires on an arbitrary thread)
             renderQueue.async { [self] in
                 bufferLock.lock()
                 let rendering = isRendering
@@ -365,12 +365,53 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
 
                 guard rendering else { return }
 
-                debugLog("AudioRenderer", "Restarting pipeline after output device change")
-                resetAudioPipeline()
+                debugLog("AudioRenderer", "Recreating pipeline after output device change")
+                recreateRenderPipeline()
                 synchronizer.setRate(1.0, time: .zero)
                 startRequestingData()
             }
         }
+    }
+
+    /// Tear down the old renderer/synchronizer and create fresh ones.
+    /// Needed because an output device change leaves the CoreAudio context
+    /// in a broken state where the renderer accepts data but doesn't pace it.
+    /// Must be called on renderQueue.
+    private func recreateRenderPipeline() {
+        // Tear down old pipeline
+        renderer.stopRequestingMediaData()
+        renderer.flush()
+        synchronizer.removeRenderer(renderer, at: .invalid)
+
+        // Remove observer on old renderer
+        if let observer = routeChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            routeChangeObserver = nil
+        }
+
+        // Create fresh pipeline
+        renderer = AVSampleBufferAudioRenderer()
+        synchronizer = AVSampleBufferRenderSynchronizer()
+        synchronizer.addRenderer(renderer)
+
+        // Reset ring buffer and PTS
+        bufferLock.lock()
+        isRequestingData = false
+        readIndex = 0
+        writeIndex = 0
+        if writerIsWaiting {
+            writerIsWaiting = false
+            bufferLock.unlock()
+            spaceAvailable.signal()
+        } else {
+            bufferLock.unlock()
+        }
+        currentPTS = .zero
+
+        // Re-register observer on new renderer
+        observeRouteChanges()
+
+        debugLog("AudioRenderer", "Render pipeline recreated")
     }
 
     // MARK: - Internal
