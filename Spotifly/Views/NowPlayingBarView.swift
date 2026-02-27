@@ -273,45 +273,54 @@ struct NowPlayingBarView: View {
         return playbackViewModel.trackDurationMs
     }
 
+    @ViewBuilder
     private var progressBar: some View {
-        // TimelineView updates at display refresh rate for smooth slider
-        TimelineView(.animation(minimumInterval: 0.033)) { _ in
-            HStack(spacing: 8) {
-                // Show timestamp only on hover
-                if isHoveringSeekBar {
-                    Text(formatTrackTime(milliseconds: Int(currentPositionMs)))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                }
-
-                Slider(
-                    value: Binding(
-                        get: { Double(currentPositionMs) },
-                        set: { newValue in
-                            playbackViewModel.seek(to: UInt32(newValue))
-                        },
-                    ),
-                    in: 0 ... Double(max(currentDurationMs, 1)),
-                )
-                .controlSize(.mini)
-                .tint(.green)
-
-                // Show timestamp only on hover
-                if isHoveringSeekBar {
-                    Text(formatTrackTime(milliseconds: Int(currentDurationMs)))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
-                }
+        // Only run a periodic refresh while actively playing.
+        if playbackViewModel.isPlaying {
+            TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                progressBarContent
             }
-            .frame(height: 12) // Fixed height prevents layout shift on hover
-            .animation(.easeInOut(duration: 0.15), value: isHoveringSeekBar)
-            .onHover { hovering in
-                isHoveringSeekBar = hovering
+        } else {
+            progressBarContent
+        }
+    }
+
+    private var progressBarContent: some View {
+        HStack(spacing: 8) {
+            // Show timestamp only on hover
+            if isHoveringSeekBar {
+                Text(formatTrackTime(milliseconds: Int(currentPositionMs)))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
+
+            Slider(
+                value: Binding(
+                    get: { Double(currentPositionMs) },
+                    set: { newValue in
+                        playbackViewModel.seek(to: UInt32(newValue))
+                    },
+                ),
+                in: 0 ... Double(max(currentDurationMs, 1)),
+            )
+            .controlSize(.mini)
+            .tint(.green)
+
+            // Show timestamp only on hover
+            if isHoveringSeekBar {
+                Text(formatTrackTime(milliseconds: Int(currentDurationMs)))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            }
+        }
+        .frame(height: 12) // Fixed height prevents layout shift on hover
+        .animation(.easeInOut(duration: 0.15), value: isHoveringSeekBar)
+        .onHover { hovering in
+            isHoveringSeekBar = hovering
         }
     }
 

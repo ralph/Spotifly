@@ -840,6 +840,12 @@ final class PlaybackViewModel {
     private func checkDriftAndSync() {
         var didCorrectDrift = false
 
+        defer {
+            if didCorrectDrift {
+                updateNowPlayingInfo(forcePositionUpdate: true)
+            }
+        }
+
         // Sync playing state with Rust - only when we're the active device
         // When monitoring remote playback, state comes from cluster updates
         if SpotifyPlayer.isActiveDevice {
@@ -851,8 +857,14 @@ final class PlaybackViewModel {
             }
         }
 
+        // Skip position updates while paused - position only changes during playback
+        guard isPlaying else { return }
+
         // Update currentPositionMs for non-TimelineView consumers
-        currentPositionMs = interpolatedPositionMs
+        let interpolated = interpolatedPositionMs
+        if interpolated != currentPositionMs {
+            currentPositionMs = interpolated
+        }
 
         // Check for significant drift from Rust position - only when active device
         // Remote playback position is interpolated from cluster timestamp, not real-time
@@ -861,7 +873,6 @@ final class PlaybackViewModel {
             if rustPosition != lastRustPosition {
                 let drift = abs(Int32(rustPosition) - Int32(interpolatedPositionMs))
                 if drift > 500 {
-                    // More than 500ms drift - resync anchor
                     positionAnchorMs = rustPosition
                     positionAnchorTime = CACurrentMediaTime()
                     currentPositionMs = min(rustPosition, trackDurationMs)
@@ -870,8 +881,6 @@ final class PlaybackViewModel {
                 lastRustPosition = rustPosition
             }
         }
-
-        updateNowPlayingInfo(forcePositionUpdate: didCorrectDrift)
     }
 
     // MARK: - Favorite Management
