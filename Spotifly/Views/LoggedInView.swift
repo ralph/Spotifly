@@ -92,10 +92,6 @@ struct LoggedInView: View {
 
     @State private var blockingState: BlockingState?
 
-    // Sidebar width for dynamic now playing bar positioning
-    @State private var sidebarWidth: CGFloat = 0
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
-
     /// Determines if we need three-column layout
     private var needsThreeColumnLayout: Bool {
         switch selectedNavigationItem {
@@ -126,19 +122,21 @@ struct LoggedInView: View {
         }
     }
 
-    private var mainAppView: some View {
-        ZStack(alignment: .bottom) {
-            if !windowState.isMiniPlayerMode {
-                mainLayoutView
-            }
-
-            // Now Playing Bar - floats over content, dynamically positioned to clear sidebar
-            NowPlayingBarView(
-                playbackViewModel: playbackViewModel,
-                windowState: windowState,
+    private var mainAppRootView: AnyView {
+        if windowState.isMiniPlayerMode {
+            return AnyView(
+                NowPlayingBarView(
+                    playbackViewModel: playbackViewModel,
+                    windowState: windowState,
+                ),
             )
-            .padding(.leading, windowState.isMiniPlayerMode ? 0 : (columnVisibility == .detailOnly ? 0 : sidebarWidth + 8))
         }
+
+        return AnyView(mainLayoutView)
+    }
+
+    private var mainAppView: some View {
+        mainAppRootView
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
         .searchShortcuts(searchFieldFocused: $searchFieldFocused)
         .environment(session)
@@ -279,29 +277,38 @@ struct LoggedInView: View {
     // MARK: - View Builders
 
     private var mainLayoutView: some View {
-        Group {
-            if needsThreeColumnLayout {
-                NavigationSplitView(columnVisibility: $columnVisibility) {
-                    sidebarView()
-                } content: {
-                    contentView()
-                        .navigationSplitViewColumnWidth(min: 300, ideal: 450, max: 600)
-                } detail: {
-                    detailView()
+        NavigationSplitView {
+            sidebarView()
+        } detail: {
+            mainColumnsView
+                .overlay(alignment: .bottom) {
+                    // Center within the non-sidebar area (detail in 2-column, content+detail in 3-column).
+                    NowPlayingBarView(
+                        playbackViewModel: playbackViewModel,
+                        windowState: windowState,
+                    )
                 }
-            } else {
-                NavigationSplitView(columnVisibility: $columnVisibility) {
-                    sidebarView()
-                } detail: {
-                    contentView()
-                }
-            }
         }
         .navigationSplitViewStyle(.automatic)
         .searchable(text: $searchText, isPresented: $searchFieldFocused)
         .onSubmit(of: .search) { performSearch() }
         .onChange(of: searchText) { _, newValue in handleSearchTextChange(newValue) }
         .toolbar { refreshToolbarItem }
+    }
+
+    @ViewBuilder
+    private var mainColumnsView: some View {
+        if needsThreeColumnLayout {
+            NavigationSplitView {
+                contentView()
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 450, max: 600)
+            } detail: {
+                detailView()
+            }
+            .navigationSplitViewStyle(.automatic)
+        } else {
+            contentView()
+        }
     }
 
     @ToolbarContentBuilder
@@ -573,19 +580,6 @@ struct LoggedInView: View {
             hasSearchResults: store.searchResults != nil,
             userProfile: store.userProfile,
         )
-        .background {
-            GeometryReader { geometry in
-                Color.clear
-                    .task(id: geometry.size.width) {
-                        // Only log and update if width actually changed (not just view recreation)
-                        guard sidebarWidth != geometry.size.width else { return }
-                        debugLog("SidebarWidth", "Updating sidebarWidth to: \(geometry.size.width)")
-                        await MainActor.run {
-                            sidebarWidth = geometry.size.width
-                        }
-                    }
-            }
-        }
     }
 
     /// Whether the current section supports refresh

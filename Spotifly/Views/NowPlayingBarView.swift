@@ -21,7 +21,6 @@ struct NowPlayingBarView: View {
     @State private var cachedAlbumArtURL: String?
     @State private var showVolumePopover = false
     @State private var showAlbumArtMenu = false
-    @State private var isHoveringSeekBar = false
     @State private var showNewPlaylistDialog = false
     @State private var newPlaylistName = ""
     @State private var showPlaylistAddedSuccess = false
@@ -142,7 +141,7 @@ struct NowPlayingBarView: View {
                 }
 
                 // Bottom row: Seek bar spanning full width
-                progressBar
+                NowPlayingProgressBarView(playbackViewModel: playbackViewModel)
             }
             .frame(maxWidth: 350)
 
@@ -260,70 +259,6 @@ struct NowPlayingBarView: View {
         }
     }
 
-    /// Current playback position (interpolated for smooth display)
-    private var currentPositionMs: UInt32 {
-        playbackViewModel.interpolatedPositionMs
-    }
-
-    /// Current track duration (from store, fallback to playback state)
-    private var currentDurationMs: UInt32 {
-        if let track = currentTrack {
-            return UInt32(track.durationMs)
-        }
-        return playbackViewModel.trackDurationMs
-    }
-
-    @ViewBuilder
-    private var progressBar: some View {
-        // Only run a periodic refresh while actively playing.
-        if playbackViewModel.isPlaying {
-            TimelineView(.periodic(from: .now, by: 0.5)) { _ in
-                progressBarContent
-            }
-        } else {
-            progressBarContent
-        }
-    }
-
-    private var progressBarContent: some View {
-        HStack(spacing: 8) {
-            // Show timestamp only on hover
-            if isHoveringSeekBar {
-                Text(formatTrackTime(milliseconds: Int(currentPositionMs)))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
-            }
-
-            Slider(
-                value: Binding(
-                    get: { Double(currentPositionMs) },
-                    set: { newValue in
-                        playbackViewModel.seek(to: UInt32(newValue))
-                    },
-                ),
-                in: 0 ... Double(max(currentDurationMs, 1)),
-            )
-            .controlSize(.mini)
-            .tint(.green)
-
-            // Show timestamp only on hover
-            if isHoveringSeekBar {
-                Text(formatTrackTime(milliseconds: Int(currentDurationMs)))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
-            }
-        }
-        .frame(height: 12) // Fixed height prevents layout shift on hover
-        .animation(.easeInOut(duration: 0.15), value: isHoveringSeekBar)
-        .onHover { hovering in
-            isHoveringSeekBar = hovering
-        }
-    }
-
     private var queuePosition: some View {
         Button {
             exitMiniPlayerIfNeeded()
@@ -411,7 +346,7 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .help(windowState.isMiniPlayerMode ? "mini_player.restore" : "mini_player.enter")
+        .help(windowState.isMiniPlayerMode ? String(localized: "mini_player.restore") : String(localized: "mini_player.enter"))
     }
 
     @ViewBuilder
@@ -482,6 +417,183 @@ struct NowPlayingBarView: View {
                 playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
             }
         }
+    }
+}
+
+// MARK: - Progress Bar
+
+private struct NowPlayingProgressBarView: View {
+    @Bindable var playbackViewModel: PlaybackViewModel
+
+    @State private var isHoveringSeekBar = false
+
+    /// Current playback position updated by the playback view model.
+    private var currentPositionMs: UInt32 {
+        playbackViewModel.currentPositionMs
+    }
+
+    /// Current track duration from playback state.
+    private var currentDurationMs: UInt32 {
+        playbackViewModel.trackDurationMs
+    }
+
+    var body: some View {
+        progressBar
+    }
+
+    @ViewBuilder
+    private var progressBar: some View {
+        // Only run timeline-based interpolation while actively hovering the seek bar.
+        // In steady state we render from model-updated position values to reduce layout churn.
+        if playbackViewModel.isPlaying, isHoveringSeekBar {
+            TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                progressBarContent(positionMs: playbackViewModel.interpolatedPositionMs)
+            }
+        } else {
+            progressBarContent(positionMs: currentPositionMs)
+        }
+    }
+
+    private func progressBarContent(positionMs: UInt32) -> some View {
+        HStack(spacing: 8) {
+            Text(formatTrackTime(milliseconds: Int(positionMs)))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(width: 56, alignment: .trailing)
+                .opacity(isHoveringSeekBar ? 1 : 0)
+                .allowsHitTesting(false)
+
+            Group {
+                if isHoveringSeekBar {
+                    LightweightSeekBar(
+                        positionMs: positionMs,
+                        durationMs: currentDurationMs,
+                        onSeek: { position in
+                            playbackViewModel.seek(to: position)
+                        },
+                    )
+                } else {
+                    PassiveProgressBar(
+                        positionMs: positionMs,
+                        durationMs: currentDurationMs,
+                    )
+                }
+            }
+
+            Text(formatTrackTime(milliseconds: Int(currentDurationMs)))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(width: 56, alignment: .leading)
+                .opacity(isHoveringSeekBar ? 1 : 0)
+                .allowsHitTesting(false)
+        }
+        .frame(height: 12)
+        .animation(.easeInOut(duration: 0.15), value: isHoveringSeekBar)
+        .onHover { hovering in
+            isHoveringSeekBar = hovering
+        }
+    }
+}
+
+// MARK: - Lightweight Seek Bar
+
+private struct PassiveProgressBar: View {
+    let positionMs: UInt32
+    let durationMs: UInt32
+
+    private var progress: CGFloat {
+        guard durationMs > 0 else { return 0 }
+        let value = Double(positionMs) / Double(durationMs)
+        return CGFloat(max(0, min(1, value)))
+    }
+
+    var body: some View {
+        Capsule()
+            .fill(Color.primary.opacity(0.16))
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(Color.green)
+                    .scaleEffect(x: progress, y: 1, anchor: .leading)
+            }
+            .frame(height: 4)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+    }
+}
+
+/// Pure SwiftUI seek bar to avoid NSSlider's expensive AppKit layout updates.
+private struct LightweightSeekBar: View {
+    let positionMs: UInt32
+    let durationMs: UInt32
+    let onSeek: (UInt32) -> Void
+
+    @State private var isDragging = false
+    @State private var dragPositionMs: UInt32 = 0
+
+    private var displayedPositionMs: UInt32 {
+        isDragging ? dragPositionMs : positionMs
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let progress = normalizedProgress(for: displayedPositionMs)
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.primary.opacity(0.16))
+                    .frame(height: 4)
+
+                Capsule()
+                    .fill(Color.green)
+                    .frame(width: max(4, geometry.size.width * progress), height: 4)
+
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: isDragging ? 10 : 8, height: isDragging ? 10 : 8)
+                    .offset(x: knobOffsetX(in: geometry.size.width, progress: progress))
+                    .shadow(color: .black.opacity(0.15), radius: 1, x: 0, y: 1)
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let position = seekPosition(from: value.location.x, width: geometry.size.width)
+                        isDragging = true
+                        dragPositionMs = position
+                        onSeek(position)
+                    }
+                    .onEnded { value in
+                        let position = seekPosition(from: value.location.x, width: geometry.size.width)
+                        dragPositionMs = position
+                        onSeek(position)
+                        isDragging = false
+                    },
+            )
+        }
+    }
+
+    private func normalizedProgress(for position: UInt32) -> CGFloat {
+        guard durationMs > 0 else { return 0 }
+        let progress = Double(position) / Double(durationMs)
+        return CGFloat(max(0, min(1, progress)))
+    }
+
+    private func seekPosition(from x: CGFloat, width: CGFloat) -> UInt32 {
+        guard durationMs > 0 else { return 0 }
+        let clampedWidth = max(width, 1)
+        let clampedX = max(0, min(x, clampedWidth))
+        let ratio = clampedX / clampedWidth
+        return UInt32(Double(durationMs) * ratio)
+    }
+
+    private func knobOffsetX(in width: CGFloat, progress: CGFloat) -> CGFloat {
+        let knobRadius = isDragging ? CGFloat(5) : CGFloat(4)
+        let knobCenterX = min(max(width * progress, knobRadius), max(knobRadius, width - knobRadius))
+        return knobCenterX - knobRadius
     }
 }
 
