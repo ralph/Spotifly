@@ -44,6 +44,18 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     private let spaceAvailable = DispatchSemaphore(value: 0)
     private var writerIsWaiting = false
 
+    // MARK: - Write Throttle (provides real-time pacing)
+
+    /// Wall-clock time (monotonic) when writing started. Must be accessed with bufferLock held.
+    private var writeStartTime: TimeInterval = 0
+
+    /// Total f32 samples written since start. Must be accessed with bufferLock held.
+    private var totalSamplesWritten: Int64 = 0
+
+    /// Maximum seconds the writer can be ahead of real-time before sleeping.
+    /// This replaces the backpressure that CoreAudio callbacks provided in the old rodio/cpal path.
+    private static let maxBufferAheadSeconds: Double = 2.0
+
     // MARK: - State
 
     private let renderQueue = DispatchQueue(label: "com.spotifly.audio-renderer", qos: .userInteractive)
@@ -156,6 +168,9 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
             }
 
             writeIndex = (writeIndex + toWrite) % Self.ringBufferCapacity
+            totalSamplesWritten += Int64(toWrite)
+            let samplesWritten = totalSamplesWritten
+            let startTime = writeStartTime
             let needsRestart = isRendering && !isRequestingData
             bufferLock.unlock()
 
@@ -164,6 +179,16 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
                 renderQueue.async { [weak self] in
                     self?.startRequestingData()
                 }
+            }
+
+            // Time-based throttle: AVSampleBufferAudioRenderer eagerly accepts data
+            // for buffering, providing no real-time backpressure. Without this check,
+            // librespot decodes at full CPU speed (~7x), racing through tracks.
+            let audioDuration = Double(samplesWritten) / (Self.sampleRate * Double(Self.channelCount))
+            let elapsed = ProcessInfo.processInfo.systemUptime - startTime
+            let ahead = audioDuration - elapsed
+            if ahead > Self.maxBufferAheadSeconds {
+                Thread.sleep(forTimeInterval: ahead - Self.maxBufferAheadSeconds)
             }
 
             remaining -= toWrite
@@ -400,6 +425,8 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
         isRequestingData = false
         readIndex = 0
         writeIndex = 0
+        totalSamplesWritten = 0
+        writeStartTime = ProcessInfo.processInfo.systemUptime
         let shouldSignal = writerIsWaiting
         writerIsWaiting = false
         bufferLock.unlock()
