@@ -151,7 +151,7 @@ private nonisolated(unsafe) let connectionStateSubject = CurrentValueSubject<Lib
 private nonisolated(unsafe) let sessionClientChangedSubject = PassthroughSubject<SessionClientChangedNotification, Never>()
 
 /// Audio renderer for AirPlay-compatible playback via AVSampleBufferAudioRenderer
-private nonisolated(unsafe) let audioRenderer = AudioRenderer()
+private let audioRenderer = AudioRenderer()
 
 /// Audio control event codes (must match Rust proxy_sink constants)
 private let audioControlStop: UInt8 = 0
