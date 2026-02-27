@@ -515,7 +515,10 @@ final class PlaybackViewModel {
             Task { @MainActor in
                 guard let self else { return }
                 guard let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
-                let positionMs = UInt32(seekEvent.positionTime * 1000)
+                let positionMs = self.validatedUInt32(
+                    from: seekEvent.positionTime * 1000,
+                    field: "remoteCommand.positionMs",
+                )
                 self.seek(to: positionMs)
             }
             return .success
@@ -634,10 +637,14 @@ final class PlaybackViewModel {
 
                 // Use position from loading callback - this is reliable
                 if notification.positionMs > 0 {
-                    let posMs = UInt32(notification.positionMs)
-                    positionAnchorMs = posMs
-                    positionAnchorTime = CACurrentMediaTime()
-                    currentPositionMs = posMs
+                    if let posMs = self.validatedUInt32(
+                        from: Int64(notification.positionMs),
+                        field: "loading.positionMs",
+                    ) {
+                        positionAnchorMs = posMs
+                        positionAnchorTime = CACurrentMediaTime()
+                        currentPositionMs = posMs
+                    }
                 }
             }
     }
@@ -698,14 +705,21 @@ final class PlaybackViewModel {
 
         // Update duration
         if state.durationMs > 0 {
-            trackDurationMs = UInt32(state.durationMs)
+            if let durationMs = validatedUInt32(
+                from: Int64(state.durationMs),
+                field: "playbackState.durationMs",
+            ) {
+                trackDurationMs = durationMs
+            }
         }
 
         // Sync position anchor on state changes
         // When monitoring a remote device, position_ms is the position at timestamp_ms
         // We need to account for elapsed time since that timestamp to get current position
-        if state.positionMs >= 0 {
-            let posMs = UInt32(state.positionMs)
+        if let posMs = validatedUInt32(
+            from: Int64(state.positionMs),
+            field: "playbackState.positionMs",
+        ) {
             let now = CACurrentMediaTime()
 
             // If we have a valid timestamp, adjust anchor time backwards by elapsed time
@@ -755,12 +769,19 @@ final class PlaybackViewModel {
 
         // Update duration
         if durationMs > 0 {
-            trackDurationMs = UInt32(durationMs)
+            if let clampedDurationMs = validatedUInt32(
+                from: Int64(durationMs),
+                field: "webAPI.durationMs",
+            ) {
+                trackDurationMs = clampedDurationMs
+            }
         }
 
         // Set position anchor accounting for elapsed time since the API timestamp
-        if progressMs >= 0 {
-            let posMs = UInt32(progressMs)
+        if let posMs = validatedUInt32(
+            from: Int64(progressMs),
+            field: "webAPI.progressMs",
+        ) {
             let now = CACurrentMediaTime()
 
             if timestampMs > 0 {
@@ -790,6 +811,33 @@ final class PlaybackViewModel {
     private var lastRustPosition: UInt32 = 0
     private var driftCorrectionTimer: DriftCorrectionTimer?
     private var driftObserver: NSObjectProtocol?
+
+    private func validatedUInt32(from value: Int64, field: String) -> UInt32? {
+        if value < 0 {
+            debugLog("PlaybackViewModel", "Ignoring negative \(field): \(value)")
+            return nil
+        }
+        if value > Int64(UInt32.max) {
+            debugLog("PlaybackViewModel", "Clamping oversized \(field): \(value)")
+            return UInt32.max
+        }
+        return UInt32(value)
+    }
+
+    private func validatedUInt32(from value: Double, field: String) -> UInt32 {
+        guard value.isFinite else {
+            debugLog("PlaybackViewModel", "Ignoring non-finite \(field): \(value)")
+            return 0
+        }
+        if value <= 0 {
+            return 0
+        }
+        if value >= Double(UInt32.max) {
+            debugLog("PlaybackViewModel", "Clamping oversized \(field): \(value)")
+            return UInt32.max
+        }
+        return UInt32(value)
+    }
 
     /// Computed position using anchor interpolation - UI should bind to this
     /// Called by TimelineView on every frame for smooth updates

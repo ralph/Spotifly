@@ -103,6 +103,14 @@ struct LoggedInView: View {
         }
     }
 
+    // Overlay content does not contribute to split-view minimum size, so enforce
+    // a root minimum width large enough for sidebar + now-playing bar area.
+    private let minimumNowPlayingDetailWidth: CGFloat = 780
+    private let minimumSidebarWidth: CGFloat = 220
+    private var minimumMainWindowWidth: CGFloat {
+        minimumNowPlayingDetailWidth + minimumSidebarWidth
+    }
+
     var body: some View {
         switch blockingState {
         case .premiumRequired:
@@ -137,141 +145,145 @@ struct LoggedInView: View {
 
     private var mainAppView: some View {
         mainAppRootView
-        .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
-        .searchShortcuts(searchFieldFocused: $searchFieldFocused)
-        .environment(session)
-        .environment(deviceService)
-        .environment(queueService)
-        .environment(recentlyPlayedService)
-        .environment(searchService)
-        .environment(topItemsService)
-        .environment(navigationCoordinator)
-        .environment(store)
-        .environment(trackService)
-        .environment(playlistService)
-        .environment(albumService)
-        .environment(artistService)
-        .focusedValue(\.navigationSelection, $selectedNavigationItem)
-        .focusedValue(\.searchFieldFocused, $searchFieldFocused)
-        .focusedValue(\.session, session)
-        .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
-        .task {
-            #if DEBUG
-                // Set debug references to actual @State stored instances
-                AppStore.current = store
-                SpotifySession.current = session
-            #endif
+            .frame(
+                minWidth: windowState.isMiniPlayerMode ? WindowState.miniPlayerSize.width : minimumMainWindowWidth,
+                minHeight: windowState.isMiniPlayerMode ? WindowState.miniPlayerSize.height : 400,
+            )
+            .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
+            .searchShortcuts(searchFieldFocused: $searchFieldFocused)
+            .environment(session)
+            .environment(deviceService)
+            .environment(queueService)
+            .environment(recentlyPlayedService)
+            .environment(searchService)
+            .environment(topItemsService)
+            .environment(navigationCoordinator)
+            .environment(store)
+            .environment(trackService)
+            .environment(playlistService)
+            .environment(albumService)
+            .environment(artistService)
+            .focusedValue(\.navigationSelection, $selectedNavigationItem)
+            .focusedValue(\.searchFieldFocused, $searchFieldFocused)
+            .focusedValue(\.session, session)
+            .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
+            .task {
+                #if DEBUG
+                    // Set debug references to actual @State stored instances
+                    AppStore.current = store
+                    SpotifySession.current = session
+                #endif
 
-            // Load startup data
-            let token = await session.validAccessToken()
-
-            // Load user profile (provides userId + whitelist check)
-            do {
-                let profile = try await SpotifyAPI.getCurrentUserProfile(accessToken: token)
-                store.setUserProfile(profile)
-            } catch SpotifyAPIError.forbidden {
-                blockingState = .userNotWhitelisted
-                return
-            } catch {
-                // Profile load failed for other reasons - continue without profile
-            }
-
-            // Require Spotify Premium (librespot only works with Premium accounts).
-            // The product field was removed from /me, so we probe a premium-only endpoint.
-            do {
-                _ = try await SpotifyAPI.fetchAvailableDevices(accessToken: token)
-            } catch SpotifyAPIError.forbidden {
-                blockingState = .premiumRequired
-                return
-            } catch {
-                // Network/other errors - don't block startup, playback will fail later if not premium
-            }
-
-            // Load favorites so heart indicators work everywhere
-            async let favorites: () = { try? await trackService.loadFavorites(accessToken: token) }()
-
-            // Load startpage data (top artists, top tracks, recently played)
-            let timeRange = TopItemsTimeRange(rawValue: topItemsTimeRange) ?? .mediumTerm
-            async let topArtists: () = topItemsService.loadTopArtists(accessToken: token, timeRange: timeRange)
-            async let topTracks: () = topItemsService.loadTopTracks(accessToken: token, timeRange: timeRange)
-            async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
-
-            _ = await (favorites, topArtists, topTracks, recentlyPlayed)
-
-            // Set token provider for automatic reconnection
-            playbackViewModel.setTokenProvider { await session.validAccessToken() }
-            SpotifyPlayer.setTokenProvider(session)
-
-            // Initialize player/Spirc so Spotifly appears as a Connect device
-            await playbackViewModel.initializeIfNeeded(accessToken: token)
-
-            // Fetch initial playback state from Web API (Mercury only receives push updates,
-            // so we need this to sync with whatever device is currently playing)
-            await queueService.fetchInitialPlaybackState(accessToken: token)
-        }
-        .onReceive(SpotifyPlayer.sessionConnected) {
-            // Refresh playback state and devices after session reconnects
-            // This handles the case where we transferred playback to another device,
-            // the session disconnected, and now we've reconnected
-            Task {
+                // Load startup data
                 let token = await session.validAccessToken()
+
+                // Load user profile (provides userId + whitelist check)
+                do {
+                    let profile = try await SpotifyAPI.getCurrentUserProfile(accessToken: token)
+                    store.setUserProfile(profile)
+                } catch SpotifyAPIError.forbidden {
+                    blockingState = .userNotWhitelisted
+                    return
+                } catch {
+                    // Profile load failed for other reasons - continue without profile
+                }
+
+                // Require Spotify Premium (librespot only works with Premium accounts).
+                // The product field was removed from /me, so we probe a premium-only endpoint.
+                do {
+                    _ = try await SpotifyAPI.fetchAvailableDevices(accessToken: token)
+                } catch SpotifyAPIError.forbidden {
+                    blockingState = .premiumRequired
+                    return
+                } catch {
+                    // Network/other errors - don't block startup, playback will fail later if not premium
+                }
+
+                // Load favorites so heart indicators work everywhere
+                async let favorites: () = { try? await trackService.loadFavorites(accessToken: token) }()
+
+                // Load startpage data (top artists, top tracks, recently played)
+                let timeRange = TopItemsTimeRange(rawValue: topItemsTimeRange) ?? .mediumTerm
+                async let topArtists: () = topItemsService.loadTopArtists(accessToken: token, timeRange: timeRange)
+                async let topTracks: () = topItemsService.loadTopTracks(accessToken: token, timeRange: timeRange)
+                async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
+
+                _ = await (favorites, topArtists, topTracks, recentlyPlayed)
+
+                // Set token provider for automatic reconnection
+                playbackViewModel.setTokenProvider { await session.validAccessToken() }
+                SpotifyPlayer.setTokenProvider(session)
+
+                // Initialize player/Spirc so Spotifly appears as a Connect device
+                await playbackViewModel.initializeIfNeeded(accessToken: token)
+
+                // Fetch initial playback state from Web API (Mercury only receives push updates,
+                // so we need this to sync with whatever device is currently playing)
                 await queueService.fetchInitialPlaybackState(accessToken: token)
-                await deviceService.loadDevices(accessToken: token)
             }
-        }
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
-            // Disconnect from Spotify Connect before sleep so the device disappears immediately.
-            // This is better than pause because a paused device still appears "active" in Spotify
-            // but can't respond to commands while the Mac is asleep. Spotify remembers playback
-            // position server-side, so clicking play after wake resumes where we left off.
-            // disconnect() internally pauses playback and clears the audio buffer synchronously.
-            debugLog("LoggedInView", "System will sleep, disconnecting from Spotify")
-            SpotifyPlayer.disconnect()
-        }
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
-            // After system wake, the TCP connection to Spotify servers is likely dead.
-            // Force a reconnection now so playback works reliably when user clicks play.
-            debugLog("LoggedInView", "System wake detected, forcing reconnection")
-            SpotifyPlayer.forceReconnect()
-        }
-        .onChange(of: navigationCoordinator.pendingNavigationItem) { _, newValue in
-            if let pendingItem = newValue {
-                selectedNavigationItem = pendingItem
-                navigationCoordinator.pendingNavigationItem = nil
+            .onReceive(SpotifyPlayer.sessionConnected) {
+                // Refresh playback state and devices after session reconnects
+                // This handles the case where we transferred playback to another device,
+                // the session disconnected, and now we've reconnected
+                Task {
+                    let token = await session.validAccessToken()
+                    await queueService.fetchInitialPlaybackState(accessToken: token)
+                    await deviceService.loadDevices(accessToken: token)
+                }
             }
-        }
-        .onChange(of: navigationCoordinator.pendingPlaylist) { _, newValue in
-            if newValue != nil {
-                // Clear other selections and navigate to playlists
-                selectedAlbumId = nil
-                selectedArtistId = nil
-                selectedPlaylistId = nil
-                selectedNavigationItem = .playlists
+            .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
+                // Disconnect from Spotify Connect before sleep so the device disappears immediately.
+                // This is better than pause because a paused device still appears "active" in Spotify
+                // but can't respond to commands while the Mac is asleep. Spotify remembers playback
+                // position server-side, so clicking play after wake resumes where we left off.
+                // disconnect() internally pauses playback and clears the audio buffer synchronously.
+                debugLog("LoggedInView", "System will sleep, disconnecting from Spotify")
+                SpotifyPlayer.disconnect()
             }
-        }
-        .onChange(of: selectedNavigationItem) { oldValue, newValue in
-            // Clear navigation stack when switching sidebar sections
-            navigationCoordinator.clearNavigationStack()
+            .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
+                // After system wake, the TCP connection to Spotify servers is likely dead.
+                // Force a reconnection now so playback works reliably when user clicks play.
+                debugLog("LoggedInView", "System wake detected, forcing reconnection")
+                SpotifyPlayer.forceReconnect()
+            }
+            .onChange(of: navigationCoordinator.pendingNavigationItem) { _, newValue in
+                if let pendingItem = newValue {
+                    selectedNavigationItem = pendingItem
+                    navigationCoordinator.pendingNavigationItem = nil
+                }
+            }
+            .onChange(of: navigationCoordinator.pendingPlaylist) { _, newValue in
+                if newValue != nil {
+                    // Clear other selections and navigate to playlists
+                    selectedAlbumId = nil
+                    selectedArtistId = nil
+                    selectedPlaylistId = nil
+                    selectedNavigationItem = .playlists
+                }
+            }
+            .onChange(of: selectedNavigationItem) { oldValue, newValue in
+                // Clear navigation stack when switching sidebar sections
+                navigationCoordinator.clearNavigationStack()
 
-            // Clear pending playlist when navigating away from playlists
-            if oldValue == .playlists, newValue != .playlists {
-                navigationCoordinator.pendingPlaylist = nil
-            }
+                // Clear pending playlist when navigating away from playlists
+                if oldValue == .playlists, newValue != .playlists {
+                    navigationCoordinator.pendingPlaylist = nil
+                }
 
-            // Clear ephemeral viewing state when navigating away from albums/artists
-            if oldValue == .albums, newValue != .albums {
-                navigationCoordinator.viewingAlbumId = nil
+                // Clear ephemeral viewing state when navigating away from albums/artists
+                if oldValue == .albums, newValue != .albums {
+                    navigationCoordinator.viewingAlbumId = nil
+                }
+                if oldValue == .artists, newValue != .artists {
+                    navigationCoordinator.viewingArtistId = nil
+                }
             }
-            if oldValue == .artists, newValue != .artists {
-                navigationCoordinator.viewingArtistId = nil
+            .onChange(of: selectedPlaylistId) { _, newValue in
+                // Clear pending playlist when user selects a playlist from the list
+                if newValue != nil {
+                    navigationCoordinator.pendingPlaylist = nil
+                }
             }
-        }
-        .onChange(of: selectedPlaylistId) { _, newValue in
-            // Clear pending playlist when user selects a playlist from the list
-            if newValue != nil {
-                navigationCoordinator.pendingPlaylist = nil
-            }
-        }
     }
 
     // MARK: - View Builders
@@ -301,7 +313,7 @@ struct LoggedInView: View {
         if needsThreeColumnLayout {
             NavigationSplitView {
                 contentView()
-                    .navigationSplitViewColumnWidth(min: 300, ideal: 450, max: 600)
+                    .navigationSplitViewColumnWidth(min: 220, ideal: 400, max: 560)
             } detail: {
                 detailView()
             }

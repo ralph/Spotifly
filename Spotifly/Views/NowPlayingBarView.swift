@@ -24,6 +24,19 @@ struct NowPlayingBarView: View {
     @State private var showNewPlaylistDialog = false
     @State private var newPlaylistName = ""
     @State private var showPlaylistAddedSuccess = false
+    @AppStorage("perf.nowPlaying.hideBar") private var perfHideBar = false
+    #if DEBUG
+        @AppStorage("perf.nowPlaying.aggressiveIsolation") private var perfAggressiveIsolation = true
+        @AppStorage("perf.nowPlaying.flatBackground") private var perfFlatBackground = true
+    #else
+        @AppStorage("perf.nowPlaying.aggressiveIsolation") private var perfAggressiveIsolation = false
+        @AppStorage("perf.nowPlaying.flatBackground") private var perfFlatBackground = false
+    #endif
+    @AppStorage("perf.nowPlaying.disableSeekBar") private var perfDisableSeekBar = false
+    @AppStorage("perf.nowPlaying.disableAlbumArt") private var perfDisableAlbumArt = false
+    @AppStorage("perf.nowPlaying.disableTrackMenu") private var perfDisableTrackMenu = false
+    @AppStorage("perf.nowPlaying.disableRightControls") private var perfDisableRightControls = false
+    @AppStorage("perf.nowPlaying.disableVolumePopover") private var perfDisableVolumePopover = false
 
     /// Whether something is currently playing or queued
     private var hasPlayback: Bool {
@@ -45,115 +58,198 @@ struct NowPlayingBarView: View {
     // Fixed dimensions for the now playing bar (in points)
     private let barWidth: CGFloat = 700
     private let barHeight: CGFloat = 60
+    private let expandedHorizontalPadding: CGFloat = 40
+    private let expandedBottomPadding: CGFloat = 20
 
+    private var useAggressiveIsolation: Bool {
+        perfAggressiveIsolation
+    }
+
+    private var forceFlatBackground: Bool {
+        useAggressiveIsolation || perfFlatBackground
+    }
+
+    private var showSeekBarControl: Bool {
+        !perfDisableSeekBar
+    }
+
+    private var showAlbumArtControl: Bool {
+        !perfDisableAlbumArt
+    }
+
+    private var showTrackMenuControl: Bool {
+        !perfDisableTrackMenu
+    }
+
+    private var showRightControls: Bool {
+        !perfDisableRightControls
+    }
+
+    private var showVolumePopoverControl: Bool {
+        !perfDisableVolumePopover
+    }
+
+    private var minimumExpandedBarAreaWidth: CGFloat {
+        guard !windowState.isMiniPlayerMode, !useAggressiveIsolation else { return 0 }
+        return barWidth + (expandedHorizontalPadding * 2)
+    }
+
+    @ViewBuilder
     var body: some View {
-        playerLayout
-            .frame(width: windowState.isMiniPlayerMode ? nil : barWidth, height: windowState.isMiniPlayerMode ? nil : barHeight)
-            .frame(maxWidth: windowState.isMiniPlayerMode ? .infinity : nil, maxHeight: windowState.isMiniPlayerMode ? .infinity : nil)
-            .modifier(NowPlayingBarBackground(isMiniPlayerMode: windowState.isMiniPlayerMode))
-            .padding([.leading, .trailing], windowState.isMiniPlayerMode ? 0 : 40)
-            .padding([.bottom], windowState.isMiniPlayerMode ? 0 : 20)
-            .alert("playlist.new.title", isPresented: $showNewPlaylistDialog) {
-                TextField("playlist.new.placeholder", text: $newPlaylistName)
-                Button("action.cancel", role: .cancel) {
-                    newPlaylistName = ""
+        if perfHideBar {
+            EmptyView()
+        } else {
+            playerLayout
+                // Use maxWidth instead of fixed width so the bar can shrink on narrow windows.
+                .frame(maxWidth: windowState.isMiniPlayerMode ? .infinity : barWidth)
+                .frame(height: windowState.isMiniPlayerMode ? nil : barHeight)
+                .frame(maxWidth: .infinity, maxHeight: windowState.isMiniPlayerMode ? .infinity : nil)
+                .modifier(
+                    NowPlayingBarBackground(
+                        isMiniPlayerMode: windowState.isMiniPlayerMode,
+                        forceFlatBackground: forceFlatBackground,
+                    ),
+                )
+                .padding([.leading, .trailing], windowState.isMiniPlayerMode ? 0 : expandedHorizontalPadding)
+                .padding([.bottom], windowState.isMiniPlayerMode ? 0 : expandedBottomPadding)
+                // Keep enough width in expanded mode so the full bar remains visible.
+                .frame(minWidth: minimumExpandedBarAreaWidth)
+                .alert("playlist.new.title", isPresented: $showNewPlaylistDialog) {
+                    TextField("playlist.new.placeholder", text: $newPlaylistName)
+                    Button("action.cancel", role: .cancel) {
+                        newPlaylistName = ""
+                    }
+                    Button("action.create") {
+                        createAndAddToPlaylist(name: newPlaylistName)
+                        newPlaylistName = ""
+                    }
+                    .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
+                } message: {
+                    Text("playlist.new.message")
                 }
-                Button("action.create") {
-                    createAndAddToPlaylist(name: newPlaylistName)
-                    newPlaylistName = ""
-                }
-                .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
-            } message: {
-                Text("playlist.new.message")
-            }
+        }
     }
 
     // MARK: - Player Layout
 
+    @ViewBuilder
     private var playerLayout: some View {
+        if useAggressiveIsolation {
+            isolatedPlayerLayout
+        } else {
+            fullPlayerLayout
+        }
+    }
+
+    private var isolatedPlayerLayout: some View {
+        HStack(spacing: 12) {
+            minimalPlaybackControls
+
+            if let track = currentTrack {
+                Text(track.name)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+            } else {
+                Text("No track")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var fullPlayerLayout: some View {
         HStack(spacing: 24) {
             // Left: Playback controls
             playbackControls
 
-            // Center: Track info with seek bar below
+            // Center: Track info with optional seek bar below
             VStack(spacing: 4) {
                 // Top row: Cover | Title & Artist | Menu
                 HStack(spacing: 10) {
-                    Button {
-                        showAlbumArtMenu.toggle()
-                    } label: {
-                        albumArt(size: 34)
-                    }
-                    .buttonStyle(.plain)
-                    .onHover { hovering in
-                        if hovering {
-                            NSCursor.pointingHand.push()
-                        } else {
-                            NSCursor.pop()
+                    if showAlbumArtControl {
+                        Button {
+                            showAlbumArtMenu.toggle()
+                        } label: {
+                            albumArt(size: 34)
                         }
-                    }
-                    .popover(isPresented: $showAlbumArtMenu, arrowEdge: .top) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            if let artistId = currentTrack?.artistId {
+                        .buttonStyle(.plain)
+                        .onHover { hovering in
+                            if hovering {
+                                NSCursor.pointingHand.push()
+                            } else {
+                                NSCursor.pop()
+                            }
+                        }
+                        .popover(isPresented: $showAlbumArtMenu, arrowEdge: .top) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                if let artistId = currentTrack?.artistId {
+                                    Button {
+                                        showAlbumArtMenu = false
+                                        navigationCoordinator.navigateToArtist(artistId: artistId)
+                                    } label: {
+                                        Label("track.menu.go_to_artist", systemImage: "person.circle")
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                }
+
+                                if let albumId = currentTrack?.albumId {
+                                    Button {
+                                        showAlbumArtMenu = false
+                                        navigationCoordinator.navigateToAlbum(albumId: albumId)
+                                    } label: {
+                                        Label("track.menu.go_to_album", systemImage: "square.stack")
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                }
+
                                 Button {
                                     showAlbumArtMenu = false
-                                    navigationCoordinator.navigateToArtist(artistId: artistId)
+                                    navigationCoordinator.navigateToQueue()
                                 } label: {
-                                    Label("track.menu.go_to_artist", systemImage: "person.circle")
+                                    Label("queue.title", systemImage: "list.number")
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .buttonStyle(.plain)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
                             }
-
-                            if let albumId = currentTrack?.albumId {
-                                Button {
-                                    showAlbumArtMenu = false
-                                    navigationCoordinator.navigateToAlbum(albumId: albumId)
-                                } label: {
-                                    Label("track.menu.go_to_album", systemImage: "square.stack")
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .buttonStyle(.plain)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                            }
-
-                            Button {
-                                showAlbumArtMenu = false
-                                navigationCoordinator.navigateToQueue()
-                            } label: {
-                                Label("queue.title", systemImage: "list.number")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 4)
                     }
 
                     trackInfo
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    trackMenu
+                    if showTrackMenuControl {
+                        trackMenu
+                    }
                 }
 
-                // Bottom row: Seek bar spanning full width
-                NowPlayingProgressBarView(playbackViewModel: playbackViewModel)
+                if showSeekBarControl {
+                    // Bottom row: Seek bar spanning full width
+                    NowPlayingProgressBarView(playbackViewModel: playbackViewModel)
+                }
             }
             .frame(maxWidth: 350)
 
-            // Right: Other controls
-            HStack(spacing: 16) {
-                favoriteButton
-
-                queuePosition
-
-                miniPlayerToggle
-
-                volumeControl
+            if showRightControls {
+                // Right: Other controls
+                HStack(spacing: 16) {
+                    favoriteButton
+                    queuePosition
+                    miniPlayerToggle
+                    volumeControl
+                }
             }
         }
         .padding(.horizontal, 20)
@@ -259,6 +355,20 @@ struct NowPlayingBarView: View {
         }
     }
 
+    private var minimalPlaybackControls: some View {
+        Button {
+            if playbackViewModel.isPlaying {
+                playbackViewModel.pause()
+            } else {
+                playbackViewModel.resume()
+            }
+        } label: {
+            Image(systemName: playbackViewModel.isPlaying ? "pause.fill" : "play.fill")
+                .font(.title3)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var queuePosition: some View {
         Button {
             exitMiniPlayerIfNeeded()
@@ -298,40 +408,54 @@ struct NowPlayingBarView: View {
         playbackViewModel.volume * 100
     }
 
+    private var volumeIconName: String {
+        if currentVolume == 0 {
+            return "speaker.fill"
+        }
+        return currentVolume < 50 ? "speaker.wave.1.fill" : "speaker.wave.3.fill"
+    }
+
     private func setVolume(_ volume: Double) {
         playbackViewModel.volume = volume / 100
     }
 
+    @ViewBuilder
     private var volumeControl: some View {
-        Button {
-            showVolumePopover.toggle()
-        } label: {
-            Image(systemName: currentVolume == 0 ? "speaker.fill" : currentVolume < 50 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
-                .font(.body)
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {
-            HStack(spacing: 8) {
-                Image(systemName: "speaker.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Slider(
-                    value: Binding(
-                        get: { currentVolume },
-                        set: { setVolume($0) },
-                    ),
-                    in: 0 ... 100,
-                )
-                .tint(.green)
-                .frame(width: 120)
-
-                Image(systemName: "speaker.wave.3.fill")
-                    .font(.caption)
+        if showVolumePopoverControl {
+            Button {
+                showVolumePopover.toggle()
+            } label: {
+                Image(systemName: volumeIconName)
+                    .font(.body)
                     .foregroundStyle(.secondary)
             }
-            .padding(12)
+            .buttonStyle(.plain)
+            .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {
+                HStack(spacing: 8) {
+                    Image(systemName: "speaker.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Slider(
+                        value: Binding(
+                            get: { currentVolume },
+                            set: { setVolume($0) },
+                        ),
+                        in: 0 ... 100,
+                    )
+                    .tint(.green)
+                    .frame(width: 120)
+
+                    Image(systemName: "speaker.wave.3.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+            }
+        } else {
+            Image(systemName: volumeIconName)
+                .font(.body)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -602,9 +726,10 @@ private struct LightweightSeekBar: View {
 /// Applies either a solid background (mini player) or liquid glass effect (expanded mode)
 private struct NowPlayingBarBackground: ViewModifier {
     let isMiniPlayerMode: Bool
+    let forceFlatBackground: Bool
 
     func body(content: Content) -> some View {
-        if isMiniPlayerMode {
+        if isMiniPlayerMode || forceFlatBackground {
             content
                 .background(Color(NSColor.windowBackgroundColor))
         } else {

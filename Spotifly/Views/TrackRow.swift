@@ -88,7 +88,6 @@ struct TrackRow: View {
                     Image(systemName: "waveform")
                         .font(.caption)
                         .foregroundStyle(.green)
-                        .symbolEffect(.variableColor.iterative, isActive: playbackViewModel.isPlaying)
                 } else if showTrackNumber, let trackNumber = track.trackNumber {
                     Text("\(trackNumber)")
                         .font(.caption)
