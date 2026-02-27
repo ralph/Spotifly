@@ -51,6 +51,10 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     private var currentPTS: CMTime = .zero
     private var isRequestingData = false
 
+    // MARK: - Route Change Observation
+
+    private var routeChangeObserver: (any NSObjectProtocol)?
+
     // MARK: - Audio Format (cached)
 
     private let formatDescription: CMAudioFormatDescription
@@ -90,10 +94,16 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
         formatDescription = formatDesc
         synchronizer.addRenderer(renderer)
 
+        // Recover from output device changes (AirPlay ↔ local speaker)
+        observeRouteChanges()
+
         debugLog("AudioRenderer", "Initialized (44100Hz, 2ch, Float32)")
     }
 
     deinit {
+        if let observer = routeChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         renderer.stopRequestingMediaData()
         synchronizer.removeRenderer(renderer, at: .invalid)
         ringBuffer.deallocate()
@@ -324,6 +334,46 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
             }
         }
     }
+
+    // MARK: - Route Change Recovery
+
+    /// Observe the renderer's auto-flush notification, which fires when the
+    /// output device changes (e.g. AirPlay ↔ local speaker). After an auto-flush
+    /// the renderer has discarded its enqueued buffers, so we must reset our
+    /// ring buffer / PTS and restart feeding.
+    private func observeRouteChanges() {
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVSampleBufferAudioRendererWasFlushedAutomatically,
+            object: renderer,
+            queue: nil
+        ) { [weak self] notification in
+            guard let self else { return }
+
+            let flushTime: CMTime
+            if let timeValue = notification.userInfo?[AVSampleBufferAudioRendererFlushTimeKey] as? NSValue {
+                flushTime = timeValue.timeValue
+            } else {
+                flushTime = .zero
+            }
+            debugLog("AudioRenderer", "Renderer auto-flushed (output device changed, time: \(flushTime))")
+
+            // Restart on renderQueue (async since this fires on an arbitrary thread)
+            renderQueue.async { [self] in
+                bufferLock.lock()
+                let rendering = isRendering
+                bufferLock.unlock()
+
+                guard rendering else { return }
+
+                debugLog("AudioRenderer", "Restarting pipeline after output device change")
+                resetAudioPipeline()
+                synchronizer.setRate(1.0, time: .zero)
+                startRequestingData()
+            }
+        }
+    }
+
+    // MARK: - Internal
 
     /// Flushes the renderer, resets the ring buffer, and resets PTS.
     /// Must be called on renderQueue.
