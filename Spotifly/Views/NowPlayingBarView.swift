@@ -274,8 +274,8 @@ struct NowPlayingBarView: View {
     }
 
     private var progressBar: some View {
-        // TimelineView updates at display refresh rate for smooth slider
-        TimelineView(.animation(minimumInterval: 0.033)) { _ in
+        // Lower frame rate when not hovering: 10 FPS on hover, 1 FPS otherwise
+        TimelineView(.animation(minimumInterval: isHoveringSeekBar ? 0.1 : 1.0)) { _ in
             HStack(spacing: 8) {
                 // Show timestamp only on hover
                 if isHoveringSeekBar {
