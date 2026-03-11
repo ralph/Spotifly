@@ -214,6 +214,20 @@ These logs are necessary because the bug is timing-sensitive and spans transport
 - use the Speakers reconnect button after forcing a broken/disconnected state
 - confirm that the app either continues playback or returns to a clean, usable idle state
 
+## Verification Results
+
+Verification completed on March 11, 2026:
+
+- Rust unit tests passed via `cargo test --manifest-path rust/Cargo.toml`
+- focused Swift reconnect tests passed via `build-for-testing` plus `test-without-building`
+- full `xcodebuild -project /Users/ralph/code/spotifly/repos/Spotifly.xcodeproj -scheme Spotifly -destination platform=macOS test` passed in the current working tree
+
+During verification, one additional reconnect-adjacent defect surfaced and was fixed: `QueueService` was clearing existing queue state when its `CurrentValueSubject` emitted the initial `nil` seed value. That behavior would have undercut reconnect preservation even when the Web API fallback policy was correct.
+
+Manual smoke verification against a live Spotify disconnect during preload was not executed in this session, so the remaining risk is in timing against real network/AP behavior rather than in the covered state-machine logic.
+
+Note: local test-target configuration changes in `Spotifly.xcodeproj/project.pbxproj` were used for Swift test verification but are being left uncommitted for manual selection. If those edits are omitted, equivalent `xcodebuild` verification needs explicit overrides for generated test Info.plists and Rust include/library search paths.
+
 ## Expected Outcome
 
 After these changes:

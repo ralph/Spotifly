@@ -394,3 +394,24 @@ Record the exact verification commands and any residual risks in both plan docs.
 git add docs/plans/2026-03-11-reconnect-recovery-design.md docs/plans/2026-03-11-reconnect-recovery.md
 git commit -m "docs: record reconnect recovery verification"
 ```
+
+## Verification Results
+
+Executed on March 11, 2026 in `/Users/ralph/code/spotifly/repos`.
+
+- `cargo test --manifest-path rust/Cargo.toml`
+  Result: PASS (`cleanup_clears_cached_recovery_state`, `soft_reconnect_without_context_rehydration_requires_hard_fallback`)
+- `xcodebuild -project /Users/ralph/code/spotifly/repos/Spotifly.xcodeproj -scheme Spotifly -destination platform=macOS -only-testing:SpotiflyTests/PlaybackViewModelReconnectTests -only-testing:SpotiflyTests/QueueServiceReconnectTests build-for-testing`
+  Result: PASS
+- `xcodebuild -project /Users/ralph/code/spotifly/repos/Spotifly.xcodeproj -scheme Spotifly -destination platform=macOS -only-testing:SpotiflyTests/PlaybackViewModelReconnectTests -only-testing:SpotiflyTests/QueueServiceReconnectTests test-without-building`
+  Result: PASS
+- `xcodebuild -project /Users/ralph/code/spotifly/repos/Spotifly.xcodeproj -scheme Spotifly -destination platform=macOS test`
+  Result: PASS
+
+## Residual Risks
+
+- Manual smoke coverage against a real Spotify AP disconnect during preload was not run in this terminal session.
+- Verification uncovered and fixed an additional reconnect-adjacent bug: the initial `QueueService` subscription was clearing existing queue state on the `CurrentValueSubject(nil)` seed value before reconnect fallback logic could run.
+- Local changes exist in `Spotifly.xcodeproj/project.pbxproj` to make the Swift test targets self-contained. Per user request, those project-file changes are being left for manual selection rather than committed automatically.
+- If the `Spotifly.xcodeproj/project.pbxproj` edits are not selected, use command-line overrides equivalent to:
+  `GENERATE_INFOPLIST_FILE=YES SWIFT_INCLUDE_PATHS='$(PROJECT_DIR)/build/rust/include' LIBRARY_SEARCH_PATHS='$(PROJECT_DIR)/build/rust/lib'`
