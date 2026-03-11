@@ -106,6 +106,7 @@ struct SpeakersView: View {
                         ConnectionStatusView {
                             let token = await session.validAccessToken()
                             await playbackViewModel.forceReinitialize(accessToken: token)
+                            await deviceService.loadDevices(accessToken: token)
                         }
                     } header: {
                         Text("speakers.librespot_connection")
