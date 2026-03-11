@@ -10,11 +10,31 @@
 import Combine
 import Foundation
 
+enum PlaybackSyncMode {
+    case startup
+    case reconnecting
+}
+
+struct QueueServiceAPI {
+    var fetchPlaybackState: @Sendable (String) async throws -> SpotifyAPI.PlaybackStateResponse?
+    var fetchQueue: @Sendable (String) async throws -> SpotifyAPI.QueueResponse
+
+    static let live = QueueServiceAPI(
+        fetchPlaybackState: { accessToken in
+            try await SpotifyAPI.fetchPlaybackState(accessToken: accessToken)
+        },
+        fetchQueue: { accessToken in
+            try await SpotifyAPI.fetchQueue(accessToken: accessToken)
+        }
+    )
+}
+
 @MainActor
 @Observable
 final class QueueService {
     private let store: AppStore
     private let tokenProvider: () async -> String
+    private let api: QueueServiceAPI
     private var queueSubscription: AnyCancellable?
     private var setQueueSubscription: AnyCancellable?
     private var metadataFetchTask: Task<Void, Never>?
@@ -25,9 +45,14 @@ final class QueueService {
     /// Subscription for debounced fetch operations
     private var fetchDebounceSubscription: AnyCancellable?
 
-    init(store: AppStore, tokenProvider: @escaping () async -> String) {
+    init(
+        store: AppStore,
+        tokenProvider: @escaping () async -> String,
+        api: QueueServiceAPI = .live,
+    ) {
         self.store = store
         self.tokenProvider = tokenProvider
+        self.api = api
         setupQueueSubscription()
         setupSetQueueSubscription()
         setupFetchDebounceSubscription()
@@ -103,7 +128,7 @@ final class QueueService {
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled, let self else { return }
             let token = await self.tokenProvider()
-            await self.fetchInitialPlaybackState(accessToken: token)
+            await self.fetchInitialPlaybackState(accessToken: token, recoveryMode: .reconnecting)
         }
     }
 
@@ -115,7 +140,7 @@ final class QueueService {
     /// Handle queue update from Spirc callback (Mercury protocol)
     private func handleQueueUpdate(_ queueState: QueueState?) {
         guard let state = queueState else {
-            store.setQueue(previous: [], current: nil, next: [])
+            debugLog("QueueService", "Queue callback was nil; keeping existing queue state")
             return
         }
 
@@ -256,15 +281,34 @@ final class QueueService {
 
     // MARK: - Initial State Fetch
 
+    private func shouldPreserveQueueDuringReconnect(
+        currentEntry: QueueEntry?,
+        nextEntries: [QueueEntry],
+        playbackState: SpotifyAPI.PlaybackStateResponse?,
+        recoveryMode: PlaybackSyncMode,
+    ) -> Bool {
+        guard recoveryMode == .reconnecting else { return false }
+        guard currentEntry == nil, nextEntries.isEmpty, playbackState?.item == nil else { return false }
+
+        if store.queueLength > 0 {
+            return true
+        }
+
+        return PlaybackViewModel.shared.currentTrackUri != nil
+    }
+
     /// Fetches initial playback state and queue from Web API.
     /// Called after Spirc becomes ready to sync with whatever device is currently playing.
     /// Mercury only receives push updates, so we need this to get the current state.
-    func fetchInitialPlaybackState(accessToken: String) async {
+    func fetchInitialPlaybackState(
+        accessToken: String,
+        recoveryMode: PlaybackSyncMode = .startup,
+    ) async {
         debugLog("QueueService", "Fetching initial playback state from Web API...")
 
         // Fetch playback state and queue in parallel
-        async let playbackStateTask = SpotifyAPI.fetchPlaybackState(accessToken: accessToken)
-        async let queueTask = SpotifyAPI.fetchQueue(accessToken: accessToken)
+        async let playbackStateTask = api.fetchPlaybackState(accessToken)
+        async let queueTask = api.fetchQueue(accessToken)
 
         do {
             let (playbackState, queueResponse) = try await (playbackStateTask, queueTask)
@@ -277,8 +321,20 @@ final class QueueService {
                 QueueEntry(trackId: track.id, provider: .context)
             }
 
-            // Web API doesn't provide previous tracks, so preserve existing or use empty
-            store.setQueue(previous: nil, current: currentEntry, next: nextEntries)
+            if shouldPreserveQueueDuringReconnect(
+                currentEntry: currentEntry,
+                nextEntries: nextEntries,
+                playbackState: playbackState,
+                recoveryMode: recoveryMode,
+            ) {
+                debugLog(
+                    "QueueService",
+                    "Reconnect snapshot was empty; keeping existing queue state instead of clobbering it",
+                )
+            } else {
+                // Web API doesn't provide previous tracks, so preserve existing or use empty
+                store.setQueue(previous: nil, current: currentEntry, next: nextEntries)
+            }
 
             debugLog("QueueService", "Initial queue: current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
 
