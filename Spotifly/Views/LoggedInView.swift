@@ -219,7 +219,7 @@ struct LoggedInView: View {
             Task {
                 let token = await session.validAccessToken()
                 await deviceService.waitForTransferSettling()
-                await queueService.fetchInitialPlaybackState(accessToken: token, recoveryMode: .reconnecting)
+                await queueService.fetchInitialPlaybackState(accessToken: token)
             }
         }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in

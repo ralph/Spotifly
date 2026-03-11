@@ -137,20 +137,7 @@ final class PlaybackViewModel {
         tokenProvider = provider
     }
 
-    func prepareForReconnectRecovery() {
-        isPlaying = false
-        currentTrackUri = nil
-        trackDurationMs = 0
-        currentPositionMs = 0
-        errorMessage = nil
-        remoteVolume = nil
-        positionAnchorMs = 0
-        positionAnchorTime = CACurrentMediaTime()
-        updateNowPlayingPosition()
-    }
-
     func forceReinitialize(accessToken: String) async {
-        prepareForReconnectRecovery()
         isInitialized = false
         isLoading = true
         do {

@@ -1,8 +1,5 @@
 mod proxy_sink;
 
-#[cfg(test)]
-mod reconnect_recovery_tests;
-
 use futures_util::StreamExt;
 use librespot_connect::{ConnectConfig, LoadRequest, LoadRequestOptions, PlayingTrack, Spirc};
 use librespot_core::cache::Cache;
@@ -139,37 +136,6 @@ static PENDING_PLAY_SEQ: AtomicU64 = AtomicU64::new(0);
 // Current context URI - captured from SetQueue and cluster player state updates.
 // We keep the latest non-empty value to recover resume after reconnect.
 static CURRENT_CONTEXT_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
-static LAST_NEXT_TRACK_COUNT: AtomicU32 = AtomicU32::new(0);
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct RecoverySeed {
-    was_active: bool,
-    was_playing: bool,
-    current_track_uri: Option<String>,
-    current_context_uri: Option<String>,
-    position_ms: u32,
-    had_next_tracks: bool,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct RecoverySignals {
-    got_fresh_context_for_epoch: bool,
-    got_fresh_queue_for_epoch: bool,
-    timed_out_waiting_for_rehydration: bool,
-    manual_reconnect_requested: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum RecoveryAction {
-    KeepSoftReconnect,
-    HardReconnectAndReloadSeed,
-}
-
-static RECOVERY_SEED: Lazy<Mutex<Option<RecoverySeed>>> = Lazy::new(|| Mutex::new(None));
-static RECOVERY_EPOCH: AtomicU64 = AtomicU64::new(0);
-static RECOVERY_CONTEXT_REHYDRATED_EPOCH: AtomicU64 = AtomicU64::new(0);
-static RECOVERY_QUEUE_REHYDRATED_EPOCH: AtomicU64 = AtomicU64::new(0);
-static WAITING_FOR_RECONNECT_REHYDRATION: AtomicBool = AtomicBool::new(false);
 
 // Connection state tracking - for transparency dashboard
 static RECONNECT_ATTEMPT: AtomicU32 = AtomicU32::new(0);
@@ -311,175 +277,6 @@ fn set_pending_play(request: PendingPlayRequest) {
 
 fn clear_pending_play() {
     *PENDING_PLAY.lock().unwrap() = None;
-}
-
-fn clear_recovery_bookkeeping() {
-    *RECOVERY_SEED.lock().unwrap() = None;
-    RECOVERY_EPOCH.store(0, Ordering::SeqCst);
-    RECOVERY_CONTEXT_REHYDRATED_EPOCH.store(0, Ordering::SeqCst);
-    RECOVERY_QUEUE_REHYDRATED_EPOCH.store(0, Ordering::SeqCst);
-    WAITING_FOR_RECONNECT_REHYDRATION.store(false, Ordering::SeqCst);
-    LAST_NEXT_TRACK_COUNT.store(0, Ordering::SeqCst);
-}
-
-fn clear_recovery_caches() {
-    CURRENT_DURATION_MS.store(0, Ordering::SeqCst);
-    POSITION_MS.store(0, Ordering::SeqCst);
-    POSITION_TIMESTAMP_MS.store(0, Ordering::SeqCst);
-    RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
-    *CURRENT_TRACK_URI.lock().unwrap() = None;
-    *CURRENT_CONTEXT_URI.lock().unwrap() = None;
-    clear_pending_play();
-    clear_recovery_bookkeeping();
-}
-
-fn capture_recovery_seed() -> RecoverySeed {
-    RecoverySeed {
-        was_active: IS_ACTIVE_DEVICE.load(Ordering::SeqCst),
-        was_playing: IS_PLAYING.load(Ordering::SeqCst),
-        current_track_uri: CURRENT_TRACK_URI.lock().unwrap().clone(),
-        current_context_uri: CURRENT_CONTEXT_URI.lock().unwrap().clone(),
-        position_ms: POSITION_MS.load(Ordering::SeqCst),
-        had_next_tracks: LAST_NEXT_TRACK_COUNT.load(Ordering::SeqCst) > 0,
-    }
-}
-
-fn recovery_action_after_soft_reconnect(
-    seed: &RecoverySeed,
-    signals: &RecoverySignals,
-) -> RecoveryAction {
-    if seed.was_active
-        && seed.was_playing
-        && seed.had_next_tracks
-        && seed.current_context_uri.is_some()
-        && signals.timed_out_waiting_for_rehydration
-        && !signals.got_fresh_context_for_epoch
-        && !signals.got_fresh_queue_for_epoch
-        && !signals.manual_reconnect_requested
-    {
-        return RecoveryAction::HardReconnectAndReloadSeed;
-    }
-
-    RecoveryAction::KeepSoftReconnect
-}
-
-fn current_recovery_signals(epoch: u64) -> RecoverySignals {
-    RecoverySignals {
-        got_fresh_context_for_epoch:
-            RECOVERY_CONTEXT_REHYDRATED_EPOCH.load(Ordering::SeqCst) == epoch,
-        got_fresh_queue_for_epoch:
-            RECOVERY_QUEUE_REHYDRATED_EPOCH.load(Ordering::SeqCst) == epoch,
-        timed_out_waiting_for_rehydration: true,
-        manual_reconnect_requested: false,
-    }
-}
-
-fn mark_recovery_context_rehydrated(reason: &str) {
-    if !WAITING_FOR_RECONNECT_REHYDRATION.load(Ordering::SeqCst) {
-        return;
-    }
-
-    let epoch = RECOVERY_EPOCH.load(Ordering::SeqCst);
-    if epoch == 0 {
-        return;
-    }
-
-    debug!(
-        "[WAKE +{}ms] Recovery epoch {} rehydrated context via {}",
-        elapsed_since_wake_ms(),
-        epoch,
-        reason
-    );
-    RECOVERY_CONTEXT_REHYDRATED_EPOCH.store(epoch, Ordering::SeqCst);
-}
-
-fn mark_recovery_queue_rehydrated(reason: &str) {
-    if !WAITING_FOR_RECONNECT_REHYDRATION.load(Ordering::SeqCst) {
-        return;
-    }
-
-    let epoch = RECOVERY_EPOCH.load(Ordering::SeqCst);
-    if epoch == 0 {
-        return;
-    }
-
-    debug!(
-        "[WAKE +{}ms] Recovery epoch {} rehydrated queue via {}",
-        elapsed_since_wake_ms(),
-        epoch,
-        reason
-    );
-    RECOVERY_QUEUE_REHYDRATED_EPOCH.store(epoch, Ordering::SeqCst);
-}
-
-fn finish_recovery_tracking() {
-    WAITING_FOR_RECONNECT_REHYDRATION.store(false, Ordering::SeqCst);
-    *RECOVERY_SEED.lock().unwrap() = None;
-}
-
-fn load_recovery_seed(spirc: &Arc<Spirc>, seed: &RecoverySeed) -> i32 {
-    if let Some(context_uri) = seed.current_context_uri.clone().filter(|uri| !uri.is_empty()) {
-        let playing_track = seed.current_track_uri.clone().map(PlayingTrack::Uri);
-        debug!(
-            "Recovery fallback: loading context {} at {}ms (track hint: {:?})",
-            context_uri, seed.position_ms, playing_track
-        );
-
-        let load_request = LoadRequest::from_context_uri(
-            context_uri,
-            LoadRequestOptions {
-                start_playing: seed.was_playing,
-                seek_to: seed.position_ms,
-                playing_track,
-                ..Default::default()
-            },
-        );
-
-        match spirc.load(load_request) {
-            Ok(_) => {
-                IS_ACTIVE_DEVICE.store(seed.was_active, Ordering::SeqCst);
-                IS_PLAYING.store(seed.was_playing, Ordering::SeqCst);
-                return 0;
-            }
-            Err(e) => {
-                debug!("Recovery fallback context load failed: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    return ERROR_NEEDS_REINIT;
-                }
-            }
-        }
-    }
-
-    if let Some(track_uri) = seed.current_track_uri.clone().filter(|uri| !uri.is_empty()) {
-        debug!(
-            "Recovery fallback: loading single track {} at {}ms",
-            track_uri, seed.position_ms
-        );
-        let load_request = LoadRequest::from_tracks(
-            vec![track_uri],
-            LoadRequestOptions {
-                start_playing: seed.was_playing,
-                seek_to: seed.position_ms,
-                ..Default::default()
-            },
-        );
-
-        match spirc.load(load_request) {
-            Ok(_) => {
-                IS_ACTIVE_DEVICE.store(seed.was_active, Ordering::SeqCst);
-                IS_PLAYING.store(seed.was_playing, Ordering::SeqCst);
-                return 0;
-            }
-            Err(e) => {
-                debug!("Recovery fallback track load failed: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    return ERROR_NEEDS_REINIT;
-                }
-            }
-        }
-    }
-
-    ERROR_GENERAL
 }
 
 fn update_playback_options(shuffle: bool, repeat_track: bool, repeat_context: bool) {
@@ -915,16 +712,6 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
                     if let Some(cluster) = cluster_update.cluster.into_option() {
                         notify_active_device_id(&cluster.active_device_id);
                         if let Some(player_state) = cluster.player_state.into_option() {
-                            if !player_state.context_uri.is_empty() {
-                                mark_recovery_context_rehydrated(
-                                    "cluster player_state.context_uri",
-                                );
-                            }
-                            if !player_state.next_tracks.is_empty() {
-                                LAST_NEXT_TRACK_COUNT
-                                    .store(player_state.next_tracks.len() as u32, Ordering::SeqCst);
-                                mark_recovery_queue_rehydrated("cluster next_tracks");
-                            }
                             send_playback_state(&player_state);
                             process_and_send_queue(player_state);
                         }
@@ -989,20 +776,8 @@ fn spawn_reconnection_loop() {
     );
 
     RUNTIME.spawn(async {
-        let recovery_seed = capture_recovery_seed();
-        debug!(
-            "[WAKE +{}ms] Captured recovery seed: active={}, playing={}, context={:?}, track={:?}, position={}ms, had_next_tracks={}",
-            elapsed_since_wake_ms(),
-            recovery_seed.was_active,
-            recovery_seed.was_playing,
-            recovery_seed.current_context_uri,
-            recovery_seed.current_track_uri,
-            recovery_seed.position_ms,
-            recovery_seed.had_next_tracks
-        );
-        *RECOVERY_SEED.lock().unwrap() = Some(recovery_seed.clone());
-        let was_playing = recovery_seed.was_playing;
-        let was_active = recovery_seed.was_active;
+        let was_playing = IS_PLAYING.load(Ordering::SeqCst);
+        let was_active = IS_ACTIVE_DEVICE.load(Ordering::SeqCst);
 
         let delays = [0u64, 2, 5, 10, 30, 30, 30, 30, 30, 30];
 
@@ -1010,11 +785,6 @@ fn spawn_reconnection_loop() {
             if *delay > 0 {
                 tokio::time::sleep(Duration::from_secs(*delay)).await;
             }
-
-            let recovery_epoch = RECOVERY_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
-            RECOVERY_CONTEXT_REHYDRATED_EPOCH.store(0, Ordering::SeqCst);
-            RECOVERY_QUEUE_REHYDRATED_EPOCH.store(0, Ordering::SeqCst);
-            WAITING_FOR_RECONNECT_REHYDRATION.store(false, Ordering::SeqCst);
 
             debug!("[WAKE +{}ms] Reconnect attempt {}", elapsed_since_wake_ms(), attempt + 1);
             RECONNECT_ATTEMPT.store(attempt as u32 + 1, Ordering::SeqCst);
@@ -1053,87 +823,43 @@ fn spawn_reconnection_loop() {
                     Ok(_) => {
                         debug!("[WAKE +{}ms] Soft reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
                         RECONNECTING.store(false, Ordering::SeqCst);
-                        WAITING_FOR_RECONNECT_REHYDRATION.store(true, Ordering::SeqCst);
+
+                        // The new Spirc has no context — if we were mid-playlist the new Spirc
+                        // won't know what track comes next and will stop when the current one ends.
+                        // Reload the context immediately so Spirc can advance through the playlist.
+                        // This causes a brief seek-to-position blip, which is better than stopping.
+                        if was_playing && was_active {
+                            let context_uri = CURRENT_CONTEXT_URI.lock().unwrap().clone();
+                            let track_uri = CURRENT_TRACK_URI.lock().unwrap().clone();
+                            let position = POSITION_MS.load(Ordering::SeqCst);
+                            if let Some(ctx) = context_uri.filter(|u| !u.is_empty()) {
+                                let spirc = SPIRC.lock().unwrap().as_ref().cloned();
+                                if let Some(spirc) = spirc {
+                                    let load_request = LoadRequest::from_context_uri(
+                                        ctx.clone(),
+                                        LoadRequestOptions {
+                                            start_playing: true,
+                                            seek_to: position,
+                                            playing_track: track_uri.map(PlayingTrack::Uri),
+                                            ..Default::default()
+                                        },
+                                    );
+                                    debug!(
+                                        "[WAKE +{}ms] Soft reconnect: reloading context {} at {}ms to restore Spirc queue",
+                                        elapsed_since_wake_ms(), ctx, position
+                                    );
+                                    if let Err(e) = spirc.load(load_request) {
+                                        debug!("Soft reconnect: context reload failed: {:?}", e);
+                                    }
+                                }
+                            }
+                        }
+
                         // The Player keeps playing existing audio during soft reconnect.
                         // But if a new play command was issued right before the disconnect,
                         // the audio key fetch on the old session will time out (~1.5s) and
                         // librespot will silently fail (context unavailable on new Spirc).
                         // Detect this: if the Playing event never fires within 3s, retry.
-                        let seed_for_watchdog = recovery_seed.clone();
-                        let token_for_watchdog = token.clone();
-                        RUNTIME.spawn(async move {
-                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                            let signals = current_recovery_signals(recovery_epoch);
-                            let action = recovery_action_after_soft_reconnect(
-                                &seed_for_watchdog,
-                                &signals,
-                            );
-
-                            match action {
-                                RecoveryAction::KeepSoftReconnect => {
-                                    finish_recovery_tracking();
-                                }
-                                RecoveryAction::HardReconnectAndReloadSeed => {
-                                    if RECONNECTING.swap(true, Ordering::SeqCst) {
-                                        return;
-                                    }
-                                    debug!(
-                                        "[WAKE +{}ms] Soft reconnect failed to rehydrate recovery epoch {}, escalating to hard reconnect",
-                                        elapsed_since_wake_ms(),
-                                        recovery_epoch
-                                    );
-                                    do_reconnect_cleanup();
-                                    match init_player_async(
-                                        &token_for_watchdog,
-                                        seed_for_watchdog.was_active,
-                                    )
-                                    .await
-                                    {
-                                        Ok(_) => {
-                                            let load_result = {
-                                                let spirc = SPIRC.lock().unwrap().as_ref().cloned();
-                                                match spirc {
-                                                    Some(spirc) if seed_for_watchdog.was_playing => {
-                                                        load_recovery_seed(
-                                                            &spirc,
-                                                            &seed_for_watchdog,
-                                                        )
-                                                    }
-                                                    Some(_) => 0,
-                                                    None => ERROR_GENERAL,
-                                                }
-                                            };
-                                            if load_result != 0 {
-                                                debug!(
-                                                    "[WAKE +{}ms] Recovery seed reload failed with {}",
-                                                    elapsed_since_wake_ms(),
-                                                    load_result
-                                                );
-                                            }
-                                            finish_recovery_tracking();
-                                            RECONNECTING.store(false, Ordering::SeqCst);
-                                        }
-                                        Err(e) => {
-                                            debug!(
-                                                "[WAKE +{}ms] Hard reconnect fallback failed: {}",
-                                                elapsed_since_wake_ms(),
-                                                e
-                                            );
-                                            {
-                                                let mut last_error = LAST_ERROR.lock().unwrap();
-                                                *last_error = Some(format!(
-                                                    "Recovery fallback failed: {}",
-                                                    e
-                                                ));
-                                            }
-                                            finish_recovery_tracking();
-                                            RECONNECTING.store(false, Ordering::SeqCst);
-                                            notify_connection_state_change();
-                                        }
-                                    }
-                                }
-                            }
-                        });
                         let pending = PENDING_PLAY.lock().unwrap().clone();
                         if let Some(p) = pending {
                             debug!("[WAKE +{}ms] Soft reconnect: pending play detected (id={}), spawning watchdog", elapsed_since_wake_ms(), p.request_id);
@@ -1144,13 +870,6 @@ fn spawn_reconnection_loop() {
                                 // None means Playing fired and cleared it (success) or stop was called.
                                 let still_id = PENDING_PLAY.lock().unwrap().as_ref().map(|s| s.request_id);
                                 if still_id == Some(p.request_id) {
-                                    if RECONNECTING.load(Ordering::SeqCst) {
-                                        debug!(
-                                            "Pending play watchdog: reconnect in progress, skipping re-issue for id={}",
-                                            p.request_id
-                                        );
-                                        return;
-                                    }
                                     // Don't clear before the call: if the re-issue fails
                                     // (e.g. session flapped again), the pending play remains set
                                     // and the next soft reconnect can try again.
@@ -1334,8 +1053,6 @@ fn do_reconnect_cleanup() {
         let mut device_id_guard = DEVICE_ID.lock().unwrap();
         *device_id_guard = None;
     }
-
-    clear_recovery_caches();
 
     // Reset session connection state
     {
@@ -1750,14 +1467,6 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                                 prev_tracks.len()
                             );
                             update_current_context_uri(&context_uri);
-                            if !context_uri.is_empty() {
-                                mark_recovery_context_rehydrated("set_queue context");
-                            }
-                            LAST_NEXT_TRACK_COUNT
-                                .store(next_tracks.len() as u32, Ordering::SeqCst);
-                            if !next_tracks.is_empty() {
-                                mark_recovery_queue_rehydrated("set_queue next_tracks");
-                            }
                             let cb_guard = SET_QUEUE_CALLBACK.lock().unwrap();
                             if let Some(callback) = *cb_guard {
                                 let cb = callback;
@@ -2119,7 +1828,6 @@ fn process_and_send_queue(player_state: PlayerState) {
     if !player_state.context_uri.is_empty() {
         debug!("Queue context URI: {}", player_state.context_uri);
         update_current_context_uri(&player_state.context_uri);
-        mark_recovery_context_rehydrated("process_and_send_queue context");
     }
 
     let cb_guard = QUEUE_CALLBACK.lock().unwrap();
@@ -2203,10 +1911,6 @@ fn process_and_send_queue(player_state: PlayerState) {
             next_tracks.len(),
             prev_tracks.len()
         );
-        LAST_NEXT_TRACK_COUNT.store(next_tracks.len() as u32, Ordering::SeqCst);
-        if !next_tracks.is_empty() {
-            mark_recovery_queue_rehydrated("process_and_send_queue next_tracks");
-        }
 
         let queue_state = QueueState {
             track: current_track,
@@ -2740,9 +2444,11 @@ pub extern "C" fn spotifly_cleanup() {
     IS_PLAYING.store(false, Ordering::SeqCst);
     IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
     SHUFFLE_STATE.store(false, Ordering::SeqCst);
-    clear_recovery_caches();
+    clear_pending_play();
     REPEAT_TRACK_STATE.store(false, Ordering::SeqCst);
     REPEAT_CONTEXT_STATE.store(false, Ordering::SeqCst);
+    POSITION_MS.store(0, Ordering::SeqCst);
+    POSITION_TIMESTAMP_MS.store(0, Ordering::SeqCst);
     LAST_VOLUME.store(0, Ordering::SeqCst);
     {
         let mut last_device = LAST_ACTIVE_DEVICE_ID.lock().unwrap();
