@@ -824,34 +824,18 @@ fn spawn_reconnection_loop() {
                         debug!("[WAKE +{}ms] Soft reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
                         RECONNECTING.store(false, Ordering::SeqCst);
 
-                        // The new Spirc has no context — if we were mid-playlist the new Spirc
-                        // won't know what track comes next and will stop when the current one ends.
+                        // The new Spirc has no context — if we were mid-playlist it won't know
+                        // what track comes next and will stop when the current one ends.
                         // Reload the context immediately so Spirc can advance through the playlist.
                         // This causes a brief seek-to-position blip, which is better than stopping.
                         if was_playing && was_active {
-                            let context_uri = CURRENT_CONTEXT_URI.lock().unwrap().clone();
-                            let track_uri = CURRENT_TRACK_URI.lock().unwrap().clone();
-                            let position = POSITION_MS.load(Ordering::SeqCst);
-                            if let Some(ctx) = context_uri.filter(|u| !u.is_empty()) {
-                                let spirc = SPIRC.lock().unwrap().as_ref().cloned();
-                                if let Some(spirc) = spirc {
-                                    let load_request = LoadRequest::from_context_uri(
-                                        ctx.clone(),
-                                        LoadRequestOptions {
-                                            start_playing: true,
-                                            seek_to: position,
-                                            playing_track: track_uri.map(PlayingTrack::Uri),
-                                            ..Default::default()
-                                        },
-                                    );
-                                    debug!(
-                                        "[WAKE +{}ms] Soft reconnect: reloading context {} at {}ms to restore Spirc queue",
-                                        elapsed_since_wake_ms(), ctx, position
-                                    );
-                                    if let Err(e) = spirc.load(load_request) {
-                                        debug!("Soft reconnect: context reload failed: {:?}", e);
-                                    }
-                                }
+                            let spirc = SPIRC.lock().unwrap().as_ref().cloned();
+                            if let Some(spirc) = spirc {
+                                debug!(
+                                    "[WAKE +{}ms] Soft reconnect: reloading context to restore Spirc queue",
+                                    elapsed_since_wake_ms()
+                                );
+                                resume_via_load(&spirc);
                             }
                         }
 
