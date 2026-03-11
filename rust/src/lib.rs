@@ -1,5 +1,8 @@
 mod proxy_sink;
 
+#[cfg(test)]
+mod reconnect_recovery_tests;
+
 use futures_util::StreamExt;
 use librespot_connect::{ConnectConfig, LoadRequest, LoadRequestOptions, PlayingTrack, Spirc};
 use librespot_core::cache::Cache;
@@ -277,6 +280,16 @@ fn set_pending_play(request: PendingPlayRequest) {
 
 fn clear_pending_play() {
     *PENDING_PLAY.lock().unwrap() = None;
+}
+
+fn clear_recovery_caches() {
+    CURRENT_DURATION_MS.store(0, Ordering::SeqCst);
+    POSITION_MS.store(0, Ordering::SeqCst);
+    POSITION_TIMESTAMP_MS.store(0, Ordering::SeqCst);
+    RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
+    *CURRENT_TRACK_URI.lock().unwrap() = None;
+    *CURRENT_CONTEXT_URI.lock().unwrap() = None;
+    clear_pending_play();
 }
 
 fn update_playback_options(shuffle: bool, repeat_track: bool, repeat_context: bool) {
@@ -1021,6 +1034,8 @@ fn do_reconnect_cleanup() {
         let mut device_id_guard = DEVICE_ID.lock().unwrap();
         *device_id_guard = None;
     }
+
+    clear_recovery_caches();
 
     // Reset session connection state
     {
@@ -2412,11 +2427,9 @@ pub extern "C" fn spotifly_cleanup() {
     IS_PLAYING.store(false, Ordering::SeqCst);
     IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
     SHUFFLE_STATE.store(false, Ordering::SeqCst);
-    clear_pending_play();
+    clear_recovery_caches();
     REPEAT_TRACK_STATE.store(false, Ordering::SeqCst);
     REPEAT_CONTEXT_STATE.store(false, Ordering::SeqCst);
-    POSITION_MS.store(0, Ordering::SeqCst);
-    POSITION_TIMESTAMP_MS.store(0, Ordering::SeqCst);
     LAST_VOLUME.store(0, Ordering::SeqCst);
     {
         let mut last_device = LAST_ACTIVE_DEVICE_ID.lock().unwrap();
