@@ -150,6 +150,17 @@ final class PlaybackViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+        // Reset stale playback state — after reinit Rust has no track/context loaded.
+        // isPlaying must be false before updateNowPlayingPosition() so it writes rate=0.
+        // updateNowPlayingPosition() must be called before zeroing trackDurationMs because
+        // it guards on trackDurationMs > 0 and would silently no-op otherwise.
+        isPlaying = false
+        updateNowPlayingPosition()
+        currentTrackUri = nil
+        trackDurationMs = 0
+        currentPositionMs = 0
+        positionAnchorMs = 0
+        positionAnchorTime = CACurrentMediaTime()
         isLoading = false
     }
 
