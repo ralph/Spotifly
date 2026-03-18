@@ -7,11 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- App becomes unresponsive after long idle period: the Rust reconnect loop can authenticate successfully but fail to bring Spirc up, leaving playback controls permanently dead. A watchdog now triggers a full reinit after 2 minutes of failed reconnection.
-- System wake handler now uses full reinit (`forceReinitialize`) instead of the Rust reconnect loop (`forceReconnect`), which had the same stuck-Spirc failure mode.
-- Manual reconnect (Speakers tab) now clears stale playback state after reinit, so the now-playing bar resets to idle instead of showing a phantom paused track that would silently fail on resume.
-
 ## [1.2.5] - 2026-03-11
 
 ### Added
