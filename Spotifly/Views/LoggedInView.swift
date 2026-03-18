@@ -73,6 +73,8 @@ struct LoggedInView: View {
         playbackViewModel.setStore(store)
     }
 
+    private let reconnectWatchdogTimeoutSeconds: Double = 120
+
     @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
 
     @State private var selectedNavigationItem: NavigationItem? = .startpage
@@ -95,6 +97,7 @@ struct LoggedInView: View {
     // Sidebar width for dynamic now playing bar positioning
     @State private var sidebarWidth: CGFloat = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var reconnectWatchdogTask: Task<Void, Never>?
 
     /// Determines if we need three-column layout
     private var needsThreeColumnLayout: Bool {
@@ -212,6 +215,9 @@ struct LoggedInView: View {
             await queueService.fetchInitialPlaybackState(accessToken: token)
         }
         .onReceive(SpotifyPlayer.sessionConnected) {
+            // Cancel watchdog — session recovered on its own (or via reinit).
+            reconnectWatchdogTask?.cancel()
+            reconnectWatchdogTask = nil
             // Refresh playback state after session reconnects.
             // After a transfer the Web API returns stale data for a few seconds,
             // so we delay the fetch to let the server catch up.
@@ -220,6 +226,22 @@ struct LoggedInView: View {
                 let token = await session.validAccessToken()
                 await deviceService.waitForTransferSettling()
                 await queueService.fetchInitialPlaybackState(accessToken: token)
+            }
+        }
+        .onReceive(SpotifyPlayer.sessionDisconnected) {
+            // Cancel any prior watchdog and start a fresh one.
+            // If isSessionConnected is still false after the timeout, the Rust loop has stalled
+            // (authenticated but Spirc not ready) — force a full reinit.
+            reconnectWatchdogTask?.cancel()
+            reconnectWatchdogTask = Task {
+                // try? is load-bearing: Task.sleep throws CancellationError when cancelled,
+                // which would skip the guard below. try? silences it so the guard runs
+                // and cleanly returns via !Task.isCancelled.
+                try? await Task.sleep(for: .seconds(reconnectWatchdogTimeoutSeconds))
+                guard !Task.isCancelled, !SpotifyPlayer.isSessionConnected else { return }
+                debugLog("LoggedInView", "Watchdog: still disconnected after \(Int(reconnectWatchdogTimeoutSeconds))s, forcing reinit")
+                let token = await session.validAccessToken()
+                await playbackViewModel.forceReinitialize(accessToken: token)
             }
         }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
