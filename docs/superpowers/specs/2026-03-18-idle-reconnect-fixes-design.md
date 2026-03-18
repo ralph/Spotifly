@@ -52,6 +52,8 @@ Subscribe to session disconnect/connect publishers:
 .onReceive(SpotifyPlayer.sessionDisconnected) {
     reconnectWatchdogTask?.cancel()
     reconnectWatchdogTask = Task {
+        // try? is load-bearing: cancellation throws CancellationError which would
+        // skip the guard; try? silences it so the guard can check isCancelled cleanly.
         try? await Task.sleep(for: .seconds(reconnectWatchdogTimeoutSeconds))
         guard !Task.isCancelled, !SpotifyPlayer.isSessionConnected else { return }
         debugLog("LoggedInView", "Watchdog: still disconnected after \(Int(reconnectWatchdogTimeoutSeconds))s, forcing reinit")
@@ -75,14 +77,16 @@ The watchdog fires only if `isSessionConnected` is still false after the full ti
 At the end of `forceReinitialize`, after the Spirc ready wait loop, unconditionally reset playback state:
 
 ```swift
-// Reset stale playback state — after reinit Rust has no track/context loaded
+// Reset stale playback state — after reinit Rust has no track/context loaded.
+// Call updateNowPlayingPosition() before zeroing trackDurationMs: the method
+// guards on trackDurationMs > 0 and would silently no-op if called after.
+updateNowPlayingPosition()  // clears playback rate in Now Playing center
 isPlaying = false
 currentTrackUri = nil
 trackDurationMs = 0
 currentPositionMs = 0
 positionAnchorMs = 0
 positionAnchorTime = CACurrentMediaTime()
-updateNowPlayingPosition()
 ```
 
 This applies to all callers (wake handler, watchdog, manual reconnect button). The user sees a clean "nothing playing" state and can start fresh playback. Losing track/queue state is explicitly acceptable per requirements.
@@ -116,7 +120,7 @@ didWakeNotification fires
 | Watchdog fires while user is also clicking manual reconnect | Both call `forceReinitialize`; it's safe — sets `isLoading=true`/`isInitialized=false` upfront, second call waits on same Spirc poll |
 | Brief network blip (< 2 min) | `sessionDisconnected` fires, Rust self-recovers, `sessionConnected` fires, watchdog cancelled — no reinit |
 | Machine sleeps and wakes before watchdog fires | Wake handler calls `forceReinitialize` directly; `sessionConnected` fires, watchdog cancelled |
-| `session` reference in watchdog | Watchdog is defined inside the `.onReceive` on the view, which already has `@Environment(SpotifySession.self) private var session` in scope |
+| `session` reference in watchdog | Watchdog is defined inside `.onReceive` on the view, which has `session` (a `@State`-stored `SpotifySession`) in scope — captured correctly |
 
 ## Files Changed
 
