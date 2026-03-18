@@ -232,10 +232,15 @@ struct LoggedInView: View {
             SpotifyPlayer.disconnect()
         }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
-            // After system wake, the TCP connection to Spotify servers is likely dead.
-            // Force a reconnection now so playback works reliably when user clicks play.
-            debugLog("LoggedInView", "System wake detected, forcing reconnection")
-            SpotifyPlayer.forceReconnect()
+            // After system wake, the TCP connection to Spotify servers is dead.
+            // forceReconnect() (the Rust reconnect loop) can get stuck: it may authenticate
+            // successfully but fail to bring Spirc up, leaving the app permanently broken.
+            // forceReinitialize does a full Rust teardown + reinit which is reliably clean.
+            debugLog("LoggedInView", "System wake detected, forcing full reinit")
+            Task {
+                let token = await session.validAccessToken()
+                await playbackViewModel.forceReinitialize(accessToken: token)
+            }
         }
         .onChange(of: navigationCoordinator.pendingNavigationItem) { _, newValue in
             if let pendingItem = newValue {
