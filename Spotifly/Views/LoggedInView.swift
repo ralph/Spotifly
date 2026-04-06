@@ -419,7 +419,11 @@ struct LoggedInView: View {
 
             if let artistId = album.artistId {
                 Button {
-                    navigationCoordinator.push(.artist(id: artistId))
+                    navigationCoordinator.navigateToArtistSection(
+                        artistId: artistId,
+                        from: .albums,
+                        selectionId: album.id
+                    )
                 } label: {
                     Label("track.menu.go_to_artist", systemImage: "person")
                 }
