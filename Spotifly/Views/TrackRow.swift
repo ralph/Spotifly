@@ -218,6 +218,9 @@ struct TrackRow: View {
             guard let onDoubleTap else { return }
             Task { await onDoubleTap() }
         }
+        .task(id: track.id) {
+            await resolveFavoriteStatusIfNeeded()
+        }
         .alert("playlist.new.title", isPresented: $showNewPlaylistDialog) {
             TextField("playlist.new.placeholder", text: $newPlaylistName)
             Button("action.cancel", role: .cancel) {
@@ -251,6 +254,13 @@ struct TrackRow: View {
 
             isTogglingFavorite = false
         }
+    }
+
+    private func resolveFavoriteStatusIfNeeded() async {
+        guard !store.hasResolvedFavoriteStatus(for: track.id) else { return }
+
+        let token = await session.validAccessToken()
+        await trackService.ensureFavoriteStatuses(trackIds: [track.id], accessToken: token)
     }
 
     /// Create a new playlist and add the track to it

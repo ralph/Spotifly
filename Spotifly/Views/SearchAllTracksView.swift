@@ -11,6 +11,7 @@ struct SearchAllTracksView: View {
     let tracks: [Track]
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
+    @Environment(TrackService.self) private var trackService
 
     var body: some View {
         ScrollView {
@@ -84,6 +85,10 @@ struct SearchAllTracksView: View {
             }
         }
         .navigationTitle("section.tracks")
+        .task(id: tracks.map(\.id).joined()) {
+            let token = await session.validAccessToken()
+            await trackService.refreshFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
+        }
     }
 
     private func playAllTracks() {

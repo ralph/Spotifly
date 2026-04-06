@@ -18,6 +18,7 @@ struct PlaylistDetailView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
+    @Environment(TrackService.self) private var trackService
     @Environment(PlaylistService.self) private var playlistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(\.displayScale) private var displayScale
@@ -99,6 +100,9 @@ struct PlaylistDetailView: View {
                 await loadPlaylist()
             }
             await loadTracks()
+        }
+        .task(id: tracks.map(\.id).joined()) {
+            await resolveFavoriteStatusesForTracks()
         }
         .onChange(of: playlistId) {
             if let playlist {
@@ -394,6 +398,13 @@ struct PlaylistDetailView: View {
             editingPlaylistName = ""
             editingPlaylistDescription = ""
         }
+    }
+
+    private func resolveFavoriteStatusesForTracks() async {
+        guard !tracks.isEmpty else { return }
+
+        let token = await session.validAccessToken()
+        await trackService.refreshFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
     }
 
     private func loadPlaylist() async {

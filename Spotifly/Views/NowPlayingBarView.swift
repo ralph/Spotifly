@@ -68,6 +68,9 @@ struct NowPlayingBarView: View {
             } message: {
                 Text("playlist.new.message")
             }
+            .task(id: currentTrackId) {
+                await resolveCurrentTrackFavoriteStatusIfNeeded()
+            }
     }
 
     // MARK: - Player Layout
@@ -355,7 +358,11 @@ struct NowPlayingBarView: View {
             Task {
                 guard let trackId = currentTrackId else { return }
                 let token = await session.validAccessToken()
-                try? await trackService.toggleFavorite(trackId: trackId, accessToken: token)
+                do {
+                    try await trackService.toggleFavorite(trackId: trackId, accessToken: token)
+                } catch {
+                    playbackViewModel.errorMessage = "Failed to update favorite: \(error.localizedDescription)"
+                }
             }
         } label: {
             Image(systemName: isCurrentTrackFavorited ? "heart.fill" : "heart")
@@ -363,6 +370,13 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(isCurrentTrackFavorited ? .red : .secondary)
         }
         .buttonStyle(.plain)
+    }
+
+    private func resolveCurrentTrackFavoriteStatusIfNeeded() async {
+        guard let trackId = currentTrackId else { return }
+
+        let token = await session.validAccessToken()
+        await trackService.refreshFavoriteStatuses(trackIds: [trackId], accessToken: token)
     }
 
     /// Unified volume (0-100 scale).

@@ -21,9 +21,9 @@ extension Notification.Name {
 struct QueueListView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
-    @Environment(QueueService.self) private var queueService
     @Environment(DeviceService.self) private var deviceService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(TrackService.self) private var trackService
     @Bindable var playbackViewModel: PlaybackViewModel
 
     @State private var scrollProxy: ScrollViewProxy?
@@ -120,15 +120,11 @@ struct QueueListView: View {
             }
         }
         .task {
-            // Load favorites for queue items (queue itself auto-updates via Spirc subscription)
-            let token = await session.validAccessToken()
-            await queueService.loadFavorites(accessToken: token)
+            await syncQueueFavoriteStatuses()
         }
         .onChange(of: store.queue.currentTrack?.trackId) { _, _ in
-            // When queue updates, refresh favorites for new items
             Task {
-                let token = await session.validAccessToken()
-                await queueService.loadFavorites(accessToken: token)
+                await syncQueueFavoriteStatuses()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .scrollToCurrentTrack)) { _ in
@@ -201,6 +197,14 @@ struct QueueListView: View {
         case .artist:
             navigationCoordinator.navigateToArtistSection(artistId: id, from: .queue)
         }
+    }
+
+    private func syncQueueFavoriteStatuses() async {
+        let trackIds = allQueueItems.map(\.track.id)
+        guard !trackIds.isEmpty else { return }
+
+        let token = await session.validAccessToken()
+        await trackService.refreshFavoriteStatuses(trackIds: trackIds, accessToken: token)
     }
 
     // MARK: - Normal Mode Content

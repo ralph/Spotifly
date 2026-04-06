@@ -102,8 +102,8 @@ final class QueueService {
         pendingQueueRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled, let self else { return }
-            let token = await self.tokenProvider()
-            await self.fetchInitialPlaybackState(accessToken: token)
+            let token = await tokenProvider()
+            await fetchInitialPlaybackState(accessToken: token)
         }
     }
 
@@ -320,34 +320,6 @@ final class QueueService {
             }
         } catch {
             debugLog("QueueService", "Failed to fetch initial playback state: \(error)")
-        }
-    }
-
-    // MARK: - Favorites Loading
-
-    /// Batch check favorite status for all queue tracks and store in AppStore
-    func loadFavorites(accessToken: String) async {
-        // Collect all queue track IDs
-        var allIds = store.queue.previousTracks.map(\.trackId)
-        if let currentId = store.queue.currentTrack?.trackId {
-            allIds.append(currentId)
-        }
-        allIds.append(contentsOf: store.queue.nextTracks.map(\.trackId))
-
-        // Deduplicate IDs (queue can have duplicates)
-        var seenIds = Set<String>()
-        let trackIds = allIds.filter { seenIds.insert($0).inserted }
-
-        guard !trackIds.isEmpty else { return }
-
-        do {
-            let statuses = try await SpotifyAPI.checkSavedTracks(
-                accessToken: accessToken,
-                trackIds: trackIds,
-            )
-            store.updateFavoriteStatuses(statuses)
-        } catch {
-            // Silently fail - favorites just won't show
         }
     }
 }

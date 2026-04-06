@@ -74,7 +74,10 @@ final class AppStore {
     /// User's favorite track IDs (Set for O(1) lookup)
     private(set) var favoriteTrackIds: Set<String> = []
 
-    /// User's saved track IDs in display order (most recent first)
+    /// Track IDs whose favorite status has been resolved from the Web API
+    private(set) var resolvedFavoriteTrackIds: Set<String> = []
+
+    /// User's saved track IDs in display order for the Favorites section (most recent first)
     private(set) var savedTrackIds: [String] = []
 
     // MARK: - Pagination State
@@ -248,6 +251,11 @@ final class AppStore {
         favoriteTrackIds.contains(trackId)
     }
 
+    /// Check if a track's favorite status has already been resolved
+    func hasResolvedFavoriteStatus(for trackId: String) -> Bool {
+        resolvedFavoriteTrackIds.contains(trackId)
+    }
+
     /// Upsert a single track
     func upsertTrack(_ track: Track) {
         tracks[track.id] = track
@@ -382,16 +390,14 @@ final class AppStore {
         userArtistIds.append(contentsOf: ids)
     }
 
-    /// Set saved track IDs (replaces existing)
+    /// Set saved track IDs for the Favorites section (replaces existing list order only)
     func setSavedTrackIds(_ ids: [String]) {
         savedTrackIds = ids
-        favoriteTrackIds = Set(ids)
     }
 
-    /// Append saved track IDs (for pagination)
+    /// Append saved track IDs for Favorites pagination
     func appendSavedTrackIds(_ ids: [String]) {
         savedTrackIds.append(contentsOf: ids)
-        favoriteTrackIds.formUnion(ids)
     }
 
     // MARK: - Favorite Actions
@@ -399,6 +405,7 @@ final class AppStore {
     /// Add track to favorites (optimistic update)
     func addTrackToFavorites(_ trackId: String) {
         favoriteTrackIds.insert(trackId)
+        resolvedFavoriteTrackIds.insert(trackId)
         if !savedTrackIds.contains(trackId) {
             savedTrackIds.insert(trackId, at: 0)
         }
@@ -407,18 +414,26 @@ final class AppStore {
     /// Remove track from favorites (optimistic update)
     func removeTrackFromFavorites(_ trackId: String) {
         favoriteTrackIds.remove(trackId)
+        resolvedFavoriteTrackIds.insert(trackId)
         savedTrackIds.removeAll { $0 == trackId }
     }
 
     /// Update favorite status for multiple tracks (from API check)
     func updateFavoriteStatuses(_ statuses: [String: Bool]) {
         for (trackId, isFavorite) in statuses {
+            resolvedFavoriteTrackIds.insert(trackId)
             if isFavorite {
                 favoriteTrackIds.insert(trackId)
             } else {
                 favoriteTrackIds.remove(trackId)
             }
         }
+    }
+
+    /// Mark fetched Favorites-section tracks as favorited without changing list order.
+    func markTracksAsFavorite(_ trackIds: [String]) {
+        let statuses = Dictionary(uniqueKeysWithValues: trackIds.map { ($0, true) })
+        updateFavoriteStatuses(statuses)
     }
 
     // MARK: - Playlist Actions

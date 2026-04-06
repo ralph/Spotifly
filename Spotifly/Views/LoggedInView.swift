@@ -192,16 +192,13 @@ struct LoggedInView: View {
                 // Network/other errors - don't block startup, playback will fail later if not premium
             }
 
-            // Load favorites so heart indicators work everywhere
-            async let favorites: () = { try? await trackService.loadFavorites(accessToken: token) }()
-
             // Load startpage data (top artists, top tracks, recently played)
             let timeRange = TopItemsTimeRange(rawValue: topItemsTimeRange) ?? .mediumTerm
             async let topArtists: () = topItemsService.loadTopArtists(accessToken: token, timeRange: timeRange)
             async let topTracks: () = topItemsService.loadTopTracks(accessToken: token, timeRange: timeRange)
             async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
 
-            _ = await (favorites, topArtists, topTracks, recentlyPlayed)
+            _ = await (topArtists, topTracks, recentlyPlayed)
 
             // Set token provider for automatic reconnection
             playbackViewModel.setTokenProvider { await session.validAccessToken() }

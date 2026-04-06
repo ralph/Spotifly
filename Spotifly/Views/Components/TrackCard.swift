@@ -13,6 +13,7 @@ struct TrackCard: View {
     var currentSection: NavigationItem = .searchResults
 
     @Environment(SpotifySession.self) private var session
+    @Environment(TrackService.self) private var trackService
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
@@ -64,6 +65,10 @@ struct TrackCard: View {
                 selectionId: nil,
                 playbackViewModel: playbackViewModel,
             )
+        }
+        .task(id: track.id) {
+            let token = await session.validAccessToken()
+            await trackService.ensureFavoriteStatuses(trackIds: [track.id], accessToken: token)
         }
     }
 

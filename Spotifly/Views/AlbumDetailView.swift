@@ -19,6 +19,7 @@ struct AlbumDetailView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
+    @Environment(TrackService.self) private var trackService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(\.displayScale) private var displayScale
 
@@ -82,6 +83,9 @@ struct AlbumDetailView: View {
                 await loadAlbum()
             }
             await loadTracks()
+        }
+        .task(id: tracks.map(\.id).joined()) {
+            await resolveFavoriteStatusesForTracks()
         }
         .alert("album.remove.title", isPresented: $showRemoveConfirmation) {
             Button("action.cancel", role: .cancel) {}
@@ -259,6 +263,13 @@ struct AlbumDetailView: View {
         }
 
         isLoadingAlbum = false
+    }
+
+    private func resolveFavoriteStatusesForTracks() async {
+        guard !tracks.isEmpty else { return }
+
+        let token = await session.validAccessToken()
+        await trackService.refreshFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
     }
 
     private func loadTracks() async {

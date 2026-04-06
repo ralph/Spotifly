@@ -42,7 +42,7 @@ struct SearchResultsView: View {
             // Check favorite status for all search tracks
             let token = await session.validAccessToken()
             let trackIds = searchResults.tracks.map(\.id)
-            try? await trackService.checkFavoriteStatuses(trackIds: trackIds, accessToken: token)
+            await trackService.refreshFavoriteStatuses(trackIds: trackIds, accessToken: token)
         }
     }
 

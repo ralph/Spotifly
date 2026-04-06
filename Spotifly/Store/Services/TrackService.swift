@@ -57,6 +57,7 @@ final class TrackService {
         } else {
             store.appendSavedTrackIds(trackIds)
         }
+        store.markTracksAsFavorite(trackIds)
 
         // Update pagination state
         store.favoritesPagination.isLoaded = true
@@ -128,6 +129,27 @@ final class TrackService {
         store.updateFavoriteStatuses(statuses)
     }
 
+    /// Resolve favorite status for any tracks we haven't checked yet.
+    /// Callers should batch track IDs (e.g. all tracks in a list) for efficiency.
+    func ensureFavoriteStatuses(trackIds: [String], accessToken: String) async {
+        let unresolved = uniqueTrackIds(trackIds).filter { !store.hasResolvedFavoriteStatus(for: $0) }
+        guard !unresolved.isEmpty else { return }
+
+        for batch in batches(of: unresolved, size: 50) {
+            try? await checkFavoriteStatuses(trackIds: batch, accessToken: accessToken)
+        }
+    }
+
+    /// Refresh favorite status for the given tracks even if we have stale cached data.
+    func refreshFavoriteStatuses(trackIds: [String], accessToken: String) async {
+        let uniqueIds = uniqueTrackIds(trackIds)
+        guard !uniqueIds.isEmpty else { return }
+
+        for batch in batches(of: uniqueIds, size: 50) {
+            try? await checkFavoriteStatuses(trackIds: batch, accessToken: accessToken)
+        }
+    }
+
     // MARK: - Track Lookup
 
     /// Fetch and store a single track by ID
@@ -140,5 +162,16 @@ final class TrackService {
         let track = Track(from: apiTrack)
         store.upsertTrack(track)
         return track
+    }
+
+    private func uniqueTrackIds(_ trackIds: [String]) -> [String] {
+        var seen = Set<String>()
+        return trackIds.filter { seen.insert($0).inserted }
+    }
+
+    private func batches(of trackIds: [String], size: Int) -> [[String]] {
+        stride(from: 0, to: trackIds.count, by: size).map {
+            Array(trackIds[$0 ..< min($0 + size, trackIds.count)])
+        }
     }
 }
