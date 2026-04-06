@@ -85,6 +85,8 @@ struct LoggedInView: View {
     @State private var selectedAlbumId: String?
     @State private var selectedArtistId: String?
     @State private var selectedPlaylistId: String?
+    @State private var showLinkCopied = false
+    @State private var linkCopiedDismissTask: Task<Void, Never>?
 
     /// Blocking state shown instead of the main app
     enum BlockingState {
@@ -542,6 +544,14 @@ struct LoggedInView: View {
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()
                 pasteboard.setString(externalUrl, forType: .string)
+                showLinkCopied = true
+                linkCopiedDismissTask?.cancel()
+                linkCopiedDismissTask = Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if !Task.isCancelled {
+                        showLinkCopied = false
+                    }
+                }
             }
         } label: {
             Label("action.share", systemImage: "square.and.arrow.up")
@@ -549,6 +559,11 @@ struct LoggedInView: View {
         .labelStyle(.iconOnly)
         .help("action.share")
         .disabled(externalUrl == nil)
+        .popover(isPresented: $showLinkCopied, arrowEdge: .bottom) {
+            Text("action.link_copied")
+                .font(.callout)
+                .padding(8)
+        }
     }
 
     private func performSearch() {

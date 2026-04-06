@@ -35,6 +35,7 @@
 "action.cancel" = "Abbrechen";
 "action.create" = "Erstellen";
 "action.share" = "Teilen";
+"action.link_copied" = "Link kopiert";
 
 /* Track Context Menu */
 "track.menu.play_next" = "Als Nächstes spielen";

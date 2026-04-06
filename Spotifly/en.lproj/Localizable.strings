@@ -35,6 +35,7 @@
 "action.cancel" = "Cancel";
 "action.create" = "Create";
 "action.share" = "Share";
+"action.link_copied" = "Link copied";
 
 /* Track Context Menu */
 "track.menu.play_next" = "Play Next";
