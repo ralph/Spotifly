@@ -466,11 +466,7 @@ struct LoggedInView: View {
 
             if let artistId = album.artistId {
                 Button {
-                    navigationCoordinator.navigateToArtistSection(
-                        artistId: artistId,
-                        from: .albums,
-                        selectionId: album.id,
-                    )
+                    navigationCoordinator.navigateToArtistSection(artistId: artistId)
                 } label: {
                     Label("track.menu.go_to_artist", systemImage: "person")
                 }
@@ -641,10 +637,6 @@ struct LoggedInView: View {
         }
     }
 
-    private func handleBackNavigation() {
-        navigateBackward()
-    }
-
     private func sidebarView() -> some View {
         SidebarView(
             selection: navigationSelectionBinding,
@@ -741,6 +733,9 @@ struct LoggedInView: View {
         let oldValue = selectedNavigationItem
         guard oldValue != newValue else { return }
 
+        // Clear the visible drill-down path before switching sections.
+        // The history recorder still sees the pre-clear path in oldValue because
+        // SwiftUI computes the onChange old snapshot from the previous rendered body.
         navigationCoordinator.clearNavigationStack()
 
         if oldValue == .albums, newValue != .albums {
@@ -754,7 +749,6 @@ struct LoggedInView: View {
         }
 
         selectedNavigationItem = newValue
-        navigationCoordinator.currentSection = newValue ?? .startpage
 
         if newValue == .favorites {
             Task {
@@ -804,7 +798,6 @@ struct LoggedInView: View {
         navigationCoordinator.viewingPlaylistId = snapshot.viewingPlaylistId
         navigationCoordinator.navigationPath = snapshot.navigationPath
         selectedNavigationItem = snapshot.section
-        navigationCoordinator.currentSection = snapshot.section ?? .startpage
 
         if snapshot.section == .favorites {
             Task {
@@ -949,7 +942,7 @@ struct LoggedInView: View {
                                 playbackViewModel: playbackViewModel,
                                 selectedPlaylistId: $selectedPlaylistId,
                                 backTitle: backNavigationTitle,
-                                onBack: handleBackNavigation,
+                                onBack: navigateBackward,
                             )
                             .navigationTitle("nav.playlists")
 
@@ -958,7 +951,7 @@ struct LoggedInView: View {
                                 playbackViewModel: playbackViewModel,
                                 selectedAlbumId: $selectedAlbumId,
                                 backTitle: backNavigationTitle,
-                                onBack: handleBackNavigation,
+                                onBack: navigateBackward,
                             )
                             .navigationTitle("nav.albums")
 
@@ -967,7 +960,7 @@ struct LoggedInView: View {
                                 playbackViewModel: playbackViewModel,
                                 selectedArtistId: $selectedArtistId,
                                 backTitle: backNavigationTitle,
-                                onBack: handleBackNavigation,
+                                onBack: navigateBackward,
                             )
                             .navigationTitle("nav.artists")
 

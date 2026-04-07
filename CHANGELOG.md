@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Navigation history is now tracked consistently across sidebar section switches, library detail selections, and pushed search destinations, with shared back/forward controls in the content toolbar
 - Back/forward history restores no longer depend on a next-runloop reset flag; history recording is now suppressed until the exact restored snapshot is reached
 - Search-result drill-down navigation now stores track IDs instead of full track payloads, so back/forward history does not retain large copies of search result arrays
+- The navigation coordinator API no longer exposes ignored section/selection context parameters, and card/caller plumbing for those dead arguments has been removed
+- Navigation history cleanup: removed the trivial back wrapper and documented why section switches clear the visible stack before history snapshots are recorded
 
 ## [1.2.5] - 2026-03-11
 

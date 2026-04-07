@@ -11,17 +11,13 @@ struct PlaylistCard: View {
     let id: String
     let name: String
     let images: ImageSet
-    let currentSection: NavigationItem
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Button {
-            navigationCoordinator.navigateToPlaylistSection(
-                playlistId: id,
-                from: currentSection,
-            )
+            navigationCoordinator.navigateToPlaylistSection(playlistId: id)
         } label: {
             VStack(spacing: 8) {
                 if let url = images.url(for: 120, scale: displayScale) {
@@ -73,10 +69,9 @@ struct PlaylistCard: View {
 
 extension PlaylistCard {
     /// Initialize from a Playlist entity
-    init(playlist: Playlist, currentSection: NavigationItem = .startpage) {
+    init(playlist: Playlist) {
         id = playlist.id
         name = playlist.name
         images = playlist.images
-        self.currentSection = currentSection
     }
 }

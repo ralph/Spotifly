@@ -68,11 +68,6 @@ final class NavigationCoordinator {
         navigationPath = []
     }
 
-    /// The currently active sidebar section. Updated by LoggedInView whenever
-    /// the user switches sections, so any view (e.g. NowPlayingBarView) can
-    /// originate cross-section navigation without needing the section threaded in.
-    var currentSection: NavigationItem = .startpage
-
     // MARK: - Ephemeral Viewing (items not in user's library)
 
     /// Album being viewed that may not be in the user's library
@@ -87,12 +82,12 @@ final class NavigationCoordinator {
     // MARK: - Section Navigation (switches sidebar section with history)
 
     /// Navigate to the Albums section to view a specific album
-    func navigateToAlbumSection(albumId: String, from _: NavigationItem, selectionId _: String? = nil) {
+    func navigateToAlbumSection(albumId: String) {
         pendingSectionNavigation = .album(albumId)
     }
 
     /// Navigate to the Artists section to view a specific artist
-    func navigateToArtistSection(artistId: String, from _: NavigationItem, selectionId _: String? = nil) {
+    func navigateToArtistSection(artistId: String) {
         pendingSectionNavigation = .artist(artistId)
     }
 
@@ -114,7 +109,7 @@ final class NavigationCoordinator {
     }
 
     /// Navigate to the Playlists section to view a specific playlist
-    func navigateToPlaylistSection(playlistId: String, from _: NavigationItem, selectionId _: String? = nil) {
+    func navigateToPlaylistSection(playlistId: String) {
         pendingSectionNavigation = .playlist(playlistId)
     }
 

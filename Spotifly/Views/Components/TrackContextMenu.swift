@@ -78,11 +78,7 @@ struct TrackContextMenu: View {
         Button {
             if let artistId = track.artistId {
                 onNavigate?()
-                navigationCoordinator.navigateToArtistSection(
-                    artistId: artistId,
-                    from: currentSection,
-                    selectionId: selectionId,
-                )
+                navigationCoordinator.navigateToArtistSection(artistId: artistId)
             }
         } label: {
             Label("track.menu.go_to_artist", systemImage: "person.circle")
@@ -92,11 +88,7 @@ struct TrackContextMenu: View {
         Button {
             if let albumId = track.albumId {
                 onNavigate?()
-                navigationCoordinator.navigateToAlbumSection(
-                    albumId: albumId,
-                    from: currentSection,
-                    selectionId: selectionId,
-                )
+                navigationCoordinator.navigateToAlbumSection(albumId: albumId)
             }
         } label: {
             Label("track.menu.go_to_album", systemImage: "square.stack")

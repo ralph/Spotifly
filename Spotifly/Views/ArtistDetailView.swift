@@ -177,11 +177,7 @@ struct ArtistDetailView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 180), spacing: 16)], spacing: 16) {
                             ForEach(displayedAlbums) { album in
                                 AlbumCard(album: album) {
-                                    navigationCoordinator.navigateToAlbumSection(
-                                        albumId: album.id,
-                                        from: .artists,
-                                        selectionId: artistId,
-                                    )
+                                    navigationCoordinator.navigateToAlbumSection(albumId: album.id)
                                 }
                             }
                         }

@@ -146,7 +146,7 @@ struct AlbumDetailView: View {
 
                         if let artistId = album.artistId {
                             Button {
-                                navigationCoordinator.navigateToArtistSection(artistId: artistId, from: .albums, selectionId: albumId)
+                                navigationCoordinator.navigateToArtistSection(artistId: artistId)
                             } label: {
                                 Text(album.artistName)
                                     .font(.title3)
