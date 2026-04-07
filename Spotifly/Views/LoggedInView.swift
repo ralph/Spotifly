@@ -284,6 +284,12 @@ struct LoggedInView: View {
             if oldValue == .playlists, newValue != .playlists {
                 navigationCoordinator.viewingPlaylistId = nil
             }
+
+            if newValue == .favorites {
+                Task {
+                    await ensureFavoritesLoadedForSelection()
+                }
+            }
         }
     }
 
@@ -670,6 +676,24 @@ struct LoggedInView: View {
         default:
             break
         }
+    }
+
+    private func ensureFavoritesLoadedForSelection() async {
+        guard selectedNavigationItem == .favorites else { return }
+        guard !store.favoritesPagination.isLoading else { return }
+
+        let needsInitialLoad = !store.favoritesPagination.isLoaded
+        let needsRecoveryRefresh = store.favoriteTracks.isEmpty && store.favoritesPagination.total > 0
+
+        guard needsInitialLoad || needsRecoveryRefresh else { return }
+
+        let token = await session.validAccessToken()
+        guard selectedNavigationItem == .favorites else { return }
+
+        try? await trackService.loadFavorites(
+            accessToken: token,
+            forceRefresh: needsRecoveryRefresh,
+        )
     }
 
     /// Restore previous selection if still available, otherwise select first item

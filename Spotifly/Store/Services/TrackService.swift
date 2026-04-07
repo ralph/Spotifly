@@ -21,13 +21,19 @@ final class TrackService {
 
     /// Load user's saved tracks (favorites)
     func loadFavorites(accessToken: String, forceRefresh: Bool = false) async throws {
+        let needsRecoveryRefresh = !forceRefresh &&
+            store.favoriteTracks.isEmpty &&
+            store.favoritesPagination.isLoaded &&
+            store.favoritesPagination.total > 0
+        let shouldForceRefresh = forceRefresh || needsRecoveryRefresh
+
         // Skip if already loaded and not forcing refresh
-        if store.favoritesPagination.isLoaded, !forceRefresh, !store.favoritesPagination.hasMore {
+        if store.favoritesPagination.isLoaded, !shouldForceRefresh, !store.favoritesPagination.hasMore {
             return
         }
 
         // Reset pagination on force refresh
-        if forceRefresh {
+        if shouldForceRefresh {
             store.favoritesPagination.reset()
         }
 
@@ -36,7 +42,7 @@ final class TrackService {
 
         defer { store.favoritesPagination.isLoading = false }
 
-        let offset = forceRefresh ? 0 : (store.favoritesPagination.nextOffset ?? 0)
+        let offset = shouldForceRefresh ? 0 : (store.favoritesPagination.nextOffset ?? 0)
 
         let response = try await SpotifyAPI.fetchUserSavedTracks(
             accessToken: accessToken,
@@ -52,7 +58,7 @@ final class TrackService {
 
         // Update saved track IDs
         let trackIds = tracks.map(\.id)
-        if forceRefresh {
+        if shouldForceRefresh || offset == 0 {
             store.setSavedTrackIds(trackIds)
         } else {
             store.appendSavedTrackIds(trackIds)
