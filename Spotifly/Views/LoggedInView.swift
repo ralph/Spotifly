@@ -281,6 +281,7 @@ struct LoggedInView: View {
         .onChange(of: selectedNavigationItem) { oldValue, newValue in
             // Clear navigation stack when switching sidebar sections
             navigationCoordinator.clearNavigationStack()
+            navigationCoordinator.currentSection = newValue ?? .startpage
 
             // Clear pending playlist when navigating away from playlists
             if oldValue == .playlists, newValue != .playlists {
@@ -422,7 +423,7 @@ struct LoggedInView: View {
                     navigationCoordinator.navigateToArtistSection(
                         artistId: artistId,
                         from: .albums,
-                        selectionId: album.id
+                        selectionId: album.id,
                     )
                 } label: {
                     Label("track.menu.go_to_artist", systemImage: "person")

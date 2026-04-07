@@ -27,6 +27,11 @@ final class NavigationCoordinator {
         navigationPath = NavigationPath()
     }
 
+    /// The currently active sidebar section. Updated by LoggedInView whenever
+    /// the user switches sections, so any view (e.g. NowPlayingBarView) can
+    /// originate cross-section navigation without needing the section threaded in.
+    var currentSection: NavigationItem = .startpage
+
     // MARK: - Section History (for back navigation between sections)
 
     /// The section the user navigated from (for back button)
@@ -47,23 +52,6 @@ final class NavigationCoordinator {
 
     /// Artist being viewed that may not be in the user's library
     var viewingArtistId: String?
-
-    // MARK: - Drill-Down Navigation (within a section)
-
-    /// Navigate to an artist detail view (pushes onto navigation stack)
-    func navigateToArtist(artistId: String) {
-        push(.artist(id: artistId))
-    }
-
-    /// Navigate to an album detail view (pushes onto navigation stack)
-    func navigateToAlbum(albumId: String) {
-        push(.album(id: albumId))
-    }
-
-    /// Navigate to a playlist detail view (pushes onto navigation stack)
-    func navigateToPlaylistDetail(playlistId: String) {
-        push(.playlist(id: playlistId))
-    }
 
     // MARK: - Section Navigation (switches sidebar section with history)
 
@@ -125,8 +113,14 @@ final class NavigationCoordinator {
         pendingNavigationItem = .queue
     }
 
-    /// Navigate to a playlist detail view
-    func navigateToPlaylist(_ playlist: Playlist) {
+    /// Navigate to the Playlists section to view a specific playlist
+    /// - Parameters:
+    ///   - playlist: The playlist to view
+    ///   - fromSection: The current section (for back navigation)
+    ///   - selectionId: The current selection ID to restore when going back
+    func navigateToPlaylistSection(_ playlist: Playlist, from fromSection: NavigationItem, selectionId: String? = nil) {
+        previousSection = fromSection
+        previousSelectionId = selectionId
         pendingPlaylist = playlist
         pendingNavigationItem = .playlists
     }

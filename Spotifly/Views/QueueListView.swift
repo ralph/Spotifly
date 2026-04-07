@@ -192,7 +192,7 @@ struct QueueListView: View {
             navigationCoordinator.navigateToAlbumSection(albumId: id, from: .queue)
         case .playlist:
             if let playlist = store.playlists[id] {
-                navigationCoordinator.navigateToPlaylist(playlist)
+                navigationCoordinator.navigateToPlaylistSection(playlist, from: .queue)
             }
         case .artist:
             navigationCoordinator.navigateToArtistSection(artistId: id, from: .queue)

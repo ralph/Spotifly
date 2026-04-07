@@ -131,7 +131,7 @@ struct SearchResultsView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(searchResults.playlists) { playlist in
-                        PlaylistCard(playlist: playlist)
+                        PlaylistCard(playlist: playlist, currentSection: .searchResults)
                     }
                 }
                 .padding(.horizontal)
