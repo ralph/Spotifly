@@ -11,22 +11,42 @@ struct PlaylistsListView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(PlaylistService.self) private var playlistService
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Bindable var playbackViewModel: PlaybackViewModel
 
     /// Selection uses playlist ID, looked up from store
     @Binding var selectedPlaylistId: String?
 
+    /// Callback to handle back navigation (sets the pending navigation in LoggedInView)
+    var onBack: ((NavigationItem, String?) -> Void)?
+
     @State private var errorMessage: String?
+
+    /// The ephemeral playlist being viewed (if not in user's library)
+    private var ephemeralPlaylist: Playlist? {
+        guard let viewingId = navigationCoordinator.viewingPlaylistId,
+              !store.userPlaylistIds.contains(viewingId),
+              let playlist = store.playlists[viewingId]
+        else {
+            return nil
+        }
+        return playlist
+    }
+
+    /// Whether we have content to show (either ephemeral playlist or user playlists)
+    private var hasContent: Bool {
+        ephemeralPlaylist != nil || !store.userPlaylists.isEmpty
+    }
 
     var body: some View {
         Group {
-            if store.playlistsPagination.isLoading, store.userPlaylists.isEmpty {
+            if store.playlistsPagination.isLoading, !hasContent {
                 VStack(spacing: 16) {
                     ProgressView()
                     Text("loading.playlists")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = errorMessage, store.userPlaylists.isEmpty {
+            } else if let error = errorMessage, !hasContent {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -44,7 +64,7 @@ struct PlaylistsListView: View {
                     .buttonStyle(.borderedProminent)
                 }
                 .padding()
-            } else if store.userPlaylists.isEmpty {
+            } else if !hasContent {
                 VStack(spacing: 16) {
                     Image(systemName: "music.note.list")
                         .font(.system(size: 40))
@@ -59,6 +79,56 @@ struct PlaylistsListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        // Back button when navigated from another section
+                        if let backTitle = navigationCoordinator.previousSectionTitle {
+                            Button {
+                                if let (section, selectionId) = navigationCoordinator.goBack() {
+                                    onBack?(section, selectionId)
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.caption.weight(.semibold))
+                                    Text("nav.back_to \(backTitle)")
+                                        .font(.subheadline)
+                                }
+                                .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.bottom, 8)
+                        }
+
+                        // Ephemeral "Currently Viewing" section
+                        if let playlist = ephemeralPlaylist {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("nav.currently_viewing")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+
+                                PlaylistRow(
+                                    playlist: playlist,
+                                    playbackViewModel: playbackViewModel,
+                                    isSelected: selectedPlaylistId == playlist.id,
+                                    onSelect: {
+                                        selectedPlaylistId = playlist.id
+                                    },
+                                )
+                            }
+
+                            if !store.userPlaylists.isEmpty {
+                                Divider()
+                                    .padding(.vertical, 8)
+
+                                Text("nav.your_library")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+                            }
+                        }
+
                         ForEach(Array(store.userPlaylists.enumerated()), id: \.element.id) { index, playlist in
                             VStack(spacing: 0) {
                                 PlaylistRow(
@@ -66,6 +136,9 @@ struct PlaylistsListView: View {
                                     playbackViewModel: playbackViewModel,
                                     isSelected: selectedPlaylistId == playlist.id,
                                     onSelect: {
+                                        // Clear ephemeral state when user selects a library playlist
+                                        navigationCoordinator.viewingPlaylistId = nil
+                                        navigationCoordinator.clearSectionHistory()
                                         selectedPlaylistId = playlist.id
                                     },
                                 )
@@ -99,13 +172,22 @@ struct PlaylistsListView: View {
             if store.userPlaylists.isEmpty, !store.playlistsPagination.isLoading {
                 await loadPlaylists()
             }
-            // Set initial selection after loading or if already loaded
-            if selectedPlaylistId == nil, let first = store.userPlaylists.first {
+            // Always sync selection with viewing playlist ID (handles navigation from other sections)
+            if let viewingId = navigationCoordinator.viewingPlaylistId {
+                selectedPlaylistId = viewingId
+            } else if selectedPlaylistId == nil, let first = store.userPlaylists.first {
+                // No ephemeral playlist, select first user playlist
                 selectedPlaylistId = first.id
             }
         }
+        .onChange(of: navigationCoordinator.viewingPlaylistId) { _, newId in
+            // Auto-select the ephemeral playlist when it's set
+            if let id = newId {
+                selectedPlaylistId = id
+            }
+        }
         .onChange(of: store.userPlaylists) { _, playlists in
-            if selectedPlaylistId == nil, let first = playlists.first {
+            if selectedPlaylistId == nil, ephemeralPlaylist == nil, let first = playlists.first {
                 selectedPlaylistId = first.id
             }
         }

@@ -53,6 +53,9 @@ final class NavigationCoordinator {
     /// Artist being viewed that may not be in the user's library
     var viewingArtistId: String?
 
+    /// Playlist being viewed that may not be in the user's library
+    var viewingPlaylistId: String?
+
     // MARK: - Section Navigation (switches sidebar section with history)
 
     /// Navigate to the Albums section to view a specific album
@@ -98,15 +101,13 @@ final class NavigationCoordinator {
     func clearEphemeralViewing() {
         viewingAlbumId = nil
         viewingArtistId = nil
+        viewingPlaylistId = nil
     }
 
     // MARK: - Cross-Section Navigation
 
     /// Pending navigation request (observed by LoggedInView)
     var pendingNavigationItem: NavigationItem?
-
-    /// Pending playlist to show in detail view
-    var pendingPlaylist: Playlist?
 
     /// Navigate to the queue
     func navigateToQueue() {
@@ -115,19 +116,14 @@ final class NavigationCoordinator {
 
     /// Navigate to the Playlists section to view a specific playlist
     /// - Parameters:
-    ///   - playlist: The playlist to view
+    ///   - playlistId: The playlist to view
     ///   - fromSection: The current section (for back navigation)
     ///   - selectionId: The current selection ID to restore when going back
-    func navigateToPlaylistSection(_ playlist: Playlist, from fromSection: NavigationItem, selectionId: String? = nil) {
+    func navigateToPlaylistSection(playlistId: String, from fromSection: NavigationItem, selectionId: String? = nil) {
         previousSection = fromSection
         previousSelectionId = selectionId
-        pendingPlaylist = playlist
+        viewingPlaylistId = playlistId
         pendingNavigationItem = .playlists
-    }
-
-    /// Clear the current playlist selection (e.g., after deletion)
-    func clearPlaylistSelection() {
-        pendingPlaylist = nil
     }
 
     /// Clear the current album selection (e.g., after removal from library)
@@ -138,5 +134,10 @@ final class NavigationCoordinator {
     /// Clear the current artist selection (e.g., after unfollowing)
     func clearArtistSelection() {
         viewingArtistId = nil
+    }
+
+    /// Clear the current playlist selection (e.g., after deletion)
+    func clearPlaylistSelection() {
+        viewingPlaylistId = nil
     }
 }

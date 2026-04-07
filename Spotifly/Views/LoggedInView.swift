@@ -269,37 +269,20 @@ struct LoggedInView: View {
                 navigationCoordinator.pendingNavigationItem = nil
             }
         }
-        .onChange(of: navigationCoordinator.pendingPlaylist) { _, newValue in
-            if newValue != nil {
-                // Clear other selections and navigate to playlists
-                selectedAlbumId = nil
-                selectedArtistId = nil
-                selectedPlaylistId = nil
-                selectedNavigationItem = .playlists
-            }
-        }
         .onChange(of: selectedNavigationItem) { oldValue, newValue in
             // Clear navigation stack when switching sidebar sections
             navigationCoordinator.clearNavigationStack()
             navigationCoordinator.currentSection = newValue ?? .startpage
 
-            // Clear pending playlist when navigating away from playlists
-            if oldValue == .playlists, newValue != .playlists {
-                navigationCoordinator.pendingPlaylist = nil
-            }
-
-            // Clear ephemeral viewing state when navigating away from albums/artists
+            // Clear ephemeral viewing state when navigating away from a section
             if oldValue == .albums, newValue != .albums {
                 navigationCoordinator.viewingAlbumId = nil
             }
             if oldValue == .artists, newValue != .artists {
                 navigationCoordinator.viewingArtistId = nil
             }
-        }
-        .onChange(of: selectedPlaylistId) { _, newValue in
-            // Clear pending playlist when user selects a playlist from the list
-            if newValue != nil {
-                navigationCoordinator.pendingPlaylist = nil
+            if oldValue == .playlists, newValue != .playlists {
+                navigationCoordinator.viewingPlaylistId = nil
             }
         }
     }
@@ -725,6 +708,7 @@ struct LoggedInView: View {
                             PlaylistsListView(
                                 playbackViewModel: playbackViewModel,
                                 selectedPlaylistId: $selectedPlaylistId,
+                                onBack: handleBackNavigation,
                             )
                             .navigationTitle("nav.playlists")
 
@@ -855,18 +839,21 @@ struct LoggedInView: View {
                 }
 
             case .playlists:
-                if let pendingPlaylist = navigationCoordinator.pendingPlaylist {
-                    PlaylistDetailView(
-                        playlist: pendingPlaylist,
-                        playbackViewModel: playbackViewModel,
-                    )
-                } else if let playlistId = selectedPlaylistId,
-                          let playlist = store.playlists[playlistId]
+                if let playlistId = selectedPlaylistId,
+                   let playlist = store.playlists[playlistId]
                 {
                     PlaylistDetailView(
                         playlist: playlist,
                         playbackViewModel: playbackViewModel,
                     )
+                    .id(playlistId) // Force view recreation when playlist changes
+                } else if let playlistId = selectedPlaylistId {
+                    // Playlist ID is set but not in store yet - show loading and fetch
+                    PlaylistDetailView(
+                        playlistId: playlistId,
+                        playbackViewModel: playbackViewModel,
+                    )
+                    .id(playlistId)
                 } else {
                     Text("empty.select_playlist")
                         .foregroundStyle(.secondary)

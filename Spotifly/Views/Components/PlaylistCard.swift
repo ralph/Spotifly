@@ -8,8 +8,10 @@
 import SwiftUI
 
 struct PlaylistCard: View {
-    let playlist: Playlist
-    var currentSection: NavigationItem = .startpage
+    let id: String
+    let name: String
+    let images: ImageSet
+    let currentSection: NavigationItem
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(\.displayScale) private var displayScale
@@ -17,12 +19,12 @@ struct PlaylistCard: View {
     var body: some View {
         Button {
             navigationCoordinator.navigateToPlaylistSection(
-                playlist,
+                playlistId: id,
                 from: currentSection,
             )
         } label: {
             VStack(spacing: 8) {
-                if let url = playlist.images.url(for: 120, scale: displayScale) {
+                if let url = images.url(for: 120, scale: displayScale) {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .empty:
@@ -45,7 +47,7 @@ struct PlaylistCard: View {
                     playlistPlaceholder
                 }
 
-                Text(playlist.name)
+                Text(name)
                     .font(.caption)
                     .fontWeight(.medium)
                     .lineLimit(2)
@@ -64,5 +66,17 @@ struct PlaylistCard: View {
                     .font(.system(size: 40))
                     .foregroundStyle(.secondary),
             )
+    }
+}
+
+// MARK: - Convenience initializers
+
+extension PlaylistCard {
+    /// Initialize from a Playlist entity
+    init(playlist: Playlist, currentSection: NavigationItem = .startpage) {
+        id = playlist.id
+        name = playlist.name
+        images = playlist.images
+        self.currentSection = currentSection
     }
 }
