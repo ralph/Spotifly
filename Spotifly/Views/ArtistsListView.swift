@@ -14,15 +14,6 @@ struct ArtistsListView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Bindable var playbackViewModel: PlaybackViewModel
 
-    /// Selection uses artist ID, looked up from store
-    @Binding var selectedArtistId: String?
-
-    /// Title for the previous location in navigation history
-    var backTitle: String?
-
-    /// Callback to handle back navigation
-    var onBack: (() -> Void)?
-
     @State private var errorMessage: String?
 
     /// The ephemeral artist being viewed (if not in user's library)
@@ -83,9 +74,9 @@ struct ArtistsListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         // Back button when navigated from another section
-                        if ephemeralArtist != nil, let backTitle {
+                        if ephemeralArtist != nil, let backTitle = navigationCoordinator.backNavigationTitle {
                             Button {
-                                onBack?()
+                                navigationCoordinator.navigateBackward()
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left")
@@ -111,9 +102,9 @@ struct ArtistsListView: View {
                                 ArtistRow(
                                     artist: artist,
                                     playbackViewModel: playbackViewModel,
-                                    isSelected: selectedArtistId == artist.id,
+                                    isSelected: navigationCoordinator.selectedArtistId == artist.id,
                                     onSelect: {
-                                        selectedArtistId = artist.id
+                                        navigationCoordinator.selectedArtistId = artist.id
                                     },
                                 )
                             }
@@ -136,11 +127,11 @@ struct ArtistsListView: View {
                                 ArtistRow(
                                     artist: artist,
                                     playbackViewModel: playbackViewModel,
-                                    isSelected: selectedArtistId == artist.id,
+                                    isSelected: navigationCoordinator.selectedArtistId == artist.id,
                                     onSelect: {
                                         // Clear ephemeral state when user selects a library artist
                                         navigationCoordinator.viewingArtistId = nil
-                                        selectedArtistId = artist.id
+                                        navigationCoordinator.selectedArtistId = artist.id
                                     },
                                 )
 
@@ -175,21 +166,21 @@ struct ArtistsListView: View {
             }
             // Always sync selection with viewing artist ID (handles navigation from other sections)
             if let viewingId = navigationCoordinator.viewingArtistId {
-                selectedArtistId = viewingId
-            } else if selectedArtistId == nil, let first = store.userArtists.first {
+                navigationCoordinator.selectedArtistId = viewingId
+            } else if navigationCoordinator.selectedArtistId == nil, let first = store.userArtists.first {
                 // No ephemeral artist, select first user artist
-                selectedArtistId = first.id
+                navigationCoordinator.selectedArtistId = first.id
             }
         }
         .onChange(of: navigationCoordinator.viewingArtistId) { _, newId in
             // Auto-select the ephemeral artist when it's set
             if let id = newId {
-                selectedArtistId = id
+                navigationCoordinator.selectedArtistId = id
             }
         }
         .onChange(of: store.userArtists) { _, artists in
-            if selectedArtistId == nil, ephemeralArtist == nil, let first = artists.first {
-                selectedArtistId = first.id
+            if navigationCoordinator.selectedArtistId == nil, ephemeralArtist == nil, let first = artists.first {
+                navigationCoordinator.selectedArtistId = first.id
             }
         }
     }

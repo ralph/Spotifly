@@ -14,15 +14,6 @@ struct AlbumsListView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Bindable var playbackViewModel: PlaybackViewModel
 
-    /// Selection uses album ID, looked up from store
-    @Binding var selectedAlbumId: String?
-
-    /// Title for the previous location in navigation history
-    var backTitle: String?
-
-    /// Callback to handle back navigation
-    var onBack: (() -> Void)?
-
     @State private var errorMessage: String?
 
     /// The ephemeral album being viewed (if not in user's library)
@@ -83,9 +74,9 @@ struct AlbumsListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         // Back button when navigated from another section
-                        if ephemeralAlbum != nil, let backTitle {
+                        if ephemeralAlbum != nil, let backTitle = navigationCoordinator.backNavigationTitle {
                             Button {
-                                onBack?()
+                                navigationCoordinator.navigateBackward()
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left")
@@ -111,9 +102,9 @@ struct AlbumsListView: View {
                                 AlbumRow(
                                     album: album,
                                     playbackViewModel: playbackViewModel,
-                                    isSelected: selectedAlbumId == album.id,
+                                    isSelected: navigationCoordinator.selectedAlbumId == album.id,
                                     onSelect: {
-                                        selectedAlbumId = album.id
+                                        navigationCoordinator.selectedAlbumId = album.id
                                     },
                                 )
                             }
@@ -136,11 +127,11 @@ struct AlbumsListView: View {
                                 AlbumRow(
                                     album: album,
                                     playbackViewModel: playbackViewModel,
-                                    isSelected: selectedAlbumId == album.id,
+                                    isSelected: navigationCoordinator.selectedAlbumId == album.id,
                                     onSelect: {
                                         // Clear ephemeral state when user selects a library album
                                         navigationCoordinator.viewingAlbumId = nil
-                                        selectedAlbumId = album.id
+                                        navigationCoordinator.selectedAlbumId = album.id
                                     },
                                 )
 
@@ -175,21 +166,21 @@ struct AlbumsListView: View {
             }
             // Always sync selection with viewing album ID (handles navigation from other sections)
             if let viewingId = navigationCoordinator.viewingAlbumId {
-                selectedAlbumId = viewingId
-            } else if selectedAlbumId == nil, let first = store.userAlbums.first {
+                navigationCoordinator.selectedAlbumId = viewingId
+            } else if navigationCoordinator.selectedAlbumId == nil, let first = store.userAlbums.first {
                 // No ephemeral album, select first user album
-                selectedAlbumId = first.id
+                navigationCoordinator.selectedAlbumId = first.id
             }
         }
         .onChange(of: navigationCoordinator.viewingAlbumId) { _, newId in
             // Auto-select the ephemeral album when it's set
             if let id = newId {
-                selectedAlbumId = id
+                navigationCoordinator.selectedAlbumId = id
             }
         }
         .onChange(of: store.userAlbums) { _, albums in
-            if selectedAlbumId == nil, ephemeralAlbum == nil, let first = albums.first {
-                selectedAlbumId = first.id
+            if navigationCoordinator.selectedAlbumId == nil, ephemeralAlbum == nil, let first = albums.first {
+                navigationCoordinator.selectedAlbumId = first.id
             }
         }
     }

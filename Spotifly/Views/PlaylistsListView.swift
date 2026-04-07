@@ -14,15 +14,6 @@ struct PlaylistsListView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Bindable var playbackViewModel: PlaybackViewModel
 
-    /// Selection uses playlist ID, looked up from store
-    @Binding var selectedPlaylistId: String?
-
-    /// Title for the previous location in navigation history
-    var backTitle: String?
-
-    /// Callback to handle back navigation
-    var onBack: (() -> Void)?
-
     @State private var errorMessage: String?
 
     /// The ephemeral playlist being viewed (if not in user's library)
@@ -83,9 +74,9 @@ struct PlaylistsListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         // Back button when navigated from another section
-                        if ephemeralPlaylist != nil, let backTitle {
+                        if ephemeralPlaylist != nil, let backTitle = navigationCoordinator.backNavigationTitle {
                             Button {
-                                onBack?()
+                                navigationCoordinator.navigateBackward()
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left")
@@ -111,9 +102,9 @@ struct PlaylistsListView: View {
                                 PlaylistRow(
                                     playlist: playlist,
                                     playbackViewModel: playbackViewModel,
-                                    isSelected: selectedPlaylistId == playlist.id,
+                                    isSelected: navigationCoordinator.selectedPlaylistId == playlist.id,
                                     onSelect: {
-                                        selectedPlaylistId = playlist.id
+                                        navigationCoordinator.selectedPlaylistId = playlist.id
                                     },
                                 )
                             }
@@ -135,11 +126,11 @@ struct PlaylistsListView: View {
                                 PlaylistRow(
                                     playlist: playlist,
                                     playbackViewModel: playbackViewModel,
-                                    isSelected: selectedPlaylistId == playlist.id,
+                                    isSelected: navigationCoordinator.selectedPlaylistId == playlist.id,
                                     onSelect: {
                                         // Clear ephemeral state when user selects a library playlist
                                         navigationCoordinator.viewingPlaylistId = nil
-                                        selectedPlaylistId = playlist.id
+                                        navigationCoordinator.selectedPlaylistId = playlist.id
                                     },
                                 )
 
@@ -174,21 +165,21 @@ struct PlaylistsListView: View {
             }
             // Always sync selection with viewing playlist ID (handles navigation from other sections)
             if let viewingId = navigationCoordinator.viewingPlaylistId {
-                selectedPlaylistId = viewingId
-            } else if selectedPlaylistId == nil, let first = store.userPlaylists.first {
+                navigationCoordinator.selectedPlaylistId = viewingId
+            } else if navigationCoordinator.selectedPlaylistId == nil, let first = store.userPlaylists.first {
                 // No ephemeral playlist, select first user playlist
-                selectedPlaylistId = first.id
+                navigationCoordinator.selectedPlaylistId = first.id
             }
         }
         .onChange(of: navigationCoordinator.viewingPlaylistId) { _, newId in
             // Auto-select the ephemeral playlist when it's set
             if let id = newId {
-                selectedPlaylistId = id
+                navigationCoordinator.selectedPlaylistId = id
             }
         }
         .onChange(of: store.userPlaylists) { _, playlists in
-            if selectedPlaylistId == nil, ephemeralPlaylist == nil, let first = playlists.first {
-                selectedPlaylistId = first.id
+            if navigationCoordinator.selectedPlaylistId == nil, ephemeralPlaylist == nil, let first = playlists.first {
+                navigationCoordinator.selectedPlaylistId = first.id
             }
         }
     }
