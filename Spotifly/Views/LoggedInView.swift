@@ -9,6 +9,17 @@ import AppKit
 import Combine
 import SwiftUI
 
+private struct NavigationSnapshot: Equatable {
+    var section: NavigationItem?
+    var selectedAlbumId: String?
+    var selectedArtistId: String?
+    var selectedPlaylistId: String?
+    var navigationPath: [NavigationDestination]
+    var viewingAlbumId: String?
+    var viewingArtistId: String?
+    var viewingPlaylistId: String?
+}
+
 // MARK: - LoggedInView
 
 struct LoggedInView: View {
@@ -80,6 +91,9 @@ struct LoggedInView: View {
     @State private var selectedNavigationItem: NavigationItem? = .startpage
     @State private var searchText = ""
     @State private var searchFieldFocused = false
+    @State private var navigationBackStack: [NavigationSnapshot] = []
+    @State private var navigationForwardStack: [NavigationSnapshot] = []
+    @State private var historyRestoreTarget: NavigationSnapshot?
 
     // Selection state for library detail views (ID-based)
     @State private var selectedAlbumId: String?
@@ -110,6 +124,44 @@ struct LoggedInView: View {
         default:
             false
         }
+    }
+
+    private var currentNavigationSnapshot: NavigationSnapshot {
+        NavigationSnapshot(
+            section: selectedNavigationItem,
+            selectedAlbumId: selectedAlbumId,
+            selectedArtistId: selectedArtistId,
+            selectedPlaylistId: selectedPlaylistId,
+            navigationPath: navigationCoordinator.navigationPath,
+            viewingAlbumId: navigationCoordinator.viewingAlbumId,
+            viewingArtistId: navigationCoordinator.viewingArtistId,
+            viewingPlaylistId: navigationCoordinator.viewingPlaylistId,
+        )
+    }
+
+    private var navigationSelectionBinding: Binding<NavigationItem?> {
+        Binding(
+            get: { selectedNavigationItem },
+            set: { newValue in
+                selectNavigationItem(newValue)
+            },
+        )
+    }
+
+    private var canNavigateBackward: Bool {
+        !navigationBackStack.isEmpty
+    }
+
+    private var canNavigateForward: Bool {
+        !navigationForwardStack.isEmpty
+    }
+
+    private var backNavigationTitle: String? {
+        navigationBackStack.last.map(title(for:))
+    }
+
+    private var forwardNavigationTitle: String? {
+        navigationForwardStack.last.map(title(for:))
     }
 
     var body: some View {
@@ -263,33 +315,14 @@ struct LoggedInView: View {
                 await playbackViewModel.forceReinitialize(accessToken: token)
             }
         }
-        .onChange(of: navigationCoordinator.pendingNavigationItem) { _, newValue in
-            if let pendingItem = newValue {
-                selectedNavigationItem = pendingItem
-                navigationCoordinator.pendingNavigationItem = nil
+        .onChange(of: navigationCoordinator.pendingSectionNavigation) { _, newValue in
+            if let request = newValue {
+                applySectionNavigationRequest(request)
+                navigationCoordinator.pendingSectionNavigation = nil
             }
         }
-        .onChange(of: selectedNavigationItem) { oldValue, newValue in
-            // Clear navigation stack when switching sidebar sections
-            navigationCoordinator.clearNavigationStack()
-            navigationCoordinator.currentSection = newValue ?? .startpage
-
-            // Clear ephemeral viewing state when navigating away from a section
-            if oldValue == .albums, newValue != .albums {
-                navigationCoordinator.viewingAlbumId = nil
-            }
-            if oldValue == .artists, newValue != .artists {
-                navigationCoordinator.viewingArtistId = nil
-            }
-            if oldValue == .playlists, newValue != .playlists {
-                navigationCoordinator.viewingPlaylistId = nil
-            }
-
-            if newValue == .favorites {
-                Task {
-                    await ensureFavoritesLoadedForSelection()
-                }
-            }
+        .onChange(of: currentNavigationSnapshot) { oldValue, newValue in
+            recordNavigationChange(from: oldValue, to: newValue)
         }
     }
 
@@ -339,6 +372,9 @@ struct LoggedInView: View {
 
     @ToolbarContentBuilder
     private var contentColumnToolbar: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            navigationHistoryToolbar
+        }
         ToolbarItem(placement: .navigation) {
             if canRefreshCurrentSection {
                 Button {
@@ -366,6 +402,27 @@ struct LoggedInView: View {
         ToolbarItem(placement: .automatic) {
             contextToolbarActions
         }
+    }
+
+    private var navigationHistoryToolbar: some View {
+        ControlGroup {
+            Button {
+                navigateBackward()
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .help(backNavigationTitle.map { "Back to \($0)" } ?? "Back")
+            .disabled(!canNavigateBackward)
+
+            Button {
+                navigateForward()
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .help(forwardNavigationTitle.map { "Forward to \($0)" } ?? "Forward")
+            .disabled(!canNavigateForward)
+        }
+        .controlGroupStyle(.navigation)
     }
 
     // MARK: - Context Actions
@@ -567,7 +624,7 @@ struct LoggedInView: View {
             await searchService.search(accessToken: token, query: searchText)
             debugLog("Search", "After search - results: \(store.searchResults != nil), error: \(store.searchErrorMessage ?? "nil")")
             if store.searchResults != nil {
-                selectedNavigationItem = .searchResults
+                selectNavigationItem(.searchResults)
             }
         }
     }
@@ -575,38 +632,22 @@ struct LoggedInView: View {
     private func handleSearchTextChange(_ newValue: String) {
         if newValue.isEmpty {
             store.clearSearch()
+            pruneNavigationHistory { snapshot in
+                snapshot.section == .searchResults
+            }
             if selectedNavigationItem == .searchResults {
-                selectedNavigationItem = .startpage
+                selectNavigationItem(.startpage)
             }
         }
     }
 
-    /// Handle back navigation from AlbumsListView/ArtistsListView
-    private func handleBackNavigation(section: NavigationItem, selectionId: String?) {
-        // Clear ephemeral viewing state
-        navigationCoordinator.clearEphemeralViewing()
-
-        // Navigate to the previous section
-        selectedNavigationItem = section
-
-        // Restore selection if provided
-        if let selectionId {
-            switch section {
-            case .playlists:
-                selectedPlaylistId = selectionId
-            case .albums:
-                selectedAlbumId = selectionId
-            case .artists:
-                selectedArtistId = selectionId
-            default:
-                break
-            }
-        }
+    private func handleBackNavigation() {
+        navigateBackward()
     }
 
     private func sidebarView() -> some View {
         SidebarView(
-            selection: $selectedNavigationItem,
+            selection: navigationSelectionBinding,
             onLogout: {
                 playbackViewModel.stop()
                 onLogout()
@@ -696,6 +737,181 @@ struct LoggedInView: View {
         )
     }
 
+    private func selectNavigationItem(_ newValue: NavigationItem?) {
+        let oldValue = selectedNavigationItem
+        guard oldValue != newValue else { return }
+
+        navigationCoordinator.clearNavigationStack()
+
+        if oldValue == .albums, newValue != .albums {
+            navigationCoordinator.viewingAlbumId = nil
+        }
+        if oldValue == .artists, newValue != .artists {
+            navigationCoordinator.viewingArtistId = nil
+        }
+        if oldValue == .playlists, newValue != .playlists {
+            navigationCoordinator.viewingPlaylistId = nil
+        }
+
+        selectedNavigationItem = newValue
+        navigationCoordinator.currentSection = newValue ?? .startpage
+
+        if newValue == .favorites {
+            Task {
+                await ensureFavoritesLoadedForSelection()
+            }
+        }
+    }
+
+    private func applySectionNavigationRequest(_ request: SectionNavigationRequest) {
+        navigationCoordinator.viewingAlbumId = request.albumId
+        navigationCoordinator.viewingArtistId = request.artistId
+        navigationCoordinator.viewingPlaylistId = request.playlistId
+
+        if let albumId = request.albumId {
+            selectedAlbumId = albumId
+        }
+        if let artistId = request.artistId {
+            selectedArtistId = artistId
+        }
+        if let playlistId = request.playlistId {
+            selectedPlaylistId = playlistId
+        }
+
+        selectNavigationItem(request.section)
+    }
+
+    private func navigateBackward() {
+        guard let previousSnapshot = navigationBackStack.popLast() else { return }
+        navigationForwardStack.append(currentNavigationSnapshot)
+        applyNavigationSnapshot(previousSnapshot)
+    }
+
+    private func navigateForward() {
+        guard let nextSnapshot = navigationForwardStack.popLast() else { return }
+        navigationBackStack.append(currentNavigationSnapshot)
+        applyNavigationSnapshot(nextSnapshot)
+    }
+
+    private func applyNavigationSnapshot(_ snapshot: NavigationSnapshot) {
+        historyRestoreTarget = snapshot
+
+        selectedAlbumId = snapshot.selectedAlbumId
+        selectedArtistId = snapshot.selectedArtistId
+        selectedPlaylistId = snapshot.selectedPlaylistId
+        navigationCoordinator.viewingAlbumId = snapshot.viewingAlbumId
+        navigationCoordinator.viewingArtistId = snapshot.viewingArtistId
+        navigationCoordinator.viewingPlaylistId = snapshot.viewingPlaylistId
+        navigationCoordinator.navigationPath = snapshot.navigationPath
+        selectedNavigationItem = snapshot.section
+        navigationCoordinator.currentSection = snapshot.section ?? .startpage
+
+        if snapshot.section == .favorites {
+            Task {
+                await ensureFavoritesLoadedForSelection()
+            }
+        }
+    }
+
+    private func recordNavigationChange(from oldValue: NavigationSnapshot, to newValue: NavigationSnapshot) {
+        if let historyRestoreTarget {
+            if newValue == historyRestoreTarget {
+                self.historyRestoreTarget = nil
+            }
+            return
+        }
+        guard shouldRecordNavigationChange(from: oldValue, to: newValue) else { return }
+
+        navigationBackStack.append(oldValue)
+        if navigationBackStack.count > 100 {
+            navigationBackStack.removeFirst(navigationBackStack.count - 100)
+        }
+        navigationForwardStack.removeAll()
+    }
+
+    private func shouldRecordNavigationChange(from oldValue: NavigationSnapshot, to newValue: NavigationSnapshot) -> Bool {
+        guard oldValue != newValue else { return false }
+        if oldValue.section == .searchResults, store.searchResults == nil {
+            return false
+        }
+        return !isImplicitLibraryAutoSelection(from: oldValue, to: newValue)
+    }
+
+    private func isImplicitLibraryAutoSelection(from oldValue: NavigationSnapshot, to newValue: NavigationSnapshot) -> Bool {
+        guard oldValue.section == newValue.section,
+              oldValue.navigationPath == newValue.navigationPath,
+              oldValue.viewingAlbumId == newValue.viewingAlbumId,
+              oldValue.viewingArtistId == newValue.viewingArtistId,
+              oldValue.viewingPlaylistId == newValue.viewingPlaylistId
+        else {
+            return false
+        }
+
+        switch newValue.section {
+        case .albums:
+            return oldValue.selectedAlbumId == nil &&
+                newValue.selectedAlbumId != nil &&
+                oldValue.selectedArtistId == newValue.selectedArtistId &&
+                oldValue.selectedPlaylistId == newValue.selectedPlaylistId
+        case .artists:
+            return oldValue.selectedArtistId == nil &&
+                newValue.selectedArtistId != nil &&
+                oldValue.selectedAlbumId == newValue.selectedAlbumId &&
+                oldValue.selectedPlaylistId == newValue.selectedPlaylistId
+        case .playlists:
+            return oldValue.selectedPlaylistId == nil &&
+                newValue.selectedPlaylistId != nil &&
+                oldValue.selectedAlbumId == newValue.selectedAlbumId &&
+                oldValue.selectedArtistId == newValue.selectedArtistId
+        default:
+            return false
+        }
+    }
+
+    private func pruneNavigationHistory(where shouldRemove: (NavigationSnapshot) -> Bool) {
+        navigationBackStack.removeAll(where: shouldRemove)
+        navigationForwardStack.removeAll(where: shouldRemove)
+    }
+
+    private func title(for snapshot: NavigationSnapshot) -> String {
+        if let destination = snapshot.navigationPath.last {
+            switch destination {
+            case let .artist(id):
+                return store.artists[id]?.name ?? NavigationItem.artists.title
+            case let .album(id):
+                return store.albums[id]?.name ?? NavigationItem.albums.title
+            case let .playlist(id):
+                return store.playlists[id]?.name ?? NavigationItem.playlists.title
+            case .searchTracks:
+                return String(localized: "section.tracks")
+            }
+        }
+
+        switch snapshot.section {
+        case .albums:
+            if let albumId = snapshot.selectedAlbumId, let album = store.albums[albumId] {
+                return album.name
+            }
+            return NavigationItem.albums.title
+        case .artists:
+            if let artistId = snapshot.selectedArtistId, let artist = store.artists[artistId] {
+                return artist.name
+            }
+            return NavigationItem.artists.title
+        case .playlists:
+            if let playlistId = snapshot.selectedPlaylistId, let playlist = store.playlists[playlistId] {
+                return playlist.name
+            }
+            return NavigationItem.playlists.title
+        case let section?:
+            return section.title
+        case nil:
+            break
+        }
+
+        return String(localized: "app.name")
+    }
+
     /// Restore previous selection if still available, otherwise select first item
     private func restoreOrSelectFirst(previous: String?, available: [String], selection: inout String?) {
         if let previous, available.contains(previous) {
@@ -732,6 +948,7 @@ struct LoggedInView: View {
                             PlaylistsListView(
                                 playbackViewModel: playbackViewModel,
                                 selectedPlaylistId: $selectedPlaylistId,
+                                backTitle: backNavigationTitle,
                                 onBack: handleBackNavigation,
                             )
                             .navigationTitle("nav.playlists")
@@ -740,6 +957,7 @@ struct LoggedInView: View {
                             AlbumsListView(
                                 playbackViewModel: playbackViewModel,
                                 selectedAlbumId: $selectedAlbumId,
+                                backTitle: backNavigationTitle,
                                 onBack: handleBackNavigation,
                             )
                             .navigationTitle("nav.albums")
@@ -748,6 +966,7 @@ struct LoggedInView: View {
                             ArtistsListView(
                                 playbackViewModel: playbackViewModel,
                                 selectedArtistId: $selectedArtistId,
+                                backTitle: backNavigationTitle,
                                 onBack: handleBackNavigation,
                             )
                             .navigationTitle("nav.artists")
@@ -778,7 +997,7 @@ struct LoggedInView: View {
                         }
                     }
                     .playbackShortcuts(playbackViewModel: playbackViewModel)
-                    .libraryNavigationShortcuts(selection: $selectedNavigationItem)
+                    .libraryNavigationShortcuts(selection: navigationSelectionBinding)
                 }
             }
             .navigationDestination(for: NavigationDestination.self) { destination in
@@ -808,9 +1027,9 @@ struct LoggedInView: View {
                 playbackViewModel: playbackViewModel,
             )
 
-        case let .searchTracks(tracks):
+        case let .searchTracks(ids):
             SearchAllTracksView(
-                tracks: tracks,
+                trackIds: ids,
                 playbackViewModel: playbackViewModel,
             )
         }

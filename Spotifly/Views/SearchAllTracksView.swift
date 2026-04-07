@@ -8,10 +8,15 @@
 import SwiftUI
 
 struct SearchAllTracksView: View {
-    let tracks: [Track]
+    let trackIds: [String]
     @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(AppStore.self) private var store
     @Environment(SpotifySession.self) private var session
     @Environment(TrackService.self) private var trackService
+
+    private var tracks: [Track] {
+        trackIds.compactMap { store.tracks[$0] }
+    }
 
     var body: some View {
         ScrollView {
@@ -31,7 +36,7 @@ struct SearchAllTracksView: View {
                             .fontWeight(.semibold)
 
                         HStack(spacing: 4) {
-                            Text(String(format: String(localized: "metadata.tracks"), tracks.count))
+                            Text(String(format: String(localized: "metadata.tracks"), trackIds.count))
                                 .font(.subheadline)
                                 .foregroundStyle(.tertiary)
                             Text("metadata.separator")
@@ -85,9 +90,9 @@ struct SearchAllTracksView: View {
             }
         }
         .navigationTitle("section.tracks")
-        .task(id: tracks.map(\.id).joined()) {
+        .task(id: trackIds.joined()) {
             let token = await session.validAccessToken()
-            await trackService.refreshFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
+            await trackService.refreshFavoriteStatuses(trackIds: trackIds, accessToken: token)
         }
     }
 

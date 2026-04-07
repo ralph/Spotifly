@@ -17,8 +17,11 @@ struct ArtistsListView: View {
     /// Selection uses artist ID, looked up from store
     @Binding var selectedArtistId: String?
 
-    /// Callback to handle back navigation (sets the pending navigation in LoggedInView)
-    var onBack: ((NavigationItem, String?) -> Void)?
+    /// Title for the previous location in navigation history
+    var backTitle: String?
+
+    /// Callback to handle back navigation
+    var onBack: (() -> Void)?
 
     @State private var errorMessage: String?
 
@@ -80,11 +83,9 @@ struct ArtistsListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         // Back button when navigated from another section
-                        if let backTitle = navigationCoordinator.previousSectionTitle {
+                        if ephemeralArtist != nil, let backTitle {
                             Button {
-                                if let (section, selectionId) = navigationCoordinator.goBack() {
-                                    onBack?(section, selectionId)
-                                }
+                                onBack?()
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left")
@@ -139,7 +140,6 @@ struct ArtistsListView: View {
                                     onSelect: {
                                         // Clear ephemeral state when user selects a library artist
                                         navigationCoordinator.viewingArtistId = nil
-                                        navigationCoordinator.clearSectionHistory()
                                         selectedArtistId = artist.id
                                     },
                                 )

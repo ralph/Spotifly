@@ -8,15 +8,14 @@
 import Foundation
 
 /// Navigation destinations for stack-based navigation
-/// Uses IDs instead of full objects to keep NavigationPath lightweight and Hashable
+/// Uses IDs instead of full objects to keep navigation history lightweight and Hashable
 enum NavigationDestination: Hashable {
     case artist(id: String)
     case album(id: String)
     case playlist(id: String)
-    case searchTracks(tracks: [Track])
+    case searchTracks(ids: [String])
 }
 
-/// Make Track array hashable for NavigationDestination
 extension NavigationDestination {
     func hash(into hasher: inout Hasher) {
         switch self {
@@ -29,9 +28,9 @@ extension NavigationDestination {
         case let .playlist(id):
             hasher.combine("playlist")
             hasher.combine(id)
-        case let .searchTracks(tracks):
+        case let .searchTracks(ids):
             hasher.combine("searchTracks")
-            hasher.combine(tracks.map(\.id))
+            hasher.combine(ids)
         }
     }
 
@@ -43,8 +42,8 @@ extension NavigationDestination {
             lhsId == rhsId
         case let (.playlist(lhsId), .playlist(rhsId)):
             lhsId == rhsId
-        case let (.searchTracks(lhsTracks), .searchTracks(rhsTracks)):
-            lhsTracks.map(\.id) == rhsTracks.map(\.id)
+        case let (.searchTracks(lhsIds), .searchTracks(rhsIds)):
+            lhsIds == rhsIds
         default:
             false
         }

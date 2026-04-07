@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Favorites now resolve via batched `/me/tracks/contains` checks for the tracks actually shown in album, playlist, queue, search, and now-playing views instead of depending on a full favorites preload
 - Saving and removing favorite tracks now uses Spotify's saved-tracks endpoint correctly, so heart toggles persist again across Spotify clients
 - Clicking Favorites in the sidebar now loads the favorites list automatically again, and the first real favorites fetch replaces any optimistic placeholder entries instead of appending to them
+- Navigation history is now tracked consistently across sidebar section switches, library detail selections, and pushed search destinations, with shared back/forward controls in the content toolbar
+- Back/forward history restores no longer depend on a next-runloop reset flag; history recording is now suppressed until the exact restored snapshot is reached
+- Search-result drill-down navigation now stores track IDs instead of full track payloads, so back/forward history does not retain large copies of search result arrays
 
 ## [1.2.5] - 2026-03-11
 
