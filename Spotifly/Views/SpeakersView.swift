@@ -24,7 +24,7 @@ struct SpeakersView: View {
             HStack {
                 Text("speakers.title")
                     .font(.title2)
-                    .fontWeight(.bold)
+                    .bold()
                 Spacer()
             }
             .padding()
@@ -145,8 +145,7 @@ struct SpeakerRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(device.name)
-                        .font(.body)
-                        .fontWeight(device.isActive ? .semibold : .regular)
+                        .font(device.isActive ? .body.weight(.semibold) : .body)
                         .foregroundStyle(.primary)
 
                     HStack(spacing: 4) {

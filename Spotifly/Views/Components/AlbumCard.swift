@@ -32,7 +32,7 @@ struct AlbumCard: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: 120, height: 120)
-                                .cornerRadius(4)
+                                .clipShape(.rect(cornerRadius: 4))
                                 .shadow(radius: 2)
                         case .failure:
                             albumPlaceholder
@@ -46,8 +46,7 @@ struct AlbumCard: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
-                        .font(.caption)
-                        .fontWeight(.medium)
+                        .font(.caption.weight(.medium))
                         .lineLimit(2)
                     Text(artistName)
                         .font(.caption2)

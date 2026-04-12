@@ -10,14 +10,14 @@ import Security
 
 /// Manages secure storage of authentication tokens in the Keychain
 enum KeychainManager {
-    nonisolated private static let service = "com.spotifly.oauth"
+    private nonisolated static let service = "com.spotifly.oauth"
     private static let accessTokenKey = "spotify_access_token"
     private static let refreshTokenKey = "spotify_refresh_token"
     private static let expiresAtKey = "spotify_expires_at"
 
     /// Shared keychain access group - allows both dev and release builds to access the same items
     /// Format: TeamID.groupName (must match keychain-access-groups in entitlements)
-    nonisolated private static let accessGroup = "89S4HZY343.com.spotifly.keychain"
+    private nonisolated static let accessGroup = "89S4HZY343.com.spotifly.keychain"
 
     // MARK: - Public API
 
@@ -32,9 +32,8 @@ enum KeychainManager {
             try save(key: refreshTokenKey, data: refreshToken.data(using: .utf8)!)
         }
 
-        // Store expiration as ISO8601 string
-        let formatter = ISO8601DateFormatter()
-        let expiresAtString = formatter.string(from: expiresAt)
+        // Store expiration as an ISO8601 string
+        let expiresAtString = expiresAt.ISO8601Format()
         try save(key: expiresAtKey, data: expiresAtString.data(using: .utf8)!)
     }
 
@@ -49,8 +48,7 @@ enum KeychainManager {
             return nil
         }
 
-        let formatter = ISO8601DateFormatter()
-        guard let expiresAt = formatter.date(from: expiresAtString) else {
+        guard let expiresAt = try? Date(expiresAtString, strategy: .iso8601) else {
             return nil
         }
 
@@ -133,7 +131,7 @@ enum KeychainManager {
             key: "spotify_custom_client_id",
             service: "com.spotifly.config",
         ),
-              let clientId = String(data: data, encoding: .utf8)
+            let clientId = String(data: data, encoding: .utf8)
         else {
             return nil
         }
@@ -147,19 +145,19 @@ enum KeychainManager {
 
     // MARK: - Private Keychain Operations
 
-    nonisolated private static func save(key: String, data: Data) throws {
+    private nonisolated static func save(key: String, data: Data) throws {
         try save(key: key, data: data, service: service)
     }
 
-    nonisolated private static func load(key: String) -> Data? {
+    private nonisolated static func load(key: String) -> Data? {
         load(key: key, service: service)
     }
 
-    nonisolated private static func delete(key: String) {
+    private nonisolated static func delete(key: String) {
         delete(key: key, service: service)
     }
 
-    nonisolated private static func save(key: String, data: Data, service: String) throws {
+    private nonisolated static func save(key: String, data: Data, service: String) throws {
         var addQuery = makeQuery(key: key, service: service)
         addQuery[kSecValueData as String] = data
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
@@ -191,7 +189,7 @@ enum KeychainManager {
         throw KeychainError.saveFailed(addStatus)
     }
 
-    nonisolated private static func load(key: String, service: String) -> Data? {
+    private nonisolated static func load(key: String, service: String) -> Data? {
         var query = makeQuery(key: key, service: service)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -206,12 +204,12 @@ enum KeychainManager {
         return result as? Data
     }
 
-    nonisolated private static func delete(key: String, service: String) {
+    private nonisolated static func delete(key: String, service: String) {
         let query = makeQuery(key: key, service: service)
         SecItemDelete(query as CFDictionary)
     }
 
-    nonisolated private static func makeQuery(key: String, service: String) -> [String: Any] {
+    private nonisolated static func makeQuery(key: String, service: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

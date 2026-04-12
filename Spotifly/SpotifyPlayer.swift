@@ -11,7 +11,7 @@ import SpotiflyRust
 
 /// Queue item metadata (nonisolated for C callback compatibility)
 /// Field names aligned with Track for consistency
-struct QueueItem: Sendable, Identifiable, Equatable, Encodable {
+struct QueueItem: Identifiable, Equatable, Encodable {
     nonisolated let id: String // uri
     nonisolated let uri: String
     nonisolated let name: String // Aligned with Track.name (was: trackName)
@@ -60,7 +60,7 @@ struct QueueItem: Sendable, Identifiable, Equatable, Encodable {
 }
 
 /// Queue state containing current, next, and previous tracks (nonisolated for C callback compatibility)
-struct QueueState: Sendable {
+struct QueueState {
     nonisolated let currentTrack: QueueItem?
     nonisolated let nextTracks: [QueueItem]
     /// Previous tracks from Mercury/Spirc
@@ -68,7 +68,7 @@ struct QueueState: Sendable {
 }
 
 /// Playback state from Mercury/Spirc (nonisolated for C callback compatibility)
-struct PlaybackState: Sendable, Equatable {
+struct PlaybackState: Equatable {
     nonisolated let isPlaying: Bool
     nonisolated let isPaused: Bool
     nonisolated let trackUri: String
@@ -91,7 +91,7 @@ private nonisolated(unsafe) let playbackStateSubject = CurrentValueSubject<Playb
 private nonisolated(unsafe) let volumeSubject = PassthroughSubject<UInt16, Never>()
 
 /// Loading notification containing track URI and position (fires early, before metadata is fetched)
-struct LoadingNotification: Sendable {
+struct LoadingNotification {
     nonisolated let trackUri: String
     nonisolated let positionMs: UInt32
 }
@@ -100,18 +100,18 @@ struct LoadingNotification: Sendable {
 private nonisolated(unsafe) let loadingSubject = PassthroughSubject<LoadingNotification, Never>()
 
 /// Queue changed notification containing the track URI that was added
-struct QueueChangedNotification: Sendable {
+struct QueueChangedNotification {
     nonisolated let trackUri: String
 }
 
 /// Track info in a set queue notification
-struct SetQueueTrackInfo: Sendable {
+struct SetQueueTrackInfo {
     nonisolated let uri: String
     nonisolated let provider: String
 }
 
 /// Set queue notification containing the full queue state with context info
-struct SetQueueNotification: Sendable {
+struct SetQueueNotification {
     nonisolated let contextUri: String
     nonisolated let currentTrack: SetQueueTrackInfo?
     nonisolated let nextTracks: [SetQueueTrackInfo]
@@ -119,7 +119,7 @@ struct SetQueueNotification: Sendable {
 }
 
 /// Session client changed notification containing info about the controlling Spotify client
-struct SessionClientChangedNotification: Sendable {
+struct SessionClientChangedNotification {
     nonisolated let clientId: String
     nonisolated let clientName: String
     nonisolated let clientBrandName: String
@@ -127,7 +127,7 @@ struct SessionClientChangedNotification: Sendable {
 }
 
 /// Connection state from librespot (nonisolated for C callback compatibility)
-struct LibrespotConnectionState: Sendable, Equatable, Encodable {
+struct LibrespotConnectionState: Equatable, Encodable {
     nonisolated let sessionConnected: Bool
     nonisolated let sessionConnectionId: String?
     nonisolated let spircReady: Bool
@@ -409,7 +409,7 @@ private nonisolated func registerSessionDisconnectedCallback() {
 /// Fires when the Spotify session disconnects (e.g., idle timeout)
 private nonisolated func handleSessionDisconnectedCallback() {
     debugLog("SpotifyPlayer", "Session disconnected event received - triggering reinit")
-    DispatchQueue.main.async {
+    Task { @MainActor in
         sessionDisconnectedSubject.send()
     }
 }
@@ -425,7 +425,7 @@ private nonisolated func registerSessionConnectedCallback() {
 /// Fires when the Spotify session is connected and ready for playback commands
 private nonisolated func handleSessionConnectedCallback() {
     debugLog("SpotifyPlayer", "Session connected event received - ready for commands")
-    DispatchQueue.main.async {
+    Task { @MainActor in
         sessionConnectedSubject.send()
     }
 }
@@ -444,7 +444,7 @@ private nonisolated func registerActiveDeviceCallback() {
 private nonisolated func handleActiveDeviceCallback(_ deviceIdPtr: UnsafePointer<CChar>?) {
     guard let deviceIdPtr else { return }
     let deviceId = String(cString: deviceIdPtr)
-    DispatchQueue.main.async {
+    Task { @MainActor in
         activeDeviceSubject.send(deviceId)
     }
 }
@@ -460,21 +460,19 @@ private nonisolated func registerTokenRequestCallback() {
 /// Fires when Rust's reconnection loop needs a fresh access token
 private nonisolated func handleTokenRequestCallback() {
     debugLog("SpotifyPlayer", "Token request received from Rust")
-    DispatchQueue.main.async {
-        Task { @MainActor in
-            guard let session = tokenProviderSession else {
-                debugLog("SpotifyPlayer", "No session available for token request")
-                return
-            }
+    Task { @MainActor in
+        guard let session = tokenProviderSession else {
+            debugLog("SpotifyPlayer", "No session available for token request")
+            return
+        }
 
-            let token = await session.validAccessToken()
-            debugLog("SpotifyPlayer", "Providing fresh token to Rust (\(token.prefix(20))...)")
+        let token = await session.validAccessToken()
+        debugLog("SpotifyPlayer", "Providing fresh token to Rust (\(token.prefix(20))...)")
 
-            // Call Rust FFI on background thread
-            Task.detached {
-                token.withCString { tokenPtr in
-                    spotifly_set_token(tokenPtr)
-                }
+        // Call Rust FFI on background thread
+        Task.detached {
+            token.withCString { tokenPtr in
+                spotifly_set_token(tokenPtr)
             }
         }
     }
@@ -658,7 +656,7 @@ private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
 }
 
 /// Errors that can occur during playback
-enum SpotifyPlayerError: Error, LocalizedError, Sendable {
+enum SpotifyPlayerError: Error, LocalizedError {
     case initializationFailed
     case playbackFailed
     case notInitialized

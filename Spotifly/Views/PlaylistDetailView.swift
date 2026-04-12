@@ -104,7 +104,7 @@ struct PlaylistDetailView: View {
         .task(id: tracks.map(\.id).joined()) {
             await resolveFavoriteStatusesForTracks()
         }
-        .onChange(of: playlistId) {
+        .onChange(of: playlistId) { _, _ in
             if let playlist {
                 playlistName = playlist.name
                 playlistDescription = playlist.description ?? ""
@@ -192,7 +192,7 @@ struct PlaylistDetailView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 200, height: 200)
-                        .cornerRadius(8)
+                        .clipShape(.rect(cornerRadius: 8))
                         .shadow(radius: 10)
                 case .failure:
                     playlistArtworkPlaceholder
@@ -210,14 +210,13 @@ struct PlaylistDetailView: View {
             .font(.system(size: 60))
             .frame(width: 200, height: 200)
             .background(Color.gray.opacity(0.2))
-            .cornerRadius(8)
+            .clipShape(.rect(cornerRadius: 8))
     }
 
     private func playlistMetadata(_ playlist: Playlist) -> some View {
         VStack(spacing: 8) {
             Text(playlistName)
-                .font(.title2)
-                .fontWeight(.semibold)
+                .font(.title2.weight(.semibold))
                 .multilineTextAlignment(.center)
 
             if !playlistDescription.isEmpty {
@@ -229,14 +228,14 @@ struct PlaylistDetailView: View {
             }
 
             HStack(spacing: 4) {
-                Text(String(format: String(localized: "metadata.by_owner"), playlist.ownerName))
+                Text(localizedTextString("metadata.by_owner", playlist.ownerName))
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
                 Text("metadata.separator")
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
                 // Use actual track count once loaded, otherwise fall back to playlist metadata
-                Text(String(format: String(localized: "metadata.tracks"), tracks.isEmpty ? playlist.trackCount : tracks.count))
+                Text(localizedNumberString("metadata.tracks", tracks.isEmpty ? playlist.trackCount : tracks.count))
                     .font(.subheadline)
                     .foregroundStyle(.tertiary)
                 if !tracks.isEmpty {
@@ -281,7 +280,7 @@ struct PlaylistDetailView: View {
 
     private var normalTrackList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
+            ForEach(tracks.enumerated(), id: \.offset) { index, track in
                 trackRowView(track: track, index: index)
 
                 if index < tracks.count - 1 {
@@ -291,7 +290,7 @@ struct PlaylistDetailView: View {
             }
         }
         .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(8)
+        .clipShape(.rect(cornerRadius: 8))
         .padding(.horizontal)
         .padding(.bottom, 100)
     }

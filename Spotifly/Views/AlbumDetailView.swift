@@ -118,14 +118,14 @@ struct AlbumDetailView: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
                                     .frame(width: 200, height: 200)
-                                    .cornerRadius(8)
+                                    .clipShape(.rect(cornerRadius: 8))
                                     .shadow(radius: 10)
                             case .failure:
                                 Image(systemName: "music.note")
                                     .font(.system(size: 60))
                                     .frame(width: 200, height: 200)
                                     .background(Color.gray.opacity(0.2))
-                                    .cornerRadius(8)
+                                    .clipShape(.rect(cornerRadius: 8))
                             @unknown default:
                                 EmptyView()
                             }
@@ -135,13 +135,12 @@ struct AlbumDetailView: View {
                             .font(.system(size: 60))
                             .frame(width: 200, height: 200)
                             .background(Color.gray.opacity(0.2))
-                            .cornerRadius(8)
+                            .clipShape(.rect(cornerRadius: 8))
                     }
 
                     VStack(spacing: 8) {
                         Text(album.name)
-                            .font(.title2)
-                            .fontWeight(.semibold)
+                            .font(.title2.weight(.semibold))
                             .multilineTextAlignment(.center)
 
                         if let artistId = album.artistId {
@@ -167,7 +166,7 @@ struct AlbumDetailView: View {
                         }
 
                         HStack(spacing: 4) {
-                            Text(String(format: String(localized: "metadata.tracks"), album.trackCount))
+                            Text(localizedNumberString("metadata.tracks", album.trackCount))
                                 .font(.subheadline)
                                 .foregroundStyle(.tertiary)
                             if !tracks.isEmpty {
@@ -214,7 +213,7 @@ struct AlbumDetailView: View {
                         .padding()
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
+                        ForEach(tracks.enumerated(), id: \.offset) { index, track in
                             TrackRow(
                                 track: track,
                                 showTrackNumber: true,
@@ -239,7 +238,7 @@ struct AlbumDetailView: View {
                         }
                     }
                     .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(8)
+                    .clipShape(.rect(cornerRadius: 8))
                     .padding(.horizontal)
                     .padding(.bottom, 100)
                 }

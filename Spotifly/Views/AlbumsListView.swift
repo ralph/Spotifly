@@ -94,8 +94,7 @@ struct AlbumsListView: View {
                         if let album = ephemeralAlbum {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("nav.currently_viewing")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
+                                    .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                     .textCase(.uppercase)
 
@@ -114,15 +113,14 @@ struct AlbumsListView: View {
                                     .padding(.vertical, 8)
 
                                 Text("nav.your_library")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
+                                    .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                     .textCase(.uppercase)
                             }
                         }
 
                         // User's library albums
-                        ForEach(Array(store.userAlbums.enumerated()), id: \.element.id) { index, album in
+                        ForEach(store.userAlbums.enumerated(), id: \.element.id) { index, album in
                             VStack(spacing: 0) {
                                 AlbumRow(
                                     album: album,
@@ -221,37 +219,44 @@ struct AlbumRow: View {
     private let imageSize: CGFloat = 36
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Album cover
-            if let url = album.images.url(for: imageSize, scale: displayScale) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        albumPlaceholder
-                    case let .success(image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: imageSize, height: imageSize)
-                            .cornerRadius(4)
-                    case .failure:
-                        albumPlaceholder
-                    @unknown default:
-                        EmptyView()
+        Button(action: onSelect) {
+            HStack(spacing: 10) {
+                // Album cover
+                if let url = album.images.url(for: imageSize, scale: displayScale) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .empty:
+                            albumPlaceholder
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: imageSize, height: imageSize)
+                                .clipShape(.rect(cornerRadius: 4))
+                        case .failure:
+                            albumPlaceholder
+                        @unknown default:
+                            EmptyView()
+                        }
                     }
+                } else {
+                    albumPlaceholder
                 }
-            } else {
-                albumPlaceholder
+
+                // Album name
+                Text(album.name)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+
+                Spacer()
             }
-
-            // Album name
-            Text(album.name)
-                .font(.system(size: 13))
-                .lineLimit(1)
-
-            Spacer()
-
-            // Play button (on hover)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+        .contentShape(Rectangle())
+        .overlay(alignment: .trailing) {
             if isHovering {
                 Button {
                     Task {
@@ -265,17 +270,11 @@ struct AlbumRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(playbackViewModel.isLoading)
+                .padding(.trailing, 10)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-        .contentShape(Rectangle())
         .onHover { hovering in
             isHovering = hovering
-        }
-        .onTapGesture {
-            onSelect()
         }
     }
 
@@ -285,6 +284,6 @@ struct AlbumRow: View {
             .foregroundStyle(.secondary)
             .frame(width: imageSize, height: imageSize)
             .background(Color.gray.opacity(0.15))
-            .cornerRadius(4)
+            .clipShape(.rect(cornerRadius: 4))
     }
 }

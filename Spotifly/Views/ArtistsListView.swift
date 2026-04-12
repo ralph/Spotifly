@@ -94,8 +94,7 @@ struct ArtistsListView: View {
                         if let artist = ephemeralArtist {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("nav.currently_viewing")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
+                                    .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                     .textCase(.uppercase)
 
@@ -114,15 +113,14 @@ struct ArtistsListView: View {
                                     .padding(.vertical, 8)
 
                                 Text("nav.your_library")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
+                                    .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                     .textCase(.uppercase)
                             }
                         }
 
                         // User's library artists
-                        ForEach(Array(store.userArtists.enumerated()), id: \.element.id) { index, artist in
+                        ForEach(store.userArtists.enumerated(), id: \.element.id) { index, artist in
                             VStack(spacing: 0) {
                                 ArtistRow(
                                     artist: artist,
@@ -221,37 +219,44 @@ struct ArtistRow: View {
     private let imageSize: CGFloat = 36
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Artist image (circular)
-            if let url = artist.images.url(for: imageSize, scale: displayScale) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        artistPlaceholder
-                    case let .success(image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: imageSize, height: imageSize)
-                            .clipShape(Circle())
-                    case .failure:
-                        artistPlaceholder
-                    @unknown default:
-                        EmptyView()
+        Button(action: onSelect) {
+            HStack(spacing: 10) {
+                // Artist image (circular)
+                if let url = artist.images.url(for: imageSize, scale: displayScale) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .empty:
+                            artistPlaceholder
+                        case let .success(image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: imageSize, height: imageSize)
+                                .clipShape(.circle)
+                        case .failure:
+                            artistPlaceholder
+                        @unknown default:
+                            EmptyView()
+                        }
                     }
+                } else {
+                    artistPlaceholder
                 }
-            } else {
-                artistPlaceholder
+
+                // Artist name
+                Text(artist.name)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+
+                Spacer()
             }
-
-            // Artist name
-            Text(artist.name)
-                .font(.system(size: 13))
-                .lineLimit(1)
-
-            Spacer()
-
-            // Play button (on hover)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+        .contentShape(Rectangle())
+        .overlay(alignment: .trailing) {
             if isHovering {
                 Button {
                     Task {
@@ -265,17 +270,11 @@ struct ArtistRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(playbackViewModel.isLoading)
+                .padding(.trailing, 10)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-        .contentShape(Rectangle())
         .onHover { hovering in
             isHovering = hovering
-        }
-        .onTapGesture {
-            onSelect()
         }
     }
 

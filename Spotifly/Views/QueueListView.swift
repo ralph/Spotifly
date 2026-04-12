@@ -26,7 +26,7 @@ struct QueueListView: View {
     @Environment(TrackService.self) private var trackService
     @Bindable var playbackViewModel: PlaybackViewModel
 
-    @State private var scrollProxy: ScrollViewProxy?
+    @State private var scrollPosition = ScrollPosition(idType: Int.self)
 
     /// Queue item with track and provider info
     private struct QueueDisplayItem {
@@ -208,46 +208,45 @@ struct QueueListView: View {
     // MARK: - Normal Mode Content
 
     private var normalModeContent: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(allQueueItems.enumerated()), id: \.offset) { index, item in
-                        TrackRow(
-                            track: item.track,
-                            index: index,
-                            currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                            currentIndex: currentIndex,
-                            provider: item.provider,
-                            playbackViewModel: playbackViewModel,
-                            currentSection: .queue,
-                            onDoubleTap: {
-                                let token = await session.validAccessToken()
-                                if let contextUri = store.queue.contextUri {
-                                    await playbackViewModel.play(
-                                        uriOrUrl: contextUri,
-                                        trackIndex: index,
-                                        accessToken: token,
-                                    )
-                                } else {
-                                    await playbackViewModel.play(
-                                        uriOrUrl: item.track.uri,
-                                        accessToken: token,
-                                    )
-                                }
-                            },
-                        )
-                        .id(index)
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(allQueueItems.enumerated(), id: \.offset) { index, item in
+                    TrackRow(
+                        track: item.track,
+                        index: index,
+                        currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+                        currentIndex: currentIndex,
+                        provider: item.provider,
+                        playbackViewModel: playbackViewModel,
+                        currentSection: .queue,
+                        onDoubleTap: {
+                            let token = await session.validAccessToken()
+                            if let contextUri = store.queue.contextUri {
+                                await playbackViewModel.play(
+                                    uriOrUrl: contextUri,
+                                    trackIndex: index,
+                                    accessToken: token,
+                                )
+                            } else {
+                                await playbackViewModel.play(
+                                    uriOrUrl: item.track.uri,
+                                    accessToken: token,
+                                )
+                            }
+                        },
+                    )
+                    .id(index)
 
-                        if index < allQueueItems.count - 1 {
-                            Divider()
-                                .padding(.leading, 78)
-                        }
+                    if index < allQueueItems.count - 1 {
+                        Divider()
+                            .padding(.leading, 78)
                     }
                 }
             }
-            .contentMargins(.bottom, 100)
-            .onAppear { scrollProxy = proxy }
+            .scrollTargetLayout()
         }
+        .scrollPosition($scrollPosition)
+        .contentMargins(.bottom, 100)
     }
 
     // MARK: - Error and Empty States
@@ -287,7 +286,7 @@ struct QueueListView: View {
     private func scrollToCurrentTrack() {
         guard currentIndex < allQueueItems.count else { return }
         withAnimation {
-            scrollProxy?.scrollTo(currentIndex, anchor: .center)
+            scrollPosition.scrollTo(id: currentIndex, anchor: .center)
         }
     }
 }

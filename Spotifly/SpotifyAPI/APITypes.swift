@@ -23,9 +23,9 @@ extension DurationFormattable {
         let minutes = (totalSeconds % 3600) / 60
 
         if hours > 0 {
-            return String(format: "%d hr %d min", hours, minutes)
+            return "\(hours.formatted()) hr \(minutes.formatted()) min"
         } else {
-            return String(format: "%d min", minutes)
+            return "\(minutes.formatted()) min"
         }
     }
 }
@@ -34,7 +34,7 @@ extension DurationFormattable {
 
 /// Unified track type from Spotify API.
 /// Used for all track sources: search, saved, album, playlist, playback.
-struct APITrack: Sendable, Identifiable {
+struct APITrack: Identifiable {
     let id: String
     let addedAt: String?
     let albumId: String?
@@ -52,7 +52,7 @@ struct APITrack: Sendable, Identifiable {
 // MARK: - Album Types
 
 /// Album metadata from Spotify API
-struct APIAlbum: Sendable, Identifiable, DurationFormattable {
+struct APIAlbum: Identifiable, DurationFormattable {
     let id: String
     let albumType: String?
     let artistId: String?
@@ -67,7 +67,7 @@ struct APIAlbum: Sendable, Identifiable, DurationFormattable {
 }
 
 /// Response wrapper for albums endpoint
-struct AlbumsResponse: Sendable {
+struct AlbumsResponse {
     let albums: [APIAlbum]
     let hasMore: Bool
     let nextOffset: Int?
@@ -77,7 +77,7 @@ struct AlbumsResponse: Sendable {
 // MARK: - Artist Types
 
 /// Artist metadata from Spotify API
-struct APIArtist: Sendable, Identifiable {
+struct APIArtist: Identifiable {
     let id: String
     let genres: [String]
     let images: ImageSet
@@ -87,7 +87,7 @@ struct APIArtist: Sendable, Identifiable {
 }
 
 /// Response wrapper for artists endpoint
-struct ArtistsResponse: Sendable {
+struct ArtistsResponse {
     let artists: [APIArtist]
     let hasMore: Bool
     let nextCursor: String?
@@ -95,7 +95,7 @@ struct ArtistsResponse: Sendable {
 }
 
 /// Response wrapper for user's top artists endpoint
-struct TopArtistsResponse: Sendable {
+struct TopArtistsResponse {
     let artists: [APIArtist]
     let hasMore: Bool
     let nextOffset: Int?
@@ -103,7 +103,7 @@ struct TopArtistsResponse: Sendable {
 }
 
 /// Response wrapper for user's top tracks endpoint
-struct TopTracksResponse: Sendable {
+struct TopTracksResponse {
     let tracks: [APITrack]
     let hasMore: Bool
     let nextOffset: Int?
@@ -113,7 +113,7 @@ struct TopTracksResponse: Sendable {
 // MARK: - Playlist Types
 
 /// Playlist metadata from Spotify API
-struct APIPlaylist: Sendable, Identifiable, DurationFormattable {
+struct APIPlaylist: Identifiable, DurationFormattable {
     let id: String
     let description: String?
     let images: ImageSet
@@ -128,7 +128,7 @@ struct APIPlaylist: Sendable, Identifiable, DurationFormattable {
 }
 
 /// Response wrapper for playlists endpoint
-struct PlaylistsResponse: Sendable {
+struct PlaylistsResponse {
     let hasMore: Bool
     let nextOffset: Int?
     let playlists: [APIPlaylist]
@@ -138,7 +138,7 @@ struct PlaylistsResponse: Sendable {
 // MARK: - Saved Tracks
 
 /// Response wrapper for saved tracks endpoint
-struct SavedTracksResponse: Sendable {
+struct SavedTracksResponse {
     let hasMore: Bool
     let nextOffset: Int?
     let total: Int
@@ -148,7 +148,7 @@ struct SavedTracksResponse: Sendable {
 // MARK: - Search Types
 
 /// Search result type
-enum SearchType: String, Sendable {
+enum SearchType: String {
     case album
     case artist
     case playlist
@@ -156,7 +156,7 @@ enum SearchType: String, Sendable {
 }
 
 /// Search results wrapper (uses unified Entity types)
-struct SearchResults: Sendable, Encodable {
+struct SearchResults: Encodable {
     let albums: [Album]
     let artists: [Artist]
     let playlists: [Playlist]
@@ -166,13 +166,13 @@ struct SearchResults: Sendable, Encodable {
 // MARK: - Recently Played
 
 /// Recently played context
-struct PlaybackContext: Sendable {
+struct PlaybackContext {
     let type: String // "album", "playlist", "artist"
     let uri: String
 }
 
 /// Recently played item
-struct RecentlyPlayedItem: Sendable, Identifiable {
+struct RecentlyPlayedItem: Identifiable {
     let id: String // Use played_at as ID since tracks can be played multiple times
     let context: PlaybackContext?
     let playedAt: String
@@ -180,21 +180,21 @@ struct RecentlyPlayedItem: Sendable, Identifiable {
 }
 
 /// Recently played response wrapper
-struct RecentlyPlayedResponse: Sendable {
+struct RecentlyPlayedResponse {
     let items: [RecentlyPlayedItem]
 }
 
 // MARK: - Playback & Connect Types
 
 /// Devices response wrapper
-struct DevicesResponse: Sendable {
+struct DevicesResponse {
     let devices: [Device]
 }
 
 // MARK: - User Top Items
 
 /// Time range for top items (artists/tracks)
-enum TopItemsTimeRange: String, Sendable {
+enum TopItemsTimeRange: String {
     case longTerm = "long_term" // ~1 year
     case mediumTerm = "medium_term" // ~6 months (default)
     case shortTerm = "short_term" // ~4 weeks

@@ -11,7 +11,7 @@ struct LoggedInView: View {
     let authResult: SpotifyAuthResult
     let onLogout: () -> Void
 
-    @EnvironmentObject var windowState: WindowState
+    @Environment(WindowState.self) private var windowState
 
     @State private var session: SpotifySession
     private let playbackViewModel = PlaybackViewModel.shared
@@ -236,17 +236,12 @@ struct LoggedInView: View {
             hasSearchResults: store.searchResults != nil,
             userProfile: store.userProfile,
         )
-        .background {
-            GeometryReader { geometry in
-                Color.clear
-                    .task(id: geometry.size.width) {
-                        guard sidebarWidth != geometry.size.width else { return }
-                        debugLog("SidebarWidth", "Updating sidebarWidth to: \(geometry.size.width)")
-                        await MainActor.run {
-                            sidebarWidth = geometry.size.width
-                        }
-                    }
-            }
+        .onGeometryChange(for: CGFloat.self) { geometry in
+            geometry.size.width
+        } action: { newWidth in
+            guard sidebarWidth != newWidth else { return }
+            debugLog("SidebarWidth", "Updating sidebarWidth to: \(newWidth)")
+            sidebarWidth = newWidth
         }
     }
 

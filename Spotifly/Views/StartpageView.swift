@@ -147,7 +147,7 @@ struct StartpageView: View {
             }
             .padding()
         } else if let error = store.recentlyPlayedErrorMessage {
-            Text(String(format: String(localized: "error.load_recently_played"), error))
+            Text(localizedTextString("error.load_recently_played", error))
                 .foregroundStyle(.red)
                 .padding()
         } else if !store.recentAlbumsAndPlaylists.isEmpty {
@@ -194,7 +194,7 @@ struct HorizontalCardSection<Item: Identifiable, CardContent: View>: View {
                     .font(.caption)
                     .padding(.horizontal)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal) {
                     LazyHStack(spacing: 12) {
                         ForEach(items) { item in
                             card(item)
@@ -211,6 +211,7 @@ struct HorizontalCardSection<Item: Identifiable, CardContent: View>: View {
                     }
                     .padding(.horizontal)
                 }
+                .scrollIndicators(.hidden)
             }
         }
     }
@@ -227,7 +228,7 @@ struct RecentContentSection: View {
                 .font(.headline)
                 .padding(.horizontal)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 12) {
                     ForEach(items, id: \.id) { item in
                         if let album = item.album {
@@ -239,6 +240,7 @@ struct RecentContentSection: View {
                 }
                 .padding(.horizontal)
             }
+            .scrollIndicators(.hidden)
         }
     }
 }

@@ -59,7 +59,7 @@ struct SearchResultsView: View {
                 if searchResults.tracks.count > 5 {
                     NavigationLink(value: NavigationDestination.searchTracks(ids: searchResults.tracks.map(\.id))) {
                         HStack(spacing: 4) {
-                            Text(String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
+                            Text(localizedNumberString("show_all.tracks", searchResults.tracks.count))
                                 .font(.subheadline)
                             Image(systemName: "chevron.right")
                                 .font(.caption)
@@ -71,7 +71,7 @@ struct SearchResultsView: View {
             }
             .padding(.horizontal)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 12) {
                     ForEach(searchResults.tracks) { track in
                         TrackCard(track: track, playbackViewModel: playbackViewModel)
@@ -79,6 +79,7 @@ struct SearchResultsView: View {
                 }
                 .padding(.horizontal)
             }
+            .scrollIndicators(.hidden)
         }
     }
 
@@ -90,7 +91,7 @@ struct SearchResultsView: View {
                 .font(.headline)
                 .padding(.horizontal)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 12) {
                     ForEach(searchResults.artists) { artist in
                         ArtistCard(artist: artist)
@@ -98,6 +99,7 @@ struct SearchResultsView: View {
                 }
                 .padding(.horizontal)
             }
+            .scrollIndicators(.hidden)
         }
     }
 
@@ -109,7 +111,7 @@ struct SearchResultsView: View {
                 .font(.headline)
                 .padding(.horizontal)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 12) {
                     ForEach(searchResults.albums) { album in
                         AlbumCard(album: album)
@@ -117,6 +119,7 @@ struct SearchResultsView: View {
                 }
                 .padding(.horizontal)
             }
+            .scrollIndicators(.hidden)
         }
     }
 
@@ -128,7 +131,7 @@ struct SearchResultsView: View {
                 .font(.headline)
                 .padding(.horizontal)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 12) {
                     ForEach(searchResults.playlists) { playlist in
                         PlaylistCard(playlist: playlist)
@@ -136,6 +139,7 @@ struct SearchResultsView: View {
                 }
                 .padding(.horizontal)
             }
+            .scrollIndicators(.hidden)
         }
     }
 }
