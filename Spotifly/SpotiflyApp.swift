@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct SpotiflyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var windowState = WindowState()
+    @State private var windowState = WindowState()
 
     init() {
         // Set activation policy to regular to support media keys
@@ -75,7 +75,7 @@ struct SpotiflyApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { notification in
                     windowState.exitMiniPlayerMode(window: notification.object as? NSWindow)
                 }
-                .environmentObject(windowState)
+                .environment(windowState)
         }
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
         .commands {

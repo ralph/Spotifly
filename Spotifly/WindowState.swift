@@ -6,12 +6,12 @@
 //
 
 import AppKit
-import Combine
 import SwiftUI
 
 @MainActor
-class WindowState: ObservableObject {
-    @Published var isMiniPlayerMode: Bool = false
+@Observable
+final class WindowState {
+    var isMiniPlayerMode = false
 
     /// Store the previous window frame to restore when exiting mini player
     private var savedWindowFrame: NSRect?
@@ -42,7 +42,7 @@ class WindowState: ObservableObject {
         isMiniPlayerMode = true
 
         // Give SwiftUI a chance to update the view hierarchy
-        DispatchQueue.main.async {
+        Task { @MainActor [window] in
             // Remove resizable style
             window.styleMask.remove(.resizable)
 

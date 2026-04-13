@@ -56,7 +56,7 @@ struct FavoritesListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(store.favoriteTracks.enumerated()), id: \.element.id) { index, track in
+                        ForEach(store.favoriteTracks.enumerated(), id: \.element.id) { index, track in
                             TrackRow(
                                 track: track,
                                 index: index,

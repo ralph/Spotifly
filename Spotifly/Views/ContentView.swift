@@ -34,7 +34,7 @@ struct ContentView: View {
 
             Text("app.name")
                 .font(.largeTitle)
-                .fontWeight(.bold)
+                .bold()
 
             Text("auth.connect.description")
                 .foregroundStyle(.secondary)
@@ -92,5 +92,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .environmentObject(WindowState())
+        .environment(WindowState())
 }

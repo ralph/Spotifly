@@ -16,7 +16,7 @@ struct NowPlayingBarView: View {
     @Environment(PlaylistService.self) private var playlistService
     @Environment(\.displayScale) private var displayScale
     @Bindable var playbackViewModel: PlaybackViewModel
-    @ObservedObject var windowState: WindowState
+    let windowState: WindowState
 
     @State private var cachedAlbumArtImage: Image?
     @State private var cachedAlbumArtURL: String?
@@ -176,7 +176,7 @@ struct NowPlayingBarView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: size, height: size)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .clipShape(.rect(cornerRadius: 4))
                 } else {
                     // Load new image
                     AsyncImage(url: url) { phase in
@@ -189,7 +189,7 @@ struct NowPlayingBarView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: size, height: size)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .clipShape(.rect(cornerRadius: 4))
                                 .onAppear {
                                     cachedAlbumArtImage = image
                                     cachedAlbumArtURL = urlString
@@ -212,15 +212,14 @@ struct NowPlayingBarView: View {
             .font(.title3)
             .frame(width: size, height: size)
             .background(Color.gray.opacity(0.2))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .clipShape(.rect(cornerRadius: 4))
     }
 
     private var trackInfo: some View {
         VStack(alignment: .leading, spacing: 2) {
             if let track = currentTrack {
                 Text(track.name)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                 Text(track.artistName)
                     .font(.caption)
@@ -272,7 +271,7 @@ struct NowPlayingBarView: View {
         } label: {
             Image(systemName: "shuffle")
                 .font(.caption)
-                .foregroundColor(playbackViewModel.isShuffleEnabled ? .green : .secondary)
+                .foregroundStyle(playbackViewModel.isShuffleEnabled ? .green : .secondary)
         }
         .buttonStyle(.plain)
         .disabled(!hasPlayback)
@@ -466,7 +465,7 @@ struct NowPlayingBarView: View {
             } label: {
                 Image(systemName: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
                     .font(.body)
-                    .foregroundColor(showPlaylistAddedSuccess ? .green : .secondary)
+                    .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
                     .animation(.easeInOut(duration: 0.2), value: showPlaylistAddedSuccess)

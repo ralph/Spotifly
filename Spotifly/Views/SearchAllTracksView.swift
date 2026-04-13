@@ -28,15 +28,14 @@ struct SearchAllTracksView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 120, height: 120)
                         .background(Color.gray.opacity(0.2))
-                        .cornerRadius(8)
+                        .clipShape(.rect(cornerRadius: 8))
 
                     VStack(spacing: 8) {
                         Text("section.tracks")
-                            .font(.title2)
-                            .fontWeight(.semibold)
+                            .font(.title2.weight(.semibold))
 
                         HStack(spacing: 4) {
-                            Text(String(format: String(localized: "metadata.tracks"), trackIds.count))
+                            Text(localizedNumberString("metadata.tracks", trackIds.count))
                                 .font(.subheadline)
                                 .foregroundStyle(.tertiary)
                             Text("metadata.separator")
@@ -64,7 +63,7 @@ struct SearchAllTracksView: View {
 
                 // Track list
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    ForEach(tracks.enumerated(), id: \.element.id) { index, track in
                         TrackRow(
                             track: track,
                             index: index,
@@ -85,7 +84,7 @@ struct SearchAllTracksView: View {
                     }
                 }
                 .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(8)
+                .clipShape(.rect(cornerRadius: 8))
                 .padding(.horizontal)
             }
         }

@@ -21,7 +21,7 @@ enum SpotifyConfigError: Error, LocalizedError {
     }
 }
 
-enum SpotifyConfig: Sendable {
+enum SpotifyConfig {
     /// Returns the Client ID from keychain
     /// - Returns: The stored Client ID, or crashes if not set (should be set before login)
     nonisolated static func getClientId() -> String {

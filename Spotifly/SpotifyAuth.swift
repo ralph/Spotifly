@@ -16,14 +16,14 @@ actor SpotifyAuthActor {
 }
 
 /// Result of a successful OAuth flow
-struct SpotifyAuthResult: Sendable {
+struct SpotifyAuthResult {
     let accessToken: String
     let refreshToken: String?
     let expiresIn: UInt64
 }
 
 /// Errors that can occur during Spotify authentication
-enum SpotifyAuthError: Error, Sendable, LocalizedError {
+enum SpotifyAuthError: Error, LocalizedError {
     case authenticationFailed
     case noTokenAvailable
     case refreshFailed
@@ -105,7 +105,7 @@ private final class AuthenticationSession: NSObject, ASWebAuthenticationPresenta
 }
 
 /// Token response from Spotify API
-private struct TokenResponse: Decodable, Sendable {
+private struct TokenResponse: Decodable {
     let access_token: String
     let refresh_token: String?
     let expires_in: Int
@@ -120,9 +120,9 @@ enum SpotifyAuth {
     /// Converts data to base64url encoding (RFC 4648)
     private static func base64URLEncode(_ data: Data) -> String {
         data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+            .replacing("+", with: "-")
+            .replacing("/", with: "_")
+            .replacing("=", with: "")
     }
 
     /// Generates a random code verifier for PKCE

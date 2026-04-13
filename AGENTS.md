@@ -14,6 +14,8 @@ Spotify client for macOS (and maybe later iPad and iOS).
 - No backwards compatibility needed - target only the latest OS versions
 - Format all Swift code with: `swiftformat --swiftversion 6.2 .`
 
+Also read `AGENTS-twostraws.md` for general development guidelines and best practices inspired by Paul Hudson's "Two Straws" approach.
+
 ## Network Request Logging
 
 All Spotify API network requests must include debug logging. Add a log statement after constructing the URL string, wrapped in `#if DEBUG`:
@@ -39,7 +41,6 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 - Single source of truth for all entity data
 - Normalized entity tables: `tracks`, `albums`, `artists`, `playlists`, `devices`
 - ID arrays for ordered collections: `savedTrackIds`, `userPlaylistIds`, `userAlbumIds`, `userArtistIds`
-- Favorite tracking: `favoriteTrackIds` set for O(1) lookup
 - Injected via `@Environment(AppStore.self)`
 
 **Entities** (`Store/Entities.swift`)
@@ -51,33 +52,6 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 - Each service takes `AppStore` in its initializer
 - Injected via `@Environment(XxxService.self)`
 - Available services: `TrackService`, `AlbumService`, `ArtistService`, `PlaylistService`, `DeviceService`, `QueueService`, `RecentlyPlayedService`, `SearchService`
-
-### Usage Pattern
-
-```swift
-struct MyView: View {
-    @Environment(AppStore.self) private var store
-    @Environment(AlbumService.self) private var albumService
-
-    // Read from store
-    private var tracks: [Track] {
-        store.albums[albumId]?.trackIds.compactMap { store.tracks[$0] } ?? []
-    }
-
-    // Mutate via service
-    func loadTracks() async {
-        _ = try? await albumService.getAlbumTracks(albumId: id, accessToken: token)
-        // Tracks are now in store.tracks, view updates automatically
-    }
-}
-```
-
-### Key Principles
-
-1. **Always use services for API calls** - ensures entities are stored in AppStore
-2. **Read from store, write via services** - single source of truth
-3. **Favorites require tracks in store** - `store.isFavorite(trackId)` only works if track was loaded via a service
-4. **Favorites loaded on startup** - `LoggedInView` loads favorites so heart indicators work everywhere
 
 ### Network Request Deduplication
 

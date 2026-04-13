@@ -31,7 +31,7 @@ struct ArtistCard: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: 120, height: 120)
-                                .clipShape(Circle())
+                                .clipShape(.circle)
                                 .shadow(radius: 2)
                         case .failure:
                             artistPlaceholder
@@ -44,8 +44,7 @@ struct ArtistCard: View {
                 }
 
                 Text(name)
-                    .font(.caption)
-                    .fontWeight(.medium)
+                    .font(.caption.weight(.medium))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .frame(width: 120)

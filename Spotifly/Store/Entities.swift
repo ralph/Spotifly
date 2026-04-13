@@ -11,7 +11,7 @@ import Foundation
 // MARK: - Image Types
 
 /// A single image variant with its URL and pixel dimensions.
-struct ImageVariant: Sendable, Hashable, Encodable {
+struct ImageVariant: Hashable, Encodable {
     let url: URL
     let size: Int // width in pixels (images are square)
 }
@@ -19,7 +19,7 @@ struct ImageVariant: Sendable, Hashable, Encodable {
 /// A collection of image variants at different resolutions.
 /// Stores all sizes returned by the Spotify API and provides
 /// resolution-aware selection based on display size and scale.
-struct ImageSet: Sendable, Hashable, Encodable {
+struct ImageSet: Hashable, Encodable {
     /// Sorted descending by size (largest first), matching Spotify's default order.
     let variants: [ImageVariant]
 
@@ -62,7 +62,7 @@ struct ImageSet: Sendable, Hashable, Encodable {
 
 /// Unified track entity - single source of truth for all track data.
 /// Constructed from APITrack via EntityConversions.
-struct Track: Identifiable, Sendable, Hashable, Encodable {
+struct Track: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
     let uri: String
@@ -92,7 +92,7 @@ struct Track: Identifiable, Sendable, Hashable, Encodable {
 // MARK: - Album
 
 /// Unified album entity.
-struct Album: Identifiable, Sendable, Hashable, Encodable {
+struct Album: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
     let uri: String
@@ -160,7 +160,7 @@ struct Album: Identifiable, Sendable, Hashable, Encodable {
 // MARK: - Artist
 
 /// Unified artist entity.
-struct Artist: Identifiable, Sendable, Hashable, Encodable {
+struct Artist: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
     let uri: String
@@ -172,7 +172,7 @@ struct Artist: Identifiable, Sendable, Hashable, Encodable {
 // MARK: - Playlist
 
 /// Unified playlist entity.
-struct Playlist: Identifiable, Sendable, Hashable, Encodable {
+struct Playlist: Identifiable, Hashable, Encodable {
     let id: String
     var name: String // Mutable - can be edited
     var description: String?
@@ -238,7 +238,7 @@ struct Playlist: Identifiable, Sendable, Hashable, Encodable {
 // MARK: - User Profile
 
 /// User profile (singleton, not stored in entity table).
-struct UserProfile: Sendable {
+struct UserProfile {
     let id: String
     let displayName: String
     let imageURL: URL?
@@ -249,7 +249,7 @@ struct UserProfile: Sendable {
 // MARK: - Device
 
 /// Spotify Connect device.
-struct Device: Identifiable, Sendable, Hashable, Encodable {
+struct Device: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
     let type: String
@@ -263,7 +263,7 @@ struct Device: Identifiable, Sendable, Hashable, Encodable {
 
 /// Our app's connection state to Spotify (single source of truth for connection info).
 /// Converted from LibrespotConnectionState at the FFI boundary.
-struct SpotifyConnection: Sendable, Equatable, Encodable {
+struct SpotifyConnection: Equatable, Encodable {
     let deviceId: String?
     let deviceName: String
     let isConnected: Bool
@@ -277,7 +277,7 @@ struct SpotifyConnection: Sendable, Equatable, Encodable {
 // MARK: - Queue Models
 
 /// Indicates the source of a track in the queue (matches librespot provider values)
-enum TrackProvider: String, Codable, Sendable {
+enum TrackProvider: String, Codable {
     case queue // Manually added to queue
     case context // From current album/playlist/artist
     case autoplay // Autoplay suggestion
@@ -296,7 +296,7 @@ enum TrackProvider: String, Codable, Sendable {
 }
 
 /// A track in the queue with provider information
-struct QueueTrack: Identifiable, Sendable {
+struct QueueTrack: Identifiable {
     let id: String // Unique ID for list diffing (track.id + index or UUID)
     let track: Track
     let provider: TrackProvider
@@ -310,7 +310,7 @@ struct QueueTrack: Identifiable, Sendable {
 }
 
 /// Represents the current playback queue state
-struct PlaybackQueue: Sendable {
+struct PlaybackQueue {
     var currentTrack: QueueTrack?
     var manualQueue: [QueueTrack] // Manually queued tracks (provider: .queue)
     var contextTracks: [QueueTrack] // Tracks from current context (provider: .context)
@@ -339,6 +339,9 @@ nonisolated func formatTrackTime(milliseconds: Int) -> String {
     let totalSeconds = milliseconds / 1000
     let minutes = totalSeconds / 60
     let seconds = totalSeconds % 60
+    // Using String(format:) intentionally: .formatted() is locale-sensitive and
+    // can produce non-ASCII digits (e.g. Arabic-Indic) in some locales. Track
+    // time is a technical display value that must always render as ASCII "3:05".
     return String(format: "%d:%02d", minutes, seconds)
 }
 
@@ -349,9 +352,9 @@ func formatDuration(milliseconds: Int) -> String {
     let minutes = (totalSeconds % 3600) / 60
 
     if hours > 0 {
-        return String(format: "%d hr %d min", hours, minutes)
+        return "\(hours.formatted()) hr \(minutes.formatted()) min"
     } else {
-        return String(format: "%d min", minutes)
+        return "\(minutes.formatted()) min"
     }
 }
 
@@ -364,7 +367,7 @@ func totalDuration(of tracks: some Sequence<Track>) -> String {
 // MARK: - Pagination State
 
 /// Tracks pagination state for a collection.
-struct PaginationState: Sendable, Encodable {
+struct PaginationState: Encodable {
     var isLoaded = false
     var isLoading = false
     var hasMore = true

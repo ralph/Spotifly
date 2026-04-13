@@ -116,13 +116,13 @@ struct TrackRow: View {
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(width: 40, height: 40)
-                            .cornerRadius(4)
+                            .clipShape(.rect(cornerRadius: 4))
                     case .failure:
                         Image(systemName: "music.note")
                             .font(.caption)
                             .frame(width: 40, height: 40)
                             .background(Color.gray.opacity(0.2))
-                            .cornerRadius(4)
+                            .clipShape(.rect(cornerRadius: 4))
                     @unknown default:
                         EmptyView()
                     }
@@ -132,8 +132,7 @@ struct TrackRow: View {
             // Track info
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.name)
-                    .font(.subheadline)
-                    .fontWeight(isCurrentTrack ? .semibold : .regular)
+                    .font(isCurrentTrack ? .subheadline.weight(.semibold) : .subheadline)
                     .foregroundStyle(isCurrentTrack ? .green : .primary)
                     .lineLimit(1)
 
@@ -189,7 +188,7 @@ struct TrackRow: View {
             } label: {
                 Image(systemName: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
                     .font(.caption)
-                    .foregroundColor(showPlaylistAddedSuccess ? Color.green : Color.secondary)
+                    .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
                     .frame(width: 20, height: 20)
                     .contentShape(Rectangle())
                     .animation(.easeInOut(duration: 0.2), value: showPlaylistAddedSuccess)

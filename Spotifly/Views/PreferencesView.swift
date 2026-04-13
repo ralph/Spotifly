@@ -11,20 +11,17 @@ import UniformTypeIdentifiers
 struct PreferencesView: View {
     var body: some View {
         TabView {
-            PlaybackSettingsView()
-                .tabItem {
-                    Label("preferences.playback", systemImage: "speaker.wave.3")
-                }
+            Tab("preferences.playback", systemImage: "speaker.wave.3") {
+                PlaybackSettingsView()
+            }
 
-            StartpageSettingsView()
-                .tabItem {
-                    Label("nav.startpage", systemImage: "house")
-                }
+            Tab("nav.startpage", systemImage: "house") {
+                StartpageSettingsView()
+            }
 
-            InfoView()
-                .tabItem {
-                    Label("preferences.info", systemImage: "info.circle")
-                }
+            Tab("preferences.info", systemImage: "info.circle") {
+                InfoView()
+            }
         }
         .frame(width: 450)
     }
@@ -173,8 +170,7 @@ struct InfoView: View {
                 .frame(width: 64, height: 64)
 
             Text("Spotifly")
-                .font(.title2)
-                .fontWeight(.semibold)
+                .font(.title2.weight(.semibold))
 
             Text("preferences.version \(appVersion) (\(buildNumber))")
                 .font(.callout)

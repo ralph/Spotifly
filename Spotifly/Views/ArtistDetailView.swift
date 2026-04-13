@@ -130,7 +130,7 @@ struct ArtistDetailView: View {
                     VStack(spacing: 8) {
                         Text(artist.name)
                             .font(.title)
-                            .fontWeight(.bold)
+                            .bold()
                             .multilineTextAlignment(.center)
 
                         if !artist.genres.isEmpty {
@@ -210,7 +210,7 @@ struct ArtistDetailView: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fill)
                                     .frame(width: 150, height: 150)
-                                    .cornerRadius(8)
+                                    .clipShape(.rect(cornerRadius: 8))
                             case .failure:
                                 albumPlaceholder
                             @unknown default:
@@ -223,8 +223,7 @@ struct ArtistDetailView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(album.name)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.subheadline.weight(.medium))
                             .lineLimit(1)
 
                         Text(formatReleaseYear(album.releaseDate))
@@ -242,7 +241,7 @@ struct ArtistDetailView: View {
                 .foregroundStyle(.gray)
                 .frame(width: 150, height: 150)
                 .background(Color.gray.opacity(0.2))
-                .cornerRadius(8)
+                .clipShape(.rect(cornerRadius: 8))
         }
 
         private func formatReleaseYear(_ dateString: String?) -> String {

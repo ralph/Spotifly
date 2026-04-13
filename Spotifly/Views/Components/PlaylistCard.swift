@@ -31,7 +31,7 @@ struct PlaylistCard: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: 120, height: 120)
-                                .cornerRadius(4)
+                                .clipShape(.rect(cornerRadius: 4))
                                 .shadow(radius: 2)
                         case .failure:
                             playlistPlaceholder
@@ -44,8 +44,7 @@ struct PlaylistCard: View {
                 }
 
                 Text(name)
-                    .font(.caption)
-                    .fontWeight(.medium)
+                    .font(.caption.weight(.medium))
                     .lineLimit(2)
                     .frame(width: 120, alignment: .leading)
             }

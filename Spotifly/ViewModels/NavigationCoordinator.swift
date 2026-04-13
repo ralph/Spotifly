@@ -206,6 +206,10 @@ final class NavigationCoordinator {
             selectedPlaylistId = playlistId
         }
 
+        // Always clear the navigation stack when navigating to a specific item,
+        // even if we're already on the same section. selectNavigationItem skips
+        // clearNavigationStack() when the section hasn't changed.
+        clearNavigationStack()
         selectNavigationItem(request.section)
     }
 

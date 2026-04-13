@@ -107,11 +107,11 @@ private struct UptimeDisplay: View {
         let seconds = Int(interval) % 60
 
         if hours > 0 {
-            return String(format: "%dh %dm %ds", hours, minutes, seconds)
+            return "\(hours.formatted())h \(minutes.formatted())m \(seconds.formatted())s"
         } else if minutes > 0 {
-            return String(format: "%dm %ds", minutes, seconds)
+            return "\(minutes.formatted())m \(seconds.formatted())s"
         } else {
-            return String(format: "%ds", seconds)
+            return "\(seconds.formatted())s"
         }
     }
 }
@@ -238,7 +238,7 @@ struct ConnectionStatusView: View {
                 .frame(width: 8, height: 8)
             Text(isConnected ? String(localized: "connection.connected") : String(localized: "connection.disconnected"))
                 .font(.caption)
-                .fontWeight(.medium)
+                .font(.caption.weight(.medium))
                 .foregroundStyle(isConnected ? .green : .orange)
         }
         .padding(.horizontal, 8)

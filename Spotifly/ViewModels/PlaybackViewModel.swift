@@ -22,7 +22,7 @@ private final class DriftCorrectionTimer {
         let notificationName = DriftCorrectionTimer.checkNotification
         let thread = Thread {
             while !Thread.current.isCancelled {
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     NotificationCenter.default.post(name: notificationName, object: nil)
                 }
                 // Check drift every second (not 100ms - UI uses TimelineView now)
