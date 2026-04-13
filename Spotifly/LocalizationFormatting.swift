@@ -12,9 +12,14 @@ func localizedString(_ key: String) -> String {
 }
 
 func localizedNumberString(_ key: String, _ value: Int) -> String {
-    localizedString(key).replacing("%d", with: value.formatted())
+    // String(format:) is intentional: it handles all printf specifiers (%d, %1$d,
+    // multiple occurrences) correctly and produces locale-neutral ASCII digits.
+    // .formatted() would insert locale-specific thousands separators and numerals.
+    String(format: localizedString(key), value)
 }
 
 func localizedTextString(_ key: String, _ value: String) -> String {
-    localizedString(key).replacing("%@", with: value)
+    // String(format:) is intentional: same reasons as localizedNumberString,
+    // plus it correctly handles positional specifiers (%1$@) if ever added.
+    String(format: localizedString(key), value)
 }
