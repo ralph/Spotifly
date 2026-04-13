@@ -339,12 +339,10 @@ nonisolated func formatTrackTime(milliseconds: Int) -> String {
     let totalSeconds = milliseconds / 1000
     let minutes = totalSeconds / 60
     let seconds = totalSeconds % 60
-    let secondsText = seconds.formatted(
-        .number
-            .grouping(.never)
-            .precision(.integerLength(2)),
-    )
-    return "\(minutes.formatted()):\(secondsText)"
+    // Using String(format:) intentionally: .formatted() is locale-sensitive and
+    // can produce non-ASCII digits (e.g. Arabic-Indic) in some locales. Track
+    // time is a technical display value that must always render as ASCII "3:05".
+    return String(format: "%d:%02d", minutes, seconds)
 }
 
 /// Format milliseconds as human-readable duration (e.g., "3 hr 15 min" or "45 min")
