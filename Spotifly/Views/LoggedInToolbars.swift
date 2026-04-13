@@ -64,7 +64,7 @@ private struct NavigationHistoryToolbarControl: View {
             } label: {
                 Image(systemName: "chevron.left")
             }
-            .help(navigationCoordinator.backNavigationTitle.map { "Back to \($0)" } ?? "Back")
+            .help(navigationCoordinator.backNavigationTitle.map { String(localized: "nav.back_to \($0)") } ?? String(localized: "nav.back"))
             .disabled(!navigationCoordinator.canNavigateBackward)
 
             Button {
@@ -72,7 +72,7 @@ private struct NavigationHistoryToolbarControl: View {
             } label: {
                 Image(systemName: "chevron.right")
             }
-            .help(navigationCoordinator.forwardNavigationTitle.map { "Forward to \($0)" } ?? "Forward")
+            .help(navigationCoordinator.forwardNavigationTitle.map { String(localized: "nav.forward_to \($0)") } ?? String(localized: "nav.forward"))
             .disabled(!navigationCoordinator.canNavigateForward)
         }
         .controlGroupStyle(.navigation)

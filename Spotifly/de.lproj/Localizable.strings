@@ -24,6 +24,9 @@
 "nav.library" = "Bibliothek";
 "nav.profile" = "Profil";
 "nav.back_to %@" = "Zurück zu %@";
+"nav.back" = "Zurück";
+"nav.forward_to %@" = "Vorwärts zu %@";
+"nav.forward" = "Vorwärts";
 "nav.currently_viewing" = "Aktuelle Ansicht";
 "nav.your_library" = "Deine Bibliothek";
 
