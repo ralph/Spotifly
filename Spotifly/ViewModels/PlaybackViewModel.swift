@@ -277,12 +277,12 @@ final class PlaybackViewModel {
 
     func togglePlayPause(trackId: String, accessToken: String) async {
         if isPlaying, currentTrackUri == trackId {
-            // Pause current track
-            SpotifyPlayer.pause()
-            isPlaying = false
+            // Route through pause() rather than calling the FFI directly: it carries the
+            // connectivity guard and the Web API fallback for remote devices, and it
+            // leaves isPlaying to the Mercury callback instead of asserting it here
+            pause()
         } else if !isPlaying, currentTrackUri == trackId {
-            // Resume current track
-            SpotifyPlayer.resume()
+            resume()
         } else {
             // Play new track
             await playTrack(trackId: trackId, accessToken: accessToken)
@@ -290,6 +290,11 @@ final class PlaybackViewModel {
     }
 
     func stop() {
+        // Don't clear playback state for a command Rust will reject
+        guard SpotifyPlayer.isSessionConnected else {
+            debugLog("PlaybackViewModel", "stop() ignored - session not connected")
+            return
+        }
         SpotifyPlayer.stop()
         isPlaying = false
         currentTrackUri = nil
@@ -670,6 +675,14 @@ final class PlaybackViewModel {
     /// Perform the actual seek operation (called after debouncing)
     private func performSeek(to positionMs: UInt32) {
         if SpotifyPlayer.isActiveDevice {
+            // seek(to:) already moved the anchor so scrubbing feels immediate. If Rust
+            // will reject the command, re-sync from the real position instead of leaving
+            // the UI parked at a position playback never reached.
+            guard SpotifyPlayer.isSessionConnected else {
+                debugLog("PlaybackViewModel", "performSeek ignored - session not connected")
+                syncPositionAnchor()
+                return
+            }
             SpotifyPlayer.seek(positionMs: positionMs)
         } else {
             // Remote control via Web API

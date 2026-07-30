@@ -1056,25 +1056,30 @@ enum SpotifyPlayer {
         }
     }
 
+    /// Runs an FFI command off the main thread and reports whether Rust accepted it.
+    ///
+    /// Only used by the paths that change presentation state on the strength of a
+    /// command succeeding. Commands whose rejection has no visible consequence stay
+    /// fire-and-forget rather than growing a result-handling path for nothing.
+    private static func runCommand(
+        _ body: @escaping @Sendable () -> SpotiflyResult,
+    ) async -> Bool {
+        await Task.detached(priority: .userInitiated) { body() == .ok }.value
+    }
+
     /// Transfers playback from another Spotify Connect device to this local player.
     /// Uses the native Spotify Connect protocol via Spirc for seamless handoff.
-    /// Dispatched to background thread to avoid blocking the main thread.
-    static func transferToLocal() {
-        Task.detached(priority: .userInitiated) {
-            spotifly_transfer_to_local()
-        }
+    /// - Returns: `true` if Rust accepted the transfer.
+    static func transferToLocal() async -> Bool {
+        await runCommand { spotifly_transfer_to_local() }
     }
 
     /// Transfers playback from this local player to another device.
     /// Uses the native Spotify Connect protocol via SpClient for seamless handoff.
-    /// Dispatched to background thread to avoid blocking the main thread.
     /// - Parameter deviceId: The target device ID to transfer playback to
-    static func transferPlayback(to deviceId: String) {
-        Task.detached(priority: .userInitiated) {
-            _ = deviceId.withCString { ptr in
-                spotifly_transfer_playback(ptr)
-            }
-        }
+    /// - Returns: `true` if Rust accepted the transfer.
+    static func transferPlayback(to deviceId: String) async -> Bool {
+        await runCommand { deviceId.withCString { spotifly_transfer_playback($0) } }
     }
 
     /// Adds an item to the queue via Spirc.

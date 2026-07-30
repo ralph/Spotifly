@@ -90,18 +90,31 @@ final class DeviceService {
         // Record transfer time so sessionConnected handler can delay its Web API fetch
         lastTransferTime = .now
 
-        // Optimistically mark the target device as active for immediate UI feedback
+        // Optimistically mark the target device as active for immediate UI feedback,
+        // remembering the previous one so a rejected transfer can be undone
+        let previousActiveDeviceId = store.activeDeviceId
         store.setActiveDevice(device.id)
 
         // Check if target is our local device
         let isLocalDevice = device.id == store.connection?.deviceId
 
-        if isLocalDevice {
+        let accepted = if isLocalDevice {
             // Transfer TO local - use Spirc's native transfer
-            SpotifyPlayer.transferToLocal()
+            await SpotifyPlayer.transferToLocal()
         } else {
             // Transfer FROM local to remote device
-            SpotifyPlayer.transferPlayback(to: device.id)
+            await SpotifyPlayer.transferPlayback(to: device.id)
+        }
+
+        // Rust can reject the transfer (no session, invalid session, SpClient failure).
+        // Roll the optimistic update back rather than leaving the UI showing a device
+        // that never became active, and report the failure to the caller.
+        guard accepted else {
+            debugLog("DeviceService", "Transfer to \(device.name) was rejected by Rust")
+            if let previousActiveDeviceId {
+                store.setActiveDevice(previousActiveDeviceId)
+            }
+            return false
         }
 
         // Schedule a throttled refresh after the transfer settles.
