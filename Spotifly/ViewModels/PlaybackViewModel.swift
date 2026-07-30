@@ -91,8 +91,11 @@ final class PlaybackViewModel {
 
     var isShuffleEnabled = false
 
+    /// Whether Swift knows that Rust has completed at least one usable initialization.
+    /// This stays true through transient disconnects because Rust owns their recovery.
     private var isInitialized = false
     private var lastAlbumArtURL: String?
+    private var connectionStateSubscription: AnyCancellable?
     private var playbackStateSubscription: AnyCancellable?
     private var volumeSubscription: AnyCancellable?
     private var loadingSubscription: AnyCancellable?
@@ -112,6 +115,7 @@ final class PlaybackViewModel {
     private var initializationTask: Task<Void, Never>?
 
     private init() {
+        setupConnectionStateSubscription()
         setupPlaybackStateSubscription()
         setupVolumeSubscription()
         setupVolumeDebounceSubscription()
@@ -142,7 +146,8 @@ final class PlaybackViewModel {
     }
 
     /// Tears down and rebuilds the player even if it is already initialized.
-    /// Used by the wake and reconnect-watchdog recovery paths.
+    /// Used by the manual connection retry and by the wake fallback when Rust has no
+    /// session to reconnect.
     func forceReinitialize(accessToken: String) async {
         await runInitialization(accessToken: accessToken, force: true)
     }
@@ -162,8 +167,8 @@ final class PlaybackViewModel {
     /// that has already been replaced.
     ///
     /// Late callers await the in-flight run instead of starting a competing one. That also
-    /// coalesces the genuinely concurrent triggers — system wake and the reconnect
-    /// watchdog can fire together, and one rebuild is the correct response to both.
+    /// coalesces concurrent explicit rebuild requests, for which one rebuild is the correct
+    /// response.
     private func runInitialization(accessToken: String, force: Bool) async {
         if let existing = initializationTask {
             await existing.value
@@ -631,7 +636,34 @@ final class PlaybackViewModel {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
-    // MARK: - Playback State Subscription
+    // MARK: - Player State Subscriptions
+
+    /// Adopts a successful Rust-owned recovery after an explicit Swift initialization failed.
+    ///
+    /// Do not clear `isInitialized` on a not-ready snapshot: a transient disconnect is owned
+    /// by Rust, and doing so would make the next user command start a destructive Swift
+    /// rebuild. An explicit initialization clears it itself before rebuilding.
+    private func setupConnectionStateSubscription() {
+        connectionStateSubscription = SpotifyPlayer.connectionState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                guard let self,
+                      let state,
+                      state.sessionConnected,
+                      state.spircReady,
+                      !isInitialized,
+                      initializationTask == nil,
+                      SpotifyPlayer.isSessionConnected,
+                      SpotifyPlayer.isSpircReady
+                else {
+                    return
+                }
+
+                debugLog("PlaybackViewModel", "Adopting successful Rust-owned recovery")
+                isInitialized = true
+                errorMessage = nil
+            }
+    }
 
     /// Subscribe to playback state updates from Mercury/Spirc
     /// This allows external control (e.g., pause from phone) to be reflected in the app

@@ -814,21 +814,21 @@ async fn create_and_store_spirc(
     Ok(spirc_arc)
 }
 
-/// How often to check whether the session died without anything noticing.
+/// How often to check whether the current session needs recovery.
 const SESSION_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
-/// Watches for a session that has gone invalid with no other signal.
+/// Watches for a session that is unusable while no other recovery owner is active.
 ///
 /// Every other recovery trigger needs something to happen: the cluster listener only acts
 /// when its stream *closes*, and librespot's dealer retries internally so the stream can
 /// stay open for minutes past a dead session; the zombie check in
 /// `require_session_connected` only runs when a command is issued. While Spotifly is the
 /// active device something trips one of those quickly. While it is *not* active, nothing
-/// does — no commands are issued, so nothing calls `mark_disconnected`, so the published
-/// snapshot still reads "connected" and Swift's reconnect watchdog never arms either. The
-/// session stays silently dead until the user acts or the machine sleeps.
+/// may. The same check also covers a partial initialization that stored a Session but never
+/// reached the connected-and-Spirc-ready state. In either case it starts the normal
+/// reconnect loop unless that loop or an intentional teardown already owns the lifecycle.
 ///
-/// Cost is one sleeping task per generation, waking once a minute to read two booleans
+/// Cost is one sleeping task per generation, waking once a minute to read a few flags
 /// (`Session::is_invalid` is a lock read of a `bool`). It exits when its generation is
 /// superseded, so it dies with the session it belongs to rather than accumulating.
 fn spawn_session_health_check(generation: u64) {
