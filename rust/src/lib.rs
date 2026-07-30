@@ -856,13 +856,34 @@ fn spawn_reconnection_loop() {
         // the session. Waking up and rebuilding anyway would replace a healthy new session
         // with one built from a stale token. RECONNECTING alone never caught this: it says
         // "a loop is running", not "the thing it is fixing still exists".
-        let recovering_generation = SESSION_GENERATION.load(Ordering::SeqCst);
+        // Mutable on purpose: each rebuild attempt bumps SESSION_GENERATION itself, so the
+        // loop adopts the value its own attempt produced. Without that it reads its own
+        // work as a foreign supersede and gives up after a single failed attempt.
+        let mut recovering_generation = SESSION_GENERATION.load(Ordering::SeqCst);
 
-        let delays = [0u64, 2, 5, 10, 30, 30, 30, 30, 30, 30];
+        // Backoff that never gives up. This used to be a fixed schedule of ten attempts
+        // totalling about three minutes, after which the loop exited — so an outage longer
+        // than that left the app dead with nothing running to notice the network coming
+        // back, and only a manual play would recover it. The loop is not idle polling: it
+        // exists only while disconnected and exits on any lifecycle event, because every
+        // iteration re-checks the generation and the teardown flags below.
+        let mut attempt: u32 = 0;
 
-        for (attempt, delay) in delays.iter().enumerate() {
-            if *delay > 0 {
-                tokio::time::sleep(Duration::from_secs(*delay)).await;
+        loop {
+            let delay = match attempt {
+                0 => 0,
+                1 => 2,
+                2 => 5,
+                3 => 10,
+                _ => 30,
+            };
+            // Advance before any `continue` below, so a token failure still backs off
+            // instead of spinning on a zero delay.
+            let attempt_number = attempt + 1;
+            attempt = attempt.saturating_add(1);
+
+            if delay > 0 {
+                tokio::time::sleep(Duration::from_secs(delay)).await;
             }
 
             if !reconnect_may_proceed(
@@ -879,10 +900,10 @@ fn spawn_reconnection_loop() {
                 return;
             }
 
-            debug!("[WAKE +{}ms] Reconnect attempt {}", elapsed_since_wake_ms(), attempt + 1);
+            debug!("[WAKE +{}ms] Reconnect attempt {}", elapsed_since_wake_ms(), attempt_number);
             with_connection(|c| {
-                c.reconnect_attempt = attempt as u32 + 1;
-                c.last_error = Some(format!("Reconnecting (attempt {})", attempt + 1));
+                c.reconnect_attempt = attempt_number;
+                c.last_error = Some(format!("Reconnecting (attempt {})", attempt_number));
             });
             notify_connection_state_change();
 
@@ -933,7 +954,7 @@ fn spawn_reconnection_loop() {
 
             match init_player_async(&token, was_active).await {
                 Ok(_) => {
-                    debug!("[WAKE +{}ms] Reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
+                    debug!("[WAKE +{}ms] Reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt_number);
                     RECONNECTING.store(false, Ordering::SeqCst);
 
                     // Auto-resume: the track will load paused via transfer(None).
@@ -947,25 +968,16 @@ fn spawn_reconnection_loop() {
                     return;
                 }
                 Err(e) => {
-                    debug!("[WAKE +{}ms] Hard reconnect attempt {} failed: {}", elapsed_since_wake_ms(), attempt + 1, e);
+                    debug!("[WAKE +{}ms] Reconnect attempt {} failed: {}", elapsed_since_wake_ms(), attempt_number, e);
+                    // Adopt the generation this attempt created. init_player_async bumps it
+                    // before it can fail, so leaving the old value here would make the next
+                    // iteration mistake our own rebuild for someone else's and abandon.
+                    recovering_generation = SESSION_GENERATION.load(Ordering::SeqCst);
                     with_connection(|c| c.last_error = Some(format!("Reconnect failed: {}", e)));
                     notify_connection_state_change();
                 }
             }
         }
-
-        // All attempts exhausted
-        debug!("All reconnection attempts exhausted");
-        RECONNECTING.store(false, Ordering::SeqCst);
-        with_connection(|c| {
-            c.last_error = Some("Reconnection failed after 10 attempts".to_string())
-        });
-        // Exhaustion is reported through the connection snapshot above (not connected,
-        // last_error set). It used to also fire the disconnected callback, which made that
-        // callback mean two unrelated things - "another device took over" when emitted by
-        // Spirc, and "recovery gave up" when emitted here - and it arrived only after all
-        // ten attempts, so Swift's watchdog saw activation immediately but failure late.
-        notify_connection_state_change();
     });
 }
 
@@ -2983,6 +2995,30 @@ mod tests {
     #[test]
     fn a_reconnect_loop_abandons_during_teardown() {
         assert!(!reconnect_may_proceed(2, 2, true));
+    }
+
+    #[test]
+    fn a_reconnect_loop_does_not_abandon_because_of_its_own_rebuild() {
+        // Regression: each attempt calls init_player_async, which bumps the generation
+        // before it can fail. Comparing against the value captured at loop start made the
+        // loop read its own rebuild as a foreign supersede and give up after one attempt,
+        // killing the remaining nine backoff retries — and with the Player already torn
+        // down by the preceding cleanup, playback stayed dead for the whole outage.
+        let mut recovering = 2;
+        let after_own_failed_attempt = 3; // init_player_async bumped it, then errored
+        recovering = after_own_failed_attempt;
+        assert!(reconnect_may_proceed(
+            recovering,
+            after_own_failed_attempt,
+            false
+        ));
+    }
+
+    #[test]
+    fn a_reconnect_loop_still_abandons_on_a_foreign_rebuild() {
+        // Adopting our own bump must not blind the loop to someone else's.
+        let recovering = 3; // adopted after our own attempt
+        assert!(!reconnect_may_proceed(recovering, 4, false));
     }
 
     #[test]
