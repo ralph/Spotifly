@@ -109,6 +109,44 @@ struct ConnectionState {
     is_active_device: bool,
 }
 
+/// Derives whether this device is the active one from a cluster update.
+///
+/// An empty active-device ID means nothing is active anywhere. That is a real state and
+/// must clear activity rather than be ignored, otherwise the last active device stays
+/// displayed forever once playback stops.
+fn is_active_in_cluster(active_device_id: &str, own_device_id: Option<&str>) -> bool {
+    !active_device_id.is_empty() && own_device_id == Some(active_device_id)
+}
+
+/// Whether an intentional teardown is under way. Recovery must never fight one.
+fn teardown_in_progress() -> bool {
+    SHUTTING_DOWN.load(Ordering::SeqCst) || SLEEPING.load(Ordering::SeqCst)
+}
+
+/// Whether losing the active Connect role should start network recovery.
+///
+/// Deactivation is normally just a handoff to another device and must not reconnect. The
+/// one case that must is a Session that has gone invalid: librespot calls
+/// `handle_disconnect` on unexpected Spirc shutdown, and the cluster listener can miss
+/// that while the dealer stream is still open.
+fn should_recover_after_deactivation(session_invalid: bool, teardown_in_progress: bool) -> bool {
+    session_invalid && !teardown_in_progress
+}
+
+/// Whether a cluster listener that ended should start network recovery.
+///
+/// Only the listener belonging to the current session generation may act. An older
+/// listener ending is the expected consequence of the session it belonged to being
+/// replaced, not evidence of a transport failure — acting on it would reconnect a session
+/// that is already healthy.
+fn should_recover_after_cluster_end(
+    listener_generation: u64,
+    current_generation: u64,
+    teardown_in_progress: bool,
+) -> bool {
+    listener_generation == current_generation && !teardown_in_progress
+}
+
 /// Whether this device is currently the active Spotify Connect device.
 fn is_active_device() -> bool {
     with_connection(|c| c.is_active_device)
@@ -746,11 +784,10 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
                         // comparison SpircTask makes internally; Spotifly runs a second
                         // subscription to the same dealer topic and has to reach the same
                         // conclusion, or playback routing and the UI disagree.
-                        set_active_device(
-                            !cluster.active_device_id.is_empty()
-                                && current_device_id().as_deref()
-                                    == Some(cluster.active_device_id.as_str()),
-                        );
+                        set_active_device(is_active_in_cluster(
+                            &cluster.active_device_id,
+                            current_device_id().as_deref(),
+                        ));
                         notify_active_device_id(&cluster.active_device_id);
                         if let Some(player_state) = cluster.player_state.into_option() {
                             send_playback_state(&player_state);
@@ -767,15 +804,11 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
         debug!("Cluster listener ended (generation={})", generation);
 
         let current_gen = SESSION_GENERATION.load(Ordering::SeqCst);
-        if generation != current_gen {
+        if !should_recover_after_cluster_end(generation, current_gen, teardown_in_progress()) {
             debug!(
-                "Cluster listener from old generation {} ended (current={}), ignoring",
+                "Cluster listener ended without recovery (generation={}, current={})",
                 generation, current_gen
             );
-            return;
-        }
-
-        if SHUTTING_DOWN.load(Ordering::SeqCst) || SLEEPING.load(Ordering::SeqCst) {
             return;
         }
 
@@ -1539,10 +1572,10 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                                 .as_ref()
                                 .is_some_and(|s| s.is_invalid());
 
-                            if session_invalid
-                                && !SHUTTING_DOWN.load(Ordering::SeqCst)
-                                && !SLEEPING.load(Ordering::SeqCst)
-                            {
+                            if should_recover_after_deactivation(
+                                session_invalid,
+                                teardown_in_progress(),
+                            ) {
                                 debug!("[WAKE +{}ms] Session is invalid at deactivation - recovering", elapsed_since_wake_ms());
                                 mark_disconnected("Session invalid");
                                 spawn_reconnection_loop();
@@ -3011,5 +3044,67 @@ pub extern "C" fn spotifly_add_to_queue(uri: *const c_char) -> i32 {
             debug!("Add to queue error: Spirc not initialized");
             -1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Recovery must start from transport evidence, not from Connect activity. These cover
+    // the distinction that P0.1 was about: librespot emits the same deactivation event for
+    // an ordinary handoff and for an unexpected Spirc shutdown.
+
+    #[test]
+    fn deactivation_alone_does_not_recover() {
+        // Another device took over. The session is fine — do not reconnect.
+        assert!(!should_recover_after_deactivation(false, false));
+    }
+
+    #[test]
+    fn deactivation_with_dead_session_recovers() {
+        // librespot calls handle_disconnect on unexpected Spirc shutdown; the cluster
+        // listener can miss that while the dealer stream is still open.
+        assert!(should_recover_after_deactivation(true, false));
+    }
+
+    #[test]
+    fn deactivation_during_teardown_never_recovers() {
+        // Sleep and shutdown disconnect on purpose; recovering would fight them.
+        assert!(!should_recover_after_deactivation(true, true));
+        assert!(!should_recover_after_deactivation(false, true));
+    }
+
+    #[test]
+    fn only_the_current_cluster_listener_recovers() {
+        assert!(should_recover_after_cluster_end(7, 7, false));
+        // An older listener ending is the expected result of its session being replaced.
+        assert!(!should_recover_after_cluster_end(6, 7, false));
+        assert!(!should_recover_after_cluster_end(7, 7, true));
+    }
+
+    // Active-device state is derived from the cluster rather than inferred from whichever
+    // command ran last (P1.3).
+
+    #[test]
+    fn cluster_naming_us_makes_us_active() {
+        assert!(is_active_in_cluster("spotifly_1234", Some("spotifly_1234")));
+    }
+
+    #[test]
+    fn cluster_naming_another_device_makes_us_inactive() {
+        assert!(!is_active_in_cluster("phone-abc", Some("spotifly_1234")));
+    }
+
+    #[test]
+    fn empty_active_device_clears_activity() {
+        // "Nothing is playing anywhere" is a real state, not a missing value.
+        assert!(!is_active_in_cluster("", Some("spotifly_1234")));
+    }
+
+    #[test]
+    fn no_local_device_id_is_never_active() {
+        assert!(!is_active_in_cluster("phone-abc", None));
+        assert!(!is_active_in_cluster("", None));
     }
 }
