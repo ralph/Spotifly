@@ -1635,11 +1635,12 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
             notify_connection_state_change();
         }
         Err(e) => {
-            // Spirc failed -- fall back to manual session connection for basic playback
-            debug!("{}, falling back to basic playback", e);
-            if let Err(connect_err) = session.connect(credentials, true).await {
-                return Err(format!("Session connect error: {}", connect_err));
-            }
+            // No fallback: every Spotifly control goes through Spirc, so a bare connected
+            // Session is not a usable player. This used to call session.connect() and
+            // return Ok, which reported success while leaving Swift with a player whose
+            // every command would fail - and because initializeIfNeeded then refused to
+            // retry, that state was permanent.
+            return Err(format!("Spirc initialization failed: {}", e));
         }
     }
 

@@ -186,14 +186,19 @@ final class PlaybackViewModel {
         isLoading = true
         do {
             try await SpotifyPlayer.initialize(accessToken: accessToken)
-            isInitialized = true
 
-            // Wait for Spirc to be ready (poll with timeout)
-            for _ in 0 ..< 50 { // 5 seconds max
-                if SpotifyPlayer.isSpircReady {
-                    break
-                }
-                try? await Task.sleep(for: .milliseconds(100))
+            // Readiness is the authoritative condition, not "initialize() returned". The
+            // old code set isInitialized as soon as the FFI call came back and then polled
+            // Spirc while ignoring the timeout, so Swift could permanently believe the
+            // player was up while every Connect command failed — and initializeIfNeeded
+            // would then refuse to try again. Leaving the flag false on timeout means the
+            // next caller retries.
+            if await waitUntilReady() {
+                isInitialized = true
+                errorMessage = nil
+            } else {
+                debugLog("PlaybackViewModel", "Player did not become ready within \(Self.readinessTimeout)")
+                errorMessage = "Player did not become ready"
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -212,6 +217,24 @@ final class PlaybackViewModel {
         positionAnchorMs = 0
         positionAnchorTime = CACurrentMediaTime()
         isLoading = false
+    }
+
+    /// How long to wait for the player to become usable after initialization.
+    private static let readinessTimeout: Duration = .seconds(5)
+
+    /// Polls until Rust reports a usable player, or the timeout expires.
+    ///
+    /// Both halves are required: every Spotifly control goes through Spirc, so a connected
+    /// session without a ready Spirc is not a player we can drive.
+    private func waitUntilReady() async -> Bool {
+        let deadline = ContinuousClock.now + Self.readinessTimeout
+        while ContinuousClock.now < deadline {
+            if SpotifyPlayer.isSessionConnected, SpotifyPlayer.isSpircReady {
+                return true
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return SpotifyPlayer.isSessionConnected && SpotifyPlayer.isSpircReady
     }
 
     func play(uriOrUrl: String, trackIndex: Int = -1, accessToken: String) async {
