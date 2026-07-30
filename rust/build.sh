@@ -8,6 +8,27 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUST_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="$SCRIPT_DIR/../build/rust"
+LIBRESPOT_DIR="$SCRIPT_DIR/../../librespot"
+
+# The integration currently depends on the patched librespot in the sibling checkout:
+# soft reconnect keeps the Player alive across sessions, so Spirc must adopt an orphaned
+# play_request_id, and next/previous must use local play intent rather than the deferred
+# remote-facing ConnectState. Cargo resolves librespot through path dependencies, so the
+# build silently follows whichever branch happens to be checked out there.
+#
+# Assert the patch is present rather than pinning a commit hash: the check then survives
+# rebases of spotifly-dev onto newer upstream revisions. Once the reconnect rewrite
+# removes the need for the patch, this is replaced by a real git+rev pin.
+if [ ! -d "$LIBRESPOT_DIR" ]; then
+    echo "error: librespot checkout not found at $LIBRESPOT_DIR" >&2
+    echo "       See CONTRIBUTING.md for the expected directory layout." >&2
+    exit 1
+fi
+if ! grep -q "play_status.is_playing()" "$LIBRESPOT_DIR/connect/src/spirc.rs"; then
+    echo "error: $LIBRESPOT_DIR is missing the required librespot patch." >&2
+    echo "       Check out the spotifly-dev branch (see CONTRIBUTING.md)." >&2
+    exit 1
+fi
 
 # Add cargo to PATH - check rustup first, then Homebrew
 if [ -f "$HOME/.cargo/bin/cargo" ]; then
