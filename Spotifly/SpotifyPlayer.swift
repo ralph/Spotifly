@@ -81,6 +81,26 @@ struct PlaybackState: Equatable {
     nonisolated let timestampMs: Int64
 }
 
+// MARK: - Bridge Subjects
+
+//
+// These are `nonisolated(unsafe)` globals reached from Rust's own threads, so there is
+// one rule for all of them: **every non-audio callback hops to the main actor before
+// sending**. Two reasons, and the first is the one that bites:
+//
+//  1. Several Rust tasks publish independently — the player event listener, the cluster
+//     listener, and the reconnect loop can all call into Swift at the same time. Combine
+//     subjects are not safe against concurrent `send`, and a subscriber-side
+//     `.receive(on:)` cannot help, because it hops *after* the subject has already
+//     delivered. Hopping first serializes every send onto one executor.
+//  2. Not every subscriber hops. SwiftUI's `.onReceive` delivers on whatever thread the
+//     publisher emits on, so a view observing these directly would mutate `@State` off
+//     the main thread — which is exactly the "Publishing changes from background threads"
+//     runtime warning.
+//
+// Audio data does not go through here; it has its own real-time-safe path and must never
+// be routed onto the main actor.
+
 /// Global subject for queue updates (nonisolated for C callback access)
 private nonisolated(unsafe) let queueSubject = CurrentValueSubject<QueueState?, Never>(nil)
 
@@ -251,7 +271,7 @@ private nonisolated func registerVolumeCallback() {
 /// C callback for volume change notifications from Rust
 private nonisolated func handleVolumeCallback(_ volume: UInt16) {
     debugLog("SpotifyPlayer", "Volume callback: \(volume)")
-    volumeSubject.send(volume)
+    Task { @MainActor in volumeSubject.send(volume) }
 }
 
 /// Registers the loading callback with Rust (fires when a track starts loading)
@@ -285,7 +305,7 @@ private nonisolated func handleLoadingCallback(_ jsonPtr: UnsafePointer<CChar>?)
         let positionMs = (json["position_ms"] as? NSNumber)?.uint32Value ?? 0
 
         let notification = LoadingNotification(trackUri: trackUri, positionMs: positionMs)
-        loadingSubject.send(notification)
+        Task { @MainActor in loadingSubject.send(notification) }
     } catch {
         debugLog("SpotifyPlayer", "Failed to parse loading JSON: \(error)")
     }
@@ -312,7 +332,7 @@ private nonisolated func handleConnectionStateCallback(_ jsonPtr: UnsafePointer<
         return
     }
 
-    connectionStateSubject.send(state)
+    Task { @MainActor in connectionStateSubject.send(state) }
 }
 
 /// C callback for queue changed notifications from Rust
@@ -337,7 +357,7 @@ private nonisolated func handleQueueChangedCallback(_ jsonPtr: UnsafePointer<CCh
 
         let trackUri = json["track_uri"] as? String ?? ""
         let notification = QueueChangedNotification(trackUri: trackUri)
-        queueChangedSubject.send(notification)
+        Task { @MainActor in queueChangedSubject.send(notification) }
 
     } catch {
         debugLog("SpotifyPlayer", "Failed to parse queue changed JSON: \(error)")
@@ -407,7 +427,7 @@ private nonisolated func handleSetQueueCallback(_ jsonPtr: UnsafePointer<CChar>?
             nextTracks: nextTracks,
             prevTracks: prevTracks,
         )
-        setQueueSubject.send(notification)
+        Task { @MainActor in setQueueSubject.send(notification) }
 
     } catch {
         debugLog("SpotifyPlayer", "Failed to parse set queue JSON: \(error)")
@@ -534,7 +554,7 @@ private nonisolated func handleSessionClientChangedCallback(_ jsonPtr: UnsafePoi
             "Session client: \(notification.clientName) (\(notification.clientBrandName) \(notification.clientModelName))",
         )
 
-        sessionClientChangedSubject.send(notification)
+        Task { @MainActor in sessionClientChangedSubject.send(notification) }
     } catch {
         debugLog("SpotifyPlayer", "Failed to parse session client changed JSON: \(error)")
     }
@@ -579,7 +599,7 @@ private nonisolated func handlePlaybackStateCallback(_ jsonPtr: UnsafePointer<CC
 
         debugLog("SpotifyPlayer", "PlaybackState: playing=\(state.isPlaying), paused=\(state.isPaused), pos=\(state.positionMs)ms, dur=\(state.durationMs)ms, shuffle=\(state.shuffle), repeatTrack=\(state.repeatTrack), repeatContext=\(state.repeatContext)")
 
-        playbackStateSubject.send(state)
+        Task { @MainActor in playbackStateSubject.send(state) }
     } catch {
         debugLog("SpotifyPlayer", "Failed to parse playback state JSON: \(error)")
         debugLog("SpotifyPlayer", "JSON preview: \(String(jsonString.prefix(500)))")
@@ -660,7 +680,7 @@ private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
         let prevCount = state.previousTracks?.count ?? 0
         debugLog("SpotifyPlayer", "handleQueueCallback: current='\(currentName)', next=\(nextCount), prev=\(prevCount)")
 
-        queueSubject.send(state)
+        Task { @MainActor in queueSubject.send(state) }
     } catch {
         debugLog("SpotifyPlayer", "Failed to parse queue JSON: \(error)")
         debugLog("SpotifyPlayer", "JSON preview: \(String(jsonString.prefix(500)))")
