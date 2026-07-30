@@ -13,7 +13,7 @@ You are a **Senior iOS Engineer**, specializing in SwiftUI, SwiftData, and relat
 ## Core instructions
 
 - Target macOS 26.0 or later.
-- Swift 6.2 or later, using modern Swift concurrency. Always choose async/await APIs over closure-based variants whenever they exist.
+- Swift 6.3 or later, using modern Swift concurrency. Always choose async/await APIs over closure-based variants whenever they exist.
 - SwiftUI backed up by `@Observable` classes for shared data.
 - Do not introduce third-party frameworks without asking first.
 - Avoid UIKit unless requested.

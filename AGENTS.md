@@ -4,15 +4,15 @@ Spotify client for macOS (and maybe later iPad and iOS).
 
 ## Tech Stack
 
-- **Language**: Swift 6.2 with strict concurrency enabled
+- **Language**: Swift 6.3 with strict concurrency enabled
 - **Target Platforms**: Latest Apple OSes only (macOS, iOS, iPadOS)
 - **UI Framework**: SwiftUI
 
 ## Development Guidelines
 
-- Use Swift 6.2 strict concurrency features (`Sendable`, `@MainActor`, async/await)
+- Use Swift 6.3 strict concurrency features (`Sendable`, `@MainActor`, async/await)
 - No backwards compatibility needed - target only the latest OS versions
-- Format all Swift code with: `swiftformat --swiftversion 6.2 .`
+- Format all Swift code with: `swiftformat --swiftversion 6.3 .`
 
 Also read `AGENTS-twostraws.md` for general development guidelines and best practices inspired by Paul Hudson's "Two Straws" approach.
 
