@@ -668,10 +668,18 @@ async fn create_and_store_spirc(
         let mut spirc_guard = SPIRC.lock().unwrap();
         *spirc_guard = Some(spirc_arc.clone());
     }
+    // This is the real "we are connected" transition: session established and Spirc
+    // running. The backoff counter and last error are cleared here rather than in the
+    // SessionConnected handler, which fires on Connect *activation* and can happen many
+    // times over the life of one healthy session.
     with_connection(|c| {
         c.spirc_ready = true;
         c.session_connected = true;
+        c.connected_since_ms = current_timestamp_ms();
+        c.reconnect_attempt = 0;
+        c.last_error = None;
     });
+    notify_connection_state_change();
 
     debug!(
         "[WAKE +{}ms] Spirc ready - connected to Spotify Connect",
@@ -1453,43 +1461,62 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                                 }
                             }
                         }
+                        // librespot emits SessionDisconnected when the local Connect device
+                        // becomes INACTIVE — not when the network session fails.
+                        // SpircTask::handle_disconnect() runs on an explicit Disconnect, on
+                        // shutdown, and on any cluster update that hands the active role to
+                        // another device. (This is upstream behavior, not part of our patch.)
+                        //
+                        // Treating it as an outage meant an ordinary handoff to a phone or a
+                        // speaker marked the connection dead and started a reconnect loop
+                        // against a perfectly healthy session.
                         Some(PlayerEvent::SessionDisconnected { connection_id, user_name }) => {
                             // Read generation dynamically so soft reconnects can update it
                             // without replacing the event listener
                             let my_gen = EVENT_LISTENER_GENERATION.load(Ordering::SeqCst);
-                            debug!("[WAKE +{}ms] SessionDisconnected event: connection_id={}, user={}, listener_generation={}",
+                            debug!("[WAKE +{}ms] became inactive (SessionDisconnected): connection_id={}, user={}, listener_generation={}",
                                    elapsed_since_wake_ms(), connection_id, user_name, my_gen);
 
                             // Check if this event is from a stale session
                             let current_gen = SESSION_GENERATION.load(Ordering::SeqCst);
                             if my_gen != current_gen {
-                                debug!("[WAKE +{}ms] SessionDisconnected from old generation {} (current={}), ignoring",
+                                debug!("[WAKE +{}ms] became-inactive from old generation {} (current={}), ignoring",
                                        elapsed_since_wake_ms(), my_gen, current_gen);
                                 continue;
                             }
 
-                            mark_disconnected("Session disconnected");
+                            IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
 
-                            // Spawn reconnection loop if not intentionally sleeping/shutting down
-                            if SHUTTING_DOWN.load(Ordering::SeqCst) {
-                                debug!("[WAKE +{}ms] SessionDisconnected during shutdown - not reconnecting", elapsed_since_wake_ms());
-                            } else if SLEEPING.load(Ordering::SeqCst) {
-                                debug!("[WAKE +{}ms] SessionDisconnected during sleep - not reconnecting", elapsed_since_wake_ms());
-                            } else {
+                            // Only recover if the transport is genuinely broken. A dead
+                            // Session here means the Spirc task went down with it (librespot
+                            // calls handle_disconnect on unexpected shutdown), which the
+                            // cluster listener may not observe if the dealer stream is still
+                            // open. A missing Session means some other path already owns the
+                            // lifecycle, so leave it alone.
+                            let session_invalid = SESSION
+                                .lock()
+                                .unwrap()
+                                .as_ref()
+                                .is_some_and(|s| s.is_invalid());
+
+                            if session_invalid
+                                && !SHUTTING_DOWN.load(Ordering::SeqCst)
+                                && !SLEEPING.load(Ordering::SeqCst)
+                            {
+                                debug!("[WAKE +{}ms] Session is invalid at deactivation - recovering", elapsed_since_wake_ms());
+                                mark_disconnected("Session invalid");
                                 spawn_reconnection_loop();
+                            } else {
+                                notify_connection_state_change();
                             }
                         }
+                        // Emitted when the local Connect device becomes ACTIVE. Carries the
+                        // session's connection id, but says nothing about network health -
+                        // the session was already connected before activation.
                         Some(PlayerEvent::SessionConnected { connection_id, user_name }) => {
-                            debug!("[WAKE +{}ms] SessionConnected event: connection_id={}, user={}", elapsed_since_wake_ms(), connection_id, user_name);
-                            // Mark connected, stamp the connect time, reset the backoff
-                            // counter, and clear the last error as one transition
-                            with_connection(|c| {
-                                c.session_connected = true;
-                                c.session_connection_id = Some(connection_id);
-                                c.connected_since_ms = current_timestamp_ms();
-                                c.reconnect_attempt = 0;
-                                c.last_error = None;
-                            });
+                            debug!("[WAKE +{}ms] became active (SessionConnected): connection_id={}, user={}", elapsed_since_wake_ms(), connection_id, user_name);
+                            IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                            with_connection(|c| c.session_connection_id = Some(connection_id));
 
                             // Notify connection state change
                             notify_connection_state_change();
