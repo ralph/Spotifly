@@ -129,6 +129,34 @@ fn should_recover_after_deactivation(session_invalid: bool, teardown_in_progress
     session_invalid && !teardown_in_progress
 }
 
+/// What playback looked like when recovery was decided on.
+///
+/// Captured at the trigger rather than inside the reconnect task. Between those two points
+/// the deactivation handler clears the active flag, a `Stopped` event clears `IS_PLAYING`,
+/// and a final cluster update can clear both — so reading it late made "does an outage
+/// resume playback" depend on event ordering rather than on what was actually playing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RecoveryIntent {
+    was_playing: bool,
+    was_active: bool,
+}
+
+impl RecoveryIntent {
+    /// Reads what is playing right now. Call this before touching playback state.
+    fn capture() -> Self {
+        Self {
+            was_playing: IS_PLAYING.load(Ordering::SeqCst),
+            was_active: is_active_device(),
+        }
+    }
+
+    /// Only local playback is rehydrated. If another device was playing, it still is, and
+    /// taking over would steal it from the user.
+    fn should_resume(self) -> bool {
+        self.was_playing && self.was_active
+    }
+}
+
 /// Whether the periodic health check should start recovery.
 ///
 /// Invalidity alone is not a sufficient trigger. `Session::is_invalid` is only set by
@@ -860,8 +888,9 @@ fn spawn_session_health_check(generation: u64) {
                     "Session health check: session {} needs recovery (invalid={})",
                     generation, session_invalid
                 );
+                let intent = RecoveryIntent::capture();
                 mark_disconnected("Session unusable");
-                spawn_reconnection_loop();
+                spawn_reconnection_loop(intent);
                 // Recovery owns it from here; the rebuild spawns the next check.
                 return;
             }
@@ -930,8 +959,9 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
             return;
         }
 
+        let intent = RecoveryIntent::capture();
         mark_disconnected("Cluster listener ended unexpectedly");
-        spawn_reconnection_loop();
+        spawn_reconnection_loop(intent);
     });
 
     Ok(())
@@ -950,7 +980,7 @@ fn request_token_from_swift() {
 
 /// Spawns the reconnection loop task.
 /// Uses exponential backoff and requests fresh tokens from Swift.
-fn spawn_reconnection_loop() {
+fn spawn_reconnection_loop(intent: RecoveryIntent) {
     // Check if already reconnecting
     if RECONNECTING.swap(true, Ordering::SeqCst) {
         debug!(
@@ -965,9 +995,7 @@ fn spawn_reconnection_loop() {
         elapsed_since_wake_ms()
     );
 
-    RUNTIME.spawn(async {
-        let was_playing = IS_PLAYING.load(Ordering::SeqCst);
-        let was_active = is_active_device();
+    RUNTIME.spawn(async move {
 
         // The generation this loop is recovering. Between two attempts it can sleep for up
         // to 30 seconds, and during that time something else — a manual restart from the
@@ -1073,7 +1101,7 @@ fn spawn_reconnection_loop() {
 
             // Rehydration happens inside init_player_async, so that the session is fully
             // settled before its readiness is published. See the note there.
-            match init_player_async(&token, was_active, was_playing && was_active).await {
+            match init_player_async(&token, intent.was_active, intent.should_resume()).await {
                 Ok(_) => {
                     debug!("[WAKE +{}ms] Reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt_number);
                     RECONNECTING.store(false, Ordering::SeqCst);
@@ -1133,7 +1161,7 @@ pub extern "C" fn spotifly_force_reconnect() -> i32 {
     );
 
     mark_disconnected("Reconnecting after system wake");
-    spawn_reconnection_loop();
+    spawn_reconnection_loop(RecoveryIntent::capture());
 
     0
 }
@@ -1496,6 +1524,9 @@ async fn init_player_async(
                             debug!("[WAKE +{}ms] became inactive (SessionDisconnected): connection_id={}, user={}, listener_generation={}",
                                    elapsed_since_wake_ms(), connection_id, user_name, event_listener_generation);
 
+                            // Capture before clearing: the recovery decision below needs to
+                            // know what was playing, and set_active_device wipes half of it.
+                            let intent = RecoveryIntent::capture();
                             set_active_device(false);
 
                             // Only recover if the transport is genuinely broken. A dead
@@ -1516,7 +1547,7 @@ async fn init_player_async(
                             ) {
                                 debug!("[WAKE +{}ms] Session is invalid at deactivation - recovering", elapsed_since_wake_ms());
                                 mark_disconnected("Session invalid");
-                                spawn_reconnection_loop();
+                                spawn_reconnection_loop(intent);
                             } else {
                                 notify_connection_state_change();
                             }
@@ -1685,7 +1716,7 @@ fn require_session_connected() -> Result<(), i32> {
     if session_invalid {
         debug!("Detected zombie session (is_connected=true but Session is invalid)");
         mark_disconnected("Session expired");
-        spawn_reconnection_loop();
+        spawn_reconnection_loop(RecoveryIntent::capture());
         return Err(ERROR_NOT_CONNECTED);
     }
 
@@ -2845,6 +2876,25 @@ mod tests {
 
     // The periodic health check is the only thing watching while Spotifly is idle, so its
     // trigger has to cover more than a session that reports itself invalid.
+
+    // Only local playback is rehydrated, and the intent has to be captured before the
+    // disconnect handling clears it.
+
+    #[test]
+    fn local_playback_is_resumed() {
+        assert!(RecoveryIntent { was_playing: true, was_active: true }.should_resume());
+    }
+
+    #[test]
+    fn remote_playback_is_left_alone() {
+        // Another device is still playing; taking over would steal it from the user.
+        assert!(!RecoveryIntent { was_playing: true, was_active: false }.should_resume());
+    }
+
+    #[test]
+    fn a_paused_local_player_is_not_resumed() {
+        assert!(!RecoveryIntent { was_playing: false, was_active: true }.should_resume());
+    }
 
     #[test]
     fn health_check_recovers_a_dead_session() {
