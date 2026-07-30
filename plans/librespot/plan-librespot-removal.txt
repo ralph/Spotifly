@@ -1,0 +1,28 @@
+I need some help planning.
+
+In this folder in @spotifly-code you find my Spotify client for macOS, written in Swift, but depending on librespot written in Rust with a small interop layer in rust (see @spotifly-code/rust).
+
+I want to explore if I can get rid of the rust layer b/c interop is hard. It's hard to get player state etc.
+
+My plan is to switch playback to HTTPS-based CDN audio file retrieval, like Psst (another client not dependent on librespot, checked out @psst for your inspection) does. All control commands would have to switch to the web api, then.
+
+Problem with this approach is that my app depends on Spirc/Spotify connect, and I want to keep that part. This means we'd have to write a Spirc/connect client in Swift. Good thing is that this is documented well in @librespot/protocol
+
+
+
+I think we can move forward like this:
+* Remove the whole rust layer, everything in @rust. Also update all build commands to not depend on rust or the header file any more
+* In the Swift source code, replace all rust calls with noop calls (stubs), so that the code compiles again. in this state, the app is basically a spotify browser, but cannot play music
+
+Now I'm not quite sure about the order:
+* implement the HTTPS-based CDN audio file retrieval and playing approach
+* implement basic playing commands like play/pause
+* implement the spirc/connect integration
+* for the steps above: check if https://github.com/Peter-Schorn/SpotifyAPI (checked out @SpotifyAPI) is of any help for spirc/connect integration and/or HTTPS-based CDN audio file retrieval and playing
+
+IMPORTANT:
+The first thing you should do is checking if this is even possible. Is it possible to use HTTPS-based CDN audio file retrieval and playing with a custom Spirc/Spotify connect integration?
+
+All the source code changes you are doing should go to @spotifly-code. You can inspect all other folders in this folder, but I don't think those need any changes.
+
+Does this make sense to you? Estimate how much efford this is and create a proper plan file so that we can move this forward.
