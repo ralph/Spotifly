@@ -193,24 +193,6 @@ static CURRENT_DURATION_MS: AtomicU32 = AtomicU32::new(0);
 // Current track URI - for detecting same-track reconnects
 static CURRENT_TRACK_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
-// Pending play - tracks an in-flight play command so the soft-reconnect watchdog can retry
-// it if the audio key fetch on the old session times out.
-// Cleared on: PlayerEvent::Playing (success), spotifly_stop/disconnect/shutdown/cleanup (canceled).
-// A new play command supersedes any previous one via a monotonically increasing request_id.
-#[derive(Clone)]
-enum PendingPlayRequest {
-    Uri(String, i32),  // (uri, track_index)
-    Tracks(String),    // track_uris_json
-    Radio(String),     // seed_track_uri — re-resolves playlist and seeks to seed on retry
-}
-#[derive(Clone)]
-struct PendingPlay {
-    request_id: u64,
-    request: PendingPlayRequest,
-}
-static PENDING_PLAY: Lazy<Mutex<Option<PendingPlay>>> = Lazy::new(|| Mutex::new(None));
-static PENDING_PLAY_SEQ: AtomicU64 = AtomicU64::new(0);
-
 // Current context URI - captured from SetQueue and cluster player state updates.
 // We keep the latest non-empty value to recover resume after reconnect.
 static CURRENT_CONTEXT_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
@@ -345,15 +327,6 @@ fn update_current_context_uri(context_uri: &str) {
     }
     let mut context_guard = CURRENT_CONTEXT_URI.lock().unwrap();
     *context_guard = Some(context_uri.to_string());
-}
-
-fn set_pending_play(request: PendingPlayRequest) {
-    let request_id = PENDING_PLAY_SEQ.fetch_add(1, Ordering::SeqCst) + 1;
-    *PENDING_PLAY.lock().unwrap() = Some(PendingPlay { request_id, request });
-}
-
-fn clear_pending_play() {
-    *PENDING_PLAY.lock().unwrap() = None;
 }
 
 fn update_playback_options(shuffle: bool, repeat_track: bool, repeat_context: bool) {
@@ -888,86 +861,21 @@ fn spawn_reconnection_loop() {
                 }
             };
 
-            // Try soft reconnect first (keeps Player alive), fall back to hard
-            if PLAYER.lock().unwrap().is_some() {
-                do_soft_reconnect_cleanup();
-
-                match soft_reconnect_async(&token, was_active).await {
-                    Ok(_) => {
-                        debug!("[WAKE +{}ms] Soft reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
-                        RECONNECTING.store(false, Ordering::SeqCst);
-
-                        // The new Spirc has no context — if we were mid-playlist it won't know
-                        // what track comes next and will stop when the current one ends.
-                        // Reload the context immediately so Spirc can advance through the playlist.
-                        // This causes a brief seek-to-position blip, which is better than stopping.
-                        if was_playing && was_active {
-                            let spirc = SPIRC.lock().unwrap().as_ref().cloned();
-                            if let Some(spirc) = spirc {
-                                debug!(
-                                    "[WAKE +{}ms] Soft reconnect: reloading context to restore Spirc queue",
-                                    elapsed_since_wake_ms()
-                                );
-                                resume_via_load(&spirc);
-                            }
-                        }
-
-                        // The Player keeps playing existing audio during soft reconnect.
-                        // But if a new play command was issued right before the disconnect,
-                        // the audio key fetch on the old session will time out (~1.5s) and
-                        // librespot will silently fail (context unavailable on new Spirc).
-                        // Detect this: if the Playing event never fires within 3s, retry.
-                        let pending = PENDING_PLAY.lock().unwrap().clone();
-                        if let Some(p) = pending {
-                            debug!("[WAKE +{}ms] Soft reconnect: pending play detected (id={}), spawning watchdog", elapsed_since_wake_ms(), p.request_id);
-                            RUNTIME.spawn(async move {
-                                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                                // Only retry if this exact request is still pending.
-                                // A newer request_id means the user issued a new play (superseded).
-                                // None means Playing fired and cleared it (success) or stop was called.
-                                let still_id = PENDING_PLAY.lock().unwrap().as_ref().map(|s| s.request_id);
-                                if still_id == Some(p.request_id) {
-                                    // Don't clear before the call: if the re-issue fails
-                                    // (e.g. session flapped again), the pending play remains set
-                                    // and the next soft reconnect can try again.
-                                    let result = match &p.request {
-                                        PendingPlayRequest::Uri(uri, track_index) => {
-                                            debug!("Pending play watchdog: Playing never fired for {} (id={}), re-issuing play_uri", uri, p.request_id);
-                                            match std::ffi::CString::new(uri.as_str()) {
-                                                Ok(cstr) => spotifly_play_uri(cstr.as_ptr(), *track_index),
-                                                Err(_) => return,
-                                            }
-                                        }
-                                        PendingPlayRequest::Tracks(json) => {
-                                            debug!("Pending play watchdog: Playing never fired for tracks (id={}), re-issuing play_tracks", p.request_id);
-                                            match std::ffi::CString::new(json.as_str()) {
-                                                Ok(cstr) => spotifly_play_tracks(cstr.as_ptr()),
-                                                Err(_) => return,
-                                            }
-                                        }
-                                        PendingPlayRequest::Radio(seed_uri) => {
-                                            debug!("Pending play watchdog: Playing never fired for radio {} (id={}), re-issuing play_radio", seed_uri, p.request_id);
-                                            play_radio_async(&seed_uri).await
-                                        }
-                                    };
-                                    debug!("Pending play watchdog: re-issue result={} (id={})", result, p.request_id);
-                                }
-                            });
-                        }
-                        return;
-                    }
-                    Err(e) => {
-                        debug!("[WAKE +{}ms] Soft reconnect failed: {}, falling back to hard reconnect", elapsed_since_wake_ms(), e);
-                    }
-                }
-            }
-
-            // Hard reconnect: full cleanup and rebuild
+            // One recovery strategy: tear everything down and rebuild Session, Player,
+            // Mixer and Spirc as a single generation, then restore the captured intent.
+            //
+            // There used to be a "soft reconnect" that kept the Player alive across
+            // sessions to avoid an audible gap. It bought a shorter interruption at the
+            // cost of a Player outliving the Session it was built for, which is what
+            // forced the librespot patch that makes Spirc adopt an orphaned
+            // play_request_id, the context-reload-after-reconnect blip, and a watchdog
+            // that re-issued play commands when the audio key fetch on the dead session
+            // silently timed out. A brief gap during an outage is the better trade.
             do_reconnect_cleanup();
 
             match init_player_async(&token, was_active).await {
                 Ok(_) => {
-                    debug!("[WAKE +{}ms] Hard reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
+                    debug!("[WAKE +{}ms] Reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt + 1);
                     RECONNECTING.store(false, Ordering::SeqCst);
 
                     // Auto-resume: the track will load paused via transfer(None).
@@ -1108,88 +1016,6 @@ fn do_reconnect_cleanup() {
     debug!("do_reconnect_cleanup complete");
 }
 
-/// Soft reconnect: keeps Player, Mixer, and event listener alive.
-/// Only shuts down Spirc/Session and creates new ones. The Player continues
-/// playing uninterrupted because it doesn't need the Session for an
-/// already-loaded track.
-fn do_soft_reconnect_cleanup() {
-    debug!("do_soft_reconnect_cleanup: keeping Player/Mixer alive");
-
-    shutdown_spirc("do_soft_reconnect_cleanup");
-
-    {
-        let mut spirc_guard = SPIRC.lock().unwrap();
-        *spirc_guard = None;
-    }
-    {
-        let mut session_guard = SESSION.lock().unwrap();
-        *session_guard = None;
-    }
-
-    with_connection(|c| {
-        c.spirc_ready = false;
-        c.session_connected = false;
-        c.session_connection_id = None;
-        c.connected_since_ms = 0;
-    });
-}
-
-/// Soft reconnect: creates new Session + Spirc while keeping the existing
-/// Player and Mixer alive. Audio continues playing during reconnection.
-async fn soft_reconnect_async(
-    access_token: &str,
-    reactivate_after_reconnect: bool,
-) -> Result<(), String> {
-    let current_generation = SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    EVENT_LISTENER_GENERATION.store(current_generation, Ordering::SeqCst);
-    debug!(
-        "[WAKE +{}ms] soft_reconnect_async starting, generation={}",
-        elapsed_since_wake_ms(),
-        current_generation
-    );
-
-    let device_id =
-        current_device_id().unwrap_or_else(|| format!("spotifly_{}", std::process::id()));
-
-    let (session, credentials) = create_session(&device_id, access_token)?;
-
-    let player = PLAYER
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or_else(|| "Player not available for soft reconnect".to_string())?;
-    let mixer = MIXER
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or_else(|| "Mixer not available for soft reconnect".to_string())?;
-
-    // Swap the session on the existing Player so future track loads use it
-    player.set_session(session.clone());
-
-    {
-        let mut session_guard = SESSION.lock().unwrap();
-        *session_guard = Some(session.clone());
-    }
-
-    spawn_cluster_listener(&session, current_generation)?;
-    let spirc = create_and_store_spirc(&session, &credentials, player, mixer).await?;
-
-    // Re-activate only if we were active before disconnect.
-    // If we had just transferred to another device, stay passive.
-    if reactivate_after_reconnect {
-        match spirc.activate() {
-            Ok(_) => set_active_device(true),
-            Err(e) => debug!("Soft reconnect: activate failed: {:?}", e),
-        }
-    } else {
-        set_active_device(false);
-        debug!("Soft reconnect: keeping Spotifly inactive (was_active=false)");
-    }
-
-    notify_connection_state_change();
-    Ok(())
-}
 
 /// Initializes the player with the given access token.
 /// Must be called before play/pause operations.
@@ -1354,7 +1180,6 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                             // Clear auto-resume flag - we're already playing
                             RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
                             // Clear pending play - track started successfully
-                            clear_pending_play();
                             update_position(position_ms);
                             // Send playback state update to Swift
                             send_local_playback_state(true, position_ms);
@@ -2070,7 +1895,6 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
                 Ok(_) => {
                     debug!("Spirc.load(tracks) succeeded");
                     set_active_device(true);
-                    set_pending_play(PendingPlayRequest::Tracks(track_uris_str.clone()));
                     0
                 }
                 Err(_e) => {
@@ -2170,7 +1994,6 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char, track_index: i32)
                     debug!("Spirc.load() succeeded");
                     IS_PLAYING.store(true, Ordering::SeqCst);
                     set_active_device(true);
-                    set_pending_play(PendingPlayRequest::Uri(uri_str.clone(), track_index));
                     0
                 }
                 Err(_e) => {
@@ -2197,7 +2020,6 @@ pub extern "C" fn spotifly_pause() -> i32 {
     // Cancel any pending play — if the user pauses while a track is still loading,
     // PlayerEvent::Playing will never fire, and a later soft-reconnect watchdog
     // would otherwise replay something the user explicitly paused.
-    clear_pending_play();
     let spirc_guard = SPIRC.lock().unwrap();
     match spirc_guard.as_ref() {
         Some(spirc) => match spirc.pause() {
@@ -2376,7 +2198,6 @@ pub extern "C" fn spotifly_resume() -> i32 {
 pub extern "C" fn spotifly_stop() -> i32 {
     debug!("spotifly_stop called");
     // Cancel any pending play so the soft-reconnect watchdog doesn't re-issue it
-    clear_pending_play();
     let player_guard = PLAYER.lock().unwrap();
     match player_guard.as_ref() {
         Some(player) => {
@@ -2399,7 +2220,6 @@ pub extern "C" fn spotifly_shutdown() -> i32 {
     debug!("spotifly_shutdown called");
     // Prevent reconnection attempts during intentional shutdown
     SHUTTING_DOWN.store(true, Ordering::SeqCst);
-    clear_pending_play();
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
         if spirc.shutdown().is_ok() {
@@ -2420,7 +2240,6 @@ pub extern "C" fn spotifly_disconnect() -> i32 {
     // Set sleeping flag to prevent auto-reconnect when cluster listener ends
     SLEEPING.store(true, Ordering::SeqCst);
     // Cancel any pending play - a play from before sleep must not replay on wake
-    clear_pending_play();
 
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
@@ -2491,7 +2310,6 @@ pub extern "C" fn spotifly_cleanup() {
     IS_PLAYING.store(false, Ordering::SeqCst);
     set_active_device(false);
     SHUFFLE_STATE.store(false, Ordering::SeqCst);
-    clear_pending_play();
     REPEAT_TRACK_STATE.store(false, Ordering::SeqCst);
     REPEAT_CONTEXT_STATE.store(false, Ordering::SeqCst);
     POSITION_MS.store(0, Ordering::SeqCst);
@@ -2732,7 +2550,6 @@ async fn play_radio_async(uri_str: &str) -> i32 {
             match spirc.load(load_request) {
                 Ok(_) => {
                     set_active_device(true);
-                    set_pending_play(PendingPlayRequest::Radio(uri_str.to_string()));
                     0
                 }
                 Err(_e) => {
