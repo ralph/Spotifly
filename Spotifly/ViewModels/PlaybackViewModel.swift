@@ -108,6 +108,8 @@ final class PlaybackViewModel {
     private var seekSubscription: AnyCancellable?
     /// Token provider for reinitialization after session disconnect
     private var tokenProvider: (@Sendable () async -> String)?
+    /// The in-flight initialization or restart, so concurrent callers coalesce onto one
+    private var initializationTask: Task<Void, Never>?
 
     private init() {
         setupPlaybackStateSubscription()
@@ -139,23 +141,68 @@ final class PlaybackViewModel {
         tokenProvider = provider
     }
 
+    /// Tears down and rebuilds the player even if it is already initialized.
+    /// Used by the wake and reconnect-watchdog recovery paths.
     func forceReinitialize(accessToken: String) async {
+        await runInitialization(accessToken: accessToken, force: true)
+    }
+
+    /// Initializes the player unless it is already up.
+    func initializeIfNeeded(accessToken: String) async {
+        await runInitialization(accessToken: accessToken, force: false)
+    }
+
+    /// Serializes every initialization and restart through one in-flight task.
+    ///
+    /// `@MainActor` stops two of these running *simultaneously*, but not from
+    /// *overlapping*: every `await` is a suspension point where another caller can enter,
+    /// and `SpotifyPlayer.initialize` performs a Rust cleanup followed by a rebuild. Two
+    /// overlapping calls can therefore interleave one call's cleanup with the other's
+    /// rebuild, which is how Swift ends up holding state belonging to a Rust generation
+    /// that has already been replaced.
+    ///
+    /// Late callers await the in-flight run instead of starting a competing one. That also
+    /// coalesces the genuinely concurrent triggers — system wake and the reconnect
+    /// watchdog can fire together, and one rebuild is the correct response to both.
+    private func runInitialization(accessToken: String, force: Bool) async {
+        if let existing = initializationTask {
+            await existing.value
+            return
+        }
+        guard force || !isInitialized else { return }
+
+        let task = Task { @MainActor in
+            await performInitialization(accessToken: accessToken)
+        }
+        initializationTask = task
+        await task.value
+        initializationTask = nil
+    }
+
+    private func performInitialization(accessToken: String) async {
+        // We are about to tear down the Rust side, so nothing is initialized until the
+        // rebuild proves otherwise. Matters when initialize() throws on a restart.
         isInitialized = false
         isLoading = true
         do {
             try await SpotifyPlayer.initialize(accessToken: accessToken)
             isInitialized = true
-            for _ in 0 ..< 50 {
-                if SpotifyPlayer.isSpircReady { break }
+
+            // Wait for Spirc to be ready (poll with timeout)
+            for _ in 0 ..< 50 { // 5 seconds max
+                if SpotifyPlayer.isSpircReady {
+                    break
+                }
                 try? await Task.sleep(for: .milliseconds(100))
             }
         } catch {
             errorMessage = error.localizedDescription
         }
-        // Reset stale playback state — after reinit Rust has no track/context loaded.
+        // Reset stale playback state — after (re)init Rust has no track/context loaded.
         // isPlaying must be false before updateNowPlayingPosition() so it writes rate=0.
         // updateNowPlayingPosition() must be called before zeroing trackDurationMs because
         // it guards on trackDurationMs > 0 and would silently no-op otherwise.
+        // Harmless on a first init, where these are already at their defaults.
         isPlaying = false
         updateNowPlayingPosition()
         currentTrackUri = nil
@@ -164,25 +211,6 @@ final class PlaybackViewModel {
         currentPositionMs = 0
         positionAnchorMs = 0
         positionAnchorTime = CACurrentMediaTime()
-        isLoading = false
-    }
-
-    func initializeIfNeeded(accessToken: String) async {
-        guard !isInitialized else { return }
-
-        isLoading = true
-        do {
-            try await SpotifyPlayer.initialize(accessToken: accessToken)
-            isInitialized = true
-
-            // Wait for Spirc to be ready (poll with timeout)
-            for _ in 0 ..< 50 { // 5 seconds max
-                if SpotifyPlayer.isSpircReady { break }
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
         isLoading = false
     }
 
