@@ -734,6 +734,10 @@ final class PlaybackViewModel {
             "Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
 
+        // Authoritative state from Rust — let any in-flight Web API bootstrap know it is
+        // now stale (see AppStore.liveStateRevision)
+        store?.noteLiveStateReceived()
+
         // Update playing state
         // When active device: use SpotifyPlayer.isPlaying (local Spirc state)
         // When not active: use cluster state (remote device's actual state)
