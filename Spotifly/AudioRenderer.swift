@@ -170,9 +170,20 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
             let space = freeSpace
 
             if space == 0 {
+                // Once the consumer has stopped, nothing will ever drain the buffer, so
+                // waiting is waiting forever — the 500ms timeout only makes us loop. The
+                // caller here is librespot's player thread, and blocking it hangs the whole
+                // teardown at "Shutting down player thread". Drop the rest instead: it is
+                // audio for a renderer that is no longer playing.
+                guard isRendering else {
+                    bufferLock.unlock()
+                    return
+                }
+
                 writerIsWaiting = true
                 bufferLock.unlock()
-                // Block until pull side consumes data (timeout prevents deadlock on shutdown)
+                // Block until pull side consumes data (timeout bounds the wait so a stop
+                // that lands while we are parked here is noticed)
                 _ = spaceAvailable.wait(timeout: .now() + .milliseconds(500))
                 continue
             }
@@ -373,6 +384,11 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
             isRendering = false
             isRequestingData = false
             bufferLock.unlock()
+
+            // Wake a writer parked on a full buffer. It re-checks isRendering and returns
+            // rather than waiting for space that will never come now that the pull side is
+            // stopping.
+            spaceAvailable.signal()
 
             synchronizer.setRate(0.0, time: synchronizer.currentTime())
             renderer.stopRequestingMediaData()
