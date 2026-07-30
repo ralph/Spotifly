@@ -1,7 +1,7 @@
 # Audio throttle anchor is not reset when the player is rebuilt, so playback races after a reconnect
 
 Status: **fixed 2026-07-30** — options 1 and 2 below, both applied. Kept as a record.
-Component: `spotifly-code/Spotifly/AudioRenderer.swift`, `spotifly-code/rust/src/proxy_sink.rs`
+Component: `Spotifly/AudioRenderer.swift`, `rust/src/proxy_sink.rs`
 Found: 2026-07-30, while verifying reconnect behavior against official librespot
 
 ## Resolution

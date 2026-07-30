@@ -55,8 +55,8 @@ None of these appear anywhere below. They were found by unplugging ethernet.
 | Backoff gave up after ~3 minutes, leaving nothing to notice the network returning | Fixed `2f1644c` |
 | Playback never resumed after reconnect — nothing loaded a track | Fixed `1562456` |
 | A dead session went unnoticed while Spotifly was not the active device | Fixed `cf3f5d8` |
-| librespot deletes a track from the queue permanently on a *transient* load failure | Upstream, ticketed: [`plans/librespot/upstream-transient-load-failure.md`](../plans/librespot/upstream-transient-load-failure.md) |
-| Audio throttle anchor not reset on rebuild, so playback races ~40× after a resume | Ticketed: [`plans/audio-renderer-throttle-not-reset-on-rebuild.md`](../plans/audio-renderer-throttle-not-reset-on-rebuild.md) |
+| librespot deletes a track from the queue permanently on a *transient* load failure | Upstream, ticketed: [`plans/librespot/upstream-transient-load-failure.md`](plans/librespot/upstream-transient-load-failure.md) |
+| Audio throttle anchor not reset on rebuild, so playback races ~40× after a resume | Ticketed: [`plans/audio-renderer-throttle-not-reset-on-rebuild.md`](plans/audio-renderer-throttle-not-reset-on-rebuild.md) |
 
 ---
 
