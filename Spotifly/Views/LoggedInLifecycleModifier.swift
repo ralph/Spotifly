@@ -12,7 +12,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
     let session: SpotifySession
     let store: AppStore
     let topItemsTimeRange: String
-    let reconnectWatchdogTimeoutSeconds: Double
     let playbackViewModel: PlaybackViewModel
     let queueService: QueueService
     let deviceService: DeviceService
@@ -20,7 +19,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
     let topItemsService: TopItemsService
     @Binding var blockingState: LoggedInView.BlockingState?
 
-    @State private var reconnectWatchdogTask: Task<Void, Never>?
     /// Last observed connection readiness; nil until the first snapshot arrives, so the
     /// initial rise to ready doesn't get treated as a reconnect.
     @State private var wasConnectionReady: Bool?
@@ -72,7 +70,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // device taking over emits a deactivation, and re-activating emits an
             // activation, neither of which says anything about whether the session is
             // healthy. Keying off readiness means a device handoff no longer arms the
-            // watchdog or triggers a Web API refetch.
+            // recovery path or triggers a Web API refetch.
             .onReceive(SpotifyPlayer.connectionState) { state in
                 let isReady = state?.sessionConnected == true && state?.spircReady == true
                 defer { wasConnectionReady = isReady }
@@ -83,26 +81,11 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 guard let wasReady = wasConnectionReady, wasReady != isReady else { return }
 
                 if isReady {
-                    reconnectWatchdogTask?.cancel()
-                    reconnectWatchdogTask = nil
-
                     // Reconnected: re-sync with whatever is playing now.
                     Task {
                         let token = await session.validAccessToken()
                         await deviceService.waitForTransferSettling()
                         await queueService.fetchInitialPlaybackState(accessToken: token)
-                    }
-                } else {
-                    reconnectWatchdogTask?.cancel()
-                    reconnectWatchdogTask = Task {
-                        try? await Task.sleep(for: .seconds(reconnectWatchdogTimeoutSeconds))
-                        guard !Task.isCancelled, !SpotifyPlayer.isSessionConnected else { return }
-                        debugLog(
-                            "LoggedInLifecycle",
-                            "Watchdog: still disconnected after \(Int(reconnectWatchdogTimeoutSeconds))s, forcing reinit",
-                        )
-                        let token = await session.validAccessToken()
-                        await playbackViewModel.forceReinitialize(accessToken: token)
                     }
                 }
             }
@@ -110,16 +93,24 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 debugLog("LoggedInLifecycle", "System will sleep, disconnecting from Spotify")
                 SpotifyPlayer.disconnect()
             }
+            // Ask Rust to reconnect rather than rebuilding from Swift. A rebuild starts with
+            // a destructive cleanup that invalidates whatever reconnect loop is already
+            // working the problem, and if the single rebuild attempt then fails there is
+            // nothing left retrying.
             .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
-                debugLog("LoggedInLifecycle", "System wake detected, forcing full reinit")
-                Task {
-                    let token = await session.validAccessToken()
-                    await playbackViewModel.forceReinitialize(accessToken: token)
+                switch SpotifyPlayer.forceReconnect() {
+                case .started, .alreadyRecovering:
+                    debugLog("LoggedInLifecycle", "System wake detected, reconnect under way")
+                case .noSession:
+                    // Nothing to reconnect to — after a logout, or if the initial
+                    // initialization never succeeded. Only a full rebuild helps here, and
+                    // there is no running recovery for it to disturb.
+                    debugLog("LoggedInLifecycle", "System wake detected, no session — rebuilding")
+                    Task {
+                        let token = await session.validAccessToken()
+                        await playbackViewModel.forceReinitialize(accessToken: token)
+                    }
                 }
-            }
-            .onDisappear {
-                reconnectWatchdogTask?.cancel()
-                reconnectWatchdogTask = nil
             }
     }
 }
@@ -129,7 +120,6 @@ extension View {
         session: SpotifySession,
         store: AppStore,
         topItemsTimeRange: String,
-        reconnectWatchdogTimeoutSeconds: Double,
         playbackViewModel: PlaybackViewModel,
         queueService: QueueService,
         deviceService: DeviceService,
@@ -142,7 +132,6 @@ extension View {
                 session: session,
                 store: store,
                 topItemsTimeRange: topItemsTimeRange,
-                reconnectWatchdogTimeoutSeconds: reconnectWatchdogTimeoutSeconds,
                 playbackViewModel: playbackViewModel,
                 queueService: queueService,
                 deviceService: deviceService,

@@ -707,13 +707,31 @@ enum SpotifyPlayer {
         spotifly_is_session_connected() == 1
     }
 
-    /// Forces a reconnection to Spotify servers.
-    /// Use this after system wake to ensure a fresh connection before playback.
-    /// Returns true if reconnection was triggered, false if already reconnecting or no session.
+    /// Outcome of a force-reconnect request.
+    ///
+    /// `alreadyRecovering` and `noSession` both mean "nothing was started", but they need
+    /// opposite responses: the first is fine to ignore because recovery is already under
+    /// way, while the second means there is nothing to reconnect *to* and only a full
+    /// rebuild will help. Collapsing them into one `false` is how a wake could end up
+    /// doing nothing at all.
+    enum ForceReconnectOutcome {
+        case started
+        case alreadyRecovering
+        case noSession
+    }
+
+    /// Asks Rust to reconnect, without tearing down what it already has.
+    ///
+    /// Preferred over `PlaybackViewModel.forceReinitialize` wherever a session may exist:
+    /// reinitialize runs a destructive cleanup first, which invalidates any reconnect loop
+    /// currently working the problem.
     @discardableResult
-    static func forceReconnect() -> Bool {
-        let result = spotifly_force_reconnect()
-        return result == 0
+    static func forceReconnect() -> ForceReconnectOutcome {
+        switch spotifly_force_reconnect() {
+        case 0: .started
+        case 1: .alreadyRecovering
+        default: .noSession
+        }
     }
 
     /// Returns a publisher for connection state updates.

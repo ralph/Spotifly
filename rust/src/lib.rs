@@ -129,6 +129,25 @@ fn should_recover_after_deactivation(session_invalid: bool, teardown_in_progress
     session_invalid && !teardown_in_progress
 }
 
+/// Whether the periodic health check should start recovery.
+///
+/// Invalidity alone is not a sufficient trigger. `Session::is_invalid` is only set by
+/// `shutdown()`, so a session that was created but never managed to connect — exactly what
+/// a failed `init_player_async` leaves behind — reports itself valid forever. The state
+/// that actually needs rescuing is "not connected and nobody is recovering", however it was
+/// reached: a session that died, or one that never came up.
+///
+/// The reconnect check matters because the loop is the thing that fixes this; firing while
+/// it is already running would only re-publish a disconnected snapshot once a minute.
+fn health_check_should_recover(
+    session_invalid: bool,
+    session_connected: bool,
+    reconnect_in_progress: bool,
+    teardown_in_progress: bool,
+) -> bool {
+    !teardown_in_progress && !reconnect_in_progress && (session_invalid || !session_connected)
+}
+
 /// Whether a listener may act on an event, given the generation it was created for.
 ///
 /// A superseded listener drains asynchronously after its replacement is installed, so it
@@ -833,12 +852,17 @@ fn spawn_session_health_check(generation: u64) {
                 .as_ref()
                 .is_some_and(|s| s.is_invalid());
 
-            if session_invalid {
+            if health_check_should_recover(
+                session_invalid,
+                with_connection(|c| c.session_connected),
+                RECONNECTING.load(Ordering::SeqCst),
+                teardown_in_progress(),
+            ) {
                 debug!(
-                    "Session health check: session {} is invalid, recovering",
-                    generation
+                    "Session health check: session {} needs recovery (invalid={})",
+                    generation, session_invalid
                 );
-                mark_disconnected("Session invalid");
+                mark_disconnected("Session unusable");
                 spawn_reconnection_loop();
                 // Recovery owns it from here; the rebuild spawns the next check.
                 return;
@@ -2821,6 +2845,40 @@ mod tests {
     #[test]
     fn a_reconnect_loop_proceeds_for_its_own_generation() {
         assert!(reconnect_may_proceed(2, 2, false));
+    }
+
+    // The periodic health check is the only thing watching while Spotifly is idle, so its
+    // trigger has to cover more than a session that reports itself invalid.
+
+    #[test]
+    fn health_check_recovers_a_dead_session() {
+        assert!(health_check_should_recover(true, false, false, false));
+    }
+
+    #[test]
+    fn health_check_recovers_a_session_that_never_connected() {
+        // Regression: Session::is_invalid is only set by shutdown(), so a session left
+        // behind by a failed init reports valid forever. Before this, nothing retried —
+        // the Swift watchdog used to paper over it by rebuilding every 120s, and removing
+        // that watchdog exposed the gap at both startup and after a failed rebuild.
+        assert!(health_check_should_recover(false, false, false, false));
+    }
+
+    #[test]
+    fn health_check_leaves_a_healthy_session_alone() {
+        assert!(!health_check_should_recover(false, true, false, false));
+    }
+
+    #[test]
+    fn health_check_defers_to_a_running_reconnect() {
+        // The loop is what fixes this; firing alongside it would just re-publish a
+        // disconnected snapshot once a minute.
+        assert!(!health_check_should_recover(true, false, true, false));
+    }
+
+    #[test]
+    fn health_check_stays_out_of_a_teardown() {
+        assert!(!health_check_should_recover(true, false, false, true));
     }
 
     #[test]

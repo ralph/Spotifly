@@ -64,8 +64,6 @@ struct LoggedInView: View {
         playbackViewModel.setStore(store)
     }
 
-    private let reconnectWatchdogTimeoutSeconds: Double = 120
-
     @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
 
     @State private var searchText = ""
@@ -184,7 +182,6 @@ struct LoggedInView: View {
             session: session,
             store: store,
             topItemsTimeRange: topItemsTimeRange,
-            reconnectWatchdogTimeoutSeconds: reconnectWatchdogTimeoutSeconds,
             playbackViewModel: playbackViewModel,
             queueService: queueService,
             deviceService: deviceService,
