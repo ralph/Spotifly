@@ -174,6 +174,17 @@ fn is_active_device() -> bool {
 
 /// Records whether this device is the active one, publishing the change if it moved.
 fn set_active_device(active: bool) {
+    if store_active_device(active) {
+        notify_connection_state_change();
+    }
+}
+
+/// Records activity without publishing, returning whether it changed.
+///
+/// For callers that are mid-transition and will publish once when they are done —
+/// `init_player_async` still has to rehydrate after activating, and publishing in between
+/// is what let Swift bootstrap against a half-built session.
+fn store_active_device(active: bool) -> bool {
     let changed = with_connection(|c| {
         let changed = c.is_active_device != active;
         c.is_active_device = active;
@@ -181,8 +192,8 @@ fn set_active_device(active: bool) {
     });
     if changed {
         debug!("Active device changed: is_active={}", active);
-        notify_connection_state_change();
     }
+    changed
 }
 
 static CONNECTION: Lazy<Mutex<ConnectionState>> =
@@ -736,6 +747,11 @@ async fn create_and_store_spirc(
     // running. The backoff counter and last error are cleared here rather than in the
     // SessionConnected handler, which fires on Connect *activation* and can happen many
     // times over the life of one healthy session.
+    //
+    // Recorded but deliberately not published yet: activation and, on a reconnect, the
+    // rehydrating load still have to run. init_player_async publishes once, at the end,
+    // when the session is actually settled. Swift's readiness wait polls the synchronous
+    // flags rather than waiting for this callback, so holding it back costs nothing.
     with_connection(|c| {
         c.spirc_ready = true;
         c.session_connected = true;
@@ -743,7 +759,6 @@ async fn create_and_store_spirc(
         c.reconnect_attempt = 0;
         c.last_error = None;
     });
-    notify_connection_state_change();
 
     debug!(
         "[WAKE +{}ms] Spirc ready - connected to Spotify Connect",
@@ -1003,35 +1018,12 @@ fn spawn_reconnection_loop() {
             // silently timed out. A brief gap during an outage is the better trade.
             do_reconnect_cleanup();
 
-            match init_player_async(&token, was_active).await {
+            // Rehydration happens inside init_player_async, so that the session is fully
+            // settled before its readiness is published. See the note there.
+            match init_player_async(&token, was_active, was_playing && was_active).await {
                 Ok(_) => {
                     debug!("[WAKE +{}ms] Reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt_number);
                     RECONNECTING.store(false, Ordering::SeqCst);
-
-                    // Rehydrate. The rebuilt Player has no track loaded, and nothing else
-                    // will load one: Spirc comes up ready and the device is active again,
-                    // but that only makes it *available* to play, not playing. Without an
-                    // explicit load the session returns healthy and silent while Swift
-                    // still shows the pre-outage position, because IS_PLAYING and the
-                    // position anchor survive the rebuild.
-                    //
-                    // This used to arm a five-second window and wait for a Paused event,
-                    // on the assumption that the track would load itself via transfer(None)
-                    // — but nothing in this path ever called transfer(None), so the event
-                    // never came. It went unnoticed because the rebuild was only ever the
-                    // fallback for a failed soft reconnect, which kept the Player playing.
-                    if was_playing && was_active {
-                        let spirc = SPIRC.lock().unwrap().as_ref().cloned();
-                        if let Some(spirc) = spirc {
-                            let result = resume_via_load(&spirc);
-                            debug!(
-                                "[WAKE +{}ms] Rehydrate after reconnect: load result={}",
-                                elapsed_since_wake_ms(),
-                                result
-                            );
-                        }
-                    }
-
                     return;
                 }
                 Err(e) => {
@@ -1202,7 +1194,7 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
         }
     }
 
-    let result = RUNTIME.block_on(async { init_player_async(&token_str, false).await });
+    let result = RUNTIME.block_on(async { init_player_async(&token_str, false, false).await });
 
     match result {
         Ok(_) => 0,
@@ -1265,7 +1257,19 @@ fn create_new_player(session: &Session) -> Result<Arc<Player>, String> {
     Ok(player)
 }
 
-async fn init_player_async(access_token: &str, activate_after_connect: bool) -> Result<(), String> {
+/// Builds a complete, settled session and publishes its readiness exactly once, at the end.
+///
+/// The ordering matters. Readiness used to be published the moment Spirc existed, while
+/// activation and the rehydrating load still had to run — so Swift, which reacts to that
+/// publication by bootstrapping from the Web API, fetched and applied a server snapshot
+/// that Rust then immediately overwrote. That was visible as the playback position jumping
+/// forward to a stale value and back. Publishing once, when nothing further is pending,
+/// removes the window rather than racing it.
+async fn init_player_async(
+    access_token: &str,
+    activate_after_connect: bool,
+    resume_after_connect: bool,
+) -> Result<(), String> {
     // Increment session generation - this invalidates any old cluster listeners
     let current_generation = SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     debug!(
@@ -1608,14 +1612,40 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
         Ok(spirc) => {
             // Passive startup by default: do not take over the active device on launch.
             // Re-activate only when reconnecting from a previously-active local session.
+            //
+            // Recorded, not published — the single notify at the end of this function
+            // covers it. set_active_device would publish here, before the rehydration
+            // below, reopening the window this ordering exists to close.
             if activate_after_connect {
                 match spirc.activate() {
-                    Ok(_) => set_active_device(true),
+                    Ok(_) => {
+                        store_active_device(true);
+                    }
                     Err(e) => debug!("Auto-activation failed: {:?}", e),
                 }
             } else {
-                set_active_device(false);
+                store_active_device(false);
             }
+
+            // Rehydrate before announcing readiness. The rebuilt Player has no track
+            // loaded, and nothing else will load one: Spirc coming up and the device
+            // becoming active only make it *available* to play, not playing. Without this
+            // the session returns healthy and silent while Swift still shows the pre-outage
+            // position, because IS_PLAYING and the position anchor survive the rebuild.
+            //
+            // This used to arm a five-second window waiting for a Paused event, on the
+            // assumption that the track would load itself via transfer(None) — nothing in
+            // this path ever called transfer(None), so the event never came.
+            if resume_after_connect {
+                let result = resume_via_load(&spirc);
+                debug!(
+                    "[WAKE +{}ms] Rehydrate after reconnect: load result={}",
+                    elapsed_since_wake_ms(),
+                    result
+                );
+            }
+
+            // Single publication point: everything above is done.
             notify_connection_state_change();
         }
         Err(e) => {
