@@ -1,6 +1,6 @@
 # Audio throttle anchor is not reset when the player is rebuilt, so playback races after a reconnect
 
-Status: **fixed 2026-07-30** — options 1 and 2 below, both applied. Kept as a record.
+Status: **fixed and confirmed at runtime, 2026-07-30.** Kept as a record.
 Component: `Spotifly/AudioRenderer.swift`, `rust/src/proxy_sink.rs`
 Found: 2026-07-30, while verifying reconnect behavior against official librespot
 
@@ -22,8 +22,34 @@ Both small fixes were applied together, since they address different halves:
 Option 3 (windowed throttle) was **not** done. It is the more robust design, but with the
 cause fixed and a guard behind it, the extra change was not worth it.
 
-Verification is the reproduction below: after a reconnect, `EndOfTrack` should now land
-near the track length rather than tens of seconds short.
+### Confirmed at runtime
+
+Same reproduction as below — outage while playing locally, reconnect, then the resumed
+track left to run to its end untouched:
+
+```text
+19:06:09.661  AudioRenderer] Started playback          # was absent before the fix
+19:06:09.661  PlayerEvent::Playing at 99217ms
+19:07:14.423  PlayerEvent::EndOfTrack at 165934ms
+```
+
+| | Before | After |
+| --- | --- | --- |
+| Position advanced | 40189 ms | 66717 ms |
+| Wall clock elapsed | 956 ms | 64762 ms |
+| Ratio | **42×** | **1.03×** |
+| `EndOfTrack` vs. track length (166000 ms) | 10234 ms short | 66 ms short |
+
+Two details worth recording:
+
+- **`AudioRenderer] Started playback` now appears after the rebuild.** Its absence was the
+  original evidence — `start()` was returning early at the `isRendering` guard and skipping
+  the reset. Its presence is the direct proof that option 2 works: the renderer had already
+  been told the old player was gone, so `start()` took the normal path.
+- **The option 1 fallback never fired.** No `Start while already rendering — re-anchored
+  throttle` in the log. That is the intended outcome: with the cause fixed it is a net for
+  future paths that tear down a player without notifying, not a load-bearing part of this
+  fix.
 
 ---
 
