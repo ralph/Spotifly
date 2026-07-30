@@ -212,6 +212,42 @@ private nonisolated func decodeConnectionState(
     }
 }
 
+/// Decodes a JSON-object payload delivered by a Rust callback.
+///
+/// Every JSON callback arrives with the same three failure modes — a nil pointer, bytes
+/// that are not UTF-8, or a payload that is not a JSON object — and none of them is
+/// recoverable, so they are logged against the caller's `context` and reported as nil.
+/// `JSONSerialization` rather than `Decodable`, because a `Decodable` conformance would be
+/// main-actor-isolated under `SWIFT_DEFAULT_ACTOR_ISOLATION` and these run on Rust threads.
+private nonisolated func decodeJSONObject(
+    _ jsonPtr: UnsafePointer<CChar>?,
+    context: String,
+) -> [String: Any]? {
+    guard let jsonPtr else {
+        debugLog("SpotifyPlayer", "\(context): jsonPtr is nil")
+        return nil
+    }
+
+    let jsonString = String(cString: jsonPtr)
+    debugLog("SpotifyPlayer", "\(context): \(jsonString.prefix(500))")
+
+    guard let data = jsonString.data(using: .utf8) else {
+        debugLog("SpotifyPlayer", "\(context): payload is not valid UTF-8")
+        return nil
+    }
+
+    do {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            debugLog("SpotifyPlayer", "\(context): payload is not a JSON object")
+            return nil
+        }
+        return json
+    } catch {
+        debugLog("SpotifyPlayer", "\(context): failed to parse JSON: \(error)")
+        return nil
+    }
+}
+
 /// Global subject for queue changed notifications (nonisolated for C callback access)
 private nonisolated(unsafe) let queueChangedSubject = PassthroughSubject<QueueChangedNotification, Never>()
 
@@ -284,31 +320,13 @@ private nonisolated func registerLoadingCallback() {
 /// C callback for loading notifications from Rust
 /// Fires earlier than TrackChanged (~180ms vs ~620ms after remote command)
 private nonisolated func handleLoadingCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let jsonPtr else {
-        debugLog("SpotifyPlayer", "handleLoadingCallback: jsonPtr is nil")
-        return
-    }
+    guard let json = decodeJSONObject(jsonPtr, context: "handleLoadingCallback") else { return }
 
-    let jsonString = String(cString: jsonPtr)
-    debugLog("SpotifyPlayer", "Loading callback: \(jsonString)")
-
-    guard let data = jsonString.data(using: .utf8) else {
-        return
-    }
-
-    do {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-
-        let trackUri = json["track_uri"] as? String ?? ""
-        let positionMs = (json["position_ms"] as? NSNumber)?.uint32Value ?? 0
-
-        let notification = LoadingNotification(trackUri: trackUri, positionMs: positionMs)
-        Task { @MainActor in loadingSubject.send(notification) }
-    } catch {
-        debugLog("SpotifyPlayer", "Failed to parse loading JSON: \(error)")
-    }
+    let notification = LoadingNotification(
+        trackUri: json["track_uri"] as? String ?? "",
+        positionMs: (json["position_ms"] as? NSNumber)?.uint32Value ?? 0,
+    )
+    Task { @MainActor in loadingSubject.send(notification) }
 }
 
 /// Registers the queue changed callback with Rust (fires when remote device adds to queue)
@@ -338,30 +356,10 @@ private nonisolated func handleConnectionStateCallback(_ jsonPtr: UnsafePointer<
 /// C callback for queue changed notifications from Rust
 /// Fires when a remote device adds a track to the queue
 private nonisolated func handleQueueChangedCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let jsonPtr else {
-        debugLog("SpotifyPlayer", "handleQueueChangedCallback: jsonPtr is nil")
-        return
-    }
+    guard let json = decodeJSONObject(jsonPtr, context: "handleQueueChangedCallback") else { return }
 
-    let jsonString = String(cString: jsonPtr)
-    debugLog("SpotifyPlayer", "Queue changed callback: \(jsonString)")
-
-    guard let data = jsonString.data(using: .utf8) else {
-        return
-    }
-
-    do {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-
-        let trackUri = json["track_uri"] as? String ?? ""
-        let notification = QueueChangedNotification(trackUri: trackUri)
-        Task { @MainActor in queueChangedSubject.send(notification) }
-
-    } catch {
-        debugLog("SpotifyPlayer", "Failed to parse queue changed JSON: \(error)")
-    }
+    let notification = QueueChangedNotification(trackUri: json["track_uri"] as? String ?? "")
+    Task { @MainActor in queueChangedSubject.send(notification) }
 }
 
 /// Registers the set queue callback with Rust (fires when queue is modified)
@@ -374,64 +372,22 @@ private nonisolated func registerSetQueueCallback() {
 /// C callback for set queue notifications from Rust
 /// Fires when the queue is set/modified or a context is loaded
 private nonisolated func handleSetQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let jsonPtr else {
-        debugLog("SpotifyPlayer", "handleSetQueueCallback: jsonPtr is nil")
-        return
-    }
+    guard let json = decodeJSONObject(jsonPtr, context: "handleSetQueueCallback") else { return }
 
-    let jsonString = String(cString: jsonPtr)
-    debugLog("SpotifyPlayer", "Set queue callback: \(jsonString.prefix(200))...")
-
-    guard let data = jsonString.data(using: .utf8) else {
-        return
-    }
-
-    do {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-
-        // Parse context_uri
-        let contextUri = json["context_uri"] as? String ?? ""
-
-        // Parse current_track (optional object with uri and provider)
-        var currentTrack: SetQueueTrackInfo?
-        if let currentTrackJson = json["current_track"] as? [String: Any] {
-            currentTrack = SetQueueTrackInfo(
-                uri: currentTrackJson["uri"] as? String ?? "",
-                provider: currentTrackJson["provider"] as? String ?? "",
-            )
-        }
-
-        // Parse next_tracks array
-        let nextTracksJson = json["next_tracks"] as? [[String: Any]] ?? []
-        let nextTracks = nextTracksJson.map { track in
-            SetQueueTrackInfo(
-                uri: track["uri"] as? String ?? "",
-                provider: track["provider"] as? String ?? "",
-            )
-        }
-
-        // Parse prev_tracks array
-        let prevTracksJson = json["prev_tracks"] as? [[String: Any]] ?? []
-        let prevTracks = prevTracksJson.map { track in
-            SetQueueTrackInfo(
-                uri: track["uri"] as? String ?? "",
-                provider: track["provider"] as? String ?? "",
-            )
-        }
-
-        let notification = SetQueueNotification(
-            contextUri: contextUri,
-            currentTrack: currentTrack,
-            nextTracks: nextTracks,
-            prevTracks: prevTracks,
+    func toTrackInfo(_ track: [String: Any]) -> SetQueueTrackInfo {
+        SetQueueTrackInfo(
+            uri: track["uri"] as? String ?? "",
+            provider: track["provider"] as? String ?? "",
         )
-        Task { @MainActor in setQueueSubject.send(notification) }
-
-    } catch {
-        debugLog("SpotifyPlayer", "Failed to parse set queue JSON: \(error)")
     }
+
+    let notification = SetQueueNotification(
+        contextUri: json["context_uri"] as? String ?? "",
+        currentTrack: (json["current_track"] as? [String: Any]).map(toTrackInfo),
+        nextTracks: (json["next_tracks"] as? [[String: Any]] ?? []).map(toTrackInfo),
+        prevTracks: (json["prev_tracks"] as? [[String: Any]] ?? []).map(toTrackInfo),
+    )
+    Task { @MainActor in setQueueSubject.send(notification) }
 }
 
 /// Registers the became-inactive callback with Rust
@@ -525,85 +481,48 @@ private nonisolated func registerSessionClientChangedCallback() {
 /// C callback for session client changed notifications from Rust
 /// Fires when the controlling Spotify client changes
 private nonisolated func handleSessionClientChangedCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let jsonPtr else {
-        debugLog("SpotifyPlayer", "handleSessionClientChangedCallback: jsonPtr is nil")
+    guard let json = decodeJSONObject(jsonPtr, context: "handleSessionClientChangedCallback")
+    else {
         return
     }
 
-    let jsonString = String(cString: jsonPtr)
-    debugLog("SpotifyPlayer", "Session client changed: \(jsonString)")
+    let notification = SessionClientChangedNotification(
+        clientId: json["client_id"] as? String ?? "",
+        clientName: json["client_name"] as? String ?? "",
+        clientBrandName: json["client_brand_name"] as? String ?? "",
+        clientModelName: json["client_model_name"] as? String ?? "",
+    )
 
-    guard let data = jsonString.data(using: .utf8) else {
-        return
-    }
+    debugLog(
+        "SpotifyPlayer",
+        "Session client: \(notification.clientName) (\(notification.clientBrandName) \(notification.clientModelName))",
+    )
 
-    do {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-
-        let notification = SessionClientChangedNotification(
-            clientId: json["client_id"] as? String ?? "",
-            clientName: json["client_name"] as? String ?? "",
-            clientBrandName: json["client_brand_name"] as? String ?? "",
-            clientModelName: json["client_model_name"] as? String ?? "",
-        )
-
-        debugLog(
-            "SpotifyPlayer",
-            "Session client: \(notification.clientName) (\(notification.clientBrandName) \(notification.clientModelName))",
-        )
-
-        Task { @MainActor in sessionClientChangedSubject.send(notification) }
-    } catch {
-        debugLog("SpotifyPlayer", "Failed to parse session client changed JSON: \(error)")
-    }
+    Task { @MainActor in sessionClientChangedSubject.send(notification) }
 }
 
 /// C callback for playback state updates from Rust
 /// Uses manual JSON parsing to avoid Decodable actor isolation issues
 private nonisolated func handlePlaybackStateCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    debugLog("SpotifyPlayer", "handlePlaybackStateCallback called")
-
-    guard let jsonPtr else {
-        debugLog("SpotifyPlayer", "handlePlaybackStateCallback: jsonPtr is nil")
+    guard let json = decodeJSONObject(jsonPtr, context: "handlePlaybackStateCallback") else {
         return
     }
 
-    let jsonString = String(cString: jsonPtr)
-    debugLog("SpotifyPlayer", "handlePlaybackStateCallback received JSON (\(jsonString.count) chars)")
+    let state = PlaybackState(
+        isPlaying: json["is_playing"] as? Bool ?? false,
+        isPaused: json["is_paused"] as? Bool ?? false,
+        trackUri: json["track_uri"] as? String ?? "",
+        positionMs: (json["position_ms"] as? NSNumber)?.int64Value ?? 0,
+        durationMs: (json["duration_ms"] as? NSNumber)?.int64Value ?? 0,
+        shuffle: json["shuffle"] as? Bool ?? false,
+        repeatTrack: json["repeat_track"] as? Bool ?? false,
+        repeatContext: json["repeat_context"] as? Bool ?? false,
+        timestampMs: (json["timestamp_ms"] as? NSNumber)?.int64Value ?? 0,
+    )
 
-    guard let data = jsonString.data(using: .utf8) else {
-        debugLog("SpotifyPlayer", "handlePlaybackStateCallback: failed to convert JSON to data")
-        return
-    }
+    debugLog("SpotifyPlayer", "PlaybackState: playing=\(state.isPlaying), paused=\(state.isPaused), pos=\(state.positionMs)ms, dur=\(state.durationMs)ms, shuffle=\(state.shuffle), repeatTrack=\(state.repeatTrack), repeatContext=\(state.repeatContext)")
 
-    do {
-        // Use JSONSerialization instead of Decodable to avoid actor isolation issues
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            debugLog("SpotifyPlayer", "handlePlaybackStateCallback: JSON is not a dictionary")
-            return
-        }
-
-        let state = PlaybackState(
-            isPlaying: json["is_playing"] as? Bool ?? false,
-            isPaused: json["is_paused"] as? Bool ?? false,
-            trackUri: json["track_uri"] as? String ?? "",
-            positionMs: (json["position_ms"] as? NSNumber)?.int64Value ?? 0,
-            durationMs: (json["duration_ms"] as? NSNumber)?.int64Value ?? 0,
-            shuffle: json["shuffle"] as? Bool ?? false,
-            repeatTrack: json["repeat_track"] as? Bool ?? false,
-            repeatContext: json["repeat_context"] as? Bool ?? false,
-            timestampMs: (json["timestamp_ms"] as? NSNumber)?.int64Value ?? 0,
-        )
-
-        debugLog("SpotifyPlayer", "PlaybackState: playing=\(state.isPlaying), paused=\(state.isPaused), pos=\(state.positionMs)ms, dur=\(state.durationMs)ms, shuffle=\(state.shuffle), repeatTrack=\(state.repeatTrack), repeatContext=\(state.repeatContext)")
-
-        Task { @MainActor in playbackStateSubject.send(state) }
-    } catch {
-        debugLog("SpotifyPlayer", "Failed to parse playback state JSON: \(error)")
-        debugLog("SpotifyPlayer", "JSON preview: \(String(jsonString.prefix(500)))")
-    }
+    Task { @MainActor in playbackStateSubject.send(state) }
 }
 
 /// Parses a queue item from a JSON dictionary (manual parsing to avoid Decodable actor isolation issues)
@@ -626,65 +545,20 @@ private nonisolated func parseQueueItem(from dict: [String: Any]) -> QueueItem? 
 /// C callback for queue updates from Rust
 /// Uses manual JSON parsing to avoid Decodable actor isolation issues
 private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    debugLog("SpotifyPlayer", "handleQueueCallback called")
+    guard let json = decodeJSONObject(jsonPtr, context: "handleQueueCallback") else { return }
 
-    guard let jsonPtr else {
-        debugLog("SpotifyPlayer", "handleQueueCallback: jsonPtr is nil")
-        return
-    }
+    let state = QueueState(
+        currentTrack: (json["track"] as? [String: Any]).flatMap { parseQueueItem(from: $0) },
+        nextTracks: (json["next_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
+        previousTracks: (json["prev_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
+    )
 
-    let jsonString = String(cString: jsonPtr)
-    debugLog("SpotifyPlayer", "handleQueueCallback received JSON (\(jsonString.count) chars)")
+    let currentName = state.currentTrack?.name ?? "none"
+    let nextCount = state.nextTracks.count
+    let prevCount = state.previousTracks?.count ?? 0
+    debugLog("SpotifyPlayer", "handleQueueCallback: current='\(currentName)', next=\(nextCount), prev=\(prevCount)")
 
-    guard let data = jsonString.data(using: .utf8) else {
-        debugLog("SpotifyPlayer", "handleQueueCallback: failed to convert JSON to data")
-        return
-    }
-
-    do {
-        // Use JSONSerialization instead of Decodable to avoid actor isolation issues
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            debugLog("SpotifyPlayer", "handleQueueCallback: JSON is not a dictionary")
-            return
-        }
-
-        // Parse current track
-        let currentTrack: QueueItem? = if let trackDict = json["track"] as? [String: Any] {
-            parseQueueItem(from: trackDict)
-        } else {
-            nil
-        }
-
-        // Parse next tracks
-        let nextTracks: [QueueItem] = if let nextArray = json["next_tracks"] as? [[String: Any]] {
-            nextArray.compactMap { parseQueueItem(from: $0) }
-        } else {
-            []
-        }
-
-        // Parse previous tracks
-        let prevTracks: [QueueItem] = if let prevArray = json["prev_tracks"] as? [[String: Any]] {
-            prevArray.compactMap { parseQueueItem(from: $0) }
-        } else {
-            []
-        }
-
-        let state = QueueState(
-            currentTrack: currentTrack,
-            nextTracks: nextTracks,
-            previousTracks: prevTracks,
-        )
-
-        let currentName = state.currentTrack?.name ?? "none"
-        let nextCount = state.nextTracks.count
-        let prevCount = state.previousTracks?.count ?? 0
-        debugLog("SpotifyPlayer", "handleQueueCallback: current='\(currentName)', next=\(nextCount), prev=\(prevCount)")
-
-        Task { @MainActor in queueSubject.send(state) }
-    } catch {
-        debugLog("SpotifyPlayer", "Failed to parse queue JSON: \(error)")
-        debugLog("SpotifyPlayer", "JSON preview: \(String(jsonString.prefix(500)))")
-    }
+    Task { @MainActor in queueSubject.send(state) }
 }
 
 /// Errors that can occur during playback

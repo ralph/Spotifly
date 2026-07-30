@@ -359,28 +359,50 @@ final class PlaybackViewModel {
 
     // MARK: - Playback Control (via Spirc or Web API)
 
-    // Uses local Spirc when active device, Web API otherwise
-    // State updates come back via Mercury callback
-
-    func next() {
-        if SpotifyPlayer.isActiveDevice {
-            // During reconnection, session may not be fully connected yet
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "next() ignored - session not connected yet")
-                return
-            }
-            SpotifyPlayer.next()
-        } else {
-            // Remote control via Web API
+    /// Issues a transport command locally when Spotifly is the active device, and through
+    /// the Web API otherwise. Returns whether the command was issued at all.
+    ///
+    /// The local branch is gated on the session being connected: during a reconnect Rust
+    /// rejects commands, and the callers that move the UI optimistically must not do so for
+    /// a command that never happened — hence the `Bool` rather than a plain dispatch.
+    /// The remote branch reports failures through `errorMessage`; the local branch leaves
+    /// the resulting playback state to the Mercury callback.
+    @discardableResult
+    private func sendTransportCommand(
+        _ name: String,
+        local: () -> Void,
+        remote: @escaping (String) async throws -> Void,
+    ) -> Bool {
+        guard SpotifyPlayer.isActiveDevice else {
             Task {
                 guard let token = await tokenProvider?() else { return }
                 do {
-                    try await SpotifyAPI.skipToNext(accessToken: token)
+                    try await remote(token)
                 } catch {
                     errorMessage = error.localizedDescription
                 }
             }
+            return true
         }
+
+        // During reconnection, session may not be fully connected yet
+        guard SpotifyPlayer.isSessionConnected else {
+            debugLog("PlaybackViewModel", "\(name) ignored - session not connected yet")
+            return false
+        }
+        local()
+        return true
+    }
+
+    func next() {
+        guard sendTransportCommand(
+            "next()",
+            local: { SpotifyPlayer.next() },
+            remote: { try await SpotifyAPI.skipToNext(accessToken: $0) },
+        ) else {
+            return
+        }
+
         // Immediately reset position to 0 for responsive UI
         positionAnchorMs = 0
         positionAnchorTime = CACurrentMediaTime()
@@ -389,24 +411,14 @@ final class PlaybackViewModel {
     }
 
     func previous() {
-        if SpotifyPlayer.isActiveDevice {
-            // During reconnection, session may not be fully connected yet
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "previous() ignored - session not connected yet")
-                return
-            }
-            SpotifyPlayer.previous()
-        } else {
-            // Remote control via Web API
-            Task {
-                guard let token = await tokenProvider?() else { return }
-                do {
-                    try await SpotifyAPI.skipToPrevious(accessToken: token)
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
+        guard sendTransportCommand(
+            "previous()",
+            local: { SpotifyPlayer.previous() },
+            remote: { try await SpotifyAPI.skipToPrevious(accessToken: $0) },
+        ) else {
+            return
         }
+
         // Immediately reset position to 0 for responsive UI
         positionAnchorMs = 0
         positionAnchorTime = CACurrentMediaTime()
@@ -426,46 +438,23 @@ final class PlaybackViewModel {
     }
 
     func pause() {
-        if SpotifyPlayer.isActiveDevice {
-            // During reconnection, session may not be fully connected yet
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "pause() ignored - session not connected yet")
-                return
-            }
-            SpotifyPlayer.pause()
-        } else {
-            // Remote control via Web API
-            Task {
-                guard let token = await tokenProvider?() else { return }
-                do {
-                    try await SpotifyAPI.pausePlayback(accessToken: token)
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        }
         // State update will come from Mercury callback
+        sendTransportCommand(
+            "pause()",
+            local: { SpotifyPlayer.pause() },
+            remote: { try await SpotifyAPI.pausePlayback(accessToken: $0) },
+        )
     }
 
     func resume() {
-        if SpotifyPlayer.isActiveDevice {
-            // During reconnection, session may not be fully connected yet
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "resume() ignored - session not connected yet")
-                return
-            }
-            SpotifyPlayer.resume()
-        } else {
-            // Remote control via Web API
-            Task {
-                guard let token = await tokenProvider?() else { return }
-                do {
-                    try await SpotifyAPI.resumePlayback(accessToken: token)
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
+        guard sendTransportCommand(
+            "resume()",
+            local: { SpotifyPlayer.resume() },
+            remote: { try await SpotifyAPI.resumePlayback(accessToken: $0) },
+        ) else {
+            return
         }
+
         // Don't call syncPositionAnchor() - Rust returns 0 immediately after resume
         // Keep the current positionAnchorMs (correct from paused state), just update the time
         positionAnchorTime = CACurrentMediaTime()
@@ -475,22 +464,11 @@ final class PlaybackViewModel {
     func toggleShuffle() {
         let targetShuffle = !isShuffleEnabled
 
-        if SpotifyPlayer.isActiveDevice {
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "toggleShuffle() ignored - session not connected yet")
-                return
-            }
-            SpotifyPlayer.setShuffle(targetShuffle)
-        } else {
-            Task {
-                guard let token = await tokenProvider?() else { return }
-                do {
-                    try await SpotifyAPI.setShuffle(accessToken: token, enabled: targetShuffle)
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        }
+        sendTransportCommand(
+            "toggleShuffle()",
+            local: { SpotifyPlayer.setShuffle(targetShuffle) },
+            remote: { try await SpotifyAPI.setShuffle(accessToken: $0, enabled: targetShuffle) },
+        )
     }
 
     /// Returns true if there are tracks in the queue after the current track
@@ -725,26 +703,17 @@ final class PlaybackViewModel {
 
     /// Perform the actual seek operation (called after debouncing)
     private func performSeek(to positionMs: UInt32) {
-        if SpotifyPlayer.isActiveDevice {
-            // seek(to:) already moved the anchor so scrubbing feels immediate. If Rust
-            // will reject the command, re-sync from the real position instead of leaving
-            // the UI parked at a position playback never reached.
-            guard SpotifyPlayer.isSessionConnected else {
-                debugLog("PlaybackViewModel", "performSeek ignored - session not connected")
-                syncPositionAnchor()
-                return
-            }
-            SpotifyPlayer.seek(positionMs: positionMs)
-        } else {
-            // Remote control via Web API
-            Task {
-                guard let token = await tokenProvider?() else { return }
-                do {
-                    try await SpotifyAPI.seekToPosition(accessToken: token, positionMs: Int(positionMs))
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
+        let issued = sendTransportCommand(
+            "performSeek",
+            local: { SpotifyPlayer.seek(positionMs: positionMs) },
+            remote: { try await SpotifyAPI.seekToPosition(accessToken: $0, positionMs: Int(positionMs)) },
+        )
+
+        // seek(to:) already moved the anchor so scrubbing feels immediate. If Rust rejected
+        // the command, re-sync from the real position instead of leaving the UI parked at a
+        // position playback never reached.
+        if !issued {
+            syncPositionAnchor()
         }
     }
 

@@ -10,9 +10,9 @@ use librespot_core::SpotifyUri;
 use librespot_playback::config::{AudioFormat, Bitrate, PlayerConfig};
 use librespot_playback::mixer::softmixer::SoftMixer;
 use librespot_playback::mixer::{Mixer, MixerConfig, NoOpVolume};
-use librespot_playback::player::{Player, PlayerEvent};
+use librespot_playback::player::{Player, PlayerEvent, QueueTrack};
 use librespot_protocol::connect::ClusterUpdate;
-use librespot_protocol::player::PlayerState;
+use librespot_protocol::player::{PlayerState, ProvidedTrack};
 use log::debug;
 use once_cell::sync::Lazy;
 use proxy_sink::mk_proxy_sink;
@@ -78,9 +78,6 @@ static RECONNECTING: AtomicBool = AtomicBool::new(false);
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 // Flag to track sleep state (prevents auto-reconnect, but allows explicit forceReconnect on wake)
 static SLEEPING: AtomicBool = AtomicBool::new(false);
-
-// Auto-resume after reconnection: if non-zero, resume playback when Paused event arrives before this timestamp
-// This handles the case where we were playing before a network disconnect, reconnected, but track loaded paused
 
 /// Everything the connection snapshot publishes, behind a single lock.
 ///
@@ -420,6 +417,69 @@ fn parse_spotify_uri(uri_str: &str) -> Result<SpotifyUri, String> {
     SpotifyUri::from_uri(uri_str).map_err(|e| format!("Invalid Spotify URI: {:?}", e))
 }
 
+/// Copies a C string argument into an owned `String`, or `None` if it is null or not UTF-8.
+///
+/// # Safety
+/// `ptr` must be null or point to a valid NUL-terminated C string.
+unsafe fn c_string_arg(ptr: *const c_char) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+    let c_str = unsafe { CStr::from_ptr(ptr) };
+    c_str.to_str().ok().map(str::to_owned)
+}
+
+/// Copies a registered callback out of its slot, releasing the slot lock before returning.
+///
+/// No callback may run with its slot lock held: it re-enters Swift, which can call straight
+/// back into Rust. Taking the pointer out here makes that structural instead of a
+/// `drop(guard)` that every call site has to remember.
+fn registered_callback<F: Copy>(slot: &Mutex<Option<F>>) -> Option<F> {
+    *slot.lock().unwrap()
+}
+
+/// Serializes `payload` and hands it to a Swift callback as a C string.
+///
+/// The C string outlives the call and is freed on return: Swift copies what it needs
+/// before the callback returns.
+fn send_json<T: Serialize>(callback: extern "C" fn(*const c_char), payload: &T) {
+    match serde_json::to_string(payload) {
+        Ok(json) => {
+            let c_str = CString::new(json).unwrap();
+            callback(c_str.as_ptr());
+        }
+        Err(e) => debug!("Failed to serialize callback payload: {:?}", e),
+    }
+}
+
+/// Runs a command against the current Spirc and maps the outcome to an FFI error code.
+///
+/// `what` names the command in the error logs. A closed channel is reported separately
+/// (`ERROR_NEEDS_REINIT`) because Swift responds to it by rebuilding the player rather
+/// than by surfacing a failure.
+fn spirc_command(
+    what: &str,
+    command: impl FnOnce(&Spirc) -> Result<(), librespot_core::Error>,
+) -> i32 {
+    let spirc_guard = SPIRC.lock().unwrap();
+    let Some(spirc) = spirc_guard.as_ref() else {
+        debug!("{} error: Spirc not initialized", what);
+        return ERROR_GENERAL;
+    };
+
+    match command(spirc) {
+        Ok(()) => 0,
+        Err(e) => {
+            debug!("{} error: {:?}", what, e);
+            if is_channel_closed_error(&e) {
+                ERROR_NEEDS_REINIT
+            } else {
+                ERROR_GENERAL
+            }
+        }
+    }
+}
+
 /// Shuts down the Spirc instance if it exists.
 /// This terminates the spirc_task and closes the dealer connection.
 fn shutdown_spirc(context: &str) {
@@ -446,8 +506,7 @@ pub extern "C" fn spotifly_free_string(s: *mut c_char) {
 /// Registers a callback to receive queue updates (as JSON string).
 #[no_mangle]
 pub extern "C" fn spotifly_register_queue_callback(callback: extern "C" fn(*const c_char)) {
-    let mut cb = QUEUE_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *QUEUE_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback to receive playback state updates (as JSON string).
@@ -455,8 +514,7 @@ pub extern "C" fn spotifly_register_queue_callback(callback: extern "C" fn(*cons
 pub extern "C" fn spotifly_register_playback_state_callback(
     callback: extern "C" fn(*const c_char),
 ) {
-    let mut cb = PLAYBACK_STATE_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *PLAYBACK_STATE_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback to receive volume change notifications.
@@ -464,8 +522,7 @@ pub extern "C" fn spotifly_register_playback_state_callback(
 /// The callback receives the new volume (0-65535).
 #[no_mangle]
 pub extern "C" fn spotifly_register_volume_callback(callback: extern "C" fn(u16)) {
-    let mut cb = VOLUME_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *VOLUME_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback to receive loading notifications.
@@ -474,8 +531,7 @@ pub extern "C" fn spotifly_register_volume_callback(callback: extern "C" fn(u16)
 /// The callback receives JSON with track_uri and position_ms.
 #[no_mangle]
 pub extern "C" fn spotifly_register_loading_callback(callback: extern "C" fn(*const c_char)) {
-    let mut cb = LOADING_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *LOADING_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback to receive queue change notifications.
@@ -483,8 +539,7 @@ pub extern "C" fn spotifly_register_loading_callback(callback: extern "C" fn(*co
 /// The callback receives JSON with track_uri.
 #[no_mangle]
 pub extern "C" fn spotifly_register_queue_changed_callback(callback: extern "C" fn(*const c_char)) {
-    let mut cb = QUEUE_CHANGED_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *QUEUE_CHANGED_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback fired when this device stops being the active Connect device.
@@ -494,8 +549,7 @@ pub extern "C" fn spotifly_register_queue_changed_callback(callback: extern "C" 
 /// treat it as a connection failure - read the connection snapshot for that.
 #[no_mangle]
 pub extern "C" fn spotifly_register_became_inactive_callback(callback: extern "C" fn()) {
-    let mut cb = BECAME_INACTIVE_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *BECAME_INACTIVE_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback fired when this device becomes the active Connect device.
@@ -505,8 +559,7 @@ pub extern "C" fn spotifly_register_became_inactive_callback(callback: extern "C
 /// can be sent.
 #[no_mangle]
 pub extern "C" fn spotifly_register_became_active_callback(callback: extern "C" fn()) {
-    let mut cb = BECAME_ACTIVE_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *BECAME_ACTIVE_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback to receive session client changed notifications.
@@ -514,8 +567,7 @@ pub extern "C" fn spotifly_register_became_active_callback(callback: extern "C" 
 pub extern "C" fn spotifly_register_session_client_changed_callback(
     callback: extern "C" fn(*const c_char),
 ) {
-    let mut cb = SESSION_CLIENT_CHANGED_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *SESSION_CLIENT_CHANGED_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback to receive set queue notifications.
@@ -523,16 +575,14 @@ pub extern "C" fn spotifly_register_session_client_changed_callback(
 /// The callback receives JSON with next_tracks and prev_tracks arrays containing uri and provider.
 #[no_mangle]
 pub extern "C" fn spotifly_register_set_queue_callback(callback: extern "C" fn(*const c_char)) {
-    let mut cb = SET_QUEUE_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *SET_QUEUE_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback to receive active device ID changes from cluster updates.
 /// Called on every cluster update with the current active device ID string.
 #[no_mangle]
 pub extern "C" fn spotifly_register_active_device_callback(callback: extern "C" fn(*const c_char)) {
-    let mut cb = ACTIVE_DEVICE_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *ACTIVE_DEVICE_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback for token requests during reconnection.
@@ -540,8 +590,7 @@ pub extern "C" fn spotifly_register_active_device_callback(callback: extern "C" 
 /// Swift should respond by calling spotifly_set_token() with a fresh access token.
 #[no_mangle]
 pub extern "C" fn spotifly_register_token_request_callback(callback: extern "C" fn()) {
-    let mut cb = TOKEN_REQUEST_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *TOKEN_REQUEST_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Provides a fresh access token for reconnection.
@@ -549,19 +598,9 @@ pub extern "C" fn spotifly_register_token_request_callback(callback: extern "C" 
 /// The token is passed to the pending reconnection attempt.
 #[no_mangle]
 pub extern "C" fn spotifly_set_token(token: *const c_char) {
-    if token.is_null() {
-        debug!("spotifly_set_token: token is null");
+    let Some(token_str) = (unsafe { c_string_arg(token) }) else {
+        debug!("spotifly_set_token: token is null or not valid UTF-8");
         return;
-    }
-
-    let token_str = unsafe {
-        match CStr::from_ptr(token).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                debug!("spotifly_set_token: invalid token string");
-                return;
-            }
-        }
     };
 
     debug!(
@@ -587,8 +626,7 @@ pub extern "C" fn spotifly_set_token(token: *const c_char) {
 pub extern "C" fn spotifly_register_connection_state_callback(
     callback: extern "C" fn(*const c_char),
 ) {
-    let mut cb = CONNECTION_STATE_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
+    *CONNECTION_STATE_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback to receive raw PCM audio data (f32, 44100Hz, stereo interleaved).
@@ -663,28 +701,17 @@ fn notify_active_device_id(device_id: &str) {
     *last = device_id.to_string();
     drop(last);
 
-    let cb_guard = ACTIVE_DEVICE_CALLBACK.lock().unwrap();
-    if let Some(callback) = *cb_guard {
-        let cb = callback;
-        drop(cb_guard);
+    if let Some(callback) = registered_callback(&ACTIVE_DEVICE_CALLBACK) {
         if let Ok(c_str) = CString::new(device_id) {
-            cb(c_str.as_ptr());
+            callback(c_str.as_ptr());
         }
     }
 }
 
 /// Sends connection state update to the registered callback
 fn notify_connection_state_change() {
-    let cb_guard = CONNECTION_STATE_CALLBACK.lock().unwrap();
-    if let Some(callback) = *cb_guard {
-        let cb = callback;
-        drop(cb_guard);
-
-        let state = build_connection_state_info();
-        if let Ok(json) = serde_json::to_string(&state) {
-            let c_str = CString::new(json).unwrap();
-            cb(c_str.as_ptr());
-        }
+    if let Some(callback) = registered_callback(&CONNECTION_STATE_CALLBACK) {
+        send_json(callback, &build_connection_state_info());
     }
 }
 
@@ -739,10 +766,7 @@ async fn create_and_store_spirc(
     let spirc_arc = Arc::new(spirc);
     RUNTIME.spawn(spirc_task);
 
-    {
-        let mut spirc_guard = SPIRC.lock().unwrap();
-        *spirc_guard = Some(spirc_arc.clone());
-    }
+    *SPIRC.lock().unwrap() = Some(spirc_arc.clone());
     // This is the real "we are connected" transition: session established and Spirc
     // running. The backoff counter and last error are cleared here rather than in the
     // SessionConnected handler, which fires on Connect *activation* and can happen many
@@ -771,9 +795,6 @@ async fn create_and_store_spirc(
     Ok(spirc_arc)
 }
 
-/// Subscribes to cluster updates on the session's dealer and spawns a task
-/// to process them. When the stream ends (Spirc died), triggers reconnection
-/// unless shutting down or sleeping.
 /// How often to check whether the session died without anything noticing.
 const SESSION_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -826,6 +847,10 @@ fn spawn_session_health_check(generation: u64) {
     });
 }
 
+/// Subscribes to cluster updates on the session's dealer and spawns a task to process them.
+///
+/// When the stream ends, the Spirc it belonged to is gone, so this triggers reconnection —
+/// but only for the current generation, and only outside an intentional teardown.
 fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), String> {
     let queue_stream = session
         .dealer()
@@ -884,14 +909,12 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
 
 /// Request a fresh token from Swift via callback
 fn request_token_from_swift() {
-    let cb_guard = TOKEN_REQUEST_CALLBACK.lock().unwrap();
-    if let Some(callback) = *cb_guard {
-        let cb = callback;
-        drop(cb_guard);
-        debug!("Requesting fresh token from Swift");
-        cb();
-    } else {
-        debug!("No token request callback registered");
+    match registered_callback(&TOKEN_REQUEST_CALLBACK) {
+        Some(callback) => {
+            debug!("Requesting fresh token from Swift");
+            callback();
+        }
+        None => debug!("No token request callback registered"),
     }
 }
 
@@ -1057,12 +1080,7 @@ pub extern "C" fn spotifly_force_reconnect() -> i32 {
     debug!("[WAKE +0ms] spotifly_force_reconnect called at {}", wake_ts);
 
     // Check if we even have a session
-    let has_session = {
-        let session_guard = SESSION.lock().unwrap();
-        session_guard.is_some()
-    };
-
-    if !has_session {
+    if SESSION.lock().unwrap().is_none() {
         debug!(
             "[WAKE +{}ms] Force reconnect: no session initialized",
             elapsed_since_wake_ms()
@@ -1097,11 +1115,8 @@ fn do_reconnect_cleanup() {
     debug!("do_reconnect_cleanup: full cleanup for reconnection");
 
     // Signal event listener to stop
-    {
-        let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
-        if let Some(tx) = tx_guard.take() {
-            let _ = tx.send(());
-        }
+    if let Some(tx) = PLAYER_EVENT_TX.lock().unwrap().take() {
+        let _ = tx.send(());
     }
 
     // Shutdown Spirc first - this terminates the spirc_task and closes the dealer,
@@ -1110,32 +1125,20 @@ fn do_reconnect_cleanup() {
     shutdown_spirc("do_reconnect_cleanup");
 
     // Now clear Spirc reference
-    {
-        let mut spirc_guard = SPIRC.lock().unwrap();
-        *spirc_guard = None;
-    }
+    *SPIRC.lock().unwrap() = None;
     with_connection(|c| c.spirc_ready = false);
 
     // Clear Player - must be recreated with new Session. Tell Swift first: dropping the
     // Player does not run Sink::stop, so the renderer would otherwise keep believing it is
     // rendering and skip resetting its real-time throttle on the next start.
     proxy_sink::ProxySink::notify_player_gone();
-    {
-        let mut player_guard = PLAYER.lock().unwrap();
-        *player_guard = None;
-    }
+    *PLAYER.lock().unwrap() = None;
 
     // Clear Mixer
-    {
-        let mut mixer_guard = MIXER.lock().unwrap();
-        *mixer_guard = None;
-    }
+    *MIXER.lock().unwrap() = None;
 
     // Clear Session
-    {
-        let mut session_guard = SESSION.lock().unwrap();
-        *session_guard = None;
-    }
+    *SESSION.lock().unwrap() = None;
 
     // Clear device ID (will be regenerated) and reset session connection state
     with_connection(|c| {
@@ -1147,7 +1150,6 @@ fn do_reconnect_cleanup() {
 
     debug!("do_reconnect_cleanup complete");
 }
-
 
 /// Initializes the player with the given access token.
 /// Must be called before play/pause operations.
@@ -1170,19 +1172,9 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
     SHUTTING_DOWN.store(false, Ordering::SeqCst);
     SLEEPING.store(false, Ordering::SeqCst);
 
-    if access_token.is_null() {
-        debug!("Player init error: access_token is null");
+    let Some(token_str) = (unsafe { c_string_arg(access_token) }) else {
+        debug!("Player init error: access_token is null or not valid UTF-8");
         return -1;
-    }
-
-    let token_str = unsafe {
-        match CStr::from_ptr(access_token).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                debug!("Player init error: invalid access_token string");
-                return -1;
-            }
-        }
     };
 
     // Check if we already have a session
@@ -1206,23 +1198,17 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
 }
 
 /// Helper function to create a new Player instance
-fn create_new_player(session: &Session) -> Result<Arc<Player>, String> {
-    let bitrate_setting = BITRATE_SETTING.load(Ordering::SeqCst);
-    let bitrate = match bitrate_setting {
-        0 => Bitrate::Bitrate96,
-        2 => Bitrate::Bitrate320,
-        _ => Bitrate::Bitrate160,
+fn create_new_player(session: &Session) -> Arc<Player> {
+    let (bitrate, bitrate_kbps) = match BITRATE_SETTING.load(Ordering::SeqCst) {
+        0 => (Bitrate::Bitrate96, 96),
+        2 => (Bitrate::Bitrate320, 320),
+        _ => (Bitrate::Bitrate160, 160),
     };
     let gapless = GAPLESS_SETTING.load(Ordering::SeqCst);
 
-    let _bitrate_kbps = match bitrate_setting {
-        0 => 96,
-        2 => 320,
-        _ => 160,
-    };
     debug!(
         "Player initialized: bitrate={}kbps, gapless={}",
-        _bitrate_kbps, gapless
+        bitrate_kbps, gapless
     );
 
     let player_config = PlayerConfig {
@@ -1249,12 +1235,9 @@ fn create_new_player(session: &Session) -> Result<Arc<Player>, String> {
     );
 
     // Store player globally
-    {
-        let mut player_guard = PLAYER.lock().unwrap();
-        *player_guard = Some(Arc::clone(&player));
-    }
+    *PLAYER.lock().unwrap() = Some(Arc::clone(&player));
 
-    Ok(player)
+    player
 }
 
 /// Builds a complete, settled session and publishes its readiness exactly once, at the end.
@@ -1287,14 +1270,11 @@ async fn init_player_async(
     let mixer_config = MixerConfig::default();
     let mixer: Arc<SoftMixer> =
         Arc::new(SoftMixer::open(mixer_config).map_err(|e| format!("Mixer error: {}", e))?);
-    {
-        let mut mixer_guard = MIXER.lock().unwrap();
-        *mixer_guard = Some(Arc::clone(&mixer));
-    }
+    *MIXER.lock().unwrap() = Some(Arc::clone(&mixer));
 
     // Create new player - must be created with the new session because Player is
     // tightly coupled to Session's ChannelManager for decryption key requests
-    let player = create_new_player(&session)?;
+    let player = create_new_player(&session);
 
     // Get event channel from player, opting in to SetQueue events
     let mut event_channel = player.get_player_event_channel();
@@ -1382,18 +1362,11 @@ async fn init_player_async(
                             CURRENT_DURATION_MS.store(duration_ms, Ordering::SeqCst);
 
                             // Emit Loading callback with track info (position 0 for auto-advance)
-                            let cb_guard = LOADING_CALLBACK.lock().unwrap();
-                            if let Some(callback) = *cb_guard {
-                                let cb = callback;
-                                drop(cb_guard);
-                                let notification = LoadingNotification {
+                            if let Some(callback) = registered_callback(&LOADING_CALLBACK) {
+                                send_json(callback, &LoadingNotification {
                                     track_uri: track_uri_str,
                                     position_ms: 0,
-                                };
-                                if let Ok(json) = serde_json::to_string(&notification) {
-                                    let c_str = CString::new(json).unwrap();
-                                    cb(c_str.as_ptr());
-                                }
+                                });
                             }
                         }
                         Some(PlayerEvent::VolumeChanged { volume }) => {
@@ -1430,18 +1403,11 @@ async fn init_player_async(
                                 *uri_guard = Some(track_uri_str.clone());
                             }
 
-                            let cb_guard = LOADING_CALLBACK.lock().unwrap();
-                            if let Some(callback) = *cb_guard {
-                                let cb = callback;
-                                drop(cb_guard);
-                                let notification = LoadingNotification {
+                            if let Some(callback) = registered_callback(&LOADING_CALLBACK) {
+                                send_json(callback, &LoadingNotification {
                                     track_uri: track_uri_str,
                                     position_ms,
-                                };
-                                if let Ok(json) = serde_json::to_string(&notification) {
-                                    let c_str = CString::new(json).unwrap();
-                                    cb(c_str.as_ptr());
-                                }
+                                });
                             }
                         }
                         Some(PlayerEvent::SetQueue {
@@ -1457,35 +1423,17 @@ async fn init_player_async(
                                 prev_tracks.len()
                             );
                             update_current_context_uri(&context_uri);
-                            let cb_guard = SET_QUEUE_CALLBACK.lock().unwrap();
-                            if let Some(callback) = *cb_guard {
-                                let cb = callback;
-                                drop(cb_guard);
-                                let notification = SetQueueNotification {
-                                    context_uri,
-                                    current_track: current_track.map(|t| QueueTrackInfo {
-                                        uri: t.uri,
-                                        provider: t.provider,
-                                    }),
-                                    next_tracks: next_tracks
-                                        .into_iter()
-                                        .map(|t| QueueTrackInfo {
-                                            uri: t.uri,
-                                            provider: t.provider,
-                                        })
-                                        .collect(),
-                                    prev_tracks: prev_tracks
-                                        .into_iter()
-                                        .map(|t| QueueTrackInfo {
-                                            uri: t.uri,
-                                            provider: t.provider,
-                                        })
-                                        .collect(),
+                            if let Some(callback) = registered_callback(&SET_QUEUE_CALLBACK) {
+                                let to_track_info = |t: QueueTrack| QueueTrackInfo {
+                                    uri: t.uri,
+                                    provider: t.provider,
                                 };
-                                if let Ok(json) = serde_json::to_string(&notification) {
-                                    let c_str = CString::new(json).unwrap();
-                                    cb(c_str.as_ptr());
-                                }
+                                send_json(callback, &SetQueueNotification {
+                                    context_uri,
+                                    current_track: current_track.map(to_track_info),
+                                    next_tracks: next_tracks.into_iter().map(to_track_info).collect(),
+                                    prev_tracks: prev_tracks.into_iter().map(to_track_info).collect(),
+                                });
                             }
                         }
                         // librespot emits SessionDisconnected when the local Connect device
@@ -1537,11 +1485,8 @@ async fn init_player_async(
                                 notify_connection_state_change();
                             }
 
-                            let cb_guard = BECAME_INACTIVE_CALLBACK.lock().unwrap();
-                            if let Some(callback) = *cb_guard {
-                                let cb = callback;
-                                drop(cb_guard);
-                                cb();
+                            if let Some(callback) = registered_callback(&BECAME_INACTIVE_CALLBACK) {
+                                callback();
                             }
                         }
                         // Emitted when the local Connect device becomes ACTIVE. Carries the
@@ -1554,11 +1499,8 @@ async fn init_player_async(
 
                             // Notify connection state change
                             notify_connection_state_change();
-                            let cb_guard = BECAME_ACTIVE_CALLBACK.lock().unwrap();
-                            if let Some(callback) = *cb_guard {
-                                let cb = callback;
-                                drop(cb_guard);
-                                cb();
+                            if let Some(callback) = registered_callback(&BECAME_ACTIVE_CALLBACK) {
+                                callback();
                             }
                         }
                         Some(PlayerEvent::SessionClientChanged {
@@ -1571,20 +1513,15 @@ async fn init_player_async(
                                 "SessionClientChanged event: id={}, name={}, brand={}, model={}",
                                 client_id, client_name, client_brand_name, client_model_name
                             );
-                            let cb_guard = SESSION_CLIENT_CHANGED_CALLBACK.lock().unwrap();
-                            if let Some(callback) = *cb_guard {
-                                let cb = callback;
-                                drop(cb_guard);
-                                let info = SessionClientInfo {
+                            if let Some(callback) =
+                                registered_callback(&SESSION_CLIENT_CHANGED_CALLBACK)
+                            {
+                                send_json(callback, &SessionClientInfo {
                                     client_id,
                                     client_name,
                                     client_brand_name,
                                     client_model_name,
-                                };
-                                if let Ok(json) = serde_json::to_string(&info) {
-                                    let c_str = CString::new(json).unwrap();
-                                    cb(c_str.as_ptr());
-                                }
+                                });
                             }
                         }
                         None => break,
@@ -1596,14 +1533,8 @@ async fn init_player_async(
         drop(player_clone);
     });
 
-    {
-        let mut session_guard = SESSION.lock().unwrap();
-        *session_guard = Some(session.clone());
-    }
-    {
-        let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
-        *tx_guard = Some(tx);
-    }
+    *SESSION.lock().unwrap() = Some(session.clone());
+    *PLAYER_EVENT_TX.lock().unwrap() = Some(tx);
 
     spawn_cluster_listener(&session, current_generation)?;
     spawn_session_health_check(current_generation);
@@ -1671,9 +1602,7 @@ fn check_and_send_volume(volume: u32) {
         LAST_VOLUME.store(volume_u16, Ordering::SeqCst);
         debug!("Volume changed: {} -> {}", last, volume_u16);
 
-        let cb_guard = VOLUME_CALLBACK.lock().unwrap();
-        if let Some(callback) = *cb_guard {
-            drop(cb_guard);
+        if let Some(callback) = registered_callback(&VOLUME_CALLBACK) {
             callback(volume_u16);
         }
     }
@@ -1696,11 +1625,7 @@ const ERROR_NOT_CONNECTED: i32 = -3;
 /// Returns 1 if the session is connected and ready for commands, 0 otherwise.
 #[no_mangle]
 pub extern "C" fn spotifly_is_session_connected() -> i32 {
-    if with_connection(|c| c.session_connected) {
-        1
-    } else {
-        0
-    }
+    i32::from(with_connection(|c| c.session_connected))
 }
 
 /// Helper to check if session is connected. Returns ERROR_NOT_CONNECTED if not.
@@ -1741,63 +1666,50 @@ fn send_playback_state(player_state: &PlayerState) {
         update_current_context_uri(context_uri);
     }
 
-    let cb_guard = PLAYBACK_STATE_CALLBACK.lock().unwrap();
-    if let Some(callback) = *cb_guard {
-        let cb = callback;
-        drop(cb_guard);
-
-        // Extract track URI
-        let track_uri = player_state
-            .track
-            .as_ref()
-            .map(|t| t.uri.clone())
-            .unwrap_or_default();
-
-        // Extract playback options (shuffle, repeat)
-        let options = player_state.options.as_ref();
-        let shuffle = options.map(|o| o.shuffling_context).unwrap_or(false);
-        let repeat_track = options.map(|o| o.repeating_track).unwrap_or(false);
-        let repeat_context = options.map(|o| o.repeating_context).unwrap_or(false);
-        update_playback_options(shuffle, repeat_track, repeat_context);
-
-        let update = PlaybackStateUpdate {
-            is_playing: player_state.is_playing,
-            is_paused: player_state.is_paused,
-            track_uri,
-            position_ms: player_state.position_as_of_timestamp,
-            duration_ms: player_state.duration,
-            shuffle,
-            repeat_track,
-            repeat_context,
-            timestamp_ms: player_state.timestamp,
-        };
-
-        debug!(
-            "PlaybackState: playing={}, paused={}, position={}ms, duration={}ms, timestamp={}ms, shuffle={}, repeat_track={}, repeat_context={}",
-            update.is_playing,
-            update.is_paused,
-            update.position_ms,
-            update.duration_ms,
-            update.timestamp_ms,
-            update.shuffle,
-            update.repeat_track,
-            update.repeat_context
-        );
-
-        if let Ok(json) = serde_json::to_string(&update) {
-            debug!(
-                "Sending playback state JSON ({} bytes) to Swift callback",
-                json.len()
-            );
-            let c_str = CString::new(json).unwrap();
-            cb(c_str.as_ptr());
-            debug!("Playback state callback returned");
-        } else {
-            debug!("Failed to serialize playback state to JSON");
-        }
-    } else {
+    let Some(callback) = registered_callback(&PLAYBACK_STATE_CALLBACK) else {
         debug!("No playback state callback registered, skipping update");
-    }
+        return;
+    };
+
+    // Extract track URI
+    let track_uri = player_state
+        .track
+        .as_ref()
+        .map(|t| t.uri.clone())
+        .unwrap_or_default();
+
+    // Extract playback options (shuffle, repeat)
+    let options = player_state.options.as_ref();
+    let shuffle = options.map(|o| o.shuffling_context).unwrap_or(false);
+    let repeat_track = options.map(|o| o.repeating_track).unwrap_or(false);
+    let repeat_context = options.map(|o| o.repeating_context).unwrap_or(false);
+    update_playback_options(shuffle, repeat_track, repeat_context);
+
+    let update = PlaybackStateUpdate {
+        is_playing: player_state.is_playing,
+        is_paused: player_state.is_paused,
+        track_uri,
+        position_ms: player_state.position_as_of_timestamp,
+        duration_ms: player_state.duration,
+        shuffle,
+        repeat_track,
+        repeat_context,
+        timestamp_ms: player_state.timestamp,
+    };
+
+    debug!(
+        "PlaybackState: playing={}, paused={}, position={}ms, duration={}ms, timestamp={}ms, shuffle={}, repeat_track={}, repeat_context={}",
+        update.is_playing,
+        update.is_paused,
+        update.position_ms,
+        update.duration_ms,
+        update.timestamp_ms,
+        update.shuffle,
+        update.repeat_track,
+        update.repeat_context
+    );
+
+    send_json(callback, &update);
 }
 
 /// Send playback state update from local player events (Playing, Paused)
@@ -1809,52 +1721,96 @@ fn send_local_playback_state(is_playing: bool, position_ms: u32) {
         is_playing, position_ms
     );
 
-    let cb_guard = PLAYBACK_STATE_CALLBACK.lock().unwrap();
-    if let Some(callback) = *cb_guard {
-        let cb = callback;
-        drop(cb_guard);
+    let Some(callback) = registered_callback(&PLAYBACK_STATE_CALLBACK) else {
+        return;
+    };
 
-        // Get track URI from local state
-        let track_uri = CURRENT_TRACK_URI
-            .lock()
-            .unwrap()
-            .clone()
-            .unwrap_or_default();
+    // Get track URI from local state
+    let track_uri = CURRENT_TRACK_URI
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or_default();
 
-        // Get duration from local state
-        let duration_ms = CURRENT_DURATION_MS.load(Ordering::SeqCst);
-        let (shuffle, repeat_track, repeat_context) = current_playback_options();
+    // Get duration from local state
+    let duration_ms = CURRENT_DURATION_MS.load(Ordering::SeqCst);
+    let (shuffle, repeat_track, repeat_context) = current_playback_options();
 
-        let timestamp_ms = current_timestamp_ms() as i64;
+    let update = PlaybackStateUpdate {
+        is_playing,
+        is_paused: !is_playing,
+        track_uri,
+        position_ms: position_ms as i64,
+        duration_ms: duration_ms as i64,
+        shuffle,
+        repeat_track,
+        repeat_context,
+        timestamp_ms: current_timestamp_ms() as i64,
+    };
 
-        let update = PlaybackStateUpdate {
-            is_playing,
-            is_paused: !is_playing,
-            track_uri,
-            position_ms: position_ms as i64,
-            duration_ms: duration_ms as i64,
-            shuffle,
-            repeat_track,
-            repeat_context,
-            timestamp_ms,
-        };
+    debug!(
+        "Local PlaybackState: playing={}, paused={}, position={}ms, duration={}ms, shuffle={}, repeat_track={}, repeat_context={}",
+        update.is_playing,
+        update.is_paused,
+        update.position_ms,
+        update.duration_ms,
+        update.shuffle,
+        update.repeat_track,
+        update.repeat_context
+    );
 
-        debug!(
-            "Local PlaybackState: playing={}, paused={}, position={}ms, duration={}ms, shuffle={}, repeat_track={}, repeat_context={}",
-            update.is_playing,
-            update.is_paused,
-            update.position_ms,
-            update.duration_ms,
-            update.shuffle,
-            update.repeat_track,
-            update.repeat_context
-        );
+    send_json(callback, &update);
+}
 
-        if let Ok(json) = serde_json::to_string(&update) {
-            let c_str = CString::new(json).unwrap();
-            cb(c_str.as_ptr());
+/// Converts a Connect-state track into a queue item.
+///
+/// Metadata is left empty on purpose: Swift resolves it from the AppStore by URI, so
+/// carrying names and artwork across the FFI boundary would just duplicate it.
+fn to_queue_item(track: &ProvidedTrack) -> QueueItem {
+    QueueItem {
+        uri: track.uri.clone(),
+        name: String::new(),
+        artist: String::new(),
+        image_url: String::new(),
+        duration_ms: 0,
+        album_name: String::new(),
+        provider: track.provider.clone(),
+    }
+}
+
+/// Collects the playable tracks of one queue side, stopping at the first delimiter.
+///
+/// `spotify:delimiter` marks the boundary of what the user actually queued: after it in
+/// next_tracks comes Spotify's autoplay continuation, and in prev_tracks it marks the
+/// start of the context. Showing either as part of the queue would present tracks the
+/// user never chose.
+fn collect_queue_items(tracks: &[ProvidedTrack], side: &str) -> Vec<QueueItem> {
+    let mut items = Vec::new();
+
+    for (i, track) in tracks.iter().enumerate() {
+        if i < 3 || !track.uri.starts_with("spotify:track:") {
+            debug!(
+                "{} track[{}] uri='{}' provider='{}'",
+                side, i, track.uri, track.provider
+            );
+        }
+
+        if track.uri == "spotify:delimiter" {
+            debug!(
+                "Stopping {} at delimiter (index {}), hiding {} tracks",
+                side,
+                i,
+                tracks.len() - i - 1
+            );
+            break;
+        }
+
+        if track.uri.starts_with("spotify:track:") {
+            items.push(to_queue_item(track));
         }
     }
+
+    items
 }
 
 fn process_and_send_queue(player_state: PlayerState) {
@@ -1866,108 +1822,37 @@ fn process_and_send_queue(player_state: PlayerState) {
         update_current_context_uri(&player_state.context_uri);
     }
 
-    let cb_guard = QUEUE_CALLBACK.lock().unwrap();
-    if let Some(callback) = *cb_guard {
-        debug!("Callback is registered, processing queue");
-        let cb = callback;
-        drop(cb_guard);
+    let Some(callback) = registered_callback(&QUEUE_CALLBACK) else {
+        debug!("No callback registered, skipping queue update");
+        return;
+    };
 
-        // Helper to convert ProvidedTrack to QueueItem
-        let to_queue_item = |t: &librespot_protocol::player::ProvidedTrack| -> QueueItem {
-            QueueItem {
-                uri: t.uri.clone(),
-                name: String::new(),
-                artist: String::new(),
-                image_url: String::new(),
-                duration_ms: 0,
-                album_name: String::new(),
-                provider: t.provider.clone(),
-            }
-        };
-
-        // Process current track
-        let current_track = player_state.track.into_option().and_then(|t| {
-            debug!("current track[0] uri='{}' provider='{}'", t.uri, t.provider);
-            if t.uri.starts_with("spotify:track:") {
-                Some(to_queue_item(&t))
-            } else {
-                None
-            }
-        });
-
-        // Process next_tracks - stop at first delimiter (autoplay boundary)
-        let mut next_tracks: Vec<QueueItem> = Vec::new();
-        for (i, t) in player_state.next_tracks.iter().enumerate() {
-            if i < 3 || !t.uri.starts_with("spotify:track:") {
-                debug!(
-                    "next track[{}] uri='{}' provider='{}'",
-                    i, t.uri, t.provider
-                );
-            }
-
-            // Stop at first delimiter - everything after is autoplay content
-            if t.uri == "spotify:delimiter" {
-                debug!(
-                    "Stopping at delimiter (index {}), hiding {} autoplay tracks",
-                    i,
-                    player_state.next_tracks.len() - i - 1
-                );
-                break;
-            }
-
-            if t.uri.starts_with("spotify:track:") {
-                next_tracks.push(to_queue_item(t));
-            }
+    let current_track = player_state.track.into_option().and_then(|t| {
+        debug!("current track[0] uri='{}' provider='{}'", t.uri, t.provider);
+        if t.uri.starts_with("spotify:track:") {
+            Some(to_queue_item(&t))
+        } else {
+            None
         }
+    });
+    let next_tracks = collect_queue_items(&player_state.next_tracks, "next");
+    let prev_tracks = collect_queue_items(&player_state.prev_tracks, "prev");
 
-        // Process prev_tracks - also stop at delimiter (in reverse, it marks context boundary)
-        let mut prev_tracks: Vec<QueueItem> = Vec::new();
-        for (i, t) in player_state.prev_tracks.iter().enumerate() {
-            if i < 3 || !t.uri.starts_with("spotify:track:") {
-                debug!(
-                    "prev track[{}] uri='{}' provider='{}'",
-                    i, t.uri, t.provider
-                );
-            }
+    debug!(
+        "Queue counts: current={}, next={}, prev={}",
+        if current_track.is_some() { 1 } else { 0 },
+        next_tracks.len(),
+        prev_tracks.len()
+    );
 
-            // Stop at delimiter
-            if t.uri == "spotify:delimiter" {
-                debug!("Stopping prev at delimiter (index {})", i);
-                break;
-            }
-
-            if t.uri.starts_with("spotify:track:") {
-                prev_tracks.push(to_queue_item(t));
-            }
-        }
-
-        debug!(
-            "Queue counts: current={}, next={}, prev={}",
-            if current_track.is_some() { 1 } else { 0 },
-            next_tracks.len(),
-            prev_tracks.len()
-        );
-
-        let queue_state = QueueState {
+    send_json(
+        callback,
+        &QueueState {
             track: current_track,
             next_tracks,
             prev_tracks,
-        };
-
-        if let Ok(json) = serde_json::to_string(&queue_state) {
-            debug!(
-                "Sending queue JSON ({} bytes) to Swift callback",
-                json.len()
-            );
-            let c_str = CString::new(json).unwrap();
-            cb(c_str.as_ptr());
-            debug!("Swift callback returned");
-        } else {
-            debug!("Failed to serialize queue state to JSON");
-        }
-    } else {
-        debug!("No callback registered, skipping queue update");
-    }
+        },
+    );
 }
 
 /// Helper to ensure the device is active before loading content.
@@ -2001,19 +1886,9 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
     if let Err(e) = require_session_connected() {
         return e;
     }
-    if track_uris_json.is_null() {
-        debug!("Play tracks error: track_uris_json is null");
+    let Some(track_uris_str) = (unsafe { c_string_arg(track_uris_json) }) else {
+        debug!("Play tracks error: track_uris_json is null or not valid UTF-8");
         return -1;
-    }
-
-    let track_uris_str = unsafe {
-        match CStr::from_ptr(track_uris_json).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                debug!("Play tracks error: invalid track_uris_json string");
-                return -1;
-            }
-        }
     };
 
     // Parse JSON array of track URIs
@@ -2073,19 +1948,9 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char, track_index: i32) -> i32 {
-    if uri_or_url.is_null() {
-        debug!("Play error: uri_or_url is null");
+    let Some(input_str) = (unsafe { c_string_arg(uri_or_url) }) else {
+        debug!("Play error: uri_or_url is null or not valid UTF-8");
         return -1;
-    }
-
-    let input_str = unsafe {
-        match CStr::from_ptr(uri_or_url).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                debug!("Play error: invalid uri_or_url string");
-                return -1;
-            }
-        }
     };
 
     // Convert URL to URI if needed
@@ -2173,30 +2038,14 @@ pub extern "C" fn spotifly_pause() -> i32 {
     if let Err(e) = require_session_connected() {
         return e;
     }
-    // Cancel any pending play — if the user pauses while a track is still loading,
-    // PlayerEvent::Playing will never fire, and a later soft-reconnect watchdog
-    // would otherwise replay something the user explicitly paused.
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => match spirc.pause() {
-            Ok(_) => {
-                IS_PLAYING.store(false, Ordering::SeqCst);
-                0
-            }
-            Err(e) => {
-                debug!("Pause error: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    ERROR_NEEDS_REINIT
-                } else {
-                    ERROR_GENERAL
-                }
-            }
-        },
-        None => {
-            debug!("Pause error: Spirc not initialized");
-            ERROR_GENERAL
-        }
-    }
+    // IS_PLAYING is cleared here rather than left to the event stream: the user can pause
+    // while a track is still loading, and in that case PlayerEvent::Playing never fires,
+    // so there is no playing-to-paused transition for the listener to report.
+    spirc_command("Pause", |spirc| {
+        spirc.pause()?;
+        IS_PLAYING.store(false, Ordering::SeqCst);
+        Ok(())
+    })
 }
 
 /// Clears any buffered audio samples.
@@ -2353,7 +2202,8 @@ pub extern "C" fn spotifly_resume() -> i32 {
 #[no_mangle]
 pub extern "C" fn spotifly_stop() -> i32 {
     debug!("spotifly_stop called");
-    // Cancel any pending play so the soft-reconnect watchdog doesn't re-issue it
+    // Stops at the Player rather than through Spirc: this is a local teardown of
+    // playback, not a Connect command.
     let player_guard = PLAYER.lock().unwrap();
     match player_guard.as_ref() {
         Some(player) => {
@@ -2395,7 +2245,6 @@ pub extern "C" fn spotifly_disconnect() -> i32 {
     debug!("spotifly_disconnect called - disconnecting for sleep");
     // Set sleeping flag to prevent auto-reconnect when cluster listener ends
     SLEEPING.store(true, Ordering::SeqCst);
-    // Cancel any pending play - a play from before sleep must not replay on wake
 
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
@@ -2435,39 +2284,24 @@ pub extern "C" fn spotifly_cleanup() {
     debug!("spotifly_cleanup invalidated generation, now {}", invalidated);
 
     // Signal event listener to stop
-    {
-        let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
-        if let Some(tx) = tx_guard.take() {
-            let _ = tx.send(());
-        }
+    if let Some(tx) = PLAYER_EVENT_TX.lock().unwrap().take() {
+        let _ = tx.send(());
     }
 
     // Shutdown Spirc first - this terminates the spirc_task and closes the dealer
     shutdown_spirc("spotifly_cleanup");
 
     // Now clear Spirc reference
-    {
-        let mut spirc_guard = SPIRC.lock().unwrap();
-        *spirc_guard = None;
-    }
+    *SPIRC.lock().unwrap() = None;
     // Clear player (see do_reconnect_cleanup for why Swift is told first)
     proxy_sink::ProxySink::notify_player_gone();
-    {
-        let mut player_guard = PLAYER.lock().unwrap();
-        *player_guard = None;
-    }
+    *PLAYER.lock().unwrap() = None;
 
     // Clear mixer
-    {
-        let mut mixer_guard = MIXER.lock().unwrap();
-        *mixer_guard = None;
-    }
+    *MIXER.lock().unwrap() = None;
 
     // Clear session
-    {
-        let mut session_guard = SESSION.lock().unwrap();
-        *session_guard = None;
-    }
+    *SESSION.lock().unwrap() = None;
 
     // Reset state flags
     IS_PLAYING.store(false, Ordering::SeqCst);
@@ -2478,10 +2312,7 @@ pub extern "C" fn spotifly_cleanup() {
     POSITION_MS.store(0, Ordering::SeqCst);
     POSITION_TIMESTAMP_MS.store(0, Ordering::SeqCst);
     LAST_VOLUME.store(0, Ordering::SeqCst);
-    {
-        let mut last_device = LAST_ACTIVE_DEVICE_ID.lock().unwrap();
-        last_device.clear();
-    }
+    LAST_ACTIVE_DEVICE_ID.lock().unwrap().clear();
 
     // Reset the connection snapshot: not ready, not connected, no device ID.
     // reconnect_attempt is deliberately preserved - it drives exponential backoff and
@@ -2503,22 +2334,14 @@ pub extern "C" fn spotifly_cleanup() {
 /// Returns 1 if currently playing, 0 otherwise.
 #[no_mangle]
 pub extern "C" fn spotifly_is_playing() -> i32 {
-    if IS_PLAYING.load(Ordering::SeqCst) {
-        1
-    } else {
-        0
-    }
+    i32::from(IS_PLAYING.load(Ordering::SeqCst))
 }
 
 /// Returns 1 if this device is the active Spotify Connect device, 0 otherwise.
 /// When not active, playback controls should use Web API instead of Spirc.
 #[no_mangle]
 pub extern "C" fn spotifly_is_active_device() -> i32 {
-    if is_active_device() {
-        1
-    } else {
-        0
-    }
+    i32::from(is_active_device())
 }
 
 /// Returns the current playback position in milliseconds.
@@ -2558,24 +2381,7 @@ pub extern "C" fn spotifly_next() -> i32 {
     if let Err(e) = require_session_connected() {
         return e;
     }
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => match spirc.next() {
-            Ok(_) => 0,
-            Err(e) => {
-                debug!("Next error: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    ERROR_NEEDS_REINIT
-                } else {
-                    ERROR_GENERAL
-                }
-            }
-        },
-        None => {
-            debug!("Next error: Spirc not initialized");
-            ERROR_GENERAL
-        }
-    }
+    spirc_command("Next", |spirc| spirc.next())
 }
 
 /// Skips to the previous track in the queue.
@@ -2586,24 +2392,7 @@ pub extern "C" fn spotifly_previous() -> i32 {
     if let Err(e) = require_session_connected() {
         return e;
     }
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => match spirc.prev() {
-            Ok(_) => 0,
-            Err(e) => {
-                debug!("Previous error: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    ERROR_NEEDS_REINIT
-                } else {
-                    ERROR_GENERAL
-                }
-            }
-        },
-        None => {
-            debug!("Previous error: Spirc not initialized");
-            ERROR_GENERAL
-        }
-    }
+    spirc_command("Previous", |spirc| spirc.prev())
 }
 
 /// Seeks to the given position in milliseconds.
@@ -2614,24 +2403,7 @@ pub extern "C" fn spotifly_seek(position_ms: u32) -> i32 {
     if let Err(e) = require_session_connected() {
         return e;
     }
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => match spirc.set_position_ms(position_ms) {
-            Ok(_) => 0,
-            Err(e) => {
-                debug!("Seek error: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    ERROR_NEEDS_REINIT
-                } else {
-                    ERROR_GENERAL
-                }
-            }
-        },
-        None => {
-            debug!("Seek error: Spirc not initialized");
-            ERROR_GENERAL
-        }
-    }
+    spirc_command("Seek", |spirc| spirc.set_position_ms(position_ms))
 }
 
 /// Async core of radio playback. Safe to call from both sync (via block_on) and async contexts.
@@ -2733,19 +2505,9 @@ async fn play_radio_async(uri_str: &str) -> i32 {
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_play_radio(track_uri: *const c_char) -> i32 {
-    if track_uri.is_null() {
-        debug!("Play radio error: track_uri is null");
+    let Some(uri_str) = (unsafe { c_string_arg(track_uri) }) else {
+        debug!("Play radio error: track_uri is null or not valid UTF-8");
         return -1;
-    }
-
-    let uri_str = unsafe {
-        match CStr::from_ptr(track_uri).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                debug!("Play radio error: invalid track_uri string");
-                return -1;
-            }
-        }
     };
 
     debug!("spotifly_play_radio called: {}", uri_str);
@@ -2761,24 +2523,7 @@ pub extern "C" fn spotifly_set_volume(volume: u16) -> i32 {
     if let Err(e) = require_session_connected() {
         return e;
     }
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => match spirc.set_volume(volume) {
-            Ok(_) => 0,
-            Err(e) => {
-                debug!("Set volume error: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    ERROR_NEEDS_REINIT
-                } else {
-                    ERROR_GENERAL
-                }
-            }
-        },
-        None => {
-            debug!("Set volume error: Spirc not initialized");
-            ERROR_GENERAL
-        }
-    }
+    spirc_command("Set volume", |spirc| spirc.set_volume(volume))
 }
 
 /// Sets shuffle mode on the current playback context.
@@ -2789,24 +2534,7 @@ pub extern "C" fn spotifly_set_shuffle(enabled: bool) -> i32 {
     if let Err(e) = require_session_connected() {
         return e;
     }
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => match spirc.shuffle(enabled) {
-            Ok(_) => 0,
-            Err(e) => {
-                debug!("Set shuffle error: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    ERROR_NEEDS_REINIT
-                } else {
-                    ERROR_GENERAL
-                }
-            }
-        },
-        None => {
-            debug!("Set shuffle error: Spirc not initialized");
-            ERROR_GENERAL
-        }
-    }
+    spirc_command("Set shuffle", |spirc| spirc.shuffle(enabled))
 }
 
 /// Sets the streaming bitrate.
@@ -2898,19 +2626,9 @@ pub extern "C" fn spotifly_transfer_to_local() -> i32 {
 /// - to_device_id: The target device ID to transfer playback to
 #[no_mangle]
 pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32 {
-    if to_device_id.is_null() {
-        debug!("Transfer playback error: to_device_id is null");
+    let Some(to_device_str) = (unsafe { c_string_arg(to_device_id) }) else {
+        debug!("Transfer playback error: to_device_id is null or not valid UTF-8");
         return -1;
-    }
-
-    let to_device_str = unsafe {
-        match CStr::from_ptr(to_device_id).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                debug!("Transfer playback error: invalid to_device_id string");
-                return -1;
-            }
-        }
     };
 
     debug!("spotifly_transfer_playback called: {}", to_device_str);
@@ -2967,30 +2685,16 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
 /// Returns 1 if Spirc is initialized and connected to Spotify Connect, 0 otherwise.
 #[no_mangle]
 pub extern "C" fn spotifly_is_spirc_ready() -> i32 {
-    if with_connection(|c| c.spirc_ready) {
-        1
-    } else {
-        0
-    }
+    i32::from(with_connection(|c| c.spirc_ready))
 }
 
 /// Adds an item to the queue.
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn spotifly_add_to_queue(uri: *const c_char) -> i32 {
-    if uri.is_null() {
-        debug!("Add to queue error: uri is null");
+    let Some(uri_str) = (unsafe { c_string_arg(uri) }) else {
+        debug!("Add to queue error: uri is null or not valid UTF-8");
         return -1;
-    }
-
-    let uri_str = unsafe {
-        match CStr::from_ptr(uri).to_str() {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                debug!("Add to queue error: invalid uri string");
-                return -1;
-            }
-        }
     };
 
     debug!("[Spotifly] spotifly_add_to_queue called: {}", uri_str);
@@ -3092,6 +2796,13 @@ mod tests {
         // down by the preceding cleanup, playback stayed dead for the whole outage.
         let mut recovering = 2;
         let after_own_failed_attempt = 3; // init_player_async bumped it, then errored
+        assert!(!reconnect_may_proceed(
+            recovering,
+            after_own_failed_attempt,
+            false
+        ));
+
+        // Adopting the generation our own attempt produced is what keeps the loop alive.
         recovering = after_own_failed_attempt;
         assert!(reconnect_may_proceed(
             recovering,
