@@ -94,6 +94,8 @@ final class PlaybackViewModel {
     /// Whether Swift knows that Rust has completed at least one usable initialization.
     /// This stays true through transient disconnects because Rust owns their recovery.
     private var isInitialized = false
+    /// Whether the local librespot session can currently provide advancing playback state.
+    private var isConnectionReady = false
     private var lastAlbumArtURL: String?
     private var connectionStateSubscription: AnyCancellable?
     private var playbackStateSubscription: AnyCancellable?
@@ -646,15 +648,16 @@ final class PlaybackViewModel {
     private func setupConnectionStateSubscription() {
         connectionStateSubscription = SpotifyPlayer.connectionState
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                guard let self,
-                      let state,
-                      state.sessionConnected,
-                      state.spircReady,
+            .sink { [weak self] _ in
+                guard let self else {
+                    return
+                }
+
+                syncConnectionReadiness()
+
+                guard isConnectionReady,
                       !isInitialized,
-                      initializationTask == nil,
-                      SpotifyPlayer.isSessionConnected,
-                      SpotifyPlayer.isSpircReady
+                      initializationTask == nil
                 else {
                     return
                 }
@@ -663,6 +666,59 @@ final class PlaybackViewModel {
                 isInitialized = true
                 errorMessage = nil
             }
+    }
+
+    /// Brings `isConnectionReady` in line with Rust, freezing the position when it drops.
+    ///
+    /// Reads the live flags rather than trusting the delivered snapshot, which may already
+    /// be stale by the time it arrives.
+    ///
+    /// Called from the connection-state callback *and* once a second from the drift check.
+    /// The second caller is deliberate: display interpolation now depends on this flag, so
+    /// a single missed callback would leave the progress bar stopped during healthy
+    /// playback — a more visible failure than the drift this prevents. Re-reading the flags
+    /// on the timer makes that self-heal within a second, and routing both callers through
+    /// here means the timer can never flip the flag without also freezing the position.
+    private func syncConnectionReadiness() {
+        let isReady = SpotifyPlayer.isSessionConnected && SpotifyPlayer.isSpircReady
+        guard isReady != isConnectionReady else { return }
+
+        if !isReady {
+            freezePositionForDisconnect()
+        }
+        isConnectionReady = isReady
+    }
+
+    /// Pins the displayed position where playback actually stopped.
+    ///
+    /// Which value is truthful depends on who was playing:
+    ///
+    /// - **Local playback**: Rust's last Player event. It stopped advancing when the Player
+    ///   did, so it is exactly where the audio ended.
+    /// - **Remote playback**: the displayed position. Rust's Player position belongs to a
+    ///   local Player that was not the one playing, so it is unrelated.
+    ///
+    /// The `rustPosition > 0` clause guards the gap between the two: Rust reports 0 both for
+    /// "at the start" and for "nothing loaded". Snapping a running progress bar to zero
+    /// because a rebuild cleared the position would be worse than holding the last shown
+    /// value — so a zero is only adopted when we have no anchor of our own either.
+    private func freezePositionForDisconnect() {
+        let displayedPosition = interpolatedPositionMs
+        let rustPosition = SpotifyPlayer.positionMs
+        let frozenPosition = if SpotifyPlayer.isActiveDevice,
+                                rustPosition > 0 || positionAnchorMs == 0
+        {
+            rustPosition
+        } else {
+            displayedPosition
+        }
+
+        positionAnchorMs = frozenPosition
+        positionAnchorTime = CACurrentMediaTime()
+        currentPositionMs = trackDurationMs > 0
+            ? min(frozenPosition, trackDurationMs)
+            : frozenPosition
+        debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(frozenPosition)ms")
     }
 
     /// Subscribe to playback state updates from Mercury/Spirc
@@ -891,14 +947,13 @@ final class PlaybackViewModel {
     // UI reads interpolatedPositionMs (computed), not currentPositionMs directly
     private var positionAnchorMs: UInt32 = 0
     private var positionAnchorTime: Double = CACurrentMediaTime()
-    private var lastRustPosition: UInt32 = 0
     private var driftCorrectionTimer: DriftCorrectionTimer?
     private var driftObserver: NSObjectProtocol?
 
     /// Computed position using anchor interpolation - UI should bind to this
     /// Called by TimelineView on every frame for smooth updates
     var interpolatedPositionMs: UInt32 {
-        guard isPlaying else { return currentPositionMs }
+        guard isPlaying, isConnectionReady else { return currentPositionMs }
         let elapsed = CACurrentMediaTime() - positionAnchorTime
         let elapsedMs = UInt32(max(0, min(elapsed * 1000, Double(UInt32.max - 1))))
         let interpolated = positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue
@@ -936,7 +991,6 @@ final class PlaybackViewModel {
         debugLog("PlaybackViewModel", "syncPositionAnchor: rustPosition=\(rustPosition), was positionAnchorMs=\(positionAnchorMs)")
         positionAnchorMs = rustPosition
         positionAnchorTime = CACurrentMediaTime()
-        lastRustPosition = rustPosition
         currentPositionMs = rustPosition
     }
 
@@ -950,6 +1004,10 @@ final class PlaybackViewModel {
             }
         }
 
+        // Readiness gates interpolation, so recover here from a callback that never arrived
+        // rather than leaving the progress bar stopped until the next one does.
+        syncConnectionReadiness()
+
         // Sync playing state with Rust - only when we're the active device
         // When monitoring remote playback, state comes from cluster updates
         if SpotifyPlayer.isActiveDevice {
@@ -961,22 +1019,24 @@ final class PlaybackViewModel {
             }
         }
 
-        // Skip position updates while paused - position only changes during playback
-        guard isPlaying else { return }
+        // A held position is honest while disconnected: Rust has no advancing Player state
+        // to anchor interpolation to, and will rehydrate from its last raw position.
+        guard isPlaying, isConnectionReady else { return }
 
         // Check for significant drift from Rust position - only when active device
-        // Remote playback position is interpolated from cluster timestamp, not real-time
+        // Remote playback position is interpolated from cluster timestamp, not real-time.
+        // Compare even when the Rust value did not change: a frozen value is precisely the
+        // signal that must pull a still-running Swift clock back to reality.
         if SpotifyPlayer.isActiveDevice {
             let rustPosition = SpotifyPlayer.positionMs
-            if rustPosition != lastRustPosition {
-                let drift = abs(Int32(rustPosition) - Int32(interpolatedPositionMs))
-                if drift > 500 {
-                    positionAnchorMs = rustPosition
-                    positionAnchorTime = CACurrentMediaTime()
-                    currentPositionMs = min(rustPosition, trackDurationMs)
-                    didCorrectDrift = true
-                }
-                lastRustPosition = rustPosition
+            let drift = abs(Int64(rustPosition) - Int64(interpolatedPositionMs))
+            if drift > 500 {
+                positionAnchorMs = rustPosition
+                positionAnchorTime = CACurrentMediaTime()
+                currentPositionMs = trackDurationMs > 0
+                    ? min(rustPosition, trackDurationMs)
+                    : rustPosition
+                didCorrectDrift = true
             }
         }
     }

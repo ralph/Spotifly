@@ -232,7 +232,6 @@ fn current_device_id() -> Option<String> {
 
 // Position tracking - updated from player events
 static POSITION_MS: AtomicU32 = AtomicU32::new(0);
-static POSITION_TIMESTAMP_MS: AtomicU64 = AtomicU64::new(0);
 
 // Current track duration (ms) - updated from TrackChanged event
 static CURRENT_DURATION_MS: AtomicU32 = AtomicU32::new(0);
@@ -368,7 +367,6 @@ fn current_timestamp_ms() -> u64 {
 /// Update position from player event
 fn update_position(position_ms: u32) {
     POSITION_MS.store(position_ms, Ordering::SeqCst);
-    POSITION_TIMESTAMP_MS.store(current_timestamp_ms(), Ordering::SeqCst);
 }
 
 fn update_current_context_uri(context_uri: &str) {
@@ -2334,7 +2332,6 @@ pub extern "C" fn spotifly_cleanup() {
     REPEAT_TRACK_STATE.store(false, Ordering::SeqCst);
     REPEAT_CONTEXT_STATE.store(false, Ordering::SeqCst);
     POSITION_MS.store(0, Ordering::SeqCst);
-    POSITION_TIMESTAMP_MS.store(0, Ordering::SeqCst);
     LAST_VOLUME.store(0, Ordering::SeqCst);
     LAST_ACTIVE_DEVICE_ID.lock().unwrap().clear();
 
@@ -2368,28 +2365,13 @@ pub extern "C" fn spotifly_is_active_device() -> i32 {
     i32::from(is_active_device())
 }
 
-/// Returns the current playback position in milliseconds.
-/// If playing, interpolates from last known position.
-/// Returns 0 if not playing or no position available.
+/// Returns the last position reported by the Player.
+///
+/// Swift owns display interpolation. Interpolating here as well used to add up to five
+/// seconds after Player events stopped, while reconnect rehydration correctly resumed from
+/// this raw position. The two clocks therefore produced an exact five-second snap backwards.
 fn current_position_ms() -> u32 {
-    let stored_position = POSITION_MS.load(Ordering::SeqCst);
-    let stored_timestamp = POSITION_TIMESTAMP_MS.load(Ordering::SeqCst);
-
-    if stored_timestamp == 0 {
-        return 0;
-    }
-
-    // If playing, interpolate position from last update
-    if IS_PLAYING.load(Ordering::SeqCst) {
-        let now = current_timestamp_ms();
-        let elapsed_since_update = now.saturating_sub(stored_timestamp);
-        // Cap interpolation at 5 seconds - librespot events can be delayed
-        // but if we haven't heard anything in 5s, something is wrong
-        let capped_elapsed = elapsed_since_update.min(5000) as u32;
-        stored_position.saturating_add(capped_elapsed)
-    } else {
-        stored_position
-    }
+    POSITION_MS.load(Ordering::SeqCst)
 }
 
 #[no_mangle]

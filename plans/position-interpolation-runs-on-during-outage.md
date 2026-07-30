@@ -1,7 +1,8 @@
 # Position keeps interpolating during an outage, so it snaps backwards on resume
 
-Status: open, low priority
-Component: `Spotifly/ViewModels/PlaybackViewModel.swift`
+Status: implemented, runtime verification pending
+Components: `rust/src/lib.rs`, `Spotifly/ViewModels/PlaybackViewModel.swift`,
+`Spotifly/AudioRenderer.swift`
 Found: 2026-07-30, in the run that confirmed the readiness-ordering fix (`b34889c`)
 
 ## Symptom
@@ -45,43 +46,67 @@ Both gates fail in exactly the situation that needs them:
 - `IS_PLAYING` survives the rebuild, so `isPlaying` stays true and the first guard passes.
   The UI therefore keeps interpolating forward while no audio is playing at all.
 
-Observed drift in this run was ~5 s. It is bounded by how long the UI keeps interpolating
-past the real stop, not by the length of the outage (which was 71 s here) — during the
-first part of the outage the Player was still draining its buffer and `POSITION_MS` was
-still moving, so corrections were still happening.
+The exact 5000 ms provenance is now established. `spotifly_get_position_ms()` was not
+returning `POSITION_MS` directly. While `IS_PLAYING` remained true, Rust added the wall
+time since the last Player event, capped by this literal:
 
-**Not established from the log:** the exact provenance of the 104403 ms anchor. It is
-5000 ms ahead of Rust's frozen 99403 ms, suspiciously round, and none of the anchor writers
-in `PlaybackViewModel` obviously produces it. Worth pinning down before fixing, in case the
-drift is a symptom of something more specific than "interpolation ran on".
+```rust
+let capped_elapsed = elapsed_since_update.min(5000) as u32;
+stored_position.saturating_add(capped_elapsed)
+```
 
-## Suggested fix
+That turns the last real `99403` ms event into exactly `104403` ms after five seconds.
+Swift can adopt that extrapolated value as an anchor. Rehydration correctly uses the raw
+`POSITION_MS` value, so it loads at `99403` ms and exposes the artificial five seconds as
+a backwards correction.
 
-Stop interpolating when the connection is not ready, rather than relying on a drift check
-that the freeze disables. The connection snapshot already carries what is needed
-(`sessionConnected`, `spircReady`), and `ConnectionService` already publishes it into
-`AppStore`.
+This is not the audio-buffer size:
 
-Sketch: gate the interpolation (and `checkDriftAndSync`'s position branch) on readiness, so
-the position holds still while the session is down and re-anchors on the first real update
-after recovery. A held position is honest — playback genuinely is not progressing.
+- `ProxySink` has no buffer; `Sink::write` forwards PCM directly to Swift.
+- `AudioRenderer`'s ring buffer contains 176,400 interleaved `f32` samples, exactly two
+  seconds at 44.1 kHz stereo.
+- Its real-time throttle likewise allows the decoder at most two seconds of lead.
+- `AVSampleBufferAudioRenderer` and AirPlay may add output latency, but no buffer occupancy
+  feeds back into `POSITION_MS`, so they cannot produce the exact 5000 ms value.
 
-Alternatively, or in addition: drop the `rustPosition != lastRustPosition` condition and
-compare against the drift threshold alone. That makes the check do its job when the value
-is frozen, at the cost of running the comparison every tick.
+## Implemented fix
+
+There is now one display clock instead of two:
+
+- Rust returns only the last position reported by the Player. The Player already emits
+  position updates every 200 ms, so the removed Rust interpolation added no useful UI
+  smoothness.
+- Swift remains the sole display interpolator and only advances while the connection is
+  ready (`sessionConnected && spircReady`).
+- On a ready-to-not-ready transition Swift freezes at Rust's last real position for local
+  playback, or at the current displayed position when monitoring a remote device.
+- The once-per-second drift check now compares against Rust even when the raw value did not
+  change. A frozen Player value is precisely when the old `rustPosition !=
+  lastRustPosition` guard suppressed the correction that was needed.
+- Readiness transitions run through one `syncConnectionReadiness()`, called both from the
+  connection-state callback and from that same once-a-second check. Interpolation now
+  depends on the flag, so a single missed callback would stop the progress bar during
+  healthy playback — a more visible failure than the drift being prevented. Re-reading the
+  live flags on the timer makes it self-heal within a second, and the shared entry point
+  means the timer cannot flip the flag without also freezing the position.
+
+Using Rust's old extrapolated value for rehydration was rejected: it would hide the snap by
+skipping up to five seconds of audio that were never played.
 
 ## Why this is low priority
 
-- Cosmetic. The audio is correct throughout; only the progress bar is briefly wrong.
+- Cosmetic. The audio was correct throughout; only the progress bar was briefly wrong.
 - Self-correcting within one update after recovery.
-- ~5 s, down from the 46 s that `b34889c` removed.
+- The exact 5 s residue was smaller than the 46 s stale-server jump that `b34889c`
+  removed.
 
 ## Verification
 
 Reproduce: play locally, sever the network long enough for `Connection to server closed`
-(≈90 s), restore, and watch the log at the moment of resume. Before a fix there is a
-`Position anchor: <larger> -> <smaller>` line. After it, the anchor should already be at or
-near Rust's position, with no backwards step.
+(≈90 s), restore, and watch the log at the moment of resume. Before the fix there is a
+`Position anchor: <larger> -> <smaller>` line whose difference can be exactly 5000 ms.
+After the fix, the position should freeze while not ready and resume from Rust's raw
+position without the backwards step.
 
 ## Related
 
