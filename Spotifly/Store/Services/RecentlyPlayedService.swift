@@ -30,7 +30,9 @@ final class RecentlyPlayedService {
 
     /// Load recently played (only on first call unless forceRefresh is true)
     func loadRecentlyPlayed(accessToken: String, forceRefresh: Bool = false) async {
-        if !forceRefresh, store.hasLoadedRecentlyPlayed { return }
+        if !forceRefresh, store.hasLoadedRecentlyPlayed {
+            return
+        }
 
         // Force refresh cancels any in-flight load and starts over
         if forceRefresh {

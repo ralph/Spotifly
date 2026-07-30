@@ -123,16 +123,13 @@ private struct StartpageShortcutsView: View {
     @Environment(SpotifySession.self) private var session
 
     var body: some View {
-        Group {
-            // Cmd+R - Refresh recently played
-            Button("") {
-                Task {
-                    let token = await session.validAccessToken()
-                    await recentlyPlayedService.refresh(accessToken: token)
-                }
+        Button("") {
+            Task {
+                let token = await session.validAccessToken()
+                await recentlyPlayedService.refresh(accessToken: token)
             }
-            .keyboardShortcut("r", modifiers: .command)
         }
+        .keyboardShortcut("r", modifiers: .command)
         .frame(width: 0, height: 0)
         .opacity(0)
     }
@@ -140,13 +137,10 @@ private struct StartpageShortcutsView: View {
 
 private struct SearchShortcutsView: View {
     var body: some View {
-        Group {
-            // Cmd+F - Focus search field
-            Button("") {
-                focusToolbarSearchField()
-            }
-            .keyboardShortcut("f", modifiers: .command)
+        Button("") {
+            focusToolbarSearchField()
         }
+        .keyboardShortcut("f", modifiers: .command)
         .frame(width: 0, height: 0)
         .opacity(0)
     }
@@ -170,9 +164,13 @@ private struct SearchShortcutsView: View {
 
     private func firstSearchField(in view: NSView?) -> NSSearchField? {
         guard let view else { return nil }
-        if let field = view as? NSSearchField { return field }
+        if let field = view as? NSSearchField {
+            return field
+        }
         for subview in view.subviews {
-            if let field = firstSearchField(in: subview) { return field }
+            if let field = firstSearchField(in: subview) {
+                return field
+            }
         }
         return nil
     }

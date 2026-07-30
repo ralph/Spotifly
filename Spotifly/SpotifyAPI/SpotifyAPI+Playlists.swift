@@ -206,8 +206,12 @@ extension SpotifyAPI {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         var body: [String: Any] = [:]
-        if let name { body["name"] = name }
-        if let description { body["description"] = description }
+        if let name {
+            body["name"] = name
+        }
+        if let description {
+            body["description"] = description
+        }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)

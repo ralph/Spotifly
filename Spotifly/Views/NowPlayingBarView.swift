@@ -166,44 +166,43 @@ struct NowPlayingBarView: View {
 
     // MARK: - Shared Components
 
+    @ViewBuilder
     private func albumArt(size: CGFloat) -> some View {
-        Group {
-            if let url = currentTrack?.images.url(for: size, scale: displayScale) {
-                let urlString = url.absoluteString
-                if let cachedImage = cachedAlbumArtImage, cachedAlbumArtURL == urlString {
-                    // Use cached image
-                    cachedImage
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: size, height: size)
-                        .clipShape(.rect(cornerRadius: 4))
-                } else {
-                    // Load new image
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(width: size, height: size)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: size, height: size)
-                                .clipShape(.rect(cornerRadius: 4))
-                                .onAppear {
-                                    cachedAlbumArtImage = image
-                                    cachedAlbumArtURL = urlString
-                                }
-                        case .failure:
-                            placeholderAlbumArt(size: size)
-                        @unknown default:
-                            EmptyView()
-                        }
+        if let url = currentTrack?.images.url(for: size, scale: displayScale) {
+            let urlString = url.absoluteString
+            if let cachedImage = cachedAlbumArtImage, cachedAlbumArtURL == urlString {
+                // Use cached image
+                cachedImage
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(.rect(cornerRadius: 4))
+            } else {
+                // Load new image
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                            .frame(width: size, height: size)
+                    case let .success(image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: size, height: size)
+                            .clipShape(.rect(cornerRadius: 4))
+                            .onAppear {
+                                cachedAlbumArtImage = image
+                                cachedAlbumArtURL = urlString
+                            }
+                    case .failure:
+                        placeholderAlbumArt(size: size)
+                    @unknown default:
+                        EmptyView()
                     }
                 }
-            } else {
-                placeholderAlbumArt(size: size)
             }
+        } else {
+            placeholderAlbumArt(size: size)
         }
     }
 

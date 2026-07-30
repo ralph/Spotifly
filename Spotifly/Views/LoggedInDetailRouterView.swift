@@ -14,20 +14,18 @@ struct LoggedInDetailRouterView: View {
     @Bindable var playbackViewModel: PlaybackViewModel
 
     var body: some View {
-        Group {
-            switch navigationCoordinator.selectedNavigationItem {
-            case .albums:
-                albumDetailView
+        switch navigationCoordinator.selectedNavigationItem {
+        case .albums:
+            albumDetailView
 
-            case .artists:
-                artistDetailView
+        case .artists:
+            artistDetailView
 
-            case .playlists:
-                playlistDetailView
+        case .playlists:
+            playlistDetailView
 
-            default:
-                EmptyView()
-            }
+        default:
+            EmptyView()
         }
     }
 

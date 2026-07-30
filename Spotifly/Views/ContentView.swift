@@ -12,16 +12,14 @@ struct ContentView: View {
     @State private var clientId: String = KeychainManager.loadCustomClientId() ?? ""
 
     var body: some View {
-        Group {
-            if viewModel.isLoading {
-                ProgressView(String(localized: "auth.loading"))
-                    .frame(minWidth: 500, minHeight: 400)
-            } else if let authResult = viewModel.authResult {
-                LoggedInView(authResult: authResult, onLogout: { viewModel.logout() })
-            } else {
-                loginView
-                    .frame(minWidth: 500, minHeight: 400)
-            }
+        if viewModel.isLoading {
+            ProgressView(String(localized: "auth.loading"))
+                .frame(minWidth: 500, minHeight: 400)
+        } else if let authResult = viewModel.authResult {
+            LoggedInView(authResult: authResult, onLogout: { viewModel.logout() })
+        } else {
+            loginView
+                .frame(minWidth: 500, minHeight: 400)
         }
     }
 

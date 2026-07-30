@@ -101,7 +101,9 @@ struct LoggedInView: View {
             // months per Spotify's July 2026 policy) the session invalidates
             // itself; tear down and return the user to the sign-in flow.
             .onChange(of: session.isInvalidated) { _, invalidated in
-                if invalidated { onLogout() }
+                if invalidated {
+                    onLogout()
+                }
             }
     }
 
