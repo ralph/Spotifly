@@ -6,17 +6,31 @@ Scope: static review of the current Swift app, C FFI, Rust wrapper, and the
 `spotifly-dev` librespot sources. No live Spotify session or forced-outage test was
 run as part of this review.
 
+### Verification status
+
+A second pass on 2026-07-30 re-checked every finding below against the code.
+P0.1, P0.2, P1.1, P1.3, P1.4, P2.1, P2.2, P2.3, the four-file fork delta, the
+upstreaming claims, and the "no tests" claim were all confirmed. That pass also
+corrected two claims (event-source attribution in P0.1, scope of P1.2), added P0.3
+and the dependency-pin gap below, and is marked inline where relevant.
+
+One claim was **not** re-verified: the `cargo check` result against an exported copy
+of official `dev` (see "Compatibility check"). It is carried forward on trust.
+
 ## Executive summary
 
 The integration has the right building blocks: Rust pushes playback and connection
 updates, Swift can pull an initial snapshot, Rust retries short network failures with
 backoff and fresh tokens, and a generation protects against stale cluster listeners.
 
+One caveat on that last point: only the **cluster** listener's generation check
+actually works. The player event listener's equivalent check is dead code — see P0.3.
+
 The brittleness comes mainly from overlapping meanings and recovery owners:
 
-- librespot's patched `SessionConnected` and `SessionDisconnected` player events
-  describe Spotify Connect device activation, but Spotifly treats them as network
-  session health.
+- librespot's **upstream** (not patched) `SessionConnected` and `SessionDisconnected`
+  player events describe Spotify Connect device activation, but Spotifly treats them
+  as network session health.
 - Rust owns automatic reconnect, while Swift can concurrently tear everything down
   and initialize it again.
 - Swift combines Rust callbacks, synchronous Rust polling, optimistic UI changes,
@@ -29,8 +43,12 @@ The smallest robust direction is:
 3. Treat Web API state as bootstrap/fallback data only.
 4. Make command acceptance visible instead of discarding every FFI result.
 
-This does not require a large state machine, a general retry framework, or handling
-every theoretical edge case.
+This does not require a general retry framework or handling every theoretical edge
+case. It is, however, honest to call the result a state machine: generation/revision
+on snapshots, a readiness predicate, two Swift revision counters, and a restart
+generation protocol add up to one — just a small and explicit one, distributed across
+the bridge. The goal is to make the existing implicit state machine legible, not to
+avoid having one.
 
 ## Official librespot versus `spotifly-dev`
 
@@ -68,6 +86,55 @@ The two behavioral changes come from one focused commit. A local upstream-PR dra
 describes them as a general, backwards-compatible fix, but they are not in the
 current official `dev` tree.
 
+Both `handle_next` ([`spirc.rs:1722`](../librespot/connect/src/spirc.rs)) and
+`handle_prev` ([`spirc.rs:1763`](../librespot/connect/src/spirc.rs)) use
+`play_status.is_playing()` in the fork, so the local-play-intent fix is complete.
+`docs/network-session-stability-plan.md` (lines 52 and 120) still lists the
+`handle_prev` half as outstanding — that item is done and should be ticked off.
+
+### The two patches are not equally disposable
+
+They should be tracked separately, because only one of them is tied to Spotifly's
+lifecycle choices:
+
+- **`play_request_id` adoption** exists *only* because soft reconnect retains the
+  Player across sessions. It disappears when soft reconnect does.
+- **`play_status.is_playing()`** is an upstream bug fix independent of Spotifly's
+  lifecycle: remote-facing `ConnectState` lags during `LoadingPlay`, so next/previous
+  can load the following track paused even with no reconnect involved. Nothing in the
+  refactor below removes the need for it.
+
+Consequently, "no patched dependency is required" holds only if the `is_playing()`
+commit lands upstream. That commit is worth submitting **now**, independently of the
+reconnect work, rather than waiting on the refactor. When rebuilding `spotifly-dev`
+as a clean branch, split it into these two commits so they can be reasoned about and
+upstreamed separately.
+
+### No dependency pin exists today
+
+[`rust/Cargo.toml`](rust/Cargo.toml) (lines 11-17) uses local **path** dependencies:
+
+```toml
+librespot-core = { path = "../../librespot/core" }
+librespot-connect = { path = "../../librespot/connect" }
+librespot-playback = { path = "../../librespot/playback" }
+librespot-protocol = { path = "../../librespot/protocol" }
+```
+
+There is no branch or revision pin anywhere. The build resolves to whatever happens to
+be checked out in `../../librespot`, so builds are not reproducible and
+`CONTRIBUTING.md`'s "use the `spotifly-dev` branch" is an unenforced convention.
+
+This has already had an effect: the stale build artifact
+`rust/target/aarch64-apple-darwin/release/libspotifly_rust.d` lists
+`librespot/.git/refs/heads/use-local-is-playing-state` among its inputs, meaning a
+previous build was produced from a different branch than the documented one.
+
+Converting these to `git` + `rev` dependencies is therefore its own work item, and a
+prerequisite for the "pin an official revision" step in the implementation order —
+not something that falls out of it. Note that discussions of "switching the dependency
+branch" below are shorthand: today there is no branch reference to switch.
+
 ### Compatibility check
 
 The current, unmodified Spotifly Rust wrapper passes `cargo check` against an exported
@@ -79,6 +146,11 @@ The latest local release tag is `v0.8.0`; official `dev` is 16 commits newer and
 contains the queue APIs Spotifly uses. Therefore a migration today should pin the
 tested official commit (or a later official release containing those commits), not
 silently use the older `v0.8.0` sources and not track a moving branch.
+
+Confirmed present in official `dev`: `Spirc::add_to_queue`, `PlayerEvent::SetQueue`,
+`ConnectConfig::emit_set_queue_events`, `QueueTrack`, and `Player::set_session`. Note
+that "pin" here describes work still to be done — see "No dependency pin exists today"
+above; nothing is pinned at present.
 
 ### What would regress with an immediate branch switch
 
@@ -109,11 +181,14 @@ Costs:
 - Spotifly remains coupled to a non-standard Player/Spirc lifetime.
 - Every official update still requires rebasing and retesting the patch.
 - The soft reconnect is a major source of the lifecycle races described in P0.2.
-- The branch history obscures that only one meaningful patch remains.
+- The branch history obscures that only two meaningful changes remain, currently
+  squashed into one commit.
 
-If this option is kept temporarily, rebuild `spotifly-dev` as one clean commit on top
-of official `dev` rather than carrying the historical 38-commit chain, and submit the
-behavioral fix upstream.
+If this option is kept temporarily, rebuild `spotifly-dev` on top of official `dev` as
+**two** clean commits — `play_status.is_playing()` and `play_request_id` adoption —
+rather than carrying the historical 38-commit chain, and submit the `is_playing()`
+commit upstream. Splitting them matters because only the second one goes away when soft
+reconnect does.
 
 #### Return to unmodified official librespot
 
@@ -131,8 +206,15 @@ To do this safely, remove the integration behavior that requires the patch:
    `Player::set_session` path, and the soft-reconnect pending-play watchdog.
 
 This may cause a short audible interruption during a network outage. In return,
-Player and Spirc lifetimes match official librespot's normal model, reconnect becomes
-much easier to reason about, and no patched dependency is required.
+Player and Spirc lifetimes match official librespot's normal model and reconnect
+becomes much easier to reason about.
+
+This removes the need for the `play_request_id` patch, but **not** for
+`play_status.is_playing()` — that one fixes an upstream lag between local play intent
+and remote-facing `ConnectState` that has nothing to do with Spotifly's session
+lifetime. Running fully unpatched therefore requires that commit to be accepted
+upstream first; until then this option reduces the fork to one commit rather than
+eliminating it.
 
 ### Recommendation
 
@@ -146,16 +228,19 @@ and maintaining the extra recovery/watchdog paths that follow from it.
 
 The practical decision is:
 
-- **Short term:** keep the current small patch while implementing P0.1 and making
-  restart generation-safe.
+- **Now:** submit the `play_status.is_playing()` commit upstream. It is independent of
+  everything else here and is on the critical path for dropping the fork.
+- **Short term:** keep the current patch while fixing the generation check (P0.3),
+  correcting event semantics (P0.1), and making restart generation-safe (P0.2).
 - **Next:** replace soft reconnect with deterministic full rebuild + rehydration and
   run the outage/transfer test matrix.
-- **Then:** pin Spotifly to an official librespot commit/release and delete the custom
-  branch requirement.
+- **Then:** convert the path dependencies to `git` + `rev`, pin an official librespot
+  commit/release, and delete the custom branch requirement.
 
-If the remaining behavioral commit is accepted upstream first, switching can happen
-earlier, but P0.1 and P0.2 still need fixing because they are integration-layer
-problems rather than missing upstream APIs.
+If the `is_playing()` commit is accepted upstream first, switching can happen earlier,
+but P0.1, P0.2, and P0.3 still need fixing because they are integration-layer problems
+rather than missing upstream APIs. P0.1 in particular is unaffected by the choice of
+librespot revision: those events carry activation semantics in official `dev` too.
 
 ## Priority 0 — fix before further reconnect tuning
 
@@ -163,15 +248,22 @@ problems rather than missing upstream APIs.
 
 **Finding**
 
-The patched librespot emits these events when the local Connect device becomes active
-or inactive:
+These events are **upstream librespot behavior, not part of the fork.** They are
+defined and emitted in [`playback/src/player.rs`](../librespot/playback/src/player.rs)
+(variants at lines 237/241, emission at 2353-2364); `spirc.rs` calls the
+`emit_session_*_event` helpers. `git show dev:connect/src/spirc.rs` contains the
+identical calls at lines 1300 and 1318, and neither file appears in the four-file fork
+delta. Returning to official librespot therefore does **not** change or fix any of
+this — P0.1 is entirely an integration-layer problem.
 
-- [`SpircTask::handle_activate`](../librespot/connect/src/spirc.rs) emits
+librespot emits them when the local Connect device becomes active or inactive:
+
+- [`SpircTask::handle_activate`](../librespot/connect/src/spirc.rs) (line 1319) emits
   `SessionConnected`.
-- [`SpircTask::handle_disconnect`](../librespot/connect/src/spirc.rs) emits
+- [`SpircTask::handle_disconnect`](../librespot/connect/src/spirc.rs) (line 1293) emits
   `SessionDisconnected`.
-- A normal cluster update that makes another device active calls
-  `handle_disconnect`.
+- A normal cluster update that makes another device active calls `handle_disconnect`
+  ([`spirc.rs:1003-1008`](../librespot/connect/src/spirc.rs)).
 
 Spotifly handles `PlayerEvent::SessionDisconnected` as a failed network session:
 it marks the connection disconnected and starts the Rust reconnect loop
@@ -195,6 +287,16 @@ mistaken for a network outage. Depending on event ordering, Spotifly can:
 - reactivate itself and interfere with the intended device handoff.
 
 This is a normal usage path, not a rare edge case.
+
+**The concrete worst case is where this compounds with P1.4.**
+[`LoggedInLifecycleModifier.swift`](Spotifly/Views/LoggedInLifecycleModifier.swift)
+(lines 67-76) reacts to the *activation* event by calling
+`queueService.fetchInitialPlaybackState`. Because activation is not connection (P0.1)
+and the Web API bootstrap has no freshness barrier (P1.4), every device handoff fires
+an unguarded full Web API refetch that can overwrite live Rust state. This specific
+pair — activation event triggering an unversioned Web API bootstrap — is the most
+likely explanation for the reported symptom that Swift "does not know" Rust's state,
+and it is fixed by P0.1 and P1.4 together.
 
 **Small fix**
 
@@ -256,6 +358,64 @@ A generation cancellation check is sufficient; a general cancellation framework 
 not necessary. `spotifly_cleanup` should remain an internal implementation detail or
 be reserved for final logout/shutdown.
 
+Note that the generation primitive P0.2 wants to build on is currently broken — see
+P0.3, which should be fixed first.
+
+### P0.3 The player event listener's stale-generation check can never fire
+
+**Finding**
+
+The `SessionDisconnected` handler guards against events from an old session
+([`rust/src/lib.rs`](rust/src/lib.rs), lines 1491-1504):
+
+```rust
+let my_gen = EVENT_LISTENER_GENERATION.load(Ordering::SeqCst);
+let current_gen = SESSION_GENERATION.load(Ordering::SeqCst);
+if my_gen != current_gen { /* ignore stale event */ continue; }
+```
+
+`EVENT_LISTENER_GENERATION` is written in exactly two places — lines 1088 and 1287 —
+and both write the value just produced by `SESSION_GENERATION.fetch_add(..) + 1`. The
+two globals are therefore always equal, so `my_gen != current_gen` is false in steady
+state and the ignore branch is unreachable. The only window where they differ is
+between the `fetch_add` and the following `store`, during which the check discards
+events from the *current* session rather than an old one.
+
+The listener does capture a correct per-generation local
+(`event_listener_generation`, line 1289), but it is used only for logging (line 1295).
+Reading the global instead was deliberate — the comment at lines 165-167 explains it
+lets soft reconnect update the generation without replacing the listener — but the
+consequence is that the check lost its ability to reject anything.
+
+By contrast, the cluster listener's check is genuine: `spawn_cluster_listener` takes
+`generation` as a parameter (line 697) and compares that captured value against
+`SESSION_GENERATION` (line 728).
+
+**Impact**
+
+This removes the protection P0.2 depends on. On a hard reconnect a new event listener
+is spawned while the old one is signalled asynchronously through the previous
+`PLAYER_EVENT_TX`. Until the old listener drains and exits, it can still deliver a
+`SessionDisconnected` — and because the check compares two always-equal globals, that
+event passes and calls `spawn_reconnection_loop()` against the new generation. The
+"generation protects against stale listeners" property that the rest of this review
+assumes does not hold for player events.
+
+**Small fix**
+
+Compare against the captured local rather than the global:
+
+```rust
+if event_listener_generation != SESSION_GENERATION.load(Ordering::SeqCst) { continue; }
+```
+
+Soft reconnect then needs to hand the surviving listener its new generation
+explicitly — either by replacing the listener along with the session, or by moving the
+generation into an `Arc<AtomicU64>` owned by that listener alone, so updating it stays
+a deliberate act rather than a side effect of any session bump. This is a one-line
+correctness fix plus a small ownership decision, and it should land before P0.2 so the
+restart work has a working invalidation primitive.
+
 ## Priority 1 — high-value robustness and state correctness
 
 ### P1.1 Initialization reports success before usable readiness is established
@@ -290,26 +450,45 @@ command fails. `initializeIfNeeded` will then refuse to try again.
 
 **Finding**
 
-The C API has useful typed results (`ok`, general error, needs reinit, not connected),
-but most Swift wrapper methods launch a detached task and ignore the result
+The C API has useful typed results (`ok`, general error, needs reinit, not connected —
+[`spotifly_rust.h`](rust/include/spotifly_rust.h), lines 38-43), but most Swift wrapper
+methods launch a detached task and ignore the result
 ([`SpotifyPlayer.swift`](Spotifly/SpotifyPlayer.swift), around lines 909-1089).
-Some view-model methods optimistically change position or playing state even when
-Rust can reject the command during a reconnect
-([`PlaybackViewModel.swift`](Spotifly/ViewModels/PlaybackViewModel.swift), around
-lines 278-438 and 660-685).
+
+The view-model side is better than it first appears, and the scope here is narrower
+than originally written. `next()`, `previous()`, `pause()`, `resume()`, and
+`toggleShuffle()` all already `guard SpotifyPlayer.isSessionConnected else { return }`
+before calling into Rust, and that guard returns *before* the optimistic position
+reset, so nothing is applied on the rejected path. `pause()` deliberately leaves
+`isPlaying` alone and waits for the Mercury callback.
+
+The genuine exception is **seek**:
+[`seek(to:)`](Spotifly/ViewModels/PlaybackViewModel.swift) (lines 361-370) writes
+`positionAnchorMs`/`currentPositionMs` immediately, and the debounced
+[`performSeek`](Spotifly/ViewModels/PlaybackViewModel.swift) (lines 671-685) is the one
+command path with no connectivity guard at all.
 
 **Impact**
 
-During a short outage, Swift can say pause/seek/next succeeded while Rust rejected it.
-The UI may eventually correct itself from a later callback, but until then the two
-sides visibly disagree. Media-key handlers also return success before knowing whether
-the command was accepted.
+During a short outage Swift can report a seek that Rust rejected. The coarse
+`isSessionConnected` pre-check covers the common `sessionNotConnected` case for the
+other commands, but it cannot see general errors or `sessionDisconnected` (-1/-2), so
+those still pass silently everywhere. Media-key handlers also return `.success` before
+knowing whether the command was accepted
+([`PlaybackViewModel.swift`](Spotifly/ViewModels/PlaybackViewModel.swift), lines
+475-531).
+
+Because of the existing guards, this is a smaller correctness problem than P0.1-P0.3 —
+worth fixing for the typed-result plumbing and to close the seek hole, but it is not
+the cause of the reported state divergence.
 
 **Small fix**
 
 - Add one small Swift helper that executes an FFI command and maps
   `SpotiflyResult`.
 - Return success/failure from the wrapper instead of discarding it.
+- Give `performSeek` the same `isSessionConnected` guard the other commands have, and
+  do not move the anchor until the seek is accepted.
 - Change presentation state only after command acceptance or, preferably, the Rust
   state callback.
 - On `sessionNotConnected`, show/retain the last confirmed state and let the existing
@@ -331,7 +510,25 @@ while views use the store's device data.
 The cluster listener does not set `IS_ACTIVE_DEVICE` by comparing the cluster's active
 device ID with Spotifly's own device ID
 ([`rust/src/lib.rs`](rust/src/lib.rs), around lines 706-718). Empty active-device IDs
-are also ignored, leaving the previous value in Swift.
+are also ignored in `notify_active_device_id` (lines 583-586), leaving the previous
+value in Swift. `IS_ACTIVE_DEVICE` is instead written from roughly eighteen scattered
+command and event sites.
+
+**Root cause: the subscription is duplicated**
+
+`spawn_cluster_listener` (line 697) subscribes to `hm://connect-state/v1/cluster` —
+the exact dealer topic `SpircTask` already subscribes to
+([`spirc.rs:187`](../librespot/connect/src/spirc.rs)). There are two independent
+consumers of one topic, each maintaining its own notion of which device is active.
+That duplication, not the missing comparison, is why there are two sources of truth.
+
+librespot also already computes precisely the comparison proposed below, at
+[`spirc.rs:1003-1004`](../librespot/connect/src/spirc.rs):
+
+```rust
+let became_inactive = self.connect_state.is_active()
+    && cluster.active_device_id != self.session.device_id();
+```
 
 **Impact**
 
@@ -350,6 +547,13 @@ Store that in Rust and include it in the same connection/state snapshot sent to
 Swift. Allow an empty active-device ID to clear the state. Playback routing and views
 should read this same fact.
 
+Be aware that this fix *keeps* the duplicate subscription and simply makes the second
+consumer agree with the first. That is the smaller change and fine as a first step, but
+the better end state is to stop maintaining a parallel cluster view at all and derive
+activity from Spirc/`ConnectState`, which already tracks it. Prefer that if the P0.1
+work ends up reshaping how activation reaches Swift anyway, since both touch the same
+seam.
+
 ### P1.4 A stale Web API response can overwrite a newer Rust callback
 
 **Finding**
@@ -360,6 +564,17 @@ unconditionally when the requests complete
 262-323). Rust queue/playback callbacks can arrive while those network requests are
 in flight. The fixed delay after a locally initiated transfer reduces one known race,
 but it is not a general freshness rule.
+
+The Web API `timestamp` is threaded through to `applyWebAPIPlaybackState`
+([`PlaybackViewModel.swift`](Spotifly/ViewModels/PlaybackViewModel.swift), lines
+760-817), but it is used only to compensate the position anchor *within* the Web API
+snapshot. It is never compared against anything Rust published, so it does not act as a
+freshness barrier despite looking like one.
+
+There are two callers, and the second matters more than the bootstrap:
+`LoggedInLifecycleModifier` calls this both from initial `.task` setup (line 65) and
+from the `sessionConnected` handler (line 74) — that is, on every device activation.
+See P0.1.
 
 **Impact**
 
@@ -463,10 +678,14 @@ more value than more reconnect branches:
 1. A device becoming inactive does not start network reconnection.
 2. A closed cluster/session transport starts exactly one reconnect loop.
 3. Manual restart invalidates an older sleeping reconnect generation.
-4. Initialization does not succeed without Spirc readiness.
-5. A Rust callback arriving during Web API bootstrap prevents the stale response from
+4. A `SessionDisconnected` delivered by a superseded event listener is rejected and
+   does not spawn a reconnect loop. **This test fails against the current code** (P0.3)
+   and is the cheapest way to pin that fix.
+5. Initialization does not succeed without Spirc readiness.
+6. A Rust callback arriving during Web API bootstrap prevents the stale response from
    being applied.
-6. A rejected command does not optimistically change confirmed Swift state.
+7. A rejected command does not optimistically change confirmed Swift state, including
+   the seek path specifically (P1.2).
 
 These can test extracted transition/revision logic without connecting to Spotify.
 End-to-end outage tests are useful later, but they should not be required to make the
@@ -488,14 +707,20 @@ would add code without resolving the ambiguity.
 
 ## Suggested implementation order
 
-1. Correct activation-vs-connection event semantics (P0.1).
-2. Make restart/reconnect generation-safe and serialize Swift initialization (P0.2).
-3. Make readiness authoritative and preserve command results (P1.1-P1.2).
-4. Unify active-device truth and add the Web API freshness barrier (P1.3-P1.4).
-5. Add snapshot ordering, consolidate parsing, and delete dead callbacks
+1. Fix the player event listener's generation check (P0.3). One line, and it must come
+   first: P0.2 builds a restart protocol on top of this primitive, and fixing P0.1
+   first would make the racy path rare enough to hide that the primitive is broken.
+2. Correct activation-vs-connection event semantics (P0.1).
+3. Make restart/reconnect generation-safe and serialize Swift initialization (P0.2).
+4. Make readiness authoritative and preserve command results (P1.1-P1.2).
+5. Unify active-device truth and add the Web API freshness barrier (P1.3-P1.4).
+6. Add snapshot ordering, consolidate parsing, and delete dead callbacks
    (P2.1-P2.3).
-6. Replace soft reconnect with full rebuild + rehydration, verify the outage matrix,
-   and pin an unmodified official librespot revision.
+7. Replace soft reconnect with full rebuild + rehydration and verify the outage matrix.
+8. Convert the librespot path dependencies to `git` + `rev` and pin an unmodified
+   official revision. This is a real step, not a consequence of step 7 — today there is
+   no pin at all. It is unblocked only once the `play_status.is_playing()` commit is
+   upstream; submit that commit early and independently.
 
-After steps 1-4, reassess the remaining code. Several existing watchdogs, polls, and
+After steps 1-5, reassess the remaining code. Several existing watchdogs, polls, and
 special-case comments should become removable rather than needing further tuning.
