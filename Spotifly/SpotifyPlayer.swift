@@ -142,6 +142,9 @@ nonisolated struct LibrespotConnectionState: Equatable, Codable {
     let reconnectAttempt: UInt32
     let lastError: String?
     let connectedSinceMs: UInt64?
+    /// Whether Spotifly is the active Connect device, derived in Rust from the cluster's
+    /// active device ID. The single fact that playback routing and the UI both read.
+    let isActiveDevice: Bool
 
     enum CodingKeys: String, CodingKey {
         case sessionConnected = "session_connected"
@@ -152,6 +155,7 @@ nonisolated struct LibrespotConnectionState: Equatable, Codable {
         case reconnectAttempt = "reconnect_attempt"
         case lastError = "last_error"
         case connectedSinceMs = "connected_since_ms"
+        case isActiveDevice = "is_active_device"
     }
 }
 

@@ -38,7 +38,6 @@ static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
 static MIXER: Lazy<Mutex<Option<Arc<SoftMixer>>>> = Lazy::new(|| Mutex::new(None));
 static SPIRC: Lazy<Mutex<Option<Arc<Spirc>>>> = Lazy::new(|| Mutex::new(None));
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
-static IS_ACTIVE_DEVICE: AtomicBool = AtomicBool::new(false);
 static PLAYING_EVENT_SEQ: AtomicU64 = AtomicU64::new(0);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> =
     Lazy::new(|| Mutex::new(None));
@@ -92,6 +91,12 @@ static RESUME_AFTER_RECONNECT_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
 /// together makes every published snapshot internally consistent by construction.
 ///
 /// `connected_since_ms` uses 0 for "never connected"; the wire format maps that to null.
+///
+/// `is_active_device` also lives here rather than in a separate atomic. It used to be
+/// tracked in `IS_ACTIVE_DEVICE`, written from fourteen scattered command and event sites
+/// and never reconciled against the cluster, while Swift separately tracked activity from
+/// the active-device-id callback — so playback routing and the UI could disagree about
+/// whether Spotifly or a remote speaker was active.
 #[derive(Default, Clone)]
 struct ConnectionState {
     session_connected: bool,
@@ -101,6 +106,25 @@ struct ConnectionState {
     reconnect_attempt: u32,
     last_error: Option<String>,
     connected_since_ms: u64,
+    is_active_device: bool,
+}
+
+/// Whether this device is currently the active Spotify Connect device.
+fn is_active_device() -> bool {
+    with_connection(|c| c.is_active_device)
+}
+
+/// Records whether this device is the active one, publishing the change if it moved.
+fn set_active_device(active: bool) {
+    let changed = with_connection(|c| {
+        let changed = c.is_active_device != active;
+        c.is_active_device = active;
+        changed
+    });
+    if changed {
+        debug!("Active device changed: is_active={}", active);
+        notify_connection_state_change();
+    }
 }
 
 static CONNECTION: Lazy<Mutex<ConnectionState>> =
@@ -252,6 +276,7 @@ struct ConnectionStateInfo {
     reconnect_attempt: u32,
     last_error: Option<String>,
     connected_since_ms: Option<u64>,
+    is_active_device: bool,
 }
 
 #[derive(Serialize)]
@@ -563,6 +588,7 @@ fn build_connection_state_info() -> ConnectionStateInfo {
         reconnect_attempt: state.reconnect_attempt,
         last_error: state.last_error,
         connected_since_ms: (state.connected_since_ms > 0).then_some(state.connected_since_ms),
+        is_active_device: state.is_active_device,
     }
 }
 
@@ -579,11 +605,11 @@ fn mark_disconnected(reason: &str) {
 
 /// Sends the active device ID to the registered callback if it changed since the last update.
 /// Called on every cluster update — deduplicates so Swift only sees actual changes.
+///
+/// An empty ID means "no device is active" and is forwarded as such. It used to be
+/// dropped, which left Swift showing the previous active device forever once playback
+/// stopped everywhere.
 fn notify_active_device_id(device_id: &str) {
-    if device_id.is_empty() {
-        return;
-    }
-
     // Only notify if the active device actually changed
     let mut last = LAST_ACTIVE_DEVICE_ID.lock().unwrap();
     if *last == device_id {
@@ -715,6 +741,16 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
             match msg_result {
                 Ok(cluster_update) => {
                     if let Some(cluster) = cluster_update.cluster.into_option() {
+                        // Derive our own activity from the cluster rather than inferring it
+                        // from whichever command happened to run last. This is the same
+                        // comparison SpircTask makes internally; Spotifly runs a second
+                        // subscription to the same dealer topic and has to reach the same
+                        // conclusion, or playback routing and the UI disagree.
+                        set_active_device(
+                            !cluster.active_device_id.is_empty()
+                                && current_device_id().as_deref()
+                                    == Some(cluster.active_device_id.as_str()),
+                        );
                         notify_active_device_id(&cluster.active_device_id);
                         if let Some(player_state) = cluster.player_state.into_option() {
                             send_playback_state(&player_state);
@@ -782,7 +818,7 @@ fn spawn_reconnection_loop() {
 
     RUNTIME.spawn(async {
         let was_playing = IS_PLAYING.load(Ordering::SeqCst);
-        let was_active = IS_ACTIVE_DEVICE.load(Ordering::SeqCst);
+        let was_active = is_active_device();
 
         let delays = [0u64, 2, 5, 10, 30, 30, 30, 30, 30, 30];
 
@@ -1110,11 +1146,11 @@ async fn soft_reconnect_async(
     // If we had just transferred to another device, stay passive.
     if reactivate_after_reconnect {
         match spirc.activate() {
-            Ok(_) => IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst),
+            Ok(_) => set_active_device(true),
             Err(e) => debug!("Soft reconnect: activate failed: {:?}", e),
         }
     } else {
-        IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
+        set_active_device(false);
         debug!("Soft reconnect: keeping Spotifly inactive (was_active=false)");
     }
 
@@ -1280,7 +1316,7 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                         Some(PlayerEvent::Playing { position_ms, .. }) => {
                             debug!("PlayerEvent::Playing at {}ms", position_ms);
                             IS_PLAYING.store(true, Ordering::SeqCst);
-                            IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                            set_active_device(true);
                             PLAYING_EVENT_SEQ.fetch_add(1, Ordering::SeqCst);
                             // Clear auto-resume flag - we're already playing
                             RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
@@ -1331,8 +1367,12 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                             update_position(position_ms);
                         }
                         Some(PlayerEvent::Stopped { .. }) => {
+                            // Deliberately does not touch active-device state: playback
+                            // stopping is not the same as losing the active Connect role.
+                            // This used to clear it, which fought the cluster-derived value
+                            // and made the UI think a remote speaker had taken over
+                            // whenever local playback simply ended.
                             IS_PLAYING.store(false, Ordering::SeqCst);
-                            IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
                             update_position(0);
                         }
                         Some(PlayerEvent::EndOfTrack { .. }) => {
@@ -1485,7 +1525,7 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                                 continue;
                             }
 
-                            IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
+                            set_active_device(false);
 
                             // Only recover if the transport is genuinely broken. A dead
                             // Session here means the Spirc task went down with it (librespot
@@ -1522,7 +1562,7 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                         // the session was already connected before activation.
                         Some(PlayerEvent::SessionConnected { connection_id, user_name }) => {
                             debug!("[WAKE +{}ms] became active (SessionConnected): connection_id={}, user={}", elapsed_since_wake_ms(), connection_id, user_name);
-                            IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                            set_active_device(true);
                             with_connection(|c| c.session_connection_id = Some(connection_id));
 
                             // Notify connection state change
@@ -1586,11 +1626,11 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
             // Re-activate only when reconnecting from a previously-active local session.
             if activate_after_connect {
                 match spirc.activate() {
-                    Ok(_) => IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst),
+                    Ok(_) => set_active_device(true),
                     Err(e) => debug!("Auto-activation failed: {:?}", e),
                 }
             } else {
-                IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
+                set_active_device(false);
             }
             notify_connection_state_change();
         }
@@ -1919,12 +1959,12 @@ fn process_and_send_queue(player_state: PlayerState) {
 /// If not active, activates via Spirc directly (no spclient HTTP needed).
 /// Returns Ok(()) if ready to load, Err(i32) with error code if activation failed.
 fn ensure_active_for_playback(spirc: &Arc<Spirc>) -> Result<(), i32> {
-    if !IS_ACTIVE_DEVICE.load(Ordering::SeqCst) {
+    if !is_active_device() {
         debug!("Device not active, activating via spirc.activate()");
         match spirc.activate() {
             Ok(_) => {
                 debug!("Activate succeeded");
-                IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                set_active_device(true);
             }
             Err(_e) => {
                 debug!("Activate failed: {:?}", _e);
@@ -1995,7 +2035,7 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
             match spirc.load(load_request) {
                 Ok(_) => {
                     debug!("Spirc.load(tracks) succeeded");
-                    IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                    set_active_device(true);
                     set_pending_play(PendingPlayRequest::Tracks(track_uris_str.clone()));
                     0
                 }
@@ -2095,7 +2135,7 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char, track_index: i32)
                 Ok(_) => {
                     debug!("Spirc.load() succeeded");
                     IS_PLAYING.store(true, Ordering::SeqCst);
-                    IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                    set_active_device(true);
                     set_pending_play(PendingPlayRequest::Uri(uri_str.clone(), track_index));
                     0
                 }
@@ -2193,7 +2233,7 @@ fn resume_via_load(spirc: &Arc<Spirc>) -> i32 {
 
         match spirc.load(load_request) {
             Ok(_) => {
-                IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                set_active_device(true);
                 return 0;
             }
             Err(e) => {
@@ -2221,7 +2261,7 @@ fn resume_via_load(spirc: &Arc<Spirc>) -> i32 {
 
         match spirc.load(load_request) {
             Ok(_) => {
-                IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                set_active_device(true);
                 return 0;
             }
             Err(e) => {
@@ -2415,7 +2455,7 @@ pub extern "C" fn spotifly_cleanup() {
 
     // Reset state flags
     IS_PLAYING.store(false, Ordering::SeqCst);
-    IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
+    set_active_device(false);
     SHUFFLE_STATE.store(false, Ordering::SeqCst);
     clear_pending_play();
     REPEAT_TRACK_STATE.store(false, Ordering::SeqCst);
@@ -2459,7 +2499,7 @@ pub extern "C" fn spotifly_is_playing() -> i32 {
 /// When not active, playback controls should use Web API instead of Spirc.
 #[no_mangle]
 pub extern "C" fn spotifly_is_active_device() -> i32 {
-    if IS_ACTIVE_DEVICE.load(Ordering::SeqCst) {
+    if is_active_device() {
         1
     } else {
         0
@@ -2657,7 +2697,7 @@ async fn play_radio_async(uri_str: &str) -> i32 {
             );
             match spirc.load(load_request) {
                 Ok(_) => {
-                    IS_ACTIVE_DEVICE.store(true, Ordering::SeqCst);
+                    set_active_device(true);
                     set_pending_play(PendingPlayRequest::Radio(uri_str.to_string()));
                     0
                 }
@@ -2900,7 +2940,7 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
                 player.pause();
             }
             IS_PLAYING.store(false, Ordering::SeqCst);
-            IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
+            set_active_device(false);
             0
         }
         Err(_e) => {
