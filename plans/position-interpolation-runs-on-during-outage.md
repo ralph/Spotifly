@@ -1,6 +1,6 @@
 # Position keeps interpolating during an outage, so it snaps backwards on resume
 
-Status: implemented, runtime verification pending
+Status: **fixed and confirmed at runtime, 2026-07-30.** Kept as a record.
 Components: `rust/src/lib.rs`, `Spotifly/ViewModels/PlaybackViewModel.swift`,
 `Spotifly/AudioRenderer.swift`
 Found: 2026-07-30, in the run that confirmed the readiness-ordering fix (`b34889c`)
@@ -100,13 +100,36 @@ skipping up to five seconds of audio that were never played.
 - The exact 5 s residue was smaller than the 46 s stale-server jump that `b34889c`
   removed.
 
-## Verification
+## Confirmed at runtime
 
-Reproduce: play locally, sever the network long enough for `Connection to server closed`
-(≈90 s), restore, and watch the log at the moment of resume. Before the fix there is a
-`Position anchor: <larger> -> <smaller>` line whose difference can be exactly 5000 ms.
-After the fix, the position should freeze while not ready and resume from Rust's raw
-position without the backwards step.
+Outage while playing locally, ~4 minutes disconnected, then the resumed track left to run
+to its end untouched:
+
+```text
+23:00:02.241  Connection not ready, position frozen at 97124ms
+23:03:50.569  Resume fallback: loading context … at 97124ms
+23:03:50.825  Position anchor: 97124 -> 97124
+23:04:58.431  PlayerEvent::EndOfTrack at 165818ms      # track length 166000 ms
+```
+
+Frozen and resumed at the **same** value, so the anchor correction is zero. Across the
+three runs that chased this:
+
+| Run | Anchor correction on resume | Cause |
+| --- | --- | --- |
+| Before `b34889c` | `145010 -> 99403` (−46 s) | stale Web API snapshot applied before rehydration |
+| Before this fix | `104403 -> 99403` (−5 s) | Rust's own extrapolation, capped at exactly 5000 ms |
+| After this fix | `97124 -> 97124` (0) | one clock |
+
+Playback pacing is unaffected: 68694 ms of position in 67862 ms of wall clock is 1.012×,
+and `EndOfTrack` landed 182 ms short of the track length.
+
+### To reproduce
+
+Play locally, sever the network long enough for `Connection to server closed` (≈60–90 s
+after the cable, so stay disconnected 3–4 minutes to also exercise the recovery), restore,
+and let the track finish untouched. A regression would show as a
+`Position anchor: <larger> -> <smaller>` line at the moment of resume.
 
 ## Related
 
