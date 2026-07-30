@@ -1,5 +1,65 @@
 # Librespot Integration Review
 
+> **This document is a record, not a plan. All of it has been acted on.**
+>
+> Everything below was written before the work; parts of it are now factually out of
+> date (it describes soft reconnect as current and the fork as required — neither is
+> true any more). It is kept because the analysis explains *why* the code looks the way
+> it does. Read the resolution below first, and treat the body as history.
+
+## Resolution (2026-07-30)
+
+| Finding | Outcome | Commit |
+| --- | --- | --- |
+| P0.1 Activation read as session health | Fixed. Verified in testing: handing playback to a phone no longer starts a reconnect | `e066798` (Rust), `56b6be0` (Swift) |
+| P0.2 Swift reinit races Rust reconnect | Fixed, in two halves: Swift serialized behind one `Task`, Rust made generation-safe | `d2e9798`, `9e4deaa` |
+| P0.3 Listener generation check unreachable | Fixed — but only became a *correct* fix after soft reconnect was gone (see note below) | `9e4deaa` |
+| P1.1 Init reports success before readiness | Fixed. Readiness = session connected **and** Spirc ready; timeout is a failure; the Rust bare-session fallback is gone | `bc12363` |
+| P1.2 Command results discarded | Fixed, narrower than written: the guards already existed, the real gaps were `togglePlayPause`, `stop`, `performSeek` and transfer | `b1acc3a` |
+| P1.3 Active-device state has two sources | Fixed. Derived from the cluster; the `IS_ACTIVE_DEVICE` atomic is gone | `feae610` |
+| P1.4 Stale Web API overwrites newer state | Fixed with one revision counter, not two | `2f7f351` |
+| P2.1 Snapshot ordering field | **Deliberately not done.** `build_connection_state_info()` reads live state at publish time, so a delayed callback publishes current truth rather than stale data. With callbacks serialized (P2.3) there was nothing left for it to solve | — |
+| P2.2 FFI parsing/callback surface | Fixed. One `Decodable` path, dead `StateUpdateCallback` removed | `0a91bdb` |
+| P2.3 Serialized callback lane | Fixed. Originally proposed to skip; a real "Publishing changes from background threads" warning made it necessary | `a162b12` |
+| Soft reconnect → full rebuild | Done. 194 lines deleted, 11 added | `2e094c8` |
+| Tests | Done. 15 unit tests, the crate's first | `6e2b2ef`, `9e4deaa` |
+| Fork question | **Resolved: the fork is retired.** Spotifly builds against official librespot | `2e2f536` |
+
+### Where this review was wrong
+
+- **P0.1 attribution.** The session events were described as patched librespot. They are
+  upstream and unpatched — corrected inline below.
+- **P1.2 scope.** Overstated. Most command paths already guarded on connectivity.
+- **P1.3 root cause.** The parallel cluster subscription is not a delivery race: librespot's
+  dealer fans each message out to every subscriber. The problem was the second
+  *interpretation*, not the second subscription. The proposed end state (derive activity
+  from `ConnectState`) is also not reachable — `SpircTask` is private and the public `Spirc`
+  handle exposes no state accessor.
+- **P0.3 sequencing.** This review, and the follow-up discussion, argued the generation
+  check was a one-line fix to land *first*. That was wrong: `soft_reconnect_async` updated
+  the generation in place precisely because one listener outlived several sessions, so
+  comparing against the captured local would have disabled reconnect after every soft
+  reconnect. It only became correct once `2e094c8` removed soft reconnect.
+- **"The rebuild path is not new code."** True — it was already the fallback — but its
+  rehydration never worked. It armed a five-second window waiting for a `Paused` event that
+  `transfer(None)` was supposed to cause, and nothing in that path ever called
+  `transfer(None)`. Promoting it to the only strategy is what exposed that.
+
+### What only testing found
+
+None of these appear anywhere below. They were found by unplugging ethernet.
+
+| Issue | Status |
+| --- | --- |
+| Reconnect loop invalidated itself via its own rebuild, giving up after one attempt | Fixed `2f1644c` |
+| Backoff gave up after ~3 minutes, leaving nothing to notice the network returning | Fixed `2f1644c` |
+| Playback never resumed after reconnect — nothing loaded a track | Fixed `1562456` |
+| A dead session went unnoticed while Spotifly was not the active device | Fixed `cf3f5d8` |
+| librespot deletes a track from the queue permanently on a *transient* load failure | Upstream, ticketed: [`plans/librespot/upstream-transient-load-failure.md`](../plans/librespot/upstream-transient-load-failure.md) |
+| Audio throttle anchor not reset on rebuild, so playback races ~40× after a resume | Ticketed: [`plans/audio-renderer-throttle-not-reset-on-rebuild.md`](../plans/audio-renderer-throttle-not-reset-on-rebuild.md) |
+
+---
+
 Review date: 2026-07-30
 
 Scope: static review of the current Swift app, C FFI, Rust wrapper, and the
