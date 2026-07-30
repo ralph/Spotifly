@@ -81,7 +81,6 @@ static SLEEPING: AtomicBool = AtomicBool::new(false);
 
 // Auto-resume after reconnection: if non-zero, resume playback when Paused event arrives before this timestamp
 // This handles the case where we were playing before a network disconnect, reconnected, but track loaded paused
-static RESUME_AFTER_RECONNECT_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
 
 /// Everything the connection snapshot publishes, behind a single lock.
 ///
@@ -957,12 +956,28 @@ fn spawn_reconnection_loop() {
                     debug!("[WAKE +{}ms] Reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt_number);
                     RECONNECTING.store(false, Ordering::SeqCst);
 
-                    // Auto-resume: the track will load paused via transfer(None).
-                    // When we receive the Paused event, we'll auto-resume if within this window.
-                    if was_playing {
-                        let resume_until = current_timestamp_ms() + 5000; // 5 second window
-                        RESUME_AFTER_RECONNECT_UNTIL_MS.store(resume_until, Ordering::SeqCst);
-                        debug!("[WAKE +{}ms] Will auto-resume after track loads (was playing before disconnect)", elapsed_since_wake_ms());
+                    // Rehydrate. The rebuilt Player has no track loaded, and nothing else
+                    // will load one: Spirc comes up ready and the device is active again,
+                    // but that only makes it *available* to play, not playing. Without an
+                    // explicit load the session returns healthy and silent while Swift
+                    // still shows the pre-outage position, because IS_PLAYING and the
+                    // position anchor survive the rebuild.
+                    //
+                    // This used to arm a five-second window and wait for a Paused event,
+                    // on the assumption that the track would load itself via transfer(None)
+                    // — but nothing in this path ever called transfer(None), so the event
+                    // never came. It went unnoticed because the rebuild was only ever the
+                    // fallback for a failed soft reconnect, which kept the Player playing.
+                    if was_playing && was_active {
+                        let spirc = SPIRC.lock().unwrap().as_ref().cloned();
+                        if let Some(spirc) = spirc {
+                            let result = resume_via_load(&spirc);
+                            debug!(
+                                "[WAKE +{}ms] Rehydrate after reconnect: load result={}",
+                                elapsed_since_wake_ms(),
+                                result
+                            );
+                        }
                     }
 
                     return;
@@ -1248,9 +1263,6 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                             IS_PLAYING.store(true, Ordering::SeqCst);
                             set_active_device(true);
                             PLAYING_EVENT_SEQ.fetch_add(1, Ordering::SeqCst);
-                            // Clear auto-resume flag - we're already playing
-                            RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
-                            // Clear pending play - track started successfully
                             update_position(position_ms);
                             // Send playback state update to Swift
                             send_local_playback_state(true, position_ms);
@@ -1262,27 +1274,6 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                             update_position(position_ms);
                             // Send playback state update to Swift
                             send_local_playback_state(false, position_ms);
-
-                            // Auto-resume after reconnection if we were playing before disconnect
-                            let resume_until = RESUME_AFTER_RECONNECT_UNTIL_MS.load(Ordering::SeqCst);
-                            if resume_until > 0 && current_timestamp_ms() < resume_until {
-                                // Clear the flag first to prevent multiple resume attempts
-                                RESUME_AFTER_RECONNECT_UNTIL_MS.store(0, Ordering::SeqCst);
-                                debug!("[WAKE +{}ms] Auto-resuming playback after reconnection", elapsed_since_wake_ms());
-
-                                let spirc_guard = SPIRC.lock().unwrap();
-                                if let Some(spirc) = spirc_guard.as_ref() {
-                                    match spirc.play() {
-                                        Ok(_) => {
-                                            IS_PLAYING.store(true, Ordering::SeqCst);
-                                            debug!("[WAKE +{}ms] Auto-resume succeeded", elapsed_since_wake_ms());
-                                        }
-                                        Err(e) => {
-                                            debug!("[WAKE +{}ms] Auto-resume failed: {:?}", elapsed_since_wake_ms(), e);
-                                        }
-                                    }
-                                }
-                            }
                         }
                         Some(PlayerEvent::PositionChanged { position_ms, .. }) => {
                             // Periodic position update (every 200ms)
