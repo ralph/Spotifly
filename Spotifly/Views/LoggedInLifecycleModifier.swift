@@ -21,6 +21,9 @@ struct LoggedInLifecycleModifier: ViewModifier {
     @Binding var blockingState: LoggedInView.BlockingState?
 
     @State private var reconnectWatchdogTask: Task<Void, Never>?
+    /// Last observed connection readiness; nil until the first snapshot arrives, so the
+    /// initial rise to ready doesn't get treated as a reconnect.
+    @State private var wasConnectionReady: Bool?
 
     func body(content: Content) -> some View {
         content
@@ -64,27 +67,43 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 await playbackViewModel.initializeIfNeeded(accessToken: token)
                 await queueService.fetchInitialPlaybackState(accessToken: token)
             }
-            .onReceive(SpotifyPlayer.sessionConnected) {
-                reconnectWatchdogTask?.cancel()
-                reconnectWatchdogTask = nil
+            // Connection handling is driven by the connection snapshot, not by the Connect
+            // activation callbacks. Activation and connection are different facts: another
+            // device taking over emits a deactivation, and re-activating emits an
+            // activation, neither of which says anything about whether the session is
+            // healthy. Keying off readiness means a device handoff no longer arms the
+            // watchdog or triggers a Web API refetch.
+            .onReceive(SpotifyPlayer.connectionState) { state in
+                let isReady = state?.sessionConnected == true && state?.spircReady == true
+                defer { wasConnectionReady = isReady }
 
-                Task {
-                    let token = await session.validAccessToken()
-                    await deviceService.waitForTransferSettling()
-                    await queueService.fetchInitialPlaybackState(accessToken: token)
-                }
-            }
-            .onReceive(SpotifyPlayer.sessionDisconnected) {
-                reconnectWatchdogTask?.cancel()
-                reconnectWatchdogTask = Task {
-                    try? await Task.sleep(for: .seconds(reconnectWatchdogTimeoutSeconds))
-                    guard !Task.isCancelled, !SpotifyPlayer.isSessionConnected else { return }
-                    debugLog(
-                        "LoggedInLifecycle",
-                        "Watchdog: still disconnected after \(Int(reconnectWatchdogTimeoutSeconds))s, forcing reinit",
-                    )
-                    let token = await session.validAccessToken()
-                    await playbackViewModel.forceReinitialize(accessToken: token)
+                // Only react to transitions, and only once readiness has been observed at
+                // least once — the initial rise to ready is handled by .task above, so
+                // bootstrapping again here would just double every startup fetch.
+                guard let wasReady = wasConnectionReady, wasReady != isReady else { return }
+
+                if isReady {
+                    reconnectWatchdogTask?.cancel()
+                    reconnectWatchdogTask = nil
+
+                    // Reconnected: re-sync with whatever is playing now.
+                    Task {
+                        let token = await session.validAccessToken()
+                        await deviceService.waitForTransferSettling()
+                        await queueService.fetchInitialPlaybackState(accessToken: token)
+                    }
+                } else {
+                    reconnectWatchdogTask?.cancel()
+                    reconnectWatchdogTask = Task {
+                        try? await Task.sleep(for: .seconds(reconnectWatchdogTimeoutSeconds))
+                        guard !Task.isCancelled, !SpotifyPlayer.isSessionConnected else { return }
+                        debugLog(
+                            "LoggedInLifecycle",
+                            "Watchdog: still disconnected after \(Int(reconnectWatchdogTimeoutSeconds))s, forcing reinit",
+                        )
+                        let token = await session.validAccessToken()
+                        await playbackViewModel.forceReinitialize(accessToken: token)
+                    }
                 }
             }
             .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in

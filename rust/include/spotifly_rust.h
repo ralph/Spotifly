@@ -143,20 +143,24 @@ typedef void (*QueueChangedCallback)(const char* queue_changed_json);
 /// Called when a remote device adds a track to the queue.
 void spotifly_register_queue_changed_callback(QueueChangedCallback callback);
 
-/// Callback function type for session disconnection notifications.
-typedef void (*SessionDisconnectedCallback)(void);
+/// Callback function type for Connect device deactivation notifications.
+typedef void (*BecameInactiveCallback)(void);
 
-/// Registers a callback to receive session disconnection notifications.
-/// Called when the Spotify session is disconnected (e.g., idle timeout).
-/// When this fires, reinitialize the player with a fresh token.
-void spotifly_register_session_disconnected_callback(SessionDisconnectedCallback callback);
+/// Registers a callback fired when this device stops being the active Connect device.
+///
+/// This reports *activity*, not health: it fires on an explicit disconnect, on shutdown,
+/// and whenever another device takes over playback. Do not treat it as a connection
+/// failure — read the connection snapshot (spotifly_get_connection_state) for that.
+void spotifly_register_became_inactive_callback(BecameInactiveCallback callback);
 
-/// Callback function type for session connection notifications.
-typedef void (*SessionConnectedCallback)(void);
+/// Callback function type for Connect device activation notifications.
+typedef void (*BecameActiveCallback)(void);
 
-/// Registers a callback to receive session connection notifications.
-/// Called when the Spotify session is connected and ready for playback commands.
-void spotifly_register_session_connected_callback(SessionConnectedCallback callback);
+/// Registers a callback fired when this device becomes the active Connect device.
+///
+/// Also activity, not readiness: the session was already connected beforehand. Use the
+/// connection snapshot to decide when playback commands can be sent.
+void spotifly_register_became_active_callback(BecameActiveCallback callback);
 
 /// Callback function type for session client changed notifications.
 /// Receives a JSON string containing client_id, client_name, client_brand_name, client_model_name.

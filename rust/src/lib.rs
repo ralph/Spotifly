@@ -51,9 +51,9 @@ static LOADING_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
 static QUEUE_CHANGED_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
-static SESSION_DISCONNECTED_CALLBACK: Lazy<Mutex<Option<extern "C" fn()>>> =
+static BECAME_INACTIVE_CALLBACK: Lazy<Mutex<Option<extern "C" fn()>>> =
     Lazy::new(|| Mutex::new(None));
-static SESSION_CONNECTED_CALLBACK: Lazy<Mutex<Option<extern "C" fn()>>> =
+static BECAME_ACTIVE_CALLBACK: Lazy<Mutex<Option<extern "C" fn()>>> =
     Lazy::new(|| Mutex::new(None));
 static SESSION_CLIENT_CHANGED_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
@@ -417,21 +417,25 @@ pub extern "C" fn spotifly_register_queue_changed_callback(callback: extern "C" 
     *cb = Some(callback);
 }
 
-/// Registers a callback to receive session disconnection notifications.
-/// Called when the Spotify session is disconnected (e.g., idle timeout).
-/// When this fires, you should reinitialize the player with a fresh token.
+/// Registers a callback fired when this device stops being the active Connect device.
+///
+/// This is an activity notification, not a health one: it fires on an explicit
+/// disconnect, on shutdown, and whenever another device takes over playback. Do not
+/// treat it as a connection failure - read the connection snapshot for that.
 #[no_mangle]
-pub extern "C" fn spotifly_register_session_disconnected_callback(callback: extern "C" fn()) {
-    let mut cb = SESSION_DISCONNECTED_CALLBACK.lock().unwrap();
+pub extern "C" fn spotifly_register_became_inactive_callback(callback: extern "C" fn()) {
+    let mut cb = BECAME_INACTIVE_CALLBACK.lock().unwrap();
     *cb = Some(callback);
 }
 
-/// Registers a callback to receive session connection notifications.
-/// Called when the Spotify session is fully connected and ready for commands.
-/// Wait for this callback before attempting playback operations after init/reinit.
+/// Registers a callback fired when this device becomes the active Connect device.
+///
+/// Also an activity notification: the session was already connected beforehand, so this
+/// says nothing about readiness. Use the connection snapshot to decide when commands
+/// can be sent.
 #[no_mangle]
-pub extern "C" fn spotifly_register_session_connected_callback(callback: extern "C" fn()) {
-    let mut cb = SESSION_CONNECTED_CALLBACK.lock().unwrap();
+pub extern "C" fn spotifly_register_became_active_callback(callback: extern "C" fn()) {
+    let mut cb = BECAME_ACTIVE_CALLBACK.lock().unwrap();
     *cb = Some(callback);
 }
 
@@ -921,16 +925,12 @@ fn spawn_reconnection_loop() {
         with_connection(|c| {
             c.last_error = Some("Reconnection failed after 10 attempts".to_string())
         });
+        // Exhaustion is reported through the connection snapshot above (not connected,
+        // last_error set). It used to also fire the disconnected callback, which made that
+        // callback mean two unrelated things - "another device took over" when emitted by
+        // Spirc, and "recovery gave up" when emitted here - and it arrived only after all
+        // ten attempts, so Swift's watchdog saw activation immediately but failure late.
         notify_connection_state_change();
-
-        // Notify Swift that reconnection failed - it may want to show UI
-        let cb_guard = SESSION_DISCONNECTED_CALLBACK.lock().unwrap();
-        if let Some(callback) = *cb_guard {
-            let cb = callback;
-            drop(cb_guard);
-            debug!("Notifying Swift of reconnection failure");
-            cb();
-        }
     });
 }
 
@@ -1509,6 +1509,13 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                             } else {
                                 notify_connection_state_change();
                             }
+
+                            let cb_guard = BECAME_INACTIVE_CALLBACK.lock().unwrap();
+                            if let Some(callback) = *cb_guard {
+                                let cb = callback;
+                                drop(cb_guard);
+                                cb();
+                            }
                         }
                         // Emitted when the local Connect device becomes ACTIVE. Carries the
                         // session's connection id, but says nothing about network health -
@@ -1520,7 +1527,7 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
 
                             // Notify connection state change
                             notify_connection_state_change();
-                            let cb_guard = SESSION_CONNECTED_CALLBACK.lock().unwrap();
+                            let cb_guard = BECAME_ACTIVE_CALLBACK.lock().unwrap();
                             if let Some(callback) = *cb_guard {
                                 let cb = callback;
                                 drop(cb_guard);

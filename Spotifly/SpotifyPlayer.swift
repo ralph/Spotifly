@@ -410,35 +410,36 @@ private nonisolated func handleSetQueueCallback(_ jsonPtr: UnsafePointer<CChar>?
     }
 }
 
-/// Registers the session disconnected callback with Rust (fires when dealer connection closes)
-private nonisolated func registerSessionDisconnectedCallback() {
-    spotifly_register_session_disconnected_callback {
-        handleSessionDisconnectedCallback()
+/// Registers the became-inactive callback with Rust
+private nonisolated func registerBecameInactiveCallback() {
+    spotifly_register_became_inactive_callback {
+        handleBecameInactiveCallback()
     }
 }
 
-/// C callback for session disconnection notifications from Rust
-/// Fires when the Spotify session disconnects (e.g., idle timeout)
-private nonisolated func handleSessionDisconnectedCallback() {
-    debugLog("SpotifyPlayer", "Session disconnected event received - triggering reinit")
+/// C callback for Connect deactivation from Rust.
+/// Reports that another device took over playback — not that the connection failed.
+private nonisolated func handleBecameInactiveCallback() {
+    debugLog("SpotifyPlayer", "Became inactive - another device is now active")
     Task { @MainActor in
-        sessionDisconnectedSubject.send()
+        becameInactiveSubject.send()
     }
 }
 
-/// Registers the session connected callback with Rust (fires when session is ready)
-private nonisolated func registerSessionConnectedCallback() {
-    spotifly_register_session_connected_callback {
-        handleSessionConnectedCallback()
+/// Registers the became-active callback with Rust
+private nonisolated func registerBecameActiveCallback() {
+    spotifly_register_became_active_callback {
+        handleBecameActiveCallback()
     }
 }
 
-/// C callback for session connection notifications from Rust
-/// Fires when the Spotify session is connected and ready for playback commands
-private nonisolated func handleSessionConnectedCallback() {
-    debugLog("SpotifyPlayer", "Session connected event received - ready for commands")
+/// C callback for Connect activation from Rust.
+/// Reports that this device is now the active one — readiness comes from the
+/// connection snapshot, since the session was already connected before activation.
+private nonisolated func handleBecameActiveCallback() {
+    debugLog("SpotifyPlayer", "Became active - this device is now the active one")
     Task { @MainActor in
-        sessionConnectedSubject.send()
+        becameActiveSubject.send()
     }
 }
 
@@ -683,11 +684,11 @@ enum SpotifyPlayerError: Error, LocalizedError {
     }
 }
 
-/// Global subject for session disconnection (needs reinit)
-private nonisolated(unsafe) let sessionDisconnectedSubject = PassthroughSubject<Void, Never>()
+/// Global subject for Connect deactivation (another device took over)
+private nonisolated(unsafe) let becameInactiveSubject = PassthroughSubject<Void, Never>()
 
-/// Global subject for session connection (ready for commands)
-private nonisolated(unsafe) let sessionConnectedSubject = PassthroughSubject<Void, Never>()
+/// Global subject for Connect activation (this device took over)
+private nonisolated(unsafe) let becameActiveSubject = PassthroughSubject<Void, Never>()
 
 /// Global subject for active device ID changes (from cluster updates)
 private nonisolated(unsafe) let activeDeviceSubject = PassthroughSubject<String, Never>()
@@ -707,8 +708,8 @@ enum SpotifyPlayer {
         registerLoadingCallback()
         registerQueueChangedCallback()
         registerSetQueueCallback()
-        registerSessionDisconnectedCallback()
-        registerSessionConnectedCallback()
+        registerBecameInactiveCallback()
+        registerBecameActiveCallback()
         registerSessionClientChangedCallback()
         registerConnectionStateCallback()
         registerActiveDeviceCallback()
@@ -776,16 +777,19 @@ enum SpotifyPlayer {
         setQueueSubject.eraseToAnyPublisher()
     }
 
-    /// Returns a publisher that emits when the session is disconnected and needs reinitialization.
-    /// Subscribe to this to trigger automatic reconnection with a fresh token.
-    static var sessionDisconnected: AnyPublisher<Void, Never> {
-        sessionDisconnectedSubject.eraseToAnyPublisher()
+    /// Emits when this device stops being the active Connect device.
+    ///
+    /// Activity, not health. Do not drive reconnection from this — use `connectionState`,
+    /// which is the authoritative source for whether commands can be sent.
+    static var becameInactive: AnyPublisher<Void, Never> {
+        becameInactiveSubject.eraseToAnyPublisher()
     }
 
-    /// Returns a publisher that emits when the session is connected and ready for commands.
-    /// Subscribe to this to enable playback controls after initialization or reconnection.
-    static var sessionConnected: AnyPublisher<Void, Never> {
-        sessionConnectedSubject.eraseToAnyPublisher()
+    /// Emits when this device becomes the active Connect device.
+    ///
+    /// Also activity, not readiness: the session was already connected beforehand.
+    static var becameActive: AnyPublisher<Void, Never> {
+        becameActiveSubject.eraseToAnyPublisher()
     }
 
     /// Returns a publisher that emits the active device ID on every cluster update.
