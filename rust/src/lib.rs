@@ -133,6 +133,27 @@ fn should_recover_after_deactivation(session_invalid: bool, teardown_in_progress
     session_invalid && !teardown_in_progress
 }
 
+/// Whether a listener may act on an event, given the generation it was created for.
+///
+/// A superseded listener drains asynchronously after its replacement is installed, so it
+/// can still deliver events belonging to a session that no longer exists.
+fn listener_may_act(listener_generation: u64, current_generation: u64) -> bool {
+    listener_generation == current_generation
+}
+
+/// Whether a reconnect loop may still rebuild, given the generation it set out to recover.
+///
+/// The loop sleeps up to 30 seconds between attempts. A manual restart or a teardown in
+/// that window means the thing it is fixing is gone, and rebuilding would clobber whatever
+/// replaced it.
+fn reconnect_may_proceed(
+    recovering_generation: u64,
+    current_generation: u64,
+    teardown_in_progress: bool,
+) -> bool {
+    recovering_generation == current_generation && !teardown_in_progress
+}
+
 /// Whether a cluster listener that ended should start network recovery.
 ///
 /// Only the listener belonging to the current session generation may act. An older
@@ -216,14 +237,17 @@ fn elapsed_since_wake_ms() -> u64 {
     now.saturating_sub(wake_ts)
 }
 
-// Generation counter for reconnection - prevents old cluster listeners from triggering reconnects
-// Incremented each time a new session is created (in spawn_reconnection_loop or init_player)
+// Generation counter for reconnection. Bumped once per rebuild, in init_player_async, and
+// captured by every listener that rebuild creates. A listener whose captured generation no
+// longer matches belongs to a session that has already been replaced, and must not act.
+//
+// There used to be a second global, EVENT_LISTENER_GENERATION, holding "the generation the
+// current event listener belongs to". Soft reconnect kept one listener alive across
+// sessions, so the listener could not simply capture its generation — and the global was
+// written to the new value on every bump, which made the two always equal and the staleness
+// check unreachable. Now that a rebuild replaces the listener along with its session, the
+// listener captures the value directly and the check does what it claims.
 static SESSION_GENERATION: AtomicU64 = AtomicU64::new(0);
-
-// The generation that the current event listener belongs to. Updated on soft reconnect
-// so the existing event listener accepts SessionDisconnected events from the new session.
-// On hard reconnect, a new event listener is created that captures SESSION_GENERATION directly.
-static EVENT_LISTENER_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 // Playback settings (applied on player init)
 // Bitrate: 0 = 96kbps, 1 = 160kbps (default), 2 = 320kbps
@@ -826,11 +850,33 @@ fn spawn_reconnection_loop() {
         let was_playing = IS_PLAYING.load(Ordering::SeqCst);
         let was_active = is_active_device();
 
+        // The generation this loop is recovering. Between two attempts it can sleep for up
+        // to 30 seconds, and during that time something else — a manual restart from the
+        // wake path, or spotifly_cleanup on logout — may have already rebuilt or torn down
+        // the session. Waking up and rebuilding anyway would replace a healthy new session
+        // with one built from a stale token. RECONNECTING alone never caught this: it says
+        // "a loop is running", not "the thing it is fixing still exists".
+        let recovering_generation = SESSION_GENERATION.load(Ordering::SeqCst);
+
         let delays = [0u64, 2, 5, 10, 30, 30, 30, 30, 30, 30];
 
         for (attempt, delay) in delays.iter().enumerate() {
             if *delay > 0 {
                 tokio::time::sleep(Duration::from_secs(*delay)).await;
+            }
+
+            if !reconnect_may_proceed(
+                recovering_generation,
+                SESSION_GENERATION.load(Ordering::SeqCst),
+                teardown_in_progress(),
+            ) {
+                debug!(
+                    "[WAKE +{}ms] Abandoning reconnect for generation {}: superseded or torn down",
+                    elapsed_since_wake_ms(),
+                    recovering_generation
+                );
+                RECONNECTING.store(false, Ordering::SeqCst);
+                return;
             }
 
             debug!("[WAKE +{}ms] Reconnect attempt {}", elapsed_since_wake_ms(), attempt + 1);
@@ -860,6 +906,18 @@ fn spawn_reconnection_loop() {
                     continue;
                 }
             };
+
+            // Re-check after the token round-trip: requesting one from Swift can take up
+            // to ten seconds, which is plenty of time for a restart to land.
+            if !reconnect_may_proceed(
+                recovering_generation,
+                SESSION_GENERATION.load(Ordering::SeqCst),
+                teardown_in_progress(),
+            ) {
+                debug!("[WAKE +{}ms] Abandoning reconnect: state changed while fetching token", elapsed_since_wake_ms());
+                RECONNECTING.store(false, Ordering::SeqCst);
+                return;
+            }
 
             // One recovery strategy: tear everything down and rebuild Session, Player,
             // Mixer and Spirc as a single generation, then restore the captured intent.
@@ -1158,8 +1216,9 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
     // Create channel for stopping event listener
     let (tx, mut rx) = mpsc::unbounded_channel::<()>();
 
-    // On soft reconnect, EVENT_LISTENER_GENERATION is updated without replacing the listener
-    EVENT_LISTENER_GENERATION.store(current_generation, Ordering::SeqCst);
+    // This listener belongs to the generation being built here, for its whole life: a
+    // rebuild replaces the listener along with the session, so the value never has to
+    // change underneath it.
     let player_clone = Arc::clone(&player);
     let event_listener_generation = current_generation;
     RUNTIME.spawn(async move {
@@ -1369,17 +1428,17 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                         // speaker marked the connection dead and started a reconnect loop
                         // against a perfectly healthy session.
                         Some(PlayerEvent::SessionDisconnected { connection_id, user_name }) => {
-                            // Read generation dynamically so soft reconnects can update it
-                            // without replacing the event listener
-                            let my_gen = EVENT_LISTENER_GENERATION.load(Ordering::SeqCst);
                             debug!("[WAKE +{}ms] became inactive (SessionDisconnected): connection_id={}, user={}, listener_generation={}",
-                                   elapsed_since_wake_ms(), connection_id, user_name, my_gen);
+                                   elapsed_since_wake_ms(), connection_id, user_name, event_listener_generation);
 
-                            // Check if this event is from a stale session
+                            // Drop events from a listener whose session has been replaced.
+                            // Reachable now that each listener captures its own generation:
+                            // a superseded listener drains asynchronously after its
+                            // replacement is installed, so it can still deliver here.
                             let current_gen = SESSION_GENERATION.load(Ordering::SeqCst);
-                            if my_gen != current_gen {
+                            if !listener_may_act(event_listener_generation, current_gen) {
                                 debug!("[WAKE +{}ms] became-inactive from old generation {} (current={}), ignoring",
-                                       elapsed_since_wake_ms(), my_gen, current_gen);
+                                       elapsed_since_wake_ms(), event_listener_generation, current_gen);
                                 continue;
                             }
 
@@ -2272,6 +2331,12 @@ pub extern "C" fn spotifly_disconnect() -> i32 {
 pub extern "C" fn spotifly_cleanup() {
     debug!("spotifly_cleanup called - clearing all state");
 
+    // Invalidate the current generation first, so anything already in flight — most
+    // importantly a reconnect loop sleeping between attempts — sees that what it was
+    // recovering no longer exists and abandons instead of rebuilding over the teardown.
+    let invalidated = SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    debug!("spotifly_cleanup invalidated generation, now {}", invalidated);
+
     // Signal event listener to stop
     {
         let mut tx_guard = PLAYER_EVENT_TX.lock().unwrap();
@@ -2890,6 +2955,39 @@ mod tests {
         // Sleep and shutdown disconnect on purpose; recovering would fight them.
         assert!(!should_recover_after_deactivation(true, true));
         assert!(!should_recover_after_deactivation(false, true));
+    }
+
+    // A listener or loop belonging to a replaced session must not act. Before the rewrite
+    // this could not be expressed: one event listener survived across sessions, so its
+    // generation was rewritten in place and the staleness check compared two values that
+    // were always equal.
+
+    #[test]
+    fn a_superseded_listener_is_rejected() {
+        // The replacement is installed while the old listener is still draining.
+        assert!(!listener_may_act(3, 4));
+    }
+
+    #[test]
+    fn the_current_listener_acts() {
+        assert!(listener_may_act(4, 4));
+    }
+
+    #[test]
+    fn a_reconnect_loop_abandons_after_its_generation_moves() {
+        // A restart landed while the loop slept between attempts; rebuilding now would
+        // replace a healthy new session with one built from a stale token.
+        assert!(!reconnect_may_proceed(2, 3, false));
+    }
+
+    #[test]
+    fn a_reconnect_loop_abandons_during_teardown() {
+        assert!(!reconnect_may_proceed(2, 2, true));
+    }
+
+    #[test]
+    fn a_reconnect_loop_proceeds_for_its_own_generation() {
+        assert!(reconnect_may_proceed(2, 2, false));
     }
 
     #[test]
