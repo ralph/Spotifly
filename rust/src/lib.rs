@@ -1124,7 +1124,10 @@ fn do_reconnect_cleanup() {
     }
     with_connection(|c| c.spirc_ready = false);
 
-    // Clear Player - must be recreated with new Session
+    // Clear Player - must be recreated with new Session. Tell Swift first: dropping the
+    // Player does not run Sink::stop, so the renderer would otherwise keep believing it is
+    // rendering and skip resetting its real-time throttle on the next start.
+    proxy_sink::ProxySink::notify_player_gone();
     {
         let mut player_guard = PLAYER.lock().unwrap();
         *player_guard = None;
@@ -2417,7 +2420,8 @@ pub extern "C" fn spotifly_cleanup() {
         let mut spirc_guard = SPIRC.lock().unwrap();
         *spirc_guard = None;
     }
-    // Clear player
+    // Clear player (see do_reconnect_cleanup for why Swift is told first)
+    proxy_sink::ProxySink::notify_player_gone();
     {
         let mut player_guard = PLAYER.lock().unwrap();
         *player_guard = None;

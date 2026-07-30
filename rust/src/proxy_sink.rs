@@ -66,6 +66,17 @@ impl ProxySink {
         debug!("ProxySink: Sending clear command");
         send_control(AUDIO_CONTROL_CLEAR);
     }
+
+    /// Tell Swift that playback has ended because the Player is going away.
+    ///
+    /// `Sink::stop` only runs when librespot stops the sink itself. Dropping the Player
+    /// during a rebuild does not do that, so without this the renderer keeps believing it
+    /// is rendering for a Player that no longer exists — and the next `Sink::start` finds
+    /// it already rendering and skips resetting its real-time throttle.
+    pub fn notify_player_gone() {
+        debug!("ProxySink: Player torn down, sending stop");
+        send_control(AUDIO_CONTROL_STOP);
+    }
 }
 
 impl Sink for ProxySink {

@@ -332,7 +332,23 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
         renderQueue.sync { [self] in
             bufferLock.lock()
             guard !isRendering else {
+                // Already rendering, so the full pipeline reset below is skipped — a
+                // deliberate no-op, since flushing mid-playback would glitch the audio.
+                //
+                // But the throttle anchor must still be re-armed. It measures written
+                // audio against wall clock *since the anchor*, so any period where the
+                // writer was idle — an outage, a rebuild — banks credit against it. On the
+                // next write the throttle sees a large deficit, never sleeps, and lets the
+                // decoder run flat out until it catches up: playback races, EndOfTrack
+                // fires early, and Spirc advances the track while the renderer still has
+                // tens of seconds buffered.
+                //
+                // Re-anchoring is safe here: it only rebases the pacing budget and does
+                // not touch the ring buffer or its contents.
+                writeStartTime = ProcessInfo.processInfo.systemUptime
+                totalSamplesWritten = 0
                 bufferLock.unlock()
+                debugLog("AudioRenderer", "Start while already rendering — re-anchored throttle")
                 return
             }
             isRendering = true
