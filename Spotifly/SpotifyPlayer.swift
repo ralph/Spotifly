@@ -126,16 +126,66 @@ struct SessionClientChangedNotification {
     nonisolated let clientModelName: String
 }
 
-/// Connection state from librespot (nonisolated for C callback compatibility)
-struct LibrespotConnectionState: Equatable, Encodable {
-    nonisolated let sessionConnected: Bool
-    nonisolated let sessionConnectionId: String?
-    nonisolated let spircReady: Bool
-    nonisolated let deviceId: String?
-    nonisolated let deviceName: String
-    nonisolated let reconnectAttempt: UInt32
-    nonisolated let lastError: String?
-    nonisolated let connectedSinceMs: UInt64?
+/// Connection state from librespot.
+///
+/// The whole type is `nonisolated` rather than each stored property: the project builds
+/// with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so a plain declaration would get a
+/// main-actor-isolated `Decodable` conformance that the C callbacks (which run on Rust
+/// threads) cannot use. Annotating the properties alone is not enough — the *conformance*
+/// has to be nonisolated too.
+nonisolated struct LibrespotConnectionState: Equatable, Codable {
+    let sessionConnected: Bool
+    let sessionConnectionId: String?
+    let spircReady: Bool
+    let deviceId: String?
+    let deviceName: String
+    let reconnectAttempt: UInt32
+    let lastError: String?
+    let connectedSinceMs: UInt64?
+
+    enum CodingKeys: String, CodingKey {
+        case sessionConnected = "session_connected"
+        case sessionConnectionId = "session_connection_id"
+        case spircReady = "spirc_ready"
+        case deviceId = "device_id"
+        case deviceName = "device_name"
+        case reconnectAttempt = "reconnect_attempt"
+        case lastError = "last_error"
+        case connectedSinceMs = "connected_since_ms"
+    }
+}
+
+/// Decodes a connection-state payload emitted by Rust.
+///
+/// Shared by the push callback and the synchronous `getConnectionState()` pull so the
+/// two cannot drift apart. Required fields are non-optional on purpose: if the Rust
+/// payload ever renames or drops one, decoding fails loudly here instead of silently
+/// producing `false`/`0`/`""`, which would be indistinguishable from a genuinely
+/// disconnected session. Only the fields Rust models as `Option` are optional.
+private nonisolated func decodeConnectionState(
+    _ jsonPtr: UnsafePointer<CChar>?,
+    context: String,
+) -> LibrespotConnectionState? {
+    guard let jsonPtr else {
+        debugLog("SpotifyPlayer", "\(context): jsonPtr is nil")
+        return nil
+    }
+
+    let jsonString = String(cString: jsonPtr)
+    guard let data = jsonString.data(using: .utf8) else {
+        debugLog("SpotifyPlayer", "\(context): payload is not valid UTF-8")
+        return nil
+    }
+
+    do {
+        return try JSONDecoder().decode(LibrespotConnectionState.self, from: data)
+    } catch {
+        debugLog(
+            "SpotifyPlayer",
+            "\(context): failed to decode connection state: \(error) — payload: \(jsonString)",
+        )
+        return nil
+    }
 }
 
 /// Global subject for queue changed notifications (nonisolated for C callback access)
@@ -184,13 +234,6 @@ private nonisolated func registerQueueCallback() {
 private nonisolated func registerPlaybackStateCallback() {
     spotifly_register_playback_state_callback { jsonPtr in
         handlePlaybackStateCallback(jsonPtr)
-    }
-}
-
-/// Registers the state update callback with Rust (fires on track changes)
-private nonisolated func registerStateUpdateCallback() {
-    spotifly_register_state_update_callback {
-        handleStateUpdateCallback()
     }
 }
 
@@ -260,38 +303,12 @@ private nonisolated func registerConnectionStateCallback() {
 
 /// C callback for connection state updates from Rust
 private nonisolated func handleConnectionStateCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let jsonPtr else {
-        debugLog("SpotifyPlayer", "handleConnectionStateCallback: jsonPtr is nil")
+    guard let state = decodeConnectionState(jsonPtr, context: "handleConnectionStateCallback")
+    else {
         return
     }
 
-    let jsonString = String(cString: jsonPtr)
-    debugLog("SpotifyPlayer", "Connection state callback: \(jsonString)")
-
-    guard let data = jsonString.data(using: .utf8) else {
-        return
-    }
-
-    do {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-
-        let state = LibrespotConnectionState(
-            sessionConnected: json["session_connected"] as? Bool ?? false,
-            sessionConnectionId: json["session_connection_id"] as? String,
-            spircReady: json["spirc_ready"] as? Bool ?? false,
-            deviceId: json["device_id"] as? String,
-            deviceName: json["device_name"] as? String ?? "Spotifly",
-            reconnectAttempt: (json["reconnect_attempt"] as? NSNumber)?.uint32Value ?? 0,
-            lastError: json["last_error"] as? String,
-            connectedSinceMs: (json["connected_since_ms"] as? NSNumber)?.uint64Value,
-        )
-
-        connectionStateSubject.send(state)
-    } catch {
-        debugLog("SpotifyPlayer", "Failed to parse connection state JSON: \(error)")
-    }
+    connectionStateSubject.send(state)
 }
 
 /// C callback for queue changed notifications from Rust
@@ -518,11 +535,6 @@ private nonisolated func handleSessionClientChangedCallback(_ jsonPtr: UnsafePoi
     }
 }
 
-/// C callback for state update notifications from Rust
-private nonisolated func handleStateUpdateCallback() {
-    debugLog("SpotifyPlayer", "State update callback triggered")
-}
-
 /// C callback for playback state updates from Rust
 /// Uses manual JSON parsing to avoid Decodable actor isolation issues
 private nonisolated func handlePlaybackStateCallback(_ jsonPtr: UnsafePointer<CChar>?) {
@@ -691,7 +703,6 @@ enum SpotifyPlayer {
         registerAudioControlCallback()
         registerQueueCallback()
         registerPlaybackStateCallback()
-        registerStateUpdateCallback()
         registerVolumeCallback()
         registerLoadingCallback()
         registerQueueChangedCallback()
@@ -813,26 +824,10 @@ enum SpotifyPlayer {
     /// Use this for initial UI display or one-time queries.
     static func getConnectionState() -> LibrespotConnectionState? {
         let ptr = spotifly_get_connection_state()
-        guard ptr != nil else { return nil }
+        guard let ptr else { return nil }
         defer { spotifly_free_string(ptr) }
 
-        let jsonString = String(cString: ptr!)
-        guard let data = jsonString.data(using: String.Encoding.utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return nil
-        }
-
-        return LibrespotConnectionState(
-            sessionConnected: json["session_connected"] as? Bool ?? false,
-            sessionConnectionId: json["session_connection_id"] as? String,
-            spircReady: json["spirc_ready"] as? Bool ?? false,
-            deviceId: json["device_id"] as? String,
-            deviceName: json["device_name"] as? String ?? "Spotifly",
-            reconnectAttempt: (json["reconnect_attempt"] as? NSNumber)?.uint32Value ?? 0,
-            lastError: json["last_error"] as? String,
-            connectedSinceMs: (json["connected_since_ms"] as? NSNumber)?.uint64Value,
-        )
+        return decodeConnectionState(ptr, context: "getConnectionState")
     }
 
     /// Syncs playback settings from UserDefaults to the Rust player
@@ -1032,8 +1027,12 @@ enum SpotifyPlayer {
     /// special-cased to true mute / unity, matching librespot.
     private nonisolated static func librespotLogAttenuation(_ volume: Double) -> Double {
         let v = max(0, min(1, volume))
-        if v <= 0 { return 0 }
-        if v >= 1 { return 1 }
+        if v <= 0 {
+            return 0
+        }
+        if v >= 1 {
+            return 1
+        }
         let dbRatio = 1000.0
         return exp(log(dbRatio) * v) / dbRatio
     }

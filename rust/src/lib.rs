@@ -37,9 +37,7 @@ static PLAYER: Lazy<Mutex<Option<Arc<Player>>>> = Lazy::new(|| Mutex::new(None))
 static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
 static MIXER: Lazy<Mutex<Option<Arc<SoftMixer>>>> = Lazy::new(|| Mutex::new(None));
 static SPIRC: Lazy<Mutex<Option<Arc<Spirc>>>> = Lazy::new(|| Mutex::new(None));
-static DEVICE_ID: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
-static SPIRC_READY: AtomicBool = AtomicBool::new(false);
 static IS_ACTIVE_DEVICE: AtomicBool = AtomicBool::new(false);
 static PLAYING_EVENT_SEQ: AtomicU64 = AtomicU64::new(0);
 static PLAYER_EVENT_TX: Lazy<Mutex<Option<mpsc::UnboundedSender<()>>>> =
@@ -48,7 +46,6 @@ static QUEUE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
 static PLAYBACK_STATE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
-static STATE_UPDATE_CALLBACK: Lazy<Mutex<Option<extern "C" fn()>>> = Lazy::new(|| Mutex::new(None));
 static VOLUME_CALLBACK: Lazy<Mutex<Option<extern "C" fn(u16)>>> = Lazy::new(|| Mutex::new(None));
 static LOADING_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
@@ -87,23 +84,42 @@ static SLEEPING: AtomicBool = AtomicBool::new(false);
 // This handles the case where we were playing before a network disconnect, reconnected, but track loaded paused
 static RESUME_AFTER_RECONNECT_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
 
-// Session state tracking - guards playback commands until session is ready
-struct SessionConnectionState {
-    connection_id: Option<String>,
-    is_connected: bool,
+/// Everything the connection snapshot publishes, behind a single lock.
+///
+/// These fields used to live in six independent globals (three mutexes and three
+/// atomics), so a snapshot assembled from them could mix values from different
+/// transitions — ready from one, connection metadata from another. Keeping them
+/// together makes every published snapshot internally consistent by construction.
+///
+/// `connected_since_ms` uses 0 for "never connected"; the wire format maps that to null.
+#[derive(Default, Clone)]
+struct ConnectionState {
+    session_connected: bool,
+    session_connection_id: Option<String>,
+    spirc_ready: bool,
+    device_id: Option<String>,
+    reconnect_attempt: u32,
+    last_error: Option<String>,
+    connected_since_ms: u64,
 }
 
-impl Default for SessionConnectionState {
-    fn default() -> Self {
-        Self {
-            connection_id: None,
-            is_connected: false,
-        }
-    }
+static CONNECTION: Lazy<Mutex<ConnectionState>> =
+    Lazy::new(|| Mutex::new(ConnectionState::default()));
+
+/// Mutates the connection state under its lock and returns whatever `f` returns.
+///
+/// Does not publish — callers decide when to `notify_connection_state_change()`, so a
+/// multi-field transition emits one snapshot rather than one per field. Never call
+/// `notify_connection_state_change()` from inside `f`: it locks `CONNECTION` too.
+fn with_connection<R>(f: impl FnOnce(&mut ConnectionState) -> R) -> R {
+    let mut state = CONNECTION.lock().unwrap();
+    f(&mut state)
 }
 
-static SESSION_CONNECTION_STATE: Lazy<Mutex<SessionConnectionState>> =
-    Lazy::new(|| Mutex::new(SessionConnectionState::default()));
+/// Returns the device ID assigned at session creation, if a session has been built.
+fn current_device_id() -> Option<String> {
+    with_connection(|c| c.device_id.clone())
+}
 
 // Position tracking - updated from player events
 static POSITION_MS: AtomicU32 = AtomicU32::new(0);
@@ -137,10 +153,8 @@ static PENDING_PLAY_SEQ: AtomicU64 = AtomicU64::new(0);
 // We keep the latest non-empty value to recover resume after reconnect.
 static CURRENT_CONTEXT_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
-// Connection state tracking - for transparency dashboard
-static RECONNECT_ATTEMPT: AtomicU32 = AtomicU32::new(0);
-static CONNECTED_SINCE_MS: AtomicU64 = AtomicU64::new(0);
-static LAST_ERROR: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+// Connection state tracking - for transparency dashboard. See ConnectionState above;
+// reconnect attempt, connected-since, and last error all live there now.
 static CONNECTION_STATE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
 
@@ -375,14 +389,6 @@ pub extern "C" fn spotifly_register_playback_state_callback(
     *cb = Some(callback);
 }
 
-/// Registers a callback to receive state update notifications.
-/// This fires on track changes to signal Swift to fetch updated queue state.
-#[no_mangle]
-pub extern "C" fn spotifly_register_state_update_callback(callback: extern "C" fn()) {
-    let mut cb = STATE_UPDATE_CALLBACK.lock().unwrap();
-    *cb = Some(callback);
-}
-
 /// Registers a callback to receive volume change notifications.
 /// Called when the volume is changed remotely (e.g., from another Spotify Connect device).
 /// The callback receives the new volume (0-65535).
@@ -542,39 +548,28 @@ pub extern "C" fn spotifly_get_connection_state() -> *mut c_char {
 
 /// Builds the current connection state info struct
 fn build_connection_state_info() -> ConnectionStateInfo {
-    let session_state = SESSION_CONNECTION_STATE.lock().unwrap();
-    let device_id = DEVICE_ID.lock().unwrap().clone();
-    let last_error = LAST_ERROR.lock().unwrap().clone();
-    let connected_since = CONNECTED_SINCE_MS.load(Ordering::SeqCst);
+    let state = with_connection(|c| c.clone());
 
     ConnectionStateInfo {
-        session_connected: session_state.is_connected,
-        session_connection_id: session_state.connection_id.clone(),
-        spirc_ready: SPIRC_READY.load(Ordering::SeqCst),
-        device_id,
+        session_connected: state.session_connected,
+        session_connection_id: state.session_connection_id,
+        spirc_ready: state.spirc_ready,
+        device_id: state.device_id,
         device_name: "Spotifly".to_string(),
-        reconnect_attempt: RECONNECT_ATTEMPT.load(Ordering::SeqCst),
-        last_error,
-        connected_since_ms: if connected_since > 0 {
-            Some(connected_since)
-        } else {
-            None
-        },
+        reconnect_attempt: state.reconnect_attempt,
+        last_error: state.last_error,
+        connected_since_ms: (state.connected_since_ms > 0).then_some(state.connected_since_ms),
     }
 }
 
 /// Marks the session as disconnected, records the reason, and notifies the UI.
 fn mark_disconnected(reason: &str) {
-    {
-        let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
-        state.is_connected = false;
-        state.connection_id = None;
-    }
-    CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
-    {
-        let mut last_error = LAST_ERROR.lock().unwrap();
-        *last_error = Some(reason.to_string());
-    }
+    with_connection(|c| {
+        c.session_connected = false;
+        c.session_connection_id = None;
+        c.connected_since_ms = 0;
+        c.last_error = Some(reason.to_string());
+    });
     notify_connection_state_change();
 }
 
@@ -673,12 +668,10 @@ async fn create_and_store_spirc(
         let mut spirc_guard = SPIRC.lock().unwrap();
         *spirc_guard = Some(spirc_arc.clone());
     }
-    SPIRC_READY.store(true, Ordering::SeqCst);
-
-    {
-        let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
-        state.is_connected = true;
-    }
+    with_connection(|c| {
+        c.spirc_ready = true;
+        c.session_connected = true;
+    });
 
     debug!(
         "[WAKE +{}ms] Spirc ready - connected to Spotify Connect",
@@ -787,11 +780,10 @@ fn spawn_reconnection_loop() {
             }
 
             debug!("[WAKE +{}ms] Reconnect attempt {}", elapsed_since_wake_ms(), attempt + 1);
-            RECONNECT_ATTEMPT.store(attempt as u32 + 1, Ordering::SeqCst);
-            {
-                let mut last_error = LAST_ERROR.lock().unwrap();
-                *last_error = Some(format!("Reconnecting (attempt {})", attempt + 1));
-            }
+            with_connection(|c| {
+                c.reconnect_attempt = attempt as u32 + 1;
+                c.last_error = Some(format!("Reconnecting (attempt {})", attempt + 1));
+            });
             notify_connection_state_change();
 
             let (tx, rx) = tokio::sync::oneshot::channel::<String>();
@@ -909,10 +901,7 @@ fn spawn_reconnection_loop() {
                 }
                 Err(e) => {
                     debug!("[WAKE +{}ms] Hard reconnect attempt {} failed: {}", elapsed_since_wake_ms(), attempt + 1, e);
-                    {
-                        let mut last_error = LAST_ERROR.lock().unwrap();
-                        *last_error = Some(format!("Reconnect failed: {}", e));
-                    }
+                    with_connection(|c| c.last_error = Some(format!("Reconnect failed: {}", e)));
                     notify_connection_state_change();
                 }
             }
@@ -921,10 +910,9 @@ fn spawn_reconnection_loop() {
         // All attempts exhausted
         debug!("All reconnection attempts exhausted");
         RECONNECTING.store(false, Ordering::SeqCst);
-        {
-            let mut last_error = LAST_ERROR.lock().unwrap();
-            *last_error = Some("Reconnection failed after 10 attempts".to_string());
-        }
+        with_connection(|c| {
+            c.last_error = Some("Reconnection failed after 10 attempts".to_string())
+        });
         notify_connection_state_change();
 
         // Notify Swift that reconnection failed - it may want to show UI
@@ -1012,7 +1000,7 @@ fn do_reconnect_cleanup() {
         let mut spirc_guard = SPIRC.lock().unwrap();
         *spirc_guard = None;
     }
-    SPIRC_READY.store(false, Ordering::SeqCst);
+    with_connection(|c| c.spirc_ready = false);
 
     // Clear Player - must be recreated with new Session
     {
@@ -1032,20 +1020,13 @@ fn do_reconnect_cleanup() {
         *session_guard = None;
     }
 
-    // Clear device ID (will be regenerated)
-    {
-        let mut device_id_guard = DEVICE_ID.lock().unwrap();
-        *device_id_guard = None;
-    }
-
-    // Reset session connection state
-    {
-        let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
-        state.is_connected = false;
-        state.connection_id = None;
-    }
-
-    CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
+    // Clear device ID (will be regenerated) and reset session connection state
+    with_connection(|c| {
+        c.device_id = None;
+        c.session_connected = false;
+        c.session_connection_id = None;
+        c.connected_since_ms = 0;
+    });
 
     debug!("do_reconnect_cleanup complete");
 }
@@ -1063,19 +1044,17 @@ fn do_soft_reconnect_cleanup() {
         let mut spirc_guard = SPIRC.lock().unwrap();
         *spirc_guard = None;
     }
-    SPIRC_READY.store(false, Ordering::SeqCst);
-
     {
         let mut session_guard = SESSION.lock().unwrap();
         *session_guard = None;
     }
 
-    {
-        let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
-        state.is_connected = false;
-        state.connection_id = None;
-    }
-    CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
+    with_connection(|c| {
+        c.spirc_ready = false;
+        c.session_connected = false;
+        c.session_connection_id = None;
+        c.connected_since_ms = 0;
+    });
 }
 
 /// Soft reconnect: creates new Session + Spirc while keeping the existing
@@ -1092,12 +1071,8 @@ async fn soft_reconnect_async(
         current_generation
     );
 
-    let device_id = {
-        let guard = DEVICE_ID.lock().unwrap();
-        guard
-            .clone()
-            .unwrap_or_else(|| format!("spotifly_{}", std::process::id()))
-    };
+    let device_id =
+        current_device_id().unwrap_or_else(|| format!("spotifly_{}", std::process::id()));
 
     let (session, credentials) = create_session(&device_id, access_token)?;
 
@@ -1257,10 +1232,7 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
     );
 
     let device_id = format!("spotifly_{}", std::process::id());
-    {
-        let mut device_id_guard = DEVICE_ID.lock().unwrap();
-        *device_id_guard = Some(device_id.clone());
-    }
+    with_connection(|c| c.device_id = Some(device_id.clone()));
 
     let (session, credentials) = create_session(&device_id, access_token)?;
 
@@ -1388,13 +1360,6 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                                     cb(c_str.as_ptr());
                                 }
                             }
-
-                            // Also trigger state update callback
-                            let cb_guard = STATE_UPDATE_CALLBACK.lock().unwrap();
-                            if let Some(callback) = *cb_guard {
-                                drop(cb_guard);
-                                callback();
-                            }
                         }
                         Some(PlayerEvent::VolumeChanged { volume }) => {
                             debug!("VolumeChanged event: {}", volume);
@@ -1516,20 +1481,15 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                         }
                         Some(PlayerEvent::SessionConnected { connection_id, user_name }) => {
                             debug!("[WAKE +{}ms] SessionConnected event: connection_id={}, user={}", elapsed_since_wake_ms(), connection_id, user_name);
-                            // Update session state
-                            {
-                                let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
-                                state.is_connected = true;
-                                state.connection_id = Some(connection_id);
-                            }
-                            // Set connected timestamp and reset reconnect counter
-                            CONNECTED_SINCE_MS.store(current_timestamp_ms(), Ordering::SeqCst);
-                            RECONNECT_ATTEMPT.store(0, Ordering::SeqCst);
-                            // Clear last error on successful connect
-                            {
-                                let mut last_error = LAST_ERROR.lock().unwrap();
-                                *last_error = None;
-                            }
+                            // Mark connected, stamp the connect time, reset the backoff
+                            // counter, and clear the last error as one transition
+                            with_connection(|c| {
+                                c.session_connected = true;
+                                c.session_connection_id = Some(connection_id);
+                                c.connected_since_ms = current_timestamp_ms();
+                                c.reconnect_attempt = 0;
+                                c.last_error = None;
+                            });
 
                             // Notify connection state change
                             notify_connection_state_change();
@@ -1647,8 +1607,7 @@ const ERROR_NOT_CONNECTED: i32 = -3;
 /// Returns 1 if the session is connected and ready for commands, 0 otherwise.
 #[no_mangle]
 pub extern "C" fn spotifly_is_session_connected() -> i32 {
-    let state = SESSION_CONNECTION_STATE.lock().unwrap();
-    if state.is_connected {
+    if with_connection(|c| c.session_connected) {
         1
     } else {
         0
@@ -1662,12 +1621,10 @@ pub extern "C" fn spotifly_is_session_connected() -> i32 {
 /// ever firing SessionDisconnected (because the Spirc task was idle).
 /// When detected, updates state and triggers reconnection proactively.
 fn require_session_connected() -> Result<(), i32> {
-    let state = SESSION_CONNECTION_STATE.lock().unwrap();
-    if !state.is_connected {
+    if !with_connection(|c| c.session_connected) {
         debug!("Command rejected: session not connected");
         return Err(ERROR_NOT_CONNECTED);
     }
-    drop(state);
 
     let session_invalid = SESSION
         .lock()
@@ -2404,8 +2361,6 @@ pub extern "C" fn spotifly_cleanup() {
         let mut spirc_guard = SPIRC.lock().unwrap();
         *spirc_guard = None;
     }
-    SPIRC_READY.store(false, Ordering::SeqCst);
-
     // Clear player
     {
         let mut player_guard = PLAYER.lock().unwrap();
@@ -2424,12 +2379,6 @@ pub extern "C" fn spotifly_cleanup() {
         *session_guard = None;
     }
 
-    // Clear device ID
-    {
-        let mut device_id_guard = DEVICE_ID.lock().unwrap();
-        *device_id_guard = None;
-    }
-
     // Reset state flags
     IS_PLAYING.store(false, Ordering::SeqCst);
     IS_ACTIVE_DEVICE.store(false, Ordering::SeqCst);
@@ -2445,17 +2394,16 @@ pub extern "C" fn spotifly_cleanup() {
         last_device.clear();
     }
 
-    // Reset session connection state
-    {
-        let mut state = SESSION_CONNECTION_STATE.lock().unwrap();
-        state.is_connected = false;
-        state.connection_id = None;
-    }
-
-    // Reset connection state tracking (but keep reconnect_attempt for backoff)
-    CONNECTED_SINCE_MS.store(0, Ordering::SeqCst);
-    // Note: We don't reset RECONNECT_ATTEMPT here - it's used for exponential backoff
-    // and should only be reset on successful reconnect (in SessionConnected handler)
+    // Reset the connection snapshot: not ready, not connected, no device ID.
+    // reconnect_attempt is deliberately preserved - it drives exponential backoff and
+    // is only reset on a successful connect (in the SessionConnected handler).
+    with_connection(|c| {
+        c.spirc_ready = false;
+        c.session_connected = false;
+        c.session_connection_id = None;
+        c.device_id = None;
+        c.connected_since_ms = 0;
+    });
 
     // Notify connection state change
     notify_connection_state_change();
@@ -2893,15 +2841,13 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
     };
     drop(session_guard);
 
-    let device_id_guard = DEVICE_ID.lock().unwrap();
-    let from_device_id = match device_id_guard.as_ref() {
-        Some(id) => id.clone(),
+    let from_device_id = match current_device_id() {
+        Some(id) => id,
         None => {
             debug!("Transfer playback error: device ID not initialized");
             return -1;
         }
     };
-    drop(device_id_guard);
 
     let result: Result<(), String> = RUNTIME.block_on(async {
         session
@@ -2933,7 +2879,7 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
 /// Returns 1 if Spirc is initialized and connected to Spotify Connect, 0 otherwise.
 #[no_mangle]
 pub extern "C" fn spotifly_is_spirc_ready() -> i32 {
-    if SPIRC_READY.load(Ordering::SeqCst) {
+    if with_connection(|c| c.spirc_ready) {
         1
     } else {
         0
