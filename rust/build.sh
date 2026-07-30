@@ -10,38 +10,17 @@ RUST_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="$SCRIPT_DIR/../build/rust"
 LIBRESPOT_DIR="$SCRIPT_DIR/../../librespot"
 
-# The integration currently depends on the patched librespot in the sibling checkout:
-# next/previous must use local play intent rather than the deferred remote-facing
-# ConnectState. Cargo resolves librespot through path dependencies, so the build silently
-# follows whichever branch happens to be checked out there.
+# Build against whatever is checked out in the sibling librespot repo. Spotifly no longer
+# requires a patched librespot: the reconnect rewrite rebuilds Session, Player, Mixer and
+# Spirc as one generation, which removed the need for both fork patches (verified against
+# official dev @ 9c7d756 — a real outage, rebuild and unattended track transition all
+# behave correctly unpatched).
 #
-# Assert the patch is present rather than pinning a commit hash: the check then survives
-# rebases of spotifly-dev onto newer upstream revisions. Once the migration to unmodified
-# librespot is settled, this is replaced by a real git+rev pin.
-#
-# Set SPOTIFLY_ALLOW_UNPATCHED_LIBRESPOT=1 to build against official librespot on purpose.
-# That is how the open question gets answered: whether the patch is still needed now that
-# the Player no longer outlives its Session. The override is deliberately loud, so a build
-# that skipped the check is never mistaken for a normal one.
+# Deliberately unpinned so local librespot patches can be tried by just checking them out.
+# When a new librespot release lands, move to that release rather than tracking a branch.
 if [ ! -d "$LIBRESPOT_DIR" ]; then
     echo "error: librespot checkout not found at $LIBRESPOT_DIR" >&2
     echo "       See CONTRIBUTING.md for the expected directory layout." >&2
-    exit 1
-fi
-if [ "${SPOTIFLY_ALLOW_UNPATCHED_LIBRESPOT:-0}" = "1" ]; then
-    echo "═══════════════════════════════════════════════════════════════════"
-    echo " SPOTIFLY_ALLOW_UNPATCHED_LIBRESPOT=1 — patch check SKIPPED"
-    echo " Building against whatever is checked out in:"
-    echo "   $LIBRESPOT_DIR"
-    if command -v git >/dev/null 2>&1; then
-        echo "   branch: $(git -C "$LIBRESPOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
-        echo "   commit: $(git -C "$LIBRESPOT_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')"
-    fi
-    echo "═══════════════════════════════════════════════════════════════════"
-elif ! grep -q "play_status.is_playing()" "$LIBRESPOT_DIR/connect/src/spirc.rs"; then
-    echo "error: $LIBRESPOT_DIR is missing the required librespot patch." >&2
-    echo "       Check out the spotifly-dev branch (see CONTRIBUTING.md)," >&2
-    echo "       or set SPOTIFLY_ALLOW_UNPATCHED_LIBRESPOT=1 to build without it." >&2
     exit 1
 fi
 
