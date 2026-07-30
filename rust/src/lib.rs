@@ -886,6 +886,14 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
         debug!("Cluster listener started (generation={})", generation);
         let mut stream = queue_stream;
         while let Some(msg_result) = stream.next().await {
+            // Same rule as the player event listener: a superseded cluster listener keeps
+            // receiving until its stream actually closes, and its updates describe a session
+            // that has been replaced. Checking only after the stream ends, as this used to,
+            // leaves every message before that point unguarded.
+            if !listener_may_act(generation, SESSION_GENERATION.load(Ordering::SeqCst)) {
+                continue;
+            }
+
             match msg_result {
                 Ok(cluster_update) => {
                     if let Some(cluster) = cluster_update.cluster.into_option() {
@@ -1318,6 +1326,23 @@ async fn init_player_async(
                     break;
                 }
                 event = event_channel.recv() => {
+                    // Drop everything from a superseded generation. A replaced listener
+                    // drains asynchronously after its successor is live — the logs show old
+                    // listeners still delivering seconds later — and without this guard it
+                    // would keep writing position, track, playing and active-device state
+                    // belonging to a session that no longer exists.
+                    //
+                    // `event.is_some()` matters: a closed channel must still reach the
+                    // `None` arm below and break the loop. Skipping on `None` would spin.
+                    if event.is_some()
+                        && !listener_may_act(
+                            event_listener_generation,
+                            SESSION_GENERATION.load(Ordering::SeqCst),
+                        )
+                    {
+                        continue;
+                    }
+
                     match event {
                         Some(PlayerEvent::Playing { position_ms, .. }) => {
                             debug!("PlayerEvent::Playing at {}ms", position_ms);
@@ -1470,17 +1495,6 @@ async fn init_player_async(
                         Some(PlayerEvent::SessionDisconnected { connection_id, user_name }) => {
                             debug!("[WAKE +{}ms] became inactive (SessionDisconnected): connection_id={}, user={}, listener_generation={}",
                                    elapsed_since_wake_ms(), connection_id, user_name, event_listener_generation);
-
-                            // Drop events from a listener whose session has been replaced.
-                            // Reachable now that each listener captures its own generation:
-                            // a superseded listener drains asynchronously after its
-                            // replacement is installed, so it can still deliver here.
-                            let current_gen = SESSION_GENERATION.load(Ordering::SeqCst);
-                            if !listener_may_act(event_listener_generation, current_gen) {
-                                debug!("[WAKE +{}ms] became-inactive from old generation {} (current={}), ignoring",
-                                       elapsed_since_wake_ms(), event_listener_generation, current_gen);
-                                continue;
-                            }
 
                             set_active_device(false);
 
