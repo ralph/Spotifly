@@ -759,6 +759,58 @@ async fn create_and_store_spirc(
 /// Subscribes to cluster updates on the session's dealer and spawns a task
 /// to process them. When the stream ends (Spirc died), triggers reconnection
 /// unless shutting down or sleeping.
+/// How often to check whether the session died without anything noticing.
+const SESSION_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Watches for a session that has gone invalid with no other signal.
+///
+/// Every other recovery trigger needs something to happen: the cluster listener only acts
+/// when its stream *closes*, and librespot's dealer retries internally so the stream can
+/// stay open for minutes past a dead session; the zombie check in
+/// `require_session_connected` only runs when a command is issued. While Spotifly is the
+/// active device something trips one of those quickly. While it is *not* active, nothing
+/// does — no commands are issued, so nothing calls `mark_disconnected`, so the published
+/// snapshot still reads "connected" and Swift's reconnect watchdog never arms either. The
+/// session stays silently dead until the user acts or the machine sleeps.
+///
+/// Cost is one sleeping task per generation, waking once a minute to read two booleans
+/// (`Session::is_invalid` is a lock read of a `bool`). It exits when its generation is
+/// superseded, so it dies with the session it belongs to rather than accumulating.
+fn spawn_session_health_check(generation: u64) {
+    RUNTIME.spawn(async move {
+        loop {
+            tokio::time::sleep(SESSION_HEALTH_CHECK_INTERVAL).await;
+
+            // Superseded: whatever replaced our session brought its own check.
+            if !listener_may_act(generation, SESSION_GENERATION.load(Ordering::SeqCst)) {
+                return;
+            }
+
+            // Sleep and shutdown invalidate the session on purpose.
+            if teardown_in_progress() {
+                continue;
+            }
+
+            let session_invalid = SESSION
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|s| s.is_invalid());
+
+            if session_invalid {
+                debug!(
+                    "Session health check: session {} is invalid, recovering",
+                    generation
+                );
+                mark_disconnected("Session invalid");
+                spawn_reconnection_loop();
+                // Recovery owns it from here; the rebuild spawns the next check.
+                return;
+            }
+        }
+    });
+}
+
 fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), String> {
     let queue_stream = session
         .dealer()
@@ -1547,6 +1599,7 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
     }
 
     spawn_cluster_listener(&session, current_generation)?;
+    spawn_session_health_check(current_generation);
 
     match create_and_store_spirc(&session, &credentials, player, mixer).await {
         Ok(spirc) => {
