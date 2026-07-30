@@ -57,7 +57,8 @@ None of these appear anywhere below. They were found by unplugging ethernet.
 | A dead session went unnoticed while Spotifly was not the active device | Fixed `cf3f5d8` |
 | librespot deletes a track from the queue permanently on a *transient* load failure | Upstream, ticketed: [`plans/librespot/upstream-transient-load-failure.md`](plans/librespot/upstream-transient-load-failure.md) |
 | Audio throttle anchor not reset on rebuild, so playback races ~40× after a resume | Fixed `222e0d2`, confirmed at runtime (42× → 1.03×). Write-up: [`plans/audio-renderer-throttle-not-reset-on-rebuild.md`](plans/audio-renderer-throttle-not-reset-on-rebuild.md) |
-| Position jumped to a stale Web API value and back, because readiness was published before the session was rehydrated | Fixed `b34889c` |
+| Position jumped to a stale Web API value and back, because readiness was published before the session was rehydrated | Fixed `b34889c`, confirmed at runtime |
+| Position interpolation keeps running while the session is down, so it snaps back a few seconds on resume | Open, low priority: [`plans/position-interpolation-runs-on-during-outage.md`](plans/position-interpolation-runs-on-during-outage.md) |
 
 ---
 
