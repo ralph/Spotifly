@@ -1295,9 +1295,17 @@ async fn init_player_async(access_token: &str, activate_after_connect: bool) -> 
                             IS_PLAYING.store(false, Ordering::SeqCst);
                             update_position(0);
                         }
-                        Some(PlayerEvent::EndOfTrack { .. }) => {
-                            // Spirc handles auto-advance to next track automatically
-                            // We just update local state here
+                        Some(PlayerEvent::EndOfTrack { track_id, .. }) => {
+                            // Logged with the position it ended at: a natural end and a
+                            // stream that stopped early are otherwise indistinguishable in
+                            // the log, because Spirc's auto-advance is silent on success.
+                            // Without this, "did the track finish or get cut off?" cannot be
+                            // answered from a log at all.
+                            debug!(
+                                "PlayerEvent::EndOfTrack: {} at {}ms",
+                                track_id,
+                                POSITION_MS.load(Ordering::SeqCst)
+                            );
                             IS_PLAYING.store(false, Ordering::SeqCst);
                             update_position(0);
                         }
