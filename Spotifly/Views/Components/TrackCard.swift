@@ -66,8 +66,7 @@ struct TrackCard: View {
             )
         }
         .task(id: track.id) {
-            let token = await session.validAccessToken()
-            await trackService.ensureFavoriteStatuses(trackIds: [track.id], accessToken: token)
+            await trackService.ensureFavoriteStatuses(trackIds: [track.id])
         }
     }
 

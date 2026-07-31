@@ -256,10 +256,7 @@ struct TrackRow: View {
     }
 
     private func resolveFavoriteStatusIfNeeded() async {
-        guard !store.hasResolvedFavoriteStatus(for: track.id) else { return }
-
-        let token = await session.validAccessToken()
-        await trackService.ensureFavoriteStatuses(trackIds: [track.id], accessToken: token)
+        await trackService.ensureFavoriteStatuses(trackIds: [track.id])
     }
 
     /// Create a new playlist and add the track to it

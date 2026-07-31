@@ -57,7 +57,9 @@ struct LoggedInView: View {
         _connectionService = State(initialValue: ConnectionService(store: store))
         _deviceService = State(initialValue: DeviceService(store: store))
         _navigationCoordinator = State(initialValue: NavigationCoordinator(store: store))
-        _trackService = State(initialValue: TrackService(store: store))
+        _trackService = State(initialValue: TrackService(store: store, tokenProvider: {
+            await session.validAccessToken()
+        }))
         _recentlyPlayedService = State(initialValue: RecentlyPlayedService(store: store))
         _topItemsService = State(initialValue: TopItemsService(store: store))
 

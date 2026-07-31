@@ -202,7 +202,7 @@ struct QueueListView: View {
         guard !trackIds.isEmpty else { return }
 
         let token = await session.validAccessToken()
-        await trackService.refreshFavoriteStatuses(trackIds: trackIds, accessToken: token)
+        await trackService.refreshFavoriteStatuses(trackIds: trackIds)
     }
 
     // MARK: - Normal Mode Content

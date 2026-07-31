@@ -246,8 +246,7 @@ struct AlbumDetailView: View {
     private func resolveFavoriteStatusesForTracks() async {
         guard !tracks.isEmpty else { return }
 
-        let token = await session.validAccessToken()
-        await trackService.ensureFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
+        await trackService.ensureFavoriteStatuses(trackIds: tracks.map(\.id))
     }
 
     private func playAllTracks() {

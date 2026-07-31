@@ -13,6 +13,11 @@ import Foundation
 final class TrackService {
     private let store: AppStore
 
+    /// Used by the favorite-status checks, which usually have nothing to ask about.
+    /// They take the token themselves, *after* deciding, so that a track row whose
+    /// status is already known — or already being fetched — costs nothing at all.
+    private let tokenProvider: () async -> String
+
     /// The favorites list, whose pages are one run at a time under one key.
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "favorites"
@@ -25,8 +30,9 @@ final class TrackService {
     /// and both ask.
     private var checksInFlight: Set<String> = []
 
-    init(store: AppStore) {
+    init(store: AppStore, tokenProvider: @escaping () async -> String) {
         self.store = store
+        self.tokenProvider = tokenProvider
     }
 
     // MARK: - Favorites (Saved Tracks)
@@ -153,28 +159,29 @@ final class TrackService {
 
     /// Resolve favorite status for any tracks we haven't checked yet.
     /// Callers should batch track IDs (e.g. all tracks in a list) for efficiency.
-    func ensureFavoriteStatuses(trackIds: [String], accessToken: String) async {
+    func ensureFavoriteStatuses(trackIds: [String]) async {
         let unresolved = uniqueTrackIds(trackIds).filter {
             !store.hasResolvedFavoriteStatus(for: $0) && !checksInFlight.contains($0)
         }
-        await check(unresolved, accessToken: accessToken)
+        await check(unresolved)
     }
 
     /// Refresh favorite status for the given tracks even if we have stale cached data.
-    func refreshFavoriteStatuses(trackIds: [String], accessToken: String) async {
+    func refreshFavoriteStatuses(trackIds: [String]) async {
         // Deliberately ignores the resolved cache — that is the point of a refresh —
         // but not the in-flight set: a check already on its way carries the same
         // answer this one would ask for.
         let stale = uniqueTrackIds(trackIds).filter { !checksInFlight.contains($0) }
-        await check(stale, accessToken: accessToken)
+        await check(stale)
     }
 
-    private func check(_ trackIds: [String], accessToken: String) async {
+    private func check(_ trackIds: [String]) async {
         guard !trackIds.isEmpty else { return }
 
         checksInFlight.formUnion(trackIds)
         defer { checksInFlight.subtract(trackIds) }
 
+        let accessToken = await tokenProvider()
         for batch in batches(of: trackIds, size: 50) {
             try? await checkFavoriteStatuses(trackIds: batch, accessToken: accessToken)
         }
