@@ -304,6 +304,10 @@ fn elapsed_since_wake_ms() -> u64 {
 // check unreachable. Now that a rebuild replaces the listener along with its session, the
 // listener captures the value directly and the check does what it claims.
 static SESSION_GENERATION: AtomicU64 = AtomicU64::new(0);
+/// Generation created by the most recent `build_player_async`. Lets the reconnect loop adopt
+/// the generation its own attempt made rather than whatever the counter reads afterwards,
+/// which may belong to a logout and the login that followed it.
+static LAST_BUILD_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 // Playback settings (applied on player init)
 // Bitrate: 0 = 96kbps, 1 = 160kbps (default), 2 = 320kbps
@@ -1119,7 +1123,13 @@ fn spawn_reconnection_loop(intent: RecoveryIntent) {
                     // Adopt the generation this attempt created. init_player_async bumps it
                     // before it can fail, so leaving the old value here would make the next
                     // iteration mistake our own rebuild for someone else's and abandon.
-                    recovering_generation = SESSION_GENERATION.load(Ordering::SeqCst);
+                    //
+                    // Read from the attempt rather than from the counter: a logout and the
+                    // login after it can both have bumped it while this attempt ran, and
+                    // adopting *that* would have the loop rebuild over a session belonging
+                    // to another account. Reading our own value leaves the next iteration's
+                    // supersede check to notice and abandon, which is the right outcome.
+                    recovering_generation = LAST_BUILD_GENERATION.load(Ordering::SeqCst);
                     with_connection(|c| c.last_error = Some(format!("Reconnect failed: {}", e)));
                     notify_connection_state_change();
                 }
@@ -1313,13 +1323,37 @@ fn create_new_player(session: &Session) -> Arc<Player> {
 /// that Rust then immediately overwrote. That was visible as the playback position jumping
 /// forward to a stale value and back. Publishing once, when nothing further is pending,
 /// removes the window rather than racing it.
+/// Builds a session, and clears anything it left behind if a teardown began while it ran.
+///
+/// `build_player_async` stores Session, Player, Mixer and Spirc in the globals well before
+/// it can decide whether it is still wanted, so every error path after those stores would
+/// leak them. Normally the next reconnect attempt tidies up on its way in — but during a
+/// logout there is no next attempt: the loop sees the teardown flag and exits, leaving a
+/// live session for an account that is gone.
 async fn init_player_async(
+    access_token: &str,
+    activate_after_connect: bool,
+    resume_after_connect: bool,
+) -> Result<(), String> {
+    let result =
+        build_player_async(access_token, activate_after_connect, resume_after_connect).await;
+
+    if result.is_err() && teardown_in_progress() {
+        debug!("Initialization failed during teardown — clearing what it left behind");
+        do_reconnect_cleanup();
+    }
+
+    result
+}
+
+async fn build_player_async(
     access_token: &str,
     activate_after_connect: bool,
     resume_after_connect: bool,
 ) -> Result<(), String> {
     // Increment session generation - this invalidates any old cluster listeners
     let current_generation = SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    LAST_BUILD_GENERATION.store(current_generation, Ordering::SeqCst);
     debug!(
         "[WAKE +{}ms] init_player_async starting, generation={}",
         elapsed_since_wake_ms(),
@@ -1686,9 +1720,37 @@ async fn init_player_async(
             // spotifly_cleanup on logout, a manual retry, or sleep, any of which can land
             // during the rehydration wait above. Writing success then would resurrect a
             // dead session as healthy and stop the health check from recovering it.
-            if !listener_may_act(current_generation, SESSION_GENERATION.load(Ordering::SeqCst))
-                || teardown_in_progress()
-            {
+            let superseded =
+                !listener_may_act(current_generation, SESSION_GENERATION.load(Ordering::SeqCst));
+            let tearing_down = teardown_in_progress();
+
+            if superseded || tearing_down {
+                // Returning an error is not enough on the teardown path. This attempt has
+                // already stored its Session, Player and Spirc in the globals, so refusing
+                // to publish leaves them live and connected — on logout that means the
+                // account stays announced on Spotify Connect, which is exactly what the
+                // shutdown was for. Teardown is unambiguous: nothing newer is coming, so
+                // clear what this attempt built.
+                //
+                // A supersede on its own is the opposite case — a newer generation owns the
+                // globals by now, and tearing them down would destroy its work, not ours.
+                // Teardown outranks that: `init_player_async` clears both teardown flags as
+                // it starts, so a flag that is set now means no newer generation began after
+                // it, whatever the counter says.
+                if tearing_down {
+                    debug!(
+                        "Generation {} finished during teardown — clearing what it built",
+                        current_generation
+                    );
+                    // Through the handle this attempt holds, not the global one. A cleanup
+                    // that landed between storing the Spirc and reaching here has already
+                    // nilled the global, so `do_reconnect_cleanup` would find nothing to
+                    // stop — while this Spirc's task stays alive holding the session, which
+                    // is precisely the thing that must not survive a logout.
+                    let _ = spirc.shutdown();
+                    do_reconnect_cleanup();
+                }
+
                 return Err(format!(
                     "Initialization for generation {} was superseded before it completed",
                     current_generation
@@ -2374,6 +2436,21 @@ pub extern "C" fn spotifly_shutdown() -> i32 {
     debug!("spotifly_shutdown called");
     // Prevent reconnection attempts during intentional shutdown
     SHUTTING_DOWN.store(true, Ordering::SeqCst);
+
+    // Publish the truth now rather than waiting for the listeners to notice the channel
+    // close. A snapshot still claiming a connected session and a ready Spirc after an
+    // intentional shutdown is what lets Swift adopt the dead session as a healthy one — on
+    // logout that meant the next login skipped initialization and kept a closed Spirc.
+    // Notified outside the lock: the callback re-enters Swift.
+    with_connection(|c| {
+        c.spirc_ready = false;
+        c.session_connected = false;
+        c.session_connection_id = None;
+        c.connected_since_ms = 0;
+        c.last_error = Some("Shutdown requested".to_string());
+    });
+    notify_connection_state_change();
+
     let spirc_guard = SPIRC.lock().unwrap();
     if let Some(spirc) = spirc_guard.as_ref() {
         if spirc.shutdown().is_ok() {

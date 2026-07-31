@@ -116,6 +116,23 @@ final class PlaybackViewModel {
     /// The in-flight initialization or restart, so concurrent callers coalesce onto one
     private var initializationTask: Task<Void, Never>?
 
+    /// Bumped when a logout invalidates whatever the player lifecycle is doing. Mirrors
+    /// Rust's session generation: cancellation is cooperative and the FFI calls do not
+    /// observe it, so an initialization already inside `spotifly_init_player` has to be
+    /// caught on the way out instead.
+    private var lifecycleGeneration: UInt64 = 0
+
+    /// True while a logout teardown is running. Suppresses the readiness adoption below: a
+    /// snapshot published before Rust's flags catch up would otherwise mark the player
+    /// initialized again, and the disconnected snapshots that follow deliberately do not
+    /// clear that flag — so the next account would skip initialization entirely.
+    private var isLoggingOut = false
+
+    /// The logout teardown in flight, if any. Later callers await it rather than starting a
+    /// second one — two would each reset `isLoggingOut` on their own way out, so the first
+    /// to finish would reopen the door while the other was still tearing down.
+    private var logoutTask: Task<Void, Never>?
+
     private init() {
         setupConnectionStateSubscription()
         setupPlaybackStateSubscription()
@@ -159,6 +176,40 @@ final class PlaybackViewModel {
         await runInitialization(accessToken: accessToken, force: false)
     }
 
+    /// Tears the Rust session down on logout.
+    ///
+    /// Deliberately does not wait for an initialization that may be in flight. Waiting would
+    /// hang the logout behind a stalled network setup, and it is not needed: `shutdown()`
+    /// raises the teardown flag before it touches Spirc, and an initialization finishing
+    /// afterwards sees that flag and clears what it built instead of publishing it.
+    ///
+    /// Ordering against a *replacement* session is the caller's job — it awaits this before
+    /// clearing the auth state, so no login can start a rebuild until this has returned.
+    func shutdownForLogout() async {
+        // Invalidate an initialization in flight without waiting for it and without
+        // cancelling it. Waiting would hang the logout behind a stalled network setup;
+        // cancelling would be worse than useless, because `waitUntilReady` swallows it and
+        // would then spin on the main actor until its timeout. The run is left in place so a
+        // replacement login still serializes behind it — it just no longer owns the outcome,
+        // and tears down whatever it built once it notices the generation moved.
+        if let existing = logoutTask {
+            await existing.value
+            return
+        }
+
+        let task = Task { @MainActor in
+            lifecycleGeneration &+= 1
+            isInitialized = false
+            isLoggingOut = true
+            defer { isLoggingOut = false }
+
+            await SpotifyPlayer.shutdownAndCleanup()
+        }
+        logoutTask = task
+        await task.value
+        logoutTask = nil
+    }
+
     /// Serializes every initialization and restart through one in-flight task.
     ///
     /// `@MainActor` stops two of these running *simultaneously*, but not from
@@ -172,10 +223,39 @@ final class PlaybackViewModel {
     /// coalesces concurrent explicit rebuild requests, for which one rebuild is the correct
     /// response.
     private func runInitialization(accessToken: String, force: Bool) async {
-        if let existing = initializationTask {
+        // Nothing may build a player while one is being torn down. The view is still mounted
+        // during a logout, so a playback action or a startup task can land here — and it
+        // would capture the already-bumped lifecycle generation, so the stale-run check
+        // would wave it through while `spotifly_init_player` clears the teardown flag,
+        // re-announcing the account that just logged out.
+        guard !isLoggingOut else { return }
+
+        // Wait out whatever is in flight, then decide again. Coalescing onto it and
+        // returning is right when it was a healthy initialization — but it may equally have
+        // been a run for an account that has since logged out, and that one leaves the work
+        // undone. `isInitialized` distinguishes the two.
+        let generationBeforeWaiting = lifecycleGeneration
+        var waitedForAnother = false
+        while let existing = initializationTask {
             await existing.value
+            if initializationTask == existing {
+                initializationTask = nil
+            }
+            waitedForAnother = true
+        }
+
+        // A run we waited for that left a healthy player has already served this caller,
+        // forced or not: what a forced rebuild asks for is a working session, and tearing
+        // the fresh one down to build another would be pure destruction.
+        if waitedForAnother, isInitialized {
             return
         }
+
+        // A logout can land while this caller is suspended above. Its access token belongs
+        // to the account that just left, so building with it would put that account straight
+        // back on Spotify Connect — and the lifecycle check inside `performInitialization`
+        // would not catch it, because by then the bumped generation is the current one.
+        guard generationBeforeWaiting == lifecycleGeneration else { return }
         guard force || !isInitialized else { return }
 
         let task = Task { @MainActor in
@@ -183,7 +263,11 @@ final class PlaybackViewModel {
         }
         initializationTask = task
         await task.value
-        initializationTask = nil
+        // Only clear the slot while it is still ours: a logout drops the handle, and a
+        // replacement login may already have installed its own by the time this resumes.
+        if initializationTask == task {
+            initializationTask = nil
+        }
     }
 
     private func performInitialization(accessToken: String) async {
@@ -191,6 +275,7 @@ final class PlaybackViewModel {
         // rebuild proves otherwise. Matters when initialize() throws on a restart.
         isInitialized = false
         isLoading = true
+        let generation = lifecycleGeneration
         do {
             try await SpotifyPlayer.initialize(accessToken: accessToken)
 
@@ -210,6 +295,20 @@ final class PlaybackViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+
+        // Checked on both paths on purpose. `spotifly_init_player` clears the teardown flags
+        // on its way in, so an initialization that overlapped a logout can bring a session up
+        // for an account that is gone — and it reports failure while doing so, because the
+        // logout's cleanup superseded it. Rust cannot always clear that itself: it only knows
+        // the attempt was superseded, not whether something newer legitimately owns the
+        // globals. Swift does know, so it takes them down here.
+        if generation != lifecycleGeneration {
+            debugLog("PlaybackViewModel", "Initialization outlived a logout — tearing it back down")
+            await SpotifyPlayer.shutdownAndCleanup()
+            isInitialized = false
+            errorMessage = nil
+        }
+
         // Reset stale playback state — after (re)init Rust has no track/context loaded.
         // isPlaying must be false before updateNowPlayingPosition() so it writes rate=0.
         // updateNowPlayingPosition() must be called before zeroing trackDurationMs because
@@ -660,6 +759,7 @@ final class PlaybackViewModel {
 
                 guard isConnectionReady,
                       !isInitialized,
+                      !isLoggingOut,
                       initializationTask == nil
                 else {
                     return

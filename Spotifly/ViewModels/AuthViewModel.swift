@@ -62,7 +62,23 @@ final class AuthViewModel {
         }
     }
 
-    func logout() {
+    func logout() async {
+        // Tear the librespot session down, not just the Swift-side token. Without this the
+        // Spirc connection stayed registered on Spotify Connect for the account that just
+        // logged out — and because nothing set the shutdown flag, the recovery loop treated
+        // the next network hiccup as an outage worth fixing and re-announced the device.
+        // Clearing state alone deferred the teardown to the next login, which runs
+        // `spotifly_cleanup()` before building a session.
+        //
+        // The teardown flag is raised before Spirc is touched, so recovery stops even when
+        // the goodbye itself cannot go out — logging out mid-outage is exactly when this
+        // matters. The flag is cleared again by `spotifly_init_player`.
+        //
+        // Awaited before the auth state is cleared so the login screen cannot come back and
+        // start a new session while this one is still going down. Rust only hands Spirc a
+        // command, so there is nothing slow to wait for.
+        await PlaybackViewModel.shared.shutdownForLogout()
+
         SpotifyAuth.clearAuthResult()
         KeychainManager.clearAuthResult()
         authResult = nil

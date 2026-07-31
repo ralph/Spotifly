@@ -900,10 +900,32 @@ enum SpotifyPlayer {
     /// Shuts down the Spirc connection and sends goodbye to other devices.
     /// Call this when the app is quitting to properly disconnect from Spotify Connect.
     /// Dispatched to background thread to avoid blocking the main thread.
-    static func shutdown() {
-        Task.detached(priority: .userInitiated) {
-            spotifly_shutdown()
-        }
+    ///
+    /// Awaitable so callers can order it against a rebuild of the same global player. The
+    /// Rust side only hands Spirc a shutdown command, so awaiting costs nothing.
+    ///
+    /// `nonisolated` matters at app termination: the project builds with
+    /// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so a main-actor-isolated version could
+    /// not start until `applicationWillTerminate` returned — by which point AppKit may
+    /// already have torn the process down.
+    nonisolated static func shutdown() async {
+        await Task.detached(priority: .userInitiated) {
+            _ = spotifly_shutdown()
+        }.value
+    }
+
+    /// Says goodbye to other Connect devices, then releases the whole Rust session.
+    ///
+    /// `shutdown()` alone only disconnects Spirc — Session, Player and Mixer keep running
+    /// with the credentials of the account that just logged out, and would only be released
+    /// by the cleanup at the *next* login. The cleanup also invalidates the session
+    /// generation, so an initialization still in flight abandons instead of rebuilding for
+    /// an account that is gone.
+    nonisolated static func shutdownAndCleanup() async {
+        await Task.detached(priority: .userInitiated) {
+            _ = spotifly_shutdown()
+            spotifly_cleanup()
+        }.value
     }
 
     /// Disconnects from Spotify Connect without preventing future reconnection.

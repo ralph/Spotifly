@@ -16,7 +16,7 @@ struct ContentView: View {
             ProgressView(String(localized: "auth.loading"))
                 .frame(minWidth: 500, minHeight: 400)
         } else if let authResult = viewModel.authResult {
-            LoggedInView(authResult: authResult, onLogout: { viewModel.logout() })
+            LoggedInView(authResult: authResult, onLogout: { Task { await viewModel.logout() } })
         } else {
             loginView
                 .frame(minWidth: 500, minHeight: 400)
