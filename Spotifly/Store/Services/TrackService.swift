@@ -2,7 +2,7 @@
 //  TrackService.swift
 //  Spotifly
 //
-//  Service for track-related operations including favorites.
+//  Shared service for track metadata and favorite operations.
 //  Handles API calls and updates AppStore on success.
 //
 

@@ -4,7 +4,7 @@
 //
 //  Service for queue-related operations.
 //  Queue structure (track URIs) is received from Spirc via Mercury protocol.
-//  Track metadata is fetched from Spotify Web API and cached in the store.
+//  Track metadata is loaded through TrackService and cached in the store.
 //
 
 import Combine

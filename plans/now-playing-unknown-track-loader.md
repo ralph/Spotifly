@@ -1,9 +1,43 @@
 # Unknown Now Playing tracks have no shared metadata recovery path
 
-Status: **deferred follow-up**
+Status: **completed**
 Components: `Spotifly/Store/Services/QueueService.swift`,
-`Spotifly/Store/Services/TrackService.swift`, `Spotifly/Views/NowPlayingBarView.swift`
+`Spotifly/Store/Services/TrackService.swift`, `Spotifly/Views/LoggedInView.swift`,
+`Spotifly/Views/NowPlayingBarView.swift`, `SpotiflyTests/TrackServiceTests.swift`
 Found: 2026-07-31, while reviewing the relinked-track identity fix
+
+## Implemented solution
+
+Completed on 2026-07-31 in three independently verified implementation commits:
+
+- `7b42c78` makes `TrackService` the single metadata-loading owner. Its per-ID registry
+  lets overlapping batches join the tasks already carrying some IDs and starts one task
+  only for the uncovered remainder. Cache checks happen before token acquisition, failed
+  tasks remove their entries for retry, and unstructured tasks survive caller cancellation.
+- `1faf499` injects the same persisted `TrackService` instance into `QueueService`. The
+  queue keeps its 100 ms ID accumulator but delegates the actual load, removing its former
+  parallel metadata task and sharing in-flight work with all other callers.
+- `863551c` gives `NowPlayingBarView` an ID-bound recovery task independent of favorite
+  loading. Once metadata lands it refreshes macOS Now Playing, which resolves the current
+  logical URI and therefore remains safe if the initiating track was skipped meanwhile.
+
+`TrackService.ensureTracksLoaded(trackIds:)` is the one public loading path. Completed
+entities are normalized into `AppStore`; rapid changes may therefore cache useful tracks
+without ever changing which entity the bar displays.
+
+Automated verification completed:
+
+- five `TrackServiceTests` pass, covering cache hits, overlapping batches, failure/retry,
+  caller cancellation, and the pre-existing favorite-status sharing contract;
+- `swiftformat --swiftversion 6.3 .` reports no remaining changes;
+- `cargo fmt --check`, all 23 Rust tests, and `cargo check` pass;
+- repeated full Debug macOS app builds, including the Rust library, succeed.
+
+The Swift test target currently needs `GENERATE_INFOPLIST_FILE=YES` on the command line to
+launch. With that override, the loader tests pass. The complete Swift unit suite also runs,
+but two existing `NavigationCoordinator` assertions fail (`clearing search prunes search
+history entries` and `favorites selection clears drill down state and still records section
+history`); neither navigation code nor those tests are part of this change.
 
 ## Gap
 
@@ -30,21 +64,20 @@ Quickly skipped tracks are not stale-write hazards: normalized entities use diff
 all completed fetches may safely land, and the bar continues reading only the current ID.
 Cancellation checks or last-writer-wins suppression do not solve the actual duplication.
 
-## Direction for a later design
+## Design decision
 
-Create one metadata-loading owner used by both queue hydration and single-track recovery.
-The design must support overlapping batches, per-ID cache checks, retry after failure, and
-caller cancellation without cancelling useful shared work. Decide whether that belongs in
-`TrackService` or a dedicated metadata service before implementation; do not add another
-parallel fetch first.
+`TrackService` is the one metadata-loading owner used by both queue hydration and
+single-track recovery. Its registry supports overlapping batches, per-ID cache checks,
+retry after failure, and caller cancellation without cancelling useful shared work. No
+second fetch path was added.
 
 ## Acceptance criteria for the follow-up
 
-- An unknown logical current track eventually receives metadata even without another queue
+- [x] An unknown logical current track eventually receives metadata even without another queue
   callback.
-- Queue hydration and Now Playing recovery share in-flight work for overlapping IDs.
-- A failed metadata request can be retried.
-- Rapid track changes may cache every completed entity but never change which entity the bar
+- [x] Queue hydration and Now Playing recovery share in-flight work for overlapping IDs.
+- [x] A failed metadata request can be retried.
+- [x] Rapid track changes may cache every completed entity but never change which entity the bar
   displays.
-- Automated tests cover cache hits, overlapping batches, failure/retry, and caller
+- [x] Automated tests cover cache hits, overlapping batches, failure/retry, and caller
   cancellation.
