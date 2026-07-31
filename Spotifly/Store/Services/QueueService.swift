@@ -15,9 +15,9 @@ import Foundation
 final class QueueService {
     private let store: AppStore
     private let tokenProvider: () async -> String
+    private let trackService: TrackService
     private var queueSubscription: AnyCancellable?
     private var setQueueSubscription: AnyCancellable?
-    private var metadataFetchTask: Task<Void, Never>?
     private var pendingQueueRefreshTask: Task<Void, Never>?
     private var pendingTrackIds: Set<String> = []
     /// Subject for debouncing metadata fetch requests
@@ -25,9 +25,14 @@ final class QueueService {
     /// Subscription for debounced fetch operations
     private var fetchDebounceSubscription: AnyCancellable?
 
-    init(store: AppStore, tokenProvider: @escaping () async -> String) {
+    init(
+        store: AppStore,
+        tokenProvider: @escaping () async -> String,
+        trackService: TrackService,
+    ) {
         self.store = store
         self.tokenProvider = tokenProvider
+        self.trackService = trackService
         setupQueueSubscription()
         setupSetQueueSubscription()
         setupFetchDebounceSubscription()
@@ -220,57 +225,19 @@ final class QueueService {
 
         guard !trackIdsToFetch.isEmpty else { return }
 
-        // Don't cancel ongoing fetch - let it complete and just add more
-        // Wait for any in-progress fetch to complete first
-        if let existingTask = metadataFetchTask {
-            _ = await existingTask.value
-        }
+        debugLog("QueueService", "Ensuring metadata for \(trackIdsToFetch.count) queue tracks")
 
-        // Re-filter in case some were fetched by previous task
-        let stillNeeded = trackIdsToFetch.filter { store.tracks[$0] == nil }
-        guard !stillNeeded.isEmpty else {
+        do {
+            try await trackService.ensureTracksLoaded(trackIds: trackIdsToFetch)
             updateNowPlayingMetadata()
-            return
+        } catch {
+            debugLog("QueueService", "Failed to fetch track metadata: \(error)")
         }
-
-        debugLog("QueueService", "Fetching \(stillNeeded.count) tracks from Web API")
-
-        metadataFetchTask = Task { [weak self, tokenProvider] in
-            guard let self else { return }
-
-            do {
-                let accessToken = await tokenProvider()
-                debugLog("QueueService", "Using token: \(String(accessToken.prefix(20)))...")
-                let trackData = try await SpotifyAPI.fetchTracks(accessToken: accessToken, trackIds: stillNeeded)
-
-                guard !Task.isCancelled else { return }
-
-                // Convert APITrack to Track and store in the global store
-                let tracksToStore = trackData.values.map { Track(from: $0) }
-
-                // Store tracks in the global cache
-                store.upsertTracks(tracksToStore)
-
-                // Log each track's duration for debugging
-                for track in tracksToStore {
-                    debugLog("QueueService", "Cached track '\(track.name)' (\(track.id)): duration=\(track.durationMs)ms")
-                }
-                debugLog("QueueService", "Cached \(tracksToStore.count) tracks in store")
-
-                // Update queue items from store
-                updateNowPlayingMetadata()
-
-            } catch {
-                debugLog("QueueService", "Failed to fetch track metadata: \(error)")
-            }
-        }
-
-        _ = await metadataFetchTask?.value
     }
 
     /// Update Now Playing info from current track in AppStore
     private func updateNowPlayingMetadata() {
-        // Trigger Now Playing update - it reads from store.currentTrackEntity
+        // Trigger Now Playing update - it resolves PlaybackViewModel's logical URI.
         PlaybackViewModel.shared.updateNowPlayingInfo()
 
         let prevCount = store.previousTrackEntities.count
