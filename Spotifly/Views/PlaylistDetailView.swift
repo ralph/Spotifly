@@ -245,9 +245,9 @@ struct PlaylistDetailView: View {
             ProgressView("loading.tracks")
                 .padding()
         } else if let errorMessage {
-            Text(errorMessage)
-                .foregroundStyle(.red)
-                .padding()
+            InlineLoadError(message: errorMessage) {
+                await loadPlaylist()
+            }
         } else if !tracks.isEmpty {
             normalTrackList
         }

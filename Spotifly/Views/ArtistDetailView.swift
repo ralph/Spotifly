@@ -128,6 +128,10 @@ struct ArtistDetailView: View {
                 if isLoadingAlbums {
                     ProgressView("loading.albums")
                         .padding()
+                } else if let errorMessage {
+                    InlineLoadError(message: errorMessage) {
+                        await loadArtist()
+                    }
                 } else if !albums.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {

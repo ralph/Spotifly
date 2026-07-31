@@ -185,9 +185,9 @@ struct AlbumDetailView: View {
                     ProgressView("loading.tracks")
                         .padding()
                 } else if let errorMessage {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                        .padding()
+                    InlineLoadError(message: errorMessage) {
+                        await loadAlbum()
+                    }
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(tracks.enumerated(), id: \.offset) { index, track in
