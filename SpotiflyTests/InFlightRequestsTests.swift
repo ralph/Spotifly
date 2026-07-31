@@ -81,6 +81,30 @@ struct InFlightRequestsTests {
         #expect(!requests.isRunning("k"))
     }
 
+    @Test func `a cancelled run can see that it was superseded`() async throws {
+        let requests = InFlightRequests<Int>()
+        let gate = Gate()
+        let wrote = Counter()
+
+        // What the list loads do: check cancellation after the network call, before
+        // writing, so a run replaced by a force refresh cannot clobber it.
+        let first = Task {
+            try await requests.run("k") {
+                await gate.wait()
+                try Task.checkCancellation()
+                wrote.count += 1
+                return 1
+            }
+        }
+        try await waitUntil { requests.isRunning("k") }
+
+        requests.cancel("k")
+        gate.open()
+        _ = try? await first.value
+
+        #expect(wrote.count == 0)
+    }
+
     @Test func `keys are independent`() async throws {
         let requests = InFlightRequests<Int>()
         let runs = Counter()

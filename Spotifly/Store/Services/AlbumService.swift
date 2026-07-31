@@ -48,6 +48,10 @@ final class AlbumService {
                 limit: 20,
                 offset: offset,
             )
+            // A force refresh cancels this run and starts another. Cancellation is
+            // cooperative, so without this the superseded page would still be
+            // written — over the reset its replacement just performed.
+            try Task.checkCancellation()
 
             let albums = response.albums.map { Album(from: $0) }
             self.store.upsertAlbums(albums)

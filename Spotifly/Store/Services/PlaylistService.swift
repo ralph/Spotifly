@@ -48,6 +48,8 @@ final class PlaylistService {
                 limit: 50,
                 offset: offset,
             )
+            // See AlbumService.loadUserAlbums: a superseded run must not write.
+            try Task.checkCancellation()
 
             let playlists = response.playlists.map { Playlist(from: $0) }
             self.store.upsertPlaylists(playlists)
