@@ -19,6 +19,14 @@ final class DeviceService {
     /// `fetchInitialPlaybackState` that fires on reconnect (Web API is stale).
     private var lastTransferTime: ContinuousClock.Instant?
 
+    /// Counts authoritative active-device updates from the cluster, so a transfer can tell
+    /// whether one landed while it was awaiting Rust.
+    private var activeDeviceUpdates = 0
+
+    /// The transfer currently in flight, if any. Transfers are chained onto it so no two
+    /// ever overlap — see `transferPlayback(to:accessToken:)`.
+    private var transferTask: Task<Bool, Never>?
+
     /// Subject for event-driven load requests. Throttled so that bursts of triggers
     /// (e.g. sessionConnected firing right after the post-transfer delay) collapse
     /// into a single HTTP request.
@@ -35,6 +43,7 @@ final class DeviceService {
             }
         activeDeviceCancellable = SpotifyPlayer.activeDeviceChanged
             .sink { [weak self] deviceId in
+                self?.activeDeviceUpdates += 1
                 self?.store.setActiveDevice(deviceId)
             }
     }
@@ -86,13 +95,36 @@ final class DeviceService {
     /// Transfer playback to a specific device.
     /// Uses native Spotify Connect protocol for seamless handoff.
     /// Returns true if transfer succeeded (caller should activate Connect mode)
+    ///
+    /// Every speaker row launches its own task, so two taps can call this concurrently.
+    /// Each attempt optimistically marks its target active and undoes that if Rust rejects
+    /// the transfer, which is only sound while no other attempt is in flight: overlapping
+    /// ones capture each other's optimistic values as the state to restore. Chaining onto
+    /// the previous transfer keeps that from arising at all, and the later tap — the user's
+    /// actual intent — still wins, because it runs last.
     func transferPlayback(to device: Device, accessToken: String) async -> Bool {
+        let previous = transferTask
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            return await performTransfer(to: device, accessToken: accessToken)
+        }
+        transferTask = task
+        defer {
+            if transferTask == task {
+                transferTask = nil
+            }
+        }
+        return await task.value
+    }
+
+    private func performTransfer(to device: Device, accessToken: String) async -> Bool {
         // Record transfer time so sessionConnected handler can delay its Web API fetch
         lastTransferTime = .now
 
         // Optimistically mark the target device as active for immediate UI feedback,
         // remembering the previous one so a rejected transfer can be undone
         let previousActiveDeviceId = store.activeDeviceId
+        let updatesBeforeTransfer = activeDeviceUpdates
         store.setActiveDevice(device.id)
 
         // Check if target is our local device
@@ -111,8 +143,17 @@ final class DeviceService {
         // that never became active, and report the failure to the caller.
         guard accepted else {
             debugLog("DeviceService", "Transfer to \(device.name) was rejected by Rust")
-            if let previousActiveDeviceId {
-                store.setActiveDevice(previousActiveDeviceId)
+            // Only undo the guess this call made. Serializing transfers rules out a
+            // competing tap, but not the cluster: another client can activate a device
+            // while this transfer is awaited, and that fact outranks restoring what was
+            // true before the tap — including when it names the very device asked for,
+            // which the store alone cannot distinguish from the optimistic update.
+            //
+            // An empty ID clears the flag on every device, which is the right rollback when
+            // nothing was active before. Skipping the call in that case, as this used to,
+            // left the target marked active even though the transfer was rejected.
+            if activeDeviceUpdates == updatesBeforeTransfer {
+                store.setActiveDevice(previousActiveDeviceId ?? "")
             }
             return false
         }
