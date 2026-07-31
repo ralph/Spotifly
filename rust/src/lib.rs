@@ -2779,6 +2779,16 @@ pub extern "C" fn spotifly_transfer_playback(to_device_id: *const c_char) -> i32
     };
     drop(session_guard);
 
+    // Deliberately our own device ID, not the cluster's active device. The endpoint is
+    // POST /connect-state/v1/connect/transfer/from/{from}/to/{to}, and the backend derives
+    // the source from the session rather than validating this segment: librespot itself
+    // passes its own ID for *both* sides in the transfer-to-local path, in the branch that
+    // only runs while it is not the active device (Spirc::handle_command, SpircCommand::
+    // Transfer). Verified by hand too — Spotifly -> iPhone -> a Connect speaker chains
+    // fine, each hop sourced from an already-inactive Spotifly.
+    //
+    // So passing the cluster's active device here would trade a value that is always known
+    // for one that lags the dealer websocket by a few hundred milliseconds, and buy nothing.
     let from_device_id = match current_device_id() {
         Some(id) => id,
         None => {
