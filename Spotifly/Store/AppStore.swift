@@ -552,10 +552,16 @@ final class AppStore {
     /// transferring could show the correct live state and then replace it with a stale
     /// Web API one.
     ///
-    /// Deliberately one counter for playback and queue together rather than two. It is
-    /// coarser — a queue response can be discarded because a playback callback arrived —
-    /// but the discarded value is bootstrap data that the live callbacks are already
-    /// replacing, so the conservative choice costs nothing and needs no second field.
+    /// Deliberately one counter for playback and queue together rather than two. Splitting
+    /// them looks more precise but is not: both halves carry the current track, so a
+    /// per-half check lets a stale queue response reinstate the track a live playback
+    /// callback has just moved on from. All-or-nothing keeps the two consistent.
+    ///
+    /// It is coarser — a queue response can be discarded because a playback callback
+    /// arrived — and that costs nothing for the callers whose live callbacks are replacing
+    /// the state anyway. The one caller it does cost is the refresh scheduled after a
+    /// provisional `SetQueue`, which is waiting for a queue no callback is going to deliver;
+    /// that one retries (see `QueueService.scheduleQueueRefresh`).
     private(set) var liveStateRevision: UInt64 = 0
 
     /// Records that authoritative state arrived from Rust.
