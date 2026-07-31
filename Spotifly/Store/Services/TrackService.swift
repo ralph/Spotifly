@@ -21,6 +21,9 @@ final class TrackService {
     /// Injectable for tests; production uses Spotify's batched contains endpoint.
     private let favoriteStatusFetcher: (_ accessToken: String, _ trackIds: [String]) async throws -> [String: Bool]
 
+    /// The single metadata fetch path shared by queue hydration and current-track recovery.
+    private let metadataFetcher: (_ accessToken: String, _ trackIds: [String]) async throws -> [String: APITrack]
+
     /// The favorites list, whose pages are one run at a time under one key.
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "favorites"
@@ -42,16 +45,83 @@ final class TrackService {
     /// many-to-one key relation it does not have, to save a dictionary and a `defer`.
     private var checksInFlight: [String: (id: UUID, task: Task<Void, Never>)] = [:]
 
+    /// Track IDs currently covered by a shared metadata request.
+    ///
+    /// A request may carry many IDs, while a later caller may overlap only part of that
+    /// batch. Mapping each ID to its task lets the caller join the covered work and start
+    /// one request for only the remainder. The tasks are unstructured so a disappearing
+    /// SwiftUI view cannot cancel work still useful to the queue or its replacement.
+    private var metadataLoadsInFlight: [String: (id: UUID, task: Task<Void, Error>)] = [:]
+
     init(
         store: AppStore,
         tokenProvider: @escaping () async -> String,
         favoriteStatusFetcher: @escaping (_ accessToken: String, _ trackIds: [String]) async throws -> [String: Bool] = { accessToken, trackIds in
             try await SpotifyAPI.checkSavedTracks(accessToken: accessToken, trackIds: trackIds)
         },
+        metadataFetcher: @escaping (_ accessToken: String, _ trackIds: [String]) async throws -> [String: APITrack] = { accessToken, trackIds in
+            try await SpotifyAPI.fetchTracks(accessToken: accessToken, trackIds: trackIds)
+        },
     ) {
         self.store = store
         self.tokenProvider = tokenProvider
         self.favoriteStatusFetcher = favoriteStatusFetcher
+        self.metadataFetcher = metadataFetcher
+    }
+
+    // MARK: - Track Metadata
+
+    /// Ensures every available track in `trackIds` is present in the normalized store.
+    ///
+    /// Cache hits return before requesting a token. Overlapping callers join any request
+    /// already carrying an ID and fetch only the uncovered remainder. A failed run removes
+    /// its entries, so a later call retries normally.
+    func ensureTracksLoaded(trackIds: [String]) async throws {
+        let missingTrackIds = uniqueTrackIds(trackIds).filter { store.tracks[$0] == nil }
+        guard !missingTrackIds.isEmpty else { return }
+
+        var tasks: [(id: UUID, task: Task<Void, Error>)] = []
+        var seenTaskIds = Set<UUID>()
+        var uncoveredTrackIds: [String] = []
+
+        for trackId in missingTrackIds {
+            if let existing = metadataLoadsInFlight[trackId] {
+                if seenTaskIds.insert(existing.id).inserted {
+                    tasks.append(existing)
+                }
+            } else {
+                uncoveredTrackIds.append(trackId)
+            }
+        }
+
+        if !uncoveredTrackIds.isEmpty {
+            let id = UUID()
+            let task = Task { @MainActor in
+                defer { self.finishMetadataLoad(id: id, trackIds: uncoveredTrackIds) }
+
+                let accessToken = await self.tokenProvider()
+                for batch in self.batches(of: uncoveredTrackIds, size: 50) {
+                    let fetched = try await self.metadataFetcher(accessToken, batch)
+                    let tracks = batch.compactMap { fetched[$0] }.map { Track(from: $0) }
+                    self.store.upsertTracks(tracks)
+                }
+            }
+            let entry = (id, task)
+            for trackId in uncoveredTrackIds {
+                metadataLoadsInFlight[trackId] = entry
+            }
+            tasks.append(entry)
+        }
+
+        for entry in tasks {
+            try await entry.task.value
+        }
+    }
+
+    private func finishMetadataLoad(id: UUID, trackIds: [String]) {
+        for trackId in trackIds where metadataLoadsInFlight[trackId]?.id == id {
+            metadataLoadsInFlight[trackId] = nil
+        }
     }
 
     // MARK: - Favorites (Saved Tracks)
