@@ -267,8 +267,18 @@ static POSITION_MS: AtomicU32 = AtomicU32::new(0);
 // Current track duration (ms) - updated from TrackChanged event
 static CURRENT_DURATION_MS: AtomicU32 = AtomicU32::new(0);
 
-// Current track URI - for detecting same-track reconnects
+// Current logical track URI - for UI identity and detecting same-track reconnects.
+// The playable AudioItem may carry a different URI after Spotify relinking.
 static CURRENT_TRACK_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+
+/// Stores the requested/context track identity exposed by librespot player events.
+///
+/// Keep callback delivery outside this helper: Swift callbacks may re-enter Rust and
+/// must never run while `CURRENT_TRACK_URI` is locked.
+fn set_current_track_uri(track_uri: String) {
+    let mut uri_guard = CURRENT_TRACK_URI.lock().unwrap();
+    *uri_guard = Some(track_uri);
+}
 
 // Current context URI - captured from SetQueue and cluster player state updates.
 // We keep the latest non-empty value to recover resume after reconnect.
@@ -1007,7 +1017,6 @@ fn spawn_reconnection_loop(intent: RecoveryIntent) {
     );
 
     RUNTIME.spawn(async move {
-
         // The generation this loop is recovering. Between two attempts it can sleep for up
         // to 30 seconds, and during that time something else — a manual restart from the
         // wake path, or spotifly_cleanup on logout — may have already rebuilt or torn down
@@ -1058,7 +1067,11 @@ fn spawn_reconnection_loop(intent: RecoveryIntent) {
                 return;
             }
 
-            debug!("[WAKE +{}ms] Reconnect attempt {}", elapsed_since_wake_ms(), attempt_number);
+            debug!(
+                "[WAKE +{}ms] Reconnect attempt {}",
+                elapsed_since_wake_ms(),
+                attempt_number
+            );
             with_connection(|c| {
                 c.reconnect_attempt = attempt_number;
                 c.last_error = Some(format!("Reconnecting (attempt {})", attempt_number));
@@ -1081,7 +1094,10 @@ fn spawn_reconnection_loop(intent: RecoveryIntent) {
                     continue;
                 }
                 Err(_) => {
-                    debug!("[WAKE +{}ms] Token request timed out", elapsed_since_wake_ms());
+                    debug!(
+                        "[WAKE +{}ms] Token request timed out",
+                        elapsed_since_wake_ms()
+                    );
                     continue;
                 }
             };
@@ -1093,7 +1109,10 @@ fn spawn_reconnection_loop(intent: RecoveryIntent) {
                 SESSION_GENERATION.load(Ordering::SeqCst),
                 teardown_in_progress(),
             ) {
-                debug!("[WAKE +{}ms] Abandoning reconnect: state changed while fetching token", elapsed_since_wake_ms());
+                debug!(
+                    "[WAKE +{}ms] Abandoning reconnect: state changed while fetching token",
+                    elapsed_since_wake_ms()
+                );
                 RECONNECTING.store(false, Ordering::SeqCst);
                 return;
             }
@@ -1114,12 +1133,21 @@ fn spawn_reconnection_loop(intent: RecoveryIntent) {
             // settled before its readiness is published. See the note there.
             match init_player_async(&token, intent.was_active, intent.should_resume()).await {
                 Ok(_) => {
-                    debug!("[WAKE +{}ms] Reconnect successful on attempt {}", elapsed_since_wake_ms(), attempt_number);
+                    debug!(
+                        "[WAKE +{}ms] Reconnect successful on attempt {}",
+                        elapsed_since_wake_ms(),
+                        attempt_number
+                    );
                     RECONNECTING.store(false, Ordering::SeqCst);
                     return;
                 }
                 Err(e) => {
-                    debug!("[WAKE +{}ms] Reconnect attempt {} failed: {}", elapsed_since_wake_ms(), attempt_number, e);
+                    debug!(
+                        "[WAKE +{}ms] Reconnect attempt {} failed: {}",
+                        elapsed_since_wake_ms(),
+                        attempt_number,
+                        e
+                    );
                     // Adopt the generation this attempt created. init_player_async bumps it
                     // before it can fail, so leaving the old value here would make the next
                     // iteration mistake our own rebuild for someone else's and abandon.
@@ -1413,8 +1441,17 @@ async fn build_player_async(
                     }
 
                     match event {
-                        Some(PlayerEvent::Playing { position_ms, .. }) => {
-                            debug!("PlayerEvent::Playing at {}ms", position_ms);
+                        Some(PlayerEvent::Playing {
+                            track_id,
+                            position_ms,
+                            ..
+                        }) => {
+                            let track_uri = track_id.to_string();
+                            debug!(
+                                "PlayerEvent::Playing: logical track {} at {}ms",
+                                track_uri, position_ms
+                            );
+                            set_current_track_uri(track_uri);
                             IS_PLAYING.store(true, Ordering::SeqCst);
                             set_active_device(true);
                             PLAYING_EVENT_SEQ.fetch_add(1, Ordering::SeqCst);
@@ -1422,8 +1459,17 @@ async fn build_player_async(
                             // Send playback state update to Swift
                             send_local_playback_state(true, position_ms);
                         }
-                        Some(PlayerEvent::Paused { position_ms, .. }) => {
-                            debug!("PlayerEvent::Paused at {}ms", position_ms);
+                        Some(PlayerEvent::Paused {
+                            track_id,
+                            position_ms,
+                            ..
+                        }) => {
+                            let track_uri = track_id.to_string();
+                            debug!(
+                                "PlayerEvent::Paused: logical track {} at {}ms",
+                                track_uri, position_ms
+                            );
+                            set_current_track_uri(track_uri);
                             IS_PLAYING.store(false, Ordering::SeqCst);
                             // Still active when paused - just not playing
                             update_position(position_ms);
@@ -1465,25 +1511,20 @@ async fn build_player_async(
                             update_position(0);
                         }
                         Some(PlayerEvent::TrackChanged { audio_item }) => {
-                            // Extract track URI from audio_item (same as Loading event)
-                            let track_uri_str = audio_item.track_id.to_string();
+                            let audio_item_uri = audio_item.track_id.to_string();
                             let duration_ms = audio_item.duration_ms;
-                            debug!("TrackChanged event: {} ({}ms) - triggering callbacks", track_uri_str, duration_ms);
+                            let logical_track_uri = CURRENT_TRACK_URI.lock().unwrap().clone();
+                            debug!(
+                                "TrackChanged event: playable audio item {} ({}ms), logical track {}",
+                                audio_item_uri,
+                                duration_ms,
+                                logical_track_uri.as_deref().unwrap_or("unknown")
+                            );
 
-                            // Update current track URI and duration
-                            {
-                                let mut uri_guard = CURRENT_TRACK_URI.lock().unwrap();
-                                *uri_guard = Some(track_uri_str.clone());
-                            }
+                            // The AudioItem may be a relinked alternative. Its duration is
+                            // authoritative for the decoded stream, but its ID must not
+                            // replace the requested/context track identity.
                             CURRENT_DURATION_MS.store(duration_ms, Ordering::SeqCst);
-
-                            // Emit Loading callback with track info (position 0 for auto-advance)
-                            if let Some(callback) = registered_callback(&LOADING_CALLBACK) {
-                                send_json(callback, &LoadingNotification {
-                                    track_uri: track_uri_str,
-                                    position_ms: 0,
-                                });
-                            }
                         }
                         Some(PlayerEvent::VolumeChanged { volume }) => {
                             debug!("VolumeChanged event: {}", volume);
@@ -1513,11 +1554,7 @@ async fn build_player_async(
                             let track_uri_str = track_id.to_string();
                             debug!("Loading event: {} at {}ms", track_uri_str, position_ms);
 
-                            // Track current playing URI
-                            {
-                                let mut uri_guard = CURRENT_TRACK_URI.lock().unwrap();
-                                *uri_guard = Some(track_uri_str.clone());
-                            }
+                            set_current_track_uri(track_uri_str.clone());
 
                             if let Some(callback) = registered_callback(&LOADING_CALLBACK) {
                                 send_json(callback, &LoadingNotification {
@@ -1720,8 +1757,10 @@ async fn build_player_async(
             // spotifly_cleanup on logout, a manual retry, or sleep, any of which can land
             // during the rehydration wait above. Writing success then would resurrect a
             // dead session as healthy and stop the health check from recovering it.
-            let superseded =
-                !listener_may_act(current_generation, SESSION_GENERATION.load(Ordering::SeqCst));
+            let superseded = !listener_may_act(
+                current_generation,
+                SESSION_GENERATION.load(Ordering::SeqCst),
+            );
             let tearing_down = teardown_in_progress();
 
             if superseded || tearing_down {
@@ -2506,7 +2545,10 @@ pub extern "C" fn spotifly_cleanup() {
     // importantly a reconnect loop sleeping between attempts — sees that what it was
     // recovering no longer exists and abandons instead of rebuilding over the teardown.
     let invalidated = SESSION_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-    debug!("spotifly_cleanup invalidated generation, now {}", invalidated);
+    debug!(
+        "spotifly_cleanup invalidated generation, now {}",
+        invalidated
+    );
 
     // Signal event listener to stop
     if let Some(tx) = PLAYER_EVENT_TX.lock().unwrap().take() {
@@ -3050,18 +3092,30 @@ mod tests {
 
     #[test]
     fn local_playback_is_resumed() {
-        assert!(RecoveryIntent { was_playing: true, was_active: true }.should_resume());
+        assert!(RecoveryIntent {
+            was_playing: true,
+            was_active: true
+        }
+        .should_resume());
     }
 
     #[test]
     fn remote_playback_is_left_alone() {
         // Another device is still playing; taking over would steal it from the user.
-        assert!(!RecoveryIntent { was_playing: true, was_active: false }.should_resume());
+        assert!(!RecoveryIntent {
+            was_playing: true,
+            was_active: false
+        }
+        .should_resume());
     }
 
     #[test]
     fn a_paused_local_player_is_not_resumed() {
-        assert!(!RecoveryIntent { was_playing: false, was_active: true }.should_resume());
+        assert!(!RecoveryIntent {
+            was_playing: false,
+            was_active: true
+        }
+        .should_resume());
     }
 
     #[test]
