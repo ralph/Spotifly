@@ -10,7 +10,6 @@ import SwiftUI
 struct SearchResultsView: View {
     let searchResults: SearchResults
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Environment(SpotifySession.self) private var session
     @Environment(TrackService.self) private var trackService
 
     var body: some View {
@@ -41,7 +40,7 @@ struct SearchResultsView: View {
         .task(id: searchResults.tracks.map(\.id).joined()) {
             // Check favorite status for all search tracks
             let trackIds = searchResults.tracks.map(\.id)
-            await trackService.refreshFavoriteStatuses(trackIds: trackIds)
+            await trackService.ensureFavoriteStatuses(trackIds: trackIds)
         }
     }
 

@@ -90,7 +90,7 @@ struct SearchAllTracksView: View {
         }
         .navigationTitle("section.tracks")
         .task(id: trackIds.joined()) {
-            await trackService.refreshFavoriteStatuses(trackIds: trackIds)
+            await trackService.ensureFavoriteStatuses(trackIds: trackIds)
         }
     }
 

@@ -201,7 +201,7 @@ struct QueueListView: View {
         let trackIds = allQueueItems.map(\.track.id)
         guard !trackIds.isEmpty else { return }
 
-        await trackService.refreshFavoriteStatuses(trackIds: trackIds)
+        await trackService.ensureFavoriteStatuses(trackIds: trackIds)
     }
 
     // MARK: - Normal Mode Content
