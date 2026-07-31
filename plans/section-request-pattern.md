@@ -231,7 +231,13 @@ and per-entity observable boxes would be disproportionate here.
 - **No in-flight tracking for `/me/tracks/contains`.** Switching the detail views
   from `refreshFavoriteStatuses` to the cache-aware `ensureFavoriteStatuses` is
   enough; a per-batch registry would guard a rare overlap at real complexity cost.
+  Queue, search and the now-playing bar keep `refreshFavoriteStatuses` — they are
+  outside this branch's scope.
 - **Album/artist `limit=50` pagination.** Pre-existing, separate.
+- **A stale list response can revert a just-saved playlist name.** `upsertPlaylist`
+  replaces metadata, so a `/me/playlists` page captured before an edit can land
+  after it. Pre-existing; guarding it properly needs response revisioning, which is
+  more machinery than this buys.
 
 ## Commits (one per fix)
 
@@ -240,13 +246,24 @@ and per-entity observable boxes would be disproportionate here.
    monotonic upsert merging, `artistAlbumIds` cache in `AppStore`.
 3. `AlbumService`: `ensureAlbumLoaded` on the helper; skip requests the markers say
    are unnecessary; delete the polling waiter.
-4. `PlaylistService`: `ensurePlaylistLoaded` / `reloadPlaylist`; reorder rollback
-   actually re-fetches.
+4. `PlaylistService`: `ensurePlaylistLoaded` / `reloadPlaylistTracks`; reorder
+   rollback actually re-fetches.
 5. `ArtistService`: `ensureArtistLoaded` caching artist albums in the store.
 6. The four list loads onto the same helper.
 7. Detail views store-derived, single initialiser, router conditional collapsed,
    cancellation not surfaced as an error, `ensureFavoriteStatuses`.
-8. CHANGELOG.
+8. Superseded runs fenced off the store (`Task.checkCancellation` before writing).
+9. `reloadPlaylistTracks` fetches only tracks; a failed rollback is reported.
+10. `InlineLoadError` — a retry for a failed track or album list; complete the
+    `/albums/{id}` and `/artists/{id}` field projections.
+11. Superseded runs stop clearing the replacement's loading state; a reorder
+    cancelled by a newer one is not treated as a failure; the shared playlist key
+    keeps one postcondition across both entry points.
+12. CHANGELOG.
+
+Items 8–11 came out of two review rounds after the first implementation. The
+recurring shape: cancellation is cooperative, so a request that has been replaced
+still has queued work that will happily write as though it were current.
 
 ## Verification
 
