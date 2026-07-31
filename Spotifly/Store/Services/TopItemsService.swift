@@ -135,6 +135,7 @@ final class TopItemsService {
                         externalUrl: nil,
                         artistId: apiTrack.artistId,
                         artistName: apiTrack.artistName,
+                        detailsLoaded: false,
                     )
                     self.store.upsertAlbum(album)
                 }

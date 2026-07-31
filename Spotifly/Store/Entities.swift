@@ -149,7 +149,7 @@ struct Album: Identifiable, Hashable, Encodable {
         trackIds: [String] = [],
         totalDurationMs: Int? = nil,
         knownTrackCount: Int? = nil,
-        detailsLoaded: Bool = false,
+        detailsLoaded: Bool,
         tracksLoaded: Bool = false,
     ) {
         self.id = id

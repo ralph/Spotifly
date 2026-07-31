@@ -201,7 +201,6 @@ struct QueueListView: View {
         let trackIds = allQueueItems.map(\.track.id)
         guard !trackIds.isEmpty else { return }
 
-        let token = await session.validAccessToken()
         await trackService.refreshFavoriteStatuses(trackIds: trackIds)
     }
 

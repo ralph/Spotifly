@@ -40,7 +40,6 @@ struct SearchResultsView: View {
         }
         .task(id: searchResults.tracks.map(\.id).joined()) {
             // Check favorite status for all search tracks
-            let token = await session.validAccessToken()
             let trackIds = searchResults.tracks.map(\.id)
             await trackService.refreshFavoriteStatuses(trackIds: trackIds)
         }

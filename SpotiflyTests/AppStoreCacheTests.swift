@@ -105,6 +105,7 @@ struct AppStoreCacheTests {
             externalUrl: nil,
             artistId: "artist",
             artistName: "Artist",
+            detailsLoaded: false,
         )
     }
 

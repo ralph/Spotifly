@@ -373,7 +373,6 @@ struct NowPlayingBarView: View {
     private func resolveCurrentTrackFavoriteStatusIfNeeded() async {
         guard let trackId = currentTrackId else { return }
 
-        let token = await session.validAccessToken()
         await trackService.refreshFavoriteStatuses(trackIds: [trackId])
     }
 

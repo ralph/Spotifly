@@ -74,6 +74,7 @@ extension SpotifyAPI {
                         trackIds: [],
                         totalDurationMs: nil,
                         knownTrackCount: album.totalTracks ?? 0,
+                        detailsLoaded: true,
                     )
                 } ?? []
 
