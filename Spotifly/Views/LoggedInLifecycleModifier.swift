@@ -19,9 +19,11 @@ struct LoggedInLifecycleModifier: ViewModifier {
     let topItemsService: TopItemsService
     @Binding var blockingState: LoggedInView.BlockingState?
 
-    /// Last observed connection readiness; nil until the first snapshot arrives, so the
-    /// initial rise to ready doesn't get treated as a reconnect.
+    /// Last observed connection readiness; nil until the first snapshot arrives.
     @State private var wasConnectionReady: Bool?
+
+    /// Whether readiness has been lost since the last re-sync.
+    @State private var connectionDropped = false
 
     func body(content: Content) -> some View {
         content
@@ -75,18 +77,28 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 let isReady = state?.sessionConnected == true && state?.spircReady == true
                 defer { wasConnectionReady = isReady }
 
-                // Only react to transitions, and only once readiness has been observed at
-                // least once — the initial rise to ready is handled by .task above, so
-                // bootstrapping again here would just double every startup fetch.
+                // Only react to transitions.
                 guard let wasReady = wasConnectionReady, wasReady != isReady else { return }
 
-                if isReady {
-                    // Reconnected: re-sync with whatever is playing now.
-                    Task {
-                        let token = await session.validAccessToken()
-                        await deviceService.waitForTransferSettling()
-                        await queueService.fetchInitialPlaybackState(accessToken: token)
-                    }
+                guard isReady else {
+                    connectionDropped = true
+                    return
+                }
+
+                // A reconnect is a drop followed by a rise. The rise on its own is also what
+                // a cold start looks like, and that one is handled by .task above — so
+                // treating every rise as a reconnect doubled the bootstrap on every launch.
+                // Waiting for `wasConnectionReady` to be non-nil did not prevent that:
+                // `connectionState` is a CurrentValueSubject, so subscribing delivers its
+                // seed immediately and the first real transition is never the first callback.
+                guard connectionDropped else { return }
+                connectionDropped = false
+
+                // Re-sync with whatever is playing now.
+                Task {
+                    let token = await session.validAccessToken()
+                    await deviceService.waitForTransferSettling()
+                    await queueService.fetchInitialPlaybackState(accessToken: token)
                 }
             }
             .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
