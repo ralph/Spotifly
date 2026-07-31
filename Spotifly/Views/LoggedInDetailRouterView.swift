@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct LoggedInDetailRouterView: View {
-    @Environment(AppStore.self) private var store
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     @Bindable var playbackViewModel: PlaybackViewModel
@@ -29,17 +28,17 @@ struct LoggedInDetailRouterView: View {
         }
     }
 
+    // Each of these used to pick between an `init(album:)` and an `init(albumId:)`
+    // depending on whether the entity was in the store yet. Those are the two
+    // branches of a `_ConditionalContent` and so have distinct structural
+    // identities — `.id()` does not unify them — which meant that the moment the
+    // entity landed in the store SwiftUI destroyed the view that was fetching it
+    // and cancelled its `.task` mid-request. The detail views read the store
+    // directly now, so one branch is all any of them needs.
+
     @ViewBuilder
     private var albumDetailView: some View {
-        if let albumId = navigationCoordinator.selectedAlbumId,
-           let album = store.albums[albumId]
-        {
-            AlbumDetailView(
-                album: album,
-                playbackViewModel: playbackViewModel,
-            )
-            .id(albumId)
-        } else if let albumId = navigationCoordinator.selectedAlbumId {
+        if let albumId = navigationCoordinator.selectedAlbumId {
             AlbumDetailView(
                 albumId: albumId,
                 playbackViewModel: playbackViewModel,
@@ -53,15 +52,7 @@ struct LoggedInDetailRouterView: View {
 
     @ViewBuilder
     private var artistDetailView: some View {
-        if let artistId = navigationCoordinator.selectedArtistId,
-           let artist = store.artists[artistId]
-        {
-            ArtistDetailView(
-                artist: artist,
-                playbackViewModel: playbackViewModel,
-            )
-            .id(artistId)
-        } else if let artistId = navigationCoordinator.selectedArtistId {
+        if let artistId = navigationCoordinator.selectedArtistId {
             ArtistDetailView(
                 artistId: artistId,
                 playbackViewModel: playbackViewModel,
@@ -75,15 +66,7 @@ struct LoggedInDetailRouterView: View {
 
     @ViewBuilder
     private var playlistDetailView: some View {
-        if let playlistId = navigationCoordinator.selectedPlaylistId,
-           let playlist = store.playlists[playlistId]
-        {
-            PlaylistDetailView(
-                playlist: playlist,
-                playbackViewModel: playbackViewModel,
-            )
-            .id(playlistId)
-        } else if let playlistId = navigationCoordinator.selectedPlaylistId {
+        if let playlistId = navigationCoordinator.selectedPlaylistId {
             PlaylistDetailView(
                 playlistId: playlistId,
                 playbackViewModel: playbackViewModel,

@@ -8,11 +8,7 @@
 import SwiftUI
 
 struct ArtistDetailView: View {
-    /// ID is always required (either passed directly or derived from artist object)
     let artistId: String
-
-    /// Optional pre-loaded artist (avoids network request if already have data)
-    private let initialArtist: Artist?
 
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
@@ -21,40 +17,31 @@ struct ArtistDetailView: View {
     @Environment(ArtistService.self) private var artistService
     @Environment(\.displayScale) private var displayScale
 
-    @State private var artist: Artist?
-    @State private var albums: [Album] = []
-    @State private var isLoadingArtist = false
     @State private var isLoadingAlbums = false
     @State private var errorMessage: String?
     @State private var showAllAlbums = false
     @State private var showUnfollowConfirmation = false
+
+    /// The artist from the store — the only copy. Whatever a load puts there shows
+    /// up here, including a load whose original view was torn down mid-flight.
+    private var artist: Artist? {
+        store.artists[artistId]
+    }
+
+    /// The artist's albums, cached in the store rather than re-fetched per visit.
+    private var albums: [Album] {
+        store.albums(forArtist: artistId) ?? []
+    }
 
     /// Whether this artist is in the user's followed artists
     private var isFollowing: Bool {
         store.userArtistIds.contains(artistId)
     }
 
-    /// Initialize with an artist ID (fetches artist data)
-    init(artistId: String, playbackViewModel: PlaybackViewModel) {
-        self.artistId = artistId
-        initialArtist = nil
-        self.playbackViewModel = playbackViewModel
-    }
-
-    /// Initialize with a pre-loaded artist (avoids network request)
-    init(artist: Artist, playbackViewModel: PlaybackViewModel) {
-        artistId = artist.id
-        initialArtist = artist
-        self.playbackViewModel = playbackViewModel
-    }
-
     var body: some View {
         Group {
             if let artist {
                 artistContent(artist)
-            } else if isLoadingArtist {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage {
                 VStack {
                     Text(errorMessage)
@@ -70,9 +57,6 @@ struct ArtistDetailView: View {
         }
         .navigationTitle(artist?.name ?? "")
         .task(id: artistId) {
-            if let initialArtist {
-                artist = initialArtist
-            }
             await loadArtist()
         }
         .alert("artist.unfollow.title", isPresented: $showUnfollowConfirmation) {
@@ -248,20 +232,22 @@ struct ArtistDetailView: View {
     }
 
     private func loadArtist() async {
-        isLoadingArtist = artist == nil
-        isLoadingAlbums = true
+        // Only claim to be loading when the album list is actually missing —
+        // a cached artist must not flash a spinner over their albums.
+        isLoadingAlbums = store.artistAlbumIds[artistId] == nil
         errorMessage = nil
 
         do {
             let token = await session.validAccessToken()
             try await artistService.ensureArtistLoaded(artistId: artistId, accessToken: token)
-            artist = store.artists[artistId]
         } catch {
-            errorMessage = error.localizedDescription
+            // A cancellation is this view going away, not a failure: the load keeps
+            // running and its result is in the store for whatever replaces us.
+            if !isCancellation(error) {
+                errorMessage = error.localizedDescription
+            }
         }
 
-        albums = store.albums(forArtist: artistId) ?? []
-        isLoadingArtist = false
         isLoadingAlbums = false
     }
 

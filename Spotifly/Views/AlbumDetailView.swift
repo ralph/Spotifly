@@ -9,11 +9,7 @@ import AppKit
 import SwiftUI
 
 struct AlbumDetailView: View {
-    /// ID is always required (either passed directly or derived from album object)
     let albumId: String
-
-    /// Optional pre-loaded album (avoids network request if already have data)
-    private let initialAlbum: Album?
 
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
@@ -23,24 +19,14 @@ struct AlbumDetailView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(\.displayScale) private var displayScale
 
-    @State private var album: Album?
-    @State private var isLoadingAlbum = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showRemoveConfirmation = false
 
-    /// Initialize with an album ID (fetches album data)
-    init(albumId: String, playbackViewModel: PlaybackViewModel) {
-        self.albumId = albumId
-        initialAlbum = nil
-        self.playbackViewModel = playbackViewModel
-    }
-
-    /// Initialize with a pre-loaded album (avoids network request)
-    init(album: Album, playbackViewModel: PlaybackViewModel) {
-        albumId = album.id
-        initialAlbum = album
-        self.playbackViewModel = playbackViewModel
+    /// The album from the store — the only copy. Whatever a load puts there shows
+    /// up here, including a load whose original view was torn down mid-flight.
+    private var album: Album? {
+        store.albums[albumId]
     }
 
     /// Tracks from the store for this album
@@ -58,9 +44,6 @@ struct AlbumDetailView: View {
         Group {
             if let album {
                 albumContent(album)
-            } else if isLoadingAlbum {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage {
                 VStack {
                     Text(errorMessage)
@@ -76,9 +59,6 @@ struct AlbumDetailView: View {
         }
         .navigationTitle(album?.name ?? "")
         .task(id: albumId) {
-            if let initialAlbum {
-                album = initialAlbum
-            }
             await loadAlbum()
         }
         .task(id: tracks.map(\.id).joined()) {
@@ -244,19 +224,22 @@ struct AlbumDetailView: View {
     }
 
     private func loadAlbum() async {
-        isLoadingAlbum = album == nil
-        isLoading = true
+        // Only claim to be loading when the track list is actually missing —
+        // a cached album must not flash a spinner over its tracks.
+        isLoading = store.albums[albumId]?.tracksLoaded != true
         errorMessage = nil
 
         do {
             let token = await session.validAccessToken()
             try await albumService.ensureAlbumLoaded(albumId: albumId, accessToken: token)
-            album = store.albums[albumId]
         } catch {
-            errorMessage = error.localizedDescription
+            // A cancellation is this view going away, not a failure: the load keeps
+            // running and its result is in the store for whatever replaces us.
+            if !isCancellation(error) {
+                errorMessage = error.localizedDescription
+            }
         }
 
-        isLoadingAlbum = false
         isLoading = false
     }
 
@@ -264,7 +247,7 @@ struct AlbumDetailView: View {
         guard !tracks.isEmpty else { return }
 
         let token = await session.validAccessToken()
-        await trackService.refreshFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
+        await trackService.ensureFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
     }
 
     private func playAllTracks() {

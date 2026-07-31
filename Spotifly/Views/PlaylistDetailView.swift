@@ -9,11 +9,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct PlaylistDetailView: View {
-    /// ID is always required (either passed directly or derived from playlist object)
     let playlistId: String
-
-    /// Optional pre-loaded playlist (avoids network request if already have data)
-    private let initialPlaylist: Playlist?
 
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(SpotifySession.self) private var session
@@ -23,8 +19,6 @@ struct PlaylistDetailView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(\.displayScale) private var displayScale
 
-    @State private var playlist: Playlist?
-    @State private var isLoadingPlaylist = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showEditDetailsDialog = false
@@ -32,25 +26,23 @@ struct PlaylistDetailView: View {
     @State private var showUnfollowConfirmation = false
     @State private var editingPlaylistName = ""
     @State private var editingPlaylistDescription = ""
-    @State private var playlistName: String = ""
-    @State private var playlistDescription: String = ""
 
     // Drag-drop state
     @State private var draggedTrackId: String?
     @State private var draggedFromIndex: Int?
 
-    /// Initialize with a playlist ID (fetches playlist data)
-    init(playlistId: String, playbackViewModel: PlaybackViewModel) {
-        self.playlistId = playlistId
-        initialPlaylist = nil
-        self.playbackViewModel = playbackViewModel
+    /// The playlist from the store — the only copy. Whatever a load puts there
+    /// shows up here, including a load whose original view was torn down mid-flight.
+    private var playlist: Playlist? {
+        store.playlists[playlistId]
     }
 
-    /// Initialize with a pre-loaded playlist (avoids network request)
-    init(playlist: Playlist, playbackViewModel: PlaybackViewModel) {
-        playlistId = playlist.id
-        initialPlaylist = playlist
-        self.playbackViewModel = playbackViewModel
+    private var playlistName: String {
+        playlist?.name ?? ""
+    }
+
+    private var playlistDescription: String {
+        playlist?.description ?? ""
     }
 
     /// Tracks from the store for this playlist
@@ -73,9 +65,6 @@ struct PlaylistDetailView: View {
         Group {
             if let playlist {
                 playlistContent(playlist)
-            } else if isLoadingPlaylist {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage {
                 VStack {
                     Text(errorMessage)
@@ -91,21 +80,10 @@ struct PlaylistDetailView: View {
         }
         .navigationTitle(playlist?.name ?? "")
         .task(id: playlistId) {
-            if let initialPlaylist {
-                playlist = initialPlaylist
-                playlistName = initialPlaylist.name
-                playlistDescription = initialPlaylist.description ?? ""
-            }
             await loadPlaylist()
         }
         .task(id: tracks.map(\.id).joined()) {
             await resolveFavoriteStatusesForTracks()
-        }
-        .onChange(of: playlistId) { _, _ in
-            if let playlist {
-                playlistName = playlist.name
-                playlistDescription = playlist.description ?? ""
-            }
         }
         .alert("playlist.edit_details.title", isPresented: $showEditDetailsDialog) {
             TextField("playlist.edit_details.name", text: $editingPlaylistName)
@@ -386,8 +364,6 @@ struct PlaylistDetailView: View {
                     description: editingPlaylistDescription,
                     accessToken: token,
                 )
-                playlistName = trimmedName
-                playlistDescription = editingPlaylistDescription
             } catch {
                 errorMessage = String(localized: "error.update_playlist \(error.localizedDescription)")
             }
@@ -400,25 +376,26 @@ struct PlaylistDetailView: View {
         guard !tracks.isEmpty else { return }
 
         let token = await session.validAccessToken()
-        await trackService.refreshFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
+        await trackService.ensureFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
     }
 
     private func loadPlaylist() async {
-        isLoadingPlaylist = playlist == nil
-        isLoading = true
+        // Only claim to be loading when the track list is actually missing —
+        // a cached playlist must not flash a spinner over its tracks.
+        isLoading = store.playlists[playlistId]?.tracksLoaded != true
         errorMessage = nil
 
         do {
             let token = await session.validAccessToken()
             try await playlistService.ensurePlaylistLoaded(playlistId: playlistId, accessToken: token)
-            playlist = store.playlists[playlistId]
-            playlistName = playlist?.name ?? ""
-            playlistDescription = playlist?.description ?? ""
         } catch {
-            errorMessage = error.localizedDescription
+            // A cancellation is this view going away, not a failure: the load keeps
+            // running and its result is in the store for whatever replaces us.
+            if !isCancellation(error) {
+                errorMessage = error.localizedDescription
+            }
         }
 
-        isLoadingPlaylist = false
         isLoading = false
     }
 
