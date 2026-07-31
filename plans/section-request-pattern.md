@@ -228,11 +228,12 @@ and per-entity observable boxes would be disproportionate here.
   fetch for every recent album on the startpage. Its results land in the store and
   are now marked `detailsLoaded`, so a detail view opened afterwards skips the
   metadata request — which is the duplication that actually mattered.
-- **No in-flight tracking for `/me/tracks/contains`.** Switching the detail views
-  from `refreshFavoriteStatuses` to the cache-aware `ensureFavoriteStatuses` is
-  enough; a per-batch registry would guard a rare overlap at real complexity cost.
-  Queue, search and the now-playing bar keep `refreshFavoriteStatuses` — they are
-  outside this branch's scope.
+- **Favorite-status checks share in-flight batches.** The resolved cache is only
+  written when `/me/tracks/contains` returns, so overlapping views can still ask for
+  the same unresolved track. `TrackService` registers each batched request under
+  every track it covers; later callers await that unstructured task, which both
+  deduplicates the request and lets it survive cancellation of the view that started
+  it. Only the now-playing bar deliberately refreshes an already resolved status.
 - **Album/artist `limit=50` pagination.** Pre-existing, separate.
 - **A stale list response can revert a just-saved playlist name.** `upsertPlaylist`
   replaces metadata, so a `/me/playlists` page captured before an edit can land
