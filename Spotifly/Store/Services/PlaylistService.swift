@@ -41,7 +41,13 @@ final class PlaylistService {
         try await listRequests.run(Self.listKey) {
             let offset = self.store.playlistsPagination.nextOffset ?? 0
             self.store.playlistsPagination.isLoading = true
-            defer { self.store.playlistsPagination.isLoading = false }
+            defer {
+                // Only if this run is still the one loading: a superseded run
+                // must not clear the state its replacement just set.
+                if !Task.isCancelled {
+                    self.store.playlistsPagination.isLoading = false
+                }
+            }
 
             let response = try await SpotifyAPI.fetchUserPlaylists(
                 accessToken: accessToken,
@@ -97,23 +103,23 @@ final class PlaylistService {
     ///
     /// The mutation paths need exactly this: they update the store optimistically,
     /// so the cache holds the very order a rollback has to undo. Only the tracks are
-    /// fetched — a reorder or a bulk replace cannot change a playlist's metadata, so
-    /// making the rollback depend on a second request that can fail on its own would
-    /// only give it another way to leave the wrong order in place.
+    /// re-fetched — a reorder or a bulk replace cannot change a playlist's metadata,
+    /// so making the rollback depend on a second request that can fail on its own
+    /// would only give it another way to leave the wrong order in place.
+    ///
+    /// It shares `ensurePlaylistLoaded`'s key, and therefore has to keep its
+    /// postcondition — a caller can join either one. So a playlist that is somehow
+    /// not in the store still gets loaded whole here; this only *adds* the guarantee
+    /// that the tracks are freshly fetched.
     func reloadPlaylistTracks(playlistId: String, accessToken: String) async throws {
         playlistRequests.cancel(playlistId)
 
         try await playlistRequests.run(playlistId) {
-            let playlistTracks = try await SpotifyAPI.fetchPlaylistTracks(
-                accessToken: accessToken,
-                playlistId: playlistId,
-            )
-            try Task.checkCancellation()
-            self.storeTracks(playlistTracks, for: playlistId)
+            try await self.loadPlaylist(playlistId: playlistId, accessToken: accessToken, forceTracks: true)
         }
     }
 
-    private func loadPlaylist(playlistId: String, accessToken: String) async throws {
+    private func loadPlaylist(playlistId: String, accessToken: String, forceTracks: Bool = false) async throws {
         // Re-read inside the run: a caller can arrive just as another run finishes.
         guard let known = store.playlists[playlistId] else {
             async let detailsTask = SpotifyAPI.fetchPlaylistDetails(
@@ -133,7 +139,7 @@ final class PlaylistService {
             return
         }
 
-        guard !known.tracksLoaded else { return }
+        guard forceTracks || !known.tracksLoaded else { return }
 
         let playlistTracks = try await SpotifyAPI.fetchPlaylistTracks(
             accessToken: accessToken,

@@ -41,7 +41,13 @@ final class AlbumService {
         try await listRequests.run(Self.listKey) {
             let offset = self.store.albumsPagination.nextOffset ?? 0
             self.store.albumsPagination.isLoading = true
-            defer { self.store.albumsPagination.isLoading = false }
+            defer {
+                // Only if this run is still the one loading: a superseded run
+                // must not clear the state its replacement just set.
+                if !Task.isCancelled {
+                    self.store.albumsPagination.isLoading = false
+                }
+            }
 
             let response = try await SpotifyAPI.fetchUserAlbums(
                 accessToken: accessToken,

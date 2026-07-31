@@ -46,7 +46,13 @@ final class TrackService {
         try await listRequests.run(Self.listKey) {
             let offset = self.store.favoritesPagination.nextOffset ?? 0
             self.store.favoritesPagination.isLoading = true
-            defer { self.store.favoritesPagination.isLoading = false }
+            defer {
+                // Only if this run is still the one loading: a superseded run
+                // must not clear the state its replacement just set.
+                if !Task.isCancelled {
+                    self.store.favoritesPagination.isLoading = false
+                }
+            }
 
             let response = try await SpotifyAPI.fetchUserSavedTracks(
                 accessToken: accessToken,

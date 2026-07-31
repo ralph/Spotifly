@@ -246,7 +246,7 @@ struct PlaylistDetailView: View {
                 .padding()
         } else if let errorMessage {
             InlineLoadError(message: errorMessage) {
-                await loadPlaylist()
+                await reloadTracks()
             }
         } else if !tracks.isEmpty {
             normalTrackList
@@ -400,6 +400,26 @@ struct PlaylistDetailView: View {
         isLoading = false
     }
 
+    /// The track-list retry. It re-fetches unconditionally rather than going through
+    /// `ensurePlaylistLoaded`, because the message it sits under can be a failed
+    /// reorder rollback — where the store holds a track list that *is* loaded and
+    /// wrong, so the cache-respecting call would fetch nothing.
+    private func reloadTracks() async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let token = await session.validAccessToken()
+            try await playlistService.reloadPlaylistTracks(playlistId: playlistId, accessToken: token)
+        } catch {
+            if !isCancellation(error) {
+                errorMessage = error.localizedDescription
+            }
+        }
+
+        isLoading = false
+    }
+
     private func playAllTracks() {
         guard let playlist else { return }
         Task {
@@ -466,6 +486,10 @@ struct PlaylistReorderDropDelegate: DropDelegate {
                     accessToken: token,
                 )
             } catch {
+                // A newer reorder cancelled this one's reconciliation. It owns the
+                // final order now; rolling back here would only cancel it in turn.
+                guard !isCancellation(error) else { return }
+
                 debugLog("PlaylistReorder", "Failed to reorder: \(error)")
                 // Revert the optimistic update by re-fetching the real order. This
                 // has to bypass the cache — the optimistic update already wrote the

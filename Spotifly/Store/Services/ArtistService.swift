@@ -45,7 +45,13 @@ final class ArtistService {
             // Artists use cursor-based pagination
             let cursor = self.store.artistsPagination.nextCursor
             self.store.artistsPagination.isLoading = true
-            defer { self.store.artistsPagination.isLoading = false }
+            defer {
+                // Only if this run is still the one loading: a superseded run
+                // must not clear the state its replacement just set.
+                if !Task.isCancelled {
+                    self.store.artistsPagination.isLoading = false
+                }
+            }
 
             let response = try await SpotifyAPI.fetchUserArtists(
                 accessToken: accessToken,
