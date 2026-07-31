@@ -308,6 +308,7 @@ struct PlaylistDetailView: View {
                         playlistId: playlistId,
                         draggedTrackId: $draggedTrackId,
                         draggedFromIndex: $draggedFromIndex,
+                        errorMessage: $errorMessage,
                         store: store,
                         playlistService: playlistService,
                         session: session,
@@ -418,6 +419,7 @@ struct PlaylistReorderDropDelegate: DropDelegate {
     let playlistId: String
     @Binding var draggedTrackId: String?
     @Binding var draggedFromIndex: Int?
+    @Binding var errorMessage: String?
     let store: AppStore
     let playlistService: PlaylistService
     let session: SpotifySession
@@ -467,11 +469,16 @@ struct PlaylistReorderDropDelegate: DropDelegate {
                 debugLog("PlaylistReorder", "Failed to reorder: \(error)")
                 // Revert the optimistic update by re-fetching the real order. This
                 // has to bypass the cache — the optimistic update already wrote the
-                // order we are trying to undo.
-                try? await playlistService.reloadPlaylist(
-                    playlistId: playlistId,
-                    accessToken: token,
-                )
+                // order we are trying to undo. If even that fails, say so: the list
+                // on screen is then not the one the server has.
+                do {
+                    try await playlistService.reloadPlaylistTracks(
+                        playlistId: playlistId,
+                        accessToken: token,
+                    )
+                } catch {
+                    errorMessage = String(localized: "error.reorder_tracks \(error.localizedDescription)")
+                }
             }
         }
 

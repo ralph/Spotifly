@@ -93,21 +93,29 @@ final class PlaylistService {
         }
     }
 
-    /// Re-fetches a playlist that is already cached.
+    /// Re-fetches a playlist's track list, ignoring the cached copy.
     ///
-    /// Used after a mutation whose outcome the optimistic store update cannot be
-    /// trusted to describe — a reorder that failed server-side, or a bulk replace.
-    func reloadPlaylist(playlistId: String, accessToken: String) async throws {
+    /// The mutation paths need exactly this: they update the store optimistically,
+    /// so the cache holds the very order a rollback has to undo. Only the tracks are
+    /// fetched — a reorder or a bulk replace cannot change a playlist's metadata, so
+    /// making the rollback depend on a second request that can fail on its own would
+    /// only give it another way to leave the wrong order in place.
+    func reloadPlaylistTracks(playlistId: String, accessToken: String) async throws {
         playlistRequests.cancel(playlistId)
 
         try await playlistRequests.run(playlistId) {
-            try await self.loadPlaylist(playlistId: playlistId, accessToken: accessToken, reload: true)
+            let playlistTracks = try await SpotifyAPI.fetchPlaylistTracks(
+                accessToken: accessToken,
+                playlistId: playlistId,
+            )
+            try Task.checkCancellation()
+            self.storeTracks(playlistTracks, for: playlistId)
         }
     }
 
-    private func loadPlaylist(playlistId: String, accessToken: String, reload: Bool = false) async throws {
+    private func loadPlaylist(playlistId: String, accessToken: String) async throws {
         // Re-read inside the run: a caller can arrive just as another run finishes.
-        guard let known = reload ? nil : store.playlists[playlistId] else {
+        guard let known = store.playlists[playlistId] else {
             async let detailsTask = SpotifyAPI.fetchPlaylistDetails(
                 accessToken: accessToken,
                 playlistId: playlistId,
@@ -117,6 +125,8 @@ final class PlaylistService {
                 playlistId: playlistId,
             )
             let (details, playlistTracks) = try await (detailsTask, tracksTask)
+            // A reload can supersede this run; it must not write over the fresher order.
+            try Task.checkCancellation()
 
             store.upsertPlaylist(Playlist(from: details))
             storeTracks(playlistTracks, for: playlistId)
@@ -129,6 +139,7 @@ final class PlaylistService {
             accessToken: accessToken,
             playlistId: playlistId,
         )
+        try Task.checkCancellation()
         storeTracks(playlistTracks, for: playlistId)
     }
 
@@ -265,7 +276,7 @@ final class PlaylistService {
         )
 
         // Re-fetch to pick up the order the server actually applied
-        try await reloadPlaylist(playlistId: playlistId, accessToken: accessToken)
+        try await reloadPlaylistTracks(playlistId: playlistId, accessToken: accessToken)
     }
 
     /// Replace all tracks in a playlist (for bulk edits like reordering/removing)
@@ -281,6 +292,6 @@ final class PlaylistService {
         )
 
         // Re-fetch to update store with new track order
-        try await reloadPlaylist(playlistId: playlistId, accessToken: accessToken)
+        try await reloadPlaylistTracks(playlistId: playlistId, accessToken: accessToken)
     }
 }

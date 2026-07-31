@@ -263,6 +263,7 @@
 "error.delete_playlist %@" = "Impossible de supprimer la playlist : %@";
 "error.unfollow_playlist %@" = "Impossible de ne plus suivre la playlist : %@";
 "error.update_playlist %@" = "Impossible de mettre à jour la playlist : %@";
+"error.reorder_tracks %@" = "Impossible de réorganiser les titres : %@";
 "error.remove_album %@" = "Impossible de retirer l'album : %@";
 "error.unfollow_artist %@" = "Impossible de ne plus suivre l'artiste : %@";
 "error.follow_artist %@" = "Impossible de suivre l'artiste : %@";

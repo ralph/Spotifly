@@ -263,6 +263,7 @@
 "error.delete_playlist %@" = "Failed to delete playlist: %@";
 "error.unfollow_playlist %@" = "Failed to unfollow playlist: %@";
 "error.update_playlist %@" = "Failed to update playlist: %@";
+"error.reorder_tracks %@" = "Failed to reorder tracks: %@";
 "error.remove_album %@" = "Failed to remove album: %@";
 "error.unfollow_artist %@" = "Failed to unfollow artist: %@";
 "error.follow_artist %@" = "Failed to follow artist: %@";
