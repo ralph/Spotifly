@@ -1,9 +1,39 @@
 # Relinked tracks lose their logical identity and blank the Now Playing bar
 
-Status: **planned**
+Status: **completed**
 Components: `rust/src/lib.rs`, `Spotifly/ViewModels/PlaybackViewModel.swift`,
 `Spotifly/Views/NowPlayingBarView.swift`
 Found: 2026-07-31, while playing *At Night, Alone.* by Mike Posner
+
+## Implemented solution
+
+Completed on 2026-07-31 in three independently verified implementation commits:
+
+- `987d35f` makes `Loading`, `Playing`, and `Paused` the only owners of the logical
+  track URI in the Rust bridge. `TrackChanged` now contributes only the playable audio
+  item's duration and no longer emits a synthetic loading callback.
+- `51c399f` resets cached stream duration whenever the logical URI changes and makes the
+  in-app bar prefer a non-zero stream duration over provisional store metadata.
+- `1808012` resolves macOS Now Playing metadata from the logical playback URI, clears
+  stale metadata/artwork, uses the same effective-duration rule as the bar, and refreshes
+  on both early loading identity and the first authoritative stream duration.
+
+The implementation follows the identity split described below without modifying
+librespot. Because `CURRENT_TRACK_URI` is now logical, the existing reconnect resume hint
+and radio same-track comparison are repaired by the same bridge change.
+
+Automated verification completed:
+
+- `cargo fmt --check`
+- `cargo test` — 23 tests passed
+- `cargo check`
+- `swiftformat --swiftversion 6.3 .` — no remaining changes
+- full Debug macOS app build, including the Rust library — succeeded after each Swift
+  implementation step
+
+The live Spotify scenarios in the Runtime sections remain the manual release-smoke
+checklist; they require an authenticated playback session and the market-specific
+relinked album.
 
 ## Symptom
 
