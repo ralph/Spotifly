@@ -43,12 +43,8 @@ struct ArtistDetailView: View {
             if let artist {
                 artistContent(artist)
             } else if let errorMessage {
-                VStack {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                    Button("action.try_again") {
-                        Task { await loadArtist() }
-                    }
+                InlineLoadError(message: errorMessage) {
+                    await loadArtist()
                 }
             } else {
                 ProgressView()

@@ -154,12 +154,6 @@ extension SpotifyAPI {
         }
     }
 
-    /// Checks if a track is saved in user's library
-    static func checkSavedTrack(accessToken: String, trackId: String) async throws -> Bool {
-        let results = try await checkSavedTracks(accessToken: accessToken, trackIds: [trackId])
-        return results[trackId] ?? false
-    }
-
     /// Checks if multiple tracks are saved in user's library
     static func checkSavedTracks(accessToken: String, trackIds: [String]) async throws -> [String: Bool] {
         guard !trackIds.isEmpty else { return [:] }

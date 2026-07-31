@@ -55,20 +55,34 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 
 ### Network Request Deduplication
 
-Views using `.task` to load data need protection against duplicate requests. The approach depends on whether the view's layout can change:
+Every fetch goes through `InFlightRequests` (`Store/Services/InFlightRequests.swift`), a
+keyed single-flight registry. A second caller for the same key awaits the run the first
+one started, and the run is an *unstructured* Task, so it is not cancelled when its
+caller is — SwiftUI cancels a view's `.task` on teardown, and the detail views are torn
+down routinely (selection changes, section switches, the 2→3 column flip). The result
+lands in `AppStore` either way, and whatever view replaces the cancelled one reads it
+from there.
 
-- **Stable views** (no layout changes): Simple `guard !store.xxxPagination.isLoading` in the service is sufficient
-- **Layout-switching views** (Albums/Artists/Playlists trigger 2→3 column switch): The service must store the `Task` reference and be persisted via `@State` in a parent view, because view recreation can re-trigger `.task` before `isLoading` is set
-
-The stored task pattern in `AlbumService`/`ArtistService`/`PlaylistService`:
 ```swift
-if let existingTask = userAlbumsTask {
-    _ = try? await existingTask.value  // Await existing, don't start new
-    return
+try await albumRequests.run(albumId) {
+    try await self.loadAlbum(albumId: albumId, accessToken: self.tokenProvider())
 }
 ```
 
-These services are stored as `@State` in `LoggedInView` so the task reference survives view recreation. If adding a new section that changes the column layout, use this pattern.
+Rules when adding a loading path:
+
+- **A key means one postcondition.** `album:<id>` always means "metadata *and* tracks are
+  in the store". Two operations that fetch different amounts may not share a key.
+- **Check the cache before the token.** Services hold a `tokenProvider` and take the
+  token inside the run, after the early returns, so a cache hit costs nothing.
+- **A superseded run must not write.** `cancel(_:)` only asks; call
+  `try Task.checkCancellation()` after the network call, before touching the store.
+- **Cache what was fetched, not what is non-empty.** `detailsLoaded` / `tracksLoaded` are
+  set by the load, so a genuinely empty album is not re-fetched forever.
+- **Views read the store**, never a `@State` copy of an entity.
+
+The services are stored as `@State` in `LoggedInView` so their registries survive view
+recreation. `plans/section-request-pattern.md` has the full reasoning.
 
 ## Debug Logging
 

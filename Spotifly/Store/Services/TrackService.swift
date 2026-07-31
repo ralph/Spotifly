@@ -136,18 +136,10 @@ final class TrackService {
 
     // MARK: - Favorite Status Check
 
-    /// Check favorite status for a single track
-    func checkFavoriteStatus(trackId: String, accessToken: String) async throws {
-        let isFavorite = try await SpotifyAPI.checkSavedTrack(
-            accessToken: accessToken,
-            trackId: trackId,
-        )
-
-        store.updateFavoriteStatuses([trackId: isFavorite])
-    }
-
-    /// Check favorite status for multiple tracks
-    func checkFavoriteStatuses(trackIds: [String], accessToken: String) async throws {
+    /// The one request the checks below are built out of. Private so every caller
+    /// goes through `ensureFavoriteStatuses`/`refreshFavoriteStatuses` and is
+    /// deduplicated against `checksInFlight`.
+    private func checkFavoriteStatuses(trackIds: [String], accessToken: String) async throws {
         guard !trackIds.isEmpty else { return }
 
         let statuses = try await SpotifyAPI.checkSavedTracks(

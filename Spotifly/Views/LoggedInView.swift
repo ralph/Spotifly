@@ -45,27 +45,19 @@ struct LoggedInView: View {
 
         let store = AppStore()
         let session = SpotifySession(authResult: authResult)
+        // Captures the session, not a token, so every call gets a fresh one.
+        let tokenProvider: () async -> String = { await session.validAccessToken() }
 
         _store = State(initialValue: store)
         _session = State(initialValue: session)
-        _playlistService = State(initialValue: PlaylistService(store: store, tokenProvider: {
-            await session.validAccessToken()
-        }))
-        _albumService = State(initialValue: AlbumService(store: store, tokenProvider: {
-            await session.validAccessToken()
-        }))
-        _artistService = State(initialValue: ArtistService(store: store, tokenProvider: {
-            await session.validAccessToken()
-        }))
-        _queueService = State(initialValue: QueueService(store: store, tokenProvider: {
-            await session.validAccessToken()
-        }))
+        _playlistService = State(initialValue: PlaylistService(store: store, tokenProvider: tokenProvider))
+        _albumService = State(initialValue: AlbumService(store: store, tokenProvider: tokenProvider))
+        _artistService = State(initialValue: ArtistService(store: store, tokenProvider: tokenProvider))
+        _queueService = State(initialValue: QueueService(store: store, tokenProvider: tokenProvider))
         _connectionService = State(initialValue: ConnectionService(store: store))
         _deviceService = State(initialValue: DeviceService(store: store))
         _navigationCoordinator = State(initialValue: NavigationCoordinator(store: store))
-        _trackService = State(initialValue: TrackService(store: store, tokenProvider: {
-            await session.validAccessToken()
-        }))
+        _trackService = State(initialValue: TrackService(store: store, tokenProvider: tokenProvider))
         _recentlyPlayedService = State(initialValue: RecentlyPlayedService(store: store))
         _topItemsService = State(initialValue: TopItemsService(store: store))
 

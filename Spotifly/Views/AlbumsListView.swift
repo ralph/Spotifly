@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct AlbumsListView: View {
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator

@@ -47,8 +47,7 @@ struct PlaylistDetailView: View {
 
     /// Tracks from the store for this playlist
     private var tracks: [Track] {
-        guard let storedPlaylist = store.playlists[playlistId] else { return [] }
-        return storedPlaylist.trackIds.compactMap { store.tracks[$0] }
+        playlist?.trackIds.compactMap { store.tracks[$0] } ?? []
     }
 
     /// Whether the current user owns this playlist
@@ -66,19 +65,15 @@ struct PlaylistDetailView: View {
             if let playlist {
                 playlistContent(playlist)
             } else if let errorMessage {
-                VStack {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                    Button("action.try_again") {
-                        Task { await loadPlaylist() }
-                    }
+                InlineLoadError(message: errorMessage) {
+                    await loadPlaylist()
                 }
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationTitle(playlist?.name ?? "")
+        .navigationTitle(playlistName)
         .task(id: playlistId) {
             await loadPlaylist()
         }
@@ -382,7 +377,7 @@ struct PlaylistDetailView: View {
     private func loadPlaylist() async {
         // Only claim to be loading when the track list is actually missing —
         // a cached playlist must not flash a spinner over its tracks.
-        isLoading = store.playlists[playlistId]?.tracksLoaded != true
+        isLoading = playlist?.tracksLoaded != true
         errorMessage = nil
 
         do {

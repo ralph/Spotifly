@@ -31,8 +31,7 @@ struct AlbumDetailView: View {
 
     /// Tracks from the store for this album
     private var tracks: [Track] {
-        guard let storedAlbum = store.albums[albumId] else { return [] }
-        return storedAlbum.trackIds.compactMap { store.tracks[$0] }
+        album?.trackIds.compactMap { store.tracks[$0] } ?? []
     }
 
     /// Whether this album is in the user's library
@@ -45,12 +44,8 @@ struct AlbumDetailView: View {
             if let album {
                 albumContent(album)
             } else if let errorMessage {
-                VStack {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                    Button("action.try_again") {
-                        Task { await loadAlbum() }
-                    }
+                InlineLoadError(message: errorMessage) {
+                    await loadAlbum()
                 }
             } else {
                 ProgressView()
@@ -226,7 +221,7 @@ struct AlbumDetailView: View {
     private func loadAlbum() async {
         // Only claim to be loading when the track list is actually missing —
         // a cached album must not flash a spinner over its tracks.
-        isLoading = store.albums[albumId]?.tracksLoaded != true
+        isLoading = album?.tracksLoaded != true
         errorMessage = nil
 
         do {
