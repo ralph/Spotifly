@@ -17,6 +17,14 @@ final class TrackService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "favorites"
 
+    /// Track IDs with a `/me/tracks/contains` check already on its way.
+    ///
+    /// The resolved-status cache alone does not prevent duplicates: it is only
+    /// written when a check *returns*, so two views asking about the same track in
+    /// the same frame — a row and the now-playing bar, say — both see it unresolved
+    /// and both ask.
+    private var checksInFlight: Set<String> = []
+
     init(store: AppStore) {
         self.store = store
     }
@@ -146,20 +154,28 @@ final class TrackService {
     /// Resolve favorite status for any tracks we haven't checked yet.
     /// Callers should batch track IDs (e.g. all tracks in a list) for efficiency.
     func ensureFavoriteStatuses(trackIds: [String], accessToken: String) async {
-        let unresolved = uniqueTrackIds(trackIds).filter { !store.hasResolvedFavoriteStatus(for: $0) }
-        guard !unresolved.isEmpty else { return }
-
-        for batch in batches(of: unresolved, size: 50) {
-            try? await checkFavoriteStatuses(trackIds: batch, accessToken: accessToken)
+        let unresolved = uniqueTrackIds(trackIds).filter {
+            !store.hasResolvedFavoriteStatus(for: $0) && !checksInFlight.contains($0)
         }
+        await check(unresolved, accessToken: accessToken)
     }
 
     /// Refresh favorite status for the given tracks even if we have stale cached data.
     func refreshFavoriteStatuses(trackIds: [String], accessToken: String) async {
-        let uniqueIds = uniqueTrackIds(trackIds)
-        guard !uniqueIds.isEmpty else { return }
+        // Deliberately ignores the resolved cache — that is the point of a refresh —
+        // but not the in-flight set: a check already on its way carries the same
+        // answer this one would ask for.
+        let stale = uniqueTrackIds(trackIds).filter { !checksInFlight.contains($0) }
+        await check(stale, accessToken: accessToken)
+    }
 
-        for batch in batches(of: uniqueIds, size: 50) {
+    private func check(_ trackIds: [String], accessToken: String) async {
+        guard !trackIds.isEmpty else { return }
+
+        checksInFlight.formUnion(trackIds)
+        defer { checksInFlight.subtract(trackIds) }
+
+        for batch in batches(of: trackIds, size: 50) {
             try? await checkFavoriteStatuses(trackIds: batch, accessToken: accessToken)
         }
     }
