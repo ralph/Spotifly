@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unified token-refresh handling into a single `KeychainManager.refreshAndPersist` policy used by both the launch path (`loadAuthResultWithRefresh`) and the runtime session (`SpotifySession`), eliminating two divergent refresh implementations and centralizing the 5-minute refresh buffer as `SpotifyAuthResult.refreshBufferSeconds`
 - Hardened the Rust FFI C header (`spotifly_rust.h`): replaced magic return/event integers with typed C enums (`SpotiflyResult` for the `0/-1/-2/-3` command convention, `SpotiflyAudioControlEvent` for audio control events) and added nullability annotations (`#pragma clang assume_nonnull` plus explicit `_Nullable` on `spotifly_free_string`, `spotifly_get_connection_state`, and the audio-data callback). The audio-control switch in `SpotifyPlayer` is now exhaustive over the shared enum, removing the hand-duplicated `audioControl*` constants. ABI is unchanged (enums use fixed `int32_t`/`uint8_t` underlying types), so no Rust rebuild is required
 
+### Added
+- A track can be removed from a playlist. The plumbing for it existed all the way down to the HTTP call but nothing ever reached it, so the context menu offered "Add to Playlist" with no counterpart. The entry appears only on a row shown inside a playlist the user owns — the same menu is reused from albums, search and the queue, where "this playlist" would mean nothing, and Spotify rejects the edit on someone else's playlist anyway
+
 ### Removed
 - Dead code that predates the request work: `PlaylistService.replacePlaylistTracks` and the `SpotifyAPI` static behind it, `TrackService.fetchTrack` (`TrackLookupViewModel` calls `SpotifyAPI.fetchTrack` directly), `ArtistDetailView.followArtist` (the toolbar calls the service itself) and an unused `NavigationCoordinator` in `TrackRow`
 
