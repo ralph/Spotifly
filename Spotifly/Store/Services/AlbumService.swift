@@ -12,8 +12,10 @@ import Foundation
 @Observable
 final class AlbumService {
     private let store: AppStore
-    private var loadingAlbumTrackIds: Set<String> = []
     private var userAlbumsTask: Task<Void, Error>?
+
+    /// One run per album ID — see `InFlightRequests`.
+    private let albumRequests = InFlightRequests<Void>()
 
     init(store: AppStore) {
         self.store = store
@@ -90,79 +92,72 @@ final class AlbumService {
 
     // MARK: - Album Details
 
-    /// Fetch album details and tracks
-    func fetchAlbumDetails(albumId: String, accessToken: String) async throws -> Album {
-        // Fetch details and tracks in parallel
-        async let detailsTask = SpotifyAPI.fetchAlbumDetails(
+    /// Makes sure the album's metadata *and* its track list are in the store.
+    ///
+    /// Only what is missing goes over the network. An album opened from the library
+    /// list, an artist page or a search result already has its metadata, so just
+    /// `/albums/{id}/tracks` is fetched; on a second visit nothing is. Concurrent
+    /// callers share one run, and the run outlives a caller whose view was torn
+    /// down mid-flight — see `InFlightRequests`.
+    func ensureAlbumLoaded(albumId: String, accessToken: String) async throws {
+        guard needsLoad(albumId) else { return }
+
+        try await albumRequests.run(albumId) {
+            try await self.loadAlbum(albumId: albumId, accessToken: accessToken)
+        }
+    }
+
+    private func needsLoad(_ albumId: String) -> Bool {
+        guard let album = store.albums[albumId] else { return true }
+        return !album.detailsLoaded || !album.tracksLoaded
+    }
+
+    private func loadAlbum(albumId: String, accessToken: String) async throws {
+        // Re-checked inside the run: a caller can arrive just as another run finishes.
+        guard let known = store.albums[albumId], known.detailsLoaded else {
+            // Nothing usable in the store — metadata and tracks both have to come down.
+            async let detailsTask = SpotifyAPI.fetchAlbumDetails(
+                accessToken: accessToken,
+                albumId: albumId,
+            )
+            async let tracksTask = SpotifyAPI.fetchAlbumTracks(
+                accessToken: accessToken,
+                albumId: albumId,
+            )
+            let (details, albumTracks) = try await (detailsTask, tracksTask)
+
+            let album = Album(from: details)
+            store.upsertAlbum(album)
+            storeTracks(albumTracks, for: album)
+            return
+        }
+
+        guard !known.tracksLoaded else { return }
+
+        let albumTracks = try await SpotifyAPI.fetchAlbumTracks(
             accessToken: accessToken,
             albumId: albumId,
         )
-        async let tracksTask = SpotifyAPI.fetchAlbumTracks(
-            accessToken: accessToken,
-            albumId: albumId,
-        )
+        storeTracks(albumTracks, for: known)
+    }
 
-        let (details, albumTracks) = try await (detailsTask, tracksTask)
-
-        // Convert tracks to unified entities with album context
+    /// Stores an album's tracks and marks the album's track list as loaded.
+    /// The album tracks endpoint omits album context, so it is filled in here.
+    private func storeTracks(_ albumTracks: [APITrack], for album: Album) {
         let tracks = albumTracks.map { albumTrack in
             Track(
                 from: albumTrack,
-                albumId: details.id,
-                albumName: details.name,
-                images: details.images,
+                albumId: album.id,
+                albumName: album.name,
+                images: album.images,
             )
         }
         store.upsertTracks(tracks)
-
-        // Calculate total duration
-        let totalDurationMs = tracks.reduce(0) { $0 + $1.durationMs }
-
-        // Create album with track IDs
-        let album = Album(
-            from: details,
-            trackIds: tracks.map(\.id),
-            totalDurationMs: totalDurationMs,
+        store.setAlbumTracks(
+            tracks.map(\.id),
+            totalDurationMs: tracks.reduce(0) { $0 + $1.durationMs },
+            for: album.id,
         )
-
-        store.upsertAlbum(album)
-        return album
-    }
-
-    /// Get tracks for an album (from store or fetch)
-    func getAlbumTracks(albumId: String, accessToken: String) async throws -> [Track] {
-        // Check if tracks are already loaded
-        if let album = store.albums[albumId], album.tracksLoaded {
-            return album.trackIds.compactMap { store.tracks[$0] }
-        }
-
-        // Prevent concurrent fetches for the same album
-        guard !loadingAlbumTrackIds.contains(albumId) else {
-            // Wait for the other request to complete by polling
-            while loadingAlbumTrackIds.contains(albumId) {
-                try await Task.sleep(for: .milliseconds(50))
-            }
-            // Now return from store (should be loaded)
-            if let album = store.albums[albumId] {
-                return album.trackIds.compactMap { store.tracks[$0] }
-            }
-            return []
-        }
-
-        loadingAlbumTrackIds.insert(albumId)
-        defer { loadingAlbumTrackIds.remove(albumId) }
-
-        // Fetch album details (which includes tracks)
-        let album = try await fetchAlbumDetails(albumId: albumId, accessToken: accessToken)
-        return album.trackIds.compactMap { store.tracks[$0] }
-    }
-
-    /// Get album from store or fetch if needed
-    func getAlbum(albumId: String, accessToken: String) async throws -> Album {
-        if let album = store.albums[albumId] {
-            return album
-        }
-        return try await fetchAlbumDetails(albumId: albumId, accessToken: accessToken)
     }
 
     // MARK: - Library Management

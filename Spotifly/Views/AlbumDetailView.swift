@@ -76,13 +76,10 @@ struct AlbumDetailView: View {
         }
         .navigationTitle(album?.name ?? "")
         .task(id: albumId) {
-            // Use initial album if provided, otherwise fetch
             if let initialAlbum {
                 album = initialAlbum
-            } else {
-                await loadAlbum()
             }
-            await loadTracks()
+            await loadAlbum()
         }
         .task(id: tracks.map(\.id).joined()) {
             await resolveFavoriteStatusesForTracks()
@@ -247,21 +244,20 @@ struct AlbumDetailView: View {
     }
 
     private func loadAlbum() async {
-        isLoadingAlbum = true
+        isLoadingAlbum = album == nil
+        isLoading = true
         errorMessage = nil
 
-        let token = await session.validAccessToken()
         do {
-            let albumEntity = try await albumService.fetchAlbumDetails(
-                albumId: albumId,
-                accessToken: token,
-            )
-            album = albumEntity
+            let token = await session.validAccessToken()
+            try await albumService.ensureAlbumLoaded(albumId: albumId, accessToken: token)
+            album = store.albums[albumId]
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLoadingAlbum = false
+        isLoading = false
     }
 
     private func resolveFavoriteStatusesForTracks() async {
@@ -269,24 +265,6 @@ struct AlbumDetailView: View {
 
         let token = await session.validAccessToken()
         await trackService.refreshFavoriteStatuses(trackIds: tracks.map(\.id), accessToken: token)
-    }
-
-    private func loadTracks() async {
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let token = await session.validAccessToken()
-            // Load tracks via service (stores them in AppStore)
-            _ = try await albumService.getAlbumTracks(
-                albumId: albumId,
-                accessToken: token,
-            )
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-
-        isLoading = false
     }
 
     private func playAllTracks() {
