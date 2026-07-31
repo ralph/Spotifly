@@ -282,12 +282,12 @@ struct NowPlayingBarView: View {
         playbackViewModel.interpolatedPositionMs
     }
 
-    /// Current track duration (from store, fallback to playback state)
+    /// Current track duration (from playback state, fallback to store metadata)
     private var currentDurationMs: UInt32 {
-        if let track = currentTrack {
-            return UInt32(track.durationMs)
+        if playbackViewModel.trackDurationMs > 0 {
+            return playbackViewModel.trackDurationMs
         }
-        return playbackViewModel.trackDurationMs
+        return currentTrack.map { UInt32($0.durationMs) } ?? 0
     }
 
     private var progressBar: some View {

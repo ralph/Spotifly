@@ -54,7 +54,14 @@ final class PlaybackViewModel {
 
     var isPlaying = false
     var isLoading = false
-    var currentTrackUri: String?
+    var currentTrackUri: String? {
+        didSet {
+            if oldValue != currentTrackUri {
+                trackDurationMs = 0
+            }
+        }
+    }
+
     private var lastHandledTrackUri: String?
     var errorMessage: String?
 
