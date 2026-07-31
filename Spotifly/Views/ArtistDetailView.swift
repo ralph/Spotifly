@@ -265,18 +265,4 @@ struct ArtistDetailView: View {
             }
         }
     }
-
-    private func followArtist() {
-        Task {
-            do {
-                let token = await session.validAccessToken()
-                try await artistService.followArtist(
-                    artistId: artistId,
-                    accessToken: token,
-                )
-            } catch {
-                errorMessage = String(localized: "error.follow_artist \(error.localizedDescription)")
-            }
-        }
-    }
 }
