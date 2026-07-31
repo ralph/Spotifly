@@ -61,6 +61,9 @@ static SET_QUEUE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
 static ACTIVE_DEVICE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
 static LAST_ACTIVE_DEVICE_ID: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+/// Serializes snapshot building so a revision always orders snapshots by the state they
+/// actually saw. Held only across the build, never across delivery into Swift.
+static SNAPSHOT_REVISION: Mutex<u64> = Mutex::new(0);
 static LAST_VOLUME: AtomicU16 = AtomicU16::new(0);
 static SHUFFLE_STATE: AtomicBool = AtomicBool::new(false);
 static REPEAT_TRACK_STATE: AtomicBool = AtomicBool::new(false);
@@ -365,6 +368,9 @@ struct QueueTrackInfo {
 
 #[derive(Serialize)]
 struct ConnectionStateInfo {
+    /// Monotonic, assigned while the snapshot is built. Lets Swift discard a snapshot that
+    /// reaches the main actor after a newer one — see `handleConnectionStateCallback`.
+    revision: u64,
     session_connected: bool,
     session_connection_id: Option<String>,
     spirc_ready: bool,
@@ -703,11 +709,19 @@ pub extern "C" fn spotifly_get_connection_state() -> *mut c_char {
     }
 }
 
-/// Builds the current connection state info struct
+/// Builds the current connection state info struct, stamped with a fresh revision.
+///
+/// Reading the state and assigning the revision happen together, so two concurrent
+/// publishers cannot end up with revisions that contradict the order they read state in.
+/// Delivery is deliberately left outside: `send_json` re-enters Swift, which must never
+/// happen while a lock is held.
 fn build_connection_state_info() -> ConnectionStateInfo {
+    let mut revision = SNAPSHOT_REVISION.lock().unwrap();
+    *revision += 1;
     let state = with_connection(|c| c.clone());
 
     ConnectionStateInfo {
+        revision: *revision,
         session_connected: state.session_connected,
         session_connection_id: state.session_connection_id,
         spirc_ready: state.spirc_ready,

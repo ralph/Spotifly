@@ -154,6 +154,9 @@ struct SessionClientChangedNotification {
 /// threads) cannot use. Annotating the properties alone is not enough — the *conformance*
 /// has to be nonisolated too.
 nonisolated struct LibrespotConnectionState: Equatable, Codable {
+    /// Monotonic counter assigned by Rust while the snapshot was built. Only used to order
+    /// snapshots on arrival; carries no state of its own.
+    let revision: UInt64
     let sessionConnected: Bool
     let sessionConnectionId: String?
     let spircReady: Bool
@@ -167,6 +170,7 @@ nonisolated struct LibrespotConnectionState: Equatable, Codable {
     let isActiveDevice: Bool
 
     enum CodingKeys: String, CodingKey {
+        case revision
         case sessionConnected = "session_connected"
         case sessionConnectionId = "session_connection_id"
         case spircReady = "spirc_ready"
@@ -343,14 +347,44 @@ private nonisolated func registerConnectionStateCallback() {
     }
 }
 
-/// C callback for connection state updates from Rust
+/// Revision of the snapshot `connectionStateSubject` currently holds.
+private var lastConnectionStateRevision: UInt64 = 0
+
+/// Publishes a snapshot unless a newer one already reached the subject.
+///
+/// Every snapshot Rust produces — pushed through the callback or pulled by
+/// `getConnectionState()` — enters here, so the watermark always describes what the subject
+/// holds. Several Rust tasks publish independently (the event listener, the cluster
+/// listener, the reconnect loop) and the hop to the main actor gives no ordering guarantee
+/// between them, so a delayed callback could otherwise deliver an older snapshot last and
+/// leave subscribers acting on a readiness that is no longer true.
+///
+/// Snapshots that survive are forwarded exactly as Rust produced them. Re-reading current
+/// state on arrival would also fix the ordering, but it erases readiness *edges*: a
+/// ready → not ready → ready sequence would read as "ready" twice, and the
+/// transition-based subscriber in `LoggedInLifecycleModifier` would never see the dip — so
+/// it would never re-sync queue and playback state after that recovery.
+///
+/// Dropping rather than resequencing is a deliberate trade. A late snapshot could in
+/// principle *be* the dip, and then that edge is lost too — but that needs the main actor
+/// stalled across a whole disconnect-and-rebuild, which takes seconds, and the missed
+/// re-sync is caught by the health check. The opposite trade, forwarding everything in
+/// arrival order, leaves a stale snapshot terminal, and subscribers then act on a readiness
+/// that is simply false with nothing to correct it.
+private func deliverConnectionState(_ state: LibrespotConnectionState) {
+    guard state.revision > lastConnectionStateRevision else { return }
+    lastConnectionStateRevision = state.revision
+    connectionStateSubject.send(state)
+}
+
+/// C callback for connection state updates from Rust.
 private nonisolated func handleConnectionStateCallback(_ jsonPtr: UnsafePointer<CChar>?) {
     guard let state = decodeConnectionState(jsonPtr, context: "handleConnectionStateCallback")
     else {
         return
     }
 
-    Task { @MainActor in connectionStateSubject.send(state) }
+    Task { @MainActor in deliverConnectionState(state) }
 }
 
 /// C callback for queue changed notifications from Rust
@@ -742,12 +776,21 @@ enum SpotifyPlayer {
 
     /// Returns the current connection state synchronously.
     /// Use this for initial UI display or one-time queries.
+    ///
+    /// Rust stamps a pull with a revision just as it does a push, so the result is published
+    /// like any other snapshot. Without that, a callback already queued behind this call
+    /// would still look newer than the last delivered snapshot and overwrite what was just
+    /// read — and suppressing it instead would leave the subject holding the older value.
     static func getConnectionState() -> LibrespotConnectionState? {
         let ptr = spotifly_get_connection_state()
         guard let ptr else { return nil }
         defer { spotifly_free_string(ptr) }
 
-        return decodeConnectionState(ptr, context: "getConnectionState")
+        guard let state = decodeConnectionState(ptr, context: "getConnectionState") else {
+            return nil
+        }
+        deliverConnectionState(state)
+        return state
     }
 
     /// Syncs playback settings from UserDefaults to the Rust player
