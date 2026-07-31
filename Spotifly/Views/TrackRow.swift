@@ -20,7 +20,6 @@ struct TrackRow: View {
     let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
     let onDoubleTap: (@MainActor () async -> Void)? // Playback action on double-tap
 
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService

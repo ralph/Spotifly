@@ -227,20 +227,6 @@ final class TrackService {
         }
     }
 
-    // MARK: - Track Lookup
-
-    /// Fetch and store a single track by ID
-    func fetchTrack(trackId: String, accessToken: String) async throws -> Track {
-        let apiTrack = try await SpotifyAPI.fetchTrack(
-            trackId: trackId,
-            accessToken: accessToken,
-        )
-
-        let track = Track(from: apiTrack)
-        store.upsertTrack(track)
-        return track
-    }
-
     private func uniqueTrackIds(_ trackIds: [String]) -> [String] {
         var seen = Set<String>()
         return trackIds.filter { seen.insert($0).inserted }

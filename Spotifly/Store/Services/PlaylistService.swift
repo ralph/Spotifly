@@ -108,11 +108,11 @@ final class PlaylistService {
 
     /// Re-fetches a playlist's track list, ignoring the cached copy.
     ///
-    /// The mutation paths need exactly this: they update the store optimistically,
-    /// so the cache holds the very order a rollback has to undo. Only the tracks are
-    /// re-fetched — a reorder or a bulk replace cannot change a playlist's metadata,
-    /// so making the rollback depend on a second request that can fail on its own
-    /// would only give it another way to leave the wrong order in place.
+    /// Reordering needs exactly this: it updates the store optimistically, so the
+    /// cache holds the very order a rollback has to undo. Only the tracks are
+    /// re-fetched — a reorder cannot change a playlist's metadata, so making the
+    /// rollback depend on a second request that can fail on its own would only give
+    /// it another way to leave the wrong order in place.
     ///
     /// It shares `ensurePlaylistLoaded`'s key, and therefore has to keep its
     /// postcondition — a caller can join either one. So a playlist that is somehow
@@ -289,22 +289,6 @@ final class PlaylistService {
         )
 
         // Re-fetch to pick up the order the server actually applied
-        try await reloadPlaylistTracks(playlistId: playlistId)
-    }
-
-    /// Replace all tracks in a playlist (for bulk edits like reordering/removing)
-    func replacePlaylistTracks(
-        playlistId: String,
-        trackUris: [String],
-        accessToken: String,
-    ) async throws {
-        try await SpotifyAPI.replacePlaylistTracks(
-            accessToken: accessToken,
-            playlistId: playlistId,
-            trackUris: trackUris,
-        )
-
-        // Re-fetch to update store with new track order
         try await reloadPlaylistTracks(playlistId: playlistId)
     }
 }

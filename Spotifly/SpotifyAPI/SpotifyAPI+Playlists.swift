@@ -396,46 +396,4 @@ extension SpotifyAPI {
             try throwAPIError(data: data, statusCode: httpResponse.statusCode)
         }
     }
-
-    /// Replaces all tracks in a playlist
-    static func replacePlaylistTracks(
-        accessToken: String,
-        playlistId: String,
-        trackUris: [String],
-    ) async throws {
-        let urlString = "\(baseURL)/playlists/\(playlistId)/tracks"
-
-        debugLog("SpotifyAPI", "[PUT] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = ["uris": trackUris]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200, 201:
-            return
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 403:
-            throw SpotifyAPIError.apiError("Not authorized to modify this playlist")
-        case 404:
-            throw SpotifyAPIError.notFound
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
 }
