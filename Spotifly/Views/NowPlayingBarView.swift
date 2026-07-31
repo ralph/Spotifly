@@ -69,8 +69,24 @@ struct NowPlayingBarView: View {
                 Text("playlist.new.message")
             }
             .task(id: currentTrackId) {
+                await resolveCurrentTrackMetadataIfNeeded()
+            }
+            .task(id: currentTrackId) {
                 await resolveCurrentTrackFavoriteStatusIfNeeded()
             }
+    }
+
+    private func resolveCurrentTrackMetadataIfNeeded() async {
+        guard let trackId = currentTrackId else { return }
+
+        do {
+            try await trackService.ensureTracksLoaded(trackIds: [trackId])
+            // The task may have outlived this ID. The update is still safe because it
+            // resolves PlaybackViewModel's current logical URI rather than `trackId`.
+            playbackViewModel.updateNowPlayingInfo()
+        } catch {
+            debugLog("NowPlayingBarView", "Failed to load metadata for \(trackId): \(error)")
+        }
     }
 
     // MARK: - Player Layout
