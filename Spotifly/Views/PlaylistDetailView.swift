@@ -91,15 +91,12 @@ struct PlaylistDetailView: View {
         }
         .navigationTitle(playlist?.name ?? "")
         .task(id: playlistId) {
-            // Use initial playlist if provided, otherwise fetch
             if let initialPlaylist {
                 playlist = initialPlaylist
                 playlistName = initialPlaylist.name
                 playlistDescription = initialPlaylist.description ?? ""
-            } else {
-                await loadPlaylist()
             }
-            await loadTracks()
+            await loadPlaylist()
         }
         .task(id: tracks.map(\.id).joined()) {
             await resolveFavoriteStatusesForTracks()
@@ -407,45 +404,21 @@ struct PlaylistDetailView: View {
     }
 
     private func loadPlaylist() async {
-        isLoadingPlaylist = true
-        errorMessage = nil
-
-        let token = await session.validAccessToken()
-        do {
-            let playlistEntity = try await playlistService.fetchPlaylistDetails(
-                playlistId: playlistId,
-                accessToken: token,
-            )
-            playlist = playlistEntity
-            playlistName = playlistEntity.name
-            playlistDescription = playlistEntity.description ?? ""
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-
-        isLoadingPlaylist = false
-    }
-
-    private func loadTracks() async {
-        // Reset state when loading new playlist
-        if let playlist {
-            playlistName = playlist.name
-            playlistDescription = playlist.description ?? ""
-        }
+        isLoadingPlaylist = playlist == nil
         isLoading = true
         errorMessage = nil
 
         do {
             let token = await session.validAccessToken()
-            // Load tracks via service (updates store)
-            _ = try await playlistService.getPlaylistTracks(
-                playlistId: playlistId,
-                accessToken: token,
-            )
+            try await playlistService.ensurePlaylistLoaded(playlistId: playlistId, accessToken: token)
+            playlist = store.playlists[playlistId]
+            playlistName = playlist?.name ?? ""
+            playlistDescription = playlist?.description ?? ""
         } catch {
             errorMessage = error.localizedDescription
         }
 
+        isLoadingPlaylist = false
         isLoading = false
     }
 
@@ -515,8 +488,10 @@ struct PlaylistReorderDropDelegate: DropDelegate {
                 )
             } catch {
                 debugLog("PlaylistReorder", "Failed to reorder: \(error)")
-                // Revert the optimistic update on failure by reloading
-                _ = try? await playlistService.getPlaylistTracks(
+                // Revert the optimistic update by re-fetching the real order. This
+                // has to bypass the cache — the optimistic update already wrote the
+                // order we are trying to undo.
+                try? await playlistService.reloadPlaylist(
                     playlistId: playlistId,
                     accessToken: token,
                 )

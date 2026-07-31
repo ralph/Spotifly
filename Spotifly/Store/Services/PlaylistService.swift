@@ -13,7 +13,9 @@ import Foundation
 final class PlaylistService {
     private let store: AppStore
     private var userPlaylistsTask: Task<Void, Error>?
-    private var playlistDetailsTasks: [String: Task<Playlist, Error>] = [:]
+
+    /// One run per playlist ID — see `InFlightRequests`.
+    private let playlistRequests = InFlightRequests<Void>()
 
     init(store: AppStore) {
         self.store = store
@@ -90,19 +92,36 @@ final class PlaylistService {
 
     // MARK: - Playlist Details
 
-    /// Fetch playlist details and tracks
-    func fetchPlaylistDetails(playlistId: String, accessToken: String) async throws -> Playlist {
-        // If already fetching this playlist, await the existing task instead of starting a new one.
-        // View recreation (e.g. the Playlists 2->3 column switch) can re-trigger the caller's
-        // .task before the first fetch completes.
-        if let existingTask = playlistDetailsTasks[playlistId] {
-            return try await existingTask.value
+    /// Makes sure the playlist's metadata *and* its track list are in the store.
+    ///
+    /// Only what is missing goes over the network: a playlist that came from the
+    /// library list or a search result already has its metadata, so just its tracks
+    /// are fetched; on a second visit nothing is. Concurrent callers share one run,
+    /// and the run outlives a caller whose view was torn down mid-flight — see
+    /// `InFlightRequests`.
+    func ensurePlaylistLoaded(playlistId: String, accessToken: String) async throws {
+        guard store.playlists[playlistId]?.tracksLoaded != true else { return }
+
+        try await playlistRequests.run(playlistId) {
+            try await self.loadPlaylist(playlistId: playlistId, accessToken: accessToken)
         }
+    }
 
-        let task = Task<Playlist, Error> {
-            defer { self.playlistDetailsTasks[playlistId] = nil }
+    /// Re-fetches a playlist that is already cached.
+    ///
+    /// Used after a mutation whose outcome the optimistic store update cannot be
+    /// trusted to describe — a reorder that failed server-side, or a bulk replace.
+    func reloadPlaylist(playlistId: String, accessToken: String) async throws {
+        playlistRequests.cancel(playlistId)
 
-            // Fetch details and tracks in parallel
+        try await playlistRequests.run(playlistId) {
+            try await self.loadPlaylist(playlistId: playlistId, accessToken: accessToken, reload: true)
+        }
+    }
+
+    private func loadPlaylist(playlistId: String, accessToken: String, reload: Bool = false) async throws {
+        // Re-read inside the run: a caller can arrive just as another run finishes.
+        guard let known = reload ? nil : store.playlists[playlistId] else {
             async let detailsTask = SpotifyAPI.fetchPlaylistDetails(
                 accessToken: accessToken,
                 playlistId: playlistId,
@@ -111,41 +130,31 @@ final class PlaylistService {
                 accessToken: accessToken,
                 playlistId: playlistId,
             )
-
             let (details, playlistTracks) = try await (detailsTask, tracksTask)
 
-            // Convert tracks to unified entities and store them
-            let tracks = playlistTracks.map { Track(from: $0) }
-            self.store.upsertTracks(tracks)
-
-            // Calculate total duration
-            let totalDurationMs = tracks.reduce(0) { $0 + $1.durationMs }
-
-            // Create playlist with track IDs
-            let playlist = Playlist(
-                from: details,
-                trackIds: tracks.map(\.id),
-                totalDurationMs: totalDurationMs,
-            )
-
-            self.store.upsertPlaylist(playlist)
-            return playlist
+            store.upsertPlaylist(Playlist(from: details))
+            storeTracks(playlistTracks, for: playlistId)
+            return
         }
-        playlistDetailsTasks[playlistId] = task
 
-        return try await task.value
+        guard !known.tracksLoaded else { return }
+
+        let playlistTracks = try await SpotifyAPI.fetchPlaylistTracks(
+            accessToken: accessToken,
+            playlistId: playlistId,
+        )
+        storeTracks(playlistTracks, for: playlistId)
     }
 
-    /// Get tracks for a playlist (from store or fetch)
-    func getPlaylistTracks(playlistId: String, accessToken: String) async throws -> [Track] {
-        // Check if tracks are already loaded
-        if let playlist = store.playlists[playlistId], playlist.tracksLoaded {
-            return playlist.trackIds.compactMap { store.tracks[$0] }
-        }
-
-        // Fetch playlist details (which includes tracks)
-        let playlist = try await fetchPlaylistDetails(playlistId: playlistId, accessToken: accessToken)
-        return playlist.trackIds.compactMap { store.tracks[$0] }
+    /// Stores a playlist's tracks and marks its track list as loaded.
+    private func storeTracks(_ playlistTracks: [APITrack], for playlistId: String) {
+        let tracks = playlistTracks.map { Track(from: $0) }
+        store.upsertTracks(tracks)
+        store.setPlaylistTracks(
+            tracks.map(\.id),
+            totalDurationMs: tracks.reduce(0) { $0 + $1.durationMs },
+            for: playlistId,
+        )
     }
 
     // MARK: - Playlist Mutations
@@ -269,8 +278,8 @@ final class PlaylistService {
             rangeLength: rangeLength,
         )
 
-        // Re-fetch playlist to get updated track order
-        _ = try await fetchPlaylistDetails(playlistId: playlistId, accessToken: accessToken)
+        // Re-fetch to pick up the order the server actually applied
+        try await reloadPlaylist(playlistId: playlistId, accessToken: accessToken)
     }
 
     /// Replace all tracks in a playlist (for bulk edits like reordering/removing)
@@ -286,6 +295,6 @@ final class PlaylistService {
         )
 
         // Re-fetch to update store with new track order
-        _ = try await fetchPlaylistDetails(playlistId: playlistId, accessToken: accessToken)
+        try await reloadPlaylist(playlistId: playlistId, accessToken: accessToken)
     }
 }
