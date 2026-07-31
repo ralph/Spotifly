@@ -812,22 +812,15 @@ async fn create_and_store_spirc(
     RUNTIME.spawn(spirc_task);
 
     *SPIRC.lock().unwrap() = Some(spirc_arc.clone());
-    // This is the real "we are connected" transition: session established and Spirc
-    // running. The backoff counter and last error are cleared here rather than in the
-    // SessionConnected handler, which fires on Connect *activation* and can happen many
-    // times over the life of one healthy session.
+    // Deliberately does not record success yet. Activation and, on a reconnect, the
+    // rehydrating load still have to run, and either can fail — `init_player_async` commits
+    // the whole set once, at the end, when the session is genuinely usable.
     //
-    // Recorded but deliberately not published yet: activation and, on a reconnect, the
-    // rehydrating load still have to run. init_player_async publishes once, at the end,
-    // when the session is actually settled. Swift's readiness wait polls the synchronous
-    // flags rather than waiting for this callback, so holding it back costs nothing.
-    with_connection(|c| {
-        c.spirc_ready = true;
-        c.session_connected = true;
-        c.connected_since_ms = current_timestamp_ms();
-        c.reconnect_attempt = 0;
-        c.last_error = None;
-    });
+    // Setting it here was subtly wrong in two ways. The activation that follows makes
+    // librespot emit SessionConnected, whose handler publishes a snapshot; with the flags
+    // already true that snapshot announced readiness before playback resumed. And a later
+    // failure could only clear the booleans, leaving a fresh connected-since timestamp and
+    // a reset attempt counter in the disconnected snapshot that followed.
 
     debug!(
         "[WAKE +{}ms] Spirc ready - connected to Spotify Connect",
@@ -1635,15 +1628,70 @@ async fn init_player_async(
             // assumption that the track would load itself via transfer(None) — nothing in
             // this path ever called transfer(None), so the event never came.
             if resume_after_connect {
+                let seq_before = PLAYING_EVENT_SEQ.load(Ordering::SeqCst);
                 let result = resume_via_load(&spirc);
                 debug!(
                     "[WAKE +{}ms] Rehydrate after reconnect: load result={}",
                     elapsed_since_wake_ms(),
                     result
                 );
+
+                if result == ERROR_NEEDS_REINIT {
+                    // Closed command channel: this Spirc is already dead, so the session can
+                    // never play. Nothing to roll back — success is committed below, after
+                    // this point, so the connection state still reads disconnected.
+                    return Err("Rehydration failed: Spirc command channel closed".to_string());
+                }
+
+                if result != 0 {
+                    // Nothing to resume — no saved context or track URI. Reachable when an
+                    // outage lands between a play command and the player events that record
+                    // what is playing. The session itself is fine, so failing here would
+                    // make every later attempt fail identically, forever.
+                    debug!(
+                        "[WAKE +{}ms] Rehydrate: nothing to resume (result={})",
+                        elapsed_since_wake_ms(),
+                        result
+                    );
+                } else if !wait_for_playing_event_async(seq_before, REHYDRATE_PLAYING_TIMEOUT).await
+                {
+                    // Spirc::load only queues a command, so a zero result means "accepted",
+                    // not "playing". Waiting keeps Swift's Web API bootstrap out of the gap
+                    // between the two. A timeout is not fatal: the load may still land, and
+                    // tearing down an otherwise healthy session would be worse than
+                    // announcing it late.
+                    debug!(
+                        "[WAKE +{}ms] Rehydrate: no Playing event within {:?}, publishing anyway",
+                        elapsed_since_wake_ms(),
+                        REHYDRATE_PLAYING_TIMEOUT
+                    );
+                }
             }
 
-            // Single publication point: everything above is done.
+            // Committing late means this can be reached after something else took over —
+            // spotifly_cleanup on logout, a manual retry, or sleep, any of which can land
+            // during the rehydration wait above. Writing success then would resurrect a
+            // dead session as healthy and stop the health check from recovering it.
+            if !listener_may_act(current_generation, SESSION_GENERATION.load(Ordering::SeqCst))
+                || teardown_in_progress()
+            {
+                return Err(format!(
+                    "Initialization for generation {} was superseded before it completed",
+                    current_generation
+                ));
+            }
+
+            // Single commit-and-publish point: session up, device activated, playback
+            // rehydrated. Recording success only here means a failure anywhere above
+            // leaves the previous disconnected state untouched, and no snapshot in
+            // between can announce a session that cannot yet play.
+            with_connection(|c| {
+                c.spirc_ready = true;
+                c.session_connected = true;
+                c.connected_since_ms = current_timestamp_ms();
+                c.reconnect_attempt = 0;
+                c.last_error = None;
+            });
             notify_connection_state_change();
         }
         Err(e) => {
@@ -2135,6 +2183,25 @@ fn wait_for_playing_event(previous_seq: u64, timeout_ms: u64) -> bool {
         }
         std::thread::sleep(Duration::from_millis(25));
     }
+}
+
+/// How long rehydration waits for the Player to actually start before giving up on the
+/// wait (not on the session). Observed load-to-playing is around a second.
+const REHYDRATE_PLAYING_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Waits for the Player to report playback, without parking a runtime worker.
+///
+/// The blocking twin above is fine in synchronous FFI entry points; this one runs inside
+/// `init_player_async`, where a thread sleep would block a tokio worker thread.
+async fn wait_for_playing_event_async(previous_seq: u64, timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    while tokio::time::Instant::now() < deadline {
+        if PLAYING_EVENT_SEQ.load(Ordering::SeqCst) > previous_seq {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    PLAYING_EVENT_SEQ.load(Ordering::SeqCst) > previous_seq
 }
 
 fn resume_via_load(spirc: &Arc<Spirc>) -> i32 {
