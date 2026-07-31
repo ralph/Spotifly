@@ -49,6 +49,7 @@
 "track.menu.remove_from_favorites" = "Remove from Favorites";
 "track.menu.add_to_playlist" = "Add to Playlist";
 "track.menu.add_to_new_playlist" = "Add to New Playlist...";
+"track.menu.remove_from_playlist" = "Remove from this Playlist";
 "track.menu.go_to_artist" = "Go to Artist";
 "track.menu.go_to_album" = "Go to Album";
 

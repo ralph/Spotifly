@@ -29,6 +29,20 @@ struct TrackContextMenu: View {
         store.isFavorite(track.id)
     }
 
+    /// The playlist this row is being shown *inside*, if the user can edit it.
+    /// Removing is only offered there: the menu is reused from albums, search and
+    /// the queue, where "this playlist" would mean nothing, and Spotify rejects the
+    /// edit for a playlist someone else owns.
+    private var removableFromPlaylistId: String? {
+        guard currentSection == .playlists,
+              let playlistId = selectionId,
+              store.playlists[playlistId]?.ownerId == store.userId
+        else {
+            return nil
+        }
+        return playlistId
+    }
+
     var body: some View {
         // Single unified action - "Play Next" adds to queue (plays before context tracks)
         Button {
@@ -71,6 +85,14 @@ struct TrackContextMenu: View {
             )
         } label: {
             Label("track.menu.add_to_playlist", systemImage: "music.note.list")
+        }
+
+        if let playlistId = removableFromPlaylistId {
+            Button(role: .destructive) {
+                removeFromPlaylist(playlistId: playlistId)
+            } label: {
+                Label("track.menu.remove_from_playlist", systemImage: "minus.circle")
+            }
         }
 
         Divider()
@@ -160,6 +182,21 @@ struct TrackContextMenu: View {
                 onPlaylistAdded?()
             } catch {
                 playbackViewModel.errorMessage = "Failed to add to playlist: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func removeFromPlaylist(playlistId: String) {
+        Task {
+            do {
+                let token = await session.validAccessToken()
+                try await playlistService.removeTracksFromPlaylist(
+                    playlistId: playlistId,
+                    trackIds: [track.id],
+                    accessToken: token,
+                )
+            } catch {
+                playbackViewModel.errorMessage = "Failed to remove from playlist: \(error.localizedDescription)"
             }
         }
     }
