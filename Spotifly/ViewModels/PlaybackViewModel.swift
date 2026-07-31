@@ -347,12 +347,15 @@ final class PlaybackViewModel {
         }
     }
 
+    /// Stops playback and clears the view model's playback state. Called on logout.
+    ///
+    /// Deliberately not gated on the session being connected, unlike the transport commands.
+    /// Those go through Spirc, which rejects them without a session, so acting on them
+    /// locally would desync the UI. `spotifly_stop` instead stops the Player directly — a
+    /// local teardown, not a Connect command — and works while disconnected. Guarding it
+    /// meant logging out during an outage left buffered audio playing and the previous track
+    /// showing.
     func stop() {
-        // Don't clear playback state for a command Rust will reject
-        guard SpotifyPlayer.isSessionConnected else {
-            debugLog("PlaybackViewModel", "stop() ignored - session not connected")
-            return
-        }
         SpotifyPlayer.stop()
         isPlaying = false
         currentTrackUri = nil
