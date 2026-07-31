@@ -109,17 +109,25 @@ struct Album: Identifiable, Hashable, Encodable {
     var trackIds: [String]
     var totalDurationMs: Int?
 
+    /// Whether every field came from a source that returns them all.
+    ///
+    /// False for the stub `TopItemsService` builds out of a track's album object,
+    /// which carries no release date, album type or external URL. `AlbumService`
+    /// uses this to decide whether the metadata request can be skipped — presence
+    /// in the store alone would not be enough.
+    var detailsLoaded: Bool
+
+    /// Whether the track list was fetched. Stored rather than derived from
+    /// `trackIds`, so an album that genuinely has no tracks is not re-fetched on
+    /// every single visit.
+    var tracksLoaded: Bool
+
     /// Known count from API (before tracks are loaded)
     private var _knownTrackCount: Int?
 
     /// Track count - uses loaded trackIds if available, otherwise falls back to API count
     var trackCount: Int {
-        trackIds.isEmpty ? (_knownTrackCount ?? 0) : trackIds.count
-    }
-
-    /// Whether tracks have been loaded
-    var tracksLoaded: Bool {
-        !trackIds.isEmpty
+        tracksLoaded ? trackIds.count : (_knownTrackCount ?? 0)
     }
 
     var formattedDuration: String? {
@@ -141,6 +149,8 @@ struct Album: Identifiable, Hashable, Encodable {
         trackIds: [String] = [],
         totalDurationMs: Int? = nil,
         knownTrackCount: Int? = nil,
+        detailsLoaded: Bool = false,
+        tracksLoaded: Bool = false,
     ) {
         self.id = id
         self.name = name
@@ -153,6 +163,8 @@ struct Album: Identifiable, Hashable, Encodable {
         self.artistName = artistName
         self.trackIds = trackIds
         self.totalDurationMs = totalDurationMs
+        self.detailsLoaded = detailsLoaded
+        self.tracksLoaded = tracksLoaded
         _knownTrackCount = knownTrackCount
     }
 }
@@ -187,17 +199,17 @@ struct Playlist: Identifiable, Hashable, Encodable {
     var trackIds: [String]
     var totalDurationMs: Int?
 
+    /// Whether the track list was fetched. Stored rather than derived from
+    /// `trackIds`, so an empty playlist — or one the user just emptied — is not
+    /// re-fetched on every single visit.
+    var tracksLoaded: Bool
+
     /// Known count from API (before tracks are loaded)
     private var _knownTrackCount: Int?
 
     /// Track count - uses loaded trackIds if available, otherwise falls back to API count
     var trackCount: Int {
-        trackIds.isEmpty ? (_knownTrackCount ?? 0) : trackIds.count
-    }
-
-    /// Whether tracks have been loaded
-    var tracksLoaded: Bool {
-        !trackIds.isEmpty
+        tracksLoaded ? trackIds.count : (_knownTrackCount ?? 0)
     }
 
     var formattedDuration: String? {
@@ -219,6 +231,7 @@ struct Playlist: Identifiable, Hashable, Encodable {
         trackIds: [String] = [],
         totalDurationMs: Int? = nil,
         knownTrackCount: Int? = nil,
+        tracksLoaded: Bool = false,
     ) {
         self.id = id
         self.name = name
@@ -231,6 +244,7 @@ struct Playlist: Identifiable, Hashable, Encodable {
         self.externalUrl = externalUrl
         self.trackIds = trackIds
         self.totalDurationMs = totalDurationMs
+        self.tracksLoaded = tracksLoaded
         _knownTrackCount = knownTrackCount
     }
 }

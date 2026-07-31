@@ -60,6 +60,11 @@ final class AppStore {
     /// All devices indexed by ID
     private(set) var devices: [String: Device] = [:]
 
+    /// Album IDs per artist, in the order the API returned them. Cached like album
+    /// and playlist tracks are, so an artist's discography is fetched once instead
+    /// of on every visit to their page.
+    private(set) var artistAlbumIds: [String: [String]] = [:]
+
     // MARK: - User Library State (IDs only)
 
     /// User's playlist IDs in display order
@@ -268,17 +273,33 @@ final class AppStore {
         }
     }
 
-    /// Upsert a single album, preserving loaded tracks if present
+    /// Upsert a single album. What we already know is never downgraded: a stub
+    /// entity (the one `TopItemsService` builds from a track's album object) does
+    /// not replace fully fetched metadata, and no upsert drops loaded tracks.
     func upsertAlbum(_ album: Album) {
-        if let existing = albums[album.id], existing.tracksLoaded, !album.tracksLoaded {
-            // Preserve existing trackIds and duration when new album doesn't have them
-            var merged = album
+        guard let existing = albums[album.id] else {
+            albums[album.id] = album
+            return
+        }
+        guard album.detailsLoaded || !existing.detailsLoaded else { return }
+
+        var merged = album
+        if existing.tracksLoaded, !merged.tracksLoaded {
             merged.trackIds = existing.trackIds
             merged.totalDurationMs = existing.totalDurationMs
-            albums[album.id] = merged
-        } else {
-            albums[album.id] = album
+            merged.tracksLoaded = true
         }
+        albums[album.id] = merged
+    }
+
+    /// Attach a fetched track list to an album. Marks it loaded even when the album
+    /// has no tracks, so it is not fetched again on the next visit.
+    func setAlbumTracks(_ trackIds: [String], totalDurationMs: Int?, for albumId: String) {
+        guard var album = albums[albumId] else { return }
+        album.trackIds = trackIds
+        album.totalDurationMs = totalDurationMs
+        album.tracksLoaded = true
+        albums[albumId] = album
     }
 
     /// Upsert multiple albums, preserving loaded tracks if present
@@ -300,6 +321,17 @@ final class AppStore {
         }
     }
 
+    /// Record an artist's fetched album list. The albums themselves go through
+    /// `upsertAlbums`; this only stores the order.
+    func setArtistAlbums(_ albumIds: [String], for artistId: String) {
+        artistAlbumIds[artistId] = albumIds
+    }
+
+    /// An artist's albums in display order, or nil if they have not been fetched.
+    func albums(forArtist artistId: String) -> [Album]? {
+        artistAlbumIds[artistId]?.compactMap { albums[$0] }
+    }
+
     /// Upsert a single playlist, preserving loaded tracks if present
     func upsertPlaylist(_ playlist: Playlist) {
         if let existing = playlists[playlist.id], existing.tracksLoaded, !playlist.tracksLoaded {
@@ -307,10 +339,21 @@ final class AppStore {
             var merged = playlist
             merged.trackIds = existing.trackIds
             merged.totalDurationMs = existing.totalDurationMs
+            merged.tracksLoaded = true
             playlists[playlist.id] = merged
         } else {
             playlists[playlist.id] = playlist
         }
+    }
+
+    /// Attach a fetched track list to a playlist. Marks it loaded even when the
+    /// playlist is empty, so it is not fetched again on the next visit.
+    func setPlaylistTracks(_ trackIds: [String], totalDurationMs: Int?, for playlistId: String) {
+        guard var playlist = playlists[playlistId] else { return }
+        playlist.trackIds = trackIds
+        playlist.totalDurationMs = totalDurationMs
+        playlist.tracksLoaded = true
+        playlists[playlistId] = playlist
     }
 
     /// Upsert multiple playlists, preserving loaded tracks if present
@@ -629,6 +672,7 @@ final class AppStore {
                 let artists: [String: Artist]
                 let playlists: [String: Playlist]
                 let devices: [String: Device]
+                let artistAlbumIds: [String: [String]]
 
                 let userPlaylistIds: [String]
                 let userAlbumIds: [String]
@@ -677,6 +721,7 @@ final class AppStore {
                 artists: artists,
                 playlists: playlists,
                 devices: devices,
+                artistAlbumIds: artistAlbumIds,
                 userPlaylistIds: userPlaylistIds,
                 userAlbumIds: userAlbumIds,
                 userArtistIds: userArtistIds,

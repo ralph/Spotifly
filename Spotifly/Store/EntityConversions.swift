@@ -45,7 +45,11 @@ extension Track {
 // MARK: - Album Conversions
 
 extension Album {
-    /// Convert from APIAlbum
+    /// Convert from APIAlbum.
+    ///
+    /// Every endpoint that produces an `APIAlbum` — `/albums/{id}`, `/me/albums`,
+    /// `/artists/{id}/albums`, search — returns the full set of fields this entity
+    /// has, so the result counts as details-loaded.
     init(from album: APIAlbum) {
         self.init(
             id: album.id,
@@ -60,6 +64,7 @@ extension Album {
             trackIds: [],
             totalDurationMs: album.totalDurationMs,
             knownTrackCount: album.trackCount,
+            detailsLoaded: true,
         )
     }
 
@@ -78,6 +83,8 @@ extension Album {
             trackIds: trackIds,
             totalDurationMs: totalDurationMs,
             knownTrackCount: nil, // We have actual tracks
+            detailsLoaded: true,
+            tracksLoaded: true,
         )
     }
 }
@@ -145,6 +152,7 @@ extension Playlist {
             trackIds: trackIds,
             totalDurationMs: totalDurationMs,
             knownTrackCount: nil, // We have actual tracks
+            tracksLoaded: true,
         )
     }
 }

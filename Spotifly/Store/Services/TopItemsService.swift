@@ -120,6 +120,11 @@ final class TopItemsService {
                     seenAlbumIds.insert(albumId)
                     newAlbumIds.append(albumId)
 
+                    // A stub built from the track's album object: enough to render
+                    // the top-albums row, but missing release date, album type and
+                    // external URL. `detailsLoaded` stays false so opening it still
+                    // fetches the real metadata, and so it cannot overwrite a fully
+                    // fetched album already in the store.
                     let album = Album(
                         id: albumId,
                         name: apiTrack.albumName ?? "",
