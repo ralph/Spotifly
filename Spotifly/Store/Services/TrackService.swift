@@ -13,14 +13,9 @@ import Foundation
 final class TrackService {
     private let store: AppStore
 
-    /// In-flight favorites load. Stored so concurrent callers await the same load
-    /// instead of starting a new one, and — because it's an unstructured Task — so
-    /// the load survives cancellation of the caller's `.task` when the Favorites
-    /// view is recreated (e.g. during a navigation/column-layout change). Without
-    /// this, a recreated view's `.task` could observe `isLoading == true` and bail
-    /// while the original load is being cancelled, leaving Favorites stuck empty
-    /// even though the request already went out. Mirrors AlbumService/ArtistService.
-    private var favoritesLoadTask: Task<Void, Error>?
+    /// The favorites list, whose pages are one run at a time under one key.
+    private let listRequests = InFlightRequests<Void>()
+    private static let listKey = "favorites"
 
     init(store: AppStore) {
         self.store = store
@@ -28,8 +23,10 @@ final class TrackService {
 
     // MARK: - Favorites (Saved Tracks)
 
-    /// Load user's saved tracks (favorites)
+    /// Load the next page of the user's saved tracks, or the first if none is loaded.
     func loadFavorites(accessToken: String, forceRefresh: Bool = false) async throws {
+        // The list can be reported as loaded while holding nothing — a page whose
+        // load was interrupted. Recover by starting over rather than by trusting it.
         let needsRecoveryRefresh = !forceRefresh &&
             store.favoriteTracks.isEmpty &&
             store.favoritesPagination.isLoaded &&
@@ -41,28 +38,15 @@ final class TrackService {
             return
         }
 
-        // Force refresh cancels any in-flight load and starts over
         if shouldForceRefresh {
-            favoritesLoadTask?.cancel()
-            favoritesLoadTask = nil
+            listRequests.cancel(Self.listKey)
             store.favoritesPagination.reset()
         }
 
-        // If a load is already in flight, await it instead of starting a new one.
-        // The task is unstructured, so it is not cancelled when this caller is.
-        if let existingTask = favoritesLoadTask {
-            _ = try? await existingTask.value
-            return
-        }
-
-        let offset = shouldForceRefresh ? 0 : (store.favoritesPagination.nextOffset ?? 0)
-
-        store.favoritesPagination.isLoading = true
-        let task = Task {
-            defer {
-                self.favoritesLoadTask = nil
-                self.store.favoritesPagination.isLoading = false
-            }
+        try await listRequests.run(Self.listKey) {
+            let offset = self.store.favoritesPagination.nextOffset ?? 0
+            self.store.favoritesPagination.isLoading = true
+            defer { self.store.favoritesPagination.isLoading = false }
 
             let response = try await SpotifyAPI.fetchUserSavedTracks(
                 accessToken: accessToken,
@@ -70,34 +54,27 @@ final class TrackService {
                 offset: offset,
             )
 
-            // Convert to unified Track entities
             let tracks = response.tracks.map { Track(from: $0) }
+            self.store.upsertTracks(tracks)
 
-            // Upsert tracks into store
-            store.upsertTracks(tracks)
-
-            // Update saved track IDs
             let trackIds = tracks.map(\.id)
-            if shouldForceRefresh || offset == 0 {
-                store.setSavedTrackIds(trackIds)
+            if offset == 0 {
+                self.store.setSavedTrackIds(trackIds)
             } else {
-                store.appendSavedTrackIds(trackIds)
+                self.store.appendSavedTrackIds(trackIds)
             }
-            store.markTracksAsFavorite(trackIds)
+            self.store.markTracksAsFavorite(trackIds)
 
-            // Update pagination state
-            store.favoritesPagination.isLoaded = true
-            store.favoritesPagination.hasMore = response.hasMore
-            store.favoritesPagination.nextOffset = response.nextOffset
-            store.favoritesPagination.total = response.total
+            self.store.favoritesPagination.isLoaded = true
+            self.store.favoritesPagination.hasMore = response.hasMore
+            self.store.favoritesPagination.nextOffset = response.nextOffset
+            self.store.favoritesPagination.total = response.total
         }
-        favoritesLoadTask = task
-        try await task.value
     }
 
     /// Load more favorites (pagination)
     func loadMoreFavorites(accessToken: String) async throws {
-        guard store.favoritesPagination.hasMore, favoritesLoadTask == nil else {
+        guard store.favoritesPagination.hasMore, !listRequests.isRunning(Self.listKey) else {
             return
         }
         try await loadFavorites(accessToken: accessToken)

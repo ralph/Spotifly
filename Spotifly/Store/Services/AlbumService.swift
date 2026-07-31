@@ -12,10 +12,13 @@ import Foundation
 @Observable
 final class AlbumService {
     private let store: AppStore
-    private var userAlbumsTask: Task<Void, Error>?
 
     /// One run per album ID — see `InFlightRequests`.
     private let albumRequests = InFlightRequests<Void>()
+
+    /// The saved-albums list, whose pages are one run at a time under one key.
+    private let listRequests = InFlightRequests<Void>()
+    private static let listKey = "user-albums"
 
     init(store: AppStore) {
         self.store = store
@@ -23,34 +26,22 @@ final class AlbumService {
 
     // MARK: - User Albums
 
-    /// Load user's saved albums
+    /// Load the next page of the user's saved albums, or the first if none is loaded.
     func loadUserAlbums(accessToken: String, forceRefresh: Bool = false) async throws {
         // Skip if already loaded and not forcing refresh (but only if we actually have data)
         if store.albumsPagination.isLoaded, !forceRefresh, !store.albumsPagination.hasMore, !store.userAlbumIds.isEmpty {
             return
         }
 
-        // Handle force refresh
         if forceRefresh {
-            userAlbumsTask?.cancel()
-            userAlbumsTask = nil
+            listRequests.cancel(Self.listKey)
             store.albumsPagination.reset()
         }
 
-        // If already loading, await existing task
-        if let existingTask = userAlbumsTask {
-            _ = try? await existingTask.value
-            return
-        }
-
-        // Create and store the loading task
-        let offset = forceRefresh ? 0 : (store.albumsPagination.nextOffset ?? 0)
-        store.albumsPagination.isLoading = true
-        userAlbumsTask = Task {
-            defer {
-                self.userAlbumsTask = nil
-                self.store.albumsPagination.isLoading = false
-            }
+        try await listRequests.run(Self.listKey) {
+            let offset = self.store.albumsPagination.nextOffset ?? 0
+            self.store.albumsPagination.isLoading = true
+            defer { self.store.albumsPagination.isLoading = false }
 
             let response = try await SpotifyAPI.fetchUserAlbums(
                 accessToken: accessToken,
@@ -58,33 +49,26 @@ final class AlbumService {
                 offset: offset,
             )
 
-            // Convert to unified Album entities
             let albums = response.albums.map { Album(from: $0) }
-
-            // Upsert albums into store
             self.store.upsertAlbums(albums)
 
-            // Update user album IDs
             let albumIds = albums.map(\.id)
-            if forceRefresh {
+            if offset == 0 {
                 self.store.setUserAlbumIds(albumIds)
             } else {
                 self.store.appendUserAlbumIds(albumIds)
             }
 
-            // Update pagination state
             self.store.albumsPagination.isLoaded = true
             self.store.albumsPagination.hasMore = response.hasMore
             self.store.albumsPagination.nextOffset = response.nextOffset
             self.store.albumsPagination.total = response.total
         }
-
-        try await userAlbumsTask!.value
     }
 
     /// Load more albums (pagination)
     func loadMoreAlbums(accessToken: String) async throws {
-        guard store.albumsPagination.hasMore, userAlbumsTask == nil else {
+        guard store.albumsPagination.hasMore, !listRequests.isRunning(Self.listKey) else {
             return
         }
         try await loadUserAlbums(accessToken: accessToken)

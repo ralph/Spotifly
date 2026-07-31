@@ -12,10 +12,13 @@ import Foundation
 @Observable
 final class PlaylistService {
     private let store: AppStore
-    private var userPlaylistsTask: Task<Void, Error>?
 
     /// One run per playlist ID — see `InFlightRequests`.
     private let playlistRequests = InFlightRequests<Void>()
+
+    /// The user's playlist list, whose pages are one run at a time under one key.
+    private let listRequests = InFlightRequests<Void>()
+    private static let listKey = "user-playlists"
 
     init(store: AppStore) {
         self.store = store
@@ -23,34 +26,22 @@ final class PlaylistService {
 
     // MARK: - User Playlists
 
-    /// Load user's playlists
+    /// Load the next page of the user's playlists, or the first if none is loaded.
     func loadUserPlaylists(accessToken: String, forceRefresh: Bool = false) async throws {
         // Skip if already loaded and not forcing refresh (but only if we actually have data)
         if store.playlistsPagination.isLoaded, !forceRefresh, !store.playlistsPagination.hasMore, !store.userPlaylistIds.isEmpty {
             return
         }
 
-        // Handle force refresh
         if forceRefresh {
-            userPlaylistsTask?.cancel()
-            userPlaylistsTask = nil
+            listRequests.cancel(Self.listKey)
             store.playlistsPagination.reset()
         }
 
-        // If already loading, await existing task
-        if let existingTask = userPlaylistsTask {
-            _ = try? await existingTask.value
-            return
-        }
-
-        // Create and store the loading task
-        let offset = forceRefresh ? 0 : (store.playlistsPagination.nextOffset ?? 0)
-        store.playlistsPagination.isLoading = true
-        userPlaylistsTask = Task {
-            defer {
-                self.userPlaylistsTask = nil
-                self.store.playlistsPagination.isLoading = false
-            }
+        try await listRequests.run(Self.listKey) {
+            let offset = self.store.playlistsPagination.nextOffset ?? 0
+            self.store.playlistsPagination.isLoading = true
+            defer { self.store.playlistsPagination.isLoading = false }
 
             let response = try await SpotifyAPI.fetchUserPlaylists(
                 accessToken: accessToken,
@@ -58,33 +49,26 @@ final class PlaylistService {
                 offset: offset,
             )
 
-            // Convert to unified Playlist entities
             let playlists = response.playlists.map { Playlist(from: $0) }
-
-            // Upsert playlists into store
             self.store.upsertPlaylists(playlists)
 
-            // Update user playlist IDs
             let playlistIds = playlists.map(\.id)
-            if forceRefresh {
+            if offset == 0 {
                 self.store.setUserPlaylistIds(playlistIds)
             } else {
                 self.store.appendUserPlaylistIds(playlistIds)
             }
 
-            // Update pagination state
             self.store.playlistsPagination.isLoaded = true
             self.store.playlistsPagination.hasMore = response.hasMore
             self.store.playlistsPagination.nextOffset = response.nextOffset
             self.store.playlistsPagination.total = response.total
         }
-
-        try await userPlaylistsTask!.value
     }
 
     /// Load more playlists (pagination)
     func loadMorePlaylists(accessToken: String) async throws {
-        guard store.playlistsPagination.hasMore, userPlaylistsTask == nil else {
+        guard store.playlistsPagination.hasMore, !listRequests.isRunning(Self.listKey) else {
             return
         }
         try await loadUserPlaylists(accessToken: accessToken)

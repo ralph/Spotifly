@@ -12,10 +12,13 @@ import Foundation
 @Observable
 final class ArtistService {
     private let store: AppStore
-    private var userArtistsTask: Task<Void, Error>?
 
     /// One run per artist ID — see `InFlightRequests`.
     private let artistRequests = InFlightRequests<Void>()
+
+    /// The followed-artists list, whose pages are one run at a time under one key.
+    private let listRequests = InFlightRequests<Void>()
+    private static let listKey = "user-artists"
 
     /// How many albums an artist page shows. The endpoint is not paginated here.
     private let artistAlbumsLimit = 50
@@ -26,35 +29,23 @@ final class ArtistService {
 
     // MARK: - User Artists (Followed)
 
-    /// Load user's followed artists
+    /// Load the next page of followed artists, or the first if none is loaded.
     func loadUserArtists(accessToken: String, forceRefresh: Bool = false) async throws {
         // Skip if already loaded and not forcing refresh (but only if we actually have data)
         if store.artistsPagination.isLoaded, !forceRefresh, !store.artistsPagination.hasMore, !store.userArtistIds.isEmpty {
             return
         }
 
-        // Handle force refresh
         if forceRefresh {
-            userArtistsTask?.cancel()
-            userArtistsTask = nil
+            listRequests.cancel(Self.listKey)
             store.artistsPagination.reset()
         }
 
-        // If already loading, await existing task
-        if let existingTask = userArtistsTask {
-            _ = try? await existingTask.value
-            return
-        }
-
-        // Create and store the loading task
-        // Artists use cursor-based pagination
-        let cursor = forceRefresh ? nil : store.artistsPagination.nextCursor
-        store.artistsPagination.isLoading = true
-        userArtistsTask = Task {
-            defer {
-                self.userArtistsTask = nil
-                self.store.artistsPagination.isLoading = false
-            }
+        try await listRequests.run(Self.listKey) {
+            // Artists use cursor-based pagination
+            let cursor = self.store.artistsPagination.nextCursor
+            self.store.artistsPagination.isLoading = true
+            defer { self.store.artistsPagination.isLoading = false }
 
             let response = try await SpotifyAPI.fetchUserArtists(
                 accessToken: accessToken,
@@ -62,33 +53,26 @@ final class ArtistService {
                 after: cursor,
             )
 
-            // Convert to unified Artist entities
             let artists = response.artists.map { Artist(from: $0) }
-
-            // Upsert artists into store
             self.store.upsertArtists(artists)
 
-            // Update user artist IDs
             let artistIds = artists.map(\.id)
-            if forceRefresh {
+            if cursor == nil {
                 self.store.setUserArtistIds(artistIds)
             } else {
                 self.store.appendUserArtistIds(artistIds)
             }
 
-            // Update pagination state (cursor-based)
             self.store.artistsPagination.isLoaded = true
             self.store.artistsPagination.hasMore = response.hasMore
             self.store.artistsPagination.nextCursor = response.nextCursor
             self.store.artistsPagination.total = response.total
         }
-
-        try await userArtistsTask!.value
     }
 
     /// Load more artists (pagination)
     func loadMoreArtists(accessToken: String) async throws {
-        guard store.artistsPagination.hasMore, userArtistsTask == nil else {
+        guard store.artistsPagination.hasMore, !listRequests.isRunning(Self.listKey) else {
             return
         }
         try await loadUserArtists(accessToken: accessToken)
