@@ -14,6 +14,12 @@ final class ArtistService {
     private let store: AppStore
     private var userArtistsTask: Task<Void, Error>?
 
+    /// One run per artist ID — see `InFlightRequests`.
+    private let artistRequests = InFlightRequests<Void>()
+
+    /// How many albums an artist page shows. The endpoint is not paginated here.
+    private let artistAlbumsLimit = 50
+
     init(store: AppStore) {
         self.store = store
     }
@@ -90,45 +96,55 @@ final class ArtistService {
 
     // MARK: - Artist Details
 
-    /// Fetch artist details
-    func fetchArtistDetails(artistId: String, accessToken: String) async throws -> Artist {
-        let details = try await SpotifyAPI.fetchArtistDetails(
-            accessToken: accessToken,
-            artistId: artistId,
-        )
+    /// Makes sure the artist's details *and* their album list are in the store.
+    ///
+    /// The album list used to live in `ArtistDetailView`'s `@State`, so it was
+    /// re-fetched on every visit and thrown away again. Now it is cached in the
+    /// store like album and playlist tracks are, and a second visit issues nothing.
+    /// Concurrent callers share one run, and the run outlives a caller whose view
+    /// was torn down mid-flight — see `InFlightRequests`.
+    func ensureArtistLoaded(artistId: String, accessToken: String) async throws {
+        guard store.artists[artistId] == nil || store.artistAlbumIds[artistId] == nil else { return }
 
-        let artist = Artist(from: details)
-        store.upsertArtist(artist)
-        return artist
-    }
-
-    /// Get artist from store or fetch if needed
-    func getArtist(artistId: String, accessToken: String) async throws -> Artist {
-        if let artist = store.artists[artistId] {
-            return artist
+        try await artistRequests.run(artistId) {
+            try await self.loadArtist(artistId: artistId, accessToken: accessToken)
         }
-        return try await fetchArtistDetails(artistId: artistId, accessToken: accessToken)
     }
 
-    // MARK: - Artist Content
+    private func loadArtist(artistId: String, accessToken: String) async throws {
+        // Re-read inside the run: a caller can arrive just as another run finishes.
+        guard store.artists[artistId] != nil else {
+            async let detailsTask = SpotifyAPI.fetchArtistDetails(
+                accessToken: accessToken,
+                artistId: artistId,
+            )
+            async let albumsTask = SpotifyAPI.fetchArtistAlbums(
+                accessToken: accessToken,
+                artistId: artistId,
+                limit: artistAlbumsLimit,
+            )
+            let (details, artistAlbums) = try await (detailsTask, albumsTask)
 
-    /// Fetch artist's albums
-    func fetchArtistAlbums(
-        artistId: String,
-        accessToken: String,
-        limit: Int = 50,
-    ) async throws -> [Album] {
-        let searchAlbums = try await SpotifyAPI.fetchArtistAlbums(
+            store.upsertArtist(Artist(from: details))
+            storeAlbums(artistAlbums, for: artistId)
+            return
+        }
+
+        guard store.artistAlbumIds[artistId] == nil else { return }
+
+        let artistAlbums = try await SpotifyAPI.fetchArtistAlbums(
             accessToken: accessToken,
             artistId: artistId,
-            limit: limit,
+            limit: artistAlbumsLimit,
         )
+        storeAlbums(artistAlbums, for: artistId)
+    }
 
-        // Convert to unified Album entities
-        let albums = searchAlbums.map { Album(from: $0) }
+    /// Stores an artist's albums and records their order under the artist.
+    private func storeAlbums(_ artistAlbums: [APIAlbum], for artistId: String) {
+        let albums = artistAlbums.map { Album(from: $0) }
         store.upsertAlbums(albums)
-
-        return albums
+        store.setArtistAlbums(albums.map(\.id), for: artistId)
     }
 
     // MARK: - Follow/Unfollow Artist

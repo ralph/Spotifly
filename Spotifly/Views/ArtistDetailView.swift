@@ -70,13 +70,10 @@ struct ArtistDetailView: View {
         }
         .navigationTitle(artist?.name ?? "")
         .task(id: artistId) {
-            // Use initial artist if provided, otherwise fetch
             if let initialArtist {
                 artist = initialArtist
-            } else {
-                await loadArtist()
             }
-            await loadAlbums()
+            await loadArtist()
         }
         .alert("artist.unfollow.title", isPresented: $showUnfollowConfirmation) {
             Button("action.cancel", role: .cancel) {}
@@ -251,38 +248,20 @@ struct ArtistDetailView: View {
     }
 
     private func loadArtist() async {
-        isLoadingArtist = true
+        isLoadingArtist = artist == nil
+        isLoadingAlbums = true
         errorMessage = nil
 
-        let token = await session.validAccessToken()
         do {
-            let artistEntity = try await artistService.fetchArtistDetails(
-                artistId: artistId,
-                accessToken: token,
-            )
-            artist = artistEntity
+            let token = await session.validAccessToken()
+            try await artistService.ensureArtistLoaded(artistId: artistId, accessToken: token)
+            artist = store.artists[artistId]
         } catch {
             errorMessage = error.localizedDescription
         }
 
+        albums = store.albums(forArtist: artistId) ?? []
         isLoadingArtist = false
-    }
-
-    private func loadAlbums() async {
-        albums = []
-        isLoadingAlbums = true
-
-        do {
-            let token = await session.validAccessToken()
-            // Load via service (stores albums in AppStore)
-            albums = try await artistService.fetchArtistAlbums(
-                artistId: artistId,
-                accessToken: token,
-            )
-        } catch {
-            // Silently fail for albums - not critical
-        }
-
         isLoadingAlbums = false
     }
 
