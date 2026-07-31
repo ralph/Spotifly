@@ -13,9 +13,9 @@ import Foundation
 final class TrackService {
     private let store: AppStore
 
-    /// Used by the favorite-status checks, which usually have nothing to ask about.
-    /// They take the token themselves, *after* deciding, so that a track row whose
-    /// status is already known — or already being fetched — costs nothing at all.
+    /// Used by the loading entry points and the favorite-status checks, which
+    /// often decide there is nothing to fetch. They take the token themselves,
+    /// *after* deciding, so a cache hit costs nothing.
     private let tokenProvider: () async -> String
 
     /// The favorites list, whose pages are one run at a time under one key.
@@ -38,7 +38,7 @@ final class TrackService {
     // MARK: - Favorites (Saved Tracks)
 
     /// Load the next page of the user's saved tracks, or the first if none is loaded.
-    func loadFavorites(accessToken: String, forceRefresh: Bool = false) async throws {
+    func loadFavorites(forceRefresh: Bool = false) async throws {
         // The list can be reported as loaded while holding nothing — a page whose
         // load was interrupted. Recover by starting over rather than by trusting it.
         let needsRecoveryRefresh = !forceRefresh &&
@@ -59,6 +59,7 @@ final class TrackService {
 
         try await listRequests.run(Self.listKey) {
             let offset = self.store.favoritesPagination.nextOffset ?? 0
+            let accessToken = await self.tokenProvider()
             self.store.favoritesPagination.isLoading = true
             defer {
                 // Only if this run is still the one loading: a superseded run
@@ -95,11 +96,11 @@ final class TrackService {
     }
 
     /// Load more favorites (pagination)
-    func loadMoreFavorites(accessToken: String) async throws {
+    func loadMoreFavorites() async throws {
         guard store.favoritesPagination.hasMore, !listRequests.isRunning(Self.listKey) else {
             return
         }
-        try await loadFavorites(accessToken: accessToken)
+        try await loadFavorites()
     }
 
     // MARK: - Favorite Toggling (Optimistic)

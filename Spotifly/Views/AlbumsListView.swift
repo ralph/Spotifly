@@ -186,11 +186,7 @@ struct AlbumsListView: View {
     private func loadAlbums(forceRefresh: Bool = false) async {
         errorMessage = nil
         do {
-            let token = await session.validAccessToken()
-            try await albumService.loadUserAlbums(
-                accessToken: token,
-                forceRefresh: forceRefresh,
-            )
+            try await albumService.loadUserAlbums(forceRefresh: forceRefresh)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -198,8 +194,7 @@ struct AlbumsListView: View {
 
     private func loadMoreAlbums() async {
         do {
-            let token = await session.validAccessToken()
-            try await albumService.loadMoreAlbums(accessToken: token)
+            try await albumService.loadMoreAlbums()
         } catch {
             errorMessage = error.localizedDescription
         }

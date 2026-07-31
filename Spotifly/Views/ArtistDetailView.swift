@@ -242,8 +242,7 @@ struct ArtistDetailView: View {
         errorMessage = nil
 
         do {
-            let token = await session.validAccessToken()
-            try await artistService.ensureArtistLoaded(artistId: artistId, accessToken: token)
+            try await artistService.ensureArtistLoaded(artistId: artistId)
         } catch {
             // A cancellation is this view going away, not a failure: the load keeps
             // running and its result is in the store for whatever replaces us.

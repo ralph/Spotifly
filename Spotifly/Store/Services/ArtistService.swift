@@ -13,6 +13,11 @@ import Foundation
 final class ArtistService {
     private let store: AppStore
 
+    /// Used by the loading entry points, which often decide there is nothing to
+    /// fetch. They take the token themselves, *after* deciding, so a cache hit
+    /// costs nothing.
+    private let tokenProvider: () async -> String
+
     /// One run per artist ID — see `InFlightRequests`.
     private let artistRequests = InFlightRequests<Void>()
 
@@ -23,14 +28,15 @@ final class ArtistService {
     /// How many albums an artist page shows. The endpoint is not paginated here.
     private let artistAlbumsLimit = 50
 
-    init(store: AppStore) {
+    init(store: AppStore, tokenProvider: @escaping () async -> String) {
         self.store = store
+        self.tokenProvider = tokenProvider
     }
 
     // MARK: - User Artists (Followed)
 
     /// Load the next page of followed artists, or the first if none is loaded.
-    func loadUserArtists(accessToken: String, forceRefresh: Bool = false) async throws {
+    func loadUserArtists(forceRefresh: Bool = false) async throws {
         // Skip if already loaded and not forcing refresh (but only if we actually have data)
         if store.artistsPagination.isLoaded, !forceRefresh, !store.artistsPagination.hasMore, !store.userArtistIds.isEmpty {
             return
@@ -44,6 +50,7 @@ final class ArtistService {
         try await listRequests.run(Self.listKey) {
             // Artists use cursor-based pagination
             let cursor = self.store.artistsPagination.nextCursor
+            let accessToken = await self.tokenProvider()
             self.store.artistsPagination.isLoading = true
             defer {
                 // Only if this run is still the one loading: a superseded run
@@ -79,11 +86,11 @@ final class ArtistService {
     }
 
     /// Load more artists (pagination)
-    func loadMoreArtists(accessToken: String) async throws {
+    func loadMoreArtists() async throws {
         guard store.artistsPagination.hasMore, !listRequests.isRunning(Self.listKey) else {
             return
         }
-        try await loadUserArtists(accessToken: accessToken)
+        try await loadUserArtists()
     }
 
     // MARK: - Artist Details
@@ -95,11 +102,11 @@ final class ArtistService {
     /// store like album and playlist tracks are, and a second visit issues nothing.
     /// Concurrent callers share one run, and the run outlives a caller whose view
     /// was torn down mid-flight — see `InFlightRequests`.
-    func ensureArtistLoaded(artistId: String, accessToken: String) async throws {
+    func ensureArtistLoaded(artistId: String) async throws {
         guard store.artists[artistId] == nil || store.artistAlbumIds[artistId] == nil else { return }
 
         try await artistRequests.run(artistId) {
-            try await self.loadArtist(artistId: artistId, accessToken: accessToken)
+            try await self.loadArtist(artistId: artistId, accessToken: self.tokenProvider())
         }
     }
 

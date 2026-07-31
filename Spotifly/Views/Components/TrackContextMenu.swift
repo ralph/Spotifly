@@ -233,8 +233,7 @@ private struct PlaylistSubmenuContent: View {
 
         Task {
             if store.userPlaylists.isEmpty, !store.playlistsPagination.isLoading {
-                let token = await session.validAccessToken()
-                try? await playlistService.loadUserPlaylists(accessToken: token)
+                try? await playlistService.loadUserPlaylists()
             }
         }
     }

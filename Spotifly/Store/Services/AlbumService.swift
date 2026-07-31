@@ -13,6 +13,11 @@ import Foundation
 final class AlbumService {
     private let store: AppStore
 
+    /// Used by the loading entry points, which often decide there is nothing to
+    /// fetch. They take the token themselves, *after* deciding, so a cache hit
+    /// costs nothing.
+    private let tokenProvider: () async -> String
+
     /// One run per album ID — see `InFlightRequests`.
     private let albumRequests = InFlightRequests<Void>()
 
@@ -20,14 +25,15 @@ final class AlbumService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-albums"
 
-    init(store: AppStore) {
+    init(store: AppStore, tokenProvider: @escaping () async -> String) {
         self.store = store
+        self.tokenProvider = tokenProvider
     }
 
     // MARK: - User Albums
 
     /// Load the next page of the user's saved albums, or the first if none is loaded.
-    func loadUserAlbums(accessToken: String, forceRefresh: Bool = false) async throws {
+    func loadUserAlbums(forceRefresh: Bool = false) async throws {
         // Skip if already loaded and not forcing refresh (but only if we actually have data)
         if store.albumsPagination.isLoaded, !forceRefresh, !store.albumsPagination.hasMore, !store.userAlbumIds.isEmpty {
             return
@@ -40,6 +46,7 @@ final class AlbumService {
 
         try await listRequests.run(Self.listKey) {
             let offset = self.store.albumsPagination.nextOffset ?? 0
+            let accessToken = await self.tokenProvider()
             self.store.albumsPagination.isLoading = true
             defer {
                 // Only if this run is still the one loading: a superseded run
@@ -77,11 +84,11 @@ final class AlbumService {
     }
 
     /// Load more albums (pagination)
-    func loadMoreAlbums(accessToken: String) async throws {
+    func loadMoreAlbums() async throws {
         guard store.albumsPagination.hasMore, !listRequests.isRunning(Self.listKey) else {
             return
         }
-        try await loadUserAlbums(accessToken: accessToken)
+        try await loadUserAlbums()
     }
 
     // MARK: - Album Details
@@ -93,11 +100,11 @@ final class AlbumService {
     /// `/albums/{id}/tracks` is fetched; on a second visit nothing is. Concurrent
     /// callers share one run, and the run outlives a caller whose view was torn
     /// down mid-flight — see `InFlightRequests`.
-    func ensureAlbumLoaded(albumId: String, accessToken: String) async throws {
+    func ensureAlbumLoaded(albumId: String) async throws {
         guard needsLoad(albumId) else { return }
 
         try await albumRequests.run(albumId) {
-            try await self.loadAlbum(albumId: albumId, accessToken: accessToken)
+            try await self.loadAlbum(albumId: albumId, accessToken: self.tokenProvider())
         }
     }
 

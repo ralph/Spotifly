@@ -13,6 +13,11 @@ import Foundation
 final class PlaylistService {
     private let store: AppStore
 
+    /// Used by the loading entry points, which often decide there is nothing to
+    /// fetch. They take the token themselves, *after* deciding, so a cache hit
+    /// costs nothing.
+    private let tokenProvider: () async -> String
+
     /// One run per playlist ID — see `InFlightRequests`.
     private let playlistRequests = InFlightRequests<Void>()
 
@@ -20,14 +25,15 @@ final class PlaylistService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-playlists"
 
-    init(store: AppStore) {
+    init(store: AppStore, tokenProvider: @escaping () async -> String) {
         self.store = store
+        self.tokenProvider = tokenProvider
     }
 
     // MARK: - User Playlists
 
     /// Load the next page of the user's playlists, or the first if none is loaded.
-    func loadUserPlaylists(accessToken: String, forceRefresh: Bool = false) async throws {
+    func loadUserPlaylists(forceRefresh: Bool = false) async throws {
         // Skip if already loaded and not forcing refresh (but only if we actually have data)
         if store.playlistsPagination.isLoaded, !forceRefresh, !store.playlistsPagination.hasMore, !store.userPlaylistIds.isEmpty {
             return
@@ -40,6 +46,7 @@ final class PlaylistService {
 
         try await listRequests.run(Self.listKey) {
             let offset = self.store.playlistsPagination.nextOffset ?? 0
+            let accessToken = await self.tokenProvider()
             self.store.playlistsPagination.isLoading = true
             defer {
                 // Only if this run is still the one loading: a superseded run
@@ -75,11 +82,11 @@ final class PlaylistService {
     }
 
     /// Load more playlists (pagination)
-    func loadMorePlaylists(accessToken: String) async throws {
+    func loadMorePlaylists() async throws {
         guard store.playlistsPagination.hasMore, !listRequests.isRunning(Self.listKey) else {
             return
         }
-        try await loadUserPlaylists(accessToken: accessToken)
+        try await loadUserPlaylists()
     }
 
     // MARK: - Playlist Details
@@ -91,11 +98,11 @@ final class PlaylistService {
     /// are fetched; on a second visit nothing is. Concurrent callers share one run,
     /// and the run outlives a caller whose view was torn down mid-flight — see
     /// `InFlightRequests`.
-    func ensurePlaylistLoaded(playlistId: String, accessToken: String) async throws {
+    func ensurePlaylistLoaded(playlistId: String) async throws {
         guard store.playlists[playlistId]?.tracksLoaded != true else { return }
 
         try await playlistRequests.run(playlistId) {
-            try await self.loadPlaylist(playlistId: playlistId, accessToken: accessToken)
+            try await self.loadPlaylist(playlistId: playlistId, accessToken: self.tokenProvider())
         }
     }
 
@@ -111,11 +118,11 @@ final class PlaylistService {
     /// postcondition — a caller can join either one. So a playlist that is somehow
     /// not in the store still gets loaded whole here; this only *adds* the guarantee
     /// that the tracks are freshly fetched.
-    func reloadPlaylistTracks(playlistId: String, accessToken: String) async throws {
+    func reloadPlaylistTracks(playlistId: String) async throws {
         playlistRequests.cancel(playlistId)
 
         try await playlistRequests.run(playlistId) {
-            try await self.loadPlaylist(playlistId: playlistId, accessToken: accessToken, forceTracks: true)
+            try await self.loadPlaylist(playlistId: playlistId, accessToken: self.tokenProvider(), forceTracks: true)
         }
     }
 
@@ -282,7 +289,7 @@ final class PlaylistService {
         )
 
         // Re-fetch to pick up the order the server actually applied
-        try await reloadPlaylistTracks(playlistId: playlistId, accessToken: accessToken)
+        try await reloadPlaylistTracks(playlistId: playlistId)
     }
 
     /// Replace all tracks in a playlist (for bulk edits like reordering/removing)
@@ -298,6 +305,6 @@ final class PlaylistService {
         )
 
         // Re-fetch to update store with new track order
-        try await reloadPlaylistTracks(playlistId: playlistId, accessToken: accessToken)
+        try await reloadPlaylistTracks(playlistId: playlistId)
     }
 }

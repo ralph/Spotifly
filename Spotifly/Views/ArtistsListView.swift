@@ -186,11 +186,7 @@ struct ArtistsListView: View {
     private func loadArtists(forceRefresh: Bool = false) async {
         errorMessage = nil
         do {
-            let token = await session.validAccessToken()
-            try await artistService.loadUserArtists(
-                accessToken: token,
-                forceRefresh: forceRefresh,
-            )
+            try await artistService.loadUserArtists(forceRefresh: forceRefresh)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -198,8 +194,7 @@ struct ArtistsListView: View {
 
     private func loadMoreArtists() async {
         do {
-            let token = await session.validAccessToken()
-            try await artistService.loadMoreArtists(accessToken: token)
+            try await artistService.loadMoreArtists()
         } catch {
             errorMessage = error.localizedDescription
         }

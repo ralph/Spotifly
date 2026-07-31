@@ -230,8 +230,7 @@ struct AlbumDetailView: View {
         errorMessage = nil
 
         do {
-            let token = await session.validAccessToken()
-            try await albumService.ensureAlbumLoaded(albumId: albumId, accessToken: token)
+            try await albumService.ensureAlbumLoaded(albumId: albumId)
         } catch {
             // A cancellation is this view going away, not a failure: the load keeps
             // running and its result is in the store for whatever replaces us.

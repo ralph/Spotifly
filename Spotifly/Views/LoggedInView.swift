@@ -48,9 +48,15 @@ struct LoggedInView: View {
 
         _store = State(initialValue: store)
         _session = State(initialValue: session)
-        _playlistService = State(initialValue: PlaylistService(store: store))
-        _albumService = State(initialValue: AlbumService(store: store))
-        _artistService = State(initialValue: ArtistService(store: store))
+        _playlistService = State(initialValue: PlaylistService(store: store, tokenProvider: {
+            await session.validAccessToken()
+        }))
+        _albumService = State(initialValue: AlbumService(store: store, tokenProvider: {
+            await session.validAccessToken()
+        }))
+        _artistService = State(initialValue: ArtistService(store: store, tokenProvider: {
+            await session.validAccessToken()
+        }))
         _queueService = State(initialValue: QueueService(store: store, tokenProvider: {
             await session.validAccessToken()
         }))
@@ -308,7 +314,7 @@ struct LoggedInView: View {
             let previousSelection = navigationCoordinator.selectedPlaylistId
             store.playlistsPagination.reset()
             store.setUserPlaylistIds([])
-            try? await playlistService.loadUserPlaylists(accessToken: token, forceRefresh: true)
+            try? await playlistService.loadUserPlaylists(forceRefresh: true)
             navigationCoordinator.restorePlaylistSelection(
                 previous: previousSelection,
                 available: store.userPlaylistIds,
@@ -318,7 +324,7 @@ struct LoggedInView: View {
             let previousSelection = navigationCoordinator.selectedAlbumId
             store.albumsPagination.reset()
             store.setUserAlbumIds([])
-            try? await albumService.loadUserAlbums(accessToken: token, forceRefresh: true)
+            try? await albumService.loadUserAlbums(forceRefresh: true)
             navigationCoordinator.restoreAlbumSelection(
                 previous: previousSelection,
                 available: store.userAlbumIds,
@@ -328,7 +334,7 @@ struct LoggedInView: View {
             let previousSelection = navigationCoordinator.selectedArtistId
             store.artistsPagination.reset()
             store.setUserArtistIds([])
-            try? await artistService.loadUserArtists(accessToken: token, forceRefresh: true)
+            try? await artistService.loadUserArtists(forceRefresh: true)
             navigationCoordinator.restoreArtistSelection(
                 previous: previousSelection,
                 available: store.userArtistIds,
@@ -337,7 +343,7 @@ struct LoggedInView: View {
         case .favorites:
             store.favoritesPagination.reset()
             store.setSavedTrackIds([])
-            try? await trackService.loadFavorites(accessToken: token, forceRefresh: true)
+            try? await trackService.loadFavorites(forceRefresh: true)
 
         case .speakers:
             await deviceService.loadDevices(accessToken: token)
@@ -356,12 +362,6 @@ struct LoggedInView: View {
 
         guard needsInitialLoad || needsRecoveryRefresh else { return }
 
-        let token = await session.validAccessToken()
-        guard navigationCoordinator.selectedNavigationItem == .favorites else { return }
-
-        try? await trackService.loadFavorites(
-            accessToken: token,
-            forceRefresh: needsRecoveryRefresh,
-        )
+        try? await trackService.loadFavorites(forceRefresh: needsRecoveryRefresh)
     }
 }

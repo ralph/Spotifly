@@ -386,8 +386,7 @@ struct PlaylistDetailView: View {
         errorMessage = nil
 
         do {
-            let token = await session.validAccessToken()
-            try await playlistService.ensurePlaylistLoaded(playlistId: playlistId, accessToken: token)
+            try await playlistService.ensurePlaylistLoaded(playlistId: playlistId)
         } catch {
             // A cancellation is this view going away, not a failure: the load keeps
             // running and its result is in the store for whatever replaces us.
@@ -408,8 +407,7 @@ struct PlaylistDetailView: View {
         errorMessage = nil
 
         do {
-            let token = await session.validAccessToken()
-            try await playlistService.reloadPlaylistTracks(playlistId: playlistId, accessToken: token)
+            try await playlistService.reloadPlaylistTracks(playlistId: playlistId)
         } catch {
             if !isCancellation(error) {
                 errorMessage = error.localizedDescription
@@ -495,10 +493,7 @@ struct PlaylistReorderDropDelegate: DropDelegate {
                 // order we are trying to undo. If even that fails, say so: the list
                 // on screen is then not the one the server has.
                 do {
-                    try await playlistService.reloadPlaylistTracks(
-                        playlistId: playlistId,
-                        accessToken: token,
-                    )
+                    try await playlistService.reloadPlaylistTracks(playlistId: playlistId)
                 } catch {
                     errorMessage = String(localized: "error.reorder_tracks \(error.localizedDescription)")
                 }

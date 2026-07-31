@@ -108,11 +108,7 @@ struct FavoritesListView: View {
         errorMessage = nil
 
         do {
-            let token = await session.validAccessToken()
-            try await trackService.loadFavorites(
-                accessToken: token,
-                forceRefresh: forceRefresh,
-            )
+            try await trackService.loadFavorites(forceRefresh: forceRefresh)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -120,8 +116,7 @@ struct FavoritesListView: View {
 
     private func loadMoreFavorites() async {
         do {
-            let token = await session.validAccessToken()
-            try await trackService.loadMoreFavorites(accessToken: token)
+            try await trackService.loadMoreFavorites()
         } catch {
             errorMessage = error.localizedDescription
         }
