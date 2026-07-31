@@ -1,8 +1,8 @@
 # Relinked tracks lose their logical identity and blank the Now Playing bar
 
 Status: **planned**
-Components: `rust/src/lib.rs`, `Spotifly/Views/NowPlayingBarView.swift`,
-`Spotifly/Store/Services/TrackService.swift`
+Components: `rust/src/lib.rs`, `Spotifly/ViewModels/PlaybackViewModel.swift`,
+`Spotifly/Views/NowPlayingBarView.swift`
 Found: 2026-07-31, while playing *At Night, Alone.* by Mike Posner
 
 ## Symptom
@@ -78,25 +78,23 @@ This was verified against the checked-out librespot, not inferred from the log:
   ends with only a `TrackChanged`, so dropping the notification from `TrackChanged` cannot
   lose a notification.
 
-The ordering also guarantees Swift never observes an inconsistent pair: `TrackChanged`
-lands the new duration *before* the logical URI changes, and because it stops emitting a
-callback, that intermediate state is never published.
+`TrackChanged` lands the new duration *before* the logical URI changes. Once it stops
+emitting a callback, that intermediate state is not published through the playback
+subjects; `Playing`/`Paused` publishes the logical URI together with that duration.
 
 ## Design
 
 ### 1. Centralize logical-track publication in the Rust bridge
 
-Add a small helper in `rust/src/lib.rs` that updates `CURRENT_TRACK_URI` and reports
-whether the value changed. Keep callback delivery outside the URI mutex, matching the
-existing rule that callbacks may re-enter Swift and must never run while a Rust lock is
-held.
+Add a small helper in `rust/src/lib.rs` that updates `CURRENT_TRACK_URI`. Keep callback
+delivery outside the URI mutex, matching the existing rule that callbacks may re-enter
+Swift and must never run while a Rust lock is held.
 
-Keep a separate helper for emitting `LoadingNotification`. The distinction matters:
-
-- a real `Loading` event must continue emitting even when the URI did not change, because
-  its non-zero `position_ms` is used during resume/reconnect;
-- `Playing`/`Paused` should synthesize the notification only when their logical URI differs
-  from `CURRENT_TRACK_URI`, avoiding duplicate notifications after an ordinary load.
+A real `Loading` event must continue emitting `LoadingNotification` even when the URI did
+not change, because its non-zero `position_ms` is used during resume/reconnect. A
+preloaded transition that skips `Loading` does not need a synthetic copy: the following
+`Playing`/`Paused` playback-state callback already carries logical URI, authoritative
+duration, and position together.
 
 ### 2. Make each player event own only the data it can authoritatively supply
 
@@ -106,12 +104,17 @@ Change the event listener as follows:
 | --- | --- | --- | --- |
 | `Loading { track_id, position_ms }` | Set from `track_id` | unchanged | Always, preserving `position_ms` |
 | `TrackChanged { audio_item }` | **Do not change** | Set from `audio_item.duration_ms` | Never |
-| `Playing { track_id, position_ms }` | Set from `track_id` | unchanged | Only if the logical URI changed |
-| `Paused { track_id, position_ms }` | Set from `track_id` | unchanged | Only if the logical URI changed |
+| `Playing { track_id, position_ms }` | Set from `track_id` | unchanged | Never; playback state carries the transition |
+| `Paused { track_id, position_ms }` | Set from `track_id` | unchanged | Never; playback state carries the transition |
 
 Update the URI before `send_local_playback_state` in the `Playing` and `Paused` arms. The
 playback-state payload will then carry the logical ID instead of repeating the relinked ID
 into Swift.
+
+Do not synthesize `LoadingNotification` from `Playing`/`Paused`. The two Swift bridge
+callbacks each create a separate unstructured `Task { @MainActor … }`, whose relative
+execution order is not guaranteed. Publishing one complete playback-state payload avoids
+introducing a cross-subject ordering dependency in the gapless/preloaded path.
 
 Keep `TrackChanged` as the duration source. Its debug line should label the ID as the
 playable audio item and, when useful, include the currently known logical ID; it must no
@@ -146,7 +149,7 @@ that comes from the playable item rather than the logical one. `CURRENT_DURATION
 keep coming from `TrackChanged`, because it describes the stream actually being decoded —
 that is what the seek bar and position interpolation have to agree with.
 
-### 3. Leave the Swift lookup strict
+### 3. Keep the lookup strict and align both Now Playing surfaces
 
 No fallback should be added to `NowPlayingBarView.currentTrack`. Once the bridge publishes
 the correct logical ID, the current exact lookup is the desirable invariant: a Now Playing
@@ -156,14 +159,15 @@ Do not fetch the playable alternative into `AppStore` as a second track. That wo
 two entities for one context item, make favorites operate on the wrong ID, and conceal the
 identity error rather than fix it.
 
-`PlaybackViewModel` needs no change: it should continue treating the loading/playback
-callbacks as authoritative once the bridge makes them internally consistent.
+The bridge fix makes the callbacks internally consistent, but the Swift side still needs
+to bind duration and metadata to that logical identity. Three changes belong in this fix:
 
-The bar itself does need two changes, both of which exist *because* the lookup now
-succeeds. They are in scope here, not follow-ups — shipping the bridge fix without them
-trades one visible bug for two quieter ones.
+- invalidate the cached stream duration whenever the logical URI changes;
+- use the logical track's stored duration provisionally until the stream duration arrives;
+- resolve the macOS Now Playing panel from the same logical URI as the in-app bar, not from
+  the queue's independently timed current pointer.
 
-### 3a. Fix the seek-bar duration precedence
+### 3a. Bind duration to the current logical track
 
 `NowPlayingBarView.currentDurationMs` prefers `currentTrack.durationMs` from the store and
 falls back to `playbackViewModel.trackDurationMs`. That precedence is backwards, and today
@@ -174,55 +178,87 @@ Making the lookup succeed removes that accident. The bar would start using the l
 track's duration while playback follows the relinked stream, so a duration difference would
 show up as a seek bar that ends early or never reaches the end.
 
-Invert it: `trackDurationMs` wins whenever it is non-zero, and the store value serves only
-as the fallback before the first playback state arrives. That matches the identity rule —
-duration describes the stream, not the entity — and it is the same precedence
-`PlaybackViewModel` already applies internally.
+Invert the bar's precedence: `playbackViewModel.trackDurationMs` wins whenever it is
+non-zero, and `currentTrack.durationMs` is the fallback before the first playback state.
+That is safe only if a non-zero `trackDurationMs` always belongs to the current logical
+track.
 
-### 3b. Give the strict lookup a loader
+Enforce that invariant at the source. Give `currentTrackUri` a `didSet` guarded by
+`oldValue != currentTrackUri` that resets `trackDurationMs` to zero. This covers every URI
+writer — app-initiated playback, loading callbacks, direct playback-state changes, Web API
+bootstrap, and stop — rather than relying on selected call sites to remember the reset.
+Both `handlePlaybackStateUpdate` and `applyWebAPIPlaybackState` assign the URI before the
+new duration, so the reset cannot erase a fresh duration from the same update.
 
-Keeping the lookup exact is only honest if a missing entity is *fetched* rather than
-rendered as a placeholder. Today `store.tracks[trackId]` has no fetch on miss, so the bar
-is blank for any track the store never happened to see — playback started from another
-device, or a context this session never opened. The relinked fix does not address that
-class at all; it just removes the one instance we noticed.
+The transition is then:
 
-Add a single-track load path and call it from the bar's existing
-`.task(id: currentTrackId)`, next to the favorite-status resolution that already runs
-there:
+1. `Loading` adopts the new logical URI and clears the previous stream duration.
+2. The in-app bar and system panel use the new logical track's stored duration.
+3. `TrackChanged` records the playable stream duration in Rust.
+4. `Playing`/`Paused` publishes it to Swift, replacing the provisional duration.
 
-- `TrackService` gains `ensureTrackLoaded(_ trackId: String)`, returning early when
-  `store.tracks[trackId]` is present, and otherwise running through `InFlightRequests`
-  under a `track:<id>` key so a row and the bar asking in the same frame produce one
-  request.
-- The run calls `SpotifyAPI.fetchTrack`, converts with `Track(from:)`, and lands the result
-  via `store.upsertTrack`. All four pieces already exist; this adds a service method, not a
-  mechanism.
-- Follow the section-request rules: check the store before taking the token, and
-  `try Task.checkCancellation()` after the network call before writing.
+`ShuffleChanged` or `RepeatChanged` can publish the previous Rust duration between steps 1
+and 3. That briefly re-arms the old value, but the following `Playing`/`Paused` callback
+self-corrects it; expanding the Rust state machine to eliminate this narrow window is not
+worth the extra scope.
 
-The key means one postcondition — `track:<id>` is "this track's metadata is in the store" —
-so it must not be reused by anything that fetches more than that.
+### 3b. Make macOS Now Playing follow the same identity
 
-### 4. Add regression tests around identity updates
+`PlaybackViewModel.updateNowPlayingInfo()` currently reads `store.currentTrackEntity`,
+which follows `queue.currentTrack`. The log shows that pointer can still name track 1 after
+the user selected track 2 because librespot emits `SetQueue` before applying the requested
+index. The in-app bar correctly rejects that source, so the system panel must reject it too.
 
-Extract the state replacement decision into a pure Rust helper so it can be tested without
-callbacks or global-state serialization. Cover:
+Resolve metadata by parsing `currentTrackUri` and reading `store.tracks[trackId]`. Use one
+effective-duration rule in both `updateNowPlayingInfo()` and
+`updateNowPlayingPosition()`:
 
-1. An empty current URI adopts the first logical ID and reports a change.
-2. Repeating the same logical ID reports no change.
-3. A different logical ID replaces the old one and reports a change.
+- non-zero `trackDurationMs` is the authoritative playable-stream duration;
+- otherwise use the resolved logical track's stored duration;
+- if neither exists, omit duration-dependent fields rather than carrying values from the
+  previous track.
 
-Stop there. The helper is a few lines around an `Option<String>`; the interesting part of
-this fix is not its arithmetic but *which event is allowed to call it*, and that lives in
-the `match` arms of the listener. Covering the sequences (normal load, gapless transition
-without `Loading`, relinked `TrackChanged`) in Rust would require introducing an event
-reducer that exists only for the tests — more machinery than the code it guards, and it
-would make the listener read worse than it does today.
+Refresh points must cover every ordering:
 
-Those sequences are covered by the runtime verification below instead, which exercises the
-real librespot event order rather than a re-implementation of it. If a reducer ever earns
-its place for another reason, the sequence tests become cheap and should be added then.
+- At the end of the loading subscription — after applying `position_ms`, so a reconnect
+  never publishes the previous track's elapsed time — refresh when the logical URI changed.
+- In `handlePlaybackStateUpdate`, refresh when the logical track changed **or** when a new
+  non-zero stream duration replaced the provisional value. The duration-change condition
+  depends on the URI `didSet` reset: it guarantees a new track passes through zero even when
+  two consecutive tracks have identical durations. This also repairs `playTracks`, whose
+  optimistic `handlePlaybackStarted` sets `lastHandledTrackUri` early and therefore makes
+  the later playback callback report `trackChanged == false`.
+- `applyWebAPIPlaybackState` keeps its full refresh after assigning URI and duration.
+- `QueueService.updateNowPlayingMetadata` remains the late-metadata refresh path.
+
+When the logical URI is not a track or its entity is not in the store, explicitly remove
+the old title, artist, and artwork from `MPNowPlayingInfoCenter` rather than pairing the
+previous track's metadata with the current duration. Reset `lastAlbumArtURL` at the same
+time, otherwise the same artwork URL cannot be installed when metadata later arrives.
+
+Update the initialization comment around `updateNowPlayingPosition()` and
+`trackDurationMs = 0`; it currently documents the old duration-only guard and becomes
+incorrect once both Now Playing methods use the effective duration.
+
+### 3c. Known gap: unknown track metadata (deferred)
+
+A logical track URI with no entity in `AppStore` still leaves the in-app bar on its
+placeholder and the system panel with duration but no title. `QueueService` already fetches
+the current track on SetQueue, live queue updates, and Web API bootstrap, so this is not the
+normal relinking path. Adding an independent loader in `TrackService` would race that
+existing fetch and cannot honestly promise one request per ID. The follow-up must route
+queue metadata and any single-track recovery through one shared registry; it is tracked in
+`plans/now-playing-unknown-track-loader.md`.
+
+### 4. Verify event routing at runtime
+
+The important contract is which `PlayerEvent` arm may update logical identity, not the
+assignment of one `Option<String>`. A unit test for that assignment would not catch the
+regression, while a reducer over real events would require constructing librespot
+`AudioItem` values and couple the tests to an unpinned path dependency solely for this
+case. Keep the Rust helper small and cover ordinary, relinked, and gapless event routing in
+the runtime verification below. If a production event reducer later earns its place, add
+sequence tests against it then.
 
 ## Verification
 
@@ -269,20 +305,16 @@ Use the same *At Night, Alone.* album and capture the same debug logging.
 - Start radio from a relinked track that is currently playing; the position should carry
   over instead of restarting at 0.
 - Play a track that does not relink; Now Playing behavior must be unchanged.
+- Start from an album context and confirm the system panel does not briefly publish the
+  previous queue track before the real `Loading` URI arrives.
+- Play a track already present in the store and confirm the system panel shows its logical
+  title with provisional store duration, then adopts stream duration without changing the
+  title.
 - Seek, previous, next, and reconnect at a non-zero position; loading notifications must
   still carry the position needed by `PlaybackViewModel`.
 - Start playback paused or restore paused playback, covering the `Paused.track_id` path.
-- Confirm lock-screen/menu-bar Now Playing metadata and the in-app bar agree.
-
-### Runtime: unknown track (3b)
-
-- Start playback from the phone or web player on a context this session never opened, then
-  bring Spotifly to the front. The bar must fill in from the fetched track rather than
-  sitting on the placeholder.
-- Watch the `[GET] …/tracks/…` debug line: one request for that ID, not one per view or per
-  playback-state update. The bar and a visible track row asking at once must share it.
-- Skip quickly through several unknown tracks; superseded runs must not write a stale track
-  into the store after the newer one landed.
+- Confirm lock-screen/menu-bar Now Playing metadata and the in-app bar resolve the same
+  logical track.
 
 ## Acceptance criteria
 
@@ -293,8 +325,10 @@ Use the same *At Night, Alone.* album and capture the same debug logging.
 - `CURRENT_DURATION_MS` still comes from the loaded audio item, and the seek bar follows it
   rather than the logical track's stored duration.
 - Resume-with-track-hint and radio-with-position work on relinked tracks.
-- A Now Playing track that is not in the store is fetched exactly once and then rendered;
-  the placeholder is reserved for "nothing is playing", not "not loaded yet".
+- Double-clicking a relinked track and gapless auto-advance both keep the logical URI; no
+  playable-alternative URI reaches either Swift playback subject.
+- The system Now Playing panel and in-app bar resolve the same logical track and never pair
+  one track's title or artwork with another track's duration.
 - Resume/reconnect preserves non-zero loading positions.
 - The Rust test suite, Rust compile check, and macOS app build pass.
 - Add a concise entry under `CHANGELOG.md` → `[Unreleased]` → `Fixed` when implementing.
