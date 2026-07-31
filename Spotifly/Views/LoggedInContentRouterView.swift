@@ -81,10 +81,8 @@ struct LoggedInContentRouterView: View {
 
         case .profile:
             if let profile = store.userProfile {
-                UserProfileView(userProfile: profile) {
-                    playbackViewModel.stop()
-                    onLogout()
-                }
+                // `onLogout` is LoggedInView's handleLogout, which already stops playback.
+                UserProfileView(userProfile: profile, onLogout: onLogout)
             }
 
         case .searchResults:
