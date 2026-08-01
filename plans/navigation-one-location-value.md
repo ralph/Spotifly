@@ -151,6 +151,18 @@ its query, because results live in the store and only the newest survives. That 
 request on Back, which is a cost — and it also makes search routes *self-healing*: a route
 that can re-fetch is never dead.
 
+It also puts search on the wrong side of a rule the codebase already has. `SearchService`
+opens with `guard !store.searchIsLoading else { return }`, so a second search *drops* while
+the first is in flight. Walk back to query A and immediately forward to query B and the
+result is the worst ordering available: B is refused, A lands, and the shared results now
+disagree with the route. `AGENTS.md` states the rule this breaks — a superseded run must not
+write.
+
+So restoring a search route cannot reuse that entry point as it stands. Either the results
+are keyed by query so a late arrival cannot be mistaken for the current one, or the
+restoration carries a generation that is re-checked before writing to the store. Rapid
+back-and-forward across two searches is the test that pins it.
+
 **`Selection` is an entity reference, nothing more** — a kind and an id. It deliberately
 does *not* record whether the item was in the library, even though today's
 `selected*Id` / `viewing*Id` split does exactly that.
@@ -346,15 +358,18 @@ Add, all against the coordinator alone:
 14. Revisiting a route keeps both entries: startpage → albums → startpage, then back twice,
     replays albums and then startpage. This is the case the adjacent-only collapse must not
     swallow.
-15. Invalidation reaches the whole history, not just the current route:
-    startpage → search → albums → search, then clear, leaves no search entry in either
-    stack and no back step that lands on an empty view.
+15. Invalidation reaches the whole history, not just the current route. Use a genuinely
+    dead route — a playlist deleted while it sits in both stacks — and assert it is gone
+    from each, with no back step landing on an empty view. Deliberately *not* a cleared
+    search: those re-run and stay.
 16. Invalidation collapses what it joins: an entry removed from between two equal routes
     leaves one, not two.
 17. Two consecutive searches are two locations: search "a", search "b", then back returns to
     the "a" results rather than reporting nothing to go back to.
 18. Library membership is not identity: viewing an ephemeral album, saving it, then
     selecting it from the library row is the same route and adds no back step.
+19. A superseded search restoration does not write: walk back to query A, immediately
+    forward to query B, and the results shown are B's.
 
 Deep-link entry points (`navigateToAlbumSection` and friends) get one test each showing the
 route they produce, replacing what the `pendingSectionNavigation` round trip made awkward to
@@ -381,8 +396,9 @@ except.
 2. The back/forward control is present in every section, in both the 2- and 3-column
    layouts.
 3. Forward after several backs replays the same route.
-4. Search, clear the search, then press back: it goes where you were before searching, not
-   to a dead entry.
+4. Search, clear the search field, then press back: it returns to the search results,
+   re-running the query. This is the behaviour change of §"clearing search" — the old
+   behaviour erased the step.
 5. Enter a section whose first item auto-selects; back leaves the section rather than
    undoing the auto-selection.
 
