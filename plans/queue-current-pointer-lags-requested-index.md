@@ -1,9 +1,26 @@
 # SetQueue reports the pre-seek position, so the queue's current pointer lags
 
-Status: **planned**
+Status: **completed** (2026-08-01)
 Components: `Spotifly/Store/Services/QueueService.swift`, `Spotifly/Store/AppStore.swift`,
-possibly `librespot` upstream
+`Spotifly/ViewModels/PlaybackViewModel.swift`, `SpotiflyTests/QueueReconciliationTests.swift`
 Found: 2026-07-31, noted while fixing relinked-track identity; re-confirmed 2026-08-01
+
+## Implemented solution
+
+- `Queue.reconciled(currentTrackId:)` preserves the flattened ordering and returns a new
+  split at the matching track occurrence nearest the reported current index. It searches
+  backward and forward, leaves absent tracks untouched, and is idempotent.
+- `AppStore.reconcileQueueCurrentTrack(with:)` applies that value only when it differs,
+  avoiding observation updates for an already-correct split.
+- `PlaybackViewModel.currentTrackUri` reconciles on every logical URI change. QueueService
+  also reconciles after `SetQueue`, Mercury queue, and Web API bootstrap responses, so the
+  independent main-actor callback hops may arrive in either order.
+- The store is reconciled when it is first attached to the shared playback view model too,
+  covering a URI that arrived before the surviving `AppStore` was activated.
+- Nine focused tests cover correct, forward, deep-forward, backward, absent, duplicate,
+  last-entry, and idempotent cases. The focused suite and full Debug build pass.
+- No network refresh or librespot patch was added; the official sibling checkout remains
+  the build dependency. Shuffle ordering remains explicitly out of scope.
 
 ## Symptom
 
