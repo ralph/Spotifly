@@ -689,6 +689,8 @@ final class PlaybackViewModel {
     /// intact between tracks, after logout, and while metadata is still loading.
     private static let unresolvedTrackTitle = "Spotifly"
 
+    /// The store entry for the *logical* track, which owns the displayed metadata.
+    /// The decoded audio item may be a relinked alternative with a different ID.
     private var currentNowPlayingTrack: Track? {
         guard let currentTrackUri,
               let trackId = SpotifyAPI.parseTrackURI(currentTrackUri)
@@ -696,6 +698,11 @@ final class PlaybackViewModel {
         return store?.tracks[trackId]
     }
 
+    /// The duration to publish, or nil while none is known.
+    ///
+    /// The stream duration is authoritative but arrives after the URI does, and the URI
+    /// `didSet` clears it on every track change. The store's duration bridges that gap,
+    /// so the scrubber shows a length instead of --:-- for the first few frames.
     private var effectiveNowPlayingDurationMs: UInt32? {
         if trackDurationMs > 0 {
             return trackDurationMs
@@ -706,11 +713,27 @@ final class PlaybackViewModel {
         return UInt32(storedDuration)
     }
 
+    /// Writes duration, elapsed time, and playback rate into `info`.
+    ///
+    /// Duration and elapsed time move together: an elapsed time standing next to the
+    /// *previous* track's duration is worse than no timing at all, so an unknown
+    /// duration removes both keys rather than leaving one behind.
+    private func applyNowPlayingTiming(to info: inout [String: Any]) {
+        if let durationMs = effectiveNowPlayingDurationMs {
+            info[MPMediaItemPropertyPlaybackDuration] = Double(durationMs) / 1000.0
+            let validPosition = min(currentPositionMs, durationMs)
+            info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(validPosition) / 1000.0
+        } else {
+            info.removeValue(forKey: MPMediaItemPropertyPlaybackDuration)
+            info.removeValue(forKey: MPNowPlayingInfoPropertyElapsedPlaybackTime)
+        }
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+    }
+
     /// Full Now Playing update — sets track metadata, duration, position, rate, and artwork.
     /// Call on: track start, next/prev, initial Web API load.
     func updateNowPlayingInfo() {
         let currentTrack = currentNowPlayingTrack
-        let durationMs = effectiveNowPlayingDurationMs
 
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
 
@@ -720,55 +743,55 @@ final class PlaybackViewModel {
         } else {
             nowPlayingInfo[MPMediaItemPropertyTitle] = Self.unresolvedTrackTitle
             nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtist)
-            nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtwork)
-            lastAlbumArtURL = nil
         }
 
-        if let durationMs {
-            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = Double(durationMs) / 1000.0
-            let validPosition = min(currentPositionMs, durationMs)
-            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(validPosition) / 1000.0
-        } else {
-            nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyPlaybackDuration)
-            nowPlayingInfo.removeValue(forKey: MPNowPlayingInfoPropertyElapsedPlaybackTime)
-        }
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        applyNowPlayingTiming(to: &nowPlayingInfo)
 
+        // Artwork arrives late — it has to be downloaded — so a changed cover is dropped
+        // from the entry we publish now and reinstated by the download below. A missing
+        // URL counts as a change: it drops the previous track's cover and downloads none.
         let artworkURL = currentTrack?.images.mediumURL
-        if artworkURL?.absoluteString != lastAlbumArtURL {
+        let artworkChanged = artworkURL?.absoluteString != lastAlbumArtURL
+        if artworkChanged {
             nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtwork)
         }
+
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
 
-        // Album art - only download if URL changed
-        if let url = artworkURL, url.absoluteString != lastAlbumArtURL {
-            lastAlbumArtURL = url.absoluteString
+        guard artworkChanged else { return }
+        lastAlbumArtURL = artworkURL?.absoluteString
+        if let artworkURL {
+            downloadAlbumArt(from: artworkURL)
+        }
+    }
 
-            // Download album art asynchronously
-            Task {
-                do {
-                    let (data, _) = try await URLSession.shared.data(from: url)
-                    guard let image = NSImage(data: data) else { return }
+    /// Downloads `url` and publishes it as the Now Playing artwork.
+    private func downloadAlbumArt(from url: URL) {
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard let image = NSImage(data: data) else { return }
 
-                    // Update Now Playing on main actor
-                    await MainActor.run {
-                        guard self.currentNowPlayingTrack?.images.mediumURL == url else { return }
-                        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                        // Mark closure as @Sendable to fix crash - MPNowPlayingInfoCenter executes
-                        // the closure on an internal dispatch queue, not on MainActor
-                        info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in
-                            image
-                        }
-                        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                // Update Now Playing on main actor
+                await MainActor.run {
+                    // The track may have moved on while this was downloading; publishing
+                    // now would put the old cover next to the new title.
+                    guard self.currentNowPlayingTrack?.images.mediumURL == url else { return }
+                    var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                    // Mark closure as @Sendable to fix crash - MPNowPlayingInfoCenter executes
+                    // the closure on an internal dispatch queue, not on MainActor
+                    info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in
+                        image
                     }
-                } catch {
-                    if self.lastAlbumArtURL == url.absoluteString {
-                        self.lastAlbumArtURL = nil
-                    }
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+                }
+            } catch {
+                // Forget the URL so the next update retries instead of treating the
+                // failed download as the cover already on screen.
+                if self.lastAlbumArtURL == url.absoluteString {
+                    self.lastAlbumArtURL = nil
                 }
             }
-        } else if artworkURL == nil {
-            lastAlbumArtURL = nil
         }
     }
 
@@ -780,15 +803,7 @@ final class PlaybackViewModel {
     /// the previous track's duration standing against the new track's position.
     func updateNowPlayingPosition() {
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-        if let durationMs = effectiveNowPlayingDurationMs {
-            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = Double(durationMs) / 1000.0
-            let validPosition = min(currentPositionMs, durationMs)
-            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(validPosition) / 1000.0
-        } else {
-            nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyPlaybackDuration)
-            nowPlayingInfo.removeValue(forKey: MPNowPlayingInfoPropertyElapsedPlaybackTime)
-        }
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        applyNowPlayingTiming(to: &nowPlayingInfo)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
