@@ -121,11 +121,25 @@ Introduce a single value that answers "where is the user":
 
 ```swift
 struct Route: Hashable {
-    var section: NavigationItem
+    var section: NavigationItem?       // nil is "nothing selected", a real state
     var selection: Selection?          // the item shown in this section, if any
     var path: [NavigationDestination]  // drill-down
 }
 ```
+
+**The section stays optional.** `SidebarView` binds a `NavigationItem?` to
+`List(selection:)`, so macOS can clear the selection, and the router already renders that
+case deliberately — `case .none` shows the localized `empty.select_item` placeholder. It is
+a designed screen, not a gap.
+
+A non-optional section would leave the projection binding with nothing sensible to do when
+SwiftUI writes `nil`: ignore it and the sidebar deselects visually while the content stays,
+or substitute a default and the app navigates somewhere the user did not ask for. Keeping it
+optional means "nothing selected" is simply another location — it records into history and
+back returns from it like anywhere else, which is what requirement 2 asks for.
+
+Removing the empty state altogether is a defensible product change, but a separate one; it
+should not arrive as a side effect of this refactor.
 
 with `Selection` carrying whether the item is a library selection or an ephemeral visit, so
 `viewing*Id` disappears as separate state rather than being renamed.
@@ -256,6 +270,8 @@ Add, all against the coordinator alone:
     drill-down, including when the entity is absent from the store.
 11. The history cap holds — the oldest entries are dropped and back still works.
 12. Restoring a route does not itself record history.
+13. Clearing the sidebar selection is a location: it records, renders the empty state, and
+    back returns from it.
 
 Deep-link entry points (`navigateToAlbumSection` and friends) get one test each showing the
 route they produce, replacing what the `pendingSectionNavigation` round trip made awkward to
