@@ -56,6 +56,7 @@ final class QueueService {
     /// subscription it protects rather than a separate flag that could drift from it.
     func activate() {
         guard setQueueSubscription == nil else { return }
+        recordActivation(self)
         setupQueueSubscription()
         setupSetQueueSubscription()
         setupFetchDebounceSubscription()

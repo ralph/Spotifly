@@ -28,6 +28,7 @@ final class ConnectionService {
     /// Idempotent — the guard reads the subscription it protects.
     func activate() {
         guard connectionStateSubscription == nil else { return }
+        recordActivation(self)
         setupConnectionStateSubscription()
         refreshConnectionState()
     }

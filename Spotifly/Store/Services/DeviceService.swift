@@ -48,6 +48,7 @@ final class DeviceService {
     /// Idempotent — the guard reads the subscription it protects.
     func activate() {
         guard loadCancellable == nil else { return }
+        recordActivation(self)
         loadCancellable = loadSubject
             .throttle(for: .seconds(10), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] token in
