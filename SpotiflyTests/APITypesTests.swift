@@ -67,6 +67,31 @@ struct APITypesTests {
         #expect(track.durationMs == 4321)
     }
 
+    /// `/albums/{id}/tracks` decodes through its own type rather than `TrackCodable`, so it
+    /// has to carry the rule itself. It briefly did not, while the request already sent
+    /// `market` and projected `linked_from` — the recovery field arrived and was dropped.
+    @Test func `a relinked album track keeps the requested identity`() throws {
+        let json = Data("""
+        {"items": [{
+            "id": "playable",
+            "name": "Playable metadata",
+            "uri": "spotify:track:playable",
+            "duration_ms": 4321,
+            "track_number": 2,
+            "linked_from": {"id": "requested", "uri": "spotify:track:requested"}
+        }]}
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(AlbumTracksCodable.self, from: json)
+        let item = try #require(decoded.items.first)
+        let track = item.toAPITrack(albumId: "album", albumName: "Album", images: .empty)
+
+        #expect(track.id == "requested")
+        #expect(track.uri == "spotify:track:requested")
+        #expect(track.name == "Playable metadata")
+        #expect(track.durationMs == 4321)
+    }
+
     @Test func `a track without relinking keeps its returned identity`() throws {
         let json = Data("""
         {

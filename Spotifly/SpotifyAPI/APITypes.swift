@@ -353,7 +353,7 @@ struct AlbumCodable: Decodable {
 
 // MARK: Track Codable
 
-struct TrackCodable: Decodable {
+struct TrackCodable: Decodable, RelinkableTrackCodable {
     let id: String
     let name: String
     let uri: String
@@ -372,16 +372,6 @@ struct TrackCodable: Decodable {
         case externalUrls = "external_urls"
         case previewUrl = "preview_url"
         case linkedFrom = "linked_from"
-    }
-
-    /// Spotify may return a market-playable replacement while keeping the requested
-    /// track in `linked_from`. The requested track remains Spotifly's stable identity.
-    var logicalId: String {
-        linkedFrom?.id ?? id
-    }
-
-    var logicalUri: String {
-        linkedFrom?.uri ?? uri
     }
 
     func toAPITrack(addedAt: String? = nil, albumId: String? = nil, albumName: String? = nil, images: ImageSet? = nil) -> APITrack {
@@ -408,6 +398,33 @@ struct TrackCodable: Decodable {
 struct LinkedTrackCodable: Decodable {
     let id: String
     let uri: String
+}
+
+/// A decoded track that Spotify may have relinked.
+///
+/// A `market` request is answered with a playable substitute when the requested track is
+/// not available there, and what was asked for moves into `linked_from`. Identity has to
+/// come from there: the store, favorites, and every write Spotify accepts key on the
+/// requested id, not the substitute's.
+///
+/// Every track-shaped response type conforms, and that is the point of the protocol rather
+/// than two copies of the same two lines. A type that quietly does not conform is exactly
+/// how a substitute id reaches `AppStore` — the response carries the recovery field, the
+/// decoder drops it, and nothing anywhere looks wrong.
+protocol RelinkableTrackCodable {
+    var id: String { get }
+    var uri: String { get }
+    var linkedFrom: LinkedTrackCodable? { get }
+}
+
+extension RelinkableTrackCodable {
+    var logicalId: String {
+        linkedFrom?.id ?? id
+    }
+
+    var logicalUri: String {
+        linkedFrom?.uri ?? uri
+    }
 }
 
 /// The `/v1/tracks?ids=` envelope. Entries are positional and nullable: Spotify keeps
@@ -545,7 +562,7 @@ struct SavedTracksCodable: Decodable {
 struct AlbumTracksCodable: Decodable {
     let items: [AlbumTrackItemCodable]
 
-    struct AlbumTrackItemCodable: Decodable {
+    struct AlbumTrackItemCodable: Decodable, RelinkableTrackCodable {
         let id: String
         let name: String
         let uri: String
@@ -553,18 +570,20 @@ struct AlbumTracksCodable: Decodable {
         let trackNumber: Int?
         let artists: [ArtistCodable]?
         let externalUrls: ExternalUrlsCodable?
+        let linkedFrom: LinkedTrackCodable?
 
         enum CodingKeys: String, CodingKey {
             case id, name, uri, artists
             case durationMs = "duration_ms"
             case trackNumber = "track_number"
+            case linkedFrom = "linked_from"
             case externalUrls = "external_urls"
         }
 
         func toAPITrack(albumId: String, albumName: String?, images: ImageSet) -> APITrack {
             let artist = artists?.first
             return APITrack(
-                id: id,
+                id: logicalId,
                 addedAt: nil,
                 albumId: albumId,
                 albumName: albumName,
@@ -575,7 +594,7 @@ struct AlbumTracksCodable: Decodable {
                 images: images,
                 name: name,
                 trackNumber: trackNumber,
-                uri: uri,
+                uri: logicalUri,
             )
         }
     }
