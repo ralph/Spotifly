@@ -136,6 +136,13 @@ nothing records and Back could never return to the earlier results, while
 `AppStore.searchResults` has already replaced them. Two searches are two places, and the
 query is what distinguishes them.
 
+The submitted query has to live **with the results**, not only on the route. `AppStore`
+keeps `searchResults` with no record of what produced it, and `searchText` is view state
+that drifts — type "ab" without submitting and it no longer describes what is displayed. So
+reopening Search Results from the sidebar could not tell which query the visible results
+belong to, and would build a route with the wrong identity. Store the submitted query beside
+the result set; the route then reads it rather than guessing.
+
 Identity is all the query provides here. Restoring an earlier search route does **not**
 re-run it: `AppStore.searchResults` holds one result set, so an older query's results are
 gone the moment a newer search lands. A route that cannot be displayed is invalidated and
@@ -356,6 +363,8 @@ Add, all against the coordinator alone:
     than silently equal: search "a", search "b", then back skips "a" — whose results are
     gone — and lands on what preceded it. Pins the named limitation so a later
     query-keyed cache has something to change.
+20. Reopening Search Results from the sidebar adopts the query the visible results came
+    from, not whatever is currently typed in the field.
 18. Library membership is not identity: viewing an ephemeral album, saving it, then
     selecting it from the library row is the same route and adds no back step.
 
