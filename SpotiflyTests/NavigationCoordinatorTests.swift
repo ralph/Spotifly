@@ -169,6 +169,31 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.navigationPath == [.artist(id: "artist-1"), .album(id: "album-1")])
     }
 
+    /// A pop can skip several levels at once. The levels it skipped were passed through on
+    /// the way deeper, so they belong ahead of the user now, not behind.
+    @Test func `a pop skipping levels does not leave them behind the user`() {
+        let coordinator = NavigationCoordinator(store: AppStore())
+
+        coordinator.selectNavigationItem(.albums)
+        coordinator.setNavigationPath([.artist(id: "artist-1"), .album(id: "album-1")])
+        coordinator.push(.playlist(id: "playlist-1"))
+        coordinator.setNavigationPath([.artist(id: "artist-1")])
+
+        #expect(coordinator.navigationPath == [.artist(id: "artist-1")])
+
+        coordinator.navigateBackward()
+
+        #expect(coordinator.navigationPath.isEmpty)
+
+        coordinator.navigateForward()
+
+        #expect(coordinator.navigationPath == [.artist(id: "artist-1")])
+
+        coordinator.navigateForward()
+
+        #expect(coordinator.navigationPath == [.artist(id: "artist-1"), .album(id: "album-1")])
+    }
+
     @Test func `section reentry restores remembered selection without an extra step`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.selectNavigationItem(.albums)

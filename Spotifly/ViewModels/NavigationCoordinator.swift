@@ -383,6 +383,13 @@ final class NavigationCoordinator {
             // be swallowed.
             historyRestoreTarget = nil
             forward.append(current)
+            // A pop can skip several levels at once, and the ones it skipped are sitting at
+            // the end of the back stack — they were passed through on the way *deeper*.
+            // Leaving them there would make Back walk further into the path just exited.
+            // Moving them in order keeps Forward replaying the way back down.
+            while let deeper = back.last, isDescendant(deeper, of: target) {
+                forward.append(back.removeLast())
+            }
             current = target
             rememberSelection(from: target)
             noteRouteDisplayed(target)
@@ -392,6 +399,16 @@ final class NavigationCoordinator {
         while back.indices.contains(targetIndex), current != target {
             navigateBackward()
         }
+    }
+
+    /// Whether `route` sits deeper in the same place — same section, same selection, same
+    /// query, and a strictly longer path that continues the target's.
+    private func isDescendant(_ route: Route, of target: Route) -> Bool {
+        route.section == target.section
+            && route.selection == target.selection
+            && route.query == target.query
+            && route.path.count > target.path.count
+            && route.path.starts(with: target.path)
     }
 
     private func appendToBack(_ route: Route) {
