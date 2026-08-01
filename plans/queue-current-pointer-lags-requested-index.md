@@ -1,6 +1,6 @@
 # SetQueue reports the pre-seek position, so the queue's current pointer lags
 
-Status: **implemented — runtime verification outstanding** (2026-08-01)
+Status: **completed** (2026-08-01)
 Components: `Spotifly/Store/Services/QueueService.swift`, `Spotifly/Store/AppStore.swift`,
 `Spotifly/ViewModels/PlaybackViewModel.swift`, `SpotiflyTests/QueueReconciliationTests.swift`
 Found: 2026-07-31, noted while fixing relinked-track identity; re-confirmed 2026-08-01
@@ -22,12 +22,13 @@ Found: 2026-07-31, noted while fixing relinked-track identity; re-confirmed 2026
 - No network refresh or librespot patch was added; the official sibling checkout remains
   the build dependency. Shuffle ordering remains explicitly out of scope.
 
-**Outstanding: the runtime check below has not been run.** The unit tests exercise
-`reconciled(currentTrackId:)` directly, which is the algorithm — but not the wiring: that
-the URI actually changes on every transition, that the two callbacks repair each other
-whichever lands second, and above all that **previous** works. Previous is the one direction
-no `SetQueue` covers and the one this design had to be corrected for; it is verifiable only
-against a running player. Until that run, this is unit-tested rather than demonstrated.
+**Runtime-verified 2026-08-01.** The unit tests only exercise
+`reconciled(currentTrackId:)`, which is the algorithm — the wiring needed a running player:
+that the URI changes on every transition, that the two callbacks repair each other whichever
+lands second, and above all that **previous** works, the one direction no `SetQueue` covers
+and the one this design had to be corrected for after review. Starting deep in an album,
+letting it advance, and stepping forward and back all keep the pointer on the playing
+track.
 
 ## Symptom
 
