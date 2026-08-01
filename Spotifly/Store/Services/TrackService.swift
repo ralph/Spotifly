@@ -75,12 +75,9 @@ final class TrackService {
 
         try await metadataLoads.run(missingTrackIds) { uncoveredTrackIds in
             let accessToken = await self.tokenProvider()
-            for batch in self.batches(of: uncoveredTrackIds, size: 50) {
-                let fetched = try await self.metadataFetcher(accessToken, batch)
-                let tracks = batch.compactMap { fetched[$0] }.map { Track(from: $0) }
-                self.store.upsertTracks(tracks)
-                self.unavailableTrackIds.formUnion(batch.filter { fetched[$0] == nil })
-            }
+            let fetched = try await self.metadataFetcher(accessToken, uncoveredTrackIds)
+            self.store.upsertTracks(uncoveredTrackIds.compactMap { fetched[$0] }.map { Track(from: $0) })
+            self.unavailableTrackIds.formUnion(uncoveredTrackIds.filter { fetched[$0] == nil })
         }
     }
 

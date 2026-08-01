@@ -48,30 +48,68 @@ extension SpotifyAPI {
 
     // MARK: - Multiple Tracks
 
-    /// Fetches multiple tracks by their IDs using parallel individual requests.
-    /// Returns a dictionary mapping track ID to APITrack (for found tracks).
+    /// The most IDs `/v1/tracks` accepts in one request.
+    private static let trackBatchLimit = 50
+
+    /// Fetches multiple tracks by their IDs.
+    /// Returns a dictionary mapping track ID to APITrack, omitting IDs Spotify has no
+    /// track for — an ID that does not resolve for this market comes back as a `null`
+    /// entry, and callers read its absence as "asked, and there is nothing".
+    ///
+    /// Chunking lives here rather than in the caller because 50 is the endpoint's limit,
+    /// not a property of anything that wants tracks.
     static func fetchTracks(accessToken: String, trackIds: [String]) async throws -> [String: APITrack] {
         guard !trackIds.isEmpty else { return [:] }
 
-        return try await withThrowingTaskGroup(of: (String, APITrack?).self) { group in
-            for trackId in trackIds {
-                group.addTask {
-                    do {
-                        let track = try await fetchTrack(trackId: trackId, accessToken: accessToken)
-                        return (trackId, track)
-                    } catch SpotifyAPIError.notFound {
-                        return (trackId, nil)
+        var result: [String: APITrack] = [:]
+        for batch in stride(from: 0, to: trackIds.count, by: trackBatchLimit) {
+            let ids = Array(trackIds[batch ..< min(batch + trackBatchLimit, trackIds.count)])
+            try await result.merge(fetchTrackBatch(accessToken: accessToken, trackIds: ids)) { current, _ in current }
+        }
+        return result
+    }
+
+    /// One `/v1/tracks?ids=` request, at most `trackBatchLimit` IDs.
+    private static func fetchTrackBatch(accessToken: String, trackIds: [String]) async throws -> [String: APITrack] {
+        let ids = trackIds.joined(separator: ",")
+        let urlString = "\(baseURL)/tracks?ids=\(ids)"
+
+        debugLog("SpotifyAPI", "[GET] \(urlString)")
+
+        guard let url = URL(string: urlString) else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200:
+            do {
+                // Spotify answers positionally, with null where it has no track, so the
+                // response is zipped back onto the requested IDs rather than trusting
+                // each object to carry the id that was asked for.
+                let decoded = try JSONDecoder().decode(TracksCodable.self, from: data)
+                var dict: [String: APITrack] = [:]
+                for (trackId, track) in zip(trackIds, decoded.tracks) {
+                    if let track {
+                        dict[trackId] = track.toAPITrack()
                     }
                 }
+                return dict
+            } catch {
+                throw SpotifyAPIError.invalidResponse
             }
-
-            var result: [String: APITrack] = [:]
-            for try await (id, track) in group {
-                if let track {
-                    result[id] = track
-                }
-            }
-            return result
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        default:
+            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
         }
     }
 
