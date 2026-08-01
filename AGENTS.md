@@ -47,9 +47,16 @@ bridge already keeps the two apart.
 So an entity fetched with `market` must be normalised back to the requested id before it is
 cached, or `AppStore` indexes it under the alternative. The queue reports the context's
 logical id, `store.tracks[logicalId]` then misses, and the track re-fetches forever while
-the Now Playing bar shows its placeholder. Worse, the recovery loader stores a *second*
-entity under the logical id — two entities for one context item, with favorites acting on
-whichever one the caller happened to have.
+the Now Playing bar shows its placeholder. The recovery loader then stores a *second*
+entity under the logical id — two entities for one context item.
+
+**Writes are the sharper edge.** Spotify's
+[track relinking docs](https://developer.spotify.com/documentation/web-api/concepts/track-relinking)
+require the *original* id for any further operation on a track — saving to Your Music,
+removing from a playlist — and say the relinked id "will likely return an error or other
+unexpected result". `saveTrack`, `removeSavedTrack`, `checkSavedTracks` and playlist
+removal all take their id from a store entity, so an entity keyed by the alternative does
+not merely look wrong, it makes those calls fail.
 
 Where things stand today:
 
