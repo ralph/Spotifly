@@ -9,7 +9,8 @@ Found: 2026-08-01, while deciding what to do about two long-failing navigation t
 ## Requirements
 
 1. The back/forward control is visible everywhere in the app, except views that are not part
-   of the shell — login, the premium and whitelist blockers.
+   of the shell — login, the premium and whitelist blockers, and the mini player (see
+   below).
 2. Back always works when there is somewhere to go back to. A step the user took should not
    be missing from history because a heuristic decided it did not count.
 
@@ -121,13 +122,27 @@ Introduce a single value that answers "where is the user":
 ```swift
 struct Route: Hashable {
     var section: NavigationItem
-    var selection: Selection?          // album / artist / playlist id, per section
+    var selection: Selection?          // the item shown in this section, if any
     var path: [NavigationDestination]  // drill-down
 }
 ```
 
 with `Selection` carrying whether the item is a library selection or an ephemeral visit, so
 `viewing*Id` disappears as separate state rather than being renamed.
+
+**Remembered selections are not part of the route.** Today `selectedAlbumId`,
+`selectedArtistId` and `selectedPlaylistId` coexist and survive section switches —
+`selectNavigationItem` clears only the `viewing*Id` shadows — so Albums(A) → Artists →
+Albums returns to A rather than auto-selecting the first album. A single `Selection?` on the
+route would lose that, and the user would land on a different album than the one they left.
+
+That property is worth keeping, but it does not belong in the location. Keep it as a
+separate `lastSelection: [NavigationItem: Selection]` memo on the coordinator, consulted
+when entering a section without an explicit target and updated whenever a selection changes.
+
+The distinction matters for history: two routes that differ only in which album you *would*
+land on are still different places, but the memo must not participate in `Route` equality,
+or every visit to an unrelated section would look like a new location.
 
 The coordinator then holds `current: Route`, plus `back: [Route]` and `forward: [Route]`.
 Everything else is derived:
@@ -167,6 +182,21 @@ and writes *through* the route, so a drill-down performed by the stack itself �
 `NavigationLink` inside a list — records history like any other change, which today it does
 not.
 
+**A pop is not a new route.** The same binding carries both directions: `NavigationStack`
+writes a *shorter* path when its own back chevron is used. Recording that as a new location
+would push the popped route onto the back stack, so the toolbar's Back would then walk
+*forward* into the view just left — a loop between two entries instead of moving backward.
+
+So the binding's setter has to classify the write before recording it:
+
+- the new path extends the old one → a push, record normally;
+- the new path is a prefix of the old one → a pop, route it through the same back
+  navigation the toolbar uses, so both affordances share one history;
+- anything else → treat as a new location.
+
+This is the one place where the two navigation systems genuinely have to be reconciled, and
+it is worth doing explicitly rather than letting a native gesture desynchronise the history.
+
 ### 4. Replace `pendingSectionNavigation` with a method
 
 `navigateToAlbumSection(albumId:)` and friends set a pending request that
@@ -180,15 +210,21 @@ bugs.
 `contentRouter`, and `contentRouter` renders in every non-blocking, non-mini state. So the
 control is likely already present everywhere the requirement asks for.
 
-Two cases to check at runtime before assuming work is needed:
+**The mini player is exempt, by decision.** In mini-player mode `mainAppView` renders only
+`NowPlayingBarView`, with no window toolbar at all. That is not an oversight: the mini
+player is a compact always-on-top window for transport control, it shows no navigable
+content, and there is nothing in it to go back *from*. Adding the control would mean adding
+a toolbar to a window whose whole point is not having one.
 
-- **mini-player mode**, where `mainAppView` renders only `NowPlayingBarView` and there is no
-  window toolbar. Deciding whether the requirement applies here is a product question: the
-  mini player is deliberately chrome-less.
-- the **3-column layout**, where a second toolbar (`LoggedInDetailToolbar`) is attached
-  alongside; confirm both merge into one window toolbar rather than one replacing the other.
+This is recorded as a decision rather than left open, because "it is a product question"
+would let an implementation skip it and still claim the requirement. If Ralph wants the
+control there, it changes the mini player's design, not this plan's.
 
-If both hold, requirement 1 needs no code and the plan should say so rather than invent
+One case still to check at runtime: the **3-column layout**, where a second toolbar
+(`LoggedInDetailToolbar`) is attached alongside the content one. Confirm both merge into a
+single window toolbar rather than one replacing the other.
+
+If that holds, requirement 1 needs no code, and the plan should say so rather than invent
 work.
 
 ## Tests
@@ -211,10 +247,15 @@ Add, all against the coordinator alone:
 5. Going back and forward returns to the identical route, including drill-down.
 6. Automatic first-item selection on entering a section is not recorded.
 7. A drill-down performed through the stack binding records history.
-8. Back title and forward title name the target route, for a section, a selection, and a
-   drill-down, including when the entity is absent from the store.
-9. The history cap holds — the oldest entries are dropped and back still works.
-10. Restoring a route does not itself record history.
+8. A **native pop** through the stack binding moves backward rather than recording a new
+   route: pop from B to A, then press Back, and the result is the entry before A — not B.
+9. Entering a section again returns to the selection left behind, and that memo does not
+   itself create history entries: Albums(A) → Artists → Albums lands on A, and back from
+   there leaves the section rather than undoing a re-selection.
+10. Back title and forward title name the target route, for a section, a selection, and a
+    drill-down, including when the entity is absent from the store.
+11. The history cap holds — the oldest entries are dropped and back still works.
+12. Restoring a route does not itself record history.
 
 Deep-link entry points (`navigateToAlbumSection` and friends) get one test each showing the
 route they produce, replacing what the `pendingSectionNavigation` round trip made awkward to
@@ -254,8 +295,12 @@ except.
 - Back and forward titles name the route they lead to, and never a section the entry is not
   in.
 - No history entry is equal to the current location.
-- The back/forward control is visible throughout the shell, with the mini player decided
-  explicitly rather than by omission.
+- The stack's own back chevron and the toolbar's Back move through the same history: a
+  native pop does not become a forward entry.
+- Re-entering a section returns to the selection left behind, and that memo neither appears
+  in `Route` equality nor creates history entries.
+- The back/forward control is visible throughout the shell. The mini player is exempt by the
+  decision recorded above, not by omission.
 - `pendingSectionNavigation` is gone.
 - The full Swift test suite passes with no excepted failures.
 - Add a concise entry under `CHANGELOG.md` → `[Unreleased]` → `Fixed` when implementing.
