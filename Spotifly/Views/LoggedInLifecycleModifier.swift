@@ -15,6 +15,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
     let playbackViewModel: PlaybackViewModel
     let queueService: QueueService
     let deviceService: DeviceService
+    let connectionService: ConnectionService
     let recentlyPlayedService: RecentlyPlayedService
     let topItemsService: TopItemsService
     @Binding var blockingState: LoggedInView.BlockingState?
@@ -28,6 +29,19 @@ struct LoggedInLifecycleModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .task {
+                // Everything here reads the instances SwiftUI *kept*: this task belongs to
+                // the surviving view, while `LoggedInView.init` may have run several times
+                // and built a store and services for each run. Those extra objects are
+                // inert — they subscribe to nothing and own no state anyone reads — which
+                // is only true as long as this stays the single place that wires them up.
+                //
+                // Before the first `await`, so no Spirc notification can arrive while the
+                // player is unobserved.
+                queueService.activate()
+                deviceService.activate()
+                connectionService.activate()
+                playbackViewModel.setStore(store)
+
                 #if DEBUG
                     AppStore.current = store
                     SpotifySession.current = session
@@ -135,6 +149,7 @@ extension View {
         playbackViewModel: PlaybackViewModel,
         queueService: QueueService,
         deviceService: DeviceService,
+        connectionService: ConnectionService,
         recentlyPlayedService: RecentlyPlayedService,
         topItemsService: TopItemsService,
         blockingState: Binding<LoggedInView.BlockingState?>,
@@ -147,6 +162,7 @@ extension View {
                 playbackViewModel: playbackViewModel,
                 queueService: queueService,
                 deviceService: deviceService,
+                connectionService: connectionService,
                 recentlyPlayedService: recentlyPlayedService,
                 topItemsService: topItemsService,
                 blockingState: blockingState,

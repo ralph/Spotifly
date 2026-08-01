@@ -25,17 +25,41 @@ final class QueueService {
     /// Subscription for debounced fetch operations
     private var fetchDebounceSubscription: AnyCancellable?
 
+    /// Identifies this instance and the store it holds in the log.
+    ///
+    /// SwiftUI runs a View's `init` repeatedly and keeps only the first
+    /// `State(initialValue:)`, so more than one of these can exist. Only the activated one
+    /// should ever appear in the log; a second tag means a discarded instance came alive.
+    private let tag: String
+    private static var instanceCount = 0
+
+    private func log(_ message: String) {
+        debugLog("QueueService", "\(tag) \(message)")
+    }
+
     init(
         store: AppStore,
         tokenProvider: @escaping () async -> String,
         trackService: TrackService,
     ) {
+        Self.instanceCount += 1
+        tag = "[svc#\(Self.instanceCount) store:\(storeTag(store))]"
         self.store = store
         self.tokenProvider = tokenProvider
         self.trackService = trackService
+    }
+
+    /// Starts listening to the player. Call once, from the view that actually kept this
+    /// instance — see `activate()` on the sibling services for why `init` must not do it.
+    ///
+    /// Idempotent: a `.task` runs again when its view reappears, and the guard reads the
+    /// subscription it protects rather than a separate flag that could drift from it.
+    func activate() {
+        guard setQueueSubscription == nil else { return }
         setupQueueSubscription()
         setupSetQueueSubscription()
         setupFetchDebounceSubscription()
+        log("activated")
     }
 
     // MARK: - Queue Subscriptions
@@ -63,7 +87,7 @@ final class QueueService {
     /// Handle set queue notification (fires immediately when queue is set or context is loaded)
     private func handleSetQueue(_ notification: SetQueueNotification) {
         let contextInfo = notification.contextUri.isEmpty ? "" : " context=\(notification.contextUri),"
-        debugLog("QueueService", "Set queue:\(contextInfo) prev=\(notification.prevTracks.count), current=\(notification.currentTrack != nil ? 1 : 0), next=\(notification.nextTracks.count)")
+        log("Set queue:\(contextInfo) prev=\(notification.prevTracks.count), current=\(notification.currentTrack != nil ? 1 : 0), next=\(notification.nextTracks.count)")
 
         // A SetQueue with a context URI but no tracks is provisional: librespot emits it during
         // context setup before fill_up_next_tracks completes. Keep the existing queue and schedule
@@ -73,7 +97,7 @@ final class QueueService {
             && notification.nextTracks.isEmpty
             && notification.prevTracks.isEmpty
         if isProvisional {
-            debugLog("QueueService", "Provisional SetQueue (emitted before fill_up) — keeping existing queue, scheduling refresh")
+            log("Provisional SetQueue (emitted before fill_up) — keeping existing queue, scheduling refresh")
             // Deliberately does not bump the live-state revision: this notification carries
             // no usable queue, and the refresh it schedules is a Web API fetch that the
             // freshness barrier would otherwise discard as stale.
@@ -131,7 +155,7 @@ final class QueueService {
                 if await fetchInitialPlaybackState(accessToken: token) {
                     return
                 }
-                debugLog("QueueService", "Queue refresh did not apply — retrying")
+                log("Queue refresh did not apply — retrying")
             }
         }
     }
@@ -144,7 +168,7 @@ final class QueueService {
     /// Handle queue update from Spirc callback (Mercury protocol)
     private func handleQueueUpdate(_ queueState: QueueState?) {
         guard let state = queueState else {
-            debugLog("QueueService", "Queue callback was nil; keeping existing queue state")
+            log("Queue callback was nil; keeping existing queue state")
             return
         }
 
@@ -160,9 +184,9 @@ final class QueueService {
         let previousEntries = state.previousTracks?.compactMap { toQueueEntry($0) }
 
         if let prevCount = previousEntries?.count {
-            debugLog("QueueService", "Queue updated from Mercury: prev=\(prevCount), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
+            log("Queue updated from Mercury: prev=\(prevCount), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
         } else {
-            debugLog("QueueService", "Queue updated from Web API: current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count) (preserving previous)")
+            log("Queue updated from Web API: current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count) (preserving previous)")
         }
 
         store.noteLiveStateReceived()
@@ -193,7 +217,7 @@ final class QueueService {
         let trackIdsToFetch = uniqueTrackIds.filter { store.tracks[$0] == nil }
 
         guard !trackIdsToFetch.isEmpty else {
-            debugLog("QueueService", "All \(uniqueTrackIds.count) unique tracks already cached in store")
+            log("All \(uniqueTrackIds.count) unique tracks already cached in store")
             // Update queue items from cached data
             updateNowPlayingMetadata()
             return
@@ -225,13 +249,13 @@ final class QueueService {
 
         guard !trackIdsToFetch.isEmpty else { return }
 
-        debugLog("QueueService", "Ensuring metadata for \(trackIdsToFetch.count) queue tracks")
+        log("Ensuring metadata for \(trackIdsToFetch.count) queue tracks")
 
         do {
             try await trackService.ensureTracksLoaded(trackIds: trackIdsToFetch)
             updateNowPlayingMetadata()
         } catch {
-            debugLog("QueueService", "Failed to fetch track metadata: \(error)")
+            log("Failed to fetch track metadata: \(error)")
         }
     }
 
@@ -243,7 +267,7 @@ final class QueueService {
         let prevCount = store.previousTrackEntities.count
         let nextCount = store.nextTrackEntities.count
         let total = prevCount + (store.currentTrackEntity != nil ? 1 : 0) + nextCount
-        debugLog("QueueService", "Queue tracks resolved: \(total) with metadata (prev=\(prevCount), next=\(nextCount))")
+        log("Queue tracks resolved: \(total) with metadata (prev=\(prevCount), next=\(nextCount))")
     }
 
     // MARK: - Initial State Fetch
@@ -260,7 +284,7 @@ final class QueueService {
     ///   response and an applied one can leave identical-looking state.
     @discardableResult
     func fetchInitialPlaybackState(accessToken: String) async -> Bool {
-        debugLog("QueueService", "Fetching initial playback state from Web API...")
+        log("Fetching initial playback state from Web API...")
 
         // Freshness barrier: remember where live state stood before going to the network.
         // Rust callbacks can land while these requests are in flight, and they are
@@ -294,7 +318,7 @@ final class QueueService {
             // Web API doesn't provide previous tracks, so preserve existing or use empty
             store.setQueue(previous: nil, current: currentEntry, next: nextEntries)
 
-            debugLog("QueueService", "Initial queue: current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
+            log("Initial queue: current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
 
             // Fetch track metadata
             var allIds = (currentEntry.map { [$0.trackId] } ?? []) + nextEntries.map(\.trackId)
@@ -335,7 +359,7 @@ final class QueueService {
 
             return true
         } catch {
-            debugLog("QueueService", "Failed to fetch initial playback state: \(error)")
+            log("Failed to fetch initial playback state: \(error)")
             return false
         }
     }

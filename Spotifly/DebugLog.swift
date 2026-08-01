@@ -20,7 +20,20 @@ import Foundation
         let timestamp = iso8601Formatter.string(from: Date())
         print("[\(timestamp) DEBUG \(module)] \(message)")
     }
+
+    /// Short, stable identity for an object in the log.
+    ///
+    /// Enough to tell two instances apart at a glance without printing a full pointer.
+    /// Used where a duplicate instance is the bug being watched for.
+    nonisolated func storeTag(_ object: AnyObject) -> String {
+        String(UInt(bitPattern: ObjectIdentifier(object).hashValue) % 1000)
+    }
 #else
     @inlinable
     nonisolated func debugLog(_: String, _: String) {}
+
+    @inlinable
+    nonisolated func storeTag(_: AnyObject) -> String {
+        ""
+    }
 #endif

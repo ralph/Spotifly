@@ -61,8 +61,6 @@ struct LoggedInView: View {
         _trackService = State(initialValue: trackService)
         _recentlyPlayedService = State(initialValue: RecentlyPlayedService(store: store))
         _topItemsService = State(initialValue: TopItemsService(store: store))
-
-        playbackViewModel.setStore(store)
     }
 
     @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
@@ -186,6 +184,7 @@ struct LoggedInView: View {
             playbackViewModel: playbackViewModel,
             queueService: queueService,
             deviceService: deviceService,
+            connectionService: connectionService,
             recentlyPlayedService: recentlyPlayedService,
             topItemsService: topItemsService,
             blockingState: $blockingState,

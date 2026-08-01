@@ -17,6 +17,17 @@ final class ConnectionService {
 
     init(store: AppStore) {
         self.store = store
+    }
+
+    /// Starts observing connection state. Call once, from the view that kept this instance.
+    ///
+    /// Deliberately not done in `init`: SwiftUI runs a View's `init` repeatedly and keeps
+    /// only the first `State(initialValue:)`, so a subscription made there outlives the
+    /// object's usefulness and keeps writing into an `AppStore` nothing reads.
+    ///
+    /// Idempotent — the guard reads the subscription it protects.
+    func activate() {
+        guard connectionStateSubscription == nil else { return }
         setupConnectionStateSubscription()
         refreshConnectionState()
     }

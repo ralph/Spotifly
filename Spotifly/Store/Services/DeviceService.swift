@@ -36,6 +36,18 @@ final class DeviceService {
 
     init(store: AppStore) {
         self.store = store
+    }
+
+    /// Starts the throttled device load and active-device tracking. Call once, from the
+    /// view that kept this instance.
+    ///
+    /// Deliberately not done in `init`: SwiftUI runs a View's `init` repeatedly and keeps
+    /// only the first `State(initialValue:)`, so a discarded instance would keep issuing
+    /// device requests and writing active-device changes into a store nothing reads.
+    ///
+    /// Idempotent — the guard reads the subscription it protects.
+    func activate() {
+        guard loadCancellable == nil else { return }
         loadCancellable = loadSubject
             .throttle(for: .seconds(10), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] token in
