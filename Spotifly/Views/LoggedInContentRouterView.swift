@@ -17,7 +17,7 @@ struct LoggedInContentRouterView: View {
     private var navigationPathBinding: Binding<[NavigationDestination]> {
         Binding(
             get: { navigationCoordinator.navigationPath },
-            set: { navigationCoordinator.navigationPath = $0 },
+            set: { navigationCoordinator.setNavigationPath($0) },
         )
     }
 
@@ -31,8 +31,8 @@ struct LoggedInContentRouterView: View {
     var body: some View {
         NavigationStack(path: navigationPathBinding) {
             Group {
-                if navigationCoordinator.selectedNavigationItem == .searchResults,
-                   let searchResults = store.searchResults
+                if let query = navigationCoordinator.displayedSearchQuery,
+                   let searchResults = store.searchResults(for: query)
                 {
                     SearchResultsView(searchResults: searchResults, playbackViewModel: playbackViewModel)
                         .navigationTitle("nav.search_results")

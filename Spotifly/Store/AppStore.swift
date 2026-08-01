@@ -117,9 +117,19 @@ final class AppStore {
 
     // MARK: - Search State
 
-    var searchResults: SearchResults?
+    static let searchResultsLimit = 5
+
+    private(set) var searchResultsByQuery: [String: SearchResults] = [:]
+    /// Oldest to newest, used to enforce the bounded query cache.
+    private(set) var searchResultQueries: [String] = []
+    private(set) var lastDisplayedSearchQuery: String?
+    private(set) var searchCacheEvictionRevision: UInt64 = 0
     var searchIsLoading = false
     var searchErrorMessage: String?
+
+    /// Entities explicitly deleted during this session. Missing entities are not
+    /// enough to invalidate a route because a deep-linked entity may still be loading.
+    private(set) var deletedEntitySelections: Set<Selection> = []
 
     // MARK: - Recently Played State
 
@@ -300,6 +310,7 @@ final class AppStore {
     /// entity (the one `TopItemsService` builds from a track's album object) does
     /// not replace fully fetched metadata, and no upsert drops loaded tracks.
     func upsertAlbum(_ album: Album) {
+        deletedEntitySelections.remove(.album(id: album.id))
         guard let existing = albums[album.id] else {
             albums[album.id] = album
             return
@@ -334,6 +345,7 @@ final class AppStore {
 
     /// Upsert a single artist
     func upsertArtist(_ artist: Artist) {
+        deletedEntitySelections.remove(.artist(id: artist.id))
         artists[artist.id] = artist
     }
 
@@ -357,6 +369,7 @@ final class AppStore {
 
     /// Upsert a single playlist, preserving loaded tracks if present
     func upsertPlaylist(_ playlist: Playlist) {
+        deletedEntitySelections.remove(.playlist(id: playlist.id))
         if let existing = playlists[playlist.id], existing.tracksLoaded, !playlist.tracksLoaded {
             // Preserve existing trackIds and duration when new playlist doesn't have them
             var merged = playlist
@@ -549,7 +562,7 @@ final class AppStore {
 
     /// Add a new playlist to user's library
     func addPlaylistToUserLibrary(_ playlist: Playlist) {
-        playlists[playlist.id] = playlist
+        upsertPlaylist(playlist)
         userPlaylistIds.insert(playlist.id, at: 0)
     }
 
@@ -557,6 +570,7 @@ final class AppStore {
     func removePlaylistFromUserLibrary(_ playlistId: String) {
         userPlaylistIds.removeAll { $0 == playlistId }
         playlists.removeValue(forKey: playlistId)
+        deletedEntitySelections.insert(.playlist(id: playlistId))
     }
 
     /// Remove album from user's library
@@ -572,29 +586,55 @@ final class AppStore {
     /// Add album to user's library
     func addAlbumToUserLibrary(_ albumId: String) {
         guard !userAlbumIds.contains(albumId) else { return }
+        deletedEntitySelections.remove(.album(id: albumId))
         userAlbumIds.insert(albumId, at: 0)
     }
 
     /// Add artist to user's followed artists
     func addArtistToUserLibrary(_ artistId: String) {
         guard !userArtistIds.contains(artistId) else { return }
+        deletedEntitySelections.remove(.artist(id: artistId))
         userArtistIds.insert(artistId, at: 0)
     }
 
     /// Add playlist to user's library (for followed playlists)
     func addPlaylistToUserLibraryById(_ playlistId: String) {
         guard !userPlaylistIds.contains(playlistId) else { return }
+        deletedEntitySelections.remove(.playlist(id: playlistId))
         userPlaylistIds.insert(playlistId, at: 0)
     }
 
     // MARK: - Search Actions
 
-    func setSearchResults(_ results: SearchResults?) {
-        searchResults = results
+    func searchResults(for query: String) -> SearchResults? {
+        searchResultsByQuery[query]
     }
 
-    func clearSearch() {
-        searchResults = nil
+    func setSearchResults(_ results: SearchResults, for query: String) {
+        searchResultsByQuery[query] = results
+        searchResultQueries.removeAll { $0 == query }
+        searchResultQueries.append(query)
+
+        if searchResultQueries.count > Self.searchResultsLimit {
+            let evictionCount = searchResultQueries.count - Self.searchResultsLimit
+            let evicted = searchResultQueries.prefix(evictionCount)
+            for query in evicted {
+                searchResultsByQuery.removeValue(forKey: query)
+            }
+            searchResultQueries.removeFirst(evictionCount)
+            if let lastDisplayedSearchQuery, evicted.contains(lastDisplayedSearchQuery) {
+                self.lastDisplayedSearchQuery = nil
+            }
+            searchCacheEvictionRevision &+= 1
+        }
+    }
+
+    func markSearchQueryDisplayed(_ query: String) {
+        guard searchResultsByQuery[query] != nil else { return }
+        lastDisplayedSearchQuery = query
+    }
+
+    func clearSearchError() {
         searchErrorMessage = nil
     }
 
@@ -718,7 +758,9 @@ final class AppStore {
                 let artistsPagination: PaginationState
                 let favoritesPagination: PaginationState
 
-                let searchResults: SearchResults?
+                let searchResultsByQuery: [String: SearchResults]
+                let searchResultQueries: [String]
+                let lastDisplayedSearchQuery: String?
 
                 let recentTrackIds: [String]
                 let recentItemURIs: [String]
@@ -764,7 +806,9 @@ final class AppStore {
                 albumsPagination: albumsPagination,
                 artistsPagination: artistsPagination,
                 favoritesPagination: favoritesPagination,
-                searchResults: searchResults,
+                searchResultsByQuery: searchResultsByQuery,
+                searchResultQueries: searchResultQueries,
+                lastDisplayedSearchQuery: lastDisplayedSearchQuery,
                 recentTrackIds: recentTrackIds,
                 recentItemURIs: recentItemURIs,
                 topArtistIds: topArtistIds,

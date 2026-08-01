@@ -1,6 +1,6 @@
 # Navigation: make the location one value
 
-Status: **planned**
+Status: **completed**
 Components: `Spotifly/ViewModels/NavigationCoordinator.swift`, `Spotifly/Store/AppStore.swift`,
 `Spotifly/Views/LoggedInContentRouterView.swift`, `Spotifly/Views/LoggedInView.swift`,
 `Spotifly/Views/LoggedInToolbars.swift`, `SpotiflyTests/SpotiflyTests.swift`

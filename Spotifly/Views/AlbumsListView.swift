@@ -102,7 +102,7 @@ struct AlbumsListView: View {
                                     playbackViewModel: playbackViewModel,
                                     isSelected: navigationCoordinator.selectedAlbumId == album.id,
                                     onSelect: {
-                                        navigationCoordinator.selectedAlbumId = album.id
+                                        navigationCoordinator.selectAlbum(album.id)
                                     },
                                 )
                             }
@@ -126,9 +126,7 @@ struct AlbumsListView: View {
                                     playbackViewModel: playbackViewModel,
                                     isSelected: navigationCoordinator.selectedAlbumId == album.id,
                                     onSelect: {
-                                        // Clear ephemeral state when user selects a library album
-                                        navigationCoordinator.viewingAlbumId = nil
-                                        navigationCoordinator.selectedAlbumId = album.id
+                                        navigationCoordinator.selectAlbum(album.id)
                                     },
                                 )
 
@@ -161,23 +159,13 @@ struct AlbumsListView: View {
             if store.userAlbums.isEmpty, !store.albumsPagination.isLoading {
                 await loadAlbums()
             }
-            // Always sync selection with viewing album ID (handles navigation from other sections)
-            if let viewingId = navigationCoordinator.viewingAlbumId {
-                navigationCoordinator.selectedAlbumId = viewingId
-            } else if navigationCoordinator.selectedAlbumId == nil, let first = store.userAlbums.first {
-                // No ephemeral album, select first user album
-                navigationCoordinator.selectedAlbumId = first.id
-            }
-        }
-        .onChange(of: navigationCoordinator.viewingAlbumId) { _, newId in
-            // Auto-select the ephemeral album when it's set
-            if let id = newId {
-                navigationCoordinator.selectedAlbumId = id
+            if navigationCoordinator.selectedAlbumId == nil, let first = store.userAlbums.first {
+                navigationCoordinator.selectAlbum(first.id, recordsHistory: false)
             }
         }
         .onChange(of: store.userAlbums) { _, albums in
             if navigationCoordinator.selectedAlbumId == nil, ephemeralAlbum == nil, let first = albums.first {
-                navigationCoordinator.selectedAlbumId = first.id
+                navigationCoordinator.selectAlbum(first.id, recordsHistory: false)
             }
         }
     }

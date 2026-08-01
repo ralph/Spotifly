@@ -189,13 +189,11 @@ struct LoggedInView: View {
             topItemsService: topItemsService,
             blockingState: $blockingState,
         )
-        .onChange(of: navigationCoordinator.pendingSectionNavigation) { _, newValue in
-            guard let request = newValue else { return }
-            navigationCoordinator.applySectionNavigationRequest(request)
-            navigationCoordinator.pendingSectionNavigation = nil
+        .onChange(of: store.searchCacheEvictionRevision) {
+            navigationCoordinator.invalidateUnviewableRoutes()
         }
-        .onChange(of: navigationCoordinator.currentNavigationSnapshot) { oldValue, newValue in
-            navigationCoordinator.recordNavigationChange(from: oldValue, to: newValue)
+        .onChange(of: store.deletedEntitySelections) {
+            navigationCoordinator.invalidateUnviewableRoutes()
         }
         .onChange(of: navigationCoordinator.selectedNavigationItem) { _, newValue in
             guard newValue == .favorites else { return }
@@ -252,7 +250,7 @@ struct LoggedInView: View {
         SidebarView(
             selection: navigationSelectionBinding,
             onLogout: handleLogout,
-            hasSearchResults: store.searchResults != nil,
+            hasSearchResults: store.lastDisplayedSearchQuery.map { store.searchResults(for: $0) != nil } ?? false,
             userProfile: store.userProfile,
         )
         .navigationSplitViewColumnWidth(
@@ -276,22 +274,22 @@ struct LoggedInView: View {
     }
 
     private func performSearch() {
+        let query = searchText
         Task {
             let token = await session.validAccessToken()
-            debugLog("Search", "Starting search for: \(searchText)")
-            await searchService.search(accessToken: token, query: searchText)
-            debugLog("Search", "After search - results: \(store.searchResults != nil), error: \(store.searchErrorMessage ?? "nil")")
-            if store.searchResults != nil {
-                navigationCoordinator.selectNavigationItem(.searchResults)
+            debugLog("Search", "Starting search for: \(query)")
+            await searchService.search(accessToken: token, query: query)
+            let hasResults = store.searchResults(for: query) != nil
+            debugLog("Search", "After search - results: \(hasResults), error: \(store.searchErrorMessage ?? "nil")")
+            if hasResults, !searchText.isEmpty {
+                navigationCoordinator.navigateToSearchResults(query: query)
             }
         }
     }
 
     private func handleSearchTextChange(_ newValue: String) {
         guard newValue.isEmpty else { return }
-
-        store.clearSearch()
-        navigationCoordinator.pruneSearchHistory()
+        store.clearSearchError()
 
         if navigationCoordinator.selectedNavigationItem == .searchResults {
             navigationCoordinator.selectNavigationItem(.startpage)

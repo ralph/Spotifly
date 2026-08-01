@@ -20,10 +20,7 @@ final class SearchService {
     // MARK: - Search
 
     func search(accessToken: String, query: String) async {
-        guard !query.isEmpty else {
-            store.setSearchResults(nil)
-            return
-        }
+        guard !query.isEmpty else { return }
 
         guard !store.searchIsLoading else { return }
 
@@ -38,7 +35,7 @@ final class SearchService {
                 limit: 20,
             )
 
-            store.setSearchResults(results)
+            store.setSearchResults(results, for: query)
 
             // Store entities in AppStore so favorites work and for future reference
             store.upsertTracks(results.tracks)
@@ -48,13 +45,8 @@ final class SearchService {
 
         } catch {
             store.searchErrorMessage = error.localizedDescription
-            store.setSearchResults(nil)
         }
 
         store.searchIsLoading = false
-    }
-
-    func clearSearch() {
-        store.clearSearch()
     }
 }

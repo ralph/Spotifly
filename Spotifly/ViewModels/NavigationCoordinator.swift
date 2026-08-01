@@ -2,70 +2,24 @@
 //  NavigationCoordinator.swift
 //  Spotifly
 //
-//  Centralized navigation coordinator for app-wide navigation.
-//  Handles cross-section navigation, drill-down navigation stack,
-//  and back/forward history for the logged-in shell.
+//  Owns the logged-in shell's current route and back/forward history.
 //
 
 import SwiftUI
-
-struct SectionNavigationRequest: Equatable {
-    let section: NavigationItem
-    let albumId: String?
-    let artistId: String?
-    let playlistId: String?
-
-    static func album(_ albumId: String) -> SectionNavigationRequest {
-        SectionNavigationRequest(
-            section: .albums,
-            albumId: albumId,
-            artistId: nil,
-            playlistId: nil,
-        )
-    }
-
-    static func artist(_ artistId: String) -> SectionNavigationRequest {
-        SectionNavigationRequest(
-            section: .artists,
-            albumId: nil,
-            artistId: artistId,
-            playlistId: nil,
-        )
-    }
-
-    static func playlist(_ playlistId: String) -> SectionNavigationRequest {
-        SectionNavigationRequest(
-            section: .playlists,
-            albumId: nil,
-            artistId: nil,
-            playlistId: playlistId,
-        )
-    }
-
-    static let queue = SectionNavigationRequest(
-        section: .queue,
-        albumId: nil,
-        artistId: nil,
-        playlistId: nil,
-    )
-}
-
-struct NavigationSnapshot: Equatable {
-    var section: NavigationItem?
-    var selectedAlbumId: String?
-    var selectedArtistId: String?
-    var selectedPlaylistId: String?
-    var navigationPath: [NavigationDestination]
-    var viewingAlbumId: String?
-    var viewingArtistId: String?
-    var viewingPlaylistId: String?
-}
 
 /// Centralized navigation coordinator that can be accessed from anywhere in the app.
 @MainActor
 @Observable
 final class NavigationCoordinator {
+    static let historyLimit = 100
+
     private weak var store: AppStore?
+    private var lastSelection: [NavigationItem: Selection] = [:]
+    private var historyRestoreTarget: Route?
+
+    private(set) var current: Route = .startpage
+    private(set) var back: [Route] = []
+    private(set) var forward: [Route] = []
 
     init(store: AppStore? = nil) {
         self.store = store
@@ -73,68 +27,68 @@ final class NavigationCoordinator {
 
     func setStore(_ store: AppStore) {
         self.store = store
+        noteRouteDisplayed(current)
     }
 
-    // MARK: - Selection State
+    // MARK: - Route Projections
 
-    var selectedNavigationItem: NavigationItem? = .startpage
-    var selectedAlbumId: String?
-    var selectedArtistId: String?
-    var selectedPlaylistId: String?
-
-    // MARK: - Navigation Stack
-
-    /// Navigation path for drill-down navigation (artist, album, playlist detail views).
-    var navigationPath: [NavigationDestination] = []
-
-    /// Push a destination onto the navigation stack.
-    func push(_ destination: NavigationDestination) {
-        navigationPath.append(destination)
+    var selectedNavigationItem: NavigationItem? {
+        get { current.section }
+        set { selectNavigationItem(newValue) }
     }
 
-    /// Clear the navigation stack (called when switching sidebar sections).
-    func clearNavigationStack() {
-        navigationPath = []
+    var selectedAlbumId: String? {
+        get {
+            guard case let .album(id) = current.selection else { return nil }
+            return id
+        }
+        set { selectAlbum(newValue) }
     }
 
-    // MARK: - Ephemeral Viewing (items not in user's library)
-
-    /// Album being viewed that may not be in the user's library.
-    var viewingAlbumId: String?
-
-    /// Artist being viewed that may not be in the user's library.
-    var viewingArtistId: String?
-
-    /// Playlist being viewed that may not be in the user's library.
-    var viewingPlaylistId: String?
-
-    func clearEphemeralViewing() {
-        viewingAlbumId = nil
-        viewingArtistId = nil
-        viewingPlaylistId = nil
+    var selectedArtistId: String? {
+        get {
+            guard case let .artist(id) = current.selection else { return nil }
+            return id
+        }
+        set { selectArtist(newValue) }
     }
 
-    // MARK: - Navigation History
+    var selectedPlaylistId: String? {
+        get {
+            guard case let .playlist(id) = current.selection else { return nil }
+            return id
+        }
+        set { selectPlaylist(newValue) }
+    }
 
-    private var navigationBackStack: [NavigationSnapshot] = []
-    private var navigationForwardStack: [NavigationSnapshot] = []
-    private var historyRestoreTarget: NavigationSnapshot?
+    /// An entity is ephemeral only as a presentation detail. Membership never forms
+    /// part of the route or its history identity.
+    var viewingAlbumId: String? {
+        guard let id = selectedAlbumId, store?.userAlbumIds.contains(id) != true else { return nil }
+        return id
+    }
 
-    var currentNavigationSnapshot: NavigationSnapshot {
-        NavigationSnapshot(
-            section: selectedNavigationItem,
-            selectedAlbumId: selectedAlbumId,
-            selectedArtistId: selectedArtistId,
-            selectedPlaylistId: selectedPlaylistId,
-            navigationPath: navigationPath,
-            viewingAlbumId: viewingAlbumId,
-            viewingArtistId: viewingArtistId,
-            viewingPlaylistId: viewingPlaylistId,
-        )
+    var viewingArtistId: String? {
+        guard let id = selectedArtistId, store?.userArtistIds.contains(id) != true else { return nil }
+        return id
+    }
+
+    var viewingPlaylistId: String? {
+        guard let id = selectedPlaylistId, store?.userPlaylistIds.contains(id) != true else { return nil }
+        return id
+    }
+
+    var navigationPath: [NavigationDestination] {
+        get { current.path }
+        set { setNavigationPath(newValue) }
+    }
+
+    var displayedSearchQuery: String? {
+        current.section == .searchResults ? current.query : nil
     }
 
     var needsThreeColumnLayout: Bool {
-        switch selectedNavigationItem {
+        switch current.section {
         case .albums, .artists, .playlists:
             true
         default:
@@ -143,23 +97,23 @@ final class NavigationCoordinator {
     }
 
     var canNavigateBackward: Bool {
-        !navigationBackStack.isEmpty
+        !back.isEmpty
     }
 
     var canNavigateForward: Bool {
-        !navigationForwardStack.isEmpty
+        !forward.isEmpty
     }
 
     var backNavigationTitle: String? {
-        navigationBackStack.last.map(title(for:))
+        back.last.map(title(for:))
     }
 
     var forwardNavigationTitle: String? {
-        navigationForwardStack.last.map(title(for:))
+        forward.last.map(title(for:))
     }
 
     var canRefreshCurrentSection: Bool {
-        switch selectedNavigationItem {
+        switch current.section {
         case .playlists, .albums, .artists, .favorites, .speakers, .queue:
             true
         default:
@@ -167,238 +121,328 @@ final class NavigationCoordinator {
         }
     }
 
-    // MARK: - Section Navigation
+    // MARK: - Navigation
 
-    /// Pending cross-section navigation request (observed by LoggedInView).
-    var pendingSectionNavigation: SectionNavigationRequest?
+    func selectNavigationItem(_ section: NavigationItem?) {
+        let route: Route
 
-    func selectNavigationItem(_ newValue: NavigationItem?) {
-        let oldValue = selectedNavigationItem
-        guard oldValue != newValue else { return }
-
-        clearNavigationStack()
-
-        if oldValue == .albums, newValue != .albums {
-            viewingAlbumId = nil
-        }
-        if oldValue == .artists, newValue != .artists {
-            viewingArtistId = nil
-        }
-        if oldValue == .playlists, newValue != .playlists {
-            viewingPlaylistId = nil
-        }
-
-        selectedNavigationItem = newValue
-    }
-
-    func applySectionNavigationRequest(_ request: SectionNavigationRequest) {
-        viewingAlbumId = request.albumId
-        viewingArtistId = request.artistId
-        viewingPlaylistId = request.playlistId
-
-        if let albumId = request.albumId {
-            selectedAlbumId = albumId
-        }
-        if let artistId = request.artistId {
-            selectedArtistId = artistId
-        }
-        if let playlistId = request.playlistId {
-            selectedPlaylistId = playlistId
-        }
-
-        // Always clear the navigation stack when navigating to a specific item,
-        // even if we're already on the same section. selectNavigationItem skips
-        // clearNavigationStack() when the section hasn't changed.
-        clearNavigationStack()
-        selectNavigationItem(request.section)
-    }
-
-    /// Navigate to the Albums section to view a specific album.
-    func navigateToAlbumSection(albumId: String) {
-        pendingSectionNavigation = .album(albumId)
-    }
-
-    /// Navigate to the Artists section to view a specific artist.
-    func navigateToArtistSection(artistId: String) {
-        pendingSectionNavigation = .artist(artistId)
-    }
-
-    /// Navigate to the Playlists section to view a specific playlist.
-    func navigateToPlaylistSection(playlistId: String) {
-        pendingSectionNavigation = .playlist(playlistId)
-    }
-
-    /// Navigate to the queue.
-    func navigateToQueue() {
-        pendingSectionNavigation = .queue
-    }
-
-    func navigateBackward() {
-        guard let previousSnapshot = navigationBackStack.popLast() else { return }
-        navigationForwardStack.append(currentNavigationSnapshot)
-        applyNavigationSnapshot(previousSnapshot)
-    }
-
-    func navigateForward() {
-        guard let nextSnapshot = navigationForwardStack.popLast() else { return }
-        navigationBackStack.append(currentNavigationSnapshot)
-        applyNavigationSnapshot(nextSnapshot)
-    }
-
-    func recordNavigationChange(from oldValue: NavigationSnapshot, to newValue: NavigationSnapshot) {
-        if let historyRestoreTarget {
-            if newValue == historyRestoreTarget {
-                self.historyRestoreTarget = nil
+        switch section {
+        case .albums, .artists, .playlists:
+            route = Route(
+                section: section,
+                selection: section.flatMap { lastSelection[$0] },
+                query: nil,
+                path: [],
+            )
+        case .searchResults:
+            guard let query = store?.lastDisplayedSearchQuery,
+                  store?.searchResults(for: query) != nil
+            else {
+                return
             }
+            route = Route(section: .searchResults, selection: nil, query: query, path: [])
+        default:
+            route = Route(section: section, selection: nil, query: nil, path: [])
+        }
+
+        navigate(to: route)
+    }
+
+    func navigateToSearchResults(query: String) {
+        guard store?.searchResults(for: query) != nil else { return }
+        navigate(to: Route(section: .searchResults, selection: nil, query: query, path: []))
+    }
+
+    func selectAlbum(_ albumId: String?, recordsHistory: Bool = true) {
+        setSelection(albumId.map { .album(id: $0) }, for: .albums, recordsHistory: recordsHistory)
+    }
+
+    func selectArtist(_ artistId: String?, recordsHistory: Bool = true) {
+        setSelection(artistId.map { .artist(id: $0) }, for: .artists, recordsHistory: recordsHistory)
+    }
+
+    func selectPlaylist(_ playlistId: String?, recordsHistory: Bool = true) {
+        setSelection(playlistId.map { .playlist(id: $0) }, for: .playlists, recordsHistory: recordsHistory)
+    }
+
+    /// Push a destination onto the drill-down path.
+    func push(_ destination: NavigationDestination) {
+        setNavigationPath(current.path + [destination])
+    }
+
+    /// Classifies writes from `NavigationStack`: extensions are pushes, prefixes are
+    /// native pops through shared history, and replacements are new locations.
+    func setNavigationPath(_ newPath: [NavigationDestination]) {
+        if let historyRestoreTarget, newPath == historyRestoreTarget.path {
+            self.historyRestoreTarget = nil
             return
         }
 
-        guard shouldRecordNavigationChange(from: oldValue, to: newValue) else { return }
+        let oldPath = current.path
+        guard newPath != oldPath else { return }
 
-        navigationBackStack.append(oldValue)
-        if navigationBackStack.count > 100 {
-            navigationBackStack.removeFirst(navigationBackStack.count - 100)
+        var route = current
+        route.path = newPath
+
+        if newPath.starts(with: oldPath) {
+            navigate(to: route)
+        } else if oldPath.starts(with: newPath) {
+            navigateBackward(to: route)
+        } else {
+            navigate(to: route)
         }
-        navigationForwardStack.removeAll()
     }
 
-    func pruneSearchHistory() {
-        navigationBackStack.removeAll { $0.section == .searchResults }
-        navigationForwardStack.removeAll { $0.section == .searchResults }
+    /// Clear the visible drill-down as a new location.
+    func clearNavigationStack() {
+        setNavigationPath([])
+    }
+
+    /// Navigate directly to the Albums section and a specific album.
+    func navigateToAlbumSection(albumId: String) {
+        navigateToSection(.albums, selection: .album(id: albumId))
+    }
+
+    /// Navigate directly to the Artists section and a specific artist.
+    func navigateToArtistSection(artistId: String) {
+        navigateToSection(.artists, selection: .artist(id: artistId))
+    }
+
+    /// Navigate directly to the Playlists section and a specific playlist.
+    func navigateToPlaylistSection(playlistId: String) {
+        navigateToSection(.playlists, selection: .playlist(id: playlistId))
+    }
+
+    /// Navigate directly to the queue.
+    func navigateToQueue() {
+        selectNavigationItem(.queue)
+    }
+
+    func navigateBackward() {
+        guard let previous = back.popLast() else { return }
+        forward.append(current)
+        restore(previous)
+    }
+
+    func navigateForward() {
+        guard let next = forward.popLast() else { return }
+        appendToBack(current)
+        restore(next)
     }
 
     // MARK: - Selection Helpers
 
     func restorePlaylistSelection(previous: String?, available: [String]) {
-        restoreOrSelectFirst(previous: previous, available: available, keyPath: \.selectedPlaylistId)
+        selectPlaylist(restoredSelection(previous: previous, available: available), recordsHistory: false)
     }
 
     func restoreAlbumSelection(previous: String?, available: [String]) {
-        restoreOrSelectFirst(previous: previous, available: available, keyPath: \.selectedAlbumId)
+        selectAlbum(restoredSelection(previous: previous, available: available), recordsHistory: false)
     }
 
     func restoreArtistSelection(previous: String?, available: [String]) {
-        restoreOrSelectFirst(previous: previous, available: available, keyPath: \.selectedArtistId)
+        selectArtist(restoredSelection(previous: previous, available: available), recordsHistory: false)
     }
 
-    /// Clear the current album selection (e.g., after removal from library).
+    /// Select the first remaining album without adding an automatic history step.
     func clearAlbumSelection() {
-        viewingAlbumId = nil
-        restoreAlbumSelection(previous: nil, available: store?.userAlbumIds ?? [])
+        selectAlbum(store?.userAlbumIds.first, recordsHistory: false)
     }
 
-    /// Clear the current artist selection (e.g., after unfollowing).
+    /// Select the first remaining artist without adding an automatic history step.
     func clearArtistSelection() {
-        viewingArtistId = nil
-        restoreArtistSelection(previous: nil, available: store?.userArtistIds ?? [])
+        selectArtist(store?.userArtistIds.first, recordsHistory: false)
     }
 
-    /// Clear the current playlist selection (e.g., after deletion).
+    /// Remove deleted playlist routes from the complete history sequence.
     func clearPlaylistSelection() {
-        viewingPlaylistId = nil
-        restorePlaylistSelection(previous: nil, available: store?.userPlaylistIds ?? [])
+        invalidateUnviewableRoutes()
+    }
+
+    // MARK: - Invalidation
+
+    /// Removes every unviewable route from the full chronological history, collapses
+    /// equal adjacent runs, then rebuilds back/current/forward around the survivor.
+    func invalidateUnviewableRoutes() {
+        lastSelection = lastSelection.filter { _, selection in
+            store?.deletedEntitySelections.contains(selection) != true
+        }
+
+        let chronological = back + [current] + forward.reversed()
+        let oldCurrentIndex = back.count
+
+        let surviving = chronological.enumerated().compactMap { index, route in
+            isViewable(route) ? IndexedRoute(route: route, originalIndices: [index]) : nil
+        }
+        let collapsed = surviving.reduce(into: [IndexedRoute]()) { result, entry in
+            if result.last?.route == entry.route {
+                result[result.count - 1].originalIndices.append(contentsOf: entry.originalIndices)
+            } else {
+                result.append(entry)
+            }
+        }
+
+        guard !collapsed.isEmpty else {
+            back = []
+            forward = []
+            restore(.startpage)
+            return
+        }
+
+        let currentGroupIndex = collapsed.firstIndex { $0.originalIndices.contains(oldCurrentIndex) }
+            ?? collapsed.lastIndex { entry in
+                entry.originalIndices.contains { $0 < oldCurrentIndex }
+            }
+            ?? collapsed.startIndex
+
+        back = collapsed[..<currentGroupIndex].map(\.route)
+        current = collapsed[currentGroupIndex].route
+        forward = collapsed[(currentGroupIndex + 1)...].map(\.route).reversed()
+        historyRestoreTarget = current
+        rememberSelection(from: current)
+        noteRouteDisplayed(current)
     }
 
     // MARK: - Internal History Logic
 
-    private func applyNavigationSnapshot(_ snapshot: NavigationSnapshot) {
-        historyRestoreTarget = snapshot
-
-        selectedAlbumId = snapshot.selectedAlbumId
-        selectedArtistId = snapshot.selectedArtistId
-        selectedPlaylistId = snapshot.selectedPlaylistId
-        viewingAlbumId = snapshot.viewingAlbumId
-        viewingArtistId = snapshot.viewingArtistId
-        viewingPlaylistId = snapshot.viewingPlaylistId
-        navigationPath = snapshot.navigationPath
-        selectedNavigationItem = snapshot.section
+    private struct IndexedRoute {
+        var route: Route
+        var originalIndices: [Int]
     }
 
-    private func shouldRecordNavigationChange(from oldValue: NavigationSnapshot, to newValue: NavigationSnapshot) -> Bool {
-        guard oldValue != newValue else { return false }
-        if oldValue.section == .searchResults, store?.searchResults == nil {
-            return false
-        }
-        return !isImplicitLibraryAutoSelection(from: oldValue, to: newValue)
+    private func navigateToSection(_ section: NavigationItem, selection: Selection) {
+        lastSelection[section] = selection
+        navigate(to: Route(section: section, selection: selection, query: nil, path: []))
     }
 
-    private func isImplicitLibraryAutoSelection(from oldValue: NavigationSnapshot, to newValue: NavigationSnapshot) -> Bool {
-        guard oldValue.section == newValue.section,
-              oldValue.navigationPath == newValue.navigationPath,
-              oldValue.viewingAlbumId == newValue.viewingAlbumId,
-              oldValue.viewingArtistId == newValue.viewingArtistId,
-              oldValue.viewingPlaylistId == newValue.viewingPlaylistId
-        else {
-            return false
+    private func setSelection(_ selection: Selection?, for section: NavigationItem, recordsHistory: Bool) {
+        guard current.section == section else { return }
+
+        if let selection {
+            lastSelection[section] = selection
+        } else {
+            lastSelection.removeValue(forKey: section)
         }
 
-        switch newValue.section {
-        case .albums:
-            return oldValue.selectedAlbumId == nil &&
-                newValue.selectedAlbumId != nil &&
-                oldValue.selectedArtistId == newValue.selectedArtistId &&
-                oldValue.selectedPlaylistId == newValue.selectedPlaylistId
-        case .artists:
-            return oldValue.selectedArtistId == nil &&
-                newValue.selectedArtistId != nil &&
-                oldValue.selectedAlbumId == newValue.selectedAlbumId &&
-                oldValue.selectedPlaylistId == newValue.selectedPlaylistId
-        case .playlists:
-            return oldValue.selectedPlaylistId == nil &&
-                newValue.selectedPlaylistId != nil &&
-                oldValue.selectedAlbumId == newValue.selectedAlbumId &&
-                oldValue.selectedArtistId == newValue.selectedArtistId
-        default:
-            return false
+        var route = current
+        route.selection = selection
+        if recordsHistory {
+            navigate(to: route)
+        } else {
+            replace(with: route)
         }
     }
 
-    private func title(for snapshot: NavigationSnapshot) -> String {
-        if let destination = snapshot.navigationPath.last {
+    private func navigate(to route: Route) {
+        historyRestoreTarget = nil
+        guard route != current else {
+            rememberSelection(from: route)
+            noteRouteDisplayed(route)
+            return
+        }
+
+        appendToBack(current)
+        current = route
+        forward.removeAll()
+        rememberSelection(from: route)
+        noteRouteDisplayed(route)
+    }
+
+    private func replace(with route: Route) {
+        guard route != current else { return }
+        historyRestoreTarget = route
+        current = route
+        while back.last == current {
+            back.removeLast()
+        }
+        while forward.last == current {
+            forward.removeLast()
+        }
+        rememberSelection(from: route)
+        noteRouteDisplayed(route)
+    }
+
+    private func restore(_ route: Route) {
+        historyRestoreTarget = route
+        current = route
+        rememberSelection(from: route)
+        noteRouteDisplayed(route)
+    }
+
+    private func navigateBackward(to target: Route) {
+        guard let targetIndex = back.lastIndex(of: target) else {
+            navigate(to: target)
+            return
+        }
+
+        while back.indices.contains(targetIndex), current != target {
+            navigateBackward()
+        }
+    }
+
+    private func appendToBack(_ route: Route) {
+        back.append(route)
+        if back.count > Self.historyLimit {
+            back.removeFirst(back.count - Self.historyLimit)
+        }
+    }
+
+    private func rememberSelection(from route: Route) {
+        guard let section = route.section, let selection = route.selection else { return }
+        lastSelection[section] = selection
+    }
+
+    private func noteRouteDisplayed(_ route: Route) {
+        guard route.section == .searchResults, let query = route.query else { return }
+        store?.markSearchQueryDisplayed(query)
+    }
+
+    private func restoredSelection(previous: String?, available: [String]) -> String? {
+        if let previous, available.contains(previous) {
+            previous
+        } else {
+            available.first
+        }
+    }
+
+    private func isViewable(_ route: Route) -> Bool {
+        if route.section == .searchResults {
+            guard let query = route.query, store?.searchResults(for: query) != nil else { return false }
+        }
+
+        if let selection = route.selection, store?.deletedEntitySelections.contains(selection) == true {
+            return false
+        }
+
+        return !route.path.contains { destination in
+            guard case let .playlist(id) = destination else { return false }
+            return store?.deletedEntitySelections.contains(.playlist(id: id)) == true
+        }
+    }
+
+    private func title(for route: Route) -> String {
+        if let destination = route.path.last {
             switch destination {
             case let .artist(id):
-                return store?.artists[id]?.name ?? NavigationItem.artists.title
+                return store?.artists[id]?.name ?? route.section?.title ?? String(localized: "app.name")
             case let .album(id):
-                return store?.albums[id]?.name ?? NavigationItem.albums.title
+                return store?.albums[id]?.name ?? route.section?.title ?? String(localized: "app.name")
             case let .playlist(id):
-                return store?.playlists[id]?.name ?? NavigationItem.playlists.title
+                return store?.playlists[id]?.name ?? route.section?.title ?? String(localized: "app.name")
             case .searchTracks:
                 return String(localized: "section.tracks")
             }
         }
 
-        switch snapshot.section {
-        case .albums:
-            if let albumId = snapshot.selectedAlbumId, let album = store?.albums[albumId] {
-                return album.name
-            }
-            return NavigationItem.albums.title
-        case .artists:
-            if let artistId = snapshot.selectedArtistId, let artist = store?.artists[artistId] {
-                return artist.name
-            }
-            return NavigationItem.artists.title
-        case .playlists:
-            if let playlistId = snapshot.selectedPlaylistId, let playlist = store?.playlists[playlistId] {
-                return playlist.name
-            }
-            return NavigationItem.playlists.title
-        case let section?:
-            return section.title
+        switch route.selection {
+        case let .album(id):
+            return store?.albums[id]?.name ?? route.section?.title ?? NavigationItem.albums.title
+        case let .artist(id):
+            return store?.artists[id]?.name ?? route.section?.title ?? NavigationItem.artists.title
+        case let .playlist(id):
+            return store?.playlists[id]?.name ?? route.section?.title ?? NavigationItem.playlists.title
         case nil:
-            return String(localized: "app.name")
-        }
-    }
-
-    private func restoreOrSelectFirst(
-        previous: String?,
-        available: [String],
-        keyPath: ReferenceWritableKeyPath<NavigationCoordinator, String?>,
-    ) {
-        if let previous, available.contains(previous) {
-            self[keyPath: keyPath] = previous
-        } else {
-            self[keyPath: keyPath] = available.first
+            return route.section?.title ?? String(localized: "app.name")
         }
     }
 }
