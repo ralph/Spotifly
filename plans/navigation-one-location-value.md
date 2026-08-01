@@ -173,6 +173,16 @@ mechanism whose only real trigger was search.
 Clearing the search field then means what it says: it clears the field and leaves the
 results view. It does not evict the cache, and it does not erase where the user has been.
 
+One more piece of state comes with the cache: **which query is currently displayed.** The
+cache says what "a" and "b" produced, not which of them the user is looking at, and the most
+recently *inserted* key is the wrong answer — after search "a" → search "b" → Back to "a" →
+Albums, the newest key is "b" while the results on screen were "a"'s. Reopening Search
+Results from the sidebar has to land on "a".
+
+So the store tracks the last displayed query, updated whenever a search route is shown —
+including when one is restored by Back. The sidebar entry builds its route from that, which
+is what makes it agree with what the user last saw rather than with what was fetched last.
+
 **`Selection` is an entity reference, nothing more** — a kind and an id. It deliberately
 does *not* record whether the item was in the library, even though today's
 `selected*Id` / `viewing*Id` split does exactly that.
@@ -230,14 +240,15 @@ Revisiting a place you have been is still a navigation — startpage → albums 
 keeps both startpage entries, because requirement 2 says back must replay
 albums → startpage.
 
-The exception is when a route stops being *viewable at all*: a cleared or superseded search,
-a playlist deleted while it sits in history. Requirement 2 is about steps the user took, and
-a step that can no longer be displayed is not one of them.
+The exception is when a route stops being *viewable at all*: a playlist deleted while it
+sits in history, or a search whose query has been **evicted from the cache**. Note that
+clearing the search field is *not* one of these — §1b keeps those results, so the route
+stays renderable. Requirement 2 is about steps the user took, and only a step that can no
+longer be displayed drops out.
 
-Crucially this is not only about the current route. `startpage → search → albums → search`,
-then clear, leaves a *dead search route in the back stack* — two Back presses would land on
-an empty view. `forward` has the same problem. Handling only `current` fixes the failing
-test and leaves the bug.
+This is not only about the current route. A dead entry can sit anywhere in either stack —
+`startpage → playlist → albums → that same playlist`, then delete it, and a Back press two
+steps along would land on an empty view. Handling only `current` would leave that.
 
 So invalidation operates on the whole history at once. Treat it as one sequence,
 `back + [current] + forward.reversed()`, and:
