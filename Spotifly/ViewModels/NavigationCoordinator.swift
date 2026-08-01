@@ -376,6 +376,12 @@ final class NavigationCoordinator {
             // skipped on the way in were never locations. Recording it as a *new* location
             // would put the view just left onto the back stack, so Back would walk straight
             // back into it.
+            // Consume any pending restore target. `replace` can have left one pointing at
+            // the full path — an automatic selection while a drill-down is showing does
+            // exactly that — and the write it was waiting for is this pop. Leaving it set
+            // would make the next push back to that path look like a restore callback and
+            // be swallowed.
+            historyRestoreTarget = nil
             forward.append(current)
             current = target
             rememberSelection(from: target)

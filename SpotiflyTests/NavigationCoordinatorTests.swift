@@ -153,6 +153,22 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.navigationPath == [.artist(id: "artist-1")])
     }
 
+    /// An automatic selection while a drill-down is showing leaves a pending restore
+    /// target holding that full path. Popping out of it consumes the write that target was
+    /// waiting for, so pushing back must not be mistaken for the restore callback.
+    @Test func `a push after popping past a pending restore target is not swallowed`() {
+        let coordinator = NavigationCoordinator(store: AppStore())
+
+        coordinator.selectNavigationItem(.albums)
+        coordinator.setNavigationPath([.artist(id: "artist-1"), .album(id: "album-1")])
+        coordinator.selectAlbum("album-1", recordsHistory: false)
+        coordinator.setNavigationPath([.artist(id: "artist-1")])
+
+        coordinator.setNavigationPath([.artist(id: "artist-1"), .album(id: "album-1")])
+
+        #expect(coordinator.navigationPath == [.artist(id: "artist-1"), .album(id: "album-1")])
+    }
+
     @Test func `section reentry restores remembered selection without an extra step`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.selectNavigationItem(.albums)
