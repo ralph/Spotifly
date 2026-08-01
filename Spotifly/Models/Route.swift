@@ -11,13 +11,6 @@ enum Selection: Hashable {
     case album(id: String)
     case artist(id: String)
     case playlist(id: String)
-
-    var id: String {
-        switch self {
-        case let .album(id), let .artist(id), let .playlist(id):
-            id
-        }
-    }
 }
 
 struct Route: Hashable {
@@ -26,10 +19,20 @@ struct Route: Hashable {
     var query: String?
     var path: [NavigationDestination]
 
-    static let startpage = Route(
-        section: .startpage,
-        selection: nil,
-        query: nil,
-        path: [],
-    )
+    /// Spelled out because the memberwise initializer cannot carry defaults here —
+    /// most routes set only a section, and naming the empty fields at every call site
+    /// hides the one that distinguishes them.
+    init(
+        section: NavigationItem?,
+        selection: Selection? = nil,
+        query: String? = nil,
+        path: [NavigationDestination] = [],
+    ) {
+        self.section = section
+        self.selection = selection
+        self.query = query
+        self.path = path
+    }
+
+    static let startpage = Route(section: .startpage)
 }

@@ -128,21 +128,16 @@ final class NavigationCoordinator {
 
         switch section {
         case .albums, .artists, .playlists:
-            route = Route(
-                section: section,
-                selection: section.flatMap { lastSelection[$0] },
-                query: nil,
-                path: [],
-            )
+            route = Route(section: section, selection: section.flatMap { lastSelection[$0] })
         case .searchResults:
             guard let query = store?.lastDisplayedSearchQuery,
                   store?.searchResults(for: query) != nil
             else {
                 return
             }
-            route = Route(section: .searchResults, selection: nil, query: query, path: [])
+            route = Route(section: .searchResults, query: query)
         default:
-            route = Route(section: section, selection: nil, query: nil, path: [])
+            route = Route(section: section)
         }
 
         navigate(to: route)
@@ -150,7 +145,7 @@ final class NavigationCoordinator {
 
     func navigateToSearchResults(query: String) {
         guard store?.searchResults(for: query) != nil else { return }
-        navigate(to: Route(section: .searchResults, selection: nil, query: query, path: []))
+        navigate(to: Route(section: .searchResults, query: query))
     }
 
     func selectAlbum(_ albumId: String?, recordsHistory: Bool = true) {
@@ -184,18 +179,15 @@ final class NavigationCoordinator {
         var route = current
         route.path = newPath
 
-        if newPath.starts(with: oldPath) {
-            navigate(to: route)
-        } else if oldPath.starts(with: newPath) {
+        // A shorter path that the old one starts with is `NavigationStack`'s own back
+        // chevron, which has to move through the shared history — recording it would put
+        // the view just left onto the back stack. An extension is a push and anything else
+        // is a jump; both are new locations.
+        if oldPath.starts(with: newPath) {
             navigateBackward(to: route)
         } else {
             navigate(to: route)
         }
-    }
-
-    /// Clear the visible drill-down as a new location.
-    func clearNavigationStack() {
-        setNavigationPath([])
     }
 
     /// Navigate directly to the Albums section and a specific album.
@@ -271,48 +263,44 @@ final class NavigationCoordinator {
         let chronological = back + [current] + forward.reversed()
         let oldCurrentIndex = back.count
 
-        let surviving = chronological.enumerated().compactMap { index, route in
-            isViewable(route) ? IndexedRoute(route: route, originalIndices: [index]) : nil
-        }
-        let collapsed = surviving.reduce(into: [IndexedRoute]()) { result, entry in
-            if result.last?.route == entry.route {
-                result[result.count - 1].originalIndices.append(contentsOf: entry.originalIndices)
-            } else {
-                result.append(entry)
+        // Runs of *adjacent* equal routes collapse, never duplicates elsewhere in the
+        // sequence: revisiting a place is a real step and has to stay replayable.
+        let runs = chronological.enumerated()
+            .filter { isViewable($0.element) }
+            .reduce(into: [RouteRun]()) { runs, entry in
+                guard runs.last?.route != entry.element else { return }
+                runs.append(RouteRun(route: entry.element, firstIndex: entry.offset))
             }
-        }
 
-        guard !collapsed.isEmpty else {
+        guard !runs.isEmpty else {
             back = []
             forward = []
             restore(.startpage)
             return
         }
 
-        let currentGroupIndex = collapsed.firstIndex { $0.originalIndices.contains(oldCurrentIndex) }
-            ?? collapsed.lastIndex { entry in
-                entry.originalIndices.contains { $0 < oldCurrentIndex }
-            }
-            ?? collapsed.startIndex
+        // Runs stay in chronological order, so the last one starting at or before the old
+        // position is either the run holding it or — if it was dropped — the nearest
+        // survivor behind it.
+        let currentRunIndex = runs.lastIndex { $0.firstIndex <= oldCurrentIndex } ?? runs.startIndex
 
-        back = collapsed[..<currentGroupIndex].map(\.route)
-        current = collapsed[currentGroupIndex].route
-        forward = collapsed[(currentGroupIndex + 1)...].map(\.route).reversed()
+        back = runs[..<currentRunIndex].map(\.route)
+        current = runs[currentRunIndex].route
+        forward = runs[(currentRunIndex + 1)...].map(\.route).reversed()
         historyRestoreTarget = current
-        rememberSelection(from: current)
         noteRouteDisplayed(current)
     }
 
     // MARK: - Internal History Logic
 
-    private struct IndexedRoute {
+    /// A surviving route together with where its run began in the pre-collapse sequence.
+    private struct RouteRun {
         var route: Route
-        var originalIndices: [Int]
+        var firstIndex: Int
     }
 
     private func navigateToSection(_ section: NavigationItem, selection: Selection) {
-        lastSelection[section] = selection
-        navigate(to: Route(section: section, selection: selection, query: nil, path: []))
+        navigate(to: Route(section: section, selection: selection))
     }
 
     private func setSelection(_ selection: Selection?, for section: NavigationItem, recordsHistory: Bool) {
@@ -335,16 +323,11 @@ final class NavigationCoordinator {
 
     private func navigate(to route: Route) {
         historyRestoreTarget = nil
-        guard route != current else {
-            rememberSelection(from: route)
-            noteRouteDisplayed(route)
-            return
+        if route != current {
+            appendToBack(current)
+            current = route
+            forward.removeAll()
         }
-
-        appendToBack(current)
-        current = route
-        forward.removeAll()
-        rememberSelection(from: route)
         noteRouteDisplayed(route)
     }
 
@@ -358,14 +341,12 @@ final class NavigationCoordinator {
         while forward.last == current {
             forward.removeLast()
         }
-        rememberSelection(from: route)
         noteRouteDisplayed(route)
     }
 
     private func restore(_ route: Route) {
         historyRestoreTarget = route
         current = route
-        rememberSelection(from: route)
         noteRouteDisplayed(route)
     }
 
@@ -391,7 +372,6 @@ final class NavigationCoordinator {
                 forward.append(back.removeLast())
             }
             current = target
-            rememberSelection(from: target)
             noteRouteDisplayed(target)
             return
         }
@@ -418,14 +398,17 @@ final class NavigationCoordinator {
         }
     }
 
-    private func rememberSelection(from route: Route) {
-        guard let section = route.section, let selection = route.selection else { return }
-        lastSelection[section] = selection
-    }
-
+    /// Bookkeeping for a route that has just become the visible one: the selection its
+    /// section reopens to, and — for a search route — the query the sidebar reopens to.
+    /// Both are memos outside `Route`, so neither takes part in history identity.
     private func noteRouteDisplayed(_ route: Route) {
-        guard route.section == .searchResults, let query = route.query else { return }
-        store?.markSearchQueryDisplayed(query)
+        if let section = route.section, let selection = route.selection {
+            lastSelection[section] = selection
+        }
+
+        if route.section == .searchResults, let query = route.query {
+            store?.markSearchQueryDisplayed(query)
+        }
     }
 
     private func restoredSelection(previous: String?, available: [String]) -> String? {
@@ -451,29 +434,36 @@ final class NavigationCoordinator {
         }
     }
 
+    /// An entity missing from the store falls back to the route's own section, never to the
+    /// kind of the entity — an album route holding an artist drill-down is still in Albums,
+    /// and naming it "Artists" pointed Back at a section the user was never in.
     private func title(for route: Route) -> String {
+        let sectionTitle = route.section?.title ?? String(localized: "app.name")
+
         if let destination = route.path.last {
             switch destination {
-            case let .artist(id):
-                return store?.artists[id]?.name ?? route.section?.title ?? String(localized: "app.name")
-            case let .album(id):
-                return store?.albums[id]?.name ?? route.section?.title ?? String(localized: "app.name")
-            case let .playlist(id):
-                return store?.playlists[id]?.name ?? route.section?.title ?? String(localized: "app.name")
             case .searchTracks:
                 return String(localized: "section.tracks")
+            case let .artist(id):
+                return name(of: .artist(id: id)) ?? sectionTitle
+            case let .album(id):
+                return name(of: .album(id: id)) ?? sectionTitle
+            case let .playlist(id):
+                return name(of: .playlist(id: id)) ?? sectionTitle
             }
         }
 
-        switch route.selection {
+        return route.selection.flatMap(name(of:)) ?? sectionTitle
+    }
+
+    private func name(of selection: Selection) -> String? {
+        switch selection {
         case let .album(id):
-            return store?.albums[id]?.name ?? route.section?.title ?? NavigationItem.albums.title
+            store?.albums[id]?.name
         case let .artist(id):
-            return store?.artists[id]?.name ?? route.section?.title ?? NavigationItem.artists.title
+            store?.artists[id]?.name
         case let .playlist(id):
-            return store?.playlists[id]?.name ?? route.section?.title ?? NavigationItem.playlists.title
-        case nil:
-            return route.section?.title ?? String(localized: "app.name")
+            store?.playlists[id]?.name
         }
     }
 }
