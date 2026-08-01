@@ -31,6 +31,45 @@ let urlString = "\(baseURL)/endpoint"
 - The `apiLogger` is defined at the top of `SpotifyAPI.swift`
 - Logs are only compiled in debug builds (zero overhead in release)
 
+## Track relinking and the `market` parameter
+
+**Sending `market` changes which track you get back.** When a requested track is not
+playable in that market, Spotify returns a *different* track — the playable alternative —
+with its own `id` and `uri`, and moves the id you asked for into `linked_from`. Omit
+`market` and you get the track you asked for.
+
+This collides with the app's identity rule, which
+`plans/relinked-track-now-playing-identity.md` sets out in full: the **logical** track id
+owns store keys, UI, favorites and queue position, while the playable alternative is an
+implementation detail of playback. librespot relinks independently during playback and the
+bridge already keeps the two apart.
+
+So an entity fetched with `market` must be normalised back to the requested id before it is
+cached, or `AppStore` indexes it under the alternative. The queue reports the context's
+logical id, `store.tracks[logicalId]` then misses, and the track re-fetches forever while
+the Now Playing bar shows its placeholder. Worse, the recovery loader stores a *second*
+entity under the logical id — two entities for one context item, with favorites acting on
+whichever one the caller happened to have.
+
+Where things stand today:
+
+| Request | `market` | Consequence |
+| --- | --- | --- |
+| `/v1/tracks?ids=` | no | ids are as requested; warns if that ever changes |
+| `/albums/{id}/tracks` | no | ids are as requested |
+| `/playlists/{id}/items` | **yes** | relinked playlist tracks cache under the alternative id |
+| `/search` | **yes** | same, for track results |
+
+The last two are a known, unfixed hazard rather than a proven failure — it needs a playlist
+or search result containing a track relinked for this account's market. Fixing it means
+decoding `linked_from` (`TrackCodable` does not today) and preferring it as the entity id;
+simply dropping `market` is not equivalent, since it is what makes availability reflect the
+user's market.
+
+**When adding or changing a track-returning request:** either leave `market` off, or
+normalise the id. `SpotifyAPI.fetchTracks` logs a warning when a returned id differs from
+the requested one, which is what makes this visible at all.
+
 ## State Management Architecture
 
 The app uses a normalized state store pattern (similar to Pinia/Redux) for data management.

@@ -112,6 +112,12 @@ This was verified against the checked-out librespot, not inferred from the log:
 emitting a callback, that intermediate state is not published through the playback
 subjects; `Playing`/`Paused` publishes the logical URI together with that duration.
 
+The Web API relinks too, along the same split, and is *not* covered by this plan: sending
+`market` makes it return the playable alternative's id and move the requested one into
+`linked_from`. `AGENTS.md` → "Track relinking and the `market` parameter" records which
+requests send it and what a caller has to do about it. The playlist and search paths send
+`market` today and do not normalise, which is a known hazard rather than a proven failure.
+
 ## Design
 
 ### 1. Centralize logical-track publication in the Rust bridge
