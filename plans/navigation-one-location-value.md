@@ -1,7 +1,7 @@
 # Navigation: make the location one value
 
 Status: **planned**
-Components: `Spotifly/ViewModels/NavigationCoordinator.swift`,
+Components: `Spotifly/ViewModels/NavigationCoordinator.swift`, `Spotifly/Store/AppStore.swift`,
 `Spotifly/Views/LoggedInContentRouterView.swift`, `Spotifly/Views/LoggedInView.swift`,
 `Spotifly/Views/LoggedInToolbars.swift`, `SpotiflyTests/SpotiflyTests.swift`
 Found: 2026-08-01, while deciding what to do about two long-failing navigation tests
@@ -101,19 +101,25 @@ section is the correct behaviour, and it is what the test asserts.
 
 ### `clearing search prunes search history entries`
 
-The sequence is startpage → search → clear → startpage, and the test asserts that afterwards
-there is nothing to go back to. That is right, and it is what the design produces: clearing
-the results makes the search route unviewable, invalidation removes it from history, and the
-collapse then drops the `startpage` entry that has become adjacent to the identical current
-route.
+This test's expectation changes, and that is a deliberate product decision rather than a
+technical one.
 
-It fails today for a mechanical reason. `pruneSearchHistory` removes entries whose *own*
-section is `.searchResults`, but the recorded entry is the `startpage` one that led into
-search — so nothing is pruned, and history keeps an entry equal to where the user now is.
-Back is a no-op that still advertises itself.
+It asserts that after startpage → search → clear → startpage there is **nothing to go back
+to**. That was defensible while a cleared search left a dead route behind: the entry could
+not be rendered, so removing it was the only honest option. With results kept per query
+(§1b) the route stays renderable, so Back returns to the search results — which is what
+requirement 2 asks for and how a browser behaves. Clearing a search field has never meant
+erasing where you have been.
 
-The defect is the missing collapse, not a missing prune: removing a node from a path has to
-collapse the neighbours it joined when they are the same place.
+It also fails today for a mechanical reason worth recording, because the same defect would
+bite elsewhere: `pruneSearchHistory` removes entries whose *own* section is `.searchResults`,
+but the recorded entry is the `startpage` one that led into search — so nothing is pruned
+and history keeps an entry equal to where the user now is. Back becomes a no-op that still
+advertises itself. That missing collapse is fixed regardless (§1a); it is simply no longer
+reachable through this scenario.
+
+**So this test is rewritten and renamed**, asserting that Back after clearing returns to the
+search results. It is the one existing expectation this plan overturns.
 
 ## Design
 
@@ -136,30 +142,36 @@ nothing records and Back could never return to the earlier results, while
 `AppStore.searchResults` has already replaced them. Two searches are two places, and the
 query is what distinguishes them.
 
-The submitted query has to live **with the results**, not only on the route. `AppStore`
-keeps `searchResults` with no record of what produced it, and `searchText` is view state
-that drifts — type "ab" without submitting and it no longer describes what is displayed. So
-reopening Search Results from the sidebar could not tell which query the visible results
-belong to, and would build a route with the wrong identity. Store the submitted query beside
-the result set; the route then reads it rather than guessing.
+### 1b. Results keyed by query
 
-Identity is all the query provides here. Restoring an earlier search route does **not**
-re-run it: `AppStore.searchResults` holds one result set, so an older query's results are
-gone the moment a newer search lands. A route that cannot be displayed is invalidated and
-removed from history by the mechanism in §1a — the same treatment a deleted playlist gets.
+`AppStore.searchResults` holds one result set. Replace it with results keyed by the query
+that produced them, bounded to the most recent handful.
 
-The honest consequence, named rather than glossed: **stepping back through two consecutive
-searches does not work.** Back from `search("b")` skips the now-unviewable `search("a")` and
-lands on whatever preceded it. The route model is right — they are two places, and it
-records them — but the data to render the older one no longer exists.
+This is the piece that makes the rest cheap, and it collapses three separate problems into
+one small change:
 
-Making that work is a follow-up, and a small one: key results by query instead of keeping a
-single set. It is deliberately out of this plan, because the alternative — re-running the
-query on Back — drags in loading and error states for a restored route, a retry path when
-the network is down, and a superseded-write guard, since `SearchService` opens with
-`guard !store.searchIsLoading else { return }` and would drop the newer of two rapid
-restorations while the older one wrote. That is a feature with its own design, not a detail
-of a navigation refactor.
+- **Restoring a search route needs no fetch.** Back to `search("a")` reads `a` from the
+  cache. No loading state for a restored route, no retry path when the network is down, and
+  no superseded-write guard — which matters, because `SearchService` opens with
+  `guard !store.searchIsLoading else { return }` and would otherwise drop the newer of two
+  rapid restorations while the older one wrote. Re-running the query on Back would have
+  needed all three; caching needs none of them.
+- **The query/results association stops being ad-hoc.** A single result set records nothing
+  about what produced it, and `searchText` is view state that drifts — type "ab" without
+  submitting and it no longer describes what is shown. Reopening Search Results from the
+  sidebar could not tell which query the visible results belong to. Keyed storage *is* that
+  association; no separate field to keep in step.
+- **Search leaves the invalidation path.** A search route is renderable whenever its results
+  are cached, so clearing the field no longer makes history entries dead.
+
+The bound is what keeps this honest. A session with many searches cannot grow without
+limit, so the cache keeps the last few queries and evicts the oldest — and an evicted
+query's route *does* become unviewable, handled by the same invalidation in §1a that covers
+a playlist deleted while it sits in history. One mechanism, two triggers, instead of a
+mechanism whose only real trigger was search.
+
+Clearing the search field then means what it says: it clears the field and leaves the
+results view. It does not evict the cache, and it does not erase where the user has been.
 
 **`Selection` is an entity reference, nothing more** — a kind and an id. It deliberately
 does *not* record whether the item was in the library, even though today's
@@ -327,8 +339,8 @@ individual field assignments.
 Fix the two existing tests by fixing the code they pin:
 
 1. `favorites selection …` — back title names the place the entry returns to.
-2. `clearing search …` — invalidation removes the unviewable search route, and the collapse
-   then removes the entry it left adjacent to the current one.
+2. `clearing search …` — **rewritten and renamed.** Clearing the field leaves history
+   intact; Back returns to the search results, which are still cached.
 
 Add, all against the coordinator alone:
 
@@ -353,18 +365,17 @@ Add, all against the coordinator alone:
 14. Revisiting a route keeps both entries: startpage → albums → startpage, then back twice,
     replays albums and then startpage. This is the case the adjacent-only collapse must not
     swallow.
-15. Invalidation reaches the whole history, not just the current route:
-    startpage → search → albums → search, then clear, leaves no search entry in either
-    stack and no back step that lands on an empty view. A playlist deleted while it sits in
-    both stacks behaves the same way.
+15. Invalidation reaches the whole history, not just the current route. A playlist deleted
+    while it sits in both stacks is gone from each, with no back step landing on an empty
+    view — and so is a search whose query has been evicted from the cache.
 16. Invalidation collapses what it joins: an entry removed from between two equal routes
     leaves one, not two.
-17. Two consecutive searches are two locations, and the older one is invalidated rather
-    than silently equal: search "a", search "b", then back skips "a" — whose results are
-    gone — and lands on what preceded it. Pins the named limitation so a later
-    query-keyed cache has something to change.
+17. Two consecutive searches are two locations and both are reachable: search "a", search
+    "b", then back shows "a"'s results, and forward shows "b"'s again.
 20. Reopening Search Results from the sidebar adopts the query the visible results came
     from, not whatever is currently typed in the field.
+21. The results cache is bounded: after more searches than it holds, the oldest query is
+    evicted and its route is invalidated rather than rendering empty.
 18. Library membership is not identity: viewing an ephemeral album, saving it, then
     selecting it from the library row is the same route and adds no back step.
 
@@ -393,8 +404,9 @@ except.
 2. The back/forward control is present in every section, in both the 2- and 3-column
    layouts.
 3. Forward after several backs replays the same route.
-4. Search, clear the search field, then press back: it lands on the page you were on
-   before searching, with no dead entry in between.
+4. Search, clear the search field, then press back: it returns to the search results,
+   served from the cache with no new request. This is the behaviour change named in
+   §"clearing search".
 5. Enter a section whose first item auto-selects; back leaves the section rather than
    undoing the auto-selection.
 
@@ -406,7 +418,9 @@ except.
 - Back and forward titles name the route they lead to, and never a section the entry is not
   in.
 - Back is never a no-op: `back.last` is never equal to the current route, and no reachable
-  entry renders an empty view. Entries further back may equal it — a revisited place is a
+  entry renders an empty view.
+- A search route is served from the cache, without a request, for as long as its query is
+  held; once evicted it is invalidated rather than shown empty. Entries further back may equal it — a revisited place is a
   real step and must stay replayable.
 - The stack's own back chevron and the toolbar's Back move through the same history: a
   native pop does not become a forward entry.
@@ -420,10 +434,6 @@ except.
 
 ## Out of scope
 
-- **Stepping back through consecutive searches.** The route records them, but only the
-  newest query's results exist, so an older search route is invalidated rather than
-  restored. Keying results by query fixes it and is the natural follow-up; re-running the
-  query on Back is the alternative, and the more expensive one — see §1.
 - **Restoring navigation across launches.** A `Codable` route makes it possible and it is a
   reasonable follow-up, but it needs its own decisions about what should be restored.
 - **URL / deep-link parsing.** `spotify:` link handling is a separate feature; a single route
