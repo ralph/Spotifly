@@ -371,7 +371,15 @@ final class NavigationCoordinator {
 
     private func navigateBackward(to target: Route) {
         guard let targetIndex = back.lastIndex(of: target) else {
-            navigate(to: target)
+            // A pop is a backward move even when its destination was never recorded — the
+            // user can arrive deep in one step by assigning a whole path, and the levels
+            // skipped on the way in were never locations. Recording it as a *new* location
+            // would put the view just left onto the back stack, so Back would walk straight
+            // back into it.
+            forward.append(current)
+            current = target
+            rememberSelection(from: target)
+            noteRouteDisplayed(target)
             return
         }
 

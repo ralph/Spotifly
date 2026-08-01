@@ -132,6 +132,27 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.current == root)
     }
 
+    /// A whole path can be assigned in one step — that is what the binding is for, and what
+    /// a deep link would do — so the levels it skips were never locations. Popping out of
+    /// one must still move backward rather than recording the deeper view.
+    @Test func `a pop to an unrecorded level still moves backward`() {
+        let coordinator = NavigationCoordinator(store: AppStore())
+
+        coordinator.selectNavigationItem(.albums)
+        coordinator.setNavigationPath([.artist(id: "artist-1"), .album(id: "album-1")])
+        coordinator.setNavigationPath([.artist(id: "artist-1")])
+
+        #expect(coordinator.navigationPath == [.artist(id: "artist-1")])
+
+        coordinator.navigateBackward()
+
+        #expect(coordinator.navigationPath.isEmpty)
+
+        coordinator.navigateForward()
+
+        #expect(coordinator.navigationPath == [.artist(id: "artist-1")])
+    }
+
     @Test func `section reentry restores remembered selection without an extra step`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.selectNavigationItem(.albums)
