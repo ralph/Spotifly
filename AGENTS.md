@@ -67,11 +67,15 @@ Where things stand today:
 | `/playlists/{id}/items` | **yes** | relinked playlist tracks cache under the alternative id |
 | `/search` | **yes** | same, for track results |
 
-The last two are a known, unfixed hazard rather than a proven failure — it needs a playlist
-or search result containing a track relinked for this account's market. Fixing it means
-decoding `linked_from` (`TrackCodable` does not today) and preferring it as the entity id;
-simply dropping `market` is not equivalent, since it is what makes availability reflect the
-user's market.
+The last two are an **unfixed defect**, reproduced against the live API: a track added to a
+playlist as `3CCy…` comes back as `7zzo…` from the request shape the app uses. It has gone
+unnoticed only because it needs a track that relinks for this market, and because album
+playback and the Now Playing bar are fed by requests that send no `market`.
+
+`plans/web-api-track-relinking-identity.md` has the fix. Note the trap it turns on: a
+`fields` projection returns only what it lists, and the playlist request projects fields
+that omit `linked_from` — so decoding alone would be dead code there. The projection has to
+ask for it.
 
 **When adding or changing a track-returning request:** either leave `market` off, or
 normalise the id. `SpotifyAPI.fetchTracks` logs a warning when a returned id differs from

@@ -7,9 +7,13 @@ Found: 2026-08-01, while documenting the `market` parameter after the bridge-sid
 
 ## Symptom
 
-None observed yet — this is a hazard with a proven mechanism and an unproven occurrence.
-It needs a playlist or search result containing a track that is relinked for this account's
-market.
+Reproduced against the live API on 2026-08-01: a track added to a playlist as
+`3CCyVdprlcXui4ZwMw1hNS` comes back as `7zzoxJbgjme3366mOp5UnH` from the exact request
+shape the app uses. This is a confirmed defect on the playlist path, not a hazard.
+
+It has gone unnoticed because it needs a track that relinks for this account's market, and
+because the two surfaces where it hurts most — album playback and the Now Playing bar —
+are fed by requests that send no `market`.
 
 When it happens, the track's entity is cached under the *playable alternative's* id, with
 two consequences.
@@ -128,26 +132,40 @@ same thing for the stream — `CURRENT_TRACK_URI` from `Loading`/`Playing`, dura
 ### 1a. Ask for `linked_from` wherever a `fields` projection is used
 
 A `fields` projection returns exactly what it lists, so a field nobody asked for never
-arrives. Two requests project track fields:
+arrives — and a projection is the one way this fix could appear to work while doing
+nothing, because `linkedFrom` would simply always decode as nil.
 
-| Request | `market` today | `fields` lists `linked_from`? |
-| --- | --- | --- |
-| `/playlists/{id}/items` | **yes** | no |
-| `/me/tracks` | no | no |
+Verified that a projection *does* pass it through when asked (see Verification), so the
+seam design holds. Three requests project track fields and none of them list it today.
 
-The playlist request therefore has relinking *on* and the recovery field *filtered out*: it
-returns the alternative's id with nothing to map it back. That also makes this the one way
-the fix could appear to work and do nothing — normalising in `toAPITrack()` alone would be
-dead code on the very endpoint most at risk, because `linkedFrom` would always decode as
-nil.
+### 1b. The full inventory
 
-Add `linked_from(id,uri)` to both projections. Requests without a `fields` parameter —
-`/v1/tracks`, `/search`, `/albums/{id}/tracks` — return the full track object and carry
-`linked_from` on their own.
+Every request that puts a `Track` in the store, and what each needs:
 
-Treat this as the ordering constraint of the whole change: **the projection and the
-decoding land together, and `market` is not added anywhere new until both are in place.**
-Adding `market` first would introduce the bug this plan exists to prevent.
+| Request | `fields` | `market` today | needs |
+| --- | --- | --- | --- |
+| `/playlists/{id}/items` | yes | **yes** | `linked_from` in `fields` — **this is the live defect** |
+| `/search` | no | **yes** | nothing; `linked_from` already arrives, only the decoding is missing |
+| `/albums/{id}/tracks` | yes | no | `linked_from` in `fields`, then `market` |
+| `/me/tracks` (saved) | yes | no | `linked_from` in `fields`, then `market` |
+| `/tracks/{id}` | no | no | `market` |
+| `/tracks?ids=` | no | no | `market`; drop the mismatch warning |
+| `/me/top/tracks` | no | no | `market`, if the endpoint accepts it |
+| `/me/player/recently-played` | no | no | `market`, if the endpoint accepts it |
+
+The last two are user-data endpoints and may not take a `market` parameter at all. Check
+each before adding it rather than assuming the rule is uniform — which is why the invariant
+worth stating is **not** "everything sends `market`" but:
+
+> Identity comes from `linked_from` when it is present. Every response passes through the
+> same normalisation, whether or not its request could ask for a market.
+
+`market` is then an availability improvement applied wherever the API allows it, and
+correctness does not depend on achieving it everywhere.
+
+Ordering constraint for the whole change: **the projections and the decoding land together,
+and `market` is not added anywhere new until both are in place.** Adding `market` first
+would introduce the bug this plan exists to prevent.
 
 ### 2. Normalise at that one seam, not per call site
 
@@ -206,23 +224,25 @@ documentation:
 `market` switches relinking on, and `linked_from` returns the requested identity in full
 (`id`, `uri`, `href`, `type`, `external_urls`).
 
-Then the question the design actually hinges on — **does a `fields` projection pass
-`linked_from` through?** Put that track in a playlist and ask for it the way the app does,
-with `linked_from(id,uri)` added:
+**Also confirmed:** the question the design hinges on — whether a `fields` projection
+passes `linked_from` through. That track was put in a scratch playlist and requested the
+way the app requests it, with `linked_from(id,uri)` added:
 
-```bash
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://api.spotify.com/v1/playlists/$PLAYLIST/items?limit=50&market=from_token&fields=items(track(id,uri,linked_from(id,uri)))" \
-  | jq '.items[].track | select(.linked_from != null)'
+```json
+{"track": {"uri": "spotify:track:7zzoxJbgjme3366mOp5UnH",
+           "id": "7zzoxJbgjme3366mOp5UnH",
+           "linked_from": {"id": "3CCyVdprlcXui4ZwMw1hNS",
+                           "uri": "spotify:track:3CCyVdprlcXui4ZwMw1hNS"}}}
 ```
 
-Expected: the entry appears with both ids. If the projection silently drops `linked_from`,
-normalising at the conversion seam cannot work for playlists at all and the design has to
-change — most likely to dropping `fields` on that request, which is a different trade
-(response size) and belongs in the plan before any code is written.
+The projection carries it, so normalising at the conversion seam works everywhere. The same
+request without `fields` returns the same thing plus `is_playable: true`.
 
-If either check disagrees with the documentation, this plan's premise is wrong and nothing
-here should be built.
+That second check also settles the severity: a track added to a playlist as `3CCy…` comes
+back as `7zzo…` from the request shape the app actually uses. The playlist row is a
+**confirmed defect**, not a hazard — today the app caches that entity under `7zzo…`, and a
+favorite or a playlist removal from it would carry the id Spotify's documentation says will
+fail.
 
 ### Automated
 
