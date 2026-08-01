@@ -772,8 +772,12 @@ final class PlaybackViewModel {
         }
     }
 
-    /// Lightweight Now Playing update — only writes elapsed time + playback rate.
-    /// No metadata or artwork processing. Call on: seek, play/pause, drift correction.
+    /// Lightweight Now Playing update — writes elapsed time, duration, and playback rate.
+    /// No title, artist, or artwork processing. Call on: seek, play/pause, drift correction.
+    ///
+    /// Duration belongs here even though it is metadata: the URI `didSet` clears the stream
+    /// duration on every track change, so a path that only wrote elapsed time would leave
+    /// the previous track's duration standing against the new track's position.
     func updateNowPlayingPosition() {
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         if let durationMs = effectiveNowPlayingDurationMs {
