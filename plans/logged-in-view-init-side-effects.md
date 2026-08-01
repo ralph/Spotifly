@@ -172,13 +172,14 @@ below, which exercises the real thing.
 
 Capture a log while starting an album from a cold launch.
 
-**Note on capturing:** `debugLog` uses `print`, so Swift lines go to stdout, while
-librespot writes to stderr. Piping to `tee` makes stdout block-buffered, so the Swift lines
-do not appear until the app exits. Run under a pty to read them live:
-
 ```bash
-script -q /dev/null env RUST_LOG=librespot=debug,spotifly_rust=debug <app-binary> 2>&1 | tee run.log
+RUST_LOG=librespot=debug,spotifly_rust=debug <app-binary> 2>&1 | tee run.log
 ```
+
+**Historical note:** this verification originally lost a run because `debugLog` printed to
+stdout, which block-buffers once it is a pipe — the Swift lines stayed invisible until the
+app exited, while librespot's stderr appeared live. `debugLog` writes to stderr now, so a
+plain `2>&1 | tee` shows both halves in order as they happen.
 
 Then check:
 
