@@ -164,8 +164,32 @@ Everything else is derived:
 - `canNavigateBackward` = `!back.isEmpty` — unchanged, but now it means what it says;
 - `title(for:)` becomes a function of one `Route`, with no field-precedence guessing;
 - "is this the same place" is `==` on `Route`;
-- recording is `back.append(old)` on any change, with **one** rule instead of a heuristic
-  family: collapse when the new route equals the current one.
+- recording is `back.append(old)` on any change, with two operations instead of a heuristic
+  family — see below.
+
+### 1a. Two ways to move: navigate, and replace
+
+Most movement is a **navigation**: `back.append(current)`, `current = new`, clear forward.
+Revisiting a place you have been is still a navigation — startpage → albums → startpage
+keeps both startpage entries, because requirement 2 says back must replay
+albums → startpage.
+
+The exception is when the current route stops being viable. Clearing the search results is
+the case that exists today: the search route renders nothing afterwards, so leaving it is
+not a step forward from search — search is gone. That is a **replacement**:
+`current = new` with no append.
+
+Replacement is what actually fixes the failing test, and the reason is worth being precise
+about. After replacing, `back.last` can now equal `current` — in the failing sequence,
+startpage → search → *clear* → startpage leaves `back = [startpage]` while `current` is
+startpage. Back would be a no-op that still advertises itself. So replacement is followed by
+one collapse:
+
+> after a replacement, if `back.last == current`, drop it.
+
+Note what this does *not* say: it does not scan history for duplicates. An earlier entry
+equal to the current route is legitimate — it is a place the user genuinely visited on the
+way here. Only the newly adjacent one is a no-op, and only that one is dropped.
 
 The eight fields do not vanish from the API — `NavigationSplitView` needs bindings for the
 section and the list selection. They become computed projections into `current`, so there is
@@ -250,7 +274,8 @@ individual field assignments.
 Fix the two existing tests by fixing the code they pin:
 
 1. `favorites selection …` — back title names the place the entry returns to.
-2. `clearing search …` — history holds no entry equal to the current location.
+2. `clearing search …` — leaving an invalidated search route replaces rather than records,
+   and the collapse then removes the adjacent duplicate.
 
 Add, all against the coordinator alone:
 
@@ -272,6 +297,9 @@ Add, all against the coordinator alone:
 12. Restoring a route does not itself record history.
 13. Clearing the sidebar selection is a location: it records, renders the empty state, and
     back returns from it.
+14. Revisiting a route keeps both entries: startpage → albums → startpage, then back twice,
+    replays albums and then startpage. This is the case the adjacent-only collapse must not
+    swallow.
 
 Deep-link entry points (`navigateToAlbumSection` and friends) get one test each showing the
 route they produce, replacing what the `pendingSectionNavigation` round trip made awkward to
@@ -310,7 +338,8 @@ except.
   only at the true start of history.
 - Back and forward titles name the route they lead to, and never a section the entry is not
   in.
-- No history entry is equal to the current location.
+- Back is never a no-op: `back.last` is never equal to the current route. Entries further
+  back may equal it — a revisited place is a real step and must stay replayable.
 - The stack's own back chevron and the toolbar's Back move through the same history: a
   native pop does not become a forward entry.
 - Re-entering a section returns to the selection left behind, and that memo neither appears
