@@ -44,7 +44,16 @@ import Foundation
     @MainActor
     func recordActivation(_ service: AnyObject) {
         let name = String(describing: type(of: service))
-        defer { activatedServices[name] = WeaklyHeldService(service) }
+
+        // The owner is the first activated instance that is *still* live, not the most
+        // recent one. Overwriting on every call would lose the owner as soon as an
+        // offending instance was itself released, and a third activation alongside the
+        // still-live owner would then pass unreported.
+        defer {
+            if activatedServices[name]?.object == nil {
+                activatedServices[name] = WeaklyHeldService(service)
+            }
+        }
 
         // A released predecessor is not a fault: logging out tears the whole logged-in
         // view down, and the next sign-in rightly builds fresh services.
