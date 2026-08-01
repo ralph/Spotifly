@@ -29,6 +29,32 @@ Found: 2026-08-01, while documenting the `market` parameter after the bridge-sid
 - Decoder tests cover relinked and unchanged payloads. The focused `APITypesTests` suite
   and the full Debug build pass.
 
+### Two corrections after the fact
+
+The plan's central assumption — that `toAPITrack()` is the one funnel every track passes
+through — was wrong, and both places it was wrong had to be fixed afterwards:
+
+- **`/albums/{id}/tracks` decodes through its own type.**
+  `AlbumTracksCodable.AlbumTrackItemCodable` has its own fields and its own `toAPITrack()`,
+  neither of which knew about `linked_from`. Adding `market` and the projection to that
+  request therefore turned relinking on while the recovery field was decoded by nobody, and
+  album tracks — the path this branch had just verified end to end — began caching under
+  the substitute's id. The rule now lives in a `RelinkableTrackCodable` protocol that both
+  types conform to.
+- **`/search` built its entities by hand.** It sends `market` and uses no projection, so
+  `linked_from` had been arriving all along; the plan counted it as fixed by normalisation
+  alone. But the conversion was written out field by field and read the raw `id`, so it was
+  never normalised. It goes through `toAPITrack()` now.
+
+Both were invisible to the test suite, which covered `TrackCodable` only.
+
+Conversely, the implementation caught something this plan had missed: `/me/player` and
+`/me/player/queue` consume `TrackCodable` directly rather than through `toAPITrack()`, and
+now read the logical accessors.
+
+The lesson is recorded in `AGENTS.md`: check which type a response decodes into rather than
+assuming `TrackCodable`, and build entities through `toAPITrack()` rather than by hand.
+
 ## Symptom
 
 Reproduced against the live API on 2026-08-01: a track added to a playlist as
