@@ -1,10 +1,25 @@
 # Navigation: make the location one value
 
-Status: **completed**
+Status: **implemented — runtime verification outstanding**
 Components: `Spotifly/ViewModels/NavigationCoordinator.swift`, `Spotifly/Store/AppStore.swift`,
 `Spotifly/Views/LoggedInContentRouterView.swift`, `Spotifly/Views/LoggedInView.swift`,
 `Spotifly/Views/LoggedInToolbars.swift`, `SpotiflyTests/SpotiflyTests.swift`
 Found: 2026-08-01, while deciding what to do about two long-failing navigation tests
+
+## Implemented solution
+
+Implemented by Codex against this plan, with three follow-up fixes from review — all three
+in the pop fallback of `navigateBackward(to:)`, each with a test that fails without it.
+
+Verified: Debug build, `swiftformat --lint` clean, and **63 Swift tests with no failures**.
+Both long-failing navigation tests pass, so the branch carries no excepted baseline for the
+first time.
+
+**Outstanding: the runtime walk below.** The unit tests drive the coordinator directly,
+which is the right shape for the history algebra — but not for the wiring: that the toolbar
+appears in both column layouts, that the split-view bindings project the route correctly,
+and that a native chevron behaves like Back. Until that run, this is unit-tested rather than
+demonstrated.
 
 ## Requirements
 
