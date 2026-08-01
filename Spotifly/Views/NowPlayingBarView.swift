@@ -76,19 +76,6 @@ struct NowPlayingBarView: View {
             }
     }
 
-    private func resolveCurrentTrackMetadataIfNeeded() async {
-        guard let trackId = currentTrackId else { return }
-
-        do {
-            try await trackService.ensureTracksLoaded(trackIds: [trackId])
-            // The task may have outlived this ID. The update is still safe because it
-            // resolves PlaybackViewModel's current logical URI rather than `trackId`.
-            playbackViewModel.updateNowPlayingInfo()
-        } catch {
-            debugLog("NowPlayingBarView", "Failed to load metadata for \(trackId): \(error)")
-        }
-    }
-
     // MARK: - Player Layout
 
     private var playerLayout: some View {
@@ -384,6 +371,19 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(isCurrentTrackFavorited ? .red : .secondary)
         }
         .buttonStyle(.plain)
+    }
+
+    private func resolveCurrentTrackMetadataIfNeeded() async {
+        guard let trackId = currentTrackId else { return }
+
+        do {
+            try await trackService.ensureTracksLoaded(trackIds: [trackId])
+            // The task may have outlived this ID. The update is still safe because it
+            // resolves PlaybackViewModel's current logical URI rather than `trackId`.
+            playbackViewModel.updateNowPlayingInfo()
+        } catch {
+            debugLog("NowPlayingBarView", "Failed to load metadata for \(trackId): \(error)")
+        }
     }
 
     private func resolveCurrentTrackFavoriteStatusIfNeeded() async {

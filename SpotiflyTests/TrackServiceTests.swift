@@ -2,7 +2,8 @@
 //  TrackServiceTests.swift
 //  SpotiflyTests
 //
-//  Cancellation and deduplication behavior for favorite-status checks.
+//  Cancellation and deduplication behavior for track metadata loads and
+//  favorite-status checks.
 //
 
 @testable import Spotifly
@@ -13,8 +14,8 @@ struct TrackServiceTests {
     @Test func `cached metadata returns without fetching a token`() async throws {
         let store = AppStore()
         store.upsertTrack(Track(from: apiTrack(id: "cached")))
-        let tokens = TrackMetadataCounter()
-        let requests = TrackMetadataRecorder()
+        let tokens = RequestCounter()
+        let requests = RequestRecorder()
         let service = TrackService(
             store: store,
             tokenProvider: { tokens.count += 1; return "token" },
@@ -32,8 +33,8 @@ struct TrackServiceTests {
 
     @Test func `overlapping metadata batches fetch each track once`() async throws {
         let store = AppStore()
-        let gate = TrackMetadataGate()
-        let requests = TrackMetadataRecorder()
+        let gate = RequestGate()
+        let requests = RequestRecorder()
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
@@ -49,12 +50,12 @@ struct TrackServiceTests {
         let first = Task {
             try await service.ensureTracksLoaded(trackIds: ["a", "b"])
         }
-        try await waitForTrackMetadataCondition { requests.trackIdBatches.count == 1 }
+        try await waitForCondition { requests.trackIdBatches.count == 1 }
 
         let second = Task {
             try await service.ensureTracksLoaded(trackIds: ["b", "c"])
         }
-        try await waitForTrackMetadataCondition { requests.trackIdBatches.count == 2 }
+        try await waitForCondition { requests.trackIdBatches.count == 2 }
 
         let requestedIds = requests.trackIdBatches.flatMap(\.self)
         #expect(requestedIds.filter { $0 == "a" }.count == 1)
@@ -70,7 +71,7 @@ struct TrackServiceTests {
 
     @Test func `failed metadata can be retried`() async throws {
         let store = AppStore()
-        let requests = TrackMetadataCounter()
+        let requests = RequestCounter()
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
@@ -94,7 +95,7 @@ struct TrackServiceTests {
 
     @Test func `a track the api answers without is not requested again`() async throws {
         let store = AppStore()
-        let requests = TrackMetadataCounter()
+        let requests = RequestCounter()
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
@@ -115,7 +116,7 @@ struct TrackServiceTests {
 
     @Test func `a failed request does not mark its tracks unavailable`() async throws {
         let store = AppStore()
-        let requests = TrackMetadataCounter()
+        let requests = RequestCounter()
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
@@ -139,9 +140,9 @@ struct TrackServiceTests {
 
     @Test func `metadata load survives caller cancellation and remains shared`() async throws {
         let store = AppStore()
-        let gate = TrackMetadataGate()
-        let requests = TrackMetadataCounter()
-        let replacementFinished = TrackMetadataCounter()
+        let gate = RequestGate()
+        let requests = RequestCounter()
+        let replacementFinished = RequestCounter()
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
@@ -155,13 +156,13 @@ struct TrackServiceTests {
         let original = Task {
             try await service.ensureTracksLoaded(trackIds: ["shared"])
         }
-        try await waitForTrackMetadataCondition { requests.count == 1 }
+        try await waitForCondition { requests.count == 1 }
 
         let replacement = Task {
             try await service.ensureTracksLoaded(trackIds: ["shared"])
             replacementFinished.count += 1
         }
-        await settleTrackMetadataTasks()
+        await settleTasks()
 
         original.cancel()
         gate.open()
@@ -175,9 +176,9 @@ struct TrackServiceTests {
 
     @Test func `a replacement caller awaits a favorite check after the original caller is cancelled`() async throws {
         let store = AppStore()
-        let requestGate = FavoriteStatusGate()
-        let requests = FavoriteStatusCounter()
-        let replacementFinished = FavoriteStatusCounter()
+        let requestGate = RequestGate()
+        let requests = RequestCounter()
+        let replacementFinished = RequestCounter()
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
@@ -192,13 +193,13 @@ struct TrackServiceTests {
         let original = Task {
             await service.ensureFavoriteStatuses(trackIds: ["track"])
         }
-        try await waitForFavoriteStatusCondition { requests.count == 1 }
+        try await waitForCondition { requests.count == 1 }
 
         let replacement = Task {
             await service.ensureFavoriteStatuses(trackIds: ["track"])
             replacementFinished.count += 1
         }
-        await settleFavoriteStatusTasks()
+        await settleTasks()
 
         #expect(requests.count == 1)
         #expect(replacementFinished.count == 0)
@@ -218,17 +219,18 @@ struct TrackServiceTests {
 private struct TrackMetadataFailure: Error {}
 
 @MainActor
-private final class TrackMetadataCounter {
+private final class RequestCounter {
     var count = 0
 }
 
 @MainActor
-private final class TrackMetadataRecorder {
+private final class RequestRecorder {
     var trackIdBatches: [[String]] = []
 }
 
+/// Holds a fake request open until the test decides it may finish.
 @MainActor
-private final class TrackMetadataGate {
+private final class RequestGate {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var isOpen = false
 
@@ -270,8 +272,10 @@ private func apiTrack(id: String) -> APITrack {
     )
 }
 
+/// Yields until `condition` holds, so a test can wait for an unstructured task to
+/// reach a point without sleeping for a fixed duration.
 @MainActor
-private func waitForTrackMetadataCondition(_ condition: () -> Bool) async throws {
+private func waitForCondition(_ condition: () -> Bool) async throws {
     for _ in 0 ..< 1000 {
         if condition() {
             return
@@ -281,51 +285,10 @@ private func waitForTrackMetadataCondition(_ condition: () -> Bool) async throws
     Issue.record("Condition never became true")
 }
 
+/// Gives every already-started task a chance to run, so a following assertion about
+/// what did *not* happen is meaningful.
 @MainActor
-private func settleTrackMetadataTasks() async {
-    for _ in 0 ..< 20 {
-        await Task.yield()
-    }
-}
-
-@MainActor
-private final class FavoriteStatusCounter {
-    var count = 0
-}
-
-@MainActor
-private final class FavoriteStatusGate {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    func open() {
-        isOpen = true
-        let resuming = waiters
-        waiters.removeAll()
-        for waiter in resuming {
-            waiter.resume()
-        }
-    }
-}
-
-@MainActor
-private func waitForFavoriteStatusCondition(_ condition: () -> Bool) async throws {
-    for _ in 0 ..< 1000 {
-        if condition() {
-            return
-        }
-        await Task.yield()
-    }
-    Issue.record("Condition never became true")
-}
-
-@MainActor
-private func settleFavoriteStatusTasks() async {
+private func settleTasks() async {
     for _ in 0 ..< 20 {
         await Task.yield()
     }
