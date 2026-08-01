@@ -195,8 +195,16 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   | jq '{id, uri, is_playable, linked_from}'
 ```
 
-Expected: `id`/`uri` name the alternative, `linked_from.id` is `3CCy…`. The same request
-without `market` should return `3CCy…` and no `linked_from`.
+**Confirmed 2026-08-01** against this account, so the premise is fact rather than
+documentation:
+
+| request | `id` / `uri` | `is_playable` | `linked_from.id` |
+| --- | --- | --- | --- |
+| `?market=from_token` | `7zzoxJbgjme3366mOp5UnH` | `true` | `3CCyVdprlcXui4ZwMw1hNS` |
+| no `market` | `3CCyVdprlcXui4ZwMw1hNS` | absent | absent |
+
+`market` switches relinking on, and `linked_from` returns the requested identity in full
+(`id`, `uri`, `href`, `type`, `external_urls`).
 
 Then the question the design actually hinges on — **does a `fields` projection pass
 `linked_from` through?** Put that track in a playlist and ask for it the way the app does,
