@@ -743,6 +743,14 @@ final class PlaybackViewModel {
         } else {
             nowPlayingInfo[MPMediaItemPropertyTitle] = Self.unresolvedTrackTitle
             nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtist)
+            // Drop the cover unconditionally rather than leaving it to the URL
+            // comparison below. `lastAlbumArtURL` is not a reliable witness for what is
+            // installed: a failed download clears it without uninstalling artwork that an
+            // earlier, overlapping download for the same URL may have published. When the
+            // two disagree here nothing else would ever clear the cover, and it would sit
+            // beside the placeholder title indefinitely.
+            nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtwork)
+            lastAlbumArtURL = nil
         }
 
         applyNowPlayingTiming(to: &nowPlayingInfo)
