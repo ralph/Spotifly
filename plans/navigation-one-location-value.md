@@ -1,6 +1,6 @@
 # Navigation: make the location one value
 
-Status: **implemented — runtime verification outstanding**
+Status: **completed**
 Components: `Spotifly/ViewModels/NavigationCoordinator.swift`, `Spotifly/Store/AppStore.swift`,
 `Spotifly/Views/LoggedInContentRouterView.swift`, `Spotifly/Views/LoggedInView.swift`,
 `Spotifly/Views/LoggedInToolbars.swift`, `SpotiflyTests/SpotiflyTests.swift`
@@ -15,11 +15,28 @@ Verified: Debug build, `swiftformat --lint` clean, and **63 Swift tests with no 
 Both long-failing navigation tests pass, so the branch carries no excepted baseline for the
 first time.
 
-**Outstanding: the runtime walk below.** The unit tests drive the coordinator directly,
-which is the right shape for the history algebra — but not for the wiring: that the toolbar
-appears in both column layouts, that the split-view bindings project the route correctly,
-and that a native chevron behaves like Back. Until that run, this is unit-tested rather than
-demonstrated.
+Runtime-verified 2026-08-01 (`nav.log`): albums → an album → another album → artists → an
+artist → favorites → search → a search result, walking back through each. The unit tests
+drive the coordinator directly, which suits the history algebra but says nothing about the
+split-view wiring or a native chevron; this run covers that.
+
+**One new log line came with it**, and it is recorded rather than dismissed:
+
+```text
+Update NavigationRequestObserver tried to update multiple times per frame.
+Update NavigationAuthority bound path tried to update multiple times per frame.
+```
+
+SwiftUI observing the bound path change twice in one frame. It appears in no earlier log, so
+it arrived with this change — and the cause is the design working as specified: entering a
+section navigates to it, and the automatic first-item selection immediately *replaces* that
+route. Two route changes, one frame. It happens only on the **first** entry to a section;
+afterwards `lastSelection` supplies the selection to `selectNavigationItem` and there is a
+single change.
+
+Benign as it stands — bounded, explained, and not a behaviour anyone can see. Worth knowing
+about, because it sits exactly on the seam between the coordinator and `NavigationStack`,
+which is where anything that does go wrong here will show up first.
 
 ## Requirements
 
