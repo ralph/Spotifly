@@ -615,18 +615,15 @@ final class AppStore {
         searchResultQueries.removeAll { $0 == query }
         searchResultQueries.append(query)
 
-        if searchResultQueries.count > Self.searchResultsLimit {
-            let evictionCount = searchResultQueries.count - Self.searchResultsLimit
-            let evicted = searchResultQueries.prefix(evictionCount)
-            for query in evicted {
-                searchResultsByQuery.removeValue(forKey: query)
-            }
-            searchResultQueries.removeFirst(evictionCount)
-            if let lastDisplayedSearchQuery, evicted.contains(lastDisplayedSearchQuery) {
-                self.lastDisplayedSearchQuery = nil
-            }
-            searchCacheEvictionRevision &+= 1
+        // One query enters per call, so at most one leaves. The revision is what tells
+        // navigation to invalidate the history entries the evicted query can no longer serve.
+        guard searchResultQueries.count > Self.searchResultsLimit else { return }
+        let evicted = searchResultQueries.removeFirst()
+        searchResultsByQuery.removeValue(forKey: evicted)
+        if lastDisplayedSearchQuery == evicted {
+            lastDisplayedSearchQuery = nil
         }
+        searchCacheEvictionRevision &+= 1
     }
 
     func markSearchQueryDisplayed(_ query: String) {

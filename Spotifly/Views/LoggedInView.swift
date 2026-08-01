@@ -250,7 +250,7 @@ struct LoggedInView: View {
         SidebarView(
             selection: navigationSelectionBinding,
             onLogout: handleLogout,
-            hasSearchResults: store.lastDisplayedSearchQuery.map { store.searchResults(for: $0) != nil } ?? false,
+            hasSearchResults: store.lastDisplayedSearchQuery.flatMap(store.searchResults(for:)) != nil,
             userProfile: store.userProfile,
         )
         .navigationSplitViewColumnWidth(
@@ -281,6 +281,8 @@ struct LoggedInView: View {
             await searchService.search(accessToken: token, query: query)
             let hasResults = store.searchResults(for: query) != nil
             debugLog("Search", "After search - results: \(hasResults), error: \(store.searchErrorMessage ?? "nil")")
+            // The field can be cleared while the request is in flight, which already left
+            // the results view; do not navigate back into it behind the user.
             if hasResults, !searchText.isEmpty {
                 navigationCoordinator.navigateToSearchResults(query: query)
             }

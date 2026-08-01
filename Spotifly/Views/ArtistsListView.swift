@@ -159,15 +159,19 @@ struct ArtistsListView: View {
             if store.userArtists.isEmpty, !store.artistsPagination.isLoading {
                 await loadArtists()
             }
-            if navigationCoordinator.selectedArtistId == nil, let first = store.userArtists.first {
-                navigationCoordinator.selectArtist(first.id, recordsHistory: false)
-            }
+            selectFirstArtistIfNeeded()
         }
-        .onChange(of: store.userArtists) { _, artists in
-            if navigationCoordinator.selectedArtistId == nil, ephemeralArtist == nil, let first = artists.first {
-                navigationCoordinator.selectArtist(first.id, recordsHistory: false)
-            }
+        .onChange(of: store.userArtists) { _, _ in
+            selectFirstArtistIfNeeded()
         }
+    }
+
+    /// The section always shows a detail, so entering it lands on the first artist. The
+    /// coordinator is told at this call site that the step is automatic, so it replaces the
+    /// route rather than recording a history entry the user never asked for.
+    private func selectFirstArtistIfNeeded() {
+        guard navigationCoordinator.selectedArtistId == nil, let first = store.userArtists.first else { return }
+        navigationCoordinator.selectArtist(first.id, recordsHistory: false)
     }
 
     private func loadArtists(forceRefresh: Bool = false) async {

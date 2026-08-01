@@ -159,15 +159,19 @@ struct AlbumsListView: View {
             if store.userAlbums.isEmpty, !store.albumsPagination.isLoading {
                 await loadAlbums()
             }
-            if navigationCoordinator.selectedAlbumId == nil, let first = store.userAlbums.first {
-                navigationCoordinator.selectAlbum(first.id, recordsHistory: false)
-            }
+            selectFirstAlbumIfNeeded()
         }
-        .onChange(of: store.userAlbums) { _, albums in
-            if navigationCoordinator.selectedAlbumId == nil, ephemeralAlbum == nil, let first = albums.first {
-                navigationCoordinator.selectAlbum(first.id, recordsHistory: false)
-            }
+        .onChange(of: store.userAlbums) { _, _ in
+            selectFirstAlbumIfNeeded()
         }
+    }
+
+    /// The section always shows a detail, so entering it lands on the first album. The
+    /// coordinator is told at this call site that the step is automatic, so it replaces the
+    /// route rather than recording a history entry the user never asked for.
+    private func selectFirstAlbumIfNeeded() {
+        guard navigationCoordinator.selectedAlbumId == nil, let first = store.userAlbums.first else { return }
+        navigationCoordinator.selectAlbum(first.id, recordsHistory: false)
     }
 
     private func loadAlbums(forceRefresh: Bool = false) async {

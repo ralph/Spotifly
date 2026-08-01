@@ -158,15 +158,19 @@ struct PlaylistsListView: View {
             if store.userPlaylists.isEmpty, !store.playlistsPagination.isLoading {
                 await loadPlaylists()
             }
-            if navigationCoordinator.selectedPlaylistId == nil, let first = store.userPlaylists.first {
-                navigationCoordinator.selectPlaylist(first.id, recordsHistory: false)
-            }
+            selectFirstPlaylistIfNeeded()
         }
-        .onChange(of: store.userPlaylists) { _, playlists in
-            if navigationCoordinator.selectedPlaylistId == nil, ephemeralPlaylist == nil, let first = playlists.first {
-                navigationCoordinator.selectPlaylist(first.id, recordsHistory: false)
-            }
+        .onChange(of: store.userPlaylists) { _, _ in
+            selectFirstPlaylistIfNeeded()
         }
+    }
+
+    /// The section always shows a detail, so entering it lands on the first playlist. The
+    /// coordinator is told at this call site that the step is automatic, so it replaces the
+    /// route rather than recording a history entry the user never asked for.
+    private func selectFirstPlaylistIfNeeded() {
+        guard navigationCoordinator.selectedPlaylistId == nil, let first = store.userPlaylists.first else { return }
+        navigationCoordinator.selectPlaylist(first.id, recordsHistory: false)
     }
 
     private func loadPlaylists(forceRefresh: Bool = false) async {

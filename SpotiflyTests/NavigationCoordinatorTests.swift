@@ -212,14 +212,7 @@ struct NavigationCoordinatorTests {
         let store = AppStore()
         let coordinator = NavigationCoordinator(store: store)
         store.upsertAlbum(album(id: "album-a", name: "Named Album"))
-        store.upsertArtist(Artist(
-            id: "artist-a",
-            name: "Named Artist",
-            uri: "spotify:artist:artist-a",
-            images: .empty,
-            genres: [],
-            externalUrl: nil,
-        ))
+        store.upsertArtist(artist(id: "artist-a", name: "Named Artist"))
 
         coordinator.selectNavigationItem(.albums)
         #expect(coordinator.backNavigationTitle == NavigationItem.startpage.title)
@@ -449,25 +442,25 @@ struct NavigationCoordinatorTests {
     @Test func `album deep link applies its route directly`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.navigateToAlbumSection(albumId: "album-a")
-        #expect(coordinator.current == Route(section: .albums, selection: .album(id: "album-a"), query: nil, path: []))
+        #expect(coordinator.current == Route(section: .albums, selection: .album(id: "album-a")))
     }
 
     @Test func `artist deep link applies its route directly`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.navigateToArtistSection(artistId: "artist-a")
-        #expect(coordinator.current == Route(section: .artists, selection: .artist(id: "artist-a"), query: nil, path: []))
+        #expect(coordinator.current == Route(section: .artists, selection: .artist(id: "artist-a")))
     }
 
     @Test func `playlist deep link applies its route directly`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.navigateToPlaylistSection(playlistId: "playlist-a")
-        #expect(coordinator.current == Route(section: .playlists, selection: .playlist(id: "playlist-a"), query: nil, path: []))
+        #expect(coordinator.current == Route(section: .playlists, selection: .playlist(id: "playlist-a")))
     }
 
     @Test func `queue deep link applies its route directly`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.navigateToQueue()
-        #expect(coordinator.current == Route(section: .queue, selection: nil, query: nil, path: []))
+        #expect(coordinator.current == Route(section: .queue))
     }
 
     private var emptySearchResults: SearchResults {
@@ -486,6 +479,17 @@ struct NavigationCoordinatorTests {
             artistId: nil,
             artistName: "Artist",
             detailsLoaded: true,
+        )
+    }
+
+    private func artist(id: String, name: String) -> Artist {
+        Artist(
+            id: id,
+            name: name,
+            uri: "spotify:artist:\(id)",
+            images: .empty,
+            genres: [],
+            externalUrl: nil,
         )
     }
 
