@@ -1,12 +1,35 @@
 # LoggedInView.init has side effects, so discarded services keep running
 
-Status: **planned**
+Status: **implemented — runtime verification outstanding**
 Components: `Spotifly/Views/LoggedInView.swift`,
 `Spotifly/Store/Services/QueueService.swift`,
 `Spotifly/Store/Services/ConnectionService.swift`,
 `Spotifly/Store/Services/DeviceService.swift`,
 `Spotifly/ViewModels/PlaybackViewModel.swift`
 Found: 2026-08-01, while tracing 18 redundant `/v1/tracks` requests per album start
+
+## Implemented solution
+
+`18248b4` carries the whole change, deliberately as one commit — the two halves cannot be
+split without leaving the system Now Playing panel reading a store nothing fills.
+
+- `QueueService`, `ConnectionService` and `DeviceService` construct inert; an idempotent
+  `activate()` establishes what their initialisers used to.
+- `activate()` and `playbackViewModel.setStore(store)` run from the existing
+  `LoggedInLifecycleModifier` task, before its first `await`, so no Spirc notification
+  arrives while the player is unobserved. `ConnectionService` was threaded through that
+  modifier, which did not previously receive it.
+- `QueueService` keeps an instance tag in its log lines. It is what made this visible, and
+  a second tag is the signature of the bug returning.
+
+Verified: Debug build succeeds; the Swift suite passes 25 with only the two known
+`NavigationCoordinator` baseline failures; `swiftformat --lint` clean; Codex review found
+no regression. The Rust side is untouched.
+
+**Still outstanding — the runtime check below.** It is the only guard that actually
+exercises the trigger, since the bug lives in SwiftUI's `init` behaviour and the subjects
+are global statics with no injection seam. Until that run happens, this change is
+argued-correct rather than shown-correct.
 
 ## Symptom
 
