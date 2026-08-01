@@ -58,27 +58,45 @@ unexpected result". `saveTrack`, `removeSavedTrack`, `checkSavedTracks` and play
 removal all take their id from a store entity, so an entity keyed by the alternative does
 not merely look wrong, it makes those calls fail.
 
-`TrackCodable.logicalId` and `logicalUri` perform that normalisation automatically, and
-`toAPITrack()` uses them for every stored entity. Field-projected responses must still ask
-for `linked_from(id,uri)` explicitly — a projection returns only the listed fields.
+The `RelinkableTrackCodable` protocol carries the rule: `logicalId` and `logicalUri` resolve
+through `linked_from`, and each conforming type's `toAPITrack()` uses them.
+
+**There is more than one track-shaped response type**, which is the part that bites.
+`TrackCodable` serves most endpoints, but `/albums/{id}/tracks` decodes through
+`AlbumTracksCodable.AlbumTrackItemCodable`, with its own fields and its own `toAPITrack()`.
+A type that does not conform accepts `linked_from` from the wire and drops it — the request
+looks correct, the projection looks correct, and the substitute id reaches `AppStore`
+anyway. That happened once already, between two commits on this branch.
+
+Field-projected responses must also ask for `linked_from(id,uri)` explicitly; a projection
+returns only the fields it lists.
 
 Current request policy:
 
-| Request | `market` | Identity path |
-| --- | --- | --- |
-| `/tracks/{id}`, `/tracks?ids=` | yes | `toAPITrack()` |
-| `/albums/{id}/tracks`, `/me/tracks` | yes | projected `linked_from`, then `toAPITrack()` |
-| `/playlists/{id}/items` | yes | projected `linked_from`, then `toAPITrack()` |
-| `/search` | yes | `toAPITrack()` |
-| `/me/player` | yes | `QueueService` uses `logicalId` / `logicalUri` |
-| `/me/top/tracks`, `/me/player/recently-played`, `/me/player/queue` | unsupported | responses still normalise when consumed |
+| Request | `market` | Decoded as | Identity path |
+| --- | --- | --- | --- |
+| `/tracks/{id}`, `/tracks?ids=` | yes | `TrackCodable` | `toAPITrack()` |
+| `/me/tracks` | yes | `TrackCodable` | projected `linked_from`, then `toAPITrack()` |
+| `/playlists/{id}/items` | yes | `TrackCodable` | projected `linked_from`, then `toAPITrack()` |
+| `/albums/{id}/tracks` | yes | **`AlbumTrackItemCodable`** | projected `linked_from`, then its own `toAPITrack()` |
+| `/search` | yes | `TrackCodable` | `toAPITrack()` |
+| `/me/player` | yes | `TrackCodable` | `QueueService` reads `logicalId` / `logicalUri` |
+| `/me/top/tracks`, `/me/player/recently-played`, `/me/player/queue` | unsupported | `TrackCodable` | `toAPITrack()`, or `logical*` at the call site |
 
-**When adding or changing a track-returning request:** send `market=from_token` when the
-endpoint supports it, include `linked_from(id,uri)` in every fields projection, and never
-use raw `TrackCodable.id` or `.uri` as application identity. Stored tracks go through
-`toAPITrack()`; code that intentionally consumes the codable directly, such as playback
-bootstrap, must use `logicalId` and `logicalUri`. This also guarantees that writes keep
-using the original ID Spotify requires.
+**When adding or changing a track-returning request:**
+
+- send `market=from_token` where the endpoint supports it;
+- include `linked_from(id,uri)` in every fields projection;
+- make sure the type it decodes into conforms to `RelinkableTrackCodable` — check, do not
+  assume, since not every track response uses `TrackCodable`;
+- build entities through `toAPITrack()` rather than field by field. A hand-written
+  conversion is how `/search` came to read the raw id while looking entirely reasonable;
+- where the codable is consumed directly, as the playback bootstrap does, read `logicalId`
+  and `logicalUri`, never `id` or `uri`.
+
+This is also what keeps writes working: `saveTrack`, `removeSavedTrack`, `checkSavedTracks`
+and playlist removal all take their id from a stored entity, and Spotify requires the
+original id for those.
 
 ## State Management Architecture
 
