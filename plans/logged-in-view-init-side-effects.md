@@ -1,6 +1,6 @@
 # LoggedInView.init has side effects, so discarded services keep running
 
-Status: **implemented — runtime verification outstanding**
+Status: **completed**
 Components: `Spotifly/Views/LoggedInView.swift`,
 `Spotifly/Store/Services/QueueService.swift`,
 `Spotifly/Store/Services/ConnectionService.swift`,
@@ -26,10 +26,23 @@ Verified: Debug build succeeds; the Swift suite passes 25 with only the two know
 `NavigationCoordinator` baseline failures; `swiftformat --lint` clean; Codex review found
 no regression. The Rust side is untouched.
 
-**Still outstanding — the runtime check below.** It is the only guard that actually
-exercises the trigger, since the bug lives in SwiftUI's `init` behaviour and the subjects
-are global statics with no injection seam. Until that run happens, this change is
-argued-correct rather than shown-correct.
+Runtime-verified on 2026-08-01, starting the same album from a cold launch:
+
+```text
+08:01:45.762 QueueService] [svc#1 store:801] activated
+08:02:05.965 QueueService] [svc#1 store:801] Set queue: … prev=0, current=1, next=17
+08:02:05.965 QueueService] [svc#1 store:801] All 18 unique tracks already cached in store
+```
+
+One instance tag across the run, one `Set queue`, and nothing follows the cache hit:
+`Ensuring metadata` does not appear, and the run issues **zero** `/v1/tracks` requests
+where it previously issued 18. Relinked playback is unaffected — `Loading` and `Playing`
+carry the logical `3CCy…`, the playable `7zzo…` appears only in Rust, and no Swift callback
+carries it — so the identity plan's criteria still hold.
+
+Note that the log no longer says how often `LoggedInView.init` ran, and does not need to:
+that was the point of the fix. Whether SwiftUI built one store or five, only the activated
+one exists as far as the player is concerned.
 
 ## Symptom
 
