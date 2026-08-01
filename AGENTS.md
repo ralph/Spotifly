@@ -69,6 +69,23 @@ try await albumRequests.run(albumId) {
 }
 ```
 
+Requests that carry **many IDs at once** use `BatchInFlightRequests`
+(`Store/Services/BatchInFlightRequests.swift`) instead, because one key to one run does
+not fit them: `/v1/tracks` and `/me/tracks/contains` cover a whole batch, and the next
+caller arrives with an overlapping but different set. It joins the runs already carrying
+some of its IDs and starts one run for the remainder, which it hands to the operation:
+
+```swift
+try await metadataLoads.run(missingTrackIds) { uncoveredTrackIds in
+    // fetch only the IDs no current run covers
+}
+```
+
+Same guarantees as the keyed registry — unstructured runs, cache check before the token,
+entries dropped on failure so the next caller retries. `TrackService` owns both batch
+registries; route new track metadata through `ensureTracksLoaded(trackIds:)` rather than
+adding a second fetch path.
+
 Rules when adding a loading path:
 
 - **A key means one postcondition.** `album:<id>` always means "metadata *and* tracks are
