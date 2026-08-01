@@ -92,6 +92,51 @@ struct TrackServiceTests {
         #expect(store.tracks["retry"]?.name == "Track retry")
     }
 
+    @Test func `a track the api answers without is not requested again`() async throws {
+        let store = AppStore()
+        let requests = TrackMetadataCounter()
+        let service = TrackService(
+            store: store,
+            tokenProvider: { "token" },
+            metadataFetcher: { _, trackIds in
+                requests.count += 1
+                // Spotify omits IDs that do not resolve for this market.
+                return metadata(for: trackIds.filter { $0 != "unavailable" })
+            },
+        )
+
+        try await service.ensureTracksLoaded(trackIds: ["unavailable", "present"])
+        try await service.ensureTracksLoaded(trackIds: ["unavailable", "present"])
+
+        #expect(requests.count == 1)
+        #expect(store.tracks["present"] != nil)
+        #expect(store.tracks["unavailable"] == nil)
+    }
+
+    @Test func `a failed request does not mark its tracks unavailable`() async throws {
+        let store = AppStore()
+        let requests = TrackMetadataCounter()
+        let service = TrackService(
+            store: store,
+            tokenProvider: { "token" },
+            metadataFetcher: { _, trackIds in
+                requests.count += 1
+                if requests.count == 1 {
+                    throw TrackMetadataFailure()
+                }
+                return metadata(for: trackIds)
+            },
+        )
+
+        await #expect(throws: TrackMetadataFailure.self) {
+            try await service.ensureTracksLoaded(trackIds: ["transient"])
+        }
+        try await service.ensureTracksLoaded(trackIds: ["transient"])
+
+        #expect(requests.count == 2)
+        #expect(store.tracks["transient"] != nil)
+    }
+
     @Test func `metadata load survives caller cancellation and remains shared`() async throws {
         let store = AppStore()
         let gate = TrackMetadataGate()

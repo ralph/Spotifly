@@ -53,6 +53,15 @@ final class TrackService {
     /// SwiftUI view cannot cancel work still useful to the queue or its replacement.
     private var metadataLoadsInFlight: [String: (id: UUID, task: Task<Void, Error>)] = [:]
 
+    /// Track IDs a *successful* request came back without.
+    ///
+    /// The store can only cache what Spotify returned, so an ID that does not resolve for
+    /// this user's market stays absent and passes the missing-from-store filter forever.
+    /// A playlist holding a few such tracks would otherwise pay for them again on every
+    /// queue update. Only a response that arrived marks an ID here — a thrown request
+    /// leaves it eligible, so a network failure still retries.
+    private var unavailableTrackIds: Set<String> = []
+
     init(
         store: AppStore,
         tokenProvider: @escaping () async -> String,
@@ -75,9 +84,12 @@ final class TrackService {
     ///
     /// Cache hits return before requesting a token. Overlapping callers join any request
     /// already carrying an ID and fetch only the uncovered remainder. A failed run removes
-    /// its entries, so a later call retries normally.
+    /// its entries, so a later call retries normally, while an ID Spotify answered without
+    /// is not asked for again.
     func ensureTracksLoaded(trackIds: [String]) async throws {
-        let missingTrackIds = uniqueTrackIds(trackIds).filter { store.tracks[$0] == nil }
+        let missingTrackIds = uniqueTrackIds(trackIds).filter {
+            store.tracks[$0] == nil && !unavailableTrackIds.contains($0)
+        }
         guard !missingTrackIds.isEmpty else { return }
 
         var tasks: [(id: UUID, task: Task<Void, Error>)] = []
@@ -104,6 +116,7 @@ final class TrackService {
                     let fetched = try await self.metadataFetcher(accessToken, batch)
                     let tracks = batch.compactMap { fetched[$0] }.map { Track(from: $0) }
                     self.store.upsertTracks(tracks)
+                    self.unavailableTrackIds.formUnion(batch.filter { fetched[$0] == nil })
                 }
             }
             let entry = (id, task)
