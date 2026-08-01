@@ -125,6 +125,7 @@ final class QueueService {
         let prevEntries: [QueueEntry] = notification.prevTracks.compactMap { toQueueEntry($0) }
 
         store.setQueue(previous: prevEntries, current: currentEntry, next: nextEntries, contextUri: notification.contextUri)
+        reconcileQueueCurrentTrack()
 
         // Fetch track metadata for IDs not already in store
         let allIds = prevEntries.map(\.trackId) + (currentEntry.map { [$0.trackId] } ?? []) + nextEntries.map(\.trackId)
@@ -166,6 +167,18 @@ final class QueueService {
         pendingQueueRefreshTask = nil
     }
 
+    /// Queue and playback callbacks arrive through independent main-actor hops. Reconcile
+    /// after every usable queue update as well as when PlaybackViewModel changes the URI,
+    /// so whichever signal arrives second repairs the split.
+    private func reconcileQueueCurrentTrack() {
+        guard let currentTrackUri = PlaybackViewModel.shared.currentTrackUri,
+              let trackId = SpotifyAPI.parseTrackURI(currentTrackUri),
+              store.reconcileQueueCurrentTrack(with: trackId)
+        else { return }
+
+        log("Reconciled queue current pointer to \(trackId) at index \(store.currentIndex)")
+    }
+
     /// Handle queue update from Spirc callback (Mercury protocol)
     private func handleQueueUpdate(_ queueState: QueueState?) {
         guard let state = queueState else {
@@ -192,6 +205,7 @@ final class QueueService {
 
         store.noteLiveStateReceived()
         store.setQueue(previous: previousEntries, current: currentEntry, next: nextEntries)
+        reconcileQueueCurrentTrack()
 
         // Real queue arrived — cancel any pending Web API refresh
         if !nextEntries.isEmpty {
@@ -318,6 +332,7 @@ final class QueueService {
 
             // Web API doesn't provide previous tracks, so preserve existing or use empty
             store.setQueue(previous: nil, current: currentEntry, next: nextEntries)
+            reconcileQueueCurrentTrack()
 
             log("Initial queue: current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
 

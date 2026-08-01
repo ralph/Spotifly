@@ -58,6 +58,7 @@ final class PlaybackViewModel {
         didSet {
             if oldValue != currentTrackUri {
                 trackDurationMs = 0
+                reconcileQueueCurrentTrack()
             }
         }
     }
@@ -470,6 +471,18 @@ final class PlaybackViewModel {
     /// Sets the AppStore reference. Call this after AppStore is created.
     func setStore(_ store: AppStore) {
         self.store = store
+        reconcileQueueCurrentTrack()
+    }
+
+    /// The logical playback URI is authoritative for the queue's current pointer. Track
+    /// transitions do not emit a SetQueue event, so this runs at the URI change itself.
+    private func reconcileQueueCurrentTrack() {
+        guard let currentTrackUri,
+              let trackId = SpotifyAPI.parseTrackURI(currentTrackUri),
+              store?.reconcileQueueCurrentTrack(with: trackId) == true
+        else { return }
+
+        debugLog("PlaybackViewModel", "Reconciled queue current pointer to \(trackId)")
     }
 
     // MARK: - Playback Control (via Spirc or Web API)
