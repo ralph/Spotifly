@@ -18,7 +18,7 @@ struct QueueEntry: Equatable {
 }
 
 /// Normalized queue state storing track entries (ID + provider)
-struct Queue {
+struct Queue: Equatable {
     /// Previously played tracks (from Mercury only - Web API doesn't provide this)
     var previousTracks: [QueueEntry] = []
     /// Current track
@@ -31,6 +31,29 @@ struct Queue {
     var isLoading = false
     /// Error message if queue fetch failed
     var errorMessage: String?
+
+    /// Returns the same queue ordering, split around the occurrence of `trackId` nearest
+    /// the currently reported split. librespot can report a stale split while its ordering
+    /// is already correct, so the playing track's logical identity is authoritative.
+    func reconciled(currentTrackId trackId: String) -> Queue {
+        let allTracks = previousTracks + (currentTrack.map { [$0] } ?? []) + nextTracks
+        let reportedIndex = previousTracks.count
+        let matchingIndices = allTracks.indices.filter { allTracks[$0].trackId == trackId }
+
+        guard let currentIndex = matchingIndices.min(by: { lhs, rhs in
+            let lhsDistance = abs(lhs - reportedIndex)
+            let rhsDistance = abs(rhs - reportedIndex)
+            return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
+        }) else {
+            return self
+        }
+
+        var result = self
+        result.previousTracks = Array(allTracks[..<currentIndex])
+        result.currentTrack = allTracks[currentIndex]
+        result.nextTracks = Array(allTracks[(currentIndex + 1)...])
+        return result
+    }
 }
 
 // MARK: - App Store
@@ -625,6 +648,16 @@ final class AppStore {
         if let uri = contextUri, !uri.isEmpty {
             queue.contextUri = uri
         }
+    }
+
+    /// Aligns the queue's current pointer with the authoritative logical track identity.
+    /// Returns whether the split changed.
+    @discardableResult
+    func reconcileQueueCurrentTrack(with trackId: String) -> Bool {
+        let reconciledQueue = queue.reconciled(currentTrackId: trackId)
+        guard reconciledQueue != queue else { return false }
+        queue = reconciledQueue
+        return true
     }
 
     /// Insert a track into the queue after any existing manually queued items (provider: .queue),
