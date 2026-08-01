@@ -28,30 +28,11 @@ final class TrackService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "favorites"
 
-    /// Track IDs with a `/me/tracks/contains` check already on its way.
-    ///
-    /// The resolved-status cache alone does not prevent duplicates: it is only
-    /// written when a check *returns*, so two views asking about the same track in
-    /// the same frame — a row and the now-playing bar, say — both see it unresolved
-    /// and both ask. Keeping the task, rather than just a busy marker, also lets the
-    /// second caller await the result. The task is unstructured, so cancellation of
-    /// the SwiftUI task that started it does not strand the replacement view.
-    ///
-    /// This is deliberately not `InFlightRequests`, even though it wants the same two
-    /// guarantees. That registry maps one key to one run; a `contains` request covers
-    /// *many* tracks, and the next caller arrives with an overlapping but different
-    /// set — it has to join the runs already carrying some of its tracks and start one
-    /// for the rest. Folding the two together would mean teaching the registry a
-    /// many-to-one key relation it does not have, to save a dictionary and a `defer`.
-    private var checksInFlight: [String: (id: UUID, task: Task<Void, Never>)] = [:]
+    /// `/me/tracks/contains` checks, deduplicated per track ID.
+    private let statusChecks = BatchInFlightRequests()
 
-    /// Track IDs currently covered by a shared metadata request.
-    ///
-    /// A request may carry many IDs, while a later caller may overlap only part of that
-    /// batch. Mapping each ID to its task lets the caller join the covered work and start
-    /// one request for only the remainder. The tasks are unstructured so a disappearing
-    /// SwiftUI view cannot cancel work still useful to the queue or its replacement.
-    private var metadataLoadsInFlight: [String: (id: UUID, task: Task<Void, Error>)] = [:]
+    /// `/v1/tracks` metadata loads, deduplicated per track ID.
+    private let metadataLoads = BatchInFlightRequests()
 
     /// Track IDs a *successful* request came back without.
     ///
@@ -92,48 +73,14 @@ final class TrackService {
         }
         guard !missingTrackIds.isEmpty else { return }
 
-        var tasks: [(id: UUID, task: Task<Void, Error>)] = []
-        var seenTaskIds = Set<UUID>()
-        var uncoveredTrackIds: [String] = []
-
-        for trackId in missingTrackIds {
-            if let existing = metadataLoadsInFlight[trackId] {
-                if seenTaskIds.insert(existing.id).inserted {
-                    tasks.append(existing)
-                }
-            } else {
-                uncoveredTrackIds.append(trackId)
+        try await metadataLoads.run(missingTrackIds) { uncoveredTrackIds in
+            let accessToken = await self.tokenProvider()
+            for batch in self.batches(of: uncoveredTrackIds, size: 50) {
+                let fetched = try await self.metadataFetcher(accessToken, batch)
+                let tracks = batch.compactMap { fetched[$0] }.map { Track(from: $0) }
+                self.store.upsertTracks(tracks)
+                self.unavailableTrackIds.formUnion(batch.filter { fetched[$0] == nil })
             }
-        }
-
-        if !uncoveredTrackIds.isEmpty {
-            let id = UUID()
-            let task = Task { @MainActor in
-                defer { self.finishMetadataLoad(id: id, trackIds: uncoveredTrackIds) }
-
-                let accessToken = await self.tokenProvider()
-                for batch in self.batches(of: uncoveredTrackIds, size: 50) {
-                    let fetched = try await self.metadataFetcher(accessToken, batch)
-                    let tracks = batch.compactMap { fetched[$0] }.map { Track(from: $0) }
-                    self.store.upsertTracks(tracks)
-                    self.unavailableTrackIds.formUnion(batch.filter { fetched[$0] == nil })
-                }
-            }
-            let entry = (id, task)
-            for trackId in uncoveredTrackIds {
-                metadataLoadsInFlight[trackId] = entry
-            }
-            tasks.append(entry)
-        }
-
-        for entry in tasks {
-            try await entry.task.value
-        }
-    }
-
-    private func finishMetadataLoad(id: UUID, trackIds: [String]) {
-        for trackId in trackIds where metadataLoadsInFlight[trackId]?.id == id {
-            metadataLoadsInFlight[trackId] = nil
         }
     }
 
@@ -268,45 +215,13 @@ final class TrackService {
     private func check(_ trackIds: [String]) async {
         guard !trackIds.isEmpty else { return }
 
-        var tasks: [(id: UUID, task: Task<Void, Never>)] = []
-        var seenTaskIds = Set<UUID>()
-        var uncheckedTrackIds: [String] = []
-
-        for trackId in trackIds {
-            if let existing = checksInFlight[trackId] {
-                if seenTaskIds.insert(existing.id).inserted {
-                    tasks.append(existing)
-                }
-            } else {
-                uncheckedTrackIds.append(trackId)
+        // A failed check is not worth reporting — the heart just stays as it was — so
+        // the run swallows its own errors and `run` has nothing left to throw.
+        try? await statusChecks.run(trackIds) { uncheckedTrackIds in
+            let accessToken = await self.tokenProvider()
+            for batch in self.batches(of: uncheckedTrackIds, size: 50) {
+                try? await self.checkFavoriteStatuses(trackIds: batch, accessToken: accessToken)
             }
-        }
-
-        if !uncheckedTrackIds.isEmpty {
-            let id = UUID()
-            let task = Task { @MainActor in
-                defer { self.finishFavoriteCheck(id: id, trackIds: uncheckedTrackIds) }
-
-                let accessToken = await self.tokenProvider()
-                for batch in self.batches(of: uncheckedTrackIds, size: 50) {
-                    try? await self.checkFavoriteStatuses(trackIds: batch, accessToken: accessToken)
-                }
-            }
-            let entry = (id, task)
-            for trackId in uncheckedTrackIds {
-                checksInFlight[trackId] = entry
-            }
-            tasks.append(entry)
-        }
-
-        for entry in tasks {
-            await entry.task.value
-        }
-    }
-
-    private func finishFavoriteCheck(id: UUID, trackIds: [String]) {
-        for trackId in trackIds where checksInFlight[trackId]?.id == id {
-            checksInFlight[trackId] = nil
         }
     }
 
