@@ -8,8 +8,22 @@
 import Foundation
 
 #if DEBUG
-    /// The instance of each service type that has been activated so far.
-    @MainActor private var activatedServices: [String: ObjectIdentifier] = [:]
+    /// Holds the previously activated instance without keeping it alive.
+    ///
+    /// A weak reference is what makes the check mean "is the earlier instance *still
+    /// live?*" rather than "was there an earlier instance?". Both halves matter: logging
+    /// out and back in legitimately builds new services, and identity alone would call that
+    /// a fault; conversely an `ObjectIdentifier` is only unique among live objects, so a
+    /// freed one can be reused by a new allocation and hide a real duplicate.
+    private final class WeaklyHeldService {
+        weak var object: AnyObject?
+        init(_ object: AnyObject) {
+            self.object = object
+        }
+    }
+
+    /// The instance of each service type activated most recently.
+    @MainActor private var activatedServices: [String: WeaklyHeldService] = [:]
 
     /// Warns when a *second* instance of a service goes live.
     ///
@@ -30,14 +44,16 @@ import Foundation
     @MainActor
     func recordActivation(_ service: AnyObject) {
         let name = String(describing: type(of: service))
-        let id = ObjectIdentifier(service)
-        defer { activatedServices[name] = id }
+        defer { activatedServices[name] = WeaklyHeldService(service) }
 
-        guard let previous = activatedServices[name], previous != id else { return }
+        // A released predecessor is not a fault: logging out tears the whole logged-in
+        // view down, and the next sign-in rightly builds fresh services.
+        guard let previous = activatedServices[name]?.object, previous !== service else { return }
         debugLog(
             name,
-            "WARNING: a second instance was activated — a discarded one came alive. "
-                + "Construction must stay inert; only the instance SwiftUI kept may be activated.",
+            "WARNING: a second instance was activated while the first is still live — "
+                + "a discarded one came alive. Construction must stay inert; only the "
+                + "instance SwiftUI kept may be activated.",
         )
     }
 #else
