@@ -98,9 +98,24 @@ extension SpotifyAPI {
                 let decoded = try JSONDecoder().decode(TracksCodable.self, from: data)
                 var dict: [String: APITrack] = [:]
                 for (trackId, track) in zip(trackIds, decoded.tracks) {
-                    if let track {
-                        dict[trackId] = track.toAPITrack()
+                    guard let track else { continue }
+
+                    // Spotify applies track relinking only when `market` is sent, and this
+                    // request deliberately does not send it, so the returned id is the one
+                    // asked for. Adding `market` here — as four other endpoints do — would
+                    // silently change that: the entity would carry the playable
+                    // alternative's id, land in the store under it, and the logical id
+                    // would stay missing and be re-fetched forever. Say so rather than let
+                    // that be discovered from the outside again.
+                    if track.id != trackId {
+                        debugLog(
+                            "SpotifyAPI",
+                            "WARNING: /v1/tracks returned \(track.id) for requested \(trackId). "
+                                + "Relinking is on — the entity must be normalised to the requested id "
+                                + "before caching, or the logical track will never resolve.",
+                        )
                     }
+                    dict[trackId] = track.toAPITrack()
                 }
                 return dict
             } catch {
