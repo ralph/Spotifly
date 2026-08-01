@@ -65,9 +65,13 @@ Where the app stands today:
 Album playback works *because* albums do not send `market`. That is also why this stayed
 invisible through the entire bridge-side investigation, which used an album.
 
-## Why "just send `market` everywhere" is not the fix
+## Decision: `market` everywhere, `linked_from` as the identity
 
-It is the obvious idea, and it makes things worse rather than uniform.
+Both halves are needed, and the order matters. What follows is why neither works alone.
+
+### `market` alone makes it worse
+
+It is the obvious idea on its own, and it makes things worse rather than uniform.
 
 The identity that has to win is not the Web API's — it is Spirc's. librespot resolves a
 context server-side and reports the **context's** ids, which are the logical ones; the
@@ -83,14 +87,27 @@ lookup: the same logical track maps to different substitutes in different market
 `from_token` follows the account's market. Keying the store by it would mean the cache key
 for a track changes when the user's market does.
 
-## Why not drop `market` instead
+### Dropping `market` is wrong in the other direction
 
-Also wrong, in the other direction. `market` is what makes availability true for this user:
-without it there is no `is_playable` and no `restrictions`, so the app cannot tell a
-playable track from one it will fail to start. Dropping it trades a latent identity bug for
-a real availability blindness.
+`market` is what makes availability true for this user: without it there is no
+`is_playable` and no `restrictions`, so the app cannot tell a playable track from one it
+will fail to start. Dropping it trades a latent identity bug for real availability
+blindness — and leaves the split rule "which endpoints may send it?" that produced this
+hazard.
 
 `market` is not the problem. Leaving `linked_from` unread is.
+
+### Together they are the target state
+
+With normalisation at the conversion seam, `market` becomes safe everywhere, and uniform is
+better than a rule someone has to remember per endpoint. Every track the app shows is then
+the one that will actually play, `is_playable` and `restrictions` become available, and
+identity stays logical throughout.
+
+`/v1/tracks` gains the least — the recovery loader asks by logical id and would normalise
+straight back to it, a round trip whose only yield is `is_playable`. It still sends
+`market`, because "every track request sends `market`" is a rule that holds up, and "every
+track request except this one" is the kind that quietly stops holding.
 
 ## Design
 
@@ -107,6 +124,30 @@ That split is the identity rule this codebase already runs on, applied one layer
 logical track owns identity, the playable item supplies playback facts. The bridge does the
 same thing for the stream — `CURRENT_TRACK_URI` from `Loading`/`Playing`, duration from
 `TrackChanged`.
+
+### 1a. Ask for `linked_from` wherever a `fields` projection is used
+
+A `fields` projection returns exactly what it lists, so a field nobody asked for never
+arrives. Two requests project track fields:
+
+| Request | `market` today | `fields` lists `linked_from`? |
+| --- | --- | --- |
+| `/playlists/{id}/items` | **yes** | no |
+| `/me/tracks` | no | no |
+
+The playlist request therefore has relinking *on* and the recovery field *filtered out*: it
+returns the alternative's id with nothing to map it back. That also makes this the one way
+the fix could appear to work and do nothing — normalising in `toAPITrack()` alone would be
+dead code on the very endpoint most at risk, because `linkedFrom` would always decode as
+nil.
+
+Add `linked_from(id,uri)` to both projections. Requests without a `fields` parameter —
+`/v1/tracks`, `/search`, `/albums/{id}/tracks` — return the full track object and carry
+`linked_from` on their own.
+
+Treat this as the ordering constraint of the whole change: **the projection and the
+decoding land together, and `market` is not added anywhere new until both are in place.**
+Adding `market` first would introduce the bug this plan exists to prevent.
 
 ### 2. Normalise at that one seam, not per call site
 
@@ -126,7 +167,15 @@ guard exists precisely because the condition was unhandled. Once `toAPITrack()` 
 the condition is handled and the warning would fire on correct behaviour — remove it in the
 same change rather than leave a diagnostic that cries wolf.
 
-### 4. Out of scope
+### 4. Add `market` to the remaining track requests — last
+
+Once the projections carry `linked_from` and `toAPITrack()` normalises, add
+`market=from_token` to the track requests that lack it: `/v1/tracks`,
+`/albums/{id}/tracks`, `/me/tracks`. Last, deliberately — each of these is correct today
+*because* it omits `market`, so adding it before normalisation works would break exactly
+what currently holds.
+
+### 5. Out of scope
 
 `is_playable` and `restrictions` become available for free once `market` responses are
 being read properly. Surfacing unplayable tracks in the UI is a separate feature with its
@@ -149,9 +198,23 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 Expected: `id`/`uri` name the alternative, `linked_from.id` is `3CCy…`. The same request
 without `market` should return `3CCy…` and no `linked_from`.
 
-If that is not what comes back, this plan's premise is wrong and nothing here should be
-built — the documented behaviour and the observed behaviour would have to be reconciled
-first.
+Then the question the design actually hinges on — **does a `fields` projection pass
+`linked_from` through?** Put that track in a playlist and ask for it the way the app does,
+with `linked_from(id,uri)` added:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://api.spotify.com/v1/playlists/$PLAYLIST/items?limit=50&market=from_token&fields=items(track(id,uri,linked_from(id,uri)))" \
+  | jq '.items[].track | select(.linked_from != null)'
+```
+
+Expected: the entry appears with both ids. If the projection silently drops `linked_from`,
+normalising at the conversion seam cannot work for playlists at all and the design has to
+change — most likely to dropping `fields` on that request, which is a different trade
+(response size) and belongs in the plan before any code is written.
+
+If either check disagrees with the documentation, this plan's premise is wrong and nothing
+here should be built.
 
 ### Automated
 
