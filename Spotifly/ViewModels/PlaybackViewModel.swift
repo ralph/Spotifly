@@ -158,7 +158,7 @@ final class PlaybackViewModel {
 
         // Set initial Now Playing info to claim media controls
         var initialInfo: [String: Any] = [:]
-        initialInfo[MPMediaItemPropertyTitle] = "Spotifly"
+        initialInfo[MPMediaItemPropertyTitle] = Self.unresolvedTrackTitle
         initialInfo[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = initialInfo
 
@@ -681,6 +681,14 @@ final class PlaybackViewModel {
         }
     }
 
+    /// Title published while no logical track resolves.
+    ///
+    /// The app claims the media controls at init by publishing a Now Playing entry, and
+    /// that claim is only as good as the entry: removing the title outright leaves a
+    /// nameless row in Control Center. Falling back to the app name keeps the claim
+    /// intact between tracks, after logout, and while metadata is still loading.
+    private static let unresolvedTrackTitle = "Spotifly"
+
     private var currentNowPlayingTrack: Track? {
         guard let currentTrackUri,
               let trackId = SpotifyAPI.parseTrackURI(currentTrackUri)
@@ -710,7 +718,7 @@ final class PlaybackViewModel {
             nowPlayingInfo[MPMediaItemPropertyTitle] = currentTrack.name
             nowPlayingInfo[MPMediaItemPropertyArtist] = currentTrack.artistName
         } else {
-            nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyTitle)
+            nowPlayingInfo[MPMediaItemPropertyTitle] = Self.unresolvedTrackTitle
             nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtist)
             nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtwork)
             lastAlbumArtURL = nil
