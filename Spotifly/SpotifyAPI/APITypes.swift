@@ -363,6 +363,7 @@ struct TrackCodable: Decodable {
     let album: AlbumSimpleCodable?
     let externalUrls: ExternalUrlsCodable?
     let previewUrl: String?
+    let linkedFrom: LinkedTrackCodable?
 
     enum CodingKeys: String, CodingKey {
         case id, name, uri, artists, album
@@ -370,12 +371,23 @@ struct TrackCodable: Decodable {
         case trackNumber = "track_number"
         case externalUrls = "external_urls"
         case previewUrl = "preview_url"
+        case linkedFrom = "linked_from"
+    }
+
+    /// Spotify may return a market-playable replacement while keeping the requested
+    /// track in `linked_from`. The requested track remains Spotifly's stable identity.
+    var logicalId: String {
+        linkedFrom?.id ?? id
+    }
+
+    var logicalUri: String {
+        linkedFrom?.uri ?? uri
     }
 
     func toAPITrack(addedAt: String? = nil, albumId: String? = nil, albumName: String? = nil, images: ImageSet? = nil) -> APITrack {
         let artist = artists?.first
         return APITrack(
-            id: id,
+            id: logicalId,
             addedAt: addedAt,
             albumId: albumId ?? album?.id,
             albumName: albumName ?? album?.name,
@@ -386,9 +398,16 @@ struct TrackCodable: Decodable {
             images: images ?? album?.images?.toImageSet ?? ImageSet.empty,
             name: name,
             trackNumber: trackNumber,
-            uri: uri,
+            uri: logicalUri,
         )
     }
+}
+
+/// The original track reference Spotify includes when it relinks a request to a
+/// market-playable alternative.
+struct LinkedTrackCodable: Decodable {
+    let id: String
+    let uri: String
 }
 
 /// The `/v1/tracks?ids=` envelope. Entries are positional and nullable: Spotify keeps

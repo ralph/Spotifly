@@ -132,7 +132,7 @@ extension SpotifyAPI {
 
     /// Fetches user's saved tracks (favorites) from Spotify Web API
     static func fetchUserSavedTracks(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> SavedTracksResponse {
-        let urlString = "\(baseURL)/me/tracks?limit=\(limit)&offset=\(offset)&fields=items(added_at,track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify))),total,next"
+        let urlString = "\(baseURL)/me/tracks?limit=\(limit)&offset=\(offset)&fields=items(added_at,track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify),linked_from(id,uri))),total,next"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 
@@ -289,7 +289,7 @@ extension SpotifyAPI {
         albumName: String? = nil,
         images: ImageSet = ImageSet.empty,
     ) async throws -> [APITrack] {
-        let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(id,name),external_urls(spotify))"
+        let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(id,name),external_urls(spotify),linked_from(id,uri))"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 
@@ -329,7 +329,7 @@ extension SpotifyAPI {
     static func fetchPlaylistTracks(accessToken: String, playlistId: String) async throws -> [APITrack] {
         var tracks: [APITrack] = []
         var nextURLString: String? =
-            "\(baseURL)/playlists/\(playlistId)/items?limit=50&fields=items(added_at,track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify))),next&market=from_token"
+            "\(baseURL)/playlists/\(playlistId)/items?limit=50&fields=items(added_at,track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify),linked_from(id,uri))),next&market=from_token"
 
         while let urlString = nextURLString {
             debugLog("SpotifyAPI", "[GET] \(urlString)")

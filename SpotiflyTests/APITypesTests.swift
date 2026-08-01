@@ -41,4 +41,48 @@ struct APITypesTests {
 
         #expect(mapped == ["first": "First", "third": "Third"])
     }
+
+    @Test func `a relinked track keeps the requested identity and playable metadata`() throws {
+        let json = Data("""
+        {
+            "id": "playable",
+            "name": "Playable metadata",
+            "uri": "spotify:track:playable",
+            "duration_ms": 4321,
+            "linked_from": {
+                "id": "requested",
+                "uri": "spotify:track:requested"
+            }
+        }
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(TrackCodable.self, from: json)
+        let track = decoded.toAPITrack()
+
+        #expect(decoded.logicalId == "requested")
+        #expect(decoded.logicalUri == "spotify:track:requested")
+        #expect(track.id == "requested")
+        #expect(track.uri == "spotify:track:requested")
+        #expect(track.name == "Playable metadata")
+        #expect(track.durationMs == 4321)
+    }
+
+    @Test func `a track without relinking keeps its returned identity`() throws {
+        let json = Data("""
+        {
+            "id": "returned",
+            "name": "Returned metadata",
+            "uri": "spotify:track:returned",
+            "duration_ms": 1234
+        }
+        """.utf8)
+
+        let decoded = try JSONDecoder().decode(TrackCodable.self, from: json)
+        let track = decoded.toAPITrack()
+
+        #expect(decoded.logicalId == "returned")
+        #expect(decoded.logicalUri == "spotify:track:returned")
+        #expect(track.id == "returned")
+        #expect(track.uri == "spotify:track:returned")
+    }
 }
