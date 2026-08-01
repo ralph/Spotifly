@@ -25,6 +25,12 @@ Completed on 2026-07-31 in three independently verified implementation commits:
 entities are normalized into `AppStore`; rapid changes may therefore cache useful tracks
 without ever changing which entity the bar displays.
 
+A later correction completes the one-request-per-ID promise: the store can only cache what
+a response contained, so an ID that does not resolve for the user's market stayed absent
+and passed the missing-from-store filter on every queue update. IDs that a *successful*
+response came back without are now remembered as unavailable and excluded, while a thrown
+request still leaves its IDs eligible so a network failure retries.
+
 Automated verification completed:
 
 - five `TrackServiceTests` pass, covering cache hits, overlapping batches, failure/retry,

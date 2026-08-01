@@ -270,15 +270,24 @@ Update the initialization comment around `updateNowPlayingPosition()` and
 `trackDurationMs = 0`; it currently documents the old duration-only guard and becomes
 incorrect once both Now Playing methods use the effective duration.
 
-### 3c. Known gap: unknown track metadata (deferred)
+### 3c. Known gap: unknown track metadata (closed by the follow-up)
 
-A logical track URI with no entity in `AppStore` still leaves the in-app bar on its
-placeholder and the system panel with duration but no title. `QueueService` already fetches
-the current track on SetQueue, live queue updates, and Web API bootstrap, so this is not the
-normal relinking path. Adding an independent loader in `TrackService` would race that
-existing fetch and cannot honestly promise one request per ID. The follow-up must route
-queue metadata and any single-track recovery through one shared registry; it is tracked in
-`plans/now-playing-unknown-track-loader.md`.
+A logical track URI with no entity in `AppStore` leaves the in-app bar on its placeholder
+and the system panel without a title. `QueueService` already fetches the current track on
+SetQueue, live queue updates, and Web API bootstrap, so this is not the normal relinking
+path. Adding an *independent* loader in `TrackService` would have raced that existing fetch
+and could not honestly promise one request per ID, which is why it was deferred out of this
+change rather than bolted on.
+
+It was closed the same day by `plans/now-playing-unknown-track-loader.md`, which routes
+queue hydration and single-track recovery through one shared per-ID registry in
+`TrackService`. Two later corrections belong to that gap and are recorded here so this
+section is not read as still-open work:
+
+- while no track resolves, the system panel publishes the app name rather than removing the
+  title, so the media-control claim made at init survives the wait for metadata;
+- an ID a successful response came back without is remembered as absent, so the shared
+  loader is not asked for it again on every queue update.
 
 ### 4. Verify event routing at runtime
 
