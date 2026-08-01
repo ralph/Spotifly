@@ -127,6 +127,9 @@ struct Route: Hashable {
 }
 ```
 
+`Selection` carries whether the item is a library selection or an ephemeral visit, so
+`viewing*Id` disappears as separate state rather than being renamed.
+
 **The section stays optional.** `SidebarView` binds a `NavigationItem?` to
 `List(selection:)`, so macOS can clear the selection, and the router already renders that
 case deliberately — `case .none` shows the localized `empty.select_item` placeholder. It is
@@ -141,8 +144,6 @@ back returns from it like anywhere else, which is what requirement 2 asks for.
 Removing the empty state altogether is a defensible product change, but a separate one; it
 should not arrive as a side effect of this refactor.
 
-with `Selection` carrying whether the item is a library selection or an ephemeral visit, so
-`viewing*Id` disappears as separate state rather than being renamed.
 
 **Remembered selections are not part of the route.** Today `selectedAlbumId`,
 `selectedArtistId` and `selectedPlaylistId` coexist and survive section switches —
@@ -154,9 +155,10 @@ That property is worth keeping, but it does not belong in the location. Keep it 
 separate `lastSelection: [NavigationItem: Selection]` memo on the coordinator, consulted
 when entering a section without an explicit target and updated whenever a selection changes.
 
-The distinction matters for history: two routes that differ only in which album you *would*
-land on are still different places, but the memo must not participate in `Route` equality,
-or every visit to an unrelated section would look like a new location.
+The memo does not participate in `Route` equality, and therefore does not affect history at
+all: two moments that differ only in which album Albums *would* reopen to are the same
+location. Only actually being somewhere counts. Were the memo part of the route, selecting
+an album would retroactively make every unrelated section visit look like a new place.
 
 The coordinator then holds `current: Route`, plus `back: [Route]` and `forward: [Route]`.
 Everything else is derived:
@@ -174,22 +176,32 @@ Revisiting a place you have been is still a navigation — startpage → albums 
 keeps both startpage entries, because requirement 2 says back must replay
 albums → startpage.
 
-The exception is when the current route stops being viable. Clearing the search results is
-the case that exists today: the search route renders nothing afterwards, so leaving it is
-not a step forward from search — search is gone. That is a **replacement**:
-`current = new` with no append.
+The exception is when a route stops being *viewable at all*. Clearing the search results is
+the case that exists today: a `.searchResults` route with no results renders `EmptyView`,
+so it is not a place the user can be returned to. Requirement 2 is about steps the user
+took, and a step that can no longer be displayed is not one of them.
 
-Replacement is what actually fixes the failing test, and the reason is worth being precise
-about. After replacing, `back.last` can now equal `current` — in the failing sequence,
-startpage → search → *clear* → startpage leaves `back = [startpage]` while `current` is
-startpage. Back would be a no-op that still advertises itself. So replacement is followed by
-one collapse:
+Crucially this is not only about the current route. `startpage → search → albums → search`,
+then clear, leaves a *dead search route in the back stack* — two Back presses would land on
+an empty view. `forward` has the same problem. Handling only `current` fixes the failing
+test and leaves the bug.
 
-> after a replacement, if `back.last == current`, drop it.
+So invalidation operates on the whole history at once. Treat it as one sequence,
+`back + [current] + forward.reversed()`, and:
 
-Note what this does *not* say: it does not scan history for duplicates. An earlier entry
-equal to the current route is legitimate — it is a place the user genuinely visited on the
-way here. Only the newly adjacent one is a no-op, and only that one is dropped.
+1. drop every entry that is no longer viewable;
+2. collapse runs of equal adjacent entries — removing a node can join two entries that are
+   the same place, and stepping between them would be a no-op;
+3. re-derive `back`, `current` and `forward` around the surviving current position. If the
+   current route itself was dropped, the nearest surviving entry backwards becomes current.
+
+Stated over the sequence rather than per-stack, this is one operation with one description,
+and it is what the existing `pruneSearchHistory` was reaching for — it only ever removed
+entries whose own section was `.searchResults`, and never collapsed what that left behind.
+
+Note step 2 is deliberately *adjacent* runs, not a scan for duplicates. An earlier entry
+equal to the current route is legitimate: startpage → albums → startpage must keep both
+startpage entries so Back can replay albums.
 
 The eight fields do not vanish from the API — `NavigationSplitView` needs bindings for the
 section and the list selection. They become computed projections into `current`, so there is
@@ -300,6 +312,11 @@ Add, all against the coordinator alone:
 14. Revisiting a route keeps both entries: startpage → albums → startpage, then back twice,
     replays albums and then startpage. This is the case the adjacent-only collapse must not
     swallow.
+15. Invalidation reaches the whole history, not just the current route:
+    startpage → search → albums → search, then clear, leaves no search entry in either
+    stack and no back step that lands on an empty view.
+16. Invalidation collapses what it joins: an entry removed from between two equal routes
+    leaves one, not two.
 
 Deep-link entry points (`navigateToAlbumSection` and friends) get one test each showing the
 route they produce, replacing what the `pendingSectionNavigation` round trip made awkward to
@@ -338,8 +355,9 @@ except.
   only at the true start of history.
 - Back and forward titles name the route they lead to, and never a section the entry is not
   in.
-- Back is never a no-op: `back.last` is never equal to the current route. Entries further
-  back may equal it — a revisited place is a real step and must stay replayable.
+- Back is never a no-op: `back.last` is never equal to the current route, and no reachable
+  entry renders an empty view. Entries further back may equal it — a revisited place is a
+  real step and must stay replayable.
 - The stack's own back chevron and the toolbar's Back move through the same history: a
   native pop does not become a forward entry.
 - Re-entering a section returns to the selection left behind, and that memo neither appears
