@@ -1,9 +1,33 @@
 # Web API relinking caches tracks under the playable alternative's id
 
-Status: **planned**
+Status: **completed** (2026-08-01)
 Components: `Spotifly/SpotifyAPI/APITypes.swift`,
-`Spotifly/SpotifyAPI/SpotifyAPI+Tracks.swift`
+`Spotifly/SpotifyAPI/SpotifyAPI+Tracks.swift`,
+`Spotifly/SpotifyAPI/SpotifyAPI+Player.swift`,
+`Spotifly/Store/Services/QueueService.swift`,
+`SpotiflyTests/APITypesTests.swift`
 Found: 2026-08-01, while documenting the `market` parameter after the bridge-side fix
+
+## Implemented solution
+
+- `TrackCodable` decodes `linked_from` as a small original-track reference and exposes
+  `logicalId` / `logicalUri`. `toAPITrack()` uses those values for identity while retaining
+  every other field from Spotify's market-playable response.
+- Album, saved-track, and playlist field projections explicitly include
+  `linked_from(id,uri)`.
+- Single and batch track lookup, album tracks, saved tracks, and playback state now request
+  `market=from_token`. Search and playlist items already did.
+- `/me/top/tracks`, `/me/player/recently-played`, and `/me/player/queue` do not accept a
+  market parameter according to Spotify's endpoint reference, so no unsupported parameter
+  was added.
+- The original plan missed that `/me/player` and `/me/player/queue` consume
+  `TrackCodable.id` / `.uri` directly instead of passing through `toAPITrack()`. The Web API
+  playback bootstrap now uses the logical accessors for queue entries, metadata recovery,
+  and Now Playing URI as well.
+- The obsolete batch-ID mismatch warning was removed after normalisation made a differing
+  returned ID expected behavior.
+- Decoder tests cover relinked and unchanged payloads. The focused `APITypesTests` suite
+  and the full Debug build pass.
 
 ## Symptom
 
@@ -152,10 +176,12 @@ Every request that puts a `Track` in the store, and what each needs:
 | `/tracks?ids=` | no | no | `market`; drop the mismatch warning |
 | `/me/top/tracks` | no | no | `market`, if the endpoint accepts it |
 | `/me/player/recently-played` | no | no | `market`, if the endpoint accepts it |
+| `/me/player` | no | no | `market`; consume logical id/uri directly |
+| `/me/player/queue` | no | no | endpoint has no `market`; consume logical id/uri directly |
 
-The last two are user-data endpoints and may not take a `market` parameter at all. Check
-each before adding it rather than assuming the rule is uniform — which is why the invariant
-worth stating is **not** "everything sends `market`" but:
+The endpoint reference confirms that top tracks, recently played, and queue do not take a
+`market` parameter; playback state does. That is why the invariant worth stating is **not**
+"everything sends `market`" but:
 
 > Identity comes from `linked_from` when it is present. Every response passes through the
 > same normalisation, whether or not its request could ask for a market.
@@ -169,11 +195,11 @@ would introduce the bug this plan exists to prevent.
 
 ### 2. Normalise at that one seam, not per call site
 
-`toAPITrack()` is the single funnel every track response passes through — tracks, album
-tracks, playlist items, search results, saved tracks. Fixing it there covers endpoints that
-send `market` today, endpoints that gain it later, and endpoints nobody has written yet.
-Per-call-site handling would have to be remembered each time, which is the failure mode
-that produced this hazard in the first place.
+`toAPITrack()` is the single funnel for every track entity stored by the catalog and
+library services — tracks, album tracks, playlist items, search results, saved tracks, top
+tracks, and recently played. `logicalId` / `logicalUri` put the identity decision one level
+lower so the playback bootstrap is covered too: it intentionally consumes
+`TrackCodable` directly to build queue entries rather than storing those response objects.
 
 Nothing wants the alternative id from the Web API. Playback gets it from librespot, which
 is the only place it is meaningful.
@@ -188,10 +214,10 @@ same change rather than leave a diagnostic that cries wolf.
 ### 4. Add `market` to the remaining track requests — last
 
 Once the projections carry `linked_from` and `toAPITrack()` normalises, add
-`market=from_token` to the track requests that lack it: `/v1/tracks`,
-`/albums/{id}/tracks`, `/me/tracks`. Last, deliberately — each of these is correct today
-*because* it omits `market`, so adding it before normalisation works would break exactly
-what currently holds.
+`market=from_token` to the track requests that lack it and officially support it:
+`/v1/tracks`, `/albums/{id}/tracks`, `/me/tracks`, and `/me/player`. Last, deliberately —
+each catalog/library request is correct today *because* it omits `market`, so adding it
+before normalisation works would break exactly what currently holds.
 
 ### 5. Out of scope
 

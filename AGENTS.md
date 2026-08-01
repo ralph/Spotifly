@@ -58,28 +58,27 @@ unexpected result". `saveTrack`, `removeSavedTrack`, `checkSavedTracks` and play
 removal all take their id from a store entity, so an entity keyed by the alternative does
 not merely look wrong, it makes those calls fail.
 
-Where things stand today:
+`TrackCodable.logicalId` and `logicalUri` perform that normalisation automatically, and
+`toAPITrack()` uses them for every stored entity. Field-projected responses must still ask
+for `linked_from(id,uri)` explicitly — a projection returns only the listed fields.
 
-| Request | `market` | Consequence |
+Current request policy:
+
+| Request | `market` | Identity path |
 | --- | --- | --- |
-| `/v1/tracks?ids=` | no | ids are as requested; warns if that ever changes |
-| `/albums/{id}/tracks` | no | ids are as requested |
-| `/playlists/{id}/items` | **yes** | relinked playlist tracks cache under the alternative id |
-| `/search` | **yes** | same, for track results |
+| `/tracks/{id}`, `/tracks?ids=` | yes | `toAPITrack()` |
+| `/albums/{id}/tracks`, `/me/tracks` | yes | projected `linked_from`, then `toAPITrack()` |
+| `/playlists/{id}/items` | yes | projected `linked_from`, then `toAPITrack()` |
+| `/search` | yes | `toAPITrack()` |
+| `/me/player` | yes | `QueueService` uses `logicalId` / `logicalUri` |
+| `/me/top/tracks`, `/me/player/recently-played`, `/me/player/queue` | unsupported | responses still normalise when consumed |
 
-The last two are an **unfixed defect**, reproduced against the live API: a track added to a
-playlist as `3CCy…` comes back as `7zzo…` from the request shape the app uses. It has gone
-unnoticed only because it needs a track that relinks for this market, and because album
-playback and the Now Playing bar are fed by requests that send no `market`.
-
-`plans/web-api-track-relinking-identity.md` has the fix. Note the trap it turns on: a
-`fields` projection returns only what it lists, and the playlist request projects fields
-that omit `linked_from` — so decoding alone would be dead code there. The projection has to
-ask for it.
-
-**When adding or changing a track-returning request:** either leave `market` off, or
-normalise the id. `SpotifyAPI.fetchTracks` logs a warning when a returned id differs from
-the requested one, which is what makes this visible at all.
+**When adding or changing a track-returning request:** send `market=from_token` when the
+endpoint supports it, include `linked_from(id,uri)` in every fields projection, and never
+use raw `TrackCodable.id` or `.uri` as application identity. Stored tracks go through
+`toAPITrack()`; code that intentionally consumes the codable directly, such as playback
+bootstrap, must use `logicalId` and `logicalUri`. This also guarantees that writes keep
+using the original ID Spotify requires.
 
 ## State Management Architecture
 
