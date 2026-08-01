@@ -1,6 +1,6 @@
 # SetQueue reports the pre-seek position, so the queue's current pointer lags
 
-Status: **planned — one measurement outstanding before it is worth building**
+Status: **planned**
 Components: `Spotifly/Store/Services/QueueService.swift`, `Spotifly/Store/AppStore.swift`,
 possibly `librespot` upstream
 Found: 2026-07-31, noted while fixing relinked-track identity; re-confirmed 2026-08-01
@@ -12,25 +12,30 @@ is correct, but the queue believes the *first* track is current.
 
 Concretely, with track 2 of 18 playing:
 
-- track 1 is not dimmed as already-played, because `isPlayedTrack` is `index < currentIndex`
-  and `currentIndex` is `previousTracks.count`, which is 0;
-- the header counts 17 unplayed instead of 16;
+- **the Now Playing bar reads `1/18`.** `NowPlayingBarView.queuePosition` renders
+  `store.currentIndex + 1`, and `currentIndex` is `previousTracks.count`, which is 0. This
+  is the original screenshot symptom recorded in
+  `plans/relinked-track-now-playing-identity.md`;
+- track 1 is not dimmed as already-played, because `isPlayedTrack` is `index < currentIndex`;
+- the queue header counts 17 unplayed instead of 16;
 - `scrollToCurrentTrack` scrolls to row 0 rather than to what is playing.
 
 ## What is *not* affected
 
 Worth stating, because it bounds this to presentation:
 
-- **The Now Playing bar.** It resolves `PlaybackViewModel.currentTrackUri`, which comes from
-  the bridge's `Loading`/`Playing` events — see
-  `plans/relinked-track-now-playing-identity.md`. It never reads the queue pointer.
+- **Now Playing metadata.** Title, artist, artwork and duration resolve
+  `PlaybackViewModel.currentTrackUri`, which comes from the bridge's `Loading`/`Playing`
+  events — see `plans/relinked-track-now-playing-identity.md`. Only the bar's *position
+  indicator* reads the queue.
 - **The row highlight.** `TrackRow.isCurrentTrack` compares `currentlyPlayingURI` against the
   track's uri, so the right row is marked playing even while the pointer disagrees.
 - **Double-clicking a queue row.** `allQueueItems` is `previous + current + next`, and the
   *ordering* is intact — only the split between them is wrong. Index 0 is still album track
   1, so the row that is clicked is the track that plays.
 
-Nothing plays the wrong audio and nothing writes bad data. This is a display defect.
+Nothing plays the wrong audio and nothing writes bad data. This is a display defect — but a
+permanent one on the main player surface, not a transient blip.
 
 ## Evidence
 
@@ -53,61 +58,60 @@ that run corrects it.
 The offset is not always one: it equals the requested index, so starting an album at track
 12 leaves the pointer eleven places behind.
 
-## The measurement that decides whether to build this
+## It does not self-correct — it drifts
 
-**Does the pointer self-correct at the next track transition?**
+The obvious hope is that the next transition emits a corrected `SetQueue`. It does not.
+`emit_set_queue_event()` has exactly five call sites in `connect/src/spirc.rs`:
 
-Every captured log so far covers a single context start. If librespot emits `SetQueue` on
-auto-advance and on `next`, and those emissions carry the applied index, then this is wrong
-only until the current track ends — a bounded blip on one track, on a display detail. That
-is comfortably below the bar for new reconciliation logic in the queue path, and the right
-outcome is to document it and close this plan.
+| Caller | When |
+| --- | --- |
+| `handle_next_context` | a context finished resolving — the case above |
+| `handle_user_attributes_mutation` (×2) | account attributes changed |
+| `load_context_from_tracks` | a track-list context was loaded |
+| `handle_repeat_track` | repeat-one toggled |
 
-If instead the pointer stays stale for the whole session, or drifts further with each
-transition, it is worth the fix in section 1.
+`handle_next`, `handle_prev` and `handle_shuffle` are **not** among them. No transition
+emits a queue.
 
-Capture before implementing:
+So the pointer does not lag by a fixed amount and recover — it is frozen where context
+resolution left it while playback walks away from it. Start at track 5 and the bar reads
+`1/18`; let it advance to track 6 and it still reads `1/18`, now five places behind, for as
+long as the context lasts.
 
-```bash
-RUST_LOG=librespot=debug,spotifly_rust=debug <app-binary> 2>&1 | tee queue-index.log
-```
+That settles the cost/benefit: this is a wrong number displayed permanently in the main
+player UI, and it gets worse the longer the app is used. Worth fixing.
 
-1. Double-click track 5 of an album.
-2. Let it advance to track 6 on its own.
-3. Press next twice.
-4. Press previous once.
+It also constrains the design. Reconciliation cannot be driven by `SetQueue` arriving,
+because at a transition nothing arrives. The only signal that a transition happened is the
+logical URI changing.
 
-Then check, for each transition, whether a `SetQueue` was emitted and whether its
-`prev`/`current` agree with the track that is actually playing:
-
-```bash
-grep -E "EmitSetQueueEvent|play track|set track to|has [0-9]+ prev|Set queue:" queue-index.log
-```
-
-## Design, if the measurement says it is worth it
+## Design
 
 ### 1. Re-derive the split from the authoritative URI
 
-The queue's current pointer is redundant information. The app already knows what is playing —
-`PlaybackViewModel.currentTrackUri`, fed by the bridge and trusted everywhere else. What
-`SetQueue` uniquely provides is the *ordering*.
+The queue's current pointer is redundant information. The app already knows what is
+playing — `PlaybackViewModel.currentTrackUri`, fed by the bridge and trusted everywhere
+else. What the queue callback uniquely provides is the *ordering*.
 
-So do not trust the reported split. Take the full ordered list, find the playing track in
-it, and split there. Whatever index librespot had reached when it emitted, the result is
-the same.
+So do not trust the reported split. Keep the ordering, find the playing track in it, and
+split there.
 
-Two things this has to get right, and they are the reason this is a plan and not a patch:
+Three things this has to get right, and they are why this is a plan and not a patch:
 
-- **Ordering between the two inputs.** `SetQueue` and the loading notification arrive as
-  independent `Task { @MainActor }` hops from separate C callbacks, so at `SetQueue` time
-  `currentTrackUri` may still name the *previous* track. Reconciliation therefore has to run
-  from both sides: when a queue arrives, and when the logical URI changes. One function,
-  two callers.
-- **Duplicates.** A context may contain the same track twice, so "find the playing track"
-  is ambiguous. Search *forward from the reported position* and take the first match, which
-  matches the failure being corrected — librespot is always behind, never ahead. If there is
-  no match at or after the reported position, leave the queue exactly as it came; a pointer
-  that is one place off is better than one that jumped somewhere unrelated.
+- **The trigger is the URI, not the queue.** Since no transition emits a queue,
+  reconciliation must run whenever the logical URI changes. It must *also* run when a queue
+  does arrive, because the two are independent `Task { @MainActor }` hops from separate C
+  callbacks and either can be second — at `SetQueue` time `currentTrackUri` may still name
+  the previous track. One function, two callers, and it must be safe to run repeatedly.
+- **Search in both directions.** Previous moves playback *backwards* through a queue whose
+  split has already been reconciled forwards, and emits nothing. A forward-only search would
+  never find the track again and would leave the pointer stuck ahead of playback — worse
+  than the bug being fixed, because it would now be wrong in a direction the user caused.
+- **Duplicates.** A context may hold the same track twice, so the match is ambiguous. Take
+  the occurrence **nearest the current split**, in either direction. That is the minimal
+  interpretation of what happened, it degrades gracefully when the guess is wrong (one
+  duplicate off, not a jump across the context), and it makes the rule directional-agnostic.
+  If the URI is absent from the list entirely, leave the queue exactly as it came.
 
 ### 2. Rejected: refresh the queue from the Web API
 
@@ -128,9 +132,11 @@ dimming state trades that away.
 
 Worth filing upstream on its own merits, as
 `plans/librespot/upstream-pr-play-status-is-playing.md` and
-`plans/librespot/upstream-transient-load-failure.md` were. Note in the draft that a consumer
-cannot distinguish "context reset" from "user selected track 1", which is what makes the
-current emission point lossy. Spotifly should not wait for it.
+`plans/librespot/upstream-transient-load-failure.md` were. The report is stronger than the
+symptom here suggests: it is not only that `handle_next_context` emits before applying the
+index, but that `handle_next`, `handle_prev` and `handle_shuffle` emit nothing at all, so a
+consumer of `emit_set_queue_events` has no way to track the queue after the first
+resolution. Spotifly should not wait for it.
 
 ## Verification
 
@@ -141,21 +147,33 @@ tested directly — this is unlike the two preceding queue bugs, whose triggers 
 SwiftUI and the C callback boundary.
 
 1. Reported split already correct → unchanged.
-2. Reported split behind by one → moves forward by one.
-3. Reported split behind by eleven → moves forward by eleven.
-4. Playing URI absent from the list → unchanged.
-5. Playing URI appears twice, once before and once after the reported position → the match
-   at or after it wins.
-6. Playing URI is the last entry → all others become previous, next is empty.
+2. Split behind by one → moves forward by one.
+3. Split behind by eleven → moves forward by eleven, the case of starting an album deep in.
+4. Split *ahead* of the URI → moves backward, the case of pressing previous.
+5. Playing URI absent from the list → unchanged.
+6. URI appears twice, nearer occurrence behind the split → moves backward to it.
+7. URI appears twice, nearer occurrence ahead of the split → moves forward to it.
+8. URI is the last entry → everything else becomes previous, next is empty.
+9. Running it twice in a row changes nothing the second time.
 
 Then the usual gates; two `NavigationCoordinator` assertions fail on this branch and are a
 known baseline.
 
 ### Runtime
 
-Re-run the capture above and confirm, at every transition: track 1 dims once it has played,
-the header's unplayed count matches what is left, and scrolling to current lands on the
-playing row. The relinked-identity checklist stays the regression suite for the bar itself.
+Start an album at track 5, let it advance on its own, press next twice, then previous once.
+At every step:
+
+- the bar's position indicator names the track that is playing — `5/18`, then `6/18`, and
+  back down again on previous;
+- played tracks are dimmed and unplayed ones are not;
+- the header's unplayed count matches what is left;
+- scroll-to-current lands on the playing row.
+
+Previous is the step that matters most: it is the one direction no emission covers, and the
+one a forward-only reconciler would get wrong.
+
+The relinked-identity checklist stays the regression suite for the bar's metadata.
 
 ## Acceptance criteria
 
@@ -167,8 +185,19 @@ playing row. The relinked-identity checklist stays the regression suite for the 
 - Spotifly still builds against unpatched official librespot.
 - Add a concise entry under `CHANGELOG.md` → `[Unreleased]` → `Fixed` when implementing.
 
-## Out of scope
+## Out of scope: shuffle is a different, larger defect
 
-Shuffle and externally-controlled playback change the queue through the same callback, so
-they are covered by the same reconciliation, but neither is a target of this plan and
-neither should gain special handling here.
+An earlier draft claimed shuffle rides along on this reconciliation. It does not, and the
+reason is worth recording rather than deleting.
+
+`handle_shuffle` emits the shuffle flag and updates librespot's own state — it does not call
+`emit_set_queue_event()`. Spotifly therefore keeps the **pre-shuffle ordering** after
+shuffle is switched on. That is not a split that has slipped; it is a list in the wrong
+order, and no amount of re-splitting reconstructs it. Reconciliation would faithfully point
+at the playing track inside a sequence that no longer describes what will play next.
+
+So shuffle needs its own answer — a queue refresh, or an upstream emission — and it needs
+its own evidence first. Not this plan.
+
+Externally-controlled playback is genuinely covered: it moves the logical URI through the
+same bridge callbacks, which is the trigger this design keys on.
