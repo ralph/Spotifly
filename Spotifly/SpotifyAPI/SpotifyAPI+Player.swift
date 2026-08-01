@@ -363,7 +363,7 @@ extension SpotifyAPI {
     /// - Parameter accessToken: The access token for authentication
     /// - Returns: PlaybackStateResponse containing current playback state, or nil if nothing playing
     static func fetchPlaybackState(accessToken: String) async throws -> PlaybackStateResponse? {
-        let urlString = "\(baseURL)/me/player"
+        let urlString = "\(baseURL)/me/player?market=from_token"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 

@@ -12,7 +12,7 @@ extension SpotifyAPI {
 
     /// Fetches a single track from Spotify Web API
     static func fetchTrack(trackId: String, accessToken: String) async throws -> APITrack {
-        let urlString = "\(baseURL)/tracks/\(trackId)"
+        let urlString = "\(baseURL)/tracks/\(trackId)?market=from_token"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 
@@ -72,7 +72,7 @@ extension SpotifyAPI {
     /// One `/v1/tracks?ids=` request, at most `trackBatchLimit` IDs.
     private static func fetchTrackBatch(accessToken: String, trackIds: [String]) async throws -> [String: APITrack] {
         let ids = trackIds.joined(separator: ",")
-        let urlString = "\(baseURL)/tracks?ids=\(ids)"
+        let urlString = "\(baseURL)/tracks?ids=\(ids)&market=from_token"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 
@@ -100,21 +100,6 @@ extension SpotifyAPI {
                 for (trackId, track) in zip(trackIds, decoded.tracks) {
                     guard let track else { continue }
 
-                    // Spotify applies track relinking only when `market` is sent, and this
-                    // request deliberately does not send it, so the returned id is the one
-                    // asked for. Adding `market` here — as four other endpoints do — would
-                    // silently change that: the entity would carry the playable
-                    // alternative's id, land in the store under it, and the logical id
-                    // would stay missing and be re-fetched forever. Say so rather than let
-                    // that be discovered from the outside again.
-                    if track.id != trackId {
-                        debugLog(
-                            "SpotifyAPI",
-                            "WARNING: /v1/tracks returned \(track.id) for requested \(trackId). "
-                                + "Relinking is on — the entity must be normalised to the requested id "
-                                + "before caching, or the logical track will never resolve.",
-                        )
-                    }
                     dict[trackId] = track.toAPITrack()
                 }
                 return dict
@@ -132,7 +117,7 @@ extension SpotifyAPI {
 
     /// Fetches user's saved tracks (favorites) from Spotify Web API
     static func fetchUserSavedTracks(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> SavedTracksResponse {
-        let urlString = "\(baseURL)/me/tracks?limit=\(limit)&offset=\(offset)&fields=items(added_at,track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify),linked_from(id,uri))),total,next"
+        let urlString = "\(baseURL)/me/tracks?limit=\(limit)&offset=\(offset)&fields=items(added_at,track(id,name,uri,duration_ms,artists(id,name),album(id,name,images),external_urls(spotify),linked_from(id,uri))),total,next&market=from_token"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 
@@ -289,7 +274,7 @@ extension SpotifyAPI {
         albumName: String? = nil,
         images: ImageSet = ImageSet.empty,
     ) async throws -> [APITrack] {
-        let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(id,name),external_urls(spotify),linked_from(id,uri))"
+        let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(id,name),external_urls(spotify),linked_from(id,uri))&market=from_token"
 
         debugLog("SpotifyAPI", "[GET] \(urlString)")
 
