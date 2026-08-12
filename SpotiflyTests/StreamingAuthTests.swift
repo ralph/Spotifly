@@ -163,6 +163,34 @@ struct RemoteStartPayloadTests {
     }
 }
 
+/// Whether the two grants authorized the same Spotify account.
+///
+/// The streaming grant runs in the browser, with whatever account that browser is signed
+/// into. Accepting a mismatch would leave the app browsing and editing one account while
+/// playing and queueing on another, with nothing on screen saying so.
+@MainActor
+struct AccountMismatchTests {
+    @Test func `matching accounts are no mismatch`() {
+        #expect(AuthViewModel.accountMismatch(expected: "userA", granted: "userA") == nil)
+    }
+
+    @Test func `different accounts are reported`() {
+        let mismatch = AuthViewModel.accountMismatch(expected: "userA", granted: "userB")
+        #expect(mismatch != nil)
+        #expect(mismatch?.contains("userB") == true)
+    }
+
+    @Test func `an unknown signed-in account counts as agreement`() {
+        // Refusing a grant because an identity was briefly unavailable would be worse than
+        // the case being guarded against, which needs a deliberate second sign-in.
+        #expect(AuthViewModel.accountMismatch(expected: nil, granted: "userB") == nil)
+    }
+
+    @Test func `an unknown grant account counts as agreement`() {
+        #expect(AuthViewModel.accountMismatch(expected: "userA", granted: nil) == nil)
+    }
+}
+
 /// How the grant's exit codes reach the UI.
 struct StreamingAuthResultTests {
     @Test func `zero is success`() {

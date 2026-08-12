@@ -83,7 +83,7 @@ struct SpeakersView: View {
                         // file would hide the only way to recover from exactly that.
                         if !playbackViewModel.isLocalPlaybackAvailable {
                             Button {
-                                Task { await authViewModel.authorizeStreaming() }
+                                Task { await authViewModel.authorizeStreaming(expectedAccountId: store.userId) }
                             } label: {
                                 HStack {
                                     if authViewModel.isAuthorizingStreaming {

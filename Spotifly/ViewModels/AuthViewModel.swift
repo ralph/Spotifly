@@ -53,7 +53,10 @@ final class AuthViewModel {
     ///
     /// Blocks on the user finishing an authorization in their browser, so it can take a
     /// while; `isAuthorizingStreaming` drives the progress the UI shows meanwhile.
-    func authorizeStreaming() async {
+    /// - Parameter expectedAccountId: the Spotify account the app is signed in as, when the
+    ///   caller knows it. Callers inside the app read it from the store; the login step runs
+    ///   before any store exists and passes nil, which falls back to one lookup.
+    func authorizeStreaming(expectedAccountId: String? = nil) async {
         isAuthorizingStreaming = true
         defer { isAuthorizingStreaming = false }
 
@@ -70,7 +73,7 @@ final class AuthViewModel {
             // not necessarily the one the Web API half uses. Accepting a mismatch would
             // leave the app browsing and editing account A while playing and queueing on
             // account B — with no visible sign of it.
-            let mismatch = await streamingAccountMismatch()
+            let mismatch = await streamingAccountMismatch(expectedAccountId: expectedAccountId)
 
             guard startedAt == authLifecycle else {
                 // Logged out while this was deciding. Whatever the answer, it belongs to a
@@ -85,7 +88,12 @@ final class AuthViewModel {
                 // credentials while the comparison was in flight, so there can be a live
                 // session for the wrong account. Removing the directory would leave it
                 // connected and able to write its credentials back.
-                await SpotifyPlayer.shutdownAndCleanup()
+                // Through the playback lifecycle, not straight to Rust: tearing the
+                // session down behind PlaybackViewModel leaves `isInitialized` true — the
+                // connection subscription deliberately does not clear it on a disconnect —
+                // so the app would hide the re-authorization affordance and keep aiming
+                // plays at a player that no longer exists.
+                await PlaybackViewModel.shared.shutdownForLogout()
                 await SpotifyPlayer.clearStreamingCredentials()
                 hasStreamingCredentials = false
                 errorMessage = String(localized: "auth.enable_playback_wrong_account")
@@ -109,28 +117,36 @@ final class AuthViewModel {
 
     /// Describes the account mismatch between the two grants, or nil when they agree.
     ///
-    /// A failure to determine either side is treated as agreement: refusing a grant because
-    /// `/me` happened to be unreachable would be worse than the case being guarded against,
-    /// which needs the user to have deliberately signed the browser into another account.
-    private func streamingAccountMismatch() async -> String? {
-        guard let streamingAccount = SpotifyPlayer.lastGrantAccountId() else { return nil }
+    /// Pure, so the rule is testable and so the common path performs no I/O at all: callers
+    /// inside the app already know who is signed in.
+    static func accountMismatch(expected: String?, granted: String?) -> String? {
+        guard let expected, let granted, expected != granted else { return nil }
+        return "streaming account \(granted) is not the signed-in account \(expected)"
+    }
 
-        // Not `authResult.accessToken`: that is the token minted at login, and `SpotifySession`
-        // refreshes independently without writing back, so it is expired within the hour. An
-        // expired token makes `/me` return 401, which this function reads as agreement — the
-        // check would quietly stop working for exactly the mid-session case that Speakers
-        // offers.
-        guard let current = await KeychainManager.loadAuthResultWithRefresh(),
-              let profile = try? await SpotifyAPI.getCurrentUserProfile(
-                  accessToken: current.accessToken,
-              )
+    /// Resolves both accounts and compares them.
+    ///
+    /// Not knowing either one counts as agreement. Refusing a grant because an identity was
+    /// briefly unavailable would be worse than the case being guarded against, which needs
+    /// the user to have deliberately signed the browser into a second account.
+    private func streamingAccountMismatch(expectedAccountId: String?) async -> String? {
+        let granted = SpotifyPlayer.lastGrantAccountId()
+
+        if let expectedAccountId {
+            return Self.accountMismatch(expected: expectedAccountId, granted: granted)
+        }
+
+        // Only the login step reaches here, before a store exists to ask. Its token was
+        // minted moments ago by step 1, so this needs no refresh — which matters, because a
+        // refresh persists to the keychain and a logout crossing it would restore the
+        // credentials logout had just cleared.
+        guard let token = authResult?.accessToken,
+              let profile = try? await SpotifyAPI.getCurrentUserProfile(accessToken: token)
         else {
             return nil
         }
 
-        return profile.id == streamingAccount
-            ? nil
-            : "streaming account \(streamingAccount) is not the Web API account \(profile.id)"
+        return Self.accountMismatch(expected: profile.id, granted: granted)
     }
 
     func startOAuth() {

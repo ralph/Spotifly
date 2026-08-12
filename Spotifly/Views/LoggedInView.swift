@@ -240,7 +240,7 @@ struct LoggedInView: View {
             isPresented: Bindable(playbackViewModel).needsStreamingAuthorization,
         ) {
             Button("playback.needs_authorization_authorize") {
-                Task { await authViewModel.authorizeStreaming() }
+                Task { await authViewModel.authorizeStreaming(expectedAccountId: store.userId) }
             }
             Button("common.cancel", role: .cancel) {}
         } message: {
