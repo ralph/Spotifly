@@ -219,6 +219,18 @@ the request. If another device is active, play proceeds over the Web API and no 
 appears; there is no reason to nag about local streaming while a remote device is
 playing.
 
+That last part needs work the app does not have yet. `SpotifyAPI+Player.swift` covers
+transport only — pause, resume, next, previous, seek, volume, shuffle — with no
+start-with-URI call, and `play`/`playTracks` hard-gate on `isInitialized` before routing
+to `SpotifyPlayer` (`PlaybackViewModel.swift:327`). So today, with no local device, a
+remote device can be paused but an album cannot be started on it.
+
+Add **`startPlayback(contextUri:uris:offset:deviceId:)`** to `SpotifyAPI+Player`,
+mirroring `resumePlayback` on the same `/me/player/play` endpoint with a JSON body, and
+route `play`/`playTracks` to it when local playback is unavailable. This is worth having
+beyond this feature: it also lets the user start something on a remote device without
+transferring to local first.
+
 The now-playing bar always renders. It is the control surface for remote playback, and in
 mini-player mode it *is* the window (`LoggedInView.swift:132`) — hiding it would empty
 the frame and delete working functionality.
