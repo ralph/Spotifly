@@ -269,6 +269,13 @@ route `play`/`playTracks` to it when local playback is unavailable. This is wort
 beyond this feature: it also lets the user start something on a remote device without
 transferring to local first.
 
+**A remote start has to refresh the store itself.** With no Spirc session there are no
+playback or queue callbacks, so nothing tells the UI what happened and the now-playing bar
+keeps showing whatever it showed before. `fetchInitialPlaybackState` runs only at startup
+and after a local reconnect. Route a successful remote start through the same
+playback-and-queue refresh, after a short delay so Spotify has settled — services updating
+`AppStore` on success is the established pattern.
+
 The now-playing bar always renders. It is the control surface for remote playback, and in
 mini-player mode it *is* the window (`LoggedInView.swift:132`) — hiding it would empty
 the frame and delete working functionality.
