@@ -1055,6 +1055,16 @@ enum SpotifyPlayer {
         spotifly_has_streaming_credentials() == 1
     }
 
+    /// The Spotify account id the last successful grant authenticated as.
+    ///
+    /// The browser runs the grant with whatever account it is signed into, which need not
+    /// be the one the Web API half is using.
+    static func lastGrantAccountId() -> String? {
+        guard let ptr = spotifly_last_grant_account() else { return nil }
+        defer { spotifly_free_string(ptr) }
+        return String(cString: ptr)
+    }
+
     /// Removes the cached streaming credentials so the next launch cannot connect the
     /// account that just logged out.
     static func clearStreamingCredentials() async {

@@ -303,3 +303,4 @@
 "playback.needs_authorization_message" = "Aucun appareil n'est disponible pour la lecture. Autorisez la lecture pour écouter ici, ou démarrez d'abord la lecture sur un autre appareil.";
 "playback.needs_authorization_authorize" = "Autoriser";
 "common.cancel" = "Annuler";
+"auth.enable_playback_wrong_account" = "Ce compte Spotify n'est pas celui avec lequel vous êtes connecté. Connectez le navigateur au même compte, puis réessayez.";

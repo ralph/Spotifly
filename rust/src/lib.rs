@@ -379,6 +379,13 @@ static SESSION_GENERATION: AtomicU64 = AtomicU64::new(0);
 /// browser would see any concurrent play, retry or wake as a supersession and delete the
 /// credentials it had just written.
 static LOGOUT_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// The Spotify account the last successful streaming grant authenticated as.
+///
+/// The browser may be signed into a different account than the Web API half, and nothing
+/// else would notice: the app would browse one account while playing from another. Swift
+/// compares this against `/me` before accepting the grant.
+static LAST_GRANT_ACCOUNT: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 /// Generation created by the most recent `build_player_async`. Lets the reconnect loop adopt
 /// the generation its own attempt made rather than whatever the counter reads afterwards,
 /// which may belong to a logout and the login that followed it.
@@ -905,6 +912,17 @@ pub extern "C" fn spotifly_clear_streaming_credentials() {
     clear_credentials_at(&credentials_cache_dir());
 }
 
+/// The Spotify account id the last successful streaming grant authenticated as, or null.
+/// Free with `spotifly_free_string`.
+#[no_mangle]
+pub extern "C" fn spotifly_last_grant_account() -> *mut c_char {
+    let account = LAST_GRANT_ACCOUNT.lock().unwrap().clone();
+    match account.and_then(|a| CString::new(a).ok()) {
+        Some(c) => c.into_raw(),
+        None => std::ptr::null_mut(),
+    }
+}
+
 /// Whether a streaming grant has already been completed on this machine.
 ///
 /// This is what makes the local device's absence explainable: without credentials there is
@@ -977,6 +995,9 @@ pub extern "C" fn spotifly_authorize_streaming() -> i32 {
             .connect(credentials, true)
             .await
             .map_err(|e| format!("Connect failed: {:?}", e))?;
+        // Recorded before shutdown: this is the account the browser was signed into, which
+        // Swift compares against the Web API account before accepting the grant.
+        *LAST_GRANT_ACCOUNT.lock().unwrap() = Some(session.username().to_string());
         session.shutdown();
         Ok::<(), String>(())
     });

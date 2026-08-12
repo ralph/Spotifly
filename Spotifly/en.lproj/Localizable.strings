@@ -303,3 +303,4 @@
 "playback.needs_authorization_message" = "There is no device to play on. Authorize streaming to play here, or start playback on another device first.";
 "playback.needs_authorization_authorize" = "Authorize";
 "common.cancel" = "Cancel";
+"auth.enable_playback_wrong_account" = "That Spotify account is not the one you are signed in with. Sign the browser into the same account and try again.";

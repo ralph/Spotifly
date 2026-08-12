@@ -56,6 +56,18 @@ final class AuthViewModel {
 
         switch await SpotifyPlayer.authorizeStreaming() {
         case .authorized:
+            // The browser runs the grant with whatever account it is signed into, which is
+            // not necessarily the one the Web API half uses. Accepting a mismatch would
+            // leave the app browsing and editing account A while playing and queueing on
+            // account B — with no visible sign of it.
+            if let mismatch = await streamingAccountMismatch() {
+                debugLog("AuthViewModel", "Streaming grant rejected: \(mismatch)")
+                await SpotifyPlayer.clearStreamingCredentials()
+                hasStreamingCredentials = false
+                errorMessage = String(localized: "auth.enable_playback_wrong_account")
+                return
+            }
+
             hasStreamingCredentials = true
             // Build the session now rather than waiting for the next play. The grant only
             // wrote credentials to disk; until something connects with them this Mac is
@@ -69,6 +81,23 @@ final class AuthViewModel {
         case .failed:
             errorMessage = String(localized: "auth.enable_playback_failed")
         }
+    }
+
+    /// Describes the account mismatch between the two grants, or nil when they agree.
+    ///
+    /// A failure to determine either side is treated as agreement: refusing a grant because
+    /// `/me` happened to be unreachable would be worse than the case being guarded against,
+    /// which needs the user to have deliberately signed the browser into another account.
+    private func streamingAccountMismatch() async -> String? {
+        guard let streamingAccount = SpotifyPlayer.lastGrantAccountId() else { return nil }
+        guard let token = authResult?.accessToken else { return nil }
+        guard let profile = try? await SpotifyAPI.getCurrentUserProfile(accessToken: token) else {
+            return nil
+        }
+
+        return profile.id == streamingAccount
+            ? nil
+            : "streaming account \(streamingAccount) is not the Web API account \(profile.id)"
     }
 
     func startOAuth() {
