@@ -76,11 +76,16 @@ struct ContentView: View {
             .tint(.green)
             .disabled(viewModel.isAuthorizingStreaming)
 
+            // Deliberately stays enabled while the grant is waiting. The librespot callback
+            // listener has no timeout and the flow cannot be cancelled in flight, so a user
+            // who closes the browser tab would otherwise be stuck on this screen with no way
+            // into the app but relaunching. Skipping abandons the wait rather than stopping
+            // it; the flow ends on its own, and if it succeeds later the credentials are
+            // simply there next time.
             Button("auth.enable_playback_skip") {
                 didSkipStreamingStep = true
             }
             .buttonStyle(.link)
-            .disabled(viewModel.isAuthorizingStreaming)
 
             if let error = viewModel.errorMessage {
                 Text(error)
