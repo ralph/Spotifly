@@ -1049,6 +1049,14 @@ enum SpotifyPlayer {
         spotifly_has_streaming_credentials() == 1
     }
 
+    /// Removes the cached streaming credentials so the next launch cannot connect the
+    /// account that just logged out.
+    static func clearStreamingCredentials() async {
+        await Task.detached(priority: .userInitiated) {
+            spotifly_clear_streaming_credentials()
+        }.value
+    }
+
     /// Transfers playback from another Spotify Connect device to this local player.
     /// Uses the native Spotify Connect protocol via Spirc for seamless handoff.
     /// - Returns: `true` if Rust accepted the transfer.

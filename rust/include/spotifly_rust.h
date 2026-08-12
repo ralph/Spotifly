@@ -70,6 +70,11 @@ int32_t spotifly_authorize_streaming(void);
 /// Returns 1 when credentials are cached, 0 otherwise.
 int32_t spotifly_has_streaming_credentials(void);
 
+/// Removes the cached streaming credentials.
+/// Call on logout, after the session teardown, so the next launch cannot connect the
+/// account that just logged out. Removing credentials that are not there is not an error.
+void spotifly_clear_streaming_credentials(void);
+
 /// Plays multiple tracks in sequence.
 ///
 /// @param track_uris_json JSON array of track URIs as a C string

@@ -880,6 +880,26 @@ fn credentials_cache_dir() -> std::path::PathBuf {
         .join("credentials")
 }
 
+/// Removes cached credentials from `dir`, treating "not there" as success.
+///
+/// Takes the directory rather than reading `credentials_cache_dir()` so it can be tested
+/// against a temporary one: `cargo test` runs unsandboxed, where that path resolves to the
+/// developer's real credentials.
+fn clear_credentials_at(dir: &std::path::Path) {
+    match std::fs::remove_dir_all(dir) {
+        Ok(()) => debug!("Cleared streaming credentials"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => debug!("Could not remove streaming credentials: {}", e),
+    }
+}
+
+/// Removes the cached streaming credentials. Called on logout, after the session teardown,
+/// so that the next launch cannot connect the account that just logged out.
+#[no_mangle]
+pub extern "C" fn spotifly_clear_streaming_credentials() {
+    clear_credentials_at(&credentials_cache_dir());
+}
+
 /// Whether a streaming grant has already been completed on this machine.
 ///
 /// This is what makes the local device's absence explainable: without credentials there is
@@ -966,7 +986,7 @@ pub extern "C" fn spotifly_authorize_streaming() -> i32 {
     // would then recreate it behind logout's back.
     if run_is_superseded(started_generation, SESSION_GENERATION.load(Ordering::SeqCst)) {
         debug!("Streaming authorization superseded; removing the credentials it wrote");
-        let _ = std::fs::remove_dir_all(credentials_cache_dir());
+        clear_credentials_at(&credentials_cache_dir());
         return -2;
     }
 
@@ -3502,6 +3522,32 @@ mod tests {
         assert!(run_is_superseded(4, 5));
         // A teardown that reset the counter is a supersession too, not a match.
         assert!(run_is_superseded(4, 0));
+    }
+
+    #[test]
+    fn clearing_credentials_removes_the_directory() {
+        // Deliberately parameterised: cargo test runs unsandboxed, so exercising this
+        // against credentials_cache_dir() would delete the real credentials on this machine
+        // every time the suite ran.
+        let dir = std::env::temp_dir().join(format!("spotifly-creds-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create cache dir");
+        std::fs::write(dir.join("credentials.json"), b"{}").expect("write credentials");
+        assert!(dir.exists());
+
+        clear_credentials_at(&dir);
+
+        assert!(!dir.exists(), "logout must not leave credentials behind");
+    }
+
+    #[test]
+    fn clearing_credentials_that_are_not_there_is_fine() {
+        // Logging out without ever having authorized streaming is ordinary, not an error.
+        let dir = std::env::temp_dir().join(format!("spotifly-absent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        clear_credentials_at(&dir);
+
+        assert!(!dir.exists());
     }
 
     #[test]

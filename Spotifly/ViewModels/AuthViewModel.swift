@@ -108,6 +108,13 @@ final class AuthViewModel {
         // command, so there is nothing slow to wait for.
         await PlaybackViewModel.shared.shutdownForLogout()
 
+        // The streaming credentials are a file, not a keychain item, so clearing the
+        // keychain does not touch them — left behind, they would let the next launch
+        // connect the account that just logged out. Removed after the teardown, so no live
+        // session can write them back.
+        await SpotifyPlayer.clearStreamingCredentials()
+        hasStreamingCredentials = false
+
         SpotifyAuth.clearAuthResult()
         KeychainManager.clearAuthResult()
         authResult = nil
