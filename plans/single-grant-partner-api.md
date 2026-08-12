@@ -149,7 +149,11 @@ downstream in this plan needs that token in Swift, and Track B needs it there pe
       `Client-Token`, `App-Platform: OSX_ARM64` (or the Intel equivalent), the xpui
       `Origin`/`Referer`, and a body of `{variables, operationName, extensions.persistedQuery}`.
       Operation hashes live in one table with a comment naming libspot as their upstream.
-      Ship it with exactly one operation — `searchTracks` — and its response type.
+      Ship it with the four search operations `SearchService` actually needs — `searchTracks`,
+      `searchAlbums`, `searchArtists`, `searchPlaylists` — and their response types. One
+      operation would have been a smaller first step but a broken one: `SearchService.search`
+      requests all four types and `SearchResultsView` renders a section per category, so
+      shipping tracks alone silently deletes three quarters of the search results.
 
 - [ ] **Task 6: `SpclientAPI` — the REST client.**
       `spclient.wg.spotify.com` with the same two headers. Two shapes to support: JSON
@@ -163,19 +167,28 @@ downstream in this plan needs that token in Swift, and Track B needs it there pe
 behind the existing service layer, so `AppStore`, `InFlightRequests` and the views do not move.
 Order runs cheapest-first, and each task is independently shippable and revertible:
 
-- [ ] **Task 7: Search** (`SpotifyAPI+Search.swift`, 1 call site) — the smallest real test of
-      `PartnerAPI`, and the one whose relinking behaviour is best understood.
+- [ ] **Task 7: Search** (`SpotifyAPI+Search.swift`, 1 call site, four result categories) — the
+      smallest real test of `PartnerAPI`, and the one whose relinking behaviour is best
+      understood. Parity with the current result shape is the acceptance criterion, not "search
+      returns something".
 - [ ] **Task 8: Tracks** (8 call sites) — batch metadata through `ensureTracksLoaded`. State the
       identity path explicitly; this is where relinking bites hardest.
 - [ ] **Task 9: Albums** (5) and **Task 10: Artists** (6).
 - [ ] **Task 11: Playlists** (9), including the write paths.
 - [ ] **Task 12: User/library** (2) and the saved-tracks writes.
 
-Player control (`SpotifyAPI+Player.swift`, 12 call sites) is deliberately last and may not move
-at all: remote-device control over the Web API is a fallback for when this Mac is not a Connect
-device, and the Connect equivalent belongs to the dealer connection, not to a REST client. Decide
-it when the rest has landed — with a local session working, its value is mostly for controlling
-*other* devices.
+- [ ] **Task 12a: Player control** (`SpotifyAPI+Player.swift`, 12 call sites) — last, but not
+      optional. An earlier draft of this plan left it undecided, which quietly made Phase 4
+      unreachable: a keymaster token gets 429 from `api.spotify.com`, so any call left there
+      keeps the dashboard grant alive and the whole point of the plan with it.
+
+      The replacement is spclient's connect-state API, which is what the real client uses and
+      what `libspot/connect/` implements in full — `player/command/from/{from}/to/{to}` for
+      play, pause, skip, seek, shuffle, repeat and queue-add (`connect/endpoints.go`), plus
+      transfer, device list, playback state and queue reads (`connect/commands.go`). That
+      covers every call site in `SpotifyAPI+Player.swift`, including the `startPlayback` and
+      device-transfer paths `rework-auth` added, so the remote-device fallback survives the
+      migration rather than being dropped for it.
 
 ### Phase 4: Retire the dashboard app
 
@@ -222,7 +235,6 @@ enough it may be cheaper than Vorbis for some paths. Do not act on this before B
 
 ## What this plan does not decide
 
-- **Whether player control moves off the Web API** (Phase 3 note above).
 - **Whether Track B ships at all** — B1 decides it.
 - **How persisted-query hashes get refreshed** when Spotify rotates them. Today the answer is
   "watch libspot and copy". If that becomes painful, a small extractor that reads them out of
