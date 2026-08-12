@@ -71,7 +71,6 @@ struct SearchAllTracksView: View {
                             playbackViewModel: playbackViewModel,
                             currentSection: .searchResults,
                             onDoubleTap: {
-                                let token = await session.validAccessToken()
                                 await playbackViewModel.initializeIfNeeded()
                                 SpotifyPlayer.playRadio(trackUri: track.uri)
                             },
