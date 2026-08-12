@@ -190,8 +190,12 @@ Mac** again. The UI shows progress, not a cancel button.
 Two:
 
 1. **New `spotifly_authorize_streaming()`** — opens the browser, listens on loopback,
-   exchanges the code, connects, persists credentials. Reports success, failure, or
-   cancellation. Must be cancellable, since it blocks on a human.
+   exchanges the code, connects, persists credentials. Reports success or failure.
+   It must **not persist for a superseded run**: the token exchange and connect are
+   network steps a logout can outlive, and writing afterwards would restore the previous
+   account's credentials into a cache logout has already wiped. Carry the session
+   generation through the call and check it immediately before saving — the same rule
+   services follow in `AGENTS.md` ("A superseded run must not write").
 2. **`spotifly_init_player` accepts a null token**, meaning "use cached credentials".
    The three Swift call sites — `PlaybackViewModel.swift:259`,
    `LoggedInLifecycleModifier.swift:137`, `SpeakersView.swift:108` — stop passing a Web
