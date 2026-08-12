@@ -502,8 +502,15 @@ final class PlaybackViewModel {
         )
         guard target == .needsAuthorization else { return target }
 
-        if let response = try? await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken) {
-            store?.upsertDevices(response.devices)
+        // Captured before the request: a logout and a new login during it would replace the
+        // store, and writing this account's devices into the next one leaves a stale active
+        // device that suppresses the very refresh that would correct it.
+        let targetStore = store
+
+        if let response = try? await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken),
+           let targetStore, targetStore === store
+        {
+            targetStore.upsertDevices(response.devices)
         }
 
         return Self.playbackTarget(
