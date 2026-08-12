@@ -12,7 +12,6 @@ struct TrackCard: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     var currentSection: NavigationItem = .searchResults
 
-    @Environment(SpotifySession.self) private var session
     @Environment(TrackService.self) private var trackService
     @Environment(\.displayScale) private var displayScale
 
