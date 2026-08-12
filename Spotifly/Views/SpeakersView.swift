@@ -130,7 +130,7 @@ struct SpeakersView: View {
                     Section {
                         ConnectionStatusView {
                             let token = await session.validAccessToken()
-                            await playbackViewModel.forceReinitialize(accessToken: token)
+                            await playbackViewModel.forceReinitialize()
                             await deviceService.loadDevices(accessToken: token)
                         }
                     } header: {

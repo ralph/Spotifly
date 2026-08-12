@@ -618,7 +618,7 @@ enum SpotifyPlayer {
     /// Initializes the player with the given access token.
     /// Must be called before any playback operations.
     @SpotifyAuthActor
-    static func initialize(accessToken: String) async throws {
+    static func initialize() async throws {
         // Register callbacks (via nonisolated helpers to avoid actor isolation issues)
         registerAudioDataCallback()
         registerAudioControlCallback()
@@ -643,10 +643,12 @@ enum SpotifyPlayer {
             spotifly_cleanup()
         }.value
 
+        // No token: the session connects from the credentials the streaming grant cached.
+        // Passing the Web API token here is what login5 rejects — it is minted with the
+        // user's dashboard client id, and Spotify no longer accepts stored credentials
+        // derived from one. See plans/streaming-auth-needs-a-first-party-client-id.md.
         let result = await Task.detached {
-            accessToken.withCString { tokenPtr in
-                spotifly_init_player(tokenPtr)
-            }
+            spotifly_init_player(nil)
         }.value
 
         guard result == .ok else {

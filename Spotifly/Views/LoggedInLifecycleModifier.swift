@@ -78,7 +78,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
 
                 playbackViewModel.setTokenProvider { await session.validAccessToken() }
 
-                await playbackViewModel.initializeIfNeeded(accessToken: token)
+                await playbackViewModel.initializeIfNeeded()
                 await queueService.fetchInitialPlaybackState(accessToken: token)
             }
             // Connection handling is driven by the connection snapshot, not by the Connect
@@ -133,8 +133,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     // there is no running recovery for it to disturb.
                     debugLog("LoggedInLifecycle", "System wake detected, no session — rebuilding")
                     Task {
-                        let token = await session.validAccessToken()
-                        await playbackViewModel.forceReinitialize(accessToken: token)
+                        await playbackViewModel.forceReinitialize()
                     }
                 }
             }

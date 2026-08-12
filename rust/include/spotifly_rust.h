@@ -52,7 +52,7 @@ typedef enum __attribute__((enum_extensibility(open))) SpotiflyResult : int32_t 
 /// @param access_token A token minted with librespot's client id, or NULL to connect from
 ///                     the credentials cached by spotifly_authorize_streaming(). NULL is the
 ///                     normal case: only the first init after a grant carries a token.
-SpotiflyResult spotifly_init_player(const char* access_token);
+SpotiflyResult spotifly_init_player(const char* _Nullable access_token);
 
 /// Runs the one-time streaming authorization: opens the browser, waits for the loopback
 /// callback, exchanges the code, connects, and persists the credentials.

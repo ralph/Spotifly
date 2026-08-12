@@ -154,13 +154,13 @@ final class PlaybackViewModel {
     /// Tears down and rebuilds the player even if it is already initialized.
     /// Used by the manual connection retry and by the wake fallback when Rust has no
     /// session to reconnect.
-    func forceReinitialize(accessToken: String) async {
-        await runInitialization(accessToken: accessToken, force: true)
+    func forceReinitialize() async {
+        await runInitialization(force: true)
     }
 
     /// Initializes the player unless it is already up.
-    func initializeIfNeeded(accessToken: String) async {
-        await runInitialization(accessToken: accessToken, force: false)
+    func initializeIfNeeded() async {
+        await runInitialization(force: false)
     }
 
     /// Tears the Rust session down on logout.
@@ -209,7 +209,7 @@ final class PlaybackViewModel {
     /// Late callers await the in-flight run instead of starting a competing one. That also
     /// coalesces concurrent explicit rebuild requests, for which one rebuild is the correct
     /// response.
-    private func runInitialization(accessToken: String, force: Bool) async {
+    private func runInitialization(force: Bool) async {
         // Nothing may build a player while one is being torn down. The view is still mounted
         // during a logout, so a playback action or a startup task can land here — and it
         // would capture the already-bumped lifecycle generation, so the stale-run check
@@ -246,7 +246,7 @@ final class PlaybackViewModel {
         guard force || !isInitialized else { return }
 
         let task = Task { @MainActor in
-            await performInitialization(accessToken: accessToken)
+            await performInitialization()
         }
         initializationTask = task
         await task.value
@@ -257,14 +257,14 @@ final class PlaybackViewModel {
         }
     }
 
-    private func performInitialization(accessToken: String) async {
+    private func performInitialization() async {
         // We are about to tear down the Rust side, so nothing is initialized until the
         // rebuild proves otherwise. Matters when initialize() throws on a restart.
         isInitialized = false
         isLoading = true
         let generation = lifecycleGeneration
         do {
-            try await SpotifyPlayer.initialize(accessToken: accessToken)
+            try await SpotifyPlayer.initialize()
 
             // Readiness is the authoritative condition, not "initialize() returned". The
             // old code set isInitialized as soon as the FFI call came back and then polled
@@ -351,7 +351,7 @@ final class PlaybackViewModel {
     func play(uriOrUrl: String, trackIndex: Int = -1, accessToken: String) async {
         // Initialize if needed
         if !isInitialized {
-            await initializeIfNeeded(accessToken: accessToken)
+            await initializeIfNeeded()
         }
 
         switch Self.playbackTarget(isInitialized: isInitialized, activeDeviceId: store?.activeDeviceId) {
@@ -389,7 +389,7 @@ final class PlaybackViewModel {
     func playTracks(_ trackUris: [String], accessToken: String) async {
         // Initialize if needed
         if !isInitialized {
-            await initializeIfNeeded(accessToken: accessToken)
+            await initializeIfNeeded()
         }
 
         guard !trackUris.isEmpty else {
@@ -465,10 +465,10 @@ final class PlaybackViewModel {
         isLoading = false
     }
 
-    func addToQueue(uri: String, accessToken: String) async {
+    func addToQueue(uri: String, accessToken _: String) async {
         // Initialize if needed
         if !isInitialized {
-            await initializeIfNeeded(accessToken: accessToken)
+            await initializeIfNeeded()
         }
 
         guard isInitialized else {

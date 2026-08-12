@@ -57,6 +57,11 @@ final class AuthViewModel {
         switch await SpotifyPlayer.authorizeStreaming() {
         case .authorized:
             hasStreamingCredentials = true
+            // Build the session now rather than waiting for the next play. The grant only
+            // wrote credentials to disk; until something connects with them this Mac is
+            // still not registered with Spotify Connect, so it would stay missing from
+            // Speakers and the next play would raise the alert all over again.
+            await PlaybackViewModel.shared.forceReinitialize()
         case .superseded:
             // A logout won the race and the credentials were removed again. Nothing went
             // wrong and there is nothing to report.
