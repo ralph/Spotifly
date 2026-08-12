@@ -148,8 +148,7 @@ struct TrackContextMenu: View {
 
     private func startSongRadio() {
         Task {
-            await playbackViewModel.initializeIfNeeded()
-            SpotifyPlayer.playRadio(trackUri: track.uri)
+            await playbackViewModel.playRadio(trackUri: track.uri)
             onNavigate?()
             navigationCoordinator.navigateToQueue()
         }

@@ -81,6 +81,17 @@ final class PlaybackViewModel {
     /// Whether Swift knows that Rust has completed at least one usable initialization.
     /// This stays true through transient disconnects because Rust owns their recovery.
     private var isInitialized = false
+
+    /// Whether this Mac can currently play audio itself.
+    ///
+    /// Cached credentials existing on disk is not the same fact: they can be revoked or
+    /// stale, in which case initialization fails and the app must still offer to
+    /// re-authorize. Anything asking "is this Mac a playback device" wants this, not the
+    /// presence of a file.
+    var isLocalPlaybackAvailable: Bool {
+        isInitialized
+    }
+
     /// Whether the local librespot session can currently provide advancing playback state.
     private var isConnectionReady = false
     private var lastAlbumArtURL: String?
@@ -425,6 +436,25 @@ final class PlaybackViewModel {
         case .needsAuthorization:
             needsStreamingAuthorization = true
         }
+    }
+
+    /// Starts song radio, which only the local player can do.
+    ///
+    /// Radio is a Spirc feature with no Web API equivalent, so unlike `play` it cannot fall
+    /// back to a remote device. Without a local player the command was previously issued
+    /// anyway and its FFI error discarded, so track cards and context menus silently did
+    /// nothing; asking for authorization is the honest answer.
+    func playRadio(trackUri: String) async {
+        if !isInitialized {
+            await initializeIfNeeded()
+        }
+
+        guard isInitialized else {
+            needsStreamingAuthorization = true
+            return
+        }
+
+        SpotifyPlayer.playRadio(trackUri: trackUri)
     }
 
     /// What `/me/player/play` should be sent for a play request.

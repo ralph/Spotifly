@@ -82,9 +82,7 @@ struct TrackCard: View {
 
     private func playTrack() {
         Task {
-            // Ensure player is initialized before starting radio
-            await playbackViewModel.initializeIfNeeded()
-            SpotifyPlayer.playRadio(trackUri: track.uri)
+            await playbackViewModel.playRadio(trackUri: track.uri)
         }
     }
 }

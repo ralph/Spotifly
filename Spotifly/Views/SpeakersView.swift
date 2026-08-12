@@ -73,10 +73,15 @@ struct SpeakersView: View {
                             }
                         }
 
-                        // Without a streaming grant this Mac never registers with Spotify
-                        // Connect, so it is genuinely absent from the list above. That
-                        // absence is the indicator; this row is the way back.
-                        if !authViewModel.hasStreamingCredentials {
+                        // Without a usable local player this Mac never registers with
+                        // Spotify Connect, so it is genuinely absent from the list above.
+                        // That absence is the indicator; this row is the way back.
+                        //
+                        // Keyed on whether playback actually works, not on whether a
+                        // credentials file exists: revoked or stale credentials leave the
+                        // file in place while every initialization fails, and keying on the
+                        // file would hide the only way to recover from exactly that.
+                        if !playbackViewModel.isLocalPlaybackAvailable {
                             Button {
                                 Task { await authViewModel.authorizeStreaming() }
                             } label: {
