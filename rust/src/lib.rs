@@ -853,6 +853,61 @@ fn notify_connection_state_change() {
     }
 }
 
+/// Scopes requested for the streaming session, mirroring librespot's own list.
+///
+/// These are granted to librespot's client id and have nothing to do with the Web API scopes
+/// Swift requests with the user's dashboard client id — the two grants are independent.
+static STREAMING_SCOPES: &[&str] = &[
+    "app-remote-control",
+    "playlist-modify",
+    "playlist-modify-private",
+    "playlist-modify-public",
+    "playlist-read",
+    "playlist-read-collaborative",
+    "playlist-read-private",
+    "streaming",
+    "ugc-image-upload",
+    "user-follow-modify",
+    "user-follow-read",
+    "user-library-modify",
+    "user-library-read",
+    "user-modify",
+    "user-modify-playback-state",
+    "user-modify-private",
+    "user-personalized",
+    "user-read-birthdate",
+    "user-read-currently-playing",
+    "user-read-email",
+    "user-read-play-history",
+    "user-read-playback-position",
+    "user-read-playback-state",
+    "user-read-private",
+    "user-read-recently-played",
+    "user-top-read",
+];
+
+/// Whether the run that started at `started_generation` has been superseded — by a logout, a
+/// teardown, or a replacement session.
+fn run_is_superseded(started_generation: u64, current_generation: u64) -> bool {
+    started_generation != current_generation
+}
+
+/// Asks the OS for a free loopback port by binding port 0 and reading back the assignment.
+///
+/// Spotify accepts any loopback port for librespot's client id, so nothing has to be
+/// registered in advance. There is an unavoidable gap between releasing this and the OAuth
+/// listener binding it; losing that race fails the grant, and the user retries.
+fn pick_free_loopback_port() -> Result<u16, String> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")
+        .map_err(|e| format!("Could not reserve a loopback port: {e}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| format!("Could not read the reserved port: {e}"))?
+        .port();
+    drop(listener);
+    Ok(port)
+}
+
 /// Where librespot persists the AP credentials produced by the streaming grant.
 ///
 /// Under the sandbox `HOME` is already the app container, so this stays inside it.
@@ -863,6 +918,84 @@ fn credentials_cache_dir() -> std::path::PathBuf {
         .join("Application Support")
         .join("Spotifly")
         .join("credentials")
+}
+
+/// Runs the one-time streaming authorization: opens the browser, waits for the loopback
+/// callback, exchanges the code, connects, and lets librespot persist the AP credentials.
+///
+/// Returns 0 on success, -1 on failure, -2 if the run was superseded. There is no in-flight
+/// cancellation: the alert's Cancel declines before this is ever called, and interrupting a
+/// listener parked in a blocking read would cost more machinery than it buys.
+///
+/// Blocks on a human, so Swift must never call this on the main thread.
+#[no_mangle]
+pub extern "C" fn spotifly_authorize_streaming() -> i32 {
+    let started_generation = SESSION_GENERATION.load(Ordering::SeqCst);
+
+    let port = match pick_free_loopback_port() {
+        Ok(p) => p,
+        Err(e) => {
+            debug!("Streaming authorization error: {}", e);
+            return -1;
+        }
+    };
+
+    // librespot's own client id, never the user's dashboard one: only a first-party id can
+    // obtain the client token that login5 requires.
+    let client_id = SessionConfig::default().client_id;
+    let client = match librespot_oauth::OAuthClientBuilder::new(
+        &client_id,
+        &format!("http://127.0.0.1:{}/login", port),
+        STREAMING_SCOPES.to_vec(),
+    )
+    .open_in_browser()
+    .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            debug!("Streaming authorization error: {}", e);
+            return -1;
+        }
+    };
+
+    let token = match client.get_access_token() {
+        Ok(t) => t,
+        Err(e) => {
+            debug!("Streaming authorization failed: {}", e);
+            return -1;
+        }
+    };
+    debug!("Streaming authorization: token obtained, connecting");
+
+    // Connect once so librespot writes the AP credentials into the cache. Every init after
+    // this connects from that cache with no token at all.
+    let result = RUNTIME.block_on(async {
+        let device_id = format!("spotifly_{}", std::process::id());
+        let (session, credentials) = create_session(&device_id, Some(&token.access_token))?;
+        session
+            .connect(credentials, true)
+            .await
+            .map_err(|e| format!("Connect failed: {:?}", e))?;
+        session.shutdown();
+        Ok::<(), String>(())
+    });
+
+    if let Err(e) = result {
+        debug!("Streaming authorization connect error: {}", e);
+        return -1;
+    }
+
+    // Rechecked *after* the write, not before: librespot persists from inside
+    // Session::connect, so a logout landing mid-connect would wipe the cache and this run
+    // would then recreate it behind logout's back.
+    if run_is_superseded(started_generation, SESSION_GENERATION.load(Ordering::SeqCst)) {
+        debug!("Streaming authorization superseded; removing the credentials it wrote");
+        let _ = std::fs::remove_dir_all(credentials_cache_dir());
+        return -2;
+    }
+
+    debug!("Streaming authorization complete");
+    0
 }
 
 /// Creates a new (unconnected) Session with the given device ID.
@@ -3426,5 +3559,25 @@ mod tests {
             dir.ends_with("Spotifly/credentials"),
             "cache dir must be app-scoped: {dir:?}"
         );
+    }
+
+    #[test]
+    fn a_run_is_superseded_when_the_generation_moves() {
+        // The grant writes credentials from inside Session::connect, so a logout landing
+        // mid-connect must be detected afterwards — see AGENTS.md, a superseded run must
+        // not write.
+        assert!(!run_is_superseded(4, 4));
+        assert!(run_is_superseded(4, 5));
+        // A teardown that reset the counter is a supersession too, not a match.
+        assert!(run_is_superseded(4, 0));
+    }
+
+    #[test]
+    fn picks_a_bindable_loopback_port() {
+        let port = pick_free_loopback_port().expect("a free port");
+        assert!(port >= 1024, "must not need root: {port}");
+        // Proves it is actually bindable, which is what the OAuth listener does next.
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port)).expect("bindable");
+        drop(listener);
     }
 }
