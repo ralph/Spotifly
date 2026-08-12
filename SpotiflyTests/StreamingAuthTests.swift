@@ -122,6 +122,47 @@ struct PlaybackTargetTests {
     }
 }
 
+/// Splitting a play request into what `/me/player/play` accepts.
+///
+/// Spotify takes albums, playlists and artists as `context_uri`, but individual tracks only
+/// in `uris` — sending a track as a context fails. `playTrack` and the queue both hand
+/// `play(uriOrUrl:)` a bare `spotify:track:` URI, so the remote path has to tell them apart.
+@MainActor
+struct RemoteStartPayloadTests {
+    @Test func `a track becomes a one-element uris list`() {
+        let payload = PlaybackViewModel.remoteStartPayload(for: "spotify:track:t1")
+        #expect(payload.contextUri == nil)
+        #expect(payload.uris == ["spotify:track:t1"])
+    }
+
+    @Test func `an album stays a context`() {
+        let payload = PlaybackViewModel.remoteStartPayload(for: "spotify:album:a1")
+        #expect(payload.contextUri == "spotify:album:a1")
+        #expect(payload.uris == nil)
+    }
+
+    @Test func `a playlist stays a context`() {
+        let payload = PlaybackViewModel.remoteStartPayload(for: "spotify:playlist:p1")
+        #expect(payload.contextUri == "spotify:playlist:p1")
+        #expect(payload.uris == nil)
+    }
+
+    @Test func `an artist stays a context`() {
+        // Artists are a valid Web API context, unlike tracks.
+        let payload = PlaybackViewModel.remoteStartPayload(for: "spotify:artist:ar1")
+        #expect(payload.contextUri == "spotify:artist:ar1")
+        #expect(payload.uris == nil)
+    }
+
+    @Test func `a track URL is recognised as a track`() {
+        let payload = PlaybackViewModel.remoteStartPayload(
+            for: "https://open.spotify.com/track/t1?si=abc",
+        )
+        #expect(payload.contextUri == nil)
+        #expect(payload.uris == ["spotify:track:t1"])
+    }
+}
+
 /// How the grant's exit codes reach the UI.
 struct StreamingAuthResultTests {
     @Test func `zero is success`() {

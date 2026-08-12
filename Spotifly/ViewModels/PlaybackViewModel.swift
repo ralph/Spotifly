@@ -369,10 +369,12 @@ final class PlaybackViewModel {
             isLoading = false
 
         case let .remote(deviceId):
+            let payload = Self.remoteStartPayload(for: uriOrUrl)
             await startRemotely(
-                contextUri: uriOrUrl,
-                uris: nil,
-                offsetIndex: trackIndex >= 0 ? trackIndex : nil,
+                contextUri: payload.contextUri,
+                uris: payload.uris,
+                // An offset only means something inside a context; a single track has none.
+                offsetIndex: payload.contextUri != nil && trackIndex >= 0 ? trackIndex : nil,
                 deviceId: deviceId,
                 accessToken: accessToken,
             )
@@ -423,6 +425,37 @@ final class PlaybackViewModel {
         case .needsAuthorization:
             needsStreamingAuthorization = true
         }
+    }
+
+    /// What `/me/player/play` should be sent for a play request.
+    struct RemoteStartPayload: Equatable {
+        let contextUri: String?
+        let uris: [String]?
+    }
+
+    /// Splits a play request into the shape the Web API accepts.
+    ///
+    /// Albums, playlists and artists are contexts; an individual track is not, and sending
+    /// one as `context_uri` fails. `playTrack` and the queue both pass bare track URIs into
+    /// `play(uriOrUrl:)`, so this is not an edge case.
+    static func remoteStartPayload(for uriOrUrl: String) -> RemoteStartPayload {
+        // Accepts both `spotify:track:ID` and an open.spotify.com/track/ID link, since
+        // `play(uriOrUrl:)` takes either.
+        if let id = trackId(from: uriOrUrl) {
+            return RemoteStartPayload(contextUri: nil, uris: ["spotify:track:\(id)"])
+        }
+        return RemoteStartPayload(contextUri: uriOrUrl, uris: nil)
+    }
+
+    /// The track id in a Spotify track URI or link, if it is one.
+    private static func trackId(from uriOrUrl: String) -> String? {
+        if let range = uriOrUrl.range(of: "spotify:track:") {
+            return String(uriOrUrl[range.upperBound...])
+        }
+        guard let range = uriOrUrl.range(of: "open.spotify.com/track/") else { return nil }
+        let rest = uriOrUrl[range.upperBound...]
+        let id = rest.prefix { $0 != "?" && $0 != "/" && $0 != "#" }
+        return id.isEmpty ? nil : String(id)
     }
 
     /// Decides where to play, refreshing the device list before giving up on it.
