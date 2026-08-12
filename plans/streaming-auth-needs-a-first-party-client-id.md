@@ -172,6 +172,12 @@ loopback callback.
 Cost: a blocking, browser-opening call behind the FFI, so it needs a cancel path and a
 progress signal for the UI.
 
+**The cancel path is not implementable against librespot-oauth as it stands.**
+`get_authcode_listener` blocks in `listener.incoming().flatten().next()` with no timeout
+and no exposed handle (`oauth/src/lib.rs:182`), and `get_access_token()` is synchronous,
+so cancelling the surrounding Swift task leaves the listener parked until some connection
+arrives. Closing the browser tab produces nothing to unblock it.
+
 ### FFI changes — **taken**
 
 Two:
@@ -201,6 +207,25 @@ spotify-player 8989, probe 2 used 8898. Scanning avoids conflicts for free.
 
 `com.apple.security.network.server` is already in the entitlements, so the listener needs
 no new sandbox capability.
+
+### Patch librespot-oauth rather than replace it — **taken**
+
+Two defects sit in the same function and share a fix. Beyond the missing cancellation
+above, **the callback is not validated**: `set_auth_url` generates `CsrfToken::new_random`
+and discards it (`oauth/src/lib.rs:243`, `let (auth_url, _)`), and `get_code` looks only
+for `code`, never `state`. The listener terminates on the *first* connection to reach the
+port, whatever it is. PKCE still prevents a third party from stealing our code, but
+nothing prevents an injected callback — worst case exchanging an attacker's code and
+binding the session to their account, cheapest case killing the flow by connecting first.
+
+Both are fixed by one upstream patch: retain the `CsrfToken`, validate `state` against it,
+ignore non-matching callbacks instead of terminating, and give the listener a timeout plus
+an interruptible handle. Carry it locally until it lands — the workspace builds whatever
+librespot is checked out, which is what that arrangement is for.
+
+Taking this route deliberately: these findings would otherwise argue for hand-writing the
+flow in Swift, which trades a bounded upstream patch for a hundred lines of PKCE and HTTP
+that every other librespot client would still be missing.
 
 ### No streaming credentials — **taken**
 
