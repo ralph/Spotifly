@@ -373,6 +373,12 @@ fn elapsed_since_wake_ms() -> u64 {
 // check unreachable. Now that a rebuild replaces the listener along with its session, the
 // listener captures the value directly and the check does what it claims.
 static SESSION_GENERATION: AtomicU64 = AtomicU64::new(0);
+/// Bumped only when the account itself goes away — logout, or app termination. Distinct from
+/// `SESSION_GENERATION`, which moves on every ordinary rebuild: cleanup and
+/// `build_player_async` both advance it, so a long-running streaming grant waiting on a
+/// browser would see any concurrent play, retry or wake as a supersession and delete the
+/// credentials it had just written.
+static LOGOUT_GENERATION: AtomicU64 = AtomicU64::new(0);
 /// Generation created by the most recent `build_player_async`. Lets the reconnect loop adopt
 /// the generation its own attempt made rather than whatever the counter reads afterwards,
 /// which may belong to a logout and the login that followed it.
@@ -846,8 +852,7 @@ static STREAMING_SCOPES: &[&str] = &[
     "user-top-read",
 ];
 
-/// Whether the run that started at `started_generation` has been superseded — by a logout, a
-/// teardown, or a replacement session.
+/// Whether the run that started at `started_generation` has been superseded.
 fn run_is_superseded(started_generation: u64, current_generation: u64) -> bool {
     started_generation != current_generation
 }
@@ -926,7 +931,7 @@ pub extern "C" fn spotifly_has_streaming_credentials() -> i32 {
 /// Blocks on a human, so Swift must never call this on the main thread.
 #[no_mangle]
 pub extern "C" fn spotifly_authorize_streaming() -> i32 {
-    let started_generation = SESSION_GENERATION.load(Ordering::SeqCst);
+    let started_generation = LOGOUT_GENERATION.load(Ordering::SeqCst);
 
     let port = match pick_free_loopback_port() {
         Ok(p) => p,
@@ -983,8 +988,9 @@ pub extern "C" fn spotifly_authorize_streaming() -> i32 {
 
     // Rechecked *after* the write, not before: librespot persists from inside
     // Session::connect, so a logout landing mid-connect would wipe the cache and this run
-    // would then recreate it behind logout's back.
-    if run_is_superseded(started_generation, SESSION_GENERATION.load(Ordering::SeqCst)) {
+    // would then recreate it behind logout's back. Against LOGOUT_GENERATION, not the
+    // session one: an ordinary rebuild during the browser wait is not a supersession.
+    if run_is_superseded(started_generation, LOGOUT_GENERATION.load(Ordering::SeqCst)) {
         debug!("Streaming authorization superseded; removing the credentials it wrote");
         clear_credentials_at(&credentials_cache_dir());
         return -2;
@@ -2732,6 +2738,10 @@ pub extern "C" fn spotifly_shutdown() -> i32 {
     // Prevent reconnection attempts during intentional shutdown
     SHUTTING_DOWN.store(true, Ordering::SeqCst);
 
+    // The account is going away, so any streaming grant still waiting on a browser no longer
+    // belongs to anyone. Only here — not in cleanup, which runs on every ordinary rebuild.
+    LOGOUT_GENERATION.fetch_add(1, Ordering::SeqCst);
+
     // Publish the truth now rather than waiting for the listeners to notice the channel
     // close. A snapshot still claiming a connected session and a ready Spirc after an
     // intentional shutdown is what lets Swift adopt the dead session as a healthy one — on
@@ -3522,6 +3532,58 @@ mod tests {
         assert!(run_is_superseded(4, 5));
         // A teardown that reset the counter is a supersession too, not a match.
         assert!(run_is_superseded(4, 0));
+    }
+
+    /// Serialises the tests that drive the real FFI entry points. Everything else here is a
+    /// pure predicate and needs no lock, but these mutate process-wide generation counters
+    /// and the suite runs in parallel.
+    static GLOBAL_STATE: Mutex<()> = Mutex::new(());
+
+    fn lock_global_state() -> std::sync::MutexGuard<'static, ()> {
+        GLOBAL_STATE.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn routine_cleanup_does_not_supersede_a_grant() {
+        let _guard = lock_global_state();
+        // A grant waits on a human in a browser, which is long enough for an ordinary play,
+        // retry or wake to rebuild the player underneath it. Those bump SESSION_GENERATION;
+        // if the grant watched that counter it would report itself superseded and delete the
+        // credentials it had just written.
+        let before = LOGOUT_GENERATION.load(Ordering::SeqCst);
+        let session_before = SESSION_GENERATION.load(Ordering::SeqCst);
+
+        spotifly_cleanup();
+
+        assert_ne!(
+            SESSION_GENERATION.load(Ordering::SeqCst),
+            session_before,
+            "cleanup is expected to move the session generation"
+        );
+        assert_eq!(
+            LOGOUT_GENERATION.load(Ordering::SeqCst),
+            before,
+            "cleanup must not invalidate a streaming grant"
+        );
+    }
+
+    #[test]
+    fn shutdown_supersedes_a_grant() {
+        let _guard = lock_global_state();
+
+        // Logout and app termination both go through here, and both mean the account this
+        // grant belongs to is gone.
+        let before = LOGOUT_GENERATION.load(Ordering::SeqCst);
+
+        let _ = spotifly_shutdown();
+
+        assert!(run_is_superseded(
+            before,
+            LOGOUT_GENERATION.load(Ordering::SeqCst)
+        ));
+
+        // Leave the flag as the rest of the suite expects; init clears it in the app.
+        SHUTTING_DOWN.store(false, Ordering::SeqCst);
     }
 
     #[test]
