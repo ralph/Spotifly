@@ -89,12 +89,6 @@ static SHUFFLE_STATE: AtomicBool = AtomicBool::new(false);
 static REPEAT_TRACK_STATE: AtomicBool = AtomicBool::new(false);
 static REPEAT_CONTEXT_STATE: AtomicBool = AtomicBool::new(false);
 
-// Token request callback - Rust requests fresh token from Swift for reconnection
-static TOKEN_REQUEST_CALLBACK: Lazy<Mutex<Option<extern "C" fn()>>> =
-    Lazy::new(|| Mutex::new(None));
-// Channel for receiving token from Swift (set via spotifly_set_token)
-static PENDING_TOKEN: Lazy<Mutex<Option<tokio::sync::oneshot::Sender<String>>>> =
-    Lazy::new(|| Mutex::new(None));
 // Flag to track if reconnection is in progress
 static RECONNECTING: AtomicBool = AtomicBool::new(false);
 // Flag to track intentional shutdown (prevents reconnection attempts during app quit)
@@ -715,40 +709,6 @@ pub extern "C" fn spotifly_register_active_device_callback(callback: extern "C" 
     *ACTIVE_DEVICE_CALLBACK.lock().unwrap() = Some(callback);
 }
 
-/// Registers a callback for token requests during reconnection.
-/// When Rust needs a fresh token to reconnect, it calls this callback.
-/// Swift should respond by calling spotifly_set_token() with a fresh access token.
-#[no_mangle]
-pub extern "C" fn spotifly_register_token_request_callback(callback: extern "C" fn()) {
-    *TOKEN_REQUEST_CALLBACK.lock().unwrap() = Some(callback);
-}
-
-/// Provides a fresh access token for reconnection.
-/// Called by Swift in response to the token request callback.
-/// The token is passed to the pending reconnection attempt.
-#[no_mangle]
-pub extern "C" fn spotifly_set_token(token: *const c_char) {
-    let Some(token_str) = (unsafe { c_string_arg(token) }) else {
-        debug!("spotifly_set_token: token is null or not valid UTF-8");
-        return;
-    };
-
-    debug!(
-        "spotifly_set_token: received token ({} chars)",
-        token_str.len()
-    );
-
-    // Send token to waiting reconnection task
-    let mut pending = PENDING_TOKEN.lock().unwrap();
-    if let Some(sender) = pending.take() {
-        if sender.send(token_str).is_err() {
-            debug!("spotifly_set_token: receiver dropped");
-        }
-    } else {
-        debug!("spotifly_set_token: no pending token request");
-    }
-}
-
 /// Registers a callback to receive connection state change notifications.
 /// Called whenever the connection state changes (connect, disconnect, error, etc.).
 /// The callback receives JSON with full connection state.
@@ -1216,19 +1176,8 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
     Ok(())
 }
 
-/// Request a fresh token from Swift via callback
-fn request_token_from_swift() {
-    match registered_callback(&TOKEN_REQUEST_CALLBACK) {
-        Some(callback) => {
-            debug!("Requesting fresh token from Swift");
-            callback();
-        }
-        None => debug!("No token request callback registered"),
-    }
-}
-
 /// Spawns the reconnection loop task.
-/// Uses exponential backoff and requests fresh tokens from Swift.
+/// Uses exponential backoff and rebuilds from the cached streaming credentials.
 fn spawn_reconnection_loop(intent: RecoveryIntent) {
     // Check if already reconnecting
     if RECONNECTING.swap(true, Ordering::SeqCst) {
@@ -1306,44 +1255,11 @@ fn spawn_reconnection_loop(intent: RecoveryIntent) {
             });
             notify_connection_state_change();
 
-            let (tx, rx) = tokio::sync::oneshot::channel::<String>();
-            {
-                let mut pending = PENDING_TOKEN.lock().unwrap();
-                *pending = Some(tx);
-            }
-            request_token_from_swift();
-
-            let token_result = tokio::time::timeout(Duration::from_secs(10), rx).await;
-
-            let token = match token_result {
-                Ok(Ok(t)) => t,
-                Ok(Err(_)) => {
-                    debug!("[WAKE +{}ms] Token channel closed", elapsed_since_wake_ms());
-                    continue;
-                }
-                Err(_) => {
-                    debug!(
-                        "[WAKE +{}ms] Token request timed out",
-                        elapsed_since_wake_ms()
-                    );
-                    continue;
-                }
-            };
-
-            // Re-check after the token round-trip: requesting one from Swift can take up
-            // to ten seconds, which is plenty of time for a restart to land.
-            if !reconnect_may_proceed(
-                recovering_generation,
-                SESSION_GENERATION.load(Ordering::SeqCst),
-                teardown_in_progress(),
-            ) {
-                debug!(
-                    "[WAKE +{}ms] Abandoning reconnect: state changed while fetching token",
-                    elapsed_since_wake_ms()
-                );
-                RECONNECTING.store(false, Ordering::SeqCst);
-                return;
-            }
+            // No token is fetched here. Swift's token is minted with the user's dashboard
+            // client id, which login5 now rejects — a reconnect built on one fails exactly
+            // where the original outage did. The credentials cached by the streaming grant
+            // are what a rebuild connects from, so the ten-second round-trip that used to
+            // sit here, and the re-check that existed only to cover it, are both gone.
 
             // One recovery strategy: tear everything down and rebuild Session, Player,
             // Mixer and Spirc as a single generation, then restore the captured intent.
@@ -1359,7 +1275,7 @@ fn spawn_reconnection_loop(intent: RecoveryIntent) {
 
             // Rehydration happens inside init_player_async, so that the session is fully
             // settled before its readiness is published. See the note there.
-            match init_player_async(Some(&token), intent.was_active, intent.should_resume()).await {
+            match init_player_async(None, intent.was_active, intent.should_resume()).await {
                 Ok(_) => {
                     debug!(
                         "[WAKE +{}ms] Reconnect successful on attempt {}",

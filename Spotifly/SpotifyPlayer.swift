@@ -457,9 +457,6 @@ private nonisolated func handleBecameActiveCallback() {
     }
 }
 
-/// Weak reference to the SpotifySession for token requests during reconnection
-private nonisolated(unsafe) var tokenProviderSession: SpotifySession?
-
 /// Registers the active device callback with Rust (fires on every cluster update)
 private nonisolated func registerActiveDeviceCallback() {
     spotifly_register_active_device_callback { deviceIdPtr in
@@ -473,35 +470,6 @@ private nonisolated func handleActiveDeviceCallback(_ deviceIdPtr: UnsafePointer
     let deviceId = String(cString: deviceIdPtr)
     Task { @MainActor in
         activeDeviceSubject.send(deviceId)
-    }
-}
-
-/// Registers the token request callback with Rust (fires when reconnection needs a fresh token)
-private nonisolated func registerTokenRequestCallback() {
-    spotifly_register_token_request_callback {
-        handleTokenRequestCallback()
-    }
-}
-
-/// C callback for token request notifications from Rust
-/// Fires when Rust's reconnection loop needs a fresh access token
-private nonisolated func handleTokenRequestCallback() {
-    debugLog("SpotifyPlayer", "Token request received from Rust")
-    Task { @MainActor in
-        guard let session = tokenProviderSession else {
-            debugLog("SpotifyPlayer", "No session available for token request")
-            return
-        }
-
-        let token = await session.validAccessToken()
-        debugLog("SpotifyPlayer", "Providing fresh token to Rust (\(token.prefix(20))...)")
-
-        // Call Rust FFI on background thread
-        Task.detached {
-            token.withCString { tokenPtr in
-                spotifly_set_token(tokenPtr)
-            }
-        }
     }
 }
 
@@ -645,7 +613,6 @@ enum SpotifyPlayer {
         registerSessionClientChangedCallback()
         registerConnectionStateCallback()
         registerActiveDeviceCallback()
-        registerTokenRequestCallback()
 
         // Sync playback settings from UserDefaults before initializing
         syncSettingsFromUserDefaults()
@@ -665,13 +632,6 @@ enum SpotifyPlayer {
         guard result == .ok else {
             throw SpotifyPlayerError.initializationFailed
         }
-    }
-
-    /// Sets the session to use for token requests during automatic reconnection.
-    /// Call this after initializing the player with the session that can provide fresh tokens.
-    @MainActor
-    static func setTokenProvider(_ session: SpotifySession) {
-        tokenProviderSession = session
     }
 
     /// Returns a publisher for queue updates.

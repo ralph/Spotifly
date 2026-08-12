@@ -174,20 +174,6 @@ void spotifly_register_session_client_changed_callback(SessionClientChangedCallb
 /// Use this to check if playback commands will be accepted.
 int32_t spotifly_is_session_connected(void);
 
-/// Callback function type for token request notifications.
-/// Called when Rust's reconnection loop needs a fresh access token.
-typedef void (*TokenRequestCallback)(void);
-
-/// Registers a callback to receive token request notifications.
-/// When Rust needs a fresh token to reconnect, it calls this callback.
-/// Swift should respond by calling spotifly_set_token() with a fresh access token.
-void spotifly_register_token_request_callback(TokenRequestCallback callback);
-
-/// Provides a fresh access token for reconnection.
-/// Called by Swift in response to the token request callback.
-/// The token is passed to the pending reconnection attempt.
-void spotifly_set_token(const char* token);
-
 /// Forces a reconnection to Spotify servers.
 /// Use this after system wake to ensure a fresh connection before playback.
 /// Returns:
