@@ -38,6 +38,18 @@ disproved against the live service.
   tests by unique name.
 - Rust tests: `cargo test --manifest-path rust/Cargo.toml <name>` from `spotifly-code/`.
 - One commit per problem.
+- **Every task's commit includes its `CHANGELOG.md` entry** under `## [Unreleased]`, in the
+  Keep a Changelog sections (Added / Changed / Fixed / Removed). This project's entries explain
+  the mechanism and why it changed, not just what — match the surrounding density. For example,
+  for Task 1:
+
+  > ### Changed
+  > - The librespot session connects from cached credentials instead of an access token. The
+  >   token Swift held is minted with the user's own dashboard client id, and Spotify now
+  >   rejects login5 when the AP's stored credentials descend from a client id other than its
+  >   own desktop one — which is what stopped playback entirely. `Cache` is given a real
+  >   credentials directory, so the one-time grant is the only thing that ever passes a token
+  >   and every later init connects with none.
 
 ## File Structure
 
