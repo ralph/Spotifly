@@ -165,6 +165,93 @@ extension SpotifyAPI {
         }
     }
 
+    /// Builds the request that starts new content on a device via Web API.
+    ///
+    /// Split out from `startPlayback` so the body and query construction can be tested
+    /// without a network round-trip. The device belongs in the query string; Spotify ignores
+    /// it in the body.
+    static func makeStartPlaybackRequest(
+        contextUri: String?,
+        uris: [String]?,
+        offsetIndex: Int?,
+        deviceId: String?,
+        accessToken: String,
+    ) throws -> URLRequest {
+        var components = URLComponents(string: "\(baseURL)/me/player/play")
+        if let deviceId {
+            components?.queryItems = [URLQueryItem(name: "device_id", value: deviceId)]
+        }
+
+        guard let url = components?.url else {
+            throw SpotifyAPIError.invalidURI
+        }
+
+        var payload: [String: Any] = [:]
+        if let contextUri {
+            payload["context_uri"] = contextUri
+        }
+        // An empty list is omitted rather than sent: Spotify rejects an empty `uris`, and
+        // omitting it lets callers pass a list through without checking it first.
+        if let uris, !uris.isEmpty {
+            payload["uris"] = uris
+        }
+        if let offsetIndex {
+            payload["offset"] = ["position": offsetIndex]
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        return request
+    }
+
+    /// Starts content on a device via Web API.
+    ///
+    /// Used when this Mac is not a Connect device — either because streaming was never
+    /// authorized or because its credentials went stale. `resumePlayback` only resumes what
+    /// is already loaded; this is what starts an album or a set of tracks.
+    static func startPlayback(
+        contextUri: String?,
+        uris: [String]? = nil,
+        offsetIndex: Int? = nil,
+        deviceId: String? = nil,
+        accessToken: String,
+    ) async throws {
+        let urlString = "\(baseURL)/me/player/play"
+
+        #if DEBUG
+            debugLog("SpotifyAPI", "[PUT] \(urlString)")
+        #endif
+
+        let request = try makeStartPlaybackRequest(
+            contextUri: contextUri,
+            uris: uris,
+            offsetIndex: offsetIndex,
+            deviceId: deviceId,
+            accessToken: accessToken,
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SpotifyAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200, 204:
+            return // Success
+        case 401:
+            throw SpotifyAPIError.unauthorized
+        case 404:
+            throw SpotifyAPIError.noActiveDevice
+        default:
+            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
+        }
+    }
+
     /// Skips to the next track on the active device via Web API.
     /// Use this when controlling a remote device (not the local Spirc).
     static func skipToNext(accessToken: String) async throws {
