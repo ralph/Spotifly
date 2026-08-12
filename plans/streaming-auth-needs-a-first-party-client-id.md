@@ -172,11 +172,18 @@ loopback callback.
 Cost: a blocking, browser-opening call behind the FFI, so it needs a cancel path and a
 progress signal for the UI.
 
-**The cancel path is not implementable against librespot-oauth as it stands.**
-`get_authcode_listener` blocks in `listener.incoming().flatten().next()` with no timeout
-and no exposed handle (`oauth/src/lib.rs:182`), and `get_access_token()` is synchronous,
-so cancelling the surrounding Swift task leaves the listener parked until some connection
-arrives. Closing the browser tab produces nothing to unblock it.
+**There is no in-flight cancellation, deliberately.** An earlier draft required one, and
+it does not survive contact with the API: `get_authcode_listener` blocks in
+`listener.incoming().flatten().next()` with no timeout and no handle
+(`oauth/src/lib.rs:182`), `get_access_token()` is synchronous, and even a listener handle
+would not help once execution has moved into `read_line()` on an accepted stream. Every
+mechanism that fixes that adds machinery.
+
+It also buys nothing the UI asked for. **Cancel** in the alert declines the grant *before*
+the flow starts; nothing in the design cancels a browser authorization already under way.
+So the flow is self-terminating instead: a bounded timeout on the listener and on reads
+from accepted streams, after which it reports failure and the user can press **Enable this
+Mac** again. The UI shows progress, not a cancel button.
 
 ### FFI changes — **taken**
 
@@ -219,8 +226,10 @@ nothing prevents an injected callback — worst case exchanging an attacker's co
 binding the session to their account, cheapest case killing the flow by connecting first.
 
 Both are fixed by one upstream patch: retain the `CsrfToken`, validate `state` against it,
-ignore non-matching callbacks instead of terminating, and give the listener a timeout plus
-an interruptible handle. Carry it locally until it lands — the workspace builds whatever
+ignore non-matching callbacks instead of terminating, and bound the wait with timeouts —
+on the listener *and* on reads from accepted streams, since a connection that never sends
+a complete request line parks in `BufReader::read_line()` where a listener timeout cannot
+reach it. Carry it locally until it lands — the workspace builds whatever
 librespot is checked out, which is what that arrangement is for.
 
 Taking this route deliberately: these findings would otherwise argue for hand-writing the
