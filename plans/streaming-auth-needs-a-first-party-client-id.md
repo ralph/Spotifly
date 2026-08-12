@@ -169,8 +169,8 @@ code exchange; probe 2 used exactly this path. In Swift it would be roughly a hu
 lines of new PKCE and HTTP code, because `ASWebAuthenticationSession` cannot take a
 loopback callback.
 
-Cost: a blocking, browser-opening call behind the FFI, so it needs a cancel path and a
-progress signal for the UI.
+Cost: a blocking, browser-opening call behind the FFI, so it needs a bounded lifetime and
+a progress signal for the UI.
 
 **There is no in-flight cancellation, deliberately.** An earlier draft required one, and
 it does not survive contact with the API: `get_authcode_listener` blocks in
