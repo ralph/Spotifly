@@ -191,11 +191,7 @@ Two:
 
 1. **New `spotifly_authorize_streaming()`** — opens the browser, listens on loopback,
    exchanges the code, connects, persists credentials. Reports success or failure.
-   It must **not persist for a superseded run**: the token exchange and connect are
-   network steps a logout can outlive, and writing afterwards would restore the previous
-   account's credentials into a cache logout has already wiped. Carry the session
-   generation through the call and check it immediately before saving — the same rule
-   services follow in `AGENTS.md` ("A superseded run must not write").
+   It must not leave credentials behind for a superseded run — see below.
 2. **`spotifly_init_player` accepts a null token**, meaning "use cached credentials".
    The three Swift call sites — `PlaybackViewModel.swift:259`,
    `LoggedInLifecycleModifier.swift:137`, `SpeakersView.swift:108` — stop passing a Web
@@ -209,6 +205,25 @@ Two:
    the re-check that exists only because the round-trip can take ten seconds — the wake
    path gets shorter, not longer. Retire `request_token_from_swift` and its callback once
    nothing else needs it.
+
+### Superseded runs — **taken**
+
+Both paths this plan adds are slow enough for a logout to land in the middle of them, and
+`AGENTS.md` already states the rule: **a superseded run must not write.** Capture the
+lifecycle generation when the run starts and recheck it before touching shared state.
+
+Two sites, with one wrinkle each:
+
+- **The grant.** Checking before the save is not enough, and not even available to us:
+  librespot persists from inside `Session::connect`, so by the time we could look, the
+  file exists. Logout can wipe the cache between our check and that write, leaving the
+  previous account's credentials recreated behind it. Recheck *after* connect returns and
+  delete the cache if the run was superseded.
+- **The remote-start refresh.** The settling delay and both requests can outlive a
+  logout, and `fetchInitialPlaybackState` only consults the store's live-state revision
+  before updating the shared `PlaybackViewModel` — so a late response can restore the
+  previous account's now-playing state after `stop()`. Recheck the generation before
+  applying the response, not only before issuing it.
 
 ### Loopback port — **taken**
 
