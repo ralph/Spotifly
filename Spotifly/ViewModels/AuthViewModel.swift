@@ -15,6 +15,13 @@ final class AuthViewModel {
     var errorMessage: String?
     var isLoading = true
 
+    /// The streaming grant runs separately from the Web API login and uses a different
+    /// client id, because Spotify allows neither id to do the other's job. Skipping it is
+    /// fine: the app browses and drives other devices, it just is not a Connect device
+    /// itself. See `plans/streaming-auth-needs-a-first-party-client-id.md`.
+    var isAuthorizingStreaming = false
+    var hasStreamingCredentials = SpotifyPlayer.hasCachedStreamingCredentials()
+
     init() {
         // Try to load existing auth from keychain on init
         loadFromKeychain()
@@ -34,6 +41,28 @@ final class AuthViewModel {
                     self.isLoading = false
                 }
             }
+        }
+    }
+
+    /// Runs the streaming grant and records whether this Mac can be a playback device.
+    ///
+    /// Blocks on the user finishing an authorization in their browser, so it can take a
+    /// while; `isAuthorizingStreaming` drives the progress the UI shows meanwhile.
+    func authorizeStreaming() async {
+        isAuthorizingStreaming = true
+        defer { isAuthorizingStreaming = false }
+
+        errorMessage = nil
+
+        switch await SpotifyPlayer.authorizeStreaming() {
+        case .authorized:
+            hasStreamingCredentials = true
+        case .superseded:
+            // A logout won the race and the credentials were removed again. Nothing went
+            // wrong and there is nothing to report.
+            break
+        case .failed:
+            errorMessage = String(localized: "auth.enable_playback_failed")
         }
     }
 

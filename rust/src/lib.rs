@@ -880,6 +880,22 @@ fn credentials_cache_dir() -> std::path::PathBuf {
         .join("credentials")
 }
 
+/// Whether a streaming grant has already been completed on this machine.
+///
+/// This is what makes the local device's absence explainable: without credentials there is
+/// nothing to register with Spotify Connect, so Spotifly is genuinely not in the device list.
+#[no_mangle]
+pub extern "C" fn spotifly_has_streaming_credentials() -> i32 {
+    let cached = Cache::new(Some(credentials_cache_dir()), None, None, None)
+        .ok()
+        .and_then(|cache| cache.credentials());
+
+    match cached {
+        Some(_) => 1,
+        None => 0,
+    }
+}
+
 /// Runs the one-time streaming authorization: opens the browser, waits for the loopback
 /// callback, exchanges the code, connects, and lets librespot persist the AP credentials.
 ///

@@ -46,9 +46,29 @@ typedef enum __attribute__((enum_extensibility(open))) SpotiflyResult : int32_t 
 // Playback functions
 // ============================================================================
 
-/// Initializes the player with the given access token.
+/// Initializes the player.
 /// Must be called before play/pause operations.
+///
+/// @param access_token A token minted with librespot's client id, or NULL to connect from
+///                     the credentials cached by spotifly_authorize_streaming(). NULL is the
+///                     normal case: only the first init after a grant carries a token.
 SpotiflyResult spotifly_init_player(const char* access_token);
+
+/// Runs the one-time streaming authorization: opens the browser, waits for the loopback
+/// callback, exchanges the code, connects, and persists the credentials.
+///
+/// Blocks on a human, so never call this on the main thread. There is no cancellation; the
+/// flow terminates on its own.
+///
+/// Returns:
+///    0 = Authorized, credentials cached
+///   -1 = Failed
+///   -2 = Superseded by a logout; any credentials written were removed again
+int32_t spotifly_authorize_streaming(void);
+
+/// Whether a streaming grant has already been completed on this machine.
+/// Returns 1 when credentials are cached, 0 otherwise.
+int32_t spotifly_has_streaming_credentials(void);
 
 /// Plays multiple tracks in sequence.
 ///

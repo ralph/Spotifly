@@ -12,6 +12,7 @@ struct LoggedInView: View {
     let onLogout: () -> Void
 
     @Environment(WindowState.self) private var windowState
+    @Environment(AuthViewModel.self) private var authViewModel
 
     @State private var session: SpotifySession
     private let playbackViewModel = PlaybackViewModel.shared
@@ -231,6 +232,19 @@ struct LoggedInView: View {
                 playbackViewModel: playbackViewModel,
                 windowState: windowState,
             )
+        }
+        // Raised only when a play request had nowhere to go: no local player and no active
+        // remote device. With a device active, playback goes there and nothing is asked.
+        .alert(
+            "playback.needs_authorization_title",
+            isPresented: Bindable(playbackViewModel).needsStreamingAuthorization,
+        ) {
+            Button("playback.needs_authorization_authorize") {
+                Task { await authViewModel.authorizeStreaming() }
+            }
+            Button("common.cancel", role: .cancel) {}
+        } message: {
+            Text("playback.needs_authorization_message")
         }
     }
 

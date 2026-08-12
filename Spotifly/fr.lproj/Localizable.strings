@@ -290,3 +290,16 @@
 "profile.country" = "Pays";
 "profile.subscription" = "Abonnement";
 "profile.followers" = "Abonnés";
+
+// Streaming authorization (step 2)
+"auth.enable_playback_label" = "Activer la lecture sur ce Mac";
+"auth.enable_playback_note" = "Spotifly a besoin d'une seconde autorisation pour lire de l'audio ici. Spotify exige une identité d'app différente pour la lecture et pour votre bibliothèque, d'où cette étape distincte.";
+"auth.enable_playback_button" = "Activer la lecture";
+"auth.enable_playback_waiting" = "En attente de votre navigateur...";
+"auth.enable_playback_skip" = "Plus tard";
+"auth.enable_playback_failed" = "Impossible d'activer la lecture. Veuillez réessayer.";
+"speakers.enable_this_mac" = "Activer ce Mac";
+"playback.needs_authorization_title" = "Activer la lecture sur ce Mac ?";
+"playback.needs_authorization_message" = "Aucun appareil n'est disponible pour la lecture. Autorisez la lecture pour écouter ici, ou démarrez d'abord la lecture sur un autre appareil.";
+"playback.needs_authorization_authorize" = "Autoriser";
+"common.cancel" = "Annuler";

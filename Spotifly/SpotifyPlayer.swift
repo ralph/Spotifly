@@ -59,6 +59,26 @@ struct QueueItem: Identifiable, Equatable, Encodable {
     }
 }
 
+/// Outcome of the one-time streaming authorization.
+///
+/// `nonisolated` because the grant runs detached — it blocks on a human — so the exit code is
+/// mapped off the main actor.
+nonisolated enum StreamingAuthResult: Equatable {
+    case authorized
+    case failed
+    /// A logout landed while the grant was in flight, and the credentials it wrote were
+    /// removed again. Nothing went wrong, so this is reported as neither success nor error.
+    case superseded
+
+    init(code: Int32) {
+        switch code {
+        case 0: self = .authorized
+        case -2: self = .superseded
+        default: self = .failed
+        }
+    }
+}
+
 /// Queue state containing current, next, and previous tracks (nonisolated for C callback compatibility)
 struct QueueState {
     nonisolated let currentTrack: QueueItem?
@@ -1010,6 +1030,23 @@ enum SpotifyPlayer {
         _ body: @escaping @Sendable () -> SpotiflyResult,
     ) async -> Bool {
         await Task.detached(priority: .userInitiated) { body() == .ok }.value
+    }
+
+    /// Runs the one-time streaming authorization.
+    ///
+    /// Opens the browser, waits for the loopback callback, and lets librespot persist the
+    /// credentials every later init connects from. Blocks on a human, so it runs detached —
+    /// never on the main actor. There is no cancellation: the flow terminates on its own,
+    /// and the alert's Cancel declines before this is called at all.
+    static func authorizeStreaming() async -> StreamingAuthResult {
+        await Task.detached(priority: .userInitiated) {
+            StreamingAuthResult(code: spotifly_authorize_streaming())
+        }.value
+    }
+
+    /// Whether a streaming grant has already been completed on this machine.
+    static func hasCachedStreamingCredentials() -> Bool {
+        spotifly_has_streaming_credentials() == 1
     }
 
     /// Transfers playback from another Spotify Connect device to this local player.

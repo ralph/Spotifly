@@ -11,6 +11,7 @@ struct SpeakersView: View {
     @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
+    @Environment(AuthViewModel.self) private var authViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
 
     /// Whether AirPlay is available (only when Spotifly is the active device)
@@ -70,6 +71,30 @@ struct SpeakersView: View {
                             ForEach(store.availableDevices) { device in
                                 SpeakerRow(device: device)
                             }
+                        }
+
+                        // Without a streaming grant this Mac never registers with Spotify
+                        // Connect, so it is genuinely absent from the list above. That
+                        // absence is the indicator; this row is the way back.
+                        if !authViewModel.hasStreamingCredentials {
+                            Button {
+                                Task { await authViewModel.authorizeStreaming() }
+                            } label: {
+                                HStack {
+                                    if authViewModel.isAuthorizingStreaming {
+                                        ProgressView()
+                                            .progressViewStyle(.circular)
+                                            .scaleEffect(0.6)
+                                    } else {
+                                        Image(systemName: "laptopcomputer.slash")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text("speakers.enable_this_mac")
+                                    Spacer()
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(authViewModel.isAuthorizingStreaming)
                         }
                     } header: {
                         Text("speakers.spotify_connect")
