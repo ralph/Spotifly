@@ -90,8 +90,17 @@ final class AuthViewModel {
     /// which needs the user to have deliberately signed the browser into another account.
     private func streamingAccountMismatch() async -> String? {
         guard let streamingAccount = SpotifyPlayer.lastGrantAccountId() else { return nil }
-        guard let token = authResult?.accessToken else { return nil }
-        guard let profile = try? await SpotifyAPI.getCurrentUserProfile(accessToken: token) else {
+
+        // Not `authResult.accessToken`: that is the token minted at login, and `SpotifySession`
+        // refreshes independently without writing back, so it is expired within the hour. An
+        // expired token makes `/me` return 401, which this function reads as agreement — the
+        // check would quietly stop working for exactly the mid-session case that Speakers
+        // offers.
+        guard let current = await KeychainManager.loadAuthResultWithRefresh(),
+              let profile = try? await SpotifyAPI.getCurrentUserProfile(
+                  accessToken: current.accessToken,
+              )
+        else {
             return nil
         }
 
