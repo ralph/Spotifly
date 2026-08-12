@@ -183,6 +183,15 @@ Two:
    The three Swift call sites — `PlaybackViewModel.swift:259`,
    `LoggedInLifecycleModifier.swift:137`, `SpeakersView.swift:108` — stop passing a Web
    API token, which was never the right credential for this call.
+3. **The Rust reconnect loop stops asking Swift for a token.** `spawn_reconnection_loop`
+   currently fires `request_token_from_swift()`, waits on the `PENDING_TOKEN` oneshot with
+   a ten-second timeout, and hands the result to `init_player_async`
+   (`rust/src/lib.rs:1146`). That is a dashboard token, so the first automatic reconnect
+   after a cluster outage would reproduce the login5 mismatch even once login works.
+   Rebuilding from cached credentials removes the request, the channel, the timeout, and
+   the re-check that exists only because the round-trip can take ten seconds — the wake
+   path gets shorter, not longer. Retire `request_token_from_swift` and its callback once
+   nothing else needs it.
 
 ### Loopback port — **taken**
 
