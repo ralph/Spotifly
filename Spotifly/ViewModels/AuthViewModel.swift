@@ -22,6 +22,11 @@ final class AuthViewModel {
     var isAuthorizingStreaming = false
     var hasStreamingCredentials = SpotifyPlayer.hasCachedStreamingCredentials()
 
+    /// Bumped by logout. The grant spans a browser round-trip and a `/me` lookup, so it can
+    /// resume into a session that no longer exists; comparing this across the awaits is what
+    /// stops it writing there.
+    private var authLifecycle: UInt64 = 0
+
     init() {
         // Try to load existing auth from keychain on init
         loadFromKeychain()
@@ -54,14 +59,33 @@ final class AuthViewModel {
 
         errorMessage = nil
 
+        // This runs across a browser round-trip and a `/me` lookup, either of which a logout
+        // can outlive. A superseded run must not write (see AGENTS.md): resuming afterwards
+        // would mark credentials present and rebuild a player for an account that is gone.
+        let startedAt = authLifecycle
+
         switch await SpotifyPlayer.authorizeStreaming() {
         case .authorized:
             // The browser runs the grant with whatever account it is signed into, which is
             // not necessarily the one the Web API half uses. Accepting a mismatch would
             // leave the app browsing and editing account A while playing and queueing on
             // account B — with no visible sign of it.
-            if let mismatch = await streamingAccountMismatch() {
+            let mismatch = await streamingAccountMismatch()
+
+            guard startedAt == authLifecycle else {
+                // Logged out while this was deciding. Whatever the answer, it belongs to a
+                // session that no longer exists, and logout has already cleared the cache.
+                debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
+                return
+            }
+
+            if let mismatch {
                 debugLog("AuthViewModel", "Streaming grant rejected: \(mismatch)")
+                // A play or retry may have initialized the player from the cached
+                // credentials while the comparison was in flight, so there can be a live
+                // session for the wrong account. Removing the directory would leave it
+                // connected and able to write its credentials back.
+                await SpotifyPlayer.shutdownAndCleanup()
                 await SpotifyPlayer.clearStreamingCredentials()
                 hasStreamingCredentials = false
                 errorMessage = String(localized: "auth.enable_playback_wrong_account")
@@ -149,6 +173,10 @@ final class AuthViewModel {
         // Awaited before the auth state is cleared so the login screen cannot come back and
         // start a new session while this one is still going down. Rust only hands Spirc a
         // command, so there is nothing slow to wait for.
+        // Invalidates any streaming grant still deciding, so it cannot resume into the
+        // session this is tearing down.
+        authLifecycle &+= 1
+
         await PlaybackViewModel.shared.shutdownForLogout()
 
         // The streaming credentials are a file, not a keychain item, so clearing the
