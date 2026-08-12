@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The librespot session connects from credentials cached on disk instead of from an access token. Spotify changed a server-side rule around 2026-08-11: login5 now rejects stored credentials that descend from a token minted with any client id other than its own desktop one, and Spotifly mints its token with the user's own dashboard client id. The AP still authenticates, so the failure lands one step later, at `Spirc::new` — `FaultyRequest(INVALID_CREDENTIALS)` — and takes local playback down completely while browsing continues unaffected. `Cache` is given a real credentials directory, which it never had, so `Session::connect` persists what the AP hands back and every later init connects from that with no token, no refresh and no round-trip beforehand. `create_session` resolves the credential itself — a freshly granted token when there is one, the cache otherwise — so callers do not each repeat the rule, and `spotifly_init_player` now accepts a null token meaning exactly that. Nothing yet writes to the cache; the grant that fills it comes next
+
 ## [1.2.6] - 2026-08-12
 
 ### Changed

@@ -853,18 +853,48 @@ fn notify_connection_state_change() {
     }
 }
 
-/// Creates a new (unconnected) Session with the given device ID and access token.
+/// Where librespot persists the AP credentials produced by the streaming grant.
+///
+/// Under the sandbox `HOME` is already the app container, so this stays inside it.
+fn credentials_cache_dir() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    std::path::Path::new(&home)
+        .join("Library")
+        .join("Application Support")
+        .join("Spotifly")
+        .join("credentials")
+}
+
+/// Creates a new (unconnected) Session with the given device ID.
+///
+/// `access_token` is `Some` only for the first connect after the streaming grant. Every later
+/// init passes `None` and connects from the credentials librespot cached then — which is the
+/// point of the cache: no token, no refresh, no round-trip before connecting.
+///
+/// The token must be one minted with librespot's own client id. A Web API token minted with
+/// the user's dashboard client id authenticates with the AP but is rejected by login5, which
+/// is what took playback down entirely; see
+/// `plans/streaming-auth-needs-a-first-party-client-id.md`.
 fn create_session(
     device_id: &str,
-    access_token: &str,
+    access_token: Option<&str>,
 ) -> Result<(Session, librespot_core::authentication::Credentials), String> {
     let session_config = SessionConfig {
         device_id: device_id.to_string(),
         ..Default::default()
     };
-    let credentials = librespot_core::authentication::Credentials::with_access_token(access_token);
-    let cache = Cache::new(None::<std::path::PathBuf>, None, None, None)
+    let cache = Cache::new(Some(credentials_cache_dir()), None, None, None)
         .map_err(|e| format!("Cache error: {}", e))?;
+
+    // Prefer a freshly granted token; otherwise reuse what the last grant cached. Resolved
+    // here rather than at the call site so every caller gets the same rule.
+    let credentials = match access_token {
+        Some(token) => librespot_core::authentication::Credentials::with_access_token(token),
+        None => cache
+            .credentials()
+            .ok_or_else(|| "No streaming credentials: authorization required".to_string())?,
+    };
+
     let session = Session::new(session_config, Some(cache));
     Ok((session, credentials))
 }
@@ -1196,7 +1226,7 @@ fn spawn_reconnection_loop(intent: RecoveryIntent) {
 
             // Rehydration happens inside init_player_async, so that the session is fully
             // settled before its readiness is published. See the note there.
-            match init_player_async(&token, intent.was_active, intent.should_resume()).await {
+            match init_player_async(Some(&token), intent.was_active, intent.should_resume()).await {
                 Ok(_) => {
                     debug!(
                         "[WAKE +{}ms] Reconnect successful on attempt {}",
@@ -1340,10 +1370,9 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
     SHUTTING_DOWN.store(false, Ordering::SeqCst);
     SLEEPING.store(false, Ordering::SeqCst);
 
-    let Some(token_str) = (unsafe { c_string_arg(access_token) }) else {
-        debug!("Player init error: access_token is null or not valid UTF-8");
-        return -1;
-    };
+    // A null token means "connect from the cached streaming credentials", which is the normal
+    // case: only the first init after the one-time grant carries a token.
+    let token_str = unsafe { c_string_arg(access_token) };
 
     // Check if we already have a session
     {
@@ -1354,7 +1383,8 @@ pub extern "C" fn spotifly_init_player(access_token: *const c_char) -> i32 {
         }
     }
 
-    let result = RUNTIME.block_on(async { init_player_async(&token_str, false, false).await });
+    let result =
+        RUNTIME.block_on(async { init_player_async(token_str.as_deref(), false, false).await });
 
     match result {
         Ok(_) => 0,
@@ -1424,7 +1454,7 @@ fn create_new_player(session: &Session) -> Arc<Player> {
 /// logout there is no next attempt: the loop sees the teardown flag and exits, leaving a
 /// live session for an account that is gone.
 async fn init_player_async(
-    access_token: &str,
+    access_token: Option<&str>,
     activate_after_connect: bool,
     resume_after_connect: bool,
 ) -> Result<(), String> {
@@ -1440,7 +1470,7 @@ async fn init_player_async(
 }
 
 async fn build_player_async(
-    access_token: &str,
+    access_token: Option<&str>,
     activate_after_connect: bool,
     resume_after_connect: bool,
 ) -> Result<(), String> {
@@ -3382,5 +3412,19 @@ mod tests {
     fn no_local_device_id_is_never_active() {
         assert!(!is_active_in_cluster("phone-abc", None));
         assert!(!is_active_in_cluster("", None));
+    }
+
+    // The streaming session connects from credentials cached on disk, so that every init
+    // after the one-time grant needs no token at all. See
+    // plans/streaming-auth-needs-a-first-party-client-id.md.
+
+    #[test]
+    fn credentials_cache_dir_is_absolute_and_app_scoped() {
+        let dir = credentials_cache_dir();
+        assert!(dir.is_absolute(), "cache dir must be absolute: {dir:?}");
+        assert!(
+            dir.ends_with("Spotifly/credentials"),
+            "cache dir must be app-scoped: {dir:?}"
+        );
     }
 }
