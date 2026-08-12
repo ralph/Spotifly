@@ -21,6 +21,14 @@ final class PlaybackViewModel {
     /// Reference to AppStore for reading current track metadata (set by LoggedInView)
     private weak var store: AppStore?
 
+    /// Reference to QueueService, used to resync after a remote start (set by LoggedInView).
+    /// Remote playback produces no Rust callbacks, so nothing else would update the UI.
+    private weak var queueService: QueueService?
+
+    /// Set when a play request arrived with nowhere to serve it: no local player and no
+    /// active remote device. The view presents the Auth / Cancel alert on this.
+    var needsStreamingAuthorization = false
+
     var isPlaying = false
     var isLoading = false
     var currentTrackUri: String? {
@@ -318,28 +326,60 @@ final class PlaybackViewModel {
         return SpotifyPlayer.isSessionConnected && SpotifyPlayer.isSpircReady
     }
 
+    /// Where a play request should go.
+    enum PlaybackTarget: Equatable {
+        case local
+        case remote(deviceId: String)
+        case needsAuthorization
+    }
+
+    /// Decides where to play.
+    ///
+    /// Local wins when it exists; otherwise an active remote device serves the request over
+    /// the Web API. Only when neither exists is there anything to ask the user about —
+    /// nagging about local streaming while a phone is playing would be noise.
+    static func playbackTarget(isInitialized: Bool, activeDeviceId: String?) -> PlaybackTarget {
+        if isInitialized {
+            return .local
+        }
+        if let activeDeviceId {
+            return .remote(deviceId: activeDeviceId)
+        }
+        return .needsAuthorization
+    }
+
     func play(uriOrUrl: String, trackIndex: Int = -1, accessToken: String) async {
         // Initialize if needed
         if !isInitialized {
             await initializeIfNeeded(accessToken: accessToken)
         }
 
-        guard isInitialized else {
-            errorMessage = "Player not initialized"
-            return
+        switch Self.playbackTarget(isInitialized: isInitialized, activeDeviceId: store?.activeDeviceId) {
+        case .local:
+            isLoading = true
+            errorMessage = nil
+
+            do {
+                try await SpotifyPlayer.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex)
+                handlePlaybackStarted(trackId: uriOrUrl)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+
+            isLoading = false
+
+        case let .remote(deviceId):
+            await startRemotely(
+                contextUri: uriOrUrl,
+                uris: nil,
+                offsetIndex: trackIndex >= 0 ? trackIndex : nil,
+                deviceId: deviceId,
+                accessToken: accessToken,
+            )
+
+        case .needsAuthorization:
+            needsStreamingAuthorization = true
         }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            try await SpotifyPlayer.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex)
-            handlePlaybackStarted(trackId: uriOrUrl)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-
-        isLoading = false
     }
 
     func playTrack(trackId: String, accessToken: String) async {
@@ -352,22 +392,72 @@ final class PlaybackViewModel {
             await initializeIfNeeded(accessToken: accessToken)
         }
 
-        guard isInitialized else {
-            errorMessage = "Player not initialized"
-            return
-        }
-
         guard !trackUris.isEmpty else {
             errorMessage = "No tracks to play"
             return
         }
 
+        switch Self.playbackTarget(isInitialized: isInitialized, activeDeviceId: store?.activeDeviceId) {
+        case .local:
+            isLoading = true
+            errorMessage = nil
+
+            do {
+                try await SpotifyPlayer.playTracks(trackUris)
+                handlePlaybackStarted(trackId: trackUris[0])
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+
+            isLoading = false
+
+        case let .remote(deviceId):
+            await startRemotely(
+                contextUri: nil,
+                uris: trackUris,
+                offsetIndex: nil,
+                deviceId: deviceId,
+                accessToken: accessToken,
+            )
+
+        case .needsAuthorization:
+            needsStreamingAuthorization = true
+        }
+    }
+
+    /// Starts content on a remote device and then resyncs, because nothing else will.
+    ///
+    /// With no Spirc session there are no playback or queue callbacks — a successful start
+    /// would otherwise leave the now-playing bar showing whatever it showed before.
+    private func startRemotely(
+        contextUri: String?,
+        uris: [String]?,
+        offsetIndex: Int?,
+        deviceId: String,
+        accessToken: String,
+    ) async {
         isLoading = true
         errorMessage = nil
 
+        // Captured before any awaiting: a logout can land during the request or the settle
+        // delay, and a superseded run must not write (see AGENTS.md).
+        let revisionAtStart = store?.liveStateRevision
+
         do {
-            try await SpotifyPlayer.playTracks(trackUris)
-            handlePlaybackStarted(trackId: trackUris[0])
+            try await SpotifyAPI.startPlayback(
+                contextUri: contextUri,
+                uris: uris,
+                offsetIndex: offsetIndex,
+                deviceId: deviceId,
+                accessToken: accessToken,
+            )
+
+            // Let Spotify settle before asking what it thinks is playing.
+            try? await Task.sleep(for: .milliseconds(600))
+
+            if let queueService, store?.liveStateRevision == revisionAtStart {
+                _ = await queueService.fetchInitialPlaybackState(accessToken: accessToken)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -441,6 +531,11 @@ final class PlaybackViewModel {
     func setStore(_ store: AppStore) {
         self.store = store
         reconcileQueueCurrentTrack()
+    }
+
+    /// Sets the QueueService used to resync after a remote start.
+    func setQueueService(_ queueService: QueueService) {
+        self.queueService = queueService
     }
 
     /// The logical playback URI is authoritative for the queue's current pointer. Track

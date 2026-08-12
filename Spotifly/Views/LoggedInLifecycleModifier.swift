@@ -41,6 +41,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 deviceService.activate()
                 connectionService.activate()
                 playbackViewModel.setStore(store)
+                playbackViewModel.setQueueService(queueService)
 
                 #if DEBUG
                     AppStore.current = store

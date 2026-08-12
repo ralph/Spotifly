@@ -85,3 +85,39 @@ struct StartPlaybackRequestTests {
         #expect(try !body(request).keys.contains("uris"))
     }
 }
+
+/// Where a play request goes when this Mac may or may not be a Connect device.
+///
+/// Local wins whenever it exists. Otherwise an active remote device serves the request over
+/// the Web API — pressing play while a phone is playing must not nag about local streaming.
+/// Only when there is nothing anywhere is there anything to ask the user about.
+@MainActor
+struct PlaybackTargetTests {
+    @Test func `a local player takes precedence`() {
+        #expect(
+            PlaybackViewModel.playbackTarget(isInitialized: true, activeDeviceId: "dev1")
+                == .local,
+        )
+    }
+
+    @Test func `a local player is used even with no device recorded`() {
+        #expect(
+            PlaybackViewModel.playbackTarget(isInitialized: true, activeDeviceId: nil)
+                == .local,
+        )
+    }
+
+    @Test func `no local player routes to the active remote device`() {
+        #expect(
+            PlaybackViewModel.playbackTarget(isInitialized: false, activeDeviceId: "dev1")
+                == .remote(deviceId: "dev1"),
+        )
+    }
+
+    @Test func `nothing anywhere asks for authorization`() {
+        #expect(
+            PlaybackViewModel.playbackTarget(isInitialized: false, activeDeviceId: nil)
+                == .needsAuthorization,
+        )
+    }
+}
