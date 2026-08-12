@@ -61,7 +61,12 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 }
 
                 do {
-                    _ = try await SpotifyAPI.fetchAvailableDevices(accessToken: token)
+                    // The response is kept, not just checked. Without it the device table
+                    // stays empty until Speakers is opened, and `activeDeviceId` is derived
+                    // from that table — so a user who has not authorized local streaming
+                    // would be told nothing can play, while their phone is playing.
+                    let devices = try await SpotifyAPI.fetchAvailableDevices(accessToken: token)
+                    store.upsertDevices(devices.devices)
                 } catch SpotifyAPIError.forbidden {
                     blockingState = .premiumRequired
                     return

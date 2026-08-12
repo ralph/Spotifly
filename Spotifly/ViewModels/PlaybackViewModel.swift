@@ -354,7 +354,7 @@ final class PlaybackViewModel {
             await initializeIfNeeded()
         }
 
-        switch Self.playbackTarget(isInitialized: isInitialized, activeDeviceId: store?.activeDeviceId) {
+        switch await resolvedPlaybackTarget(accessToken: accessToken) {
         case .local:
             isLoading = true
             errorMessage = nil
@@ -397,7 +397,7 @@ final class PlaybackViewModel {
             return
         }
 
-        switch Self.playbackTarget(isInitialized: isInitialized, activeDeviceId: store?.activeDeviceId) {
+        switch await resolvedPlaybackTarget(accessToken: accessToken) {
         case .local:
             isLoading = true
             errorMessage = nil
@@ -423,6 +423,30 @@ final class PlaybackViewModel {
         case .needsAuthorization:
             needsStreamingAuthorization = true
         }
+    }
+
+    /// Decides where to play, refreshing the device list before giving up on it.
+    ///
+    /// `activeDeviceId` is derived from the device table, and without a local session
+    /// nothing pushes device changes to us — the Rust cluster callback is the usual source
+    /// and it does not exist. So a phone that started playing after launch is invisible
+    /// until something asks. Only the "nothing anywhere" answer is worth a round-trip, so
+    /// the refresh happens there and nowhere else.
+    private func resolvedPlaybackTarget(accessToken: String) async -> PlaybackTarget {
+        let target = Self.playbackTarget(
+            isInitialized: isInitialized,
+            activeDeviceId: store?.activeDeviceId,
+        )
+        guard target == .needsAuthorization else { return target }
+
+        if let response = try? await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken) {
+            store?.upsertDevices(response.devices)
+        }
+
+        return Self.playbackTarget(
+            isInitialized: isInitialized,
+            activeDeviceId: store?.activeDeviceId,
+        )
     }
 
     /// Starts content on a remote device and then resyncs, because nothing else will.
