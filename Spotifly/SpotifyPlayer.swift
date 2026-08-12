@@ -1041,7 +1041,11 @@ enum SpotifyPlayer {
     /// never on the main actor. There is no cancellation: the flow terminates on its own,
     /// and the alert's Cancel declines before this is called at all.
     static func authorizeStreaming() async -> StreamingAuthResult {
-        await Task.detached(priority: .userInitiated) {
+        // `.utility`, not `.userInitiated`: this waits on a human finishing a browser flow,
+        // and librespot-oauth exchanges the code on a plain `std::thread` at default QoS
+        // while blocking on its result. A user-initiated caller parked on that lower-QoS
+        // worker is a priority inversion, which the runtime reports.
+        await Task.detached(priority: .utility) {
             StreamingAuthResult(code: spotifly_authorize_streaming())
         }.value
     }
