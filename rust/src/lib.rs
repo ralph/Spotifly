@@ -1240,6 +1240,17 @@ fn spawn_initial_cluster_fetch(session: &Session, generation: u64) {
 
         match fetch_cluster(&session).await {
             Ok(cluster) => {
+                // Again, after the request rather than only before it. A cluster describes an
+                // account, and a logout can land inside this call — `spotifly_cleanup` empties
+                // the snapshot caches, and applying this would fill them straight back up and
+                // publish the previous account's devices, queue and playback state to whoever
+                // signs in next. The check before the request cannot see that; only this one
+                // can.
+                if !listener_may_act(generation, SESSION_GENERATION.load(Ordering::SeqCst)) {
+                    debug!("Initial cluster fetch: superseded while in flight, discarding");
+                    return;
+                }
+
                 debug!(
                     "Initial cluster fetch: {} device(s), active={}",
                     cluster.device.len(),
