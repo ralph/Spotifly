@@ -28,7 +28,7 @@ struct PlaylistDetailView: View {
     @State private var editingPlaylistDescription = ""
 
     // Drag-drop state
-    @State private var draggedTrackId: String?
+    @State private var draggedUid: String?
     @State private var draggedFromIndex: Int?
 
     /// The playlist from the store — the only copy. Whatever a load puts there
@@ -47,7 +47,18 @@ struct PlaylistDetailView: View {
 
     /// Tracks from the store for this playlist
     private var tracks: [Track] {
-        playlist?.trackIds.compactMap { store.tracks[$0] } ?? []
+        rows.map(\.track)
+    }
+
+    /// The playlist's entries paired with their tracks.
+    ///
+    /// Rows carry their `PlaylistItem`, not just a track, because reordering and removal name
+    /// the **occurrence**: a playlist can hold one song twice, and a row that knows only its
+    /// track cannot say which of the two it is.
+    private var rows: [(item: PlaylistItem, track: Track)] {
+        (playlist?.items ?? []).compactMap { item in
+            store.tracks[item.trackId].map { (item, $0) }
+        }
     }
 
     /// Whether the current user owns this playlist
@@ -250,8 +261,8 @@ struct PlaylistDetailView: View {
 
     private var normalTrackList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(tracks.enumerated(), id: \.offset) { index, track in
-                trackRowView(track: track, index: index)
+            ForEach(rows.enumerated(), id: \.offset) { index, row in
+                trackRowView(item: row.item, track: row.track, index: index)
 
                 if index < tracks.count - 1 {
                     Divider()
@@ -266,7 +277,7 @@ struct PlaylistDetailView: View {
     }
 
     @ViewBuilder
-    private func trackRowView(track: Track, index: Int) -> some View {
+    private func trackRowView(item: PlaylistItem, track: Track, index: Int) -> some View {
         let row = TrackRow(
             track: track,
             index: index,
@@ -287,21 +298,21 @@ struct PlaylistDetailView: View {
 
         if isOwner {
             row
-                .opacity(draggedTrackId == track.id ? 0.5 : 1.0)
+                .opacity(draggedUid == item.uid ? 0.5 : 1.0)
                 .onDrag {
-                    draggedTrackId = track.id
-                    // Capture original index BEFORE any optimistic updates
-                    if let playlist = store.playlists[playlistId] {
-                        draggedFromIndex = playlist.trackIds.firstIndex(of: track.id)
-                    }
-                    return NSItemProvider(object: track.id as NSString)
+                    draggedUid = item.uid
+                    // Only to tell a real move from a drop in the same place; the move itself
+                    // is expressed entirely in uids.
+                    draggedFromIndex = store.playlists[playlistId]?.items
+                        .firstIndex { $0.uid == item.uid }
+                    return NSItemProvider(object: item.uid as NSString)
                 }
                 .onDrop(
                     of: [.text],
                     delegate: PlaylistReorderDropDelegate(
-                        targetTrackId: track.id,
+                        targetUid: item.uid,
                         playlistId: playlistId,
-                        draggedTrackId: $draggedTrackId,
+                        draggedUid: $draggedUid,
                         draggedFromIndex: $draggedFromIndex,
                         errorMessage: $errorMessage,
                         store: store,
@@ -427,63 +438,46 @@ struct PlaylistDetailView: View {
 
 /// Drop delegate for reordering tracks in a playlist
 struct PlaylistReorderDropDelegate: DropDelegate {
-    let targetTrackId: String
+    let targetUid: String
     let playlistId: String
-    @Binding var draggedTrackId: String?
+    @Binding var draggedUid: String?
     @Binding var draggedFromIndex: Int?
     @Binding var errorMessage: String?
     let store: AppStore
     let playlistService: PlaylistService
     let session: SpotifySession
 
+    /// Sends the move the user just made, expressed in uids.
+    ///
+    /// The optimistic reorder has already happened by now, so the store holds exactly the order
+    /// on screen — and the request is simply "put this item before whatever now follows it".
+    /// Reading the desired order out of the store rather than reconstructing it from drag
+    /// bookkeeping is what makes this correct: the previous version mixed frames, indexing the
+    /// *already reordered* array with an index captured *before* the reorder, and so named the
+    /// wrong item to move. It survived on the Web API only because that took positions, which
+    /// Spotify applied against the server's own order.
     func performDrop(info _: DropInfo) -> Bool {
-        guard draggedTrackId != nil else { return false }
-
-        // Use the ORIGINAL index captured when drag started (before optimistic updates)
-        guard let originalFromIndex = draggedFromIndex else {
-            draggedTrackId = nil
+        defer {
+            draggedUid = nil
             draggedFromIndex = nil
+        }
+
+        guard let movingUid = draggedUid,
+              let playlist = store.playlists[playlistId],
+              let newIndex = playlist.items.firstIndex(where: { $0.uid == movingUid })
+        else {
             return false
         }
 
-        // Get current track order to find where the target track ended up
-        guard let playlist = store.playlists[playlistId] else {
-            draggedTrackId = nil
-            draggedFromIndex = nil
-            return false
-        }
+        // Dropped where it started: the frames agree, so there is nothing to send.
+        guard newIndex != draggedFromIndex else { return true }
 
-        // Find the current index of the target track (this is the drop position)
-        guard let currentToIndex = playlist.trackIds.firstIndex(of: targetTrackId) else {
-            draggedTrackId = nil
-            draggedFromIndex = nil
-            return true
-        }
-
-        // Don't make API call if dropped in same position
-        guard originalFromIndex != currentToIndex else {
-            draggedTrackId = nil
-            draggedFromIndex = nil
-            return true
-        }
-
-        // The move is expressed in uids, not indices: the service names the item to move and
-        // the item to put it before, so a playlist holding the same song twice moves the row
-        // the user dragged rather than its twin.
         let items = playlist.items
-        guard originalFromIndex < items.count, currentToIndex < items.count else {
-            draggedTrackId = nil
-            draggedFromIndex = nil
-            return true
-        }
-        let movingUid = items[originalFromIndex].uid
-        // Dragging downwards lands *after* the target, which is expressed as "before the one
-        // past it" — and past the end means the bottom, which the service spells with its own
-        // move type.
-        let beforeIndex = currentToIndex > originalFromIndex ? currentToIndex + 1 : currentToIndex
-        let beforeUid = beforeIndex < items.count ? items[beforeIndex].uid : nil
+        // Past the end is the bottom, which the service spells as its own move type rather
+        // than as a position.
+        let beforeUid = newIndex + 1 < items.count ? items[newIndex + 1].uid : nil
 
-        Task {
+        Task { [movingUid, beforeUid] in
             do {
                 try await playlistService.movePlaylistItem(
                     playlistId: playlistId,
@@ -508,20 +502,18 @@ struct PlaylistReorderDropDelegate: DropDelegate {
             }
         }
 
-        draggedTrackId = nil
-        draggedFromIndex = nil
         return true
     }
 
     func dropEntered(info _: DropInfo) {
-        guard let draggedId = draggedTrackId,
+        guard let movingUid = draggedUid,
               let playlist = store.playlists[playlistId]
         else { return }
 
-        let trackIds = playlist.trackIds
+        let items = playlist.items
 
-        guard let fromIndex = trackIds.firstIndex(of: draggedId),
-              let toIndex = trackIds.firstIndex(of: targetTrackId),
+        guard let fromIndex = items.firstIndex(where: { $0.uid == movingUid }),
+              let toIndex = items.firstIndex(where: { $0.uid == targetUid }),
               fromIndex != toIndex
         else { return }
 
@@ -540,6 +532,6 @@ struct PlaylistReorderDropDelegate: DropDelegate {
     }
 
     func dropExited(info _: DropInfo) {
-        // Keep draggedTrackId until performDrop
+        // Keep draggedUid until performDrop
     }
 }

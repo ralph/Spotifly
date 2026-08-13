@@ -118,6 +118,43 @@ struct PathfinderPlaylistEntityTests {
         #expect(track.durationMs == 280_800)
     }
 
+    /// A reorder is sent as "put this item before whatever now follows it", read out of the
+    /// store *after* the optimistic move. The version this replaces mixed frames — indexing the
+    /// already-reordered array with an index captured before the reorder — and so named the
+    /// wrong item to move, which showed up as every dragged row landing at the end.
+    @Test func `a move names the item that now follows the dragged one`() throws {
+        let store = AppStore()
+        let entities = try #require(decodePlaylist().entities())
+        store.upsertPlaylist(entities.playlist)
+
+        // Drag the second row above the first, as `dropEntered` would.
+        store.movePlaylistTrack(playlistId: entities.playlist.id, fromIndex: 1, toIndex: 0)
+
+        let items = try #require(store.playlists[entities.playlist.id]?.items)
+        #expect(items.map(\.uid) == ["bbbb2222", "aaaa1111"])
+
+        let movedIndex = try #require(items.firstIndex { $0.uid == "bbbb2222" })
+        let beforeUid = movedIndex + 1 < items.count ? items[movedIndex + 1].uid : nil
+
+        #expect(beforeUid == "aaaa1111")
+    }
+
+    /// Dragged to the end there is nothing to sit before, which the service spells as its own
+    /// move type rather than as a position.
+    @Test func `a move to the end names no following item`() throws {
+        let store = AppStore()
+        let entities = try #require(decodePlaylist().entities())
+        store.upsertPlaylist(entities.playlist)
+
+        store.movePlaylistTrack(playlistId: entities.playlist.id, fromIndex: 0, toIndex: 1)
+
+        let items = try #require(store.playlists[entities.playlist.id]?.items)
+        let movedIndex = try #require(items.firstIndex { $0.uid == "aaaa1111" })
+
+        #expect(movedIndex == items.count - 1)
+        #expect(movedIndex + 1 >= items.count)
+    }
+
     @Test func `an item with no uid is dropped from both lists`() throws {
         let json = Data("""
         {"data":{"playlistV2":{"uri":"spotify:playlist:p","name":"P","content":{"totalCount":2,

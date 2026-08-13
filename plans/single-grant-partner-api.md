@@ -300,6 +300,13 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       every list and does not know its row, so removal from there resolves to the first
       occurrence — exact only once the uid is threaded through `TrackRow`.
 
+      Verified against a live playlist: add, remove (including the duplicate case) and reorder.
+      Two defects surfaced in testing and are recorded in the changelog — a missing
+      `enableWatchFeedEntrypoint` variable, and a drop handler that mixed pre- and post-reorder
+      frames. The second is the interesting one: it was latent under the Web API, which took
+      positions Spotify resolved against its own order, and only became visible once items were
+      named by uid.
+
       Still on the Web API by surface: `fetchUserPlaylists` and create/rename/delete/follow go
       with task 12.
 - [ ] **Task 12: User/library** (2) and the saved-tracks writes.
