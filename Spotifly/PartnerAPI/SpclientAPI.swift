@@ -203,7 +203,7 @@ nonisolated struct SpclientAPI: Sendable {
         try await sendConnectRequest(
             method: "POST",
             path: "connect-state/v1/player/command/from/\(from)/to/\(to)",
-            body: command,
+            body: ConnectCommandEnvelope(command),
         )
     }
 

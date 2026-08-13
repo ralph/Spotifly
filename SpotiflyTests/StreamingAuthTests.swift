@@ -43,15 +43,17 @@ struct RemoteStartUriTests {
 /// first track of whatever Spotify resolves it to instead.
 struct ConnectPlayCommandTests {
     private func encoded(_ command: ConnectCommand) throws -> String {
-        let data = try JSONEncoder().encode(command)
+        let data = try JSONEncoder().encode(ConnectCommandEnvelope(command))
         return try #require(String(data: data, encoding: .utf8))
     }
 
-    /// Decoded rather than matched as a substring: `JSONEncoder` escapes forward slashes, so
-    /// the `context://` url is on the wire as `context:\/\/` and a literal search misses it.
+    /// The **command object**, unwrapped from the envelope it is sent in. Decoded rather than
+    /// matched as a substring: `JSONEncoder` escapes forward slashes, so the `context://` url
+    /// is on the wire as `context:\/\/` and a literal search misses it.
     private func fields(_ command: ConnectCommand) throws -> [String: Any] {
-        let data = try JSONEncoder().encode(command)
-        return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let data = try JSONEncoder().encode(ConnectCommandEnvelope(command))
+        let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try #require(body["command"] as? [String: Any])
     }
 
     @Test func `a track is a context plus a skip_to naming it`() throws {
@@ -100,8 +102,22 @@ struct ConnectPlayCommandTests {
 /// The transport commands, whose bodies differ only in one field.
 struct ConnectCommandTests {
     private func encoded(_ command: ConnectCommand) throws -> String {
-        let data = try JSONEncoder().encode(command)
+        let data = try JSONEncoder().encode(ConnectCommandEnvelope(command))
         return try #require(String(data: data, encoding: .utf8))
+    }
+
+    /// **The command goes inside a `command` object.** Sending its fields at the top level is
+    /// answered with `BAD_COMMAND: Payload does not contain a command object` — which the
+    /// first version of this did, because every test here asserted on the command's own shape
+    /// and none on the body that leaves the app.
+    @Test func `a command is wrapped in a command object`() throws {
+        let data = try JSONEncoder().encode(ConnectCommandEnvelope(.pause))
+        let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        #expect(body["endpoint"] == nil)
+
+        let command = try #require(body["command"] as? [String: Any])
+        #expect(command["endpoint"] as? String == "pause")
     }
 
     @Test func `the simple commands name only their endpoint`() throws {

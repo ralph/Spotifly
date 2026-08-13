@@ -518,6 +518,8 @@ private nonisolated func handleDevicesCallback(_ jsonPtr: UnsafePointer<CChar>?)
         return
     }
 
+    debugLog("SpotifyPlayer", "handleDevicesCallback: \(codables.count) device(s)")
+
     // `toDevice()` is main-actor isolated, like every entity conversion here, so the mapping
     // happens on the hop rather than on the C callback's thread.
     Task { @MainActor in

@@ -193,6 +193,21 @@ nonisolated struct ConnectVolume: Encodable, Sendable {
 /// by status code — `404 DEVICE_NOT_FOUND` when the target is gone — so there is no
 /// 200-that-means-no to guard against, and this type exists only to make the ack readable in a
 /// log.
+/// The body a player command is actually sent as.
+///
+/// **The command goes inside a `command` object**, and forgetting that is not a subtle failure:
+/// `{"error_type":"BAD_COMMAND","message":"Payload does not contain a command object"}`. This
+/// type exists so the envelope cannot be forgotten at a call site — and so a test can assert on
+/// it, which is what was missing when the first version of this shipped encoding the command's
+/// fields at the top level.
+nonisolated struct ConnectCommandEnvelope: Encodable, Sendable {
+    let command: ConnectCommand
+
+    init(_ command: ConnectCommand) {
+        self.command = command
+    }
+}
+
 nonisolated struct ConnectCommandAck: Decodable, Sendable {
     let ackId: String?
 

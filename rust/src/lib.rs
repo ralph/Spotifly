@@ -868,6 +868,12 @@ fn notify_devices(
     // list on every update and the change check below would never fire.
     list.sort_by(|a, b| a.id.cmp(&b.id));
 
+    debug!(
+        "notify_devices: cluster carried {} device(s), active={}",
+        list.len(),
+        active_device_id
+    );
+
     let json = match serde_json::to_string(&list) {
         Ok(json) => json,
         Err(e) => {
