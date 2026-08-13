@@ -116,11 +116,22 @@ authorize different accounts, which `rework-auth` had to add a guard for.
   ids for one song is a queue pointing at a key `store.tracks` misses. Consistency was always
   the requirement; which id carries it was not.
 
-  **Open, and deliberately not assumed:** whether `api.spotify.com` accepts a market id for
-  `saveTrack`, `removeSavedTrack` and `checkSavedTracks`. The docs warn it "will likely return
-  an error or other unexpected result". If it does not, the failure is confined to relinked
-  tracks and looks exactly like today's, and it disappears when task 12 moves those writes off
-  the Web API. Worth one measurement against a live session before task 12 rather than after.
+  **Settled the same day: writes with a market id work.** The docs' warning does not bite.
+  Saving and removing the relinked track by its market id both succeeded, confirmed not by the
+  UI — which updates optimistically — but by Spotify's collection service pushing the change
+  back over Mercury, `hm://collection/collection/<user>/json`, with an `addedAt` matching the
+  second the request was sent. The service names the track by its **market** id, the same one
+  pathfinder returns, and the removal cleared an entry that had been saved under the original
+  id. So Spotify resolves the relink on write; nothing needs to hold an original.
+
+  That also removes the duplicate-library worry: saving from search does not create a second
+  entry alongside one saved under an original id.
+
+  **A find for task 12:** that Mercury feed is the library change stream, and it is already
+  arriving — librespot logs it as an unknown subscription and drops it (`could not dispatch
+  command`, and a base64 warning from trying to decode what is plain JSON). It carries exactly
+  what the favorites list needs to stay live: identifier, `removed`, `addedAt`. Subscribing to
+  it is likely cheaper than polling `/me/tracks`, and it is the mechanism the real client uses.
 
 - **Re-derive the track-relinking rules for the new endpoints.** `CLAUDE.md` documents them
   for the Web API, where `market` decides whether you get the track you asked for or a playable
@@ -226,12 +237,10 @@ Order runs cheapest-first, and each task is independently shippable and revertib
 - [ ] **Task 11: Playlists** (9), including the write paths.
 - [ ] **Task 12: User/library** (2) and the saved-tracks writes.
 
-      The identity question that used to gate tasks 11 and 12 is settled — the market id owns
-      the store key and the favorites state, see the relinking constraint above — so they are
-      informed by it rather than blocked on it. What remains for task 12 is the measurement:
-      confirm how the Web API's saved-track writes behave with a market id before moving them,
-      so the move is not credited with fixing something it did not, or blamed for something it
-      did not break.
+      Tasks 11 and 12 are no longer gated. The identity question is settled — the market id
+      owns the store key and the favorites state — and so is the write question: Spotify
+      accepts market ids for saves and removals, measured. See the relinking constraint above,
+      including the collection Mercury feed, which is the more interesting way to build task 12.
 
 - [ ] **Task 12a: Player control** (`SpotifyAPI+Player.swift`, 12 call sites) — last, but not
       optional. An earlier draft of this plan left it undecided, which quietly made Phase 4

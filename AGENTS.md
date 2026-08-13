@@ -74,13 +74,23 @@ store corrupts.** Two ids for one song means the queue points at a key `store.tr
 the track re-fetches forever behind a placeholder, and the recovery loader writes a second
 entity. Consistency is the requirement; which id carries it is not.
 
-**Writes are the open edge.** Spotify's docs say a substitute id "will likely return an error
-or other unexpected result" for saves and removals, and `saveTrack`, `removeSavedTrack`,
-`checkSavedTracks` and playlist removal still go to `api.spotify.com` until Phase 4. That
-warning is written for third-party Web API clients; Spotify's own client only ever holds
-market ids, since pathfinder gives it nothing else, and it saves from search perfectly well —
-so the native collection path these writes are moving to must accept them. Until that move
-lands, treat Web API write behaviour with a substitute id as measured-not-assumed.
+**Writes with a market id work** — measured on 2026-08-13, against the relinked pair above.
+Spotify's docs warn that a substitute id "will likely return an error or other unexpected
+result" for saves and removals; it does not. Saving and removing "The Letter" by its market id
+both succeeded, and the proof is not the UI, which updates optimistically, but Spotify's own
+collection service pushing the change back over Mercury:
+
+```
+hm://collection/collection/<user>/json
+{"items":[{"type":"track",…,"removed":true, "identifier":"7FcObTmCbQYyC8qzlTL2SE"}]}
+{"items":[{"type":"track",…,"removed":false,"identifier":"7FcObTmCbQYyC8qzlTL2SE","addedAt":1786605160}]}
+```
+
+`addedAt` matches the second the request was sent, so the write was recorded rather than
+accepted and dropped — and the collection service names the track by its **market** id, the
+same one pathfinder returns. The removal also cleared an entry that had been saved under the
+*original* id, which says Spotify resolves the relink on write rather than keying entries
+literally. That is the reading, not a certainty: the library was not re-snapshotted first.
 
 **There is more than one track-shaped response type**, which is the part that bites.
 `TrackCodable` serves most endpoints, but `/albums/{id}/tracks` decodes through
