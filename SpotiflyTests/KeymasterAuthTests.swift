@@ -204,6 +204,33 @@ struct KeymasterTokenResponseTests {
         #expect(stale.needsRefresh(now: now))
     }
 
+    @Test func `only invalid_grant is read as a dead grant`() {
+        let revoked = KeymasterAuth.tokenFailure(
+            status: 400,
+            body: Data(#"{"error":"invalid_grant","error_description":"Refresh token revoked"}"#.utf8),
+        )
+
+        #expect(revoked == .grantRevoked)
+    }
+
+    @Test func `other refusals are transient, whatever their status`() {
+        // Each of these arrives as a non-200 like a revocation does, and discarding the grant
+        // for any of them signs the user out over a bug in this app or a bad minute at Spotify.
+        // A 400 is the case that matters: it is the *same status* a revocation carries.
+        let cases: [(Int, String)] = [
+            (400, #"{"error":"invalid_request","error_description":"Missing grant type"}"#),
+            (400, #"{"error":"invalid_client"}"#),
+            (429, #"{"error":"too_many_requests"}"#),
+            (500, "<html>Internal Server Error</html>"),
+            (503, ""),
+        ]
+
+        for (status, body) in cases {
+            let failure = KeymasterAuth.tokenFailure(status: status, body: Data(body.utf8))
+            #expect(failure != .grantRevoked, "HTTP \(status) \(body) must not discard the grant")
+        }
+    }
+
     @Test func `form encoding escapes what a token body can contain`() throws {
         let body = KeymasterAuth.formURLEncoded(["code": "a+b/c=d", "client_id": "x"])
         let encoded = try #require(String(data: body, encoding: .utf8))

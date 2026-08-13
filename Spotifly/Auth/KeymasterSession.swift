@@ -5,6 +5,7 @@
 //  Holds the keymaster tokens, and keeps them fresh.
 //
 
+import Combine
 import Foundation
 
 /// The live keymaster grant: one access token, kept valid, shared by everything that needs it.
@@ -17,6 +18,27 @@ actor KeymasterSession {
     /// session and both API clients read the same token, and a second instance would refresh
     /// against a rotating token the first has already spent.
     static let shared = KeymasterSession()
+
+    /// Announces that the grant is gone and cannot come back.
+    ///
+    /// A signal rather than a thrown error because the response is not the caller's: every
+    /// request in the app reads this token, and each of them failing separately is what the
+    /// retry loop looked like. One announcement, one place that acts on it.
+    ///
+    /// Per instance, deliberately, not a file-scope subject like the ones in `SpotifyPlayer`.
+    /// Tests build their own `KeymasterSession` precisely so they cannot touch the real grant —
+    /// and a shared subject hands that back, because a test session's revocation would reach
+    /// the app's live `AuthViewModel` and log the developer out of their own keychain.
+    ///
+    /// `nonisolated(unsafe)` because Combine subjects are thread-safe and subscribing must not
+    /// require awaiting the actor.
+    private nonisolated(unsafe) let revokedSubject = PassthroughSubject<Void, Never>()
+
+    /// Fires once when a refresh comes back `invalid_grant`. The tokens are already forgotten
+    /// by then; what remains is the rest of logging out, which the view model owns.
+    nonisolated var grantRevoked: AnyPublisher<Void, Never> {
+        revokedSubject.eraseToAnyPublisher()
+    }
 
     /// Injected so the rotation policy can be tested without a network. The real one is
     /// `KeymasterAuth.refresh`.
@@ -98,7 +120,27 @@ actor KeymasterSession {
         refreshInFlight = task
         defer { refreshInFlight = nil }
 
-        let renewed = try await task.value
+        let renewed: KeymasterTokens
+        do {
+            renewed = try await task.value
+        } catch KeymasterAuthError.grantRevoked {
+            // Nothing to retry: this refresh token is dead and every later attempt spends the
+            // same one. Left in place it fails forever and survives relaunch, because the
+            // keychain item outlives the process — so forgetting it here is the whole fix for
+            // the loop, and the announcement is what gets the user back to a sign-in.
+            //
+            // Guarded like the success path below: a logout during the network call already
+            // cleared this grant, and a sign-in behind it may have adopted a *good* one. The
+            // revocation belongs to the token this run spent, not to whatever holds the slot
+            // now.
+            guard startedAt == generation else {
+                throw KeymasterSessionError.noGrant
+            }
+
+            clear()
+            revokedSubject.send()
+            throw KeymasterSessionError.grantRevoked
+        }
 
         // Back on the actor. A logout that landed during the network call already cleared the
         // grant, so this result belongs to an account that is gone — persisting it would
@@ -126,13 +168,19 @@ actor KeymasterSession {
     }
 }
 
-nonisolated enum KeymasterSessionError: Error, LocalizedError {
+nonisolated enum KeymasterSessionError: Error, LocalizedError, Equatable {
     case noGrant
+    /// The grant was refused as dead and has been discarded. Separate from `noGrant` so a log
+    /// says which of the two happened — a grant that never existed, or one that stopped being
+    /// accepted mid-session.
+    case grantRevoked
 
     var errorDescription: String? {
         switch self {
         case .noGrant:
             "This Mac has not been authorized for playback yet"
+        case .grantRevoked:
+            "Session expired, please sign in again"
         }
     }
 }

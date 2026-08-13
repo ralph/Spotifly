@@ -5,6 +5,7 @@
 //  Keeping one keymaster token valid, across refreshes that rotate it.
 //
 
+import Combine
 import Foundation
 @testable import Spotifly
 import Testing
@@ -58,6 +59,56 @@ private final class SpyRefresher: @unchecked Sendable {
                 username: "",
             )
         }
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func increment() {
+        lock.withLock { count += 1 }
+    }
+
+    var value: Int {
+        lock.withLock { count }
+    }
+}
+
+/// Lets a test hold a refresh open at a chosen point, so a logout can be landed *inside* it.
+///
+/// Without this the stub throws before the test's next line runs, and a supersession test
+/// silently exercises the ordinary path instead.
+private actor Gate {
+    private var isOpen = false
+    private var hasEntered = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var arrivals: [CheckedContinuation<Void, Never>] = []
+
+    func entered() {
+        hasEntered = true
+        for arrival in arrivals {
+            arrival.resume()
+        }
+        arrivals.removeAll()
+    }
+
+    func waitUntilEntered() async {
+        guard !hasEntered else { return }
+        await withCheckedContinuation { arrivals.append($0) }
+    }
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        for waiter in waiters {
+            waiter.resume()
+        }
+        waiters.removeAll()
     }
 }
 
@@ -180,6 +231,72 @@ struct KeymasterSessionTests {
 
         #expect(try await session.accessToken(now: now) == "brand-new")
         #expect(store.load() == fresh)
+    }
+
+    @Test func `a revoked grant is discarded rather than retried`() async throws {
+        // Left in place, a dead refresh token is spent again by every later request and
+        // survives relaunch in the keychain — the app fails forever and looks authorized.
+        let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(buffer - 60)))
+        let session = KeymasterSession(store: store, refresher: { _ in
+            throw KeymasterAuthError.grantRevoked
+        })
+
+        // Forgetting the tokens stops the retry loop; the announcement is what gets the user
+        // to a screen they can sign in from, so it is half the fix and worth asserting.
+        let announcements = Counter()
+        let subscription = session.grantRevoked.sink { announcements.increment() }
+        defer { subscription.cancel() }
+
+        await #expect(throws: KeymasterSessionError.grantRevoked) {
+            _ = try await session.accessToken(now: now)
+        }
+
+        #expect(store.load() == nil)
+        #expect(await !session.hasGrant)
+        #expect(announcements.value == 1)
+    }
+
+    @Test func `a transient failure keeps the grant`() async throws {
+        // The other half of the rule, and the one that costs a sign-in to get wrong: a 500, a
+        // dead network or a rate limit says nothing about whether the grant is still good.
+        struct Transient: Error {}
+
+        let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(buffer - 60)))
+        let session = KeymasterSession(store: store, refresher: { _ in throw Transient() })
+
+        await #expect(throws: Transient.self) {
+            _ = try await session.accessToken(now: now)
+        }
+
+        #expect(store.load()?.refreshToken == "refresh-0")
+        #expect(await session.hasGrant)
+    }
+
+    @Test func `a revocation that a logout outlived does not clear the grant behind it`() async throws {
+        // The refresh spans a network call, so a logout and a fresh sign-in can both land
+        // inside it. The revocation belongs to the token this run spent, not to the good grant
+        // now holding the slot. The gate is what makes that orderable: without it the refusal
+        // lands before the replacement and the test proves nothing.
+        let gate = Gate()
+        let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(buffer - 60)))
+        let session = KeymasterSession(store: store, refresher: { _ in
+            await gate.entered()
+            await gate.wait()
+            throw KeymasterAuthError.grantRevoked
+        })
+
+        let refreshing = Task { try await session.accessToken(now: now) }
+        await gate.waitUntilEntered()
+
+        await session.clear()
+        let replacement = tokens(access: "brand-new", refresh: "fresh", expiresAt: now.addingTimeInterval(3600))
+        try await session.adopt(replacement)
+
+        await gate.open()
+        _ = try? await refreshing.value
+
+        #expect(store.load() == replacement)
+        #expect(await session.hasGrant)
     }
 
     @Test func `clearing forgets the grant in memory and on disk`() async {

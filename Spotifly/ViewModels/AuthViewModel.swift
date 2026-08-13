@@ -5,6 +5,7 @@
 //  Created by Ralph von der Heyden on 30.12.25.
 //
 
+import Combine
 import SwiftUI
 
 @MainActor
@@ -28,12 +29,31 @@ final class AuthViewModel {
     /// The grant in flight, held so it can be cancelled. Not observed by any view.
     @ObservationIgnored private var streamingAuthorization: Task<Void, Never>?
 
+    /// Held for the life of the view model, which is the life of the app.
+    @ObservationIgnored private var revocationSubscription: AnyCancellable?
+
     /// Bumped by logout. The grant spans a browser round-trip, so it can resume into a session
     /// that no longer exists; comparing this across the awaits is what stops it writing there.
     private var authLifecycle: UInt64 = 0
 
     init() {
         loadFromKeychain()
+
+        // A grant Spotify has refused cannot be retried into working, and `KeymasterSession`
+        // has already forgotten it by the time this fires. What is left is the rest of logging
+        // out — the Spirc session still registered for that account, librespot's credentials
+        // file, the login screen — and that is exactly what a deliberate logout does, so it
+        // runs the same path rather than a second one that could drift from it.
+        // `receive(on:)` is load-bearing rather than tidy: the announcement is sent from
+        // `KeymasterSession`'s own executor, and this closure is main-actor isolated like
+        // everything else in the app target. Delivered as-is it runs a MainActor closure on a
+        // cooperative thread, which traps — on exactly the path this subscription exists for.
+        revocationSubscription = KeymasterSession.shared.grantRevoked
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                debugLog("AuthViewModel", "Grant revoked — signing out")
+                Task { await self?.logout() }
+            }
     }
 
     func loadFromKeychain() {

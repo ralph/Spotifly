@@ -39,7 +39,7 @@ nonisolated struct KeymasterTokens: Sendable, Equatable, Codable {
     }
 }
 
-nonisolated enum KeymasterAuthError: Error, LocalizedError {
+nonisolated enum KeymasterAuthError: Error, LocalizedError, Equatable {
     case authorizationURLFailed
     case browserOpenFailed
     case stateMismatch
@@ -47,6 +47,10 @@ nonisolated enum KeymasterAuthError: Error, LocalizedError {
     case noAuthorizationCode
     case tokenExchangeFailed(String)
     case malformedTokenResponse
+    /// The refresh token is permanently dead — revoked, or expired under Spotify's six-month
+    /// policy. Distinct from `tokenExchangeFailed` because it is the one token failure that
+    /// must not be retried: the grant has to be discarded and the user sent through sign-in.
+    case grantRevoked
 
     var errorDescription: String? {
         switch self {
@@ -64,6 +68,8 @@ nonisolated enum KeymasterAuthError: Error, LocalizedError {
             "Token exchange failed: \(message)"
         case .malformedTokenResponse:
             "The token response could not be read"
+        case .grantRevoked:
+            "Session expired, please sign in again"
         }
     }
 }
@@ -162,6 +168,36 @@ nonisolated enum KeymasterAuth {
     }
 
     // MARK: - Pieces, kept testable
+
+    /// What a non-200 from the token endpoint means.
+    ///
+    /// **Only `invalid_grant` is fatal, and it is read from the body rather than inferred from
+    /// the status.** Spotify answers 400 for several distinct things — a malformed request, a
+    /// client id it does not know, a dead refresh token — and only the last of them says the
+    /// grant is gone. Keying on the status would discard a perfectly good grant because a
+    /// request was built wrong, and the user would be signed out by a bug in this app rather
+    /// than by anything Spotify did. Everything else, 500s and unreadable bodies included, is
+    /// transient by assumption: retrying a live grant costs a request, while discarding one
+    /// costs a sign-in.
+    ///
+    /// The `{error, error_description}` shape is RFC 6749 §5.2 and was read off this same
+    /// endpoint by the Web API half that used to live in `SpotifyAuth`. The *keymaster* client
+    /// id's revocation response has not been observed directly — nothing here can revoke a
+    /// grant on demand to look at it — so this trusts the endpoint rather than a measurement.
+    static func tokenFailure(status: Int, body: Data) -> KeymasterAuthError {
+        struct TokenErrorResponse: Decodable {
+            let error: String
+        }
+
+        if let decoded = try? JSONDecoder().decode(TokenErrorResponse.self, from: body),
+           decoded.error == "invalid_grant"
+        {
+            return .grantRevoked
+        }
+
+        let message = String(data: body, encoding: .utf8) ?? "unreadable response"
+        return .tokenExchangeFailed("HTTP \(status): \(message)")
+    }
 
     /// Builds the authorization URL. The redirect must match the port actually listening.
     static func authorizationURL(port: UInt16, challenge: String, state: String) -> URL? {
@@ -277,8 +313,8 @@ nonisolated enum KeymasterAuth {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let message = String(data: data, encoding: .utf8) ?? "unreadable response"
-            throw KeymasterAuthError.tokenExchangeFailed(message)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            throw tokenFailure(status: status, body: data)
         }
 
         return try parseTokenResponse(data, fallbackRefreshToken: fallbackRefreshToken)
