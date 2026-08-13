@@ -40,6 +40,13 @@ struct TrackRow: View {
     @Bindable var playbackViewModel: PlaybackViewModel
     let currentSection: NavigationItem // Current sidebar section (for "Go to" navigation)
     let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
+    /// Which *occurrence* this row is, where the list knows — only a playlist does.
+    ///
+    /// `selectionId` names the list and `track` names the song, and between them they still do
+    /// not name a row: a playlist can hold the same song twice, and the two rows are equal on
+    /// both. The uid is the only thing that tells them apart, which is why removing from the
+    /// context menu needs it.
+    let itemUid: String?
     let onDoubleTap: (@MainActor () async -> Void)? // Playback action on double-tap
 
     @Environment(AppStore.self) private var store
@@ -83,6 +90,7 @@ struct TrackRow: View {
         playbackViewModel: PlaybackViewModel,
         currentSection: NavigationItem = .startpage,
         selectionId: String? = nil,
+        itemUid: String? = nil,
         onDoubleTap: (@MainActor () async -> Void)? = nil,
     ) {
         self.track = track
@@ -103,6 +111,7 @@ struct TrackRow: View {
         self.playbackViewModel = playbackViewModel
         self.currentSection = currentSection
         self.selectionId = selectionId
+        self.itemUid = itemUid
         self.onDoubleTap = onDoubleTap
     }
 
@@ -206,6 +215,7 @@ struct TrackRow: View {
                     track: track,
                     currentSection: currentSection,
                     selectionId: selectionId,
+                    itemUid: itemUid,
                     playbackViewModel: playbackViewModel,
                     showNewPlaylistDialog: $showNewPlaylistDialog,
                     onPlaylistAdded: showSuccessFeedback,
@@ -233,6 +243,7 @@ struct TrackRow: View {
                 track: track,
                 currentSection: currentSection,
                 selectionId: selectionId,
+                itemUid: itemUid,
                 playbackViewModel: playbackViewModel,
                 showNewPlaylistDialog: $showNewPlaylistDialog,
                 onPlaylistAdded: showSuccessFeedback,

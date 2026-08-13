@@ -278,29 +278,12 @@ final class PlaylistService {
         try await reloadPlaylistTracks(playlistId: playlistId)
     }
 
-    /// Remove a track from a playlist, resolving it to the **first** occurrence.
-    ///
-    /// For callers holding a `Track` and no uid — the context menu, which is shared by every
-    /// list in the app and does not know which row it was opened from. Removing the first
-    /// occurrence is already an improvement on the Web API path, which removed *every* copy of
-    /// a track; making it exact needs the uid threaded through `TrackRow`, and that is worth
-    /// doing when a view other than the playlist page can produce duplicates.
-    func removeTracksFromPlaylist(
-        playlistId: String,
-        trackIds: [String],
-    ) async throws {
-        let uids = trackIds.compactMap { trackId in
-            store.playlists[playlistId]?.items.first { $0.trackId == trackId }?.uid
-        }
-        guard !uids.isEmpty else { return }
-
-        try await removePlaylistItems(playlistId: playlistId, uids: uids)
-    }
-
     /// Remove **occurrences** from a playlist, named by uid.
     ///
-    /// Not by track id: a playlist can hold the same song more than once, and the Web API path
-    /// this replaces removed every copy of it. A uid names the row the user actually chose.
+    /// Not by track id, and there is deliberately no by-track-id variant to fall back to: a
+    /// playlist can hold the same song more than once, the Web API path this replaces removed
+    /// every copy of it, and the interim version here removed whichever copy came first. A uid
+    /// names the row the user actually chose, and every caller now has one.
     func removePlaylistItems(
         playlistId: String,
         uids: [String],

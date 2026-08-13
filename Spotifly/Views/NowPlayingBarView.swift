@@ -526,6 +526,10 @@ struct NowPlayingBarView: View {
                     track: track,
                     currentSection: .queue,
                     selectionId: nil,
+                    // The now-playing bar knows the song, never which playlist row it came
+                    // from — and with no playlist selected there is nothing to remove from
+                    // anyway.
+                    itemUid: nil,
                     playbackViewModel: playbackViewModel,
                     showNewPlaylistDialog: $showNewPlaylistDialog,
                     onPlaylistAdded: showSuccessFeedback,

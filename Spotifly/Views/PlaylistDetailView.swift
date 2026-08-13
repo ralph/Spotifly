@@ -284,6 +284,7 @@ struct PlaylistDetailView: View {
             playbackViewModel: playbackViewModel,
             currentSection: .playlists,
             selectionId: playlistId,
+            itemUid: item.uid,
             onDoubleTap: {
                 guard let uri = playlist?.uri else { return }
                 await playbackViewModel.play(
