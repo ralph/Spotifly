@@ -257,9 +257,25 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       with task 10, and `fetchUserAlbums` plus the save/remove writes with task 12. Grouping by
       file would have meant porting the artist page's discography before the artist page.
 
-- [ ] **Task 10: Artists** (6), plus `fetchArtistAlbums`. Candidate operations already
-      harvested: `queryArtistOverview` (`ae0e2958…`) and `queryArtistDiscographyAll`
-      (`5e07d323…`), both unverified.
+- [x] **Task 10: Artists** — the artist *page*: `queryArtistOverview` for identity,
+      `queryArtistDiscographyAll` for releases, concurrently. Two operations because the
+      overview samples the discography (10 of 15 albums) and the discography query carries no
+      profile. Both hashes harvested and verified live. Shapes measured, not assumed: releases
+      nest as `items[].releases.items[]` except in `popularReleasesAlbums`, which is flat; and
+      the two operations use different date shapes. Sections overlap, so releases are
+      deduplicated by id. `RecentlyPlayedService` moved to the overview. Removed
+      `fetchArtistDetails`, `fetchArtistAlbums`, and the dead `SpotifyAPI+Search.swift`.
+
+      **Genres are gone**, and this is a real user-visible loss rather than a deferral: no
+      client-owned API returns them — checked across three pathfinder operations and spclient's
+      artist metadata — while the Web API does. Spotify's own artist pages do not show them.
+      `Artist.genres` is removed rather than left empty.
+
+      Still on the Web API here, by surface: `fetchUserArtists` and follow/unfollow go with
+      task 12; `fetchUserTopArtists` and `fetchUserTopTracks` are a Home-screen surface with no
+      obvious pathfinder equivalent and need their own decision — the web client builds Home
+      from a single `home` operation (`23e37f2e…`, harvested, unverified), which may replace
+      several of these calls at once or none of them.
 - [ ] **Task 11: Playlists** (9), including the write paths.
 - [ ] **Task 12: User/library** (2) and the saved-tracks writes.
 

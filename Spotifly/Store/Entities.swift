@@ -177,7 +177,6 @@ struct Artist: Identifiable, Hashable, Encodable {
     let name: String
     let uri: String
     let images: ImageSet
-    let genres: [String]
     let externalUrl: String?
 }
 

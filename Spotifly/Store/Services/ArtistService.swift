@@ -25,12 +25,21 @@ final class ArtistService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-artists"
 
-    /// How many albums an artist page shows. The endpoint is not paginated here.
-    private let artistAlbumsLimit = 50
+    // How many albums an artist page shows. The endpoint is not paginated here.
 
-    init(store: AppStore, tokenProvider: @escaping () async -> String) {
+    /// The artist reads, which take no token: `PartnerAPI` runs on the keymaster grant and
+    /// holds it itself. `tokenProvider` is the Web API's, still needed by the followed-artists
+    /// list and the follow/unfollow writes.
+    private let partnerAPI: PartnerAPI
+
+    init(
+        store: AppStore,
+        tokenProvider: @escaping () async -> String,
+        partnerAPI: PartnerAPI = PartnerAPI(),
+    ) {
         self.store = store
         self.tokenProvider = tokenProvider
+        self.partnerAPI = partnerAPI
     }
 
     // MARK: - User Artists (Followed)
@@ -106,44 +115,41 @@ final class ArtistService {
         guard store.artists[artistId] == nil || store.artistAlbumIds[artistId] == nil else { return }
 
         try await artistRequests.run(artistId) {
-            try await self.loadArtist(artistId: artistId, accessToken: self.tokenProvider())
+            try await self.loadArtist(artistId: artistId)
         }
     }
 
-    private func loadArtist(artistId: String, accessToken: String) async throws {
-        // Re-read inside the run: a caller can arrive just as another run finishes.
-        guard store.artists[artistId] != nil else {
-            async let detailsTask = SpotifyAPI.fetchArtistDetails(
-                accessToken: accessToken,
-                artistId: artistId,
-            )
-            async let albumsTask = SpotifyAPI.fetchArtistAlbums(
-                accessToken: accessToken,
-                artistId: artistId,
-                limit: artistAlbumsLimit,
-            )
-            let (details, artistAlbums) = try await (detailsTask, albumsTask)
+    /// Loads an artist and their discography.
+    ///
+    /// Two requests, because the operations divide that way: `queryArtistOverview` knows who
+    /// the artist is but returns only a *sample* of releases — ten albums of fifteen for Daft
+    /// Punk — while `queryArtistDiscographyAll` returns all thirty-seven and no profile. The
+    /// artist page offers "show all", so it needs the full list. They run concurrently.
+    private func loadArtist(artistId: String) async throws {
+        async let overviewTask = partnerAPI.artist(id: artistId)
+        async let discographyTask = partnerAPI.artistDiscography(id: artistId)
+        let (overview, discography) = try await (overviewTask, discographyTask)
 
-            store.upsertArtist(Artist(from: details))
-            storeAlbums(artistAlbums, for: artistId)
-            return
+        guard let artist = Artist(pathfinderOverview: overview) else {
+            throw PartnerAPIError.emptyPayload
         }
 
-        guard store.artistAlbumIds[artistId] == nil else { return }
-
-        let artistAlbums = try await SpotifyAPI.fetchArtistAlbums(
-            accessToken: accessToken,
-            artistId: artistId,
-            limit: artistAlbumsLimit,
-        )
-        storeAlbums(artistAlbums, for: artistId)
+        store.upsertArtist(artist)
+        storeReleases(discography.releases, for: artist)
     }
 
-    /// Stores an artist's albums and records their order under the artist.
-    private func storeAlbums(_ artistAlbums: [APIAlbum], for artistId: String) {
-        let albums = artistAlbums.map { Album(from: $0) }
+    /// Stores an artist's releases and records their order under the artist.
+    ///
+    /// The releases carry no artist of their own — they are already nested under one — so the
+    /// artist's identity is handed down, exactly as the album view hands its cover art to its
+    /// tracks.
+    private func storeReleases(_ releases: [PathfinderRelease], for artist: Artist) {
+        let albums = releases.compactMap {
+            Album(pathfinderRelease: $0, artistId: artist.id, artistName: artist.name)
+        }
+
         store.upsertAlbums(albums)
-        store.setArtistAlbums(albums.map(\.id), for: artistId)
+        store.setArtistAlbums(albums.map(\.id), for: artist.id)
     }
 
     // MARK: - Follow/Unfollow Artist

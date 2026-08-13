@@ -8,47 +8,6 @@
 import Foundation
 
 extension SpotifyAPI {
-    // MARK: - Artist Details
-
-    /// Fetches a single artist's details from Spotify Web API
-    static func fetchArtistDetails(accessToken: String, artistId: String) async throws -> APIArtist {
-        let urlString = "\(baseURL)/artists/\(artistId)?fields=id,name,uri,genres,images,external_urls(spotify)"
-
-        debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let artist = try JSONDecoder().decode(ArtistCodable.self, from: data)
-                guard let apiArtist = artist.toAPIArtist() else {
-                    throw SpotifyAPIError.invalidResponse
-                }
-                return apiArtist
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 404:
-            throw SpotifyAPIError.notFound
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
-
     // MARK: - User's Followed Artists
 
     /// Fetches user's followed artists from Spotify Web API

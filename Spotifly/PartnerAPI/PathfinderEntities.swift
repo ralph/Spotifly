@@ -182,9 +182,47 @@ extension Artist {
             name: artist.name ?? "",
             uri: uri,
             images: ImageSet(pathfinderSources: artist.visuals?.avatarImage?.sources),
-            // Pathfinder's search projection carries no genres; the artist page loads them.
-            genres: [],
             externalUrl: nil,
+        )
+    }
+
+    /// From `queryArtistOverview`, which is where the artist page gets its identity.
+    init?(pathfinderOverview artist: PathfinderArtistUnion) {
+        guard let id = artist.artistId else { return nil }
+
+        self.init(
+            id: id,
+            name: artist.profile?.name ?? "",
+            uri: artist.uri ?? "spotify:artist:\(id)",
+            images: ImageSet(pathfinderSources: artist.visuals?.avatarImage?.sources),
+            externalUrl: nil,
+        )
+    }
+}
+
+extension Album {
+    /// One release from an artist's discography.
+    ///
+    /// Thinner than `init?(pathfinderUnion:…)`: a discography entry has no track list, so the
+    /// album lands with `detailsLoaded` false and opening it fetches the rest. `knownTrackCount`
+    /// comes from the release's own count, so the list can show "12 tracks" without that fetch.
+    init?(pathfinderRelease release: PathfinderRelease, artistId: String?, artistName: String) {
+        guard let id = release.releaseId else { return nil }
+
+        self.init(
+            id: id,
+            name: release.name ?? "",
+            uri: release.uri ?? "spotify:album:\(id)",
+            images: ImageSet(pathfinderSources: release.coverArt?.sources),
+            releaseDate: release.date?.formatted,
+            albumType: release.type?.lowercased(),
+            externalUrl: nil,
+            artistId: artistId,
+            artistName: artistName,
+            trackIds: [],
+            totalDurationMs: nil,
+            knownTrackCount: release.tracks?.totalCount ?? 0,
+            detailsLoaded: false,
         )
     }
 }

@@ -488,7 +488,6 @@ struct NavigationCoordinatorTests {
             name: name,
             uri: "spotify:artist:\(id)",
             images: .empty,
-            genres: [],
             externalUrl: nil,
         )
     }

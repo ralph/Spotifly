@@ -98,7 +98,6 @@ extension Artist {
         name = artist.name
         uri = artist.uri
         images = artist.images
-        genres = artist.genres
         externalUrl = artist.externalUrl
     }
 }

@@ -149,6 +149,34 @@ nonisolated struct PartnerAPI: Sendable {
         return album
     }
 
+    // MARK: - Artist
+
+    /// Who the artist is, plus a sample of their discography.
+    func artist(id: String) async throws -> PathfinderArtistUnion {
+        try await artistUnion(.queryArtistOverview, id: id)
+    }
+
+    /// Every release by an artist. Carries no profile — pair it with `artist(id:)`.
+    func artistDiscography(id: String) async throws -> PathfinderArtistUnion {
+        try await artistUnion(.queryArtistDiscographyAll, id: id)
+    }
+
+    private func artistUnion(
+        _ operation: PathfinderOperation,
+        id: String,
+    ) async throws -> PathfinderArtistUnion {
+        let response: PathfinderArtistResponse = try await query(
+            operation,
+            variables: PathfinderArtistVariables(uri: "spotify:artist:\(id)"),
+        )
+
+        guard let artist = response.data?.artistUnion else {
+            throw PartnerAPIError.emptyPayload
+        }
+
+        return artist
+    }
+
     // MARK: - Transport
 
     /// Generic over the whole envelope rather than over a search payload: `getAlbum` answers

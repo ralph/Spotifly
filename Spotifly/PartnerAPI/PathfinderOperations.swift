@@ -69,6 +69,32 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
         name: "getAlbum",
         sha256Hash: "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10",
     )
+
+    /// Who the artist is: name and images. Also carries a *sample* of the discography, which
+    /// is why the full list comes from `queryArtistDiscographyAll` instead — this one returns
+    /// ten albums of fifteen and ten singles of twenty-one, and the artist page offers "show
+    /// all".
+    static let queryArtistOverview = PathfinderOperation(
+        name: "queryArtistOverview",
+        sha256Hash: "ae0e2958a4ab645b35ca19ac04d0495ae12d9c5d7b7286217674801a9aab281a",
+    )
+
+    /// Every release by an artist, in one list, with no profile beside it.
+    ///
+    /// Albums, singles and compilations are separate sections in `queryArtistOverview` and one
+    /// `all` list here — which matches what the app wants, since it shows a single album list.
+    static let queryArtistDiscographyAll = PathfinderOperation(
+        name: "queryArtistDiscographyAll",
+        sha256Hash: "5e07d323febb57b4a56a42abbf781490e58764aa45feb6e3dc0591564fc56599",
+    )
+}
+
+/// The variables the artist operations take.
+nonisolated struct PathfinderArtistVariables: Encodable, Sendable {
+    var uri: String
+    var locale: String = ""
+    var offset: Int = 0
+    var limit: Int = 100
 }
 
 /// The variables `getAlbum` takes.

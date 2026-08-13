@@ -186,23 +186,21 @@ final class RecentlyPlayedService {
             }
             store.upsertPlaylists(Array(fetchedPlaylists.values))
 
-            // Fetch artist details concurrently (return raw API response)
-            let fetchedArtistResponses = await withTaskGroup(of: (id: String, artist: APIArtist?).self) { group in
+            // Fetch artist details concurrently. The overview operation, not the discography
+            // one: this strip needs a name and a picture, and the release list would be a far
+            // larger response for something it does not draw.
+            let fetchedArtistResponses = await withTaskGroup(of: (id: String, artist: PathfinderArtistUnion?).self) { group in
                 for artistId in artistIdsToFetch {
                     group.addTask {
                         do {
-                            let artistDetails = try await SpotifyAPI.fetchArtistDetails(
-                                accessToken: accessToken,
-                                artistId: artistId,
-                            )
-                            return (artistId, artistDetails)
+                            return try await (artistId, partnerAPI.artist(id: artistId))
                         } catch {
                             return (artistId, nil)
                         }
                     }
                 }
 
-                var results: [String: APIArtist] = [:]
+                var results: [String: PathfinderArtistUnion] = [:]
                 for await (id, artist) in group {
                     if let artist {
                         results[id] = artist
@@ -213,8 +211,9 @@ final class RecentlyPlayedService {
 
             // Convert to entities on main actor and store
             var fetchedArtists: [String: Artist] = [:]
-            for (id, searchArtist) in fetchedArtistResponses {
-                let artist = Artist(from: searchArtist)
+            for (id, union) in fetchedArtistResponses {
+                guard let artist = Artist(pathfinderOverview: union) else { continue }
+
                 fetchedArtists[id] = artist
             }
             store.upsertArtists(Array(fetchedArtists.values))

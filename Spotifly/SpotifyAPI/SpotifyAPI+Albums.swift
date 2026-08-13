@@ -53,48 +53,6 @@ extension SpotifyAPI {
         }
     }
 
-    // MARK: - Artist Albums
-
-    /// Fetches albums for a specific artist
-    static func fetchArtistAlbums(
-        accessToken: String,
-        artistId: String,
-        limit: Int = 50,
-    ) async throws -> [APIAlbum] {
-        let urlString = "\(baseURL)/artists/\(artistId)/albums?include_groups=album,single&market=from_token&limit=\(limit)"
-
-        debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let decoded = try JSONDecoder().decode(ArtistAlbumsCodable.self, from: data)
-                return decoded.items.map { $0.toAPIAlbum() }
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 404:
-            throw SpotifyAPIError.notFound
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
-
     // MARK: - Remove Saved Album
 
     /// Removes an album from the user's library

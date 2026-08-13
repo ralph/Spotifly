@@ -109,13 +109,6 @@ struct ArtistDetailView: View {
                             .font(.title)
                             .bold()
                             .multilineTextAlignment(.center)
-
-                        if !artist.genres.isEmpty {
-                            Text(artist.genres.prefix(3).joined(separator: ", "))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
                     }
                 }
                 .padding(.top, 24)

@@ -625,31 +625,6 @@ struct RecentlyPlayedCodable: Decodable {
     }
 }
 
-/// Search results
-struct SearchResultsCodable: Decodable {
-    let tracks: TracksPagingCodable?
-    let albums: AlbumsPagingCodable?
-    let artists: ArtistsPagingCodable?
-    let playlists: PlaylistsPagingCodable?
-
-    struct TracksPagingCodable: Decodable {
-        let items: [TrackCodable]?
-    }
-
-    struct AlbumsPagingCodable: Decodable {
-        let items: [AlbumCodable]?
-    }
-
-    struct ArtistsPagingCodable: Decodable {
-        let items: [ArtistCodable]?
-    }
-
-    struct PlaylistsPagingCodable: Decodable {
-        /// Items can be null for deleted/unavailable playlists
-        let items: [PlaylistCodable?]?
-    }
-}
-
 // MARK: - Errors
 
 /// Errors from Spotify API
