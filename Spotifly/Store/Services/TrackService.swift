@@ -189,9 +189,14 @@ final class TrackService {
 
     // MARK: - Favorite Status Check
 
-    /// The one request the checks below are built out of. Private so every caller
-    /// goes through `ensureFavoriteStatuses`/`refreshFavoriteStatuses` and is
-    /// deduplicated against `checksInFlight`.
+    /// The one request the checks below are built out of. Private so every caller goes
+    /// through `ensureFavoriteStatuses` and is deduplicated against `checksInFlight`.
+    ///
+    /// There was a `refreshFavoriteStatuses` beside it that skipped the resolved cache, for
+    /// callers wanting to re-ask. Its only caller was the Now Playing bar, firing on every view
+    /// re-appearance — seven identical requests for one track in under two minutes — so it was
+    /// removed with that call rather than left as a loaded gun. A genuine need to re-ask should
+    /// come from Spotify's collection change feed rather than from polling.
     private func checkFavoriteStatuses(trackIds: [String], accessToken: String) async throws {
         guard !trackIds.isEmpty else { return }
 
@@ -207,13 +212,6 @@ final class TrackService {
             !store.hasResolvedFavoriteStatus(for: $0)
         }
         await check(unresolved)
-    }
-
-    /// Refresh favorite status for the given tracks even if we have stale cached data.
-    func refreshFavoriteStatuses(trackIds: [String]) async {
-        // Deliberately ignores the resolved cache — that is the point of a refresh.
-        // `check` still joins any request already carrying the same track.
-        await check(uniqueTrackIds(trackIds))
     }
 
     private func check(_ trackIds: [String]) async {

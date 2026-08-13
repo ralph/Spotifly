@@ -404,10 +404,25 @@ struct NowPlayingBarView: View {
         }
     }
 
+    /// Resolves the heart for whatever is playing.
+    ///
+    /// `ensureFavoriteStatuses`, not `refreshFavoriteStatuses`: this runs from `.task(id:)`,
+    /// which restarts every time the view *appears*, not only when the track changes — and this
+    /// bar re-appears often, since it is an overlay on a region that swaps between two- and
+    /// three-column layouts as you navigate. A forced refresh made each of those a real
+    /// `/me/tracks/contains` request: one continuously playing track drew seven of them in under
+    /// two minutes, all returning the same answer.
+    ///
+    /// What that costs is picking up a favorite toggled on another device while this track plays.
+    /// It is a fair trade — every other list in the app already resolves statuses through the
+    /// cache, so this makes the bar consistent rather than uniquely stale — and the real fix is
+    /// Spotify's collection change feed, which already arrives over Mercury and is dropped
+    /// unread (`plans/single-grant-partner-api.md`, task 12). Polling on view re-appearance was
+    /// never going to be the right mechanism for that.
     private func resolveCurrentTrackFavoriteStatusIfNeeded() async {
         guard let trackId = currentTrackId else { return }
 
-        await trackService.refreshFavoriteStatuses(trackIds: [trackId])
+        await trackService.ensureFavoriteStatuses(trackIds: [trackId])
     }
 
     /// Unified volume (0-100 scale).
