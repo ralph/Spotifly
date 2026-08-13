@@ -179,14 +179,16 @@ nonisolated enum KeymasterAuth {
     static func authorizationCode(from callback: URLComponents, expectedState: String) throws -> String {
         let items = callback.queryItems ?? []
 
-        if let error = items.first(where: { $0.name == "error" })?.value {
-            throw KeymasterAuthError.authorizationDenied(error)
-        }
-
-        // Checked before the code is read: a redirect that did not come from this request has
-        // no business handing us one.
+        // Checked first, before the code *and* before any error: Spotify's own denial redirect
+        // carries the state, so anything without it is not from this request. Trusting an
+        // unauthenticated `error=` would let any local process that can reach the loopback
+        // port abort a grant the user is in the middle of completing.
         guard let state = items.first(where: { $0.name == "state" })?.value, state == expectedState else {
             throw KeymasterAuthError.stateMismatch
+        }
+
+        if let error = items.first(where: { $0.name == "error" })?.value {
+            throw KeymasterAuthError.authorizationDenied(error)
         }
 
         guard let code = items.first(where: { $0.name == "code" })?.value, !code.isEmpty else {

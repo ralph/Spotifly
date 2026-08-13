@@ -89,6 +89,14 @@ struct KeymasterCallbackTests {
         }
     }
 
+    @Test func `an error without the state is treated as a stranger, not as a denial`() throws {
+        // Spotify's own denial carries the state. Trusting an unauthenticated error would let
+        // anything that can reach the loopback port abort a grant in progress.
+        #expect(throws: KeymasterAuthError.self) {
+            try KeymasterAuth.authorizationCode(from: callback("error=access_denied"), expectedState: "expected")
+        }
+    }
+
     @Test func `a denial reports the reason instead of a missing code`() throws {
         #expect(throws: KeymasterAuthError.self) {
             try KeymasterAuth.authorizationCode(
