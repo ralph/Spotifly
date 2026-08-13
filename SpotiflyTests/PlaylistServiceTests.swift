@@ -217,7 +217,7 @@ struct PlaylistAddReconciliationTests {
 
                     return (
                         Data(#"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#.utf8),
-                        HTTPURLResponse(url: PartnerAPI.endpoint, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                        HTTPURLResponse(url: PartnerAPI.endpoint, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                     )
                 },
             ),
