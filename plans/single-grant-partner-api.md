@@ -309,12 +309,42 @@ Order runs cheapest-first, and each task is independently shippable and revertib
 
       Still on the Web API by surface: `fetchUserPlaylists` and create/rename/delete/follow go
       with task 12.
-- [ ] **Task 12: User/library** (2) and the saved-tracks writes.
+- [ ] **Task 12: User/library.** Schemas probed 2026-08-13, no writes performed. The surface
+      collapses hard — six Web API write endpoints become two mutations, and three list calls
+      become one query:
 
-      Tasks 11 and 12 are no longer gated. The identity question is settled — the market id
-      owns the store key and the favorites state — and so is the write question: Spotify
-      accepts market ids for saves and removals, measured. See the relinking constraint above,
-      including the collection Mercury feed, which is the more interesting way to build task 12.
+      | Web API today | Replacement |
+      | --- | --- |
+      | `/me/playlists`, `/me/albums`, `/me/following?type=artist` | `libraryV3` with `filters` |
+      | `/me/tracks` | `fetchLibraryTracks` |
+      | `/me/tracks/contains` | `areEntitiesInLibrary($uris: [ID!]!)` |
+      | `saveTrack`, `saveUserAlbum`, `followArtist` | `addToLibrary($libraryItemUris: [String!]!)` |
+      | `removeSavedTrack`, `removeUserAlbum`, `unfollowArtist` | `removeFromLibrary($libraryItemUris: [String!]!)` |
+
+      `libraryV3` and `fetchLibraryTracks` both accept **empty variables**, so nothing is
+      required; `libraryV3` answers `data.me.libraryV3` with `availableFilters`
+      (Playlists/Artists/Albums/Audiobooks), `totalCount`, and mixed `items[]` of
+      `{addedAt, depth, item{__typename,_uri,data}, pinnable, pinned, playedAt}`. The test
+      account returned 120 items across four kinds in one page, so the three separate library
+      sections are one query filtered three ways.
+
+      Two consequences worth deciding before writing code. **Audiobooks appear in the library**
+      and the app has no concept of them — they need filtering out or a placeholder, not a crash.
+      And **`addToLibrary` takes uris of any kind**, so `TrackService.toggleFavorite`,
+      `AlbumService.saveAlbumToLibrary` and `ArtistService.followArtist` all become the same
+      call with a different uri prefix; whether they stay three service methods or become one is
+      a judgement call, and three thin wrappers over one call is probably still right, since the
+      views and the optimistic store updates differ per kind.
+
+      Writes must be verified the way task 11's were: schema by empty-variable rejection first,
+      then one reversible round-trip against something disposable. `addToLibrary` on a track is
+      self-cleaning (add, check, remove), so it needs no scratch entity — but it does touch the
+      real library, so confirm before running it.
+
+      The identity question that once gated tasks 11 and 12 is settled — the market id owns the
+      store key and the favorites state — and so is the write question: Spotify accepts market
+      ids for saves and removals, measured. See the relinking constraint above, including the
+      collection Mercury feed, which is the more interesting way to build task 12.
 
 - [ ] **Task 12a: Player control** (`SpotifyAPI+Player.swift`, 12 call sites) — last, but not
       optional. An earlier draft of this plan left it undecided, which quietly made Phase 4
