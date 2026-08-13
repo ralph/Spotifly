@@ -328,19 +328,34 @@ final class AppStore {
         artistAlbumIds[artistId]?.compactMap { albums[$0] }
     }
 
-    /// Upsert a single playlist, preserving loaded tracks if present
+    /// Upsert a single playlist, preserving loaded tracks if present.
+    ///
+    /// A playlist arriving from the library list, search or the start page is a **summary**: it
+    /// carries no items, which says nothing about them rather than saying there are none. So it
+    /// never empties a list the store already holds.
+    ///
+    /// `tracksLoaded` is carried over rather than asserted. A list marked stale — an add whose
+    /// refresh failed, say — stays stale through a summary refresh, so the rows keep rendering
+    /// while the next visit still refetches them. Claiming `true` here is what let a routine
+    /// library refresh both erase those rows and declare the result loaded.
     func upsertPlaylist(_ playlist: Playlist) {
         deletedEntitySelections.remove(.playlist(id: playlist.id))
-        if let existing = playlists[playlist.id], existing.tracksLoaded, !playlist.tracksLoaded {
-            // Preserve existing items and duration when new playlist doesn't have them
-            var merged = playlist
-            merged.items = existing.items
-            merged.totalDurationMs = existing.totalDurationMs
-            merged.tracksLoaded = true
-            playlists[playlist.id] = merged
-        } else {
+
+        guard let existing = playlists[playlist.id],
+              !playlist.tracksLoaded,
+              // A loaded playlist that is genuinely empty is preserved too, so it is not
+              // fetched again forever — see the "cache what was fetched" rule in AGENTS.md.
+              existing.tracksLoaded || !existing.items.isEmpty
+        else {
             playlists[playlist.id] = playlist
+            return
         }
+
+        var merged = playlist
+        merged.items = existing.items
+        merged.totalDurationMs = existing.totalDurationMs
+        merged.tracksLoaded = existing.tracksLoaded
+        playlists[playlist.id] = merged
     }
 
     /// Attach a fetched track list to a playlist. Marks it loaded even when the

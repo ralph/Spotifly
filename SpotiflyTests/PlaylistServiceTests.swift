@@ -146,6 +146,45 @@ struct PlaylistAddReconciliationTests {
         #expect(playlist.items.contains { $0.uid.hasPrefix("local:") })
     }
 
+    /// Marking the contents stale must not make them erasable. `upsertPlaylist` preserved a
+    /// loaded playlist's items against a summary refresh, and keyed that on `tracksLoaded` —
+    /// so clearing the flag also removed the protection, and the next library, search or start
+    /// page refresh replaced the rows with the summary's empty list. An open detail view does
+    /// not reload on its own, so the tracks the user had just added would simply vanish.
+    @Test func `a stale playlist keeps its rows through a summary refresh`() async throws {
+        let store = seededStore()
+        let service = PlaylistService(store: store, partnerAPI: api(reloadStatus: 500))
+
+        await #expect(throws: (any Error).self) {
+            try await service.addTracksToPlaylist(playlistId: "p1", trackIds: ["t2"])
+        }
+
+        // What a library page, a search result or a start-page shelf upserts: name and cover,
+        // no items.
+        store.upsertPlaylist(
+            Playlist(
+                id: "p1",
+                name: "Mix",
+                description: nil,
+                images: ImageSet(variants: []),
+                uri: "spotify:playlist:p1",
+                isPublic: true,
+                ownerId: "ralph",
+                ownerName: "Ralph",
+                externalUrl: nil,
+                items: [],
+                totalDurationMs: nil,
+                knownTrackCount: 2,
+                tracksLoaded: false,
+            ),
+        )
+
+        let playlist = try #require(store.playlists["p1"])
+        #expect(playlist.items.count == 2)
+        // Still stale, so the next visit repairs it rather than trusting the placeholders.
+        #expect(playlist.tracksLoaded == false)
+    }
+
     @Test func `an add is not marked stale when nothing failed`() async throws {
         let store = seededStore()
         let reload = Data("""
