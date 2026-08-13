@@ -78,23 +78,6 @@ struct APIArtist: Identifiable {
     let externalUrl: String?
 }
 
-// MARK: - Playlist Types
-
-/// Playlist metadata from Spotify API
-struct APIPlaylist: Identifiable, DurationFormattable {
-    let id: String
-    let description: String?
-    let images: ImageSet
-    let isPublic: Bool?
-    var name: String
-    let ownerId: String
-    let ownerName: String
-    let totalDurationMs: Int?
-    var trackCount: Int
-    let uri: String
-    let externalUrl: String?
-}
-
 // MARK: - Search Types
 
 /// Search results wrapper (uses unified Entity types)
@@ -111,14 +94,6 @@ struct SearchResults: Encodable {
 // They map directly to the JSON structure, then convert to the public API types.
 
 // MARK: Shared Primitives
-
-struct SpotifyErrorResponse: Decodable {
-    let error: SpotifyErrorBody
-    struct SpotifyErrorBody: Decodable {
-        let message: String
-        let status: Int
-    }
-}
 
 struct ImageCodable: Decodable {
     let url: String
@@ -251,59 +226,6 @@ struct TrackCodable: Decodable {
     }
 }
 
-// MARK: Playlist Codable
-
-struct PlaylistCodable: Decodable {
-    let id: String
-    let name: String
-    let uri: String
-    let description: String?
-    let images: [ImageCodable]?
-    let owner: OwnerCodable
-    let `public`: Bool?
-    let tracks: PlaylistItemsCodable?
-    let externalUrls: ExternalUrlsCodable?
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, uri, description, images, owner, tracks
-        case `public`
-        case externalUrls = "external_urls"
-    }
-
-    struct PlaylistItemsCodable: Decodable {
-        let total: Int?
-        let items: [PlaylistItemWrapperCodable]?
-    }
-
-    struct PlaylistItemWrapperCodable: Decodable {
-        let track: TrackDurationCodable?
-        struct TrackDurationCodable: Decodable {
-            let durationMs: Int?
-            enum CodingKeys: String, CodingKey {
-                case durationMs = "duration_ms"
-            }
-        }
-    }
-
-    func toAPIPlaylist() -> APIPlaylist {
-        let durations = tracks?.items?.compactMap { $0.track?.durationMs } ?? []
-        let totalDurationMs = durations.isEmpty ? nil : durations.reduce(0, +)
-        return APIPlaylist(
-            id: id,
-            description: description,
-            images: images?.toImageSet ?? ImageSet.empty,
-            isPublic: `public`,
-            name: name,
-            ownerId: owner.id,
-            ownerName: owner.displayName ?? owner.id,
-            totalDurationMs: totalDurationMs,
-            trackCount: tracks?.total ?? 0,
-            uri: uri,
-            externalUrl: externalUrls?.spotify,
-        )
-    }
-}
-
 // MARK: Device Codable
 
 struct DeviceCodable: Decodable {
@@ -356,36 +278,6 @@ struct PlaylistItemsCodable: Decodable {
         enum CodingKeys: String, CodingKey {
             case addedAt = "added_at"
             case track
-        }
-    }
-}
-
-// MARK: - Errors
-
-/// Errors from the four playlist-management calls still on `api.spotify.com`.
-///
-/// Three cases went with what they described: `forbidden` was `/me` refusing an account the
-/// dashboard app had not whitelisted, `noActiveDevice` was a `/me/player/*` command finding
-/// nothing to send itself to, and `networkError` was never thrown at all.
-enum SpotifyAPIError: Error, LocalizedError {
-    case apiError(String)
-    case invalidResponse
-    case invalidURI
-    case notFound
-    case unauthorized
-
-    var errorDescription: String? {
-        switch self {
-        case let .apiError(message):
-            "Spotify API error: \(message)"
-        case .invalidResponse:
-            "Invalid response from Spotify"
-        case .invalidURI:
-            "Invalid Spotify URI format"
-        case .notFound:
-            "Track not found"
-        case .unauthorized:
-            "Unauthorized - please log in again"
         }
     }
 }

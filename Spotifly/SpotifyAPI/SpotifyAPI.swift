@@ -2,7 +2,7 @@
 //  SpotifyAPI.swift
 //  Spotifly
 //
-//  Spotify Web API client - base definitions and utilities.
+//  Spotify URI and link helpers. No longer a client of anything.
 //
 
 import Foundation
@@ -21,18 +21,11 @@ func spotifyExternalUrl(type: SpotifyItemType, id: String) -> String {
     "https://open.spotify.com/\(type.rawValue)/\(id)"
 }
 
-/// Spotify Web API client
+/// What is left of the Web API client: no base url, no requests, no errors — the last four
+/// calls moved to the playlist service on 2026-08-14. The name is kept for now because its one
+/// remaining member is spelled `SpotifyAPI.parseTrackURI` at six call sites; retiring it belongs
+/// with the rest of the dashboard-app cleanup.
 enum SpotifyAPI {
-    static let baseURL = "https://api.spotify.com/v1"
-
-    /// Helper to throw appropriate error from API error response data
-    static func throwAPIError(data: Data, statusCode: Int) throws -> Never {
-        if let errorResponse = try? JSONDecoder().decode(SpotifyErrorResponse.self, from: data) {
-            throw SpotifyAPIError.apiError(errorResponse.error.message)
-        }
-        throw SpotifyAPIError.apiError("HTTP \(statusCode)")
-    }
-
     /// Parses a Spotify URI (spotify:track:xxx) and returns the track ID
     static func parseTrackURI(_ uri: String) -> String? {
         let trimmed = uri.trimmingCharacters(in: .whitespacesAndNewlines)

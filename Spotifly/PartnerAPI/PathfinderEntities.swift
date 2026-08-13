@@ -203,7 +203,7 @@ extension PathfinderPlaylistUnion {
         let playlist = Playlist(
             id: playlistId,
             name: name ?? "",
-            description: description,
+            description: description.normalizedPlaylistDescription,
             images: ImageSet(pathfinderSources: (images?.items ?? []).first?.sources),
             uri: uri,
             // Not in this projection, and nothing renders it — the Web API path defaulted it too.
@@ -502,7 +502,10 @@ extension Playlist {
         self.init(
             id: id,
             name: playlist.name ?? "",
-            description: playlist.description,
+            // Normalised here as it was on the Web API path: an empty or literally "null"
+            // description is no description. Which API produced it makes no difference to the
+            // header that renders it.
+            description: playlist.description.normalizedPlaylistDescription,
             images: ImageSet(pathfinderSources: (playlist.images?.items ?? []).first?.sources),
             uri: uri,
             isPublic: true,

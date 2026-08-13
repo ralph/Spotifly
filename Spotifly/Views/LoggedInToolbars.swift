@@ -236,8 +236,7 @@ private struct LoggedInContextToolbarActions: View {
             } else {
                 Button {
                     Task {
-                        let token = await session.validAccessToken()
-                        try? await playlistService.followPlaylist(playlistId: playlist.id, accessToken: token)
+                        try? await playlistService.followPlaylist(playlistId: playlist.id)
                     }
                 } label: {
                     Label("playlist.menu.follow", systemImage: "plus.circle")

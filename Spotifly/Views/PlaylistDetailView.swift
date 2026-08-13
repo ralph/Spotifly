@@ -328,11 +328,7 @@ struct PlaylistDetailView: View {
     private func deletePlaylist() {
         Task {
             do {
-                let token = await session.validAccessToken()
-                try await playlistService.deletePlaylist(
-                    playlistId: playlistId,
-                    accessToken: token,
-                )
+                try await playlistService.deletePlaylist(playlistId: playlistId)
                 // Navigate away from the deleted playlist
                 navigationCoordinator.clearPlaylistSelection()
             } catch {
@@ -344,12 +340,7 @@ struct PlaylistDetailView: View {
     private func unfollowPlaylist() {
         Task {
             do {
-                let token = await session.validAccessToken()
-                // Uses the same API endpoint as delete - it's "unfollow" for both
-                try await playlistService.deletePlaylist(
-                    playlistId: playlistId,
-                    accessToken: token,
-                )
+                try await playlistService.unfollowPlaylist(playlistId: playlistId)
                 // Navigate away from the unfollowed playlist
                 navigationCoordinator.clearPlaylistSelection()
             } catch {
@@ -364,12 +355,10 @@ struct PlaylistDetailView: View {
 
         Task {
             do {
-                let token = await session.validAccessToken()
                 try await playlistService.updatePlaylistDetails(
                     playlistId: playlistId,
                     name: trimmedName,
                     description: editingPlaylistDescription,
-                    accessToken: token,
                 )
             } catch {
                 errorMessage = String(localized: "error.update_playlist \(error.localizedDescription)")

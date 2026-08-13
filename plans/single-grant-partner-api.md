@@ -307,8 +307,8 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       positions Spotify resolved against its own order, and only became visible once items were
       named by uid.
 
-      Still on the Web API by surface: `fetchUserPlaylists` and create/rename/delete/follow go
-      with task 12.
+      Still on the Web API by surface: `fetchUserPlaylists`, which went with task 12, and
+      create/rename/delete/follow, which went with task 12c.
 - [x] **Task 12: User/library.** The surface collapses hard — six Web API write endpoints become
       two mutations, and three list calls become one query:
 
@@ -396,8 +396,9 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       store key and the favorites state — and so is the write question: Spotify accepts market
       ids for saves and removals, measured.
 
-      Still on the Web API by surface: playlist create/rename/delete/follow, which have their
-      own mutations and belong with a playlist-management task rather than this one.
+      Still on the Web API by surface: playlist create/rename/delete/follow, which went to task
+      12c below. They turned out to have no mutations of their own — that assumption is
+      corrected there.
 
 - [x] **Task 12a: Player control** (`SpotifyAPI+Player.swift`, 12 call sites) — last, but not
       optional. An earlier draft of this plan left it undecided, which quietly made Phase 4
@@ -511,12 +512,36 @@ Order runs cheapest-first, and each task is independently shippable and revertib
 
 ### Phase 4: Retire the dashboard app
 
-Only once no `api.spotify.com` call remains:
+Only once no `api.spotify.com` call remains — **which is now the case.**
 
-Four calls remain, all playlist management: create, rename, delete and follow. They have their
-own mutations and belong to a playlist-management task rather than to any of the read migrations.
-They do not block Phase 4's purpose — they use the *dashboard* token deliberately, and the
-problem Phase 4 solves is that a keymaster token gets 429 from `api.spotify.com`.
+- [x] **Task 12c: Playlist management.** Create, rename, delete and follow, the last four calls.
+      They did *not* have their own mutations, which the plan had assumed: the web client's
+      bundle ships no `createPlaylist` and no `renamePlaylist` operation at all, so there was
+      nothing on pathfinder to move them to. They belong to the playlist service at
+      `spclient.wg.spotify.com/playlist/v2`, whose messages are `playlist4_external` protobufs
+      sent as **JSON** — proto3's JSON mapping both ways, so `Codable` covers it and
+      `Protobuf.swift` stays out of it.
+
+      | Web API | Replacement |
+      | --- | --- |
+      | `POST /me/playlists` | `POST /playlist/v2/playlist`, **then** an `ADD` to the rootlist |
+      | `PUT /playlists/{id}` | `POST /playlist/v2/playlist/{id}/changes` (`UPDATE_LIST_ATTRIBUTES`) |
+      | `DELETE /playlists/{id}/followers` | `POST /playlist/v2/user/{username}/rootlist/changes` (`REM`) |
+      | `PUT /playlists/{id}/followers` | the same endpoint, `ADD` |
+
+      Delete and follow-removal are one call, as the Web API's shared endpoint had implied.
+      Creating is two, which `POST /me/playlists` hid. Every request body was read off the web
+      client's network tab on 2026-08-14 and is pinned by a test, per the fixture rule task 12
+      paid for — no probe run was needed, and the app's grant survived the day.
+
+      Three details would each have failed quietly: `itemsAsKey` on a removal (without it the
+      message means "drop `length` items from `fromIndex`"), the partial semantics of
+      `ListAttributesPartialState` (a rename carrying a nil description overwrites the real
+      one), and the rootlist being addressed by **username**, so library membership depends on
+      the profile having loaded.
+
+      Not built: playlist **images**, `collaborative`, and the `pl3_version` field — the
+      attributes message carries them and no screen sets them.
 
 - [ ] **Task 13:** Delete `SpotifyConfig`, the client-id field in `ContentView`,
       `UserNotWhitelistedView` and the whitelist strings in all three localizations, the

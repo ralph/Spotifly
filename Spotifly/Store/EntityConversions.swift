@@ -104,45 +104,6 @@ extension Artist {
 
 // MARK: - Playlist Conversions
 
-extension Playlist {
-    /// Convert from APIPlaylist
-    init(from playlist: APIPlaylist) {
-        self.init(
-            id: playlist.id,
-            name: playlist.name,
-            description: playlist.description.normalizedPlaylistDescription,
-            images: playlist.images,
-            uri: playlist.uri,
-            isPublic: playlist.isPublic ?? true,
-            ownerId: playlist.ownerId,
-            ownerName: playlist.ownerName,
-            externalUrl: playlist.externalUrl,
-            items: [],
-            totalDurationMs: playlist.totalDurationMs,
-            knownTrackCount: playlist.trackCount,
-        )
-    }
-
-    /// Create with explicit items (when loading playlist details with tracks)
-    init(from playlist: APIPlaylist, items: [PlaylistItem], totalDurationMs: Int?) {
-        self.init(
-            id: playlist.id,
-            name: playlist.name,
-            description: playlist.description.normalizedPlaylistDescription,
-            images: playlist.images,
-            uri: playlist.uri,
-            isPublic: playlist.isPublic ?? true,
-            ownerId: playlist.ownerId,
-            ownerName: playlist.ownerName,
-            externalUrl: playlist.externalUrl,
-            items: items,
-            totalDurationMs: totalDurationMs,
-            knownTrackCount: nil, // We have actual tracks
-            tracksLoaded: true,
-        )
-    }
-}
-
 extension String? {
     /// Spotify's playlist list answers with the literal string `"null"` when a playlist has no
     /// description, and the detail header rendered it verbatim — the view's `?? ""` never saw a

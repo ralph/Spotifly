@@ -567,13 +567,8 @@ struct NowPlayingBarView: View {
 
         Task {
             do {
-                let token = await session.validAccessToken()
-
                 // Create the playlist using PlaylistService
-                let newPlaylist = try await playlistService.createPlaylist(
-                    name: trimmedName,
-                    accessToken: token,
-                )
+                let newPlaylist = try await playlistService.createPlaylist(name: trimmedName)
 
                 // Add the track to the new playlist
                 try await playlistService.addTracksToPlaylist(

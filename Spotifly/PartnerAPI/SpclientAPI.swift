@@ -12,11 +12,16 @@ nonisolated enum SpclientError: Error, LocalizedError {
     case preflightRejected(Int)
     case requestFailed(Int, String)
     case malformedResponse
+    /// A library write asked for before the profile loaded. The rootlist is addressed by the
+    /// account's own username, so there is no way to name it yet.
+    case accountUnknown
 
     var errorDescription: String? {
         switch self {
         case let .invalidId(id):
             "\(id) is not a Spotify id"
+        case .accountUnknown:
+            "Your account has not finished loading"
         case let .preflightRejected(status):
             "Spotify rejected the preflight (HTTP \(status))"
         case let .requestFailed(status, detail):
@@ -227,7 +232,7 @@ nonisolated struct SpclientAPI: Sendable {
     /// it from the session, which is why librespot's own transfer passes its own id for both
     /// sides. Measured with three different `from` values on 2026-08-13, all accepted.
     func sendCommand(_ command: ConnectCommand, from: String, to: String) async throws {
-        try await sendConnectRequest(
+        try await send(
             method: "POST",
             path: "connect-state/v1/player/command/from/\(from)/to/\(to)",
             body: ConnectCommandEnvelope(command),
@@ -236,24 +241,97 @@ nonisolated struct SpclientAPI: Sendable {
 
     /// Sets a remote device's volume. Its own path and its own verb, unlike every other command.
     func setVolume(percent: Int, from: String, to: String) async throws {
-        try await sendConnectRequest(
+        try await send(
             method: "PUT",
             path: "connect-state/v1/connect/volume/from/\(from)/to/\(to)",
             body: ConnectVolume(percent: percent),
         )
     }
 
-    /// The one request shape connect-state takes.
+    // MARK: - Playlist attributes
+
+    /// Creates a playlist and answers its id.
     ///
-    /// No preflight and no `market`, unlike `get` below: this is not a catalogue read, and the
+    /// **The new playlist is not in the library yet.** Creating it and listing it are separate
+    /// writes here, where `POST /me/playlists` did both — see `PlaylistService`, which follows
+    /// this with `addToLibrary`.
+    func createPlaylist(name: String, description: String? = nil) async throws -> String {
+        let data = try await send(
+            method: "POST",
+            path: "playlist/v2/playlist",
+            body: PlaylistCreation(name: name, description: description),
+        )
+
+        guard
+            let reply = try? JSONDecoder().decode(PlaylistCreationReply.self, from: data),
+            let id = SpotifyURI.id(from: reply.uri)
+        else {
+            throw SpclientError.malformedResponse
+        }
+
+        return id
+    }
+
+    /// Renames a playlist, changes its description, or both. A nil field is left alone.
+    func changePlaylistAttributes(
+        id: String,
+        name: String? = nil,
+        description: String? = nil,
+    ) async throws {
+        try await send(
+            method: "POST",
+            path: "playlist/v2/playlist/\(id)/changes",
+            body: PlaylistListChanges(.attributes(name: name, description: description)),
+        )
+    }
+
+    /// Adds a playlist to the user's library — which is what following one is.
+    func addPlaylistToLibrary(username: String, playlistId: String) async throws {
+        try await changeRootlist(username: username, .add(uris: [Self.uri(playlistId)]))
+    }
+
+    /// Drops a playlist from the user's library.
+    ///
+    /// **This is also how a playlist is deleted**, and the Web API said as much in its own way:
+    /// `DELETE /playlists/{id}/followers` was the call for both. A playlist the user owns is not
+    /// destroyed by it — it leaves their rootlist, and anyone else following it keeps it.
+    func removePlaylistFromLibrary(username: String, playlistId: String) async throws {
+        try await changeRootlist(username: username, .remove(uris: [Self.uri(playlistId)]))
+    }
+
+    /// The rootlist is the library's list of playlists, and it is a list like any other — so
+    /// membership is an `ADD` or a `REM` against it rather than an endpoint of its own.
+    ///
+    /// Addressed by **username**, not display name: this is the account's own id, which
+    /// `profileAttributes` supplies. Nothing else in the app needs it, which is why the callers
+    /// pass it down rather than this type holding a profile.
+    private func changeRootlist(username: String, _ op: PlaylistOp) async throws {
+        try await send(
+            method: "POST",
+            path: "playlist/v2/user/\(username)/rootlist/changes",
+            body: PlaylistListChanges(op),
+        )
+    }
+
+    private static func uri(_ playlistId: String) -> String {
+        "spotify:playlist:\(playlistId)"
+    }
+
+    /// The one request shape the write endpoints take: JSON in, status out.
+    ///
+    /// No preflight and no `market`, unlike `get` below: these are not catalogue reads, and the
     /// probe established that a bare authorized request is accepted. Failure is reported by
-    /// status code rather than in the body — `404 DEVICE_NOT_FOUND` when the target is gone —
-    /// so unlike the pathfinder mutations there is no 200-that-means-no to unpick.
-    private func sendConnectRequest(
+    /// status code rather than in the body — `404 DEVICE_NOT_FOUND` when a command's target is
+    /// gone — so unlike the pathfinder mutations there is no 200-that-means-no to unpick.
+    ///
+    /// The response body is handed back for the callers that need it; the connect commands
+    /// answer with an ack id nothing reads and discard it.
+    @discardableResult
+    private func send(
         method: String,
         path: String,
         body: some Encodable & Sendable,
-    ) async throws {
+    ) async throws -> Data {
         var request = URLRequest(url: Self.baseURL.appending(path: path))
         request.httpMethod = method
         request.httpBody = try JSONEncoder().encode(body)
@@ -278,6 +356,8 @@ nonisolated struct SpclientAPI: Sendable {
                 String(decoding: data.prefix(300), as: UTF8.self),
             )
         }
+
+        return data
     }
 
     // MARK: - Transport

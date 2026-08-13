@@ -45,12 +45,10 @@ struct LoggedInView: View {
 
         let store = AppStore()
         let session = SpotifySession(authResult: authResult)
-        // Captures the session, not a token, so every call gets a fresh one.
-        let tokenProvider: () async -> String = { await session.validAccessToken() }
 
         _store = State(initialValue: store)
         _session = State(initialValue: session)
-        _playlistService = State(initialValue: PlaylistService(store: store, tokenProvider: tokenProvider))
+        _playlistService = State(initialValue: PlaylistService(store: store))
         _albumService = State(initialValue: AlbumService(store: store))
         _artistService = State(initialValue: ArtistService(store: store))
         let trackService = TrackService(store: store)

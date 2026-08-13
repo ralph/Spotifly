@@ -13,11 +13,6 @@ import Foundation
 final class PlaylistService {
     private let store: AppStore
 
-    /// Used by the loading entry points, which often decide there is nothing to
-    /// fetch. They take the token themselves, *after* deciding, so a cache hit
-    /// costs nothing.
-    private let tokenProvider: () async -> String
-
     /// One run per playlist ID — see `InFlightRequests`.
     private let playlistRequests = InFlightRequests<Void>()
 
@@ -25,19 +20,22 @@ final class PlaylistService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-playlists"
 
-    /// The playlist reads and the item mutations, which take no token: `PartnerAPI` runs on
-    /// the keymaster grant and holds it itself. `tokenProvider` is the Web API's, still needed
-    /// by the playlist list and the create/rename/delete/follow writes.
+    /// The playlist reads and the item mutations. No token is passed in: both clients run on
+    /// the keymaster grant and hold it themselves.
     private let partnerAPI: PartnerAPI
+
+    /// The playlist's own existence — creating it, renaming it, and the library's list of
+    /// them — which pathfinder has no operations for. See `PlaylistChanges.swift`.
+    private let spclientAPI: SpclientAPI
 
     init(
         store: AppStore,
-        tokenProvider: @escaping () async -> String,
         partnerAPI: PartnerAPI = PartnerAPI(),
+        spclientAPI: SpclientAPI = SpclientAPI(),
     ) {
         self.store = store
-        self.tokenProvider = tokenProvider
         self.partnerAPI = partnerAPI
+        self.spclientAPI = spclientAPI
     }
 
     // MARK: - User Playlists
@@ -164,38 +162,52 @@ final class PlaylistService {
 
     // MARK: - Playlist Mutations
 
-    /// Create a new playlist
-    func createPlaylist(
-        name: String,
-        description: String? = nil,
-        accessToken: String,
-    ) async throws -> Playlist {
-        let response = try await SpotifyAPI.createPlaylist(
-            accessToken: accessToken,
+    /// Creates a playlist and lists it in the user's library.
+    ///
+    /// **Two writes where `POST /me/playlists` was one.** The playlist service makes the
+    /// playlist and answers its uri; nothing puts it in the library until the rootlist is told
+    /// to hold it. Measured 2026-08-14 — the web client sends both.
+    func createPlaylist(name: String, description: String? = nil) async throws -> Playlist {
+        let owner = try requireProfile()
+
+        let id = try await spclientAPI.createPlaylist(name: name, description: description)
+        try await spclientAPI.addPlaylistToLibrary(username: owner.id, playlistId: id)
+
+        // Built here rather than fetched back: everything a new playlist has is already known,
+        // and it is empty by construction — so `tracksLoaded` is true in the strong sense, not
+        // as an assumption. See the "cache what was fetched" rule in AGENTS.md.
+        let playlist = Playlist(
+            id: id,
             name: name,
             description: description,
+            images: ImageSet(variants: []),
+            uri: "spotify:playlist:\(id)",
+            isPublic: false,
+            ownerId: owner.id,
+            ownerName: owner.displayName,
+            externalUrl: nil,
+            items: [],
+            totalDurationMs: 0,
+            knownTrackCount: 0,
+            tracksLoaded: true,
         )
 
-        let playlist = Playlist(from: response)
         store.addPlaylistToUserLibrary(playlist)
         return playlist
     }
 
-    /// Update playlist details (name, description)
+    /// Renames a playlist, changes its description, or both.
     func updatePlaylistDetails(
         playlistId: String,
         name: String? = nil,
         description: String? = nil,
-        accessToken: String,
     ) async throws {
-        try await SpotifyAPI.updatePlaylistDetails(
-            accessToken: accessToken,
-            playlistId: playlistId,
+        try await spclientAPI.changePlaylistAttributes(
+            id: playlistId,
             name: name,
             description: description,
         )
 
-        // Update store on success
         store.updatePlaylistDetails(
             id: playlistId,
             name: name,
@@ -203,26 +215,46 @@ final class PlaylistService {
         )
     }
 
-    /// Delete a playlist
-    func deletePlaylist(playlistId: String, accessToken: String) async throws {
-        try await SpotifyAPI.deletePlaylist(
-            accessToken: accessToken,
+    /// Deletes a playlist — which is to say, drops it from the user's library.
+    ///
+    /// The same call as `unfollowPlaylist` below, and the Web API said so too: `DELETE
+    /// /playlists/{id}/followers` served both. The two names are kept because the two menu
+    /// items mean different things to the person clicking them.
+    func deletePlaylist(playlistId: String) async throws {
+        try await removeFromLibrary(playlistId: playlistId)
+    }
+
+    /// Stops following someone else's playlist.
+    func unfollowPlaylist(playlistId: String) async throws {
+        try await removeFromLibrary(playlistId: playlistId)
+    }
+
+    private func removeFromLibrary(playlistId: String) async throws {
+        let owner = try requireProfile()
+        try await spclientAPI.removePlaylistFromLibrary(
+            username: owner.id,
             playlistId: playlistId,
         )
 
-        // Remove from store on success
         store.removePlaylistFromUserLibrary(playlistId)
     }
 
-    /// Follow (save) a playlist to the user's library
-    func followPlaylist(playlistId: String, accessToken: String) async throws {
-        try await SpotifyAPI.followPlaylist(
-            accessToken: accessToken,
-            playlistId: playlistId,
-        )
+    /// Follows (saves) a playlist into the user's library.
+    func followPlaylist(playlistId: String) async throws {
+        let owner = try requireProfile()
+        try await spclientAPI.addPlaylistToLibrary(username: owner.id, playlistId: playlistId)
 
-        // Update store on success
         store.addPlaylistToUserLibraryById(playlistId)
+    }
+
+    /// The rootlist is addressed by the account's own username, so library membership cannot be
+    /// changed before the profile has loaded. `UserProfile.id` *is* the username — see
+    /// `UserProfile.init(pathfinder:)`, which takes it straight from `profileAttributes`.
+    private func requireProfile() throws -> UserProfile {
+        guard let profile = store.userProfile else {
+            throw SpclientError.accountUnknown
+        }
+        return profile
     }
 
     // MARK: - Track Operations
