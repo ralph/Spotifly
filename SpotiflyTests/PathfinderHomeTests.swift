@@ -253,6 +253,67 @@ struct PathfinderHomeRequestTests {
     }
 }
 
+/// What a second refresh does to the first.
+///
+/// ⌘R on this page usually changes nothing visible — Spotify returns an identical first eleven
+/// shelves a second apart — so it invites being pressed again, and again. Six presses in four
+/// seconds is a measured number, not a hypothetical.
+@MainActor
+struct HomeRefreshTests {
+    private func api(answering body: Data) -> PartnerAPI {
+        PartnerAPI(
+            accessToken: { "at" },
+            clientToken: { "ct" },
+            transport: { _ in
+                (body, HTTPURLResponse(
+                    url: PartnerAPI.endpoint, statusCode: 200, httpVersion: nil, headerFields: nil,
+                )!)
+            },
+        )
+    }
+
+    @Test func `a loaded page is not fetched again unless refreshed`() async {
+        let store = AppStore()
+        let service = HomeService(store: store, partnerAPI: api(answering: homeJSON))
+
+        await service.loadHome()
+        let loaded = store.homeSections
+
+        await service.loadHome()
+
+        #expect(store.hasLoadedHome)
+        #expect(store.homeSections == loaded)
+        #expect(!store.homeIsLoading)
+    }
+
+    // **The supersession guard in `HomeService` is reasoned, not covered here.** The bug it
+    // fixes — a cancelled load's teardown clearing the state of the load that replaced it — is
+    // only observable while the loser finishes *and* the winner is still in flight, so a test
+    // for it has to hold the two apart deliberately. An attempt that raced two `Task`s through
+    // an actor gate was withdrawn because it depended on `Task.yield()` landing the scheduler
+    // where it was wanted, which is not something to assert on.
+    //
+    // It was withdrawn under suspicion of hanging the suite, and that suspicion was wrong: the
+    // run stalls identically with this file's concurrency removed and with the whole suite
+    // excluded, so whatever stalls it is not here. Recorded because the wrong conclusion is the
+    // expensive one to inherit.
+    //
+    // If the guard is ever changed, reach for a deterministic interleaving — the transport
+    // itself driving the second load — rather than for `Task.yield()` and hope.
+
+    /// A failure has to reach the screen, since the page has nothing else to say for itself.
+    @Test func `a rejected page is reported rather than left blank and silent`() async {
+        let store = AppStore()
+        let service = HomeService(store: store, partnerAPI: api(answering: genericErrorJSON))
+
+        await service.loadHome()
+
+        #expect(store.homeErrorMessage != nil)
+        #expect(!store.hasLoadedHome)
+        #expect(!store.homeIsLoading)
+    }
+}
+
 /// Who the listener is, now that `/me` is gone.
 @MainActor
 struct PathfinderProfileTests {

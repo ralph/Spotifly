@@ -29,6 +29,15 @@ final class HomeService {
     /// the library services.
     private var loadTask: Task<Void, Never>?
 
+    /// Which load is current. **Cancelling a task does not stop it where it stands** — it
+    /// unblocks the `await`, and the cancelled run then finishes its own teardown, possibly
+    /// after a replacement has already registered itself. Without this, the loser's cleanup
+    /// clears the winner's `loadTask` and turns its loading flag off: a third caller would
+    /// start a third request instead of joining, and the spinner would stop while a load was
+    /// still running. Pressing ⌘R six times in four seconds, which is exactly what a refresh
+    /// that changes nothing visible invites, is enough to reach it.
+    private var loadGeneration = 0
+
     init(store: AppStore, partnerAPI: PartnerAPI = PartnerAPI()) {
         self.store = store
         self.partnerAPI = partnerAPI
@@ -54,10 +63,15 @@ final class HomeService {
         store.homeIsLoading = true
         store.homeErrorMessage = nil
 
+        loadGeneration += 1
+        let generation = loadGeneration
+
         let task = Task {
             defer {
-                self.loadTask = nil
-                self.store.homeIsLoading = false
+                if self.loadGeneration == generation {
+                    self.loadTask = nil
+                    self.store.homeIsLoading = false
+                }
             }
             await self.performLoad()
         }

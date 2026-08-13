@@ -23,11 +23,7 @@ struct StartpageView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                if let greeting = store.homeGreeting, !greeting.isEmpty {
-                    Text(greeting)
-                        .font(.title2.weight(.semibold))
-                        .padding(.horizontal)
-                }
+                header
 
                 if store.homeSections.isEmpty {
                     placeholder
@@ -42,6 +38,33 @@ struct StartpageView: View {
         .contentMargins(.bottom, 100)
         .refreshable {
             await homeService.refresh()
+        }
+    }
+
+    /// The greeting, and the only sign that a refresh is running.
+    ///
+    /// **A reload of this page usually changes nothing visible**, which is a property of the
+    /// page rather than a bug: two requests a second apart returned an identical first eleven
+    /// shelves and differed only in the tail of one-item "Made for you" rows, far below the
+    /// fold. So ⌘R looked like a dead key — it fetched, stored and redrew the same page, with
+    /// `homeIsLoading` driving only the placeholder, which is hidden whenever there is content
+    /// to hide it behind. The spinner is what distinguishes "asked and got the same answer"
+    /// from "nothing happened".
+    @ViewBuilder
+    private var header: some View {
+        let greeting = store.homeGreeting ?? ""
+
+        if !greeting.isEmpty || store.homeIsLoading {
+            HStack(spacing: 8) {
+                Text(greeting)
+                    .font(.title2.weight(.semibold))
+
+                if store.homeIsLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .padding(.horizontal)
         }
     }
 
