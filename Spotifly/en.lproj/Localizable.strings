@@ -163,6 +163,7 @@
 "speakers.this_computer.name" = "Spotifly";
 "speakers.this_computer.hint" = "Transfer playback here";
 
+
 /* Menu Commands */
 "menu.playback" = "Playback";
 "menu.play_pause" = "Play / Pause";
@@ -267,6 +268,8 @@
 
 /* Profile */
 "profile.logged_in_as %@" = "Logged in as %@";
+"profile.unavailable" = "Account details unavailable";
+"profile.unavailable.description" = "Sign out and back in to reconnect your Spotify account.";
 "profile.open_in_spotify" = "Open in Spotify";
 "profile.email" = "Email";
 "profile.country" = "Country";
