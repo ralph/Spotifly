@@ -173,7 +173,7 @@ The OAuth flow moves from Rust into Swift. Not because Rust does it badly, but b
 needs the *token*, and today Rust mints it, hands it to librespot and drops it. Everything
 downstream in this plan needs that token in Swift, and Track B needs it there permanently.
 
-- [ ] **Task 1: A loopback OAuth client in Swift.**
+- [x] **Task 1: A loopback OAuth client in Swift.**
       PKCE (S256), authorization URL opened with `NSWorkspace`, and a loopback listener on
       `http://127.0.0.1:<port>/login` — `ASWebAuthenticationSession` cannot serve this, because
       the desktop client id's redirect is plain HTTP on loopback rather than a custom scheme.
@@ -182,13 +182,22 @@ downstream in this plan needs that token in Swift, and Track B needs it there pe
       New: `Spotifly/Auth/KeymasterAuth.swift`. Tests cover URL construction, the challenge,
       state mismatch rejection and callback parsing — not the browser round-trip.
 
-- [ ] **Task 2: Token storage with rotation.**
-      Access token, refresh token, expiry and the account id in the keychain, refreshed through
-      the same `refreshBufferSeconds` policy `SpotifyAuthResult` already defines. **The refresh
-      response's refresh token replaces the stored one.** A test drives two consecutive refreshes
-      against a stub and fails if the second sends the original token.
+      Shipped with one addition the plan did not ask for: the wait is **cancellable**, not only
+      bounded. A browser tab closed without authorizing sends nothing at all, so the affordance
+      that started the grant spun until the timeout with no way back to it.
 
-- [ ] **Task 3: Feed librespot from Swift's token, and delete the Rust OAuth.**
+- [x] **Task 2: Token storage with rotation.**
+      Access token, refresh token, expiry and the account id in the keychain, refreshed on a
+      shared buffer. **The refresh response's refresh token replaces the stored one.** A test
+      drives two consecutive refreshes against a stub and fails if the second sends the original
+      token.
+
+      The buffer was `SpotifyAuthResult.refreshBufferSeconds`, borrowed from the Web API half so
+      the two could not drift apart; task 13 deleted that half, and it is
+      `KeymasterTokens.refreshBuffer` now. The same file later grew the other half of the
+      lifecycle — discarding a grant Spotify has refused, rather than refreshing it forever.
+
+- [x] **Task 3: Feed librespot from Swift's token, and delete the Rust OAuth.**
       `spotifly_authorize_streaming` loses its `librespot_oauth` client and takes a token
       argument instead; Swift performs the grant and passes the result. The credentials cache,
       the account-mismatch guard and the generation checks stay exactly as they are — this task
@@ -196,16 +205,18 @@ downstream in this plan needs that token in Swift, and Track B needs it there pe
       `rust/Cargo.toml`. Recount the clippy `not_unsafe_ptr_arg_deref` baseline afterwards: it
       tracks pointer-taking FFI entry points and this task adds one.
 
+      It did: 8 → 9, and 9 is where it still stands.
+
 ### Phase 2: The two API clients
 
-- [ ] **Task 4: Client-Token acquisition.**
+- [x] **Task 4: Client-Token acquisition.**
       A protobuf POST to `clienttoken.spotify.com/v1/clienttoken` carrying client id, version
       and a generated 40-hex-character device id, returning the granted token. Two messages in
       each direction; hand-encode them as the `swift-librespot` branch does under
       `Proto/` rather than adding a protobuf dependency for four fields. Cached with the device
       id, refetched on 401.
 
-- [ ] **Task 5: `PartnerAPI` — the pathfinder GraphQL client.**
+- [x] **Task 5: `PartnerAPI` — the pathfinder GraphQL client.**
       POST to `api-partner.spotify.com/pathfinder/v2/query` with `Authorization: Bearer`,
       `Client-Token`, `App-Platform: OSX_ARM64` (or the Intel equivalent), the xpui
       `Origin`/`Referer`, and a body of `{variables, operationName, extensions.persistedQuery}`.
@@ -216,7 +227,7 @@ downstream in this plan needs that token in Swift, and Track B needs it there pe
       requests all four types and `SearchResultsView` renders a section per category, so
       shipping tracks alone silently deletes three quarters of the search results.
 
-- [ ] **Task 6: `SpclientAPI` — the REST client.**
+- [x] **Task 6: `SpclientAPI` — the REST client.**
       `spclient.wg.spotify.com` with the same two headers. Two shapes to support: JSON
       (`metadata/4/track/{gid}`, which needs a CORS-style `OPTIONS` preflight first, as libspot
       sends) and protobuf (extended-metadata, storage-resolve — needed by Track B, not by
