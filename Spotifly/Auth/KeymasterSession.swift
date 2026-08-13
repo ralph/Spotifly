@@ -74,7 +74,18 @@ actor KeymasterSession {
     }
 
     /// Records the outcome of a fresh grant.
+    ///
+    /// Supersedes any refresh already running, for the same reason `clear()` does. A refresh
+    /// spends the *previous* refresh token, and Spotify keeps one live token per client id and
+    /// account — so a refresh that started before this grant either returns tokens the new
+    /// grant has already replaced, and overwrites it, or is refused as `invalid_grant` for the
+    /// token the new grant retired, and discards it. The second is the likelier of the two and
+    /// logs the user out moments after they authorized. Re-authorizing while signed in is a
+    /// real path here: Speakers and the play alert both offer it.
     func adopt(_ newTokens: KeymasterTokens) throws {
+        generation &+= 1
+        refreshInFlight?.cancel()
+        refreshInFlight = nil
         tokens = newTokens
         try store.save(newTokens)
     }
@@ -118,7 +129,15 @@ actor KeymasterSession {
         }
 
         refreshInFlight = task
-        defer { refreshInFlight = nil }
+        // Only if the slot still holds *this* run. `adopt` and `clear` both empty it, and a
+        // later refresh can have filled it again by the time this one unwinds — clearing that
+        // one would let a second refresh start against the same rotating token, which is the
+        // race the single-flight exists to prevent.
+        defer {
+            if refreshInFlight == task {
+                refreshInFlight = nil
+            }
+        }
 
         let renewed: KeymasterTokens
         do {

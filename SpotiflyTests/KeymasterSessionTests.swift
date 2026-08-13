@@ -299,6 +299,62 @@ struct KeymasterSessionTests {
         #expect(await session.hasGrant)
     }
 
+    @Test func `a refresh the new grant outlived does not overwrite it`() async throws {
+        // Re-authorizing while signed in is offered from Speakers and from the play alert, so a
+        // grant can land while a routine refresh is still on the wire. The refresh spent the
+        // token that grant has just replaced; whatever it answers belongs to a grant that is
+        // gone.
+        let gate = Gate()
+        let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(buffer - 60)))
+        let session = KeymasterSession(store: store, refresher: { _ in
+            await gate.entered()
+            await gate.wait()
+            return tokens(access: "stale", refresh: "stale-refresh", expiresAt: Date(timeIntervalSince1970: 10_000_000))
+        })
+
+        let refreshing = Task { try await session.accessToken(now: now) }
+        await gate.waitUntilEntered()
+
+        let fresh = tokens(access: "brand-new", refresh: "fresh", expiresAt: now.addingTimeInterval(3600))
+        try await session.adopt(fresh)
+
+        await gate.open()
+        _ = try? await refreshing.value
+
+        #expect(store.load() == fresh)
+        #expect(try await session.accessToken(now: now) == "brand-new")
+    }
+
+    @Test func `a revocation the new grant outlived does not discard it`() async throws {
+        // The likelier half: Spotify keeps one live refresh token per client id and account, so
+        // the grant just adopted is exactly what killed the token the refresh is spending. Left
+        // unguarded, authorizing successfully logs the user straight back out.
+        let gate = Gate()
+        let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(buffer - 60)))
+        let session = KeymasterSession(store: store, refresher: { _ in
+            await gate.entered()
+            await gate.wait()
+            throw KeymasterAuthError.grantRevoked
+        })
+
+        let announcements = Counter()
+        let subscription = session.grantRevoked.sink { announcements.increment() }
+        defer { subscription.cancel() }
+
+        let refreshing = Task { try await session.accessToken(now: now) }
+        await gate.waitUntilEntered()
+
+        let fresh = tokens(access: "brand-new", refresh: "fresh", expiresAt: now.addingTimeInterval(3600))
+        try await session.adopt(fresh)
+
+        await gate.open()
+        _ = try? await refreshing.value
+
+        #expect(store.load() == fresh)
+        #expect(await session.hasGrant)
+        #expect(announcements.value == 0)
+    }
+
     @Test func `clearing forgets the grant in memory and on disk`() async {
         let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(3600)))
         let session = KeymasterSession(store: store, refresher: { _ in
