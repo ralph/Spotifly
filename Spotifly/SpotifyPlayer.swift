@@ -985,6 +985,20 @@ enum SpotifyPlayer {
             _ = spotifly_shutdown()
             spotifly_cleanup()
         }.value
+
+        // These three replay: they are `CurrentValueSubject`s so that a Speakers view opened
+        // after the last update still gets one. That is right within a session and wrong
+        // across a logout — the next account's services subscribe and are handed the previous
+        // account's devices, queue and playback state before anything of their own has
+        // arrived, which shows other people's device names and aims transfers at device ids
+        // that are not theirs.
+        //
+        // Emptied rather than left to be overwritten, because the overwrite is not guaranteed:
+        // if the new session never connects, the old values are all the new subscriber ever
+        // sees. Subscribers already treat nil as "nothing to say".
+        devicesSubject.send(nil)
+        queueSubject.send(nil)
+        playbackStateSubject.send(nil)
     }
 
     /// Disconnects from Spotify Connect without preventing future reconnection.

@@ -3045,6 +3045,15 @@ pub extern "C" fn spotifly_cleanup() {
     LAST_VOLUME.store(0, Ordering::SeqCst);
     LAST_ACTIVE_DEVICE_ID.lock().unwrap().clear();
 
+    // The cluster describes an account, so both of these belong to the session being torn
+    // down. `spotifly_get_queue_snapshot` is what the queue bootstrap reads on a cold start,
+    // and its whole guard rests on nil meaning "no cluster update has arrived" — a surviving
+    // snapshot makes that read as "this is the queue", and a freshly logged-in account gets
+    // the previous one's. The device list is a dedup cache, so a stale entry would suppress
+    // the first update after a login as unchanged.
+    *LAST_QUEUE_JSON.lock().unwrap() = None;
+    LAST_DEVICES_JSON.lock().unwrap().clear();
+
     // Reset the connection snapshot: not ready, not connected, no device ID.
     // reconnect_attempt is deliberately preserved - it drives exponential backoff and
     // is only reset on a successful connect (in the SessionConnected handler).
