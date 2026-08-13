@@ -110,8 +110,12 @@ struct LoggedInLifecycleModifier: ViewModifier {
             }
     }
 
-    /// Who is logged in. Failure is swallowed: the profile names the account in one settings
-    /// screen, and nothing else waits on it.
+    /// Who is logged in. Failure is swallowed, because nothing on this path should block on it:
+    /// an app that cannot say who you are is still an app that plays music.
+    ///
+    /// It is no longer only the settings screen that reads it, though — the playlist library
+    /// writes address the rootlist by username — so `PlaylistService.requireProfile` fetches it
+    /// itself when it is missing rather than trusting this one attempt.
     private func loadProfile() async {
         do {
             let profile = try await PartnerAPI().profile()

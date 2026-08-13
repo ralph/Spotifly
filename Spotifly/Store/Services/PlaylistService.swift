@@ -20,6 +20,10 @@ final class PlaylistService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-playlists"
 
+    /// The account's own profile, which the library writes address the rootlist by.
+    private let profileRequests = InFlightRequests<Void>()
+    private static let profileKey = "user-profile"
+
     /// The playlist reads and the item mutations. No token is passed in: both clients run on
     /// the keymaster grant and hold it themselves.
     private let partnerAPI: PartnerAPI
@@ -168,7 +172,7 @@ final class PlaylistService {
     /// playlist and answers its uri; nothing puts it in the library until the rootlist is told
     /// to hold it. Measured 2026-08-14 — the web client sends both.
     func createPlaylist(name: String, description: String? = nil) async throws -> Playlist {
-        let owner = try requireProfile()
+        let owner = try await requireProfile()
 
         let id = try await spclientAPI.createPlaylist(name: name, description: description)
         try await spclientAPI.addPlaylistToLibrary(username: owner.id, playlistId: id)
@@ -230,7 +234,7 @@ final class PlaylistService {
     }
 
     private func removeFromLibrary(playlistId: String) async throws {
-        let owner = try requireProfile()
+        let owner = try await requireProfile()
         try await spclientAPI.removePlaylistFromLibrary(
             username: owner.id,
             playlistId: playlistId,
@@ -241,7 +245,7 @@ final class PlaylistService {
 
     /// Follows (saves) a playlist into the user's library.
     func followPlaylist(playlistId: String) async throws {
-        let owner = try requireProfile()
+        let owner = try await requireProfile()
         try await spclientAPI.addPlaylistToLibrary(username: owner.id, playlistId: playlistId)
 
         store.addPlaylistToUserLibraryById(playlistId)
@@ -250,7 +254,25 @@ final class PlaylistService {
     /// The rootlist is addressed by the account's own username, so library membership cannot be
     /// changed before the profile has loaded. `UserProfile.id` *is* the username — see
     /// `UserProfile.init(pathfinder:)`, which takes it straight from `profileAttributes`.
-    private func requireProfile() throws -> UserProfile {
+    ///
+    /// **Fetches it rather than refusing.** The profile is loaded once at startup, on a path
+    /// that deliberately swallows its own failure — an app that cannot say who you are is still
+    /// an app that plays music — and nothing retried it. So one transient failure there left
+    /// create, delete, follow and unfollow throwing `accountUnknown` until the app was
+    /// relaunched, for a request none of them had ever made themselves. Through the registry,
+    /// so several writes arriving at once ask for it once.
+    private func requireProfile() async throws -> UserProfile {
+        if let profile = store.userProfile {
+            return profile
+        }
+
+        try await profileRequests.run(Self.profileKey) {
+            let profile = try await self.partnerAPI.profile()
+            self.store.setUserProfile(UserProfile(pathfinder: profile))
+        }
+
+        // A profile can arrive without the one field that matters — `UserProfile(pathfinder:)`
+        // is failable precisely because a nameless account cannot address a rootlist.
         guard let profile = store.userProfile else {
             throw SpclientError.accountUnknown
         }
