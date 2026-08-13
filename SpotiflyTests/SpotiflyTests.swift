@@ -47,4 +47,30 @@ struct SpotiflyTests {
         #expect(!store.isFavorite("cached-nonfavorite"))
         #expect(store.isFavorite("page-track"))
     }
+
+    /// Relinking is many-to-one, so a library page can name the same market recording twice.
+    /// `markTracksAsFavorite` built a dictionary with `uniqueKeysWithValues` and trapped on
+    /// the second one — a crash on opening Favorites, for any account holding a pair like it.
+    @Test func `a library page naming one track twice is not a crash`() {
+        let store = AppStore()
+
+        store.setSavedTrackIds(["relinked", "other", "relinked"])
+        store.markTracksAsFavorite(["relinked", "other", "relinked"])
+
+        #expect(store.savedTrackIds == ["relinked", "other"])
+        #expect(store.isFavorite("relinked"))
+        #expect(store.isFavorite("other"))
+    }
+
+    /// The same collision across a page boundary, which per-page deduplication would miss.
+    /// `favoriteTracks` feeds a `ForEach` keyed by track id, where a repeat is undefined
+    /// behaviour rather than a repeated row.
+    @Test func `a track repeated across two pages appears once`() {
+        let store = AppStore()
+
+        store.setSavedTrackIds(["a", "b"])
+        store.appendSavedTrackIds(["b", "c"])
+
+        #expect(store.savedTrackIds == ["a", "b", "c"])
+    }
 }

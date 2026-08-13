@@ -61,6 +61,14 @@ require the original id for Web API writes. It stopped being available once sear
 pathfinder, and the mismatch it caused was live: a relinked track favorited from search saved
 one id while the library row held the other, so the heart did not light and removal missed.
 
+**Relinking is many-to-one**, which the market id inherits: several saved recordings can
+substitute to the same playable one, so a library page can name the same track twice, and two
+pages can each name it once. Collections keyed by track id must tolerate that — `AppStore`
+deduplicates `savedTrackIds` across the whole list, and anything building a dictionary from
+track ids uses `uniquingKeysWith:` rather than `uniqueKeysWithValues:`, which traps. A knock-on
+to expect rather than fix: a list can be shorter than the total Spotify reports, since that
+counts saved entries and the list counts tracks.
+
 What the old rule was *right* about, and what still holds: **one identity per track, or the
 store corrupts.** Two ids for one song means the queue points at a key `store.tracks` misses,
 the track re-fetches forever behind a placeholder, and the recovery loader writes a second

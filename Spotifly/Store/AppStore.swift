@@ -471,12 +471,29 @@ final class AppStore {
 
     /// Set saved track IDs for the Favorites section (replaces existing list order only)
     func setSavedTrackIds(_ ids: [String]) {
-        savedTrackIds = ids
+        savedTrackIds = Self.deduplicated(ids)
     }
 
     /// Append saved track IDs for Favorites pagination
     func appendSavedTrackIds(_ ids: [String]) {
-        savedTrackIds.append(contentsOf: ids)
+        savedTrackIds = Self.deduplicated(savedTrackIds + ids)
+    }
+
+    /// Relinking is **many-to-one**: several saved recordings can share one market id, which is
+    /// the id the app keys tracks by (`AGENTS.md`, "Track identity is the market id"). So a
+    /// library page can name the same track twice, and two pages can each name it once.
+    ///
+    /// One row per track is not cosmetic here. `favoriteTracks` feeds a SwiftUI `ForEach` keyed
+    /// by `Track.id`, and duplicate ids there are undefined behaviour rather than a duplicate
+    /// row. Deduplicating across the whole list rather than per page is what makes the second
+    /// case work.
+    ///
+    /// A knock-on worth knowing: the list can be shorter than the `total` Spotify reports,
+    /// because that counts saved entries and this counts tracks. Pagination is unaffected —
+    /// offsets are Spotify's side of the conversation.
+    private static func deduplicated(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
     }
 
     // MARK: - Favorite Actions
@@ -510,8 +527,12 @@ final class AppStore {
     }
 
     /// Mark fetched Favorites-section tracks as favorited without changing list order.
+    ///
+    /// Tolerates a repeated id rather than trapping on one: a library page can name the same
+    /// market recording twice, for the reason `deduplicated` explains. The status is the same
+    /// `true` either way, so collapsing them loses nothing.
     func markTracksAsFavorite(_ trackIds: [String]) {
-        let statuses = Dictionary(uniqueKeysWithValues: trackIds.map { ($0, true) })
+        let statuses = Dictionary(trackIds.map { ($0, true) }, uniquingKeysWith: { first, _ in first })
         updateFavoriteStatuses(statuses)
     }
 
