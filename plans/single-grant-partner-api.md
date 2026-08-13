@@ -444,8 +444,9 @@ Order runs cheapest-first, and each task is independently shippable and revertib
         target is in the url now, so there is no url to build and the answer is local.
       - **Playing to a phone with local playback disabled is gone.** The device list needs the
         dealer socket only a session holds, so with no session there are no devices. Task 13
-        removes the state itself — one grant will serve both — but until then this is a real
-        narrowing rather than a deferral.
+        removed the way *into* that state deliberately — signing in is the streaming grant now,
+        so there is no Skip — but it is still reachable when the grant's librespot half fails,
+        which is why Speakers and the play alert keep offering the connect.
 
 - [x] **Task 12b: Home, rebuilt on `home`.** `home` (`23e37f2e…`) returns Spotify's own start
       page — a `greeting` and `sectionContainer.sections.items[]`, 31 titled shelves in the test
@@ -543,18 +544,40 @@ Only once no `api.spotify.com` call remains — **which is now the case.**
       Not built: playlist **images**, `collaborative`, and the `pl3_version` field — the
       attributes message carries them and no screen sets them.
 
-- [ ] **Task 13:** Delete `SpotifyConfig`, the client-id field in `ContentView`,
-      `UserNotWhitelistedView` and the whitelist strings in all three localizations, the
-      dashboard OAuth in `SpotifyAuth.swift`, and the account-mismatch guard that exists only
-      because two grants could disagree. Update the README and the Homebrew tap's setup
-      instructions, which currently tell users to register an app.
+- [x] **Task 13: Retire the dashboard app.** `SpotifyConfig`, `SpotifyAuth`, `SpotifySession`,
+      the client-id field, `UserNotWhitelistedView` and the Web API's keychain items are gone,
+      and signing in is one button running the grant the app already had. Done in four commits,
+      because it turned out to be four problems rather than one.
 
-      Task 12b already left two of these unreachable, and they are dead code until this task
-      runs: nothing sets `LoggedInView.BlockingState.userNotWhitelisted` — that state came from
-      `/me` answering 403 for an account the dashboard app had not whitelisted, and
-      `profileAttributes` runs on a grant with no such list — and the account-mismatch guard's
-      login-step arm is gone for the reason this task deletes the rest of it: both accounts it
-      compared are now the same grant.
+      **The login gate is `KeymasterSession.hasGrant`, and deliberately not librespot's
+      credentials file.** Both are written by the same authorization, so the choice only shows
+      up when one half fails — and the grant is the half that decides whether the app works,
+      since every request carries its token. `authorizeStreaming` adopts the tokens *before*
+      the connect, so a failed connect leaves a usable grant, and the honest outcome is an app
+      that browses but is not a playback device. Speakers and the play alert already offer the
+      way back, keyed on `isLocalPlaybackAvailable` rather than on the file. This is also what
+      unblocks task #20: the two facts that could disagree are down to one.
+
+      **The account-mismatch guard was kept, against this plan's own instruction to delete it.**
+      Its stated reason — two grants disagreeing permanently — is genuinely gone. But
+      re-authorizing from inside the app into a different account is silent in a worse way than
+      it looks: the grant is replaced while the library, the queue and the now-playing bar go on
+      showing the previous account until a relaunch. Signing in passes no expected account and
+      is unaffected, so the guard now catches exactly one case and it is a real one.
+
+      **Two things were dead before this task and are only half swept up.**
+      `BlockingState.premiumRequired` and `PremiumRequiredView` were orphaned by 12b alongside
+      the whitelist screen — `profileAttributes` carries no `product` field — but whether to
+      tell a non-premium user why streaming will not work is a product question, so the screen
+      stays until there is a source for the fact. `spotifly_has_streaming_credentials` is now
+      unreferenced from Swift and still exported from Rust.
+
+      Three smaller things fell out. `PlaybackViewModel` took an `accessToken` on five methods
+      and had ignored it since 12a — fourteen call sites were awaiting a token refresh to
+      supply a string that was discarded. `SpotifyAuthActor` never isolated auth; it is
+      `SpotifyPlayerActor` now, beside its only four users. And the Web API keychain items are
+      *deleted* on launch rather than orphaned: a live refresh token for an app Spotifly no
+      longer speaks to is not ours to leave on someone's machine.
 
 ---
 
