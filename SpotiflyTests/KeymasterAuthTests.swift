@@ -187,9 +187,9 @@ struct KeymasterTokenResponseTests {
         }
     }
 
-    @Test func `expiry is judged on the same buffer the Web API half uses`() {
+    @Test func `expiry is judged on the refresh buffer`() {
         let now = Date(timeIntervalSince1970: 1_000_000)
-        let buffer = SpotifyAuthResult.refreshBufferSeconds
+        let buffer = KeymasterTokens.refreshBuffer
 
         let fresh = KeymasterTokens(
             accessToken: "a", refreshToken: "r",

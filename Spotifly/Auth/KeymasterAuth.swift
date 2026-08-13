@@ -25,9 +25,17 @@ nonisolated struct KeymasterTokens: Sendable, Equatable, Codable {
     /// The account the browser authorized as, which need not be the one signed in elsewhere.
     var username: String
 
-    /// Whether the token needs refreshing before use, on the same buffer the Web API half uses.
+    /// Refresh once the access token has this many seconds or less of validity left.
+    ///
+    /// One grant now, so one policy: the launch path, the API clients and the accesspoint
+    /// session all refresh on this. It used to live on the Web API's `SpotifyAuthResult` and be
+    /// borrowed from here, which was the shared constant keeping two halves from drifting
+    /// apart; there is only one half left.
+    static let refreshBuffer: TimeInterval = 300
+
+    /// Whether the token needs refreshing before use.
     func needsRefresh(now: Date = Date()) -> Bool {
-        expiresAt.timeIntervalSince(now) <= SpotifyAuthResult.refreshBufferSeconds
+        expiresAt.timeIntervalSince(now) <= Self.refreshBuffer
     }
 }
 
@@ -285,9 +293,8 @@ nonisolated enum KeymasterAuth {
     }
 }
 
-/// PKCE bits, kept here rather than shared with `SpotifyAuth`: that file is scheduled for
-/// deletion once the dashboard half goes, and reaching into it would tie the new flow to code
-/// on its way out.
+/// PKCE bits. They were deliberately not shared with the dashboard OAuth's own copy, which was
+/// on its way out; it has since gone, and this is the only copy left.
 nonisolated enum PKCE {
     static func codeVerifier() -> String {
         var bytes = [UInt8](repeating: 0, count: 64)

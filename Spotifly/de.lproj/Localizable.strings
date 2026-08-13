@@ -2,15 +2,10 @@
 "app.name" = "Spotifly";
 
 /* Authentication */
-"auth.connect.description" = "Verbinde deinen Spotify-Account, um zu beginnen";
+"auth.connect.description" = "Verbinde deinen Spotify-Account, um zu beginnen. Damit autorisierst du Spotifly im Browser und machst diesen Mac als Spotify-Connect-Gerät verfügbar.";
 "auth.connect.button" = "Mit Spotify verbinden";
-"auth.authenticating" = "Authentifiziere...";
 "auth.loading" = "Lädt...";
 "auth.logout" = "Abmelden";
-"auth.client_id_label" = "Spotify Client ID";
-"auth.client_id_placeholder" = "Client ID eingeben";
-"auth.client_id_help_link" = "Wie bekomme ich eine Client ID?";
-"auth.client_id_existing_app_note" = "Du kannst eine vorhandene Spotify-App verwenden, wenn du die Redirect-URI de.rvdh.spotifly://callback hinzufügst";
 
 /* Navigation */
 "nav.startpage" = "Startseite";
@@ -276,14 +271,9 @@
 "profile.subscription" = "Abo";
 "profile.followers" = "Follower";
 
-// Streaming authorization (step 2)
-"auth.enable_playback_label" = "Wiedergabe auf diesem Mac aktivieren";
-"auth.enable_playback_note" = "Spotifly braucht eine zweite Autorisierung, um hier Audio abzuspielen. Spotify verlangt für das Streaming eine andere App-Identität als für deine Bibliothek — daher dieser separate Schritt.";
-"auth.enable_playback_button" = "Wiedergabe aktivieren";
-"auth.enable_playback_waiting" = "Warte auf deinen Browser...";
-"auth.enable_playback_cancel" = "Warte auf deinen Browser — abbrechen";
-"auth.enable_playback_skip" = "Später";
-"auth.enable_playback_failed" = "Wiedergabe konnte nicht aktiviert werden. Bitte versuche es erneut.";
+// Die Autorisierung: Anmeldung auf dem Login-Screen, Wiedergabe-Freigabe überall sonst
+"auth.connect_cancel" = "Warte auf deinen Browser — abbrechen";
+"auth.connect_failed" = "Verbindung zu Spotify fehlgeschlagen. Bitte versuche es erneut.";
 "speakers.enable_this_mac" = "Diesen Mac aktivieren";
 "speakers.enable_this_mac_cancel" = "Autorisierung abbrechen";
 "playback.needs_authorization_title" = "Wiedergabe auf diesem Mac aktivieren?";

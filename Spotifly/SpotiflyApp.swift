@@ -14,10 +14,6 @@ struct FocusedNavigationSelection: FocusedValueKey {
     typealias Value = Binding<NavigationItem?>
 }
 
-struct FocusedSession: FocusedValueKey {
-    typealias Value = SpotifySession
-}
-
 struct FocusedHomeService: FocusedValueKey {
     typealias Value = HomeService
 }
@@ -26,11 +22,6 @@ extension FocusedValues {
     var navigationSelection: Binding<NavigationItem?>? {
         get { self[FocusedNavigationSelection.self] }
         set { self[FocusedNavigationSelection.self] = newValue }
-    }
-
-    var session: SpotifySession? {
-        get { self[FocusedSession.self] }
-        set { self[FocusedSession.self] = newValue }
     }
 
     var homeService: HomeService? {
@@ -65,6 +56,10 @@ struct SpotiflyApp: App {
     init() {
         // Set activation policy to regular to support media keys
         NSApplication.shared.setActivationPolicy(.regular)
+
+        // Nothing reads the dashboard grant any more; this is where the last copy of it on an
+        // upgraded machine gets thrown away.
+        KeychainManager.purgeDashboardGrant()
     }
 
     var body: some Scene {
@@ -90,7 +85,6 @@ struct SpotiflyApp: App {
 
 struct SpotiflyCommands: Commands {
     @FocusedValue(\.navigationSelection) var navigationSelection
-    @FocusedValue(\.session) var session
     @FocusedValue(\.homeService) var homeService
 
     private var playbackViewModel: PlaybackViewModel {
@@ -177,8 +171,11 @@ struct SpotiflyCommands: Commands {
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
 
-                Button("Copy OAuth Token") {
-                    if let token = SpotifySession.current?.accessToken {
+                // The grant's own token, which is what every request now carries. Paste it
+                // into a curl and you are the app.
+                Button("Copy Access Token") {
+                    Task {
+                        guard let token = try? await KeymasterSession.shared.accessToken() else { return }
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(token, forType: .string)
                     }

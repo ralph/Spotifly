@@ -2,15 +2,10 @@
 "app.name" = "Spotifly";
 
 /* Authentication */
-"auth.connect.description" = "Connectez votre compte Spotify pour commencer";
+"auth.connect.description" = "Connectez votre compte Spotify pour commencer. Cela autorise Spotifly dans votre navigateur et rend ce Mac disponible comme appareil Spotify Connect.";
 "auth.connect.button" = "Se connecter avec Spotify";
-"auth.authenticating" = "Connexion en cours...";
 "auth.loading" = "Chargement...";
 "auth.logout" = "Se déconnecter";
-"auth.client_id_label" = "Spotify Client ID";
-"auth.client_id_placeholder" = "Saisissez votre Client ID";
-"auth.client_id_help_link" = "Comment obtenir un Client ID ?";
-"auth.client_id_existing_app_note" = "Vous pouvez utiliser une app Spotify existante en ajoutant l'URI de redirection de.rvdh.spotifly://callback";
 
 /* Navigation */
 "nav.startpage" = "Accueil";
@@ -271,14 +266,9 @@
 "profile.subscription" = "Abonnement";
 "profile.followers" = "Abonnés";
 
-// Streaming authorization (step 2)
-"auth.enable_playback_label" = "Activer la lecture sur ce Mac";
-"auth.enable_playback_note" = "Spotifly a besoin d'une seconde autorisation pour lire de l'audio ici. Spotify exige une identité d'app différente pour la lecture et pour votre bibliothèque, d'où cette étape distincte.";
-"auth.enable_playback_button" = "Activer la lecture";
-"auth.enable_playback_waiting" = "En attente de votre navigateur...";
-"auth.enable_playback_cancel" = "En attente de votre navigateur — annuler";
-"auth.enable_playback_skip" = "Plus tard";
-"auth.enable_playback_failed" = "Impossible d'activer la lecture. Veuillez réessayer.";
+// L'autorisation : la connexion sur l'écran de login, la relance de la lecture ailleurs
+"auth.connect_cancel" = "En attente de votre navigateur — annuler";
+"auth.connect_failed" = "Impossible de se connecter à Spotify. Veuillez réessayer.";
 "speakers.enable_this_mac" = "Activer ce Mac";
 "speakers.enable_this_mac_cancel" = "Annuler l’autorisation";
 "playback.needs_authorization_title" = "Activer la lecture sur ce Mac ?";

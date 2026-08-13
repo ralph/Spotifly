@@ -8,13 +8,11 @@
 import SwiftUI
 
 struct LoggedInView: View {
-    let authResult: SpotifyAuthResult
     let onLogout: () -> Void
 
     @Environment(WindowState.self) private var windowState
     @Environment(AuthViewModel.self) private var authViewModel
 
-    @State private var session: SpotifySession
     private let playbackViewModel = PlaybackViewModel.shared
 
     /// Normalized state store.
@@ -39,15 +37,12 @@ struct LoggedInView: View {
         SearchService(store: store)
     }
 
-    init(authResult: SpotifyAuthResult, onLogout: @escaping () -> Void) {
-        self.authResult = authResult
+    init(onLogout: @escaping () -> Void) {
         self.onLogout = onLogout
 
         let store = AppStore()
-        let session = SpotifySession(authResult: authResult)
 
         _store = State(initialValue: store)
-        _session = State(initialValue: session)
         _playlistService = State(initialValue: PlaylistService(store: store))
         _albumService = State(initialValue: AlbumService(store: store))
         _artistService = State(initialValue: ArtistService(store: store))
@@ -88,14 +83,6 @@ struct LoggedInView: View {
 
     var body: some View {
         content
-            // When the refresh token is rejected (revoked, or expired after six
-            // months per Spotify's July 2026 policy) the session invalidates
-            // itself; tear down and return the user to the sign-in flow.
-            .onChange(of: session.isInvalidated) { _, invalidated in
-                if invalidated {
-                    onLogout()
-                }
-            }
     }
 
     @ViewBuilder
@@ -148,7 +135,6 @@ struct LoggedInView: View {
         }
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
         .searchShortcuts()
-        .environment(session)
         .environment(connectionService)
         .environment(deviceService)
         .environment(queueService)
@@ -161,10 +147,8 @@ struct LoggedInView: View {
         .environment(albumService)
         .environment(artistService)
         .focusedValue(\.navigationSelection, navigationSelectionBinding)
-        .focusedValue(\.session, session)
         .focusedValue(\.homeService, homeService)
         .loggedInLifecycle(
-            session: session,
             store: store,
             playbackViewModel: playbackViewModel,
             queueService: queueService,
@@ -276,8 +260,6 @@ struct LoggedInView: View {
         let query = searchText
         Task {
             debugLog("Search", "Starting search for: \(query)")
-            // No Web API token: search runs on the keymaster grant now, through the partner
-            // API, which is the first call site to move off api.spotify.com.
             await searchService.search(query: query)
             let hasResults = store.searchResults(for: query) != nil
             debugLog("Search", "After search - results: \(hasResults), error: \(store.searchErrorMessage ?? "nil")")

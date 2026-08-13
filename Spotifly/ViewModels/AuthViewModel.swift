@@ -10,71 +10,66 @@ import SwiftUI
 @MainActor
 @Observable
 final class AuthViewModel {
-    var isAuthenticating = false
-    var authResult: SpotifyAuthResult?
+    /// Whether this Mac holds a grant — which is the whole of being signed in now.
+    ///
+    /// There used to be two: a dashboard OAuth that gated the app, and a streaming grant that
+    /// gated playback. One authorization writes both halves of what is left, so this is read
+    /// from `KeymasterSession`, the half every request needs. librespot's own credentials file
+    /// is the *other* half, and it is deliberately not consulted here: a grant whose accesspoint
+    /// connect failed still browses, and the app already has a way to offer playback again.
+    var isSignedIn = false
     var errorMessage: String?
     var isLoading = true
 
-    /// The streaming grant runs separately from the Web API login and uses a different
-    /// client id, because Spotify allows neither id to do the other's job. Skipping it is
-    /// fine: the app browses and drives other devices, it just is not a Connect device
-    /// itself. See `plans/streaming-auth-needs-a-first-party-client-id.md`.
+    /// Runs the one grant the app has. Named for what it enables rather than for signing in,
+    /// because it is reachable from three places — this screen, the Speakers row and the play
+    /// alert — and only the first of them is a login.
     var isAuthorizingStreaming = false
     /// The grant in flight, held so it can be cancelled. Not observed by any view.
     @ObservationIgnored private var streamingAuthorization: Task<Void, Never>?
-    var hasStreamingCredentials = SpotifyPlayer.hasCachedStreamingCredentials()
 
-    /// Bumped by logout. The grant spans a browser round-trip and a `/me` lookup, so it can
-    /// resume into a session that no longer exists; comparing this across the awaits is what
-    /// stops it writing there.
+    /// Bumped by logout. The grant spans a browser round-trip, so it can resume into a session
+    /// that no longer exists; comparing this across the awaits is what stops it writing there.
     private var authLifecycle: UInt64 = 0
 
     init() {
-        // Try to load existing auth from keychain on init
         loadFromKeychain()
     }
 
     func loadFromKeychain() {
         isLoading = true
         Task {
-            // Attempt to load and refresh if needed
-            if let savedResult = await KeychainManager.loadAuthResultWithRefresh() {
-                await MainActor.run {
-                    self.authResult = savedResult
-                    self.isLoading = false
-                }
-            } else {
-                await MainActor.run {
-                    self.isLoading = false
-                }
-            }
+            let hasGrant = await KeymasterSession.shared.hasGrant
+            isSignedIn = hasGrant
+            isLoading = false
         }
     }
 
-    /// Runs the streaming grant and records whether this Mac can be a playback device.
+    /// Runs the app's grant: the sign-in on the login screen, and the way back to being a
+    /// playback device everywhere else.
     ///
     /// Blocks on the user finishing an authorization in their browser, so it can take a
     /// while; `isAuthorizingStreaming` drives the progress the UI shows meanwhile.
     /// - Parameter expectedAccountId: the Spotify account the app is signed in as, when the
-    ///   caller knows it. Callers inside the app read it from the store; the login step runs
-    ///   before any store exists and passes nil, which falls back to one lookup.
+    ///   caller knows it. Callers inside the app read it from the store; the login screen has
+    ///   no store to read and passes nil, which is a sign-in rather than a change of account.
     func authorizeStreaming(expectedAccountId: String? = nil) async {
         isAuthorizingStreaming = true
         defer { isAuthorizingStreaming = false }
 
         errorMessage = nil
 
-        // This runs across a browser round-trip and a `/me` lookup, either of which a logout
-        // can outlive. A superseded run must not write (see AGENTS.md): resuming afterwards
-        // would mark credentials present and rebuild a player for an account that is gone.
+        // This runs across a browser round-trip that a logout can outlive. A superseded run
+        // must not write (see AGENTS.md): resuming afterwards would sign the app back in and
+        // rebuild a player for an account that is gone.
         let startedAt = authLifecycle
 
         switch await SpotifyPlayer.authorizeStreaming() {
         case .authorized:
-            // The browser runs the grant with whatever account it is signed into, which is
-            // not necessarily the one the Web API half uses. Accepting a mismatch would
-            // leave the app browsing and editing account A while playing and queueing on
-            // account B — with no visible sign of it.
+            // The browser runs the grant with whatever account it is signed into, which need
+            // not be the one already signed in here. Accepting a mismatch would swap the
+            // account under a library, a queue and a now-playing bar that go on showing the
+            // previous one — with no visible sign of it.
             let mismatch = streamingAccountMismatch(expectedAccountId: expectedAccountId)
 
             guard startedAt == authLifecycle else {
@@ -88,7 +83,7 @@ final class AuthViewModel {
                 debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
                 await PlaybackViewModel.shared.shutdownForLogout()
                 await SpotifyPlayer.clearStreamingCredentials()
-                hasStreamingCredentials = false
+                isSignedIn = false
                 return
             }
 
@@ -105,12 +100,15 @@ final class AuthViewModel {
                 // plays at a player that no longer exists.
                 await PlaybackViewModel.shared.shutdownForLogout()
                 await SpotifyPlayer.clearStreamingCredentials()
-                hasStreamingCredentials = false
+                // A mismatch caught at sign-in cannot arise — there is nothing to mismatch
+                // against — so this only ever refuses a *change* of account, and the previous
+                // grant it declined to replace is the one that just went with the clear.
+                isSignedIn = false
                 errorMessage = String(localized: "auth.enable_playback_wrong_account")
                 return
             }
 
-            hasStreamingCredentials = true
+            isSignedIn = true
             // Build the session now rather than waiting for the next play. The grant only
             // wrote credentials to disk; until something connects with them this Mac is
             // still not registered with Spotify Connect, so it would stay missing from
@@ -125,7 +123,13 @@ final class AuthViewModel {
             // there is nothing to report.
             break
         case .failed:
-            errorMessage = String(localized: "auth.enable_playback_failed")
+            // The two halves fail independently, and only one of them is the sign-in: the
+            // token is adopted *before* librespot connects, so a failure here can still leave
+            // a usable grant behind. Read what survived rather than assuming — an app that
+            // browses but cannot play is the honest outcome, and Speakers and the play alert
+            // both offer the connect again.
+            isSignedIn = await KeymasterSession.shared.hasGrant
+            errorMessage = String(localized: "auth.connect_failed")
         }
     }
 
@@ -153,7 +157,8 @@ final class AuthViewModel {
         streamingAuthorization = nil
     }
 
-    /// Describes the account mismatch between the two grants, or nil when they agree.
+    /// Describes the mismatch between the account already signed in and the one the browser
+    /// just granted, or nil when they agree.
     ///
     /// Pure, so the rule is testable and so the common path performs no I/O at all: callers
     /// inside the app already know who is signed in.
@@ -168,47 +173,22 @@ final class AuthViewModel {
     /// briefly unavailable would be worse than the case being guarded against, which needs
     /// the user to have deliberately signed the browser into a second account.
     ///
-    /// **The login step no longer looks anything up.** It used to ask `/me` on the dashboard
-    /// grant, because that was the only identity that existed before the streaming grant ran.
-    /// The app's own profile now comes from `profileAttributes` on the *same* keymaster grant
-    /// this is checking, so asking it here would compare the granted account with itself and
-    /// report agreement no matter what — a guard that always passes is worse than none. What
-    /// still works, and is the case that actually arises, is re-authorizing while signed in:
-    /// the store holds the previous account and a browser signed into another one is caught.
+    /// **This guard outlived its original reason.** It was written when two grants could
+    /// disagree permanently — the app browsing account A on a dashboard token while playing
+    /// account B on a streaming one — and there is one grant now, so that state cannot exist.
+    /// What it still catches is the case that actually arises: re-authorizing from Speakers or
+    /// the play alert while signed in, where the browser is signed into a different account.
+    /// Replacing the grant there is not a partial failure but it is silent — the library, the
+    /// queue and the now-playing bar go on showing the previous account until a relaunch — so
+    /// it is still refused rather than accepted.
     ///
-    /// The narrow case given up is signing the *first* grant into a different account than the
-    /// dashboard OAuth moments earlier. That comparison stops meaning anything at all once the
-    /// dashboard grant is gone, which is the next task.
+    /// Signing in has nothing to compare against and passes nil, which is agreement by the
+    /// rule above. That is not a gap: at that point the granted account *is* the account.
     private func streamingAccountMismatch(expectedAccountId: String?) -> String? {
         Self.accountMismatch(
             expected: expectedAccountId,
             granted: SpotifyPlayer.lastGrantAccountId(),
         )
-    }
-
-    func startOAuth() {
-        isAuthenticating = true
-        errorMessage = nil
-
-        Task {
-            do {
-                let result = try await SpotifyAuth.authenticate()
-                self.authResult = result
-                self.isAuthenticating = false
-
-                // Save to keychain
-                do {
-                    try KeychainManager.saveAuthResult(result)
-                } catch {
-                    #if DEBUG
-                        print("Failed to save to keychain: \(error)")
-                    #endif
-                }
-            } catch {
-                self.errorMessage = "Authentication failed: \(error.localizedDescription)"
-                self.isAuthenticating = false
-            }
-        }
     }
 
     func logout() async {
@@ -232,15 +212,12 @@ final class AuthViewModel {
 
         await PlaybackViewModel.shared.shutdownForLogout()
 
-        // The streaming credentials are a file, not a keychain item, so clearing the
-        // keychain does not touch them — left behind, they would let the next launch
-        // connect the account that just logged out. Removed after the teardown, so no live
-        // session can write them back.
+        // Clears both halves of the grant: the keymaster tokens in the keychain and
+        // librespot's AP credentials, which are a file and would otherwise let the next launch
+        // connect the account that just logged out. After the teardown, so no live session can
+        // write them back — and it is the whole of logging out now, since this is the only
+        // credential the app holds.
         await SpotifyPlayer.clearStreamingCredentials()
-        hasStreamingCredentials = false
-
-        SpotifyAuth.clearAuthResult()
-        KeychainManager.clearAuthResult()
-        authResult = nil
+        isSignedIn = false
     }
 }

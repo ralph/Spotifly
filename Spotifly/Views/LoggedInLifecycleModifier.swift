@@ -9,7 +9,6 @@ import AppKit
 import SwiftUI
 
 struct LoggedInLifecycleModifier: ViewModifier {
-    let session: SpotifySession
     let store: AppStore
     let playbackViewModel: PlaybackViewModel
     let queueService: QueueService
@@ -43,7 +42,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
 
                 #if DEBUG
                     AppStore.current = store
-                    SpotifySession.current = session
                 #endif
 
                 // The profile and the start page are independent requests on the same grant, so
@@ -127,7 +125,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
 
 extension View {
     func loggedInLifecycle(
-        session: SpotifySession,
         store: AppStore,
         playbackViewModel: PlaybackViewModel,
         queueService: QueueService,
@@ -138,7 +135,6 @@ extension View {
     ) -> some View {
         modifier(
             LoggedInLifecycleModifier(
-                session: session,
                 store: store,
                 playbackViewModel: playbackViewModel,
                 queueService: queueService,

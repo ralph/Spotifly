@@ -673,11 +673,22 @@ private nonisolated(unsafe) let activeDeviceSubject = PassthroughSubject<String,
 /// `CurrentValueSubject` so a Speakers view opened after the last update still gets one.
 private nonisolated(unsafe) let devicesSubject = CurrentValueSubject<[Device]?, Never>(nil)
 
+/// Serializes the player operations that must not overlap: building the session, and the
+/// three that load content into it.
+///
+/// It was declared in `SpotifyAuth.swift` as `SpotifyAuthActor` and used only here, which was
+/// never what it isolated — it kept these calls off the main actor and off each other's toes.
+/// Renamed rather than kept when the dashboard OAuth it was named after was deleted.
+@globalActor
+actor SpotifyPlayerActor {
+    static let shared = SpotifyPlayerActor()
+}
+
 /// Swift wrapper for the Rust librespot playback functionality
 enum SpotifyPlayer {
     /// Initializes the player with the given access token.
     /// Must be called before any playback operations.
-    @SpotifyAuthActor
+    @SpotifyPlayerActor
     static func initialize() async throws {
         // Register callbacks (via nonisolated helpers to avoid actor isolation issues)
         registerAudioDataCallback()
@@ -865,7 +876,7 @@ enum SpotifyPlayer {
     /// - Parameters:
     ///   - uriOrUrl: Spotify URI or URL (e.g., "spotify:album:xxx")
     ///   - trackIndex: Track index to start at (-1 = from beginning, 0+ = specific track)
-    @SpotifyAuthActor
+    @SpotifyPlayerActor
     static func play(uriOrUrl: String, trackIndex: Int = -1) async throws {
         let result = await Task.detached {
             uriOrUrl.withCString { ptr in
@@ -879,7 +890,7 @@ enum SpotifyPlayer {
     }
 
     /// Plays a track by its Spotify track ID.
-    @SpotifyAuthActor
+    @SpotifyPlayerActor
     static func playTrack(trackId: String) async throws {
         let trackUri = "spotify:track:\(trackId)"
         try await play(uriOrUrl: trackUri)
@@ -887,7 +898,7 @@ enum SpotifyPlayer {
 
     /// Plays multiple tracks in sequence.
     /// - Parameter trackUris: Array of Spotify track URIs
-    @SpotifyAuthActor
+    @SpotifyPlayerActor
     static func playTracks(_ trackUris: [String]) async throws {
         guard !trackUris.isEmpty else {
             throw SpotifyPlayerError.playbackFailed
@@ -1132,15 +1143,10 @@ enum SpotifyPlayer {
         }.value
     }
 
-    /// Whether a streaming grant has already been completed on this machine.
-    static func hasCachedStreamingCredentials() -> Bool {
-        spotifly_has_streaming_credentials() == 1
-    }
-
     /// The Spotify account id the last successful grant authenticated as.
     ///
-    /// The browser runs the grant with whatever account it is signed into, which need not
-    /// be the one the Web API half is using.
+    /// The browser runs the grant with whatever account it is signed into, which need not be
+    /// the one already signed in here.
     static func lastGrantAccountId() -> String? {
         guard let ptr = spotifly_last_grant_account() else { return nil }
         defer { spotifly_free_string(ptr) }

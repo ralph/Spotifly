@@ -73,7 +73,7 @@ private func tokens(
 struct KeymasterSessionTests {
     private let now = Date(timeIntervalSince1970: 1_000_000)
     private var buffer: TimeInterval {
-        SpotifyAuthResult.refreshBufferSeconds
+        KeymasterTokens.refreshBuffer
     }
 
     @Test func `a token with time left is handed back untouched`() async throws {
