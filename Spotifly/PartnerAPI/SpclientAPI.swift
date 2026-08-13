@@ -435,6 +435,8 @@ nonisolated struct SpclientAPI: Sendable {
         request.setValue(Self.origin, forHTTPHeaderField: "Origin")
         request.setValue(Self.origin + "/", forHTTPHeaderField: "Referer")
 
+        debugLog("SpclientAPI", "[OPTIONS] \(request.url?.absoluteString ?? url.absoluteString)")
+
         let (_, response) = try await transport(request)
         guard let http = response as? HTTPURLResponse else {
             throw SpclientError.malformedResponse
