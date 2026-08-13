@@ -493,6 +493,13 @@ struct ConnectDeviceInfo {
     is_private_session: bool,
     is_restricted: bool,
     volume_percent: Option<i32>,
+    /// Whether the device refuses remote volume changes.
+    ///
+    /// An iPhone sets this: iOS does not let an app set system volume on another app's
+    /// behalf, so the command comes back `400 DEVICE_DOES_NOT_SUPPORT_COMMAND`. The cluster
+    /// says so up front, and forwarding it is what lets the slider grey out rather than fail
+    /// after the user has already dragged it.
+    disable_volume: bool,
 }
 
 #[derive(Serialize)]
@@ -861,6 +868,15 @@ fn notify_devices(
             // connect device. False rather than a guess.
             is_restricted: false,
             volume_percent: Some(((info.volume as f64) / 65535.0 * 100.0).round() as i32),
+            // Absent capabilities mean "nothing declared", which is not the same as declaring
+            // volume disabled — so the default is false, and only an explicit true greys the
+            // slider out. `volume_steps` is the other field that bears on this and is
+            // deliberately left alone: it describes granularity, not permission.
+            disable_volume: info
+                .capabilities
+                .as_ref()
+                .map(|capabilities| capabilities.disable_volume)
+                .unwrap_or(false),
         })
         .collect();
 

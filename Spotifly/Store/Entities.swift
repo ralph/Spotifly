@@ -330,6 +330,17 @@ struct Device: Identifiable, Hashable, Encodable {
     let isPrivateSession: Bool
     let isRestricted: Bool
     let volumePercent: Int?
+
+    /// Whether the device refuses remote volume changes, as the cluster declares.
+    ///
+    /// Named after the wire field rather than flipped to `canSetVolume`, so one term can be
+    /// followed from the protobuf through Rust, the FFI JSON and the codable to here without
+    /// a reader having to notice where the sense inverts.
+    ///
+    /// An iPhone sets it — iOS will not let an app change system volume for another app — and
+    /// the app used to find out only by sending the command and getting
+    /// `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` back, after the user had already dragged the slider.
+    var disableVolume: Bool = false
 }
 
 // MARK: - Spotify Connection

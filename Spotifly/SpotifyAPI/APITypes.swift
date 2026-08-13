@@ -314,6 +314,7 @@ struct DeviceCodable: Decodable {
     let isPrivateSession: Bool?
     let isRestricted: Bool?
     let volumePercent: Int?
+    let disableVolume: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, name, type
@@ -321,6 +322,7 @@ struct DeviceCodable: Decodable {
         case isPrivateSession = "is_private_session"
         case isRestricted = "is_restricted"
         case volumePercent = "volume_percent"
+        case disableVolume = "disable_volume"
     }
 
     func toDevice() -> Device? {
@@ -333,6 +335,9 @@ struct DeviceCodable: Decodable {
             isPrivateSession: isPrivateSession ?? false,
             isRestricted: isRestricted ?? false,
             volumePercent: volumePercent,
+            // Absent means nothing was declared, which is not a declaration that volume is
+            // refused — so the slider stays live and the command decides, as before.
+            disableVolume: disableVolume ?? false,
         )
     }
 }

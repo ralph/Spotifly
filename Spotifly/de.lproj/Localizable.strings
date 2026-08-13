@@ -162,6 +162,9 @@
 "speakers.this_computer.name" = "Spotifly";
 "speakers.this_computer.hint" = "Wiedergabe hierher übertragen";
 
+/* Lautstärke */
+"volume.device_controls_itself %@" = "%@ regelt die Lautstärke selbst";
+
 
 /* Menu Commands */
 "menu.playback" = "Wiedergabe";

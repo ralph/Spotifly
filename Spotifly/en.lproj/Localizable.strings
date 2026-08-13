@@ -163,6 +163,9 @@
 "speakers.this_computer.name" = "Spotifly";
 "speakers.this_computer.hint" = "Transfer playback here";
 
+/* Volume */
+"volume.device_controls_itself %@" = "%@ controls its own volume";
+
 
 /* Menu Commands */
 "menu.playback" = "Playback";

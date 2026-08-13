@@ -448,6 +448,17 @@ struct NowPlayingBarView: View {
         playbackViewModel.volume = volume / 100
     }
 
+    /// Whether the device being controlled refuses volume changes.
+    ///
+    /// Only ever true for a *remote* device: the local player's volume is this app's own, and
+    /// nothing can decline it. An iPhone declares it, because iOS will not let one app set
+    /// system volume for another — which the app previously discovered by sending the command
+    /// and reading `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` off the reply, having already let the
+    /// user drag the slider somewhere it would not stay.
+    private var volumeRefused: Bool {
+        playbackViewModel.remoteVolume != nil && store.activeDevice?.disableVolume == true
+    }
+
     private var volumeControl: some View {
         Button {
             showVolumePopover.toggle()
@@ -458,24 +469,37 @@ struct NowPlayingBarView: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {
-            HStack(spacing: 8) {
-                Image(systemName: "speaker.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "speaker.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                Slider(
-                    value: Binding(
-                        get: { currentVolume },
-                        set: { setVolume($0) },
-                    ),
-                    in: 0 ... 100,
-                )
-                .tint(.green)
-                .frame(width: 120)
+                    Slider(
+                        value: Binding(
+                            get: { currentVolume },
+                            set: { setVolume($0) },
+                        ),
+                        in: 0 ... 100,
+                    )
+                    .tint(.green)
+                    .frame(width: 120)
+                    .disabled(volumeRefused)
 
-                Image(systemName: "speaker.wave.3.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Image(systemName: "speaker.wave.3.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .opacity(volumeRefused ? 0.5 : 1)
+
+                // A greyed-out slider says "not now"; it does not say the device is the reason.
+                if volumeRefused {
+                    Text("volume.device_controls_itself \(store.activeDevice?.name ?? "")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: 180)
+                        .multilineTextAlignment(.center)
+                }
             }
             .padding(12)
         }
