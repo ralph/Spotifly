@@ -185,6 +185,56 @@ struct PlaylistAddReconciliationTests {
         #expect(playlist.tracksLoaded == false)
     }
 
+    /// `reloadPlaylistTracks` cancels the run before it, so two adds in quick succession end
+    /// with the first one's reload throwing. Its replacement may have already stored real uids
+    /// by then, and marking the contents stale would undo a result that is correct.
+    @Test func `a reload that was superseded does not mark the fresh rows stale`() async throws {
+        let store = seededStore()
+
+        // The state the replacement leaves behind: real uids, marked loaded. The run under
+        // test is the one it cancelled, so this is what is in the store by the time that run
+        // reaches its `catch`.
+        store.setPlaylistTracks(
+            [PlaylistItem(uid: "aaaa1111", trackId: "t1"), PlaylistItem(uid: "bbbb2222", trackId: "t2")],
+            totalDurationMs: 2000,
+            for: "p1",
+        )
+
+        // The mutation succeeds; the reload behind it is cut off, which is how a cancelled run
+        // surfaces here — `loadPlaylist` checks cancellation itself, and a cancelled
+        // `URLSession` task throws out of the same call.
+        let service = PlaylistService(
+            store: store,
+            partnerAPI: PartnerAPI(
+                accessToken: { "at" },
+                clientToken: { "ct" },
+                transport: { request in
+                    let body = try #require(request.httpBody)
+                    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+                    guard json["operationName"] as? String == "addToPlaylist" else {
+                        throw CancellationError()
+                    }
+
+                    return (
+                        Data(#"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#.utf8),
+                        HTTPURLResponse(url: PartnerAPI.endpoint, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                    )
+                },
+            ),
+        )
+
+        await #expect(throws: CancellationError.self) {
+            try await service.addTracksToPlaylist(playlistId: "p1", trackIds: ["t2"])
+        }
+
+        let playlist = try #require(store.playlists["p1"])
+        // The replacement's result stands: it is still the loaded one, and its rows are still
+        // there. This add's own optimistic row sits behind them — the price of ordering the
+        // two writes this way in a test — but the flag is what the guard is about.
+        #expect(playlist.tracksLoaded)
+        #expect(playlist.items.map(\.uid).prefix(2) == ["aaaa1111", "bbbb2222"])
+    }
+
     @Test func `an add is not marked stale when nothing failed`() async throws {
         let store = seededStore()
         let reload = Data("""

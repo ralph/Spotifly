@@ -301,13 +301,29 @@ final class PlaylistService {
         do {
             try await reloadPlaylistTracks(playlistId: playlistId)
         } catch {
-            // The write happened; only the refresh did not. Left alone, the playlist stays
-            // marked loaded with placeholder uids in it, so nothing fetches it again for the
-            // rest of the session and a removal or a drag sends Spotify a `local:` uid it has
-            // never heard of. Marking the contents stale is what lets the next visit repair it.
+            // A superseded run must not write. Two adds in quick succession, or any other
+            // forced reload, cancel the run before them — and that run's replacement may have
+            // already stored real uids by the time this lands, so marking the contents stale
+            // here would undo a result that is correct.
+            guard !Self.isSupersession(error) else { throw error }
+
+            // Otherwise the write happened and only the refresh did not. Left alone, the
+            // playlist stays marked loaded with placeholder uids in it, so nothing fetches it
+            // again for the rest of the session and a removal or a drag sends Spotify a
+            // `local:` uid it has never heard of. Marking the contents stale is what lets the
+            // next visit repair it.
             store.invalidatePlaylistTracks(for: playlistId)
             throw error
         }
+    }
+
+    /// Whether a failure means "something newer owns this" rather than "the request failed".
+    ///
+    /// Two forms, because the run can be cut at two points: `loadPlaylist` checks cancellation
+    /// itself, and `URLSession` reports a cancelled task as a `URLError` of its own rather than
+    /// as a `CancellationError`.
+    private static func isSupersession(_ error: any Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     /// Remove **occurrences** from a playlist, named by uid.
