@@ -76,9 +76,17 @@ final class AuthViewModel {
             let mismatch = await streamingAccountMismatch(expectedAccountId: expectedAccountId)
 
             guard startedAt == authLifecycle else {
-                // Logged out while this was deciding. Whatever the answer, it belongs to a
-                // session that no longer exists, and logout has already cleared the cache.
+                // Logged out while this was deciding, and this run has to undo its own
+                // writes rather than just walk away. Rust used to notice a logout itself,
+                // because it held the browser wait and snapshotted the generation before it;
+                // now Swift runs the browser half, so Rust's snapshot is taken *after* the
+                // logout and its own supersession check passes. Whatever this grant wrote —
+                // the AP credentials and the keymaster tokens — belongs to an account that
+                // is gone, and logout cleared the cache before either was written.
                 debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
+                await PlaybackViewModel.shared.shutdownForLogout()
+                await SpotifyPlayer.clearStreamingCredentials()
+                hasStreamingCredentials = false
                 return
             }
 
