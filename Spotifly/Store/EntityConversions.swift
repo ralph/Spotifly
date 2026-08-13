@@ -123,7 +123,7 @@ extension Playlist {
         self.init(
             id: playlist.id,
             name: playlist.name,
-            description: playlist.description,
+            description: playlist.description.normalizedPlaylistDescription,
             images: playlist.images,
             uri: playlist.uri,
             isPublic: playlist.isPublic ?? true,
@@ -141,7 +141,7 @@ extension Playlist {
         self.init(
             id: playlist.id,
             name: playlist.name,
-            description: playlist.description,
+            description: playlist.description.normalizedPlaylistDescription,
             images: playlist.images,
             uri: playlist.uri,
             isPublic: playlist.isPublic ?? true,
@@ -153,5 +153,16 @@ extension Playlist {
             knownTrackCount: nil, // We have actual tracks
             tracksLoaded: true,
         )
+    }
+}
+
+extension String? {
+    /// Spotify's playlist list answers with the literal string `"null"` when a playlist has no
+    /// description, and the detail header rendered it verbatim — the view's `?? ""` never saw a
+    /// nil to fall back from. Normalised at the entity boundary rather than in the view, so
+    /// every reader gets the same answer.
+    var normalizedPlaylistDescription: String? {
+        guard let self, self != "null", !self.isEmpty else { return nil }
+        return self
     }
 }

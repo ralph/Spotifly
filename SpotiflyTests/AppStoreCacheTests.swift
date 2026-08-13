@@ -122,3 +122,14 @@ struct AppStoreCacheTests {
         )
     }
 }
+
+/// Spotify's playlist list answers with the literal string "null" for a playlist without a
+/// description, which the detail header rendered as text.
+struct PlaylistDescriptionTests {
+    @Test func `a literal null description is treated as absent`() {
+        #expect(String?("null").normalizedPlaylistDescription == nil)
+        #expect(String?("").normalizedPlaylistDescription == nil)
+        #expect(String?(nil).normalizedPlaylistDescription == nil)
+        #expect(String?("Real description").normalizedPlaylistDescription == "Real description")
+    }
+}

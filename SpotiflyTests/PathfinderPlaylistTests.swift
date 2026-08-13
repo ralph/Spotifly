@@ -172,6 +172,18 @@ struct PathfinderMutationTests {
         #expect(response.failure != nil)
     }
 
+    /// The stored query references every variable it declares, so a missing one is a 400
+    /// rather than a default. `enableWatchFeedEntrypoint` was omitted on the first run of this
+    /// migration and the playlist page failed with nothing but a status code to go on.
+    @Test func `the playlist query sends every variable its stored document declares`() throws {
+        let encoded = try JSONEncoder().encode(PathfinderPlaylistVariables(uri: "spotify:playlist:p"))
+        let json = try #require(String(data: encoded, encoding: .utf8))
+
+        #expect(json.contains("enableWatchFeedEntrypoint"))
+        #expect(json.contains("uri"))
+        #expect(json.contains("limit"))
+    }
+
     /// `fromUid` is only meaningful for the two uid-relative moves; the service rejects those
     /// without it, which is how the enum's members were established in the first place.
     @Test func `positions encode the move type the service expects`() throws {

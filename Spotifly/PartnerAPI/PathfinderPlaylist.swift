@@ -205,10 +205,16 @@ nonisolated struct PlaylistItemPosition: Encodable, Sendable {
     }
 }
 
+/// The variables `fetchPlaylist` takes.
+///
+/// `enableWatchFeedEntrypoint` is required, not optional decoration: the stored query
+/// references it, and omitting it is a 400 rather than a default. Leaving it out is exactly
+/// what broke the playlist page on the first run of this migration.
 nonisolated struct PathfinderPlaylistVariables: Encodable, Sendable {
     var uri: String
     var offset: Int = 0
     var limit: Int = 300
+    var enableWatchFeedEntrypoint: Bool = false
 }
 
 nonisolated struct PathfinderAddVariables: Encodable, Sendable {

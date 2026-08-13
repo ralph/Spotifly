@@ -8,7 +8,7 @@
 import Foundation
 
 nonisolated enum PartnerAPIError: Error, LocalizedError {
-    case requestFailed(Int)
+    case requestFailed(Int, String)
     case persistedQueryNotFound(String)
     case graphQLErrors([String])
     case emptyPayload
@@ -17,8 +17,10 @@ nonisolated enum PartnerAPIError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case let .requestFailed(status):
-            "Spotify rejected the request (HTTP \(status))"
+        case let .requestFailed(status, detail):
+            detail.isEmpty
+                ? "Spotify rejected the request (HTTP \(status))"
+                : "Spotify rejected the request (HTTP \(status)): \(detail)"
         case let .persistedQueryNotFound(operation):
             "Spotify no longer recognises the stored query for \(operation)"
         case let .mutationRejected(operation, reason):
@@ -264,7 +266,13 @@ nonisolated struct PartnerAPI: Sendable {
             throw PartnerAPIError.emptyPayload
         }
         guard http.statusCode == 200 else {
-            throw PartnerAPIError.requestFailed(http.statusCode)
+            // The body is the useful half of a rejection and was previously discarded. A 400
+            // from this API names the variable it wanted and its type — the playlist page broke
+            // on a missing `enableWatchFeedEntrypoint` and reported only "HTTP 400", sending the
+            // next person to read code rather than the answer they had already been handed.
+            let detail = String(decoding: data.prefix(500), as: UTF8.self)
+            debugLog("PartnerAPI", "\(operation.name) failed (HTTP \(http.statusCode)): \(detail)")
+            throw PartnerAPIError.requestFailed(http.statusCode, detail)
         }
 
         return try decode(data, operation: operation)
