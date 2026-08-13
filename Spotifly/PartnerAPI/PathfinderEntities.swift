@@ -9,22 +9,14 @@ import Foundation
 
 /// # Identity
 ///
-/// The Web API path resolves identity through `linked_from`: sending `market` can return a
-/// playable substitute, and `toAPITrack()` maps that back to the id the caller asked for (see
-/// AGENTS.md, "Track relinking and the `market` parameter").
+/// Pathfinder resolves the catalogue against the account server-side and returns one entity,
+/// whose `id` and `uri` are the identity. There is no `linked_from`, no second id, and nothing
+/// to unwind — so these conversions take the id as given.
 ///
-/// **Pathfinder has no `linked_from`.** It resolves the catalogue against the account
-/// server-side and returns one entity, whose `id` and `uri` are the identity — there is no
-/// second id to reconcile, and nothing to unwind. So these conversions take the id as given,
-/// which is correct for reading and for keying `AppStore`.
-///
-/// The open question is *writes*. Spotify's relinking documentation says a substitute id "will
-/// likely return an error" when saving or removing a track, and if pathfinder is handing back
-/// substitutes without saying so, an id from search would be the wrong one to save with. The
-/// Web API is still what performs those writes today, and it does its own relinking, so nothing
-/// here is affected yet. It has to be settled before the library and playlist writes move —
-/// `plans/single-grant-partner-api.md`, task 11 onwards — and the way to settle it is to search
-/// for a track known to be relinked in this market and compare the id against `/v1/tracks`.
+/// That measurement is what set the app's rule rather than the other way round: pathfinder
+/// returns the market recording and offers no way back to the original, so the market id is the
+/// identity everywhere (`AGENTS.md`, "Track identity is the market id"). The Web API path was
+/// changed to match, not this one.
 extension ImageSet {
     /// Pathfinder returns image sources with dimensions, in the same shape as the Web API's
     /// images once unwrapped.

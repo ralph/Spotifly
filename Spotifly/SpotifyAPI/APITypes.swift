@@ -353,7 +353,17 @@ struct AlbumCodable: Decodable {
 
 // MARK: Track Codable
 
-struct TrackCodable: Decodable, RelinkableTrackCodable {
+/// # Identity
+///
+/// The id Spotify returns *is* the identity — this type takes it as given and never rewrites
+/// it. Every request here sends `market=from_token`, so what comes back is the recording
+/// playable on this account, and `AGENTS.md` ("Track identity is the market id") explains why
+/// that is the only id the app can consistently hold.
+///
+/// The short version: pathfinder, which now answers search, returns the market recording and
+/// carries no `linked_from` to trade it back for the original. Reconstructing originals here
+/// would leave the two halves of the app naming the same track differently.
+struct TrackCodable: Decodable {
     let id: String
     let name: String
     let uri: String
@@ -363,7 +373,6 @@ struct TrackCodable: Decodable, RelinkableTrackCodable {
     let album: AlbumSimpleCodable?
     let externalUrls: ExternalUrlsCodable?
     let previewUrl: String?
-    let linkedFrom: LinkedTrackCodable?
 
     enum CodingKeys: String, CodingKey {
         case id, name, uri, artists, album
@@ -371,13 +380,12 @@ struct TrackCodable: Decodable, RelinkableTrackCodable {
         case trackNumber = "track_number"
         case externalUrls = "external_urls"
         case previewUrl = "preview_url"
-        case linkedFrom = "linked_from"
     }
 
     func toAPITrack(addedAt: String? = nil, albumId: String? = nil, albumName: String? = nil, images: ImageSet? = nil) -> APITrack {
         let artist = artists?.first
         return APITrack(
-            id: logicalId,
+            id: id,
             addedAt: addedAt,
             albumId: albumId ?? album?.id,
             albumName: albumName ?? album?.name,
@@ -388,42 +396,8 @@ struct TrackCodable: Decodable, RelinkableTrackCodable {
             images: images ?? album?.images?.toImageSet ?? ImageSet.empty,
             name: name,
             trackNumber: trackNumber,
-            uri: logicalUri,
+            uri: uri,
         )
-    }
-}
-
-/// The original track reference Spotify includes when it relinks a request to a
-/// market-playable alternative.
-struct LinkedTrackCodable: Decodable {
-    let id: String
-    let uri: String
-}
-
-/// A decoded track that Spotify may have relinked.
-///
-/// A `market` request is answered with a playable substitute when the requested track is
-/// not available there, and what was asked for moves into `linked_from`. Identity has to
-/// come from there: the store, favorites, and every write Spotify accepts key on the
-/// requested id, not the substitute's.
-///
-/// Every track-shaped response type conforms, and that is the point of the protocol rather
-/// than two copies of the same two lines. A type that quietly does not conform is exactly
-/// how a substitute id reaches `AppStore` — the response carries the recovery field, the
-/// decoder drops it, and nothing anywhere looks wrong.
-protocol RelinkableTrackCodable {
-    var id: String { get }
-    var uri: String { get }
-    var linkedFrom: LinkedTrackCodable? { get }
-}
-
-extension RelinkableTrackCodable {
-    var logicalId: String {
-        linkedFrom?.id ?? id
-    }
-
-    var logicalUri: String {
-        linkedFrom?.uri ?? uri
     }
 }
 
@@ -562,7 +536,7 @@ struct SavedTracksCodable: Decodable {
 struct AlbumTracksCodable: Decodable {
     let items: [AlbumTrackItemCodable]
 
-    struct AlbumTrackItemCodable: Decodable, RelinkableTrackCodable {
+    struct AlbumTrackItemCodable: Decodable {
         let id: String
         let name: String
         let uri: String
@@ -570,20 +544,18 @@ struct AlbumTracksCodable: Decodable {
         let trackNumber: Int?
         let artists: [ArtistCodable]?
         let externalUrls: ExternalUrlsCodable?
-        let linkedFrom: LinkedTrackCodable?
 
         enum CodingKeys: String, CodingKey {
             case id, name, uri, artists
             case durationMs = "duration_ms"
             case trackNumber = "track_number"
-            case linkedFrom = "linked_from"
             case externalUrls = "external_urls"
         }
 
         func toAPITrack(albumId: String, albumName: String?, images: ImageSet) -> APITrack {
             let artist = artists?.first
             return APITrack(
-                id: logicalId,
+                id: id,
                 addedAt: nil,
                 albumId: albumId,
                 albumName: albumName,
@@ -594,7 +566,7 @@ struct AlbumTracksCodable: Decodable {
                 images: images,
                 name: name,
                 trackNumber: trackNumber,
-                uri: logicalUri,
+                uri: uri,
             )
         }
     }

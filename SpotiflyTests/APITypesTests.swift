@@ -42,7 +42,11 @@ struct APITypesTests {
         #expect(mapped == ["first": "First", "third": "Third"])
     }
 
-    @Test func `a relinked track keeps the requested identity and playable metadata`() throws {
+    /// The market id is the identity, so a `linked_from` in the response changes nothing: the
+    /// track is keyed by the recording that plays here, which is the same id pathfinder hands
+    /// search. The opposite rule held until the partner APIs arrived, and reversing it is what
+    /// stopped a searched track and a saved one from being two different tracks.
+    @Test func `a relinked track keeps the market identity, not the original`() throws {
         let json = Data("""
         {
             "id": "playable",
@@ -59,18 +63,15 @@ struct APITypesTests {
         let decoded = try JSONDecoder().decode(TrackCodable.self, from: json)
         let track = decoded.toAPITrack()
 
-        #expect(decoded.logicalId == "requested")
-        #expect(decoded.logicalUri == "spotify:track:requested")
-        #expect(track.id == "requested")
-        #expect(track.uri == "spotify:track:requested")
+        #expect(track.id == "playable")
+        #expect(track.uri == "spotify:track:playable")
         #expect(track.name == "Playable metadata")
         #expect(track.durationMs == 4321)
     }
 
     /// `/albums/{id}/tracks` decodes through its own type rather than `TrackCodable`, so it
-    /// has to carry the rule itself. It briefly did not, while the request already sent
-    /// `market` and projected `linked_from` — the recovery field arrived and was dropped.
-    @Test func `a relinked album track keeps the requested identity`() throws {
+    /// has to reach the same answer by its own route.
+    @Test func `a relinked album track keeps the market identity`() throws {
         let json = Data("""
         {"items": [{
             "id": "playable",
@@ -86,8 +87,8 @@ struct APITypesTests {
         let item = try #require(decoded.items.first)
         let track = item.toAPITrack(albumId: "album", albumName: "Album", images: .empty)
 
-        #expect(track.id == "requested")
-        #expect(track.uri == "spotify:track:requested")
+        #expect(track.id == "playable")
+        #expect(track.uri == "spotify:track:playable")
         #expect(track.name == "Playable metadata")
         #expect(track.durationMs == 4321)
     }
@@ -105,8 +106,6 @@ struct APITypesTests {
         let decoded = try JSONDecoder().decode(TrackCodable.self, from: json)
         let track = decoded.toAPITrack()
 
-        #expect(decoded.logicalId == "returned")
-        #expect(decoded.logicalUri == "spotify:track:returned")
         #expect(track.id == "returned")
         #expect(track.uri == "spotify:track:returned")
     }

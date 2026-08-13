@@ -350,10 +350,10 @@ final class QueueService {
 
             // Process queue response
             let currentEntry: QueueEntry? = queueResponse.currentlyPlaying.flatMap { track in
-                QueueEntry(trackId: track.logicalId, provider: .context)
+                QueueEntry(trackId: track.id, provider: .context)
             }
             let nextEntries: [QueueEntry] = queueResponse.queue.map { track in
-                QueueEntry(trackId: track.logicalId, provider: .context)
+                QueueEntry(trackId: track.id, provider: .context)
             }
 
             // Web API doesn't provide previous tracks, so preserve existing or use empty
@@ -366,8 +366,8 @@ final class QueueService {
             var allIds = (currentEntry.map { [$0.trackId] } ?? []) + nextEntries.map(\.trackId)
 
             // Also add the track from playback state if different (shouldn't be, but just in case)
-            if let playbackTrack = playbackState?.item, !allIds.contains(playbackTrack.logicalId) {
-                allIds.append(playbackTrack.logicalId)
+            if let playbackTrack = playbackState?.item, !allIds.contains(playbackTrack.id) {
+                allIds.append(playbackTrack.id)
             }
 
             fetchTrackMetadata(for: allIds)
@@ -393,7 +393,7 @@ final class QueueService {
                     isPlaying: state.isPlaying,
                     progressMs: state.progressMs ?? 0,
                     durationMs: durationMs,
-                    trackUri: state.item?.logicalUri ?? queueResponse.currentlyPlaying?.logicalUri,
+                    trackUri: state.item?.uri ?? queueResponse.currentlyPlaying?.uri,
                     timestampMs: state.timestamp ?? 0,
                     shuffleEnabled: state.shuffleState ?? false,
                 )

@@ -29,72 +29,66 @@ debugLog("SpotifyAPI", "[GET] \(urlString)")
 - The first argument names the module making the request — `"SpotifyAPI"`, `"KeymasterAuth"`, and so on
 - `debugLog` lives in `DebugLog.swift` and compiles to an empty inlinable function outside DEBUG builds, so it needs no `#if DEBUG` around it
 
-## Track relinking and the `market` parameter
+## Track identity is the market id
 
-**Sending `market` changes which track you get back.** When a requested track is not
-playable in that market, Spotify returns a *different* track — the playable alternative —
-with its own `id` and `uri`, and moves the id you asked for into `linked_from`. Omit
-`market` and you get the track you asked for.
+**A track can have two ids.** When a recording is not playable in the account's market,
+Spotify substitutes one that is — a different `id` and `uri` for what a listener would call
+the same song. The Web API names both, returning the substitute as `id` and the id you asked
+for under `linked_from`. Which one you get depends on the endpoint and on `market`.
 
-This collides with the app's identity rule, which
-`plans/relinked-track-now-playing-identity.md` sets out in full: the **logical** track id
-owns store keys, UI, favorites and queue position, while the playable alternative is an
-implementation detail of playback. librespot relinks independently during playback and the
-bridge already keeps the two apart.
+**The rule: the app keys everything on the id the API returned, and never rewrites it.**
+Store keys, favorites, queue position, playback, writes — all the market id. Nothing in the
+app reconstructs an original, and no code should start.
 
-So an entity fetched with `market` must be normalised back to the requested id before it is
-cached, or `AppStore` indexes it under the alternative. The queue reports the context's
-logical id, `store.tracks[logicalId]` then misses, and the track re-fetches forever while
-the Now Playing bar shows its placeholder. The recovery loader then stores a *second*
-entity under the logical id — two entities for one context item.
+The reason is that reconstruction is no longer possible. Search now runs on pathfinder, which
+returns the market recording and carries **no `linked_from`** — there is nothing to trade the
+substitute back for, and the substitute looks canonical from every angle. spclient is
+id-faithful: it returns whatever id you ask for, so it hydrates entities without ever
+introducing a second identity. Measured against a known pair on 2026-08-13 (Xavier Rudd, "The
+Letter": original `459GknUJgpky3io0y482bi`, DE substitute `7FcObTmCbQYyC8qzlTL2SE`); the
+detail is in `plans/single-grant-partner-api.md`.
 
-**Writes are the sharper edge.** Spotify's
-[track relinking docs](https://developer.spotify.com/documentation/web-api/concepts/track-relinking)
-require the *original* id for any further operation on a track — saving to Your Music,
-removing from a playlist — and say the relinked id "will likely return an error or other
-unexpected result". `saveTrack`, `removeSavedTrack`, `checkSavedTracks` and playlist
-removal all take their id from a store entity, so an entity keyed by the alternative does
-not merely look wrong, it makes those calls fail.
+So the choice is only *which* id every path agrees on, and the market id is the one every
+path can produce. Send `market=from_token` everywhere it is supported and let the answer
+stand: that is what makes a searched track and a saved track the same track.
 
-The `RelinkableTrackCodable` protocol carries the rule: `logicalId` and `logicalUri` resolve
-through `linked_from`, and each conforming type's `toAPITrack()` uses them.
+**This reverses the earlier rule**, which normalised back to the original through a
+`RelinkableTrackCodable` protocol — the reasoning is in
+`plans/relinked-track-now-playing-identity.md` and `plans/web-api-track-relinking-identity.md`,
+both now historical. That rule existed because Spotify's
+[relinking docs](https://developer.spotify.com/documentation/web-api/concepts/track-relinking)
+require the original id for Web API writes. It stopped being available once search moved to
+pathfinder, and the mismatch it caused was live: a relinked track favorited from search saved
+one id while the library row held the other, so the heart did not light and removal missed.
+
+What the old rule was *right* about, and what still holds: **one identity per track, or the
+store corrupts.** Two ids for one song means the queue points at a key `store.tracks` misses,
+the track re-fetches forever behind a placeholder, and the recovery loader writes a second
+entity. Consistency is the requirement; which id carries it is not.
+
+**Writes are the open edge.** Spotify's docs say a substitute id "will likely return an error
+or other unexpected result" for saves and removals, and `saveTrack`, `removeSavedTrack`,
+`checkSavedTracks` and playlist removal still go to `api.spotify.com` until Phase 4. That
+warning is written for third-party Web API clients; Spotify's own client only ever holds
+market ids, since pathfinder gives it nothing else, and it saves from search perfectly well —
+so the native collection path these writes are moving to must accept them. Until that move
+lands, treat Web API write behaviour with a substitute id as measured-not-assumed.
 
 **There is more than one track-shaped response type**, which is the part that bites.
 `TrackCodable` serves most endpoints, but `/albums/{id}/tracks` decodes through
 `AlbumTracksCodable.AlbumTrackItemCodable`, with its own fields and its own `toAPITrack()`.
-A type that does not conform accepts `linked_from` from the wire and drops it — the request
-looks correct, the projection looks correct, and the substitute id reaches `AppStore`
-anyway. That happened once already, between two commits on this branch.
-
-Field-projected responses must also ask for `linked_from(id,uri)` explicitly; a projection
-returns only the fields it lists.
-
-Current request policy:
-
-| Request | `market` | Decoded as | Identity path |
-| --- | --- | --- | --- |
-| `/tracks/{id}`, `/tracks?ids=` | yes | `TrackCodable` | `toAPITrack()` |
-| `/me/tracks` | yes | `TrackCodable` | projected `linked_from`, then `toAPITrack()` |
-| `/playlists/{id}/items` | yes | `TrackCodable` | projected `linked_from`, then `toAPITrack()` |
-| `/albums/{id}/tracks` | yes | **`AlbumTrackItemCodable`** | projected `linked_from`, then its own `toAPITrack()` |
-| `/search` | yes | `TrackCodable` | `toAPITrack()` |
-| `/me/player` | yes | `TrackCodable` | `QueueService` reads `logicalId` / `logicalUri` |
-| `/me/top/tracks`, `/me/player/recently-played`, `/me/player/queue` | unsupported | `TrackCodable` | `toAPITrack()`, or `logical*` at the call site |
+Under the old rule a type that forgot to conform silently dropped the recovery field; under
+this one the failure mode is the reverse — a hand-written conversion that reintroduces an
+original id from somewhere. Either way the request looks correct and the store is wrong.
 
 **When adding or changing a track-returning request:**
 
-- send `market=from_token` where the endpoint supports it;
-- include `linked_from(id,uri)` in every fields projection;
-- make sure the type it decodes into conforms to `RelinkableTrackCodable` — check, do not
-  assume, since not every track response uses `TrackCodable`;
-- build entities through `toAPITrack()` rather than field by field. A hand-written
-  conversion is how `/search` came to read the raw id while looking entirely reasonable;
-- where the codable is consumed directly, as the playback bootstrap does, read `logicalId`
-  and `logicalUri`, never `id` or `uri`.
-
-This is also what keeps writes working: `saveTrack`, `removeSavedTrack`, `checkSavedTracks`
-and playlist removal all take their id from a stored entity, and Spotify requires the
-original id for those.
+- send `market=from_token` where the endpoint supports it, so the id matches what pathfinder
+  and playback use;
+- do not project or read `linked_from`; if a response carries one, ignore it;
+- build entities through `toAPITrack()` rather than field by field. A hand-written conversion
+  is how `/search` once came to disagree with everything around it while looking reasonable;
+- where a codable is consumed directly, as the playback bootstrap does, read `id` and `uri`.
 
 ## State Management Architecture
 

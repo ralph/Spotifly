@@ -40,11 +40,9 @@ extension SpotifyAPI {
             do {
                 let decoded = try JSONDecoder().decode(SearchResultsCodable.self, from: data)
 
-                // Convert tracks. Through `toAPITrack()` rather than field by field: this
-                // request sends `market`, so a relinked result carries the substitute's id,
-                // and only that conversion resolves identity back through `linked_from`.
-                // The hand-written copy this replaces set every one of the same fields —
-                // and read the raw id, which is how it silently disagreed.
+                // Convert tracks through `toAPITrack()` rather than field by field, so this
+                // path builds entities the same way every other one does. The hand-written
+                // copy it replaces set all the same fields and still drifted.
                 let tracks: [Track] = decoded.tracks?.items?.map { Track(from: $0.toAPITrack()) } ?? []
 
                 // Convert albums
