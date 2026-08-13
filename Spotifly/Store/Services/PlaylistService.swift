@@ -130,12 +130,38 @@ final class PlaylistService {
     /// postcondition — a caller can join either one. So a playlist that is somehow
     /// not in the store still gets loaded whole here; this only *adds* the guarantee
     /// that the tracks are freshly fetched.
+    /// A forced reload means the store's copy is already known to be wrong — after an add,
+    /// whose rows carry locally generated uids, or after a move, whose order is optimistic. So
+    /// if the refetch does not land, the contents are marked stale: left marked loaded, nothing
+    /// would fetch them again for the rest of the session, and a `local:` uid is one the
+    /// service has never heard of, so the row it names can be neither removed nor moved.
+    ///
+    /// Not when this run was *superseded*, though. The run that replaced it owns the outcome
+    /// and marks the contents stale itself if it fails in turn — which is why this lives here
+    /// rather than in each caller's `catch`, where whichever run happened to be cancelled last
+    /// would decide.
     func reloadPlaylistTracks(playlistId: String) async throws {
         playlistRequests.cancel(playlistId)
 
-        try await playlistRequests.run(playlistId) {
-            try await self.loadPlaylist(playlistId: playlistId, forceTracks: true)
+        do {
+            try await playlistRequests.run(playlistId) {
+                try await self.loadPlaylist(playlistId: playlistId, forceTracks: true)
+            }
+        } catch {
+            if !Self.isSupersession(error) {
+                store.invalidatePlaylistTracks(for: playlistId)
+            }
+            throw error
         }
+    }
+
+    /// Whether a failure means "something newer owns this" rather than "the request failed".
+    ///
+    /// Two forms, because the run can be cut at two points: `loadPlaylist` checks cancellation
+    /// itself, and `URLSession` reports a cancelled task as a `URLError` of its own rather than
+    /// as a `CancellationError`.
+    private static func isSupersession(_ error: any Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     /// Loads a playlist and its contents in **one** request.
@@ -298,32 +324,8 @@ final class PlaylistService {
             store.addTrackToPlaylist(trackId, playlistId: playlistId)
         }
 
-        do {
-            try await reloadPlaylistTracks(playlistId: playlistId)
-        } catch {
-            // A superseded run must not write. Two adds in quick succession, or any other
-            // forced reload, cancel the run before them — and that run's replacement may have
-            // already stored real uids by the time this lands, so marking the contents stale
-            // here would undo a result that is correct.
-            guard !Self.isSupersession(error) else { throw error }
-
-            // Otherwise the write happened and only the refresh did not. Left alone, the
-            // playlist stays marked loaded with placeholder uids in it, so nothing fetches it
-            // again for the rest of the session and a removal or a drag sends Spotify a
-            // `local:` uid it has never heard of. Marking the contents stale is what lets the
-            // next visit repair it.
-            store.invalidatePlaylistTracks(for: playlistId)
-            throw error
-        }
-    }
-
-    /// Whether a failure means "something newer owns this" rather than "the request failed".
-    ///
-    /// Two forms, because the run can be cut at two points: `loadPlaylist` checks cancellation
-    /// itself, and `URLSession` reports a cancelled task as a `URLError` of its own rather than
-    /// as a `CancellationError`.
-    private static func isSupersession(_ error: any Error) -> Bool {
-        error is CancellationError || (error as? URLError)?.code == .cancelled
+        // A failed reload marks the contents stale on its own — see `reloadPlaylistTracks`.
+        try await reloadPlaylistTracks(playlistId: playlistId)
     }
 
     /// Remove **occurrences** from a playlist, named by uid.

@@ -104,18 +104,20 @@ struct PlaylistAddReconciliationTests {
     }
 
     /// Routes by operation name: the mutation succeeds, the reload behind it does not.
-    private func api(reloadStatus: Int) -> PartnerAPI {
-        PartnerAPI(
+    private func api(reloadStatus: Int, mutation: String = "addToPlaylist") -> PartnerAPI {
+        let success = mutation == "addToPlaylist"
+            ? #"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#
+            : #"{"data":{"moveItemsInPlaylist":{"__typename":"MoveItemsInPlaylistPayload"}}}"#
+
+        return PartnerAPI(
             accessToken: { "at" },
             clientToken: { "ct" },
             transport: { request in
                 let body = try #require(request.httpBody)
                 let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-                let isMutation = json["operationName"] as? String == "addToPlaylist"
+                let isMutation = json["operationName"] as? String == mutation
 
-                let payload = isMutation
-                    ? Data(#"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#.utf8)
-                    : Data()
+                let payload = isMutation ? Data(success.utf8) : Data()
                 let response = HTTPURLResponse(
                     url: PartnerAPI.endpoint,
                     statusCode: isMutation ? 200 : reloadStatus,
@@ -233,6 +235,20 @@ struct PlaylistAddReconciliationTests {
         // two writes this way in a test — but the flag is what the guard is about.
         #expect(playlist.tracksLoaded)
         #expect(playlist.items.map(\.uid).prefix(2) == ["aaaa1111", "bbbb2222"])
+    }
+
+    /// The invalidation lives on the reload rather than in the add's `catch`, so a *move*
+    /// whose refresh fails is covered by the same rule — its order is optimistic too, and it
+    /// can be the run that ends up owning a playlist an add left placeholders in.
+    @Test func `a move whose refresh fails also leaves the contents reloadable`() async throws {
+        let store = seededStore()
+        let service = PlaylistService(store: store, partnerAPI: api(reloadStatus: 500, mutation: "moveItemsInPlaylist"))
+
+        await #expect(throws: (any Error).self) {
+            try await service.movePlaylistItem(playlistId: "p1", uid: "aaaa1111", beforeUid: nil)
+        }
+
+        #expect(store.playlists["p1"]?.tracksLoaded == false)
     }
 
     @Test func `an add is not marked stale when nothing failed`() async throws {
