@@ -136,6 +136,7 @@ nonisolated struct SpclientAPI: Sendable {
 
     private let accessToken: @Sendable () async throws -> String
     private let clientToken: @Sendable () async throws -> String
+    private let invalidateClientToken: @Sendable () async -> Void
     private let transport: Transport
 
     init(
@@ -145,10 +146,14 @@ nonisolated struct SpclientAPI: Sendable {
         clientToken: @escaping @Sendable () async throws -> String = {
             try await ClientTokenProvider.shared.token()
         },
+        invalidateClientToken: @escaping @Sendable () async -> Void = {
+            await ClientTokenProvider.shared.invalidate()
+        },
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
     ) {
         self.accessToken = accessToken
         self.clientToken = clientToken
+        self.invalidateClientToken = invalidateClientToken
         self.transport = transport
     }
 
@@ -332,9 +337,38 @@ nonisolated struct SpclientAPI: Sendable {
         path: String,
         body: some Encodable & Sendable,
     ) async throws -> Data {
+        let encoded = try JSONEncoder().encode(body)
+        var (data, status) = try await sendOnce(method: method, path: path, body: encoded)
+
+        // See `PartnerAPI.query`: a 401 can be either credential, and the cached client token
+        // is the one that would otherwise stay wrong until the app is relaunched.
+        if status == 401 {
+            await invalidateClientToken()
+            (data, status) = try await sendOnce(method: method, path: path, body: encoded)
+        }
+
+        guard (200 ..< 300).contains(status) else {
+            debugLog(
+                "SpclientAPI",
+                "\(method) \(path) failed (HTTP \(status)): \(String(decoding: data.prefix(200), as: UTF8.self))",
+            )
+            throw SpclientError.requestFailed(
+                status,
+                String(decoding: data.prefix(300), as: UTF8.self),
+            )
+        }
+
+        return data
+    }
+
+    private func sendOnce(
+        method: String,
+        path: String,
+        body: Data,
+    ) async throws -> (body: Data, status: Int) {
         var request = URLRequest(url: Self.baseURL.appending(path: path))
         request.httpMethod = method
-        request.httpBody = try JSONEncoder().encode(body)
+        request.httpBody = body
         try await applyHeaders(to: &request)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -346,23 +380,29 @@ nonisolated struct SpclientAPI: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw SpclientError.malformedResponse
         }
-        guard (200 ..< 300).contains(http.statusCode) else {
-            debugLog(
-                "SpclientAPI",
-                "\(method) \(path) failed (HTTP \(http.statusCode)): \(String(decoding: data.prefix(200), as: UTF8.self))",
-            )
-            throw SpclientError.requestFailed(
-                http.statusCode,
-                String(decoding: data.prefix(300), as: UTF8.self),
-            )
-        }
 
-        return data
+        return (data, http.statusCode)
     }
 
     // MARK: - Transport
 
     private func get(_ url: URL) async throws -> Data {
+        var (data, status) = try await getOnce(url)
+
+        // See `PartnerAPI.query`.
+        if status == 401 {
+            await invalidateClientToken()
+            (data, status) = try await getOnce(url)
+        }
+
+        guard status == 200 else {
+            throw SpclientError.requestFailed(status, "")
+        }
+
+        return data
+    }
+
+    private func getOnce(_ url: URL) async throws -> (body: Data, status: Int) {
         // The desktop client's web view sends a CORS preflight before these, and this endpoint
         // is served to that origin — so the sequence is mimicked rather than the request sent
         // bare. libspot does the same before metadata/4.
@@ -379,11 +419,8 @@ nonisolated struct SpclientAPI: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw SpclientError.malformedResponse
         }
-        guard http.statusCode == 200 else {
-            throw SpclientError.requestFailed(http.statusCode, "")
-        }
 
-        return data
+        return (data, http.statusCode)
     }
 
     func preflight(_ url: URL) async throws {

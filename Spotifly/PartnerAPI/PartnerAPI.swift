@@ -84,6 +84,7 @@ nonisolated struct PartnerAPI: Sendable {
 
     private let accessToken: @Sendable () async throws -> String
     private let clientToken: @Sendable () async throws -> String
+    private let invalidateClientToken: @Sendable () async -> Void
     private let transport: Transport
 
     init(
@@ -93,10 +94,14 @@ nonisolated struct PartnerAPI: Sendable {
         clientToken: @escaping @Sendable () async throws -> String = {
             try await ClientTokenProvider.shared.token()
         },
+        invalidateClientToken: @escaping @Sendable () async -> Void = {
+            await ClientTokenProvider.shared.invalidate()
+        },
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
     ) {
         self.accessToken = accessToken
         self.clientToken = clientToken
+        self.invalidateClientToken = invalidateClientToken
         self.transport = transport
     }
 
@@ -424,6 +429,32 @@ nonisolated struct PartnerAPI: Sendable {
         _ operation: PathfinderOperation,
         variables: some Encodable & Sendable,
     ) async throws -> Envelope {
+        let (data, status) = try await send(operation, variables: variables)
+
+        // A 401 can be either credential, and the client token is the one nothing else would
+        // notice: it is cached for the fortnight Spotify says it is good for, so a token
+        // revoked before its stated expiry fails every request until the app is relaunched.
+        // The bearer refreshes itself, so this costs one wasted retry at worst.
+        if status == 401 {
+            await invalidateClientToken()
+            let (retried, retriedStatus) = try await send(operation, variables: variables)
+            guard retriedStatus == 200 else {
+                throw Self.failure(operation: operation, status: retriedStatus, body: retried)
+            }
+            return try decode(retried, operation: operation)
+        }
+
+        guard status == 200 else {
+            throw Self.failure(operation: operation, status: status, body: data)
+        }
+
+        return try decode(data, operation: operation)
+    }
+
+    private func send(
+        _ operation: PathfinderOperation,
+        variables: some Encodable & Sendable,
+    ) async throws -> (body: Data, status: Int) {
         let request = try await makeRequest(operation, variables: variables)
 
         debugLog("PartnerAPI", "[POST] \(Self.endpoint.absoluteString) \(operation.name)")
@@ -433,17 +464,22 @@ nonisolated struct PartnerAPI: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw PartnerAPIError.emptyPayload
         }
-        guard http.statusCode == 200 else {
-            // The body is the useful half of a rejection and was previously discarded. A 400
-            // from this API names the variable it wanted and its type — the playlist page broke
-            // on a missing `enableWatchFeedEntrypoint` and reported only "HTTP 400", sending the
-            // next person to read code rather than the answer they had already been handed.
-            let detail = String(decoding: data.prefix(500), as: UTF8.self)
-            debugLog("PartnerAPI", "\(operation.name) failed (HTTP \(http.statusCode)): \(detail)")
-            throw PartnerAPIError.requestFailed(http.statusCode, detail)
-        }
 
-        return try decode(data, operation: operation)
+        return (data, http.statusCode)
+    }
+
+    private static func failure(
+        operation: PathfinderOperation,
+        status: Int,
+        body data: Data,
+    ) -> PartnerAPIError {
+        // The body is the useful half of a rejection and was previously discarded. A 400
+        // from this API names the variable it wanted and its type — the playlist page broke
+        // on a missing `enableWatchFeedEntrypoint` and reported only "HTTP 400", sending the
+        // next person to read code rather than the answer they had already been handed.
+        let detail = String(decoding: data.prefix(500), as: UTF8.self)
+        debugLog("PartnerAPI", "\(operation.name) failed (HTTP \(status)): \(detail)")
+        return PartnerAPIError.requestFailed(status, detail)
     }
 
     /// Builds the request body: operation name, variables, and the persisted-query hash. No

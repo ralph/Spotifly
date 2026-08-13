@@ -266,4 +266,50 @@ struct SpclientAPITests {
         #expect(track.albumId == nil)
         #expect(track.albumName == "Album")
     }
+
+    // MARK: - Client token recovery
+
+    /// The same rule as `PartnerAPI`: a client token can die before its stated expiry, and it
+    /// is cached — so without this the whole REST half stays 401 until the app is relaunched.
+    @Test func `a 401 drops the cached client token and retries once`() async throws {
+        let invalidations = Tally()
+        let attempts = Tally()
+        let recorder = RequestRecorder(responder: { [trackJSON] request in
+            // The responder sees the preflight too; only the GET is the request under test.
+            guard request.httpMethod != "OPTIONS" else { return (200, Data()) }
+            attempts.increment()
+            return attempts.count == 1 ? (401, Data()) : (200, trackJSON)
+        })
+
+        let api = SpclientAPI(
+            accessToken: { "at" },
+            clientToken: { "ct" },
+            invalidateClientToken: { invalidations.increment() },
+            transport: { recorder.handle($0) },
+        )
+
+        let track = try await api.track(id: "4PTG3Z6ehGkBFwjybzWkR8")
+
+        #expect(track.name == "Never Gonna Give You Up")
+        #expect(invalidations.count == 1)
+        #expect(recorder.methods == ["OPTIONS", "GET", "OPTIONS", "GET"])
+    }
+
+    @Test func `a second 401 is reported rather than retried again`() async throws {
+        let invalidations = Tally()
+        let recorder = RequestRecorder(responder: { _ in (401, Data()) })
+
+        let api = SpclientAPI(
+            accessToken: { "at" },
+            clientToken: { "ct" },
+            invalidateClientToken: { invalidations.increment() },
+            transport: { recorder.handle($0) },
+        )
+
+        await #expect(throws: SpclientError.self) {
+            _ = try await api.track(id: "4PTG3Z6ehGkBFwjybzWkR8")
+        }
+        #expect(invalidations.count == 1)
+        #expect(recorder.gets.count == 2)
+    }
 }

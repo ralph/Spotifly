@@ -245,11 +245,92 @@ struct PathfinderResponseTests {
     }
 
     @Test func `a non-200 is an error before the body is trusted`() async throws {
-        let api = makeAPI { _ in (Data(), httpResponse(401)) }
+        let api = makeAPI { _ in (Data(), httpResponse(403)) }
 
         await #expect(throws: PartnerAPIError.self) {
             _ = try await api.searchTracks("x")
         }
+    }
+}
+
+/// The client token is cached for as long as Spotify says it is good for, so a token that dies
+/// early has to be noticed by the request that it fails.
+struct ClientTokenRecoveryTests {
+    @Test func `a 401 drops the cached client token and retries once`() async throws {
+        let attempts = Tally()
+        let invalidations = Tally()
+        let payload = Data(#"""
+        {"data":{"searchV2":{"tracksV2":{"totalCount":1,
+          "items":[{"item":{"data":{"uri":"spotify:track:t1","name":"Good"}}}]}}}}
+        """#.utf8)
+
+        let api = PartnerAPI(
+            accessToken: { "at" },
+            clientToken: { "ct" },
+            invalidateClientToken: { invalidations.increment() },
+            transport: { _ in
+                attempts.increment()
+                return attempts.count == 1
+                    ? (Data(), httpResponse(401))
+                    : (payload, httpResponse(200))
+            },
+        )
+
+        let results = try await api.searchTracks("x")
+
+        #expect(results.first?.name == "Good")
+        #expect(attempts.count == 2)
+        #expect(invalidations.count == 1)
+    }
+
+    /// One retry, not a loop: a 401 that survives a fresh client token is about the bearer or
+    /// the account, and asking again would only spend requests.
+    @Test func `a second 401 is reported rather than retried again`() async throws {
+        let attempts = Tally()
+
+        let api = PartnerAPI(
+            accessToken: { "at" },
+            clientToken: { "ct" },
+            invalidateClientToken: {},
+            transport: { _ in
+                attempts.increment()
+                return (Data(), httpResponse(401))
+            },
+        )
+
+        await #expect(throws: PartnerAPIError.self) {
+            _ = try await api.searchTracks("x")
+        }
+        #expect(attempts.count == 2)
+    }
+
+    @Test func `a status that is not 401 does not touch the client token`() async throws {
+        let invalidations = Tally()
+
+        let api = PartnerAPI(
+            accessToken: { "at" },
+            clientToken: { "ct" },
+            invalidateClientToken: { invalidations.increment() },
+            transport: { _ in (Data(), httpResponse(500)) },
+        )
+
+        await #expect(throws: PartnerAPIError.self) {
+            _ = try await api.searchTracks("x")
+        }
+        #expect(invalidations.count == 0)
+    }
+}
+
+final class Tally: @unchecked Sendable {
+    private let lock = NSLock()
+    private var tally = 0
+
+    var count: Int {
+        lock.withLock { tally }
+    }
+
+    func increment() {
+        lock.withLock { tally += 1 }
     }
 }
 
