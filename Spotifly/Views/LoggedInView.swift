@@ -64,7 +64,6 @@ struct LoggedInView: View {
 
     enum BlockingState {
         case premiumRequired
-        case userNotWhitelisted
     }
 
     @State private var blockingState: BlockingState?
@@ -105,13 +104,6 @@ struct LoggedInView: View {
         case .premiumRequired:
             PremiumRequiredView(
                 displayName: store.userProfile?.displayName,
-                onLogout: onLogout,
-            )
-            .frame(minWidth: 500, minHeight: 400)
-
-        case .userNotWhitelisted:
-            UserNotWhitelistedView(
-                clientId: SpotifyConfig.getClientId(),
                 onLogout: onLogout,
             )
             .frame(minWidth: 500, minHeight: 400)

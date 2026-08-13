@@ -266,14 +266,6 @@
 "premium.required.logged_in_as %@" = "Angemeldet als %@";
 "premium.required.message" = "Spotifly benötigt ein Spotify Premium-Konto. Die App nutzt Spotify Connect zum Musikstreaming, was nur mit Premium verfügbar ist.";
 
-/* User Not Whitelisted */
-"whitelist.title" = "Benutzer nicht registriert";
-"whitelist.message" = "Dein Spotify-Konto ist nicht für diese App registriert. Jeder Benutzer muss in der Spotify Developer Dashboard Allowlist eingetragen werden.";
-"whitelist.steps" = "So behebst du das";
-"whitelist.step1 %@" = "Nur der Besitzer der App mit Client-ID %@ kann Benutzer hinzufügen.";
-"whitelist.open_dashboard" = "Spotify Developer Dashboard öffnen";
-"whitelist.step2" = "Bitte den App-Besitzer, deine Spotify-E-Mail-Adresse unter \"User Management\" hinzuzufügen.";
-
 /* Profile */
 "profile.logged_in_as %@" = "Angemeldet als %@";
 "profile.unavailable" = "Kontodaten nicht verfügbar";

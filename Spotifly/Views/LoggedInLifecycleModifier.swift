@@ -49,12 +49,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // The profile and the start page are independent requests on the same grant, so
                 // they run together. Neither blocks: an app that cannot say who you are is
                 // still an app that plays music.
-                //
-                // **Nothing sets `.userNotWhitelisted` any more.** It existed because `/me` on
-                // the dashboard grant answered 403 for an account the developer had not added
-                // to their app, and `profileAttributes` runs on the keymaster grant, where
-                // there is no such list. The state and its screen go with the rest of the
-                // dashboard app in the next task.
                 async let profile: () = loadProfile()
                 async let home: () = homeService.loadHome()
                 _ = await (profile, home)
