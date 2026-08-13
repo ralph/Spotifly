@@ -18,7 +18,7 @@ import Foundation
 /// and — measured, not assumed — **rotates it on every refresh**. Storing the replacement is
 /// mandatory. Keeping the original makes the *second* refresh fail, roughly an hour in, which
 /// presents as a spontaneous logout rather than as an auth bug.
-nonisolated struct KeymasterTokens: Sendable, Equatable {
+nonisolated struct KeymasterTokens: Sendable, Equatable, Codable {
     var accessToken: String
     var refreshToken: String
     var expiresAt: Date

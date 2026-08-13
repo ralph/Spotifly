@@ -151,6 +151,34 @@ enum KeychainManager {
         delete(key: "spotify_custom_client_id", service: "com.spotifly.config")
     }
 
+    // MARK: - Keymaster grant
+
+    private nonisolated static let keymasterService = "com.spotifly.keymaster"
+    private nonisolated static let keymasterTokensKey = "keymaster_tokens"
+
+    /// Stored as one item rather than a key per field, unlike the Web API tokens above.
+    /// The four values are only meaningful together — an access token paired with another
+    /// grant's expiry, or with a refresh token that has since rotated, is worse than nothing —
+    /// and a single write cannot leave them half-updated.
+    nonisolated static func saveKeymasterTokens(_ tokens: KeymasterTokens) throws {
+        try save(
+            key: keymasterTokensKey,
+            data: JSONEncoder().encode(tokens),
+            service: keymasterService,
+        )
+    }
+
+    nonisolated static func loadKeymasterTokens() -> KeymasterTokens? {
+        guard let data = load(key: keymasterTokensKey, service: keymasterService) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(KeymasterTokens.self, from: data)
+    }
+
+    nonisolated static func clearKeymasterTokens() {
+        delete(key: keymasterTokensKey, service: keymasterService)
+    }
+
     // MARK: - Private Keychain Operations
 
     private nonisolated static func save(key: String, data: Data) throws {
