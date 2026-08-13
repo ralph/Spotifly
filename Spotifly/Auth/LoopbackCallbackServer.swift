@@ -56,6 +56,7 @@ actor LoopbackCallbackServer {
     }
 
     private var listener: NWListener?
+    private var startWaiter: CheckedContinuation<UInt16, Error>?
     private var waiter: CheckedContinuation<URLComponents, Error>?
     /// A result that arrived before anyone was waiting for it. The browser can redirect faster
     /// than the caller gets from `start()` to `waitForCallback()`, and a valid authorization
@@ -92,32 +93,36 @@ actor LoopbackCallbackServer {
         self.listener = listener
 
         let port = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, Error>) in
-            let once = OnceFlag()
+            startWaiter = continuation
+
             // Weakly, because NWListener retains its own stateUpdateHandler: capturing the
             // listener strongly here makes a cycle, and every grant would leak its listener
             // and the continuation it captured.
-            listener.stateUpdateHandler = { [weak listener] state in
-                guard let listener else {
-                    guard once.claim() else { return }
-                    continuation.resume(throwing: ServerError.listenerFailed("listener released"))
-                    return
-                }
-
+            //
+            // Every outcome goes back through the actor rather than resuming from the
+            // callback, so `stop()` and the listener's own state cannot both resume — the
+            // stored continuation is the one-shot guard.
+            listener.stateUpdateHandler = { [weak self, weak listener] state in
                 switch state {
                 case .ready:
-                    guard let port = listener.port?.rawValue, port != 0 else {
-                        guard once.claim() else { return }
-                        continuation.resume(throwing: ServerError.listenerFailed("no port assigned"))
-                        return
+                    let port = listener?.port?.rawValue ?? 0
+                    Task {
+                        await self?.resumeStart(
+                            port == 0
+                                ? .failure(ServerError.listenerFailed("no port assigned"))
+                                : .success(port),
+                        )
                     }
-                    guard once.claim() else { return }
-                    continuation.resume(returning: port)
                 case let .failed(error):
-                    guard once.claim() else { return }
-                    continuation.resume(throwing: ServerError.listenerFailed(String(describing: error)))
+                    Task {
+                        await self?.resumeStart(
+                            .failure(ServerError.listenerFailed(String(describing: error))),
+                        )
+                    }
                 case .cancelled:
-                    guard once.claim() else { return }
-                    continuation.resume(throwing: ServerError.listenerFailed("listener cancelled"))
+                    Task {
+                        await self?.resumeStart(.failure(ServerError.listenerFailed("listener cancelled")))
+                    }
                 default:
                     break
                 }
@@ -125,10 +130,17 @@ actor LoopbackCallbackServer {
             listener.start(queue: .global(qos: .userInitiated))
         }
 
-        // The handler has done its job; leaving it installed keeps the continuation alive
-        // for as long as the listener is.
+        // The handler has done its job; leaving it installed keeps the listener — and what it
+        // captured — alive for as long as anything holds the listener.
         listener.stateUpdateHandler = nil
         return port
+    }
+
+    /// Resolves `start()`, at most once.
+    private func resumeStart(_ result: Result<UInt16, Error>) {
+        guard let startWaiter else { return }
+        self.startWaiter = nil
+        startWaiter.resume(with: result)
     }
 
     /// Waits for the redirect, or gives up.
@@ -163,12 +175,17 @@ actor LoopbackCallbackServer {
         timeout?.cancel()
         timeout = nil
 
-        // Handlers first: NWListener retains them, so cancelling without clearing leaves
+        // NWListener retains its handlers, so cancelling without clearing them leaves
         // whatever they captured alive alongside it.
         listener?.stateUpdateHandler = nil
         listener?.newConnectionHandler = nil
         listener?.cancel()
         listener = nil
+
+        // Explicitly, rather than relying on the `.cancelled` state that clearing the handler
+        // above has just suppressed: a `start()` suspended when this ran would otherwise stay
+        // suspended forever.
+        resumeStart(.failure(ServerError.listenerFailed("listener cancelled")))
 
         // A caller still parked here would wait forever otherwise.
         if let waiter {
