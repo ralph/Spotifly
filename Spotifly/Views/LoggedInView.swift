@@ -292,9 +292,10 @@ struct LoggedInView: View {
     private func performSearch() {
         let query = searchText
         Task {
-            let token = await session.validAccessToken()
             debugLog("Search", "Starting search for: \(query)")
-            await searchService.search(accessToken: token, query: query)
+            // No Web API token: search runs on the keymaster grant now, through the partner
+            // API, which is the first call site to move off api.spotify.com.
+            await searchService.search(query: query)
             let hasResults = store.searchResults(for: query) != nil
             debugLog("Search", "After search - results: \(hasResults), error: \(store.searchErrorMessage ?? "nil")")
             // The field can be cleared while the request is in flight, which already left
