@@ -247,6 +247,14 @@ typedef void (*ActiveDeviceCallback)(const char* device_id);
 /// without polling the Web API.
 void spotifly_register_active_device_callback(ActiveDeviceCallback callback);
 
+/// Callback function type for Connect device-list updates.
+/// Receives the JSON array `/me/player/devices` used to return, so the same decoder serves both.
+typedef void (*DevicesCallback)(const char* devices_json);
+
+/// Registers a callback to receive the Connect device list from cluster updates.
+/// Fires only when the list actually changes, not on every cluster tick.
+void spotifly_register_devices_callback(DevicesCallback callback);
+
 /// Callback function type for connection state change notifications.
 /// Receives a JSON string containing full connection state.
 typedef void (*ConnectionStateCallback)(const char* state_json);

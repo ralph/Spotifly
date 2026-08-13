@@ -13,10 +13,9 @@ import Foundation
 @Observable
 final class DeviceService {
     private let store: AppStore
-    private var loadDevicesTask: Task<Void, Never>?
 
     /// Timestamp of the last outgoing transfer, used to delay the
-    /// `fetchInitialPlaybackState` that fires on reconnect (Web API is stale).
+    /// `fetchInitialPlaybackState` that fires on reconnect.
     private var lastTransferTime: ContinuousClock.Instant?
 
     /// Counts authoritative active-device updates from the cluster, so a transfer can tell
@@ -24,14 +23,10 @@ final class DeviceService {
     private var activeDeviceUpdates = 0
 
     /// The transfer currently in flight, if any. Transfers are chained onto it so no two
-    /// ever overlap — see `transferPlayback(to:accessToken:)`.
+    /// ever overlap — see `transferPlayback(to:)`.
     private var transferTask: Task<Bool, Never>?
 
-    /// Subject for event-driven load requests. Throttled so that bursts of triggers
-    /// (e.g. sessionConnected firing right after the post-transfer delay) collapse
-    /// into a single HTTP request.
-    @ObservationIgnored private let loadSubject = PassthroughSubject<String, Never>()
-    @ObservationIgnored private var loadCancellable: AnyCancellable?
+    @ObservationIgnored private var devicesCancellable: AnyCancellable?
     @ObservationIgnored private var activeDeviceCancellable: AnyCancellable?
 
     init(store: AppStore) {
@@ -47,12 +42,13 @@ final class DeviceService {
     ///
     /// Idempotent — the guard reads the subscription it protects.
     func activate() {
-        guard loadCancellable == nil else { return }
+        guard devicesCancellable == nil else { return }
         recordActivation(self)
-        loadCancellable = loadSubject
-            .throttle(for: .seconds(10), scheduler: DispatchQueue.main, latest: true)
-            .sink { [weak self] token in
-                Task { await self?.loadDevices(accessToken: token) }
+        devicesCancellable = SpotifyPlayer.devices
+            .sink { [weak self] devices in
+                guard let self, let devices else { return }
+                store.upsertDevices(devices)
+                store.devicesIsLoading = false
             }
         activeDeviceCancellable = SpotifyPlayer.activeDeviceChanged
             .sink { [weak self] deviceId in
@@ -63,45 +59,18 @@ final class DeviceService {
 
     // MARK: - Device Loading
 
-    /// Schedules an event-driven device list refresh, throttled to at most once per 10 seconds.
-    /// Use for automatic triggers (sessionConnected, post-transfer confirmation).
-    func scheduleLoad(accessToken: String) {
-        loadSubject.send(accessToken)
-    }
-
-    /// Loads available Spotify Connect devices immediately (no throttle).
-    /// Use for user-initiated refreshes (SpeakersView opening, pull-to-refresh).
-    func loadDevices(accessToken: String) async {
-        // If already loading, await existing task instead of starting a new one.
-        // This handles view recreation where .task fires again before loading finishes.
-        if let existingTask = loadDevicesTask {
-            await existingTask.value
-            return
-        }
-
-        store.devicesIsLoading = true
-        store.devicesErrorMessage = nil
-
-        loadDevicesTask = Task {
-            defer {
-                self.loadDevicesTask = nil
-                self.store.devicesIsLoading = false
-            }
-
-            do {
-                let response = try await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken)
-                self.store.upsertDevices(response.devices)
-            } catch is CancellationError {
-                // Task was cancelled (e.g., view dismissed) - don't show error
-            } catch let error as SpotifyAPIError {
-                self.store.devicesErrorMessage = error.localizedDescription
-            } catch {
-                self.store.devicesErrorMessage = String(localized: "speakers.error.failed_to_load")
-            }
-        }
-
-        await loadDevicesTask?.value
-    }
+    // **Devices are not loaded any more; they arrive.**
+    //
+    // `/me/player/devices` was an HTTP poll, which is why this service used to carry a
+    // throttled subject, an in-flight task and an error message. The cluster pushes the same
+    // list over the dealer socket librespot already holds, so the whole apparatus is gone and
+    // what is left is a subscription. A device appearing or disappearing now reaches Speakers
+    // without anyone asking.
+    //
+    // The one thing a push cannot do is answer on demand, so the list is empty until the first
+    // cluster update arrives. That is not a wait in practice: registering our own device
+    // changes the cluster, so an update follows connecting. `devicesIsLoading` stays true
+    // until the first one lands, and the publisher replays it to a Speakers view opened later.
 
     // MARK: - Playback Transfer
 
@@ -115,11 +84,11 @@ final class DeviceService {
     /// ones capture each other's optimistic values as the state to restore. Chaining onto
     /// the previous transfer keeps that from arising at all, and the later tap — the user's
     /// actual intent — still wins, because it runs last.
-    func transferPlayback(to device: Device, accessToken: String) async -> Bool {
+    func transferPlayback(to device: Device) async -> Bool {
         let previous = transferTask
         let task = Task { @MainActor in
             _ = await previous?.value
-            return await performTransfer(to: device, accessToken: accessToken)
+            return await performTransfer(to: device)
         }
         transferTask = task
         defer {
@@ -130,7 +99,7 @@ final class DeviceService {
         return await task.value
     }
 
-    private func performTransfer(to device: Device, accessToken: String) async -> Bool {
+    private func performTransfer(to device: Device) async -> Bool {
         // Record transfer time so sessionConnected handler can delay its Web API fetch
         lastTransferTime = .now
 
@@ -171,14 +140,8 @@ final class DeviceService {
             return false
         }
 
-        // Schedule a throttled refresh after the transfer settles.
-        // Using scheduleLoad means the sessionConnected-triggered load that fires
-        // ~250ms later collapses into this one via the 10s throttle window.
-        Task {
-            try? await Task.sleep(for: .milliseconds(750))
-            scheduleLoad(accessToken: accessToken)
-        }
-
+        // Nothing to schedule: the transfer changes the cluster, and the cluster pushes the
+        // new device list and active device back on its own.
         return true
     }
 

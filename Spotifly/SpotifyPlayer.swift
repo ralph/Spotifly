@@ -496,6 +496,35 @@ private nonisolated func handleActiveDeviceCallback(_ deviceIdPtr: UnsafePointer
     }
 }
 
+/// Registers the Connect device-list callback with Rust (fires when the list changes)
+private nonisolated func registerDevicesCallback() {
+    spotifly_register_devices_callback { jsonPtr in
+        handleDevicesCallback(jsonPtr)
+    }
+}
+
+/// C callback for the Connect device list from cluster updates.
+///
+/// Decoded here rather than in the service because the payload is JSON on the C boundary and
+/// this is where every other JSON callback is turned into a Swift value.
+private nonisolated func handleDevicesCallback(_ jsonPtr: UnsafePointer<CChar>?) {
+    guard let jsonPtr else { return }
+    let json = String(cString: jsonPtr)
+
+    guard let data = json.data(using: .utf8),
+          let codables = try? JSONDecoder().decode([DeviceCodable].self, from: data)
+    else {
+        debugLog("SpotifyPlayer", "could not decode device list: \(json.prefix(200))")
+        return
+    }
+
+    // `toDevice()` is main-actor isolated, like every entity conversion here, so the mapping
+    // happens on the hop rather than on the C callback's thread.
+    Task { @MainActor in
+        devicesSubject.send(codables.compactMap { $0.toDevice() })
+    }
+}
+
 /// Registers the session client changed callback with Rust
 private nonisolated func registerSessionClientChangedCallback() {
     spotifly_register_session_client_changed_callback { jsonPtr in
@@ -616,6 +645,10 @@ private nonisolated(unsafe) let becameActiveSubject = PassthroughSubject<Void, N
 /// Global subject for active device ID changes (from cluster updates)
 private nonisolated(unsafe) let activeDeviceSubject = PassthroughSubject<String, Never>()
 
+/// The Connect device list, which arrives on cluster updates rather than being asked for.
+/// `CurrentValueSubject` so a Speakers view opened after the last update still gets one.
+private nonisolated(unsafe) let devicesSubject = CurrentValueSubject<[Device]?, Never>(nil)
+
 /// Swift wrapper for the Rust librespot playback functionality
 enum SpotifyPlayer {
     /// Initializes the player with the given access token.
@@ -636,6 +669,7 @@ enum SpotifyPlayer {
         registerSessionClientChangedCallback()
         registerConnectionStateCallback()
         registerActiveDeviceCallback()
+        registerDevicesCallback()
 
         // Sync playback settings from UserDefaults before initializing
         syncSettingsFromUserDefaults()
@@ -711,6 +745,11 @@ enum SpotifyPlayer {
 
     /// Returns a publisher that emits the active device ID on every cluster update.
     /// Use this to track which Spotify Connect device is active without polling the Web API.
+    /// The Connect device list, pushed on cluster updates. Replaces `/me/player/devices`.
+    static var devices: AnyPublisher<[Device]?, Never> {
+        devicesSubject.eraseToAnyPublisher()
+    }
+
     static var activeDeviceChanged: AnyPublisher<String, Never> {
         activeDeviceSubject.eraseToAnyPublisher()
     }

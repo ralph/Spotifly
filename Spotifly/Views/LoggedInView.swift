@@ -355,7 +355,8 @@ struct LoggedInView: View {
             try? await trackService.loadFavorites(forceRefresh: true)
 
         case .speakers:
-            await deviceService.loadDevices(accessToken: token)
+            // Nothing to refresh: the device list is pushed from the cluster.
+            break
 
         default:
             break

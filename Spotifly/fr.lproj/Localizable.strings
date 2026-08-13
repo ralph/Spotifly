@@ -156,7 +156,6 @@
 "speakers.active" = "Actif";
 "speakers.empty" = "Aucun appareil trouvé";
 "speakers.empty_hint" = "Ouvrez Spotify sur un autre appareil pour le voir ici";
-"speakers.error.failed_to_load" = "Impossible de charger les appareils";
 "speakers.error.failed_to_transfer" = "Impossible de transférer la lecture";
 "speakers.now_playing" = "Titre en cours de lecture";
 "speakers.audio_output" = "AirPlay";

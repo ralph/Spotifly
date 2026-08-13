@@ -60,20 +60,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     // Continue without profile if the request fails for a non-auth reason.
                 }
 
-                do {
-                    // The response is kept, not just checked. Without it the device table
-                    // stays empty until Speakers is opened, and `activeDeviceId` is derived
-                    // from that table — so a user who has not authorized local streaming
-                    // would be told nothing can play, while their phone is playing.
-                    let devices = try await SpotifyAPI.fetchAvailableDevices(accessToken: token)
-                    store.upsertDevices(devices.devices)
-                } catch SpotifyAPIError.forbidden {
-                    blockingState = .premiumRequired
-                    return
-                } catch {
-                    // Continue on transient failures and let playback surface any later errors.
-                }
-
                 let timeRange = TopItemsTimeRange(rawValue: topItemsTimeRange) ?? .mediumTerm
                 async let topArtists: () = topItemsService.loadTopArtists(accessToken: token, timeRange: timeRange)
                 async let topTracks: () = topItemsService.loadTopTracks(accessToken: token, timeRange: timeRange)

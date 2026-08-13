@@ -157,8 +157,9 @@ final class AppStore {
 
     // MARK: - Device Loading State
 
+    /// True until the first cluster update arrives. Not a request in flight — the device list
+    /// is pushed, so there is nothing to fail and no error to show; there is only "not yet".
     var devicesIsLoading = false
-    var devicesErrorMessage: String?
 
     // MARK: - User Profile
 

@@ -38,16 +38,6 @@ struct SpeakersView: View {
                 ProgressView()
                     .controlSize(.large)
                 Spacer()
-            } else if let errorMessage = store.devicesErrorMessage {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.secondary)
-                    Text(errorMessage)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
             } else {
                 List {
                     // Spotify Connect devices
@@ -145,9 +135,9 @@ struct SpeakersView: View {
                     // Librespot Connection Status
                     Section {
                         ConnectionStatusView {
-                            let token = await session.validAccessToken()
+                            // Reconnecting re-registers our device, which changes the cluster
+                            // and pushes a fresh device list back on its own.
                             await playbackViewModel.forceReinitialize()
-                            await deviceService.loadDevices(accessToken: token)
                         }
                     } header: {
                         Text("speakers.librespot_connection")
@@ -159,23 +149,17 @@ struct SpeakersView: View {
                 }
             }
         }
-        .task {
-            let token = await session.validAccessToken()
-            await deviceService.loadDevices(accessToken: token)
-        }
     }
 }
 
 struct SpeakerRow: View {
     let device: Device
-    @Environment(SpotifySession.self) private var session
     @Environment(DeviceService.self) private var deviceService
 
     var body: some View {
         Button {
             Task {
-                let token = await session.validAccessToken()
-                _ = await deviceService.transferPlayback(to: device, accessToken: token)
+                _ = await deviceService.transferPlayback(to: device)
             }
         } label: {
             HStack(spacing: 12) {

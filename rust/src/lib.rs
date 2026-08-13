@@ -80,6 +80,11 @@ static SET_QUEUE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
 static ACTIVE_DEVICE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
+static DEVICES_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
+    Lazy::new(|| Mutex::new(None));
+/// The last device list sent to Swift, so an unchanged cluster update stays silent. Cluster
+/// updates arrive for every playback tick, and the device list changes far more rarely.
+static LAST_DEVICES_JSON: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 static LAST_ACTIVE_DEVICE_ID: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 /// Serializes snapshot building so a revision always orders snapshots by the state they
 /// actually saw. Held only across the build, never across delivery into Swift.
@@ -468,6 +473,25 @@ struct ConnectionStateInfo {
     is_active_device: bool,
 }
 
+/// One Spotify Connect device, in the shape `Device` in Swift already holds.
+///
+/// The Web API's `/me/player/devices` is what this replaces, and the field names match its
+/// JSON rather than the protobuf's so the Swift decoder did not have to change: `is_active`
+/// is derived here by comparing against the cluster's active device rather than being a field
+/// of its own, because the protobuf has no such flag — the cluster names one active device and
+/// every `DeviceInfo` is otherwise identical.
+#[derive(Serialize)]
+struct ConnectDeviceInfo {
+    id: String,
+    name: String,
+    #[serde(rename = "type")]
+    device_type: String,
+    is_active: bool,
+    is_private_session: bool,
+    is_restricted: bool,
+    volume_percent: Option<i32>,
+}
+
 #[derive(Serialize)]
 struct SessionClientInfo {
     client_id: String,
@@ -722,6 +746,16 @@ pub extern "C" fn spotifly_register_active_device_callback(callback: extern "C" 
     *ACTIVE_DEVICE_CALLBACK.lock().unwrap() = Some(callback);
 }
 
+/// Registers a callback to receive the Connect device list from cluster updates.
+///
+/// The payload is the JSON array `/me/player/devices` used to return, so Swift decodes it with
+/// the type it already had. It fires only when the list actually changes, not on every cluster
+/// tick.
+#[no_mangle]
+pub extern "C" fn spotifly_register_devices_callback(callback: extern "C" fn(*const c_char)) {
+    *DEVICES_CALLBACK.lock().unwrap() = Some(callback);
+}
+
 /// Registers a callback to receive connection state change notifications.
 /// Called whenever the connection state changes (connect, disconnect, error, etc.).
 /// The callback receives JSON with full connection state.
@@ -795,6 +829,62 @@ fn mark_disconnected(reason: &str) {
         c.last_error = Some(reason.to_string());
     });
     notify_connection_state_change();
+}
+
+/// Sends the cluster's device list to Swift, skipping an update that says nothing new.
+///
+/// Volume is 0..=65535 on the wire and 0..=100 in the app, matching what
+/// `/me/player/devices` returned — the conversion belongs here rather than in Swift, so the
+/// entity keeps meaning one thing.
+fn notify_devices(
+    devices: &std::collections::HashMap<String, librespot_protocol::connect::DeviceInfo>,
+    active_device_id: &str,
+) {
+    let mut list: Vec<ConnectDeviceInfo> = devices
+        .iter()
+        .map(|(id, info)| ConnectDeviceInfo {
+            id: id.clone(),
+            name: info.name.clone(),
+            // `DeviceType` is an open enum on the wire, so an unknown value has no variant to
+            // name. `/me/player/devices` answered "Unknown" for the same case.
+            device_type: info
+                .device_type
+                .enum_value()
+                .map(|kind| format!("{kind:?}").to_uppercase())
+                .unwrap_or_else(|_| "UNKNOWN".to_string()),
+            is_active: !active_device_id.is_empty() && id == active_device_id,
+            is_private_session: info.is_private_session,
+            // The protobuf has no equivalent, and nothing in the app reads it for a
+            // connect device. False rather than a guess.
+            is_restricted: false,
+            volume_percent: Some(((info.volume as f64) / 65535.0 * 100.0).round() as i32),
+        })
+        .collect();
+
+    // The protobuf map has no order, so without this the same devices would look like a new
+    // list on every update and the change check below would never fire.
+    list.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let json = match serde_json::to_string(&list) {
+        Ok(json) => json,
+        Err(e) => {
+            debug!("Failed to serialize device list: {:?}", e);
+            return;
+        }
+    };
+
+    let mut last = LAST_DEVICES_JSON.lock().unwrap();
+    if *last == json {
+        return;
+    }
+    *last = json.clone();
+    drop(last);
+
+    if let Some(callback) = registered_callback(&DEVICES_CALLBACK) {
+        if let Ok(c_str) = CString::new(json) {
+            callback(c_str.as_ptr());
+        }
+    }
 }
 
 /// Sends the active device ID to the registered callback if it changed since the last update.
@@ -1139,6 +1229,11 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
                             current_device_id().as_deref(),
                         ));
                         notify_active_device_id(&cluster.active_device_id);
+                        // The device list rides the same update and used to be dropped on the
+                        // floor, so Swift asked `/me/player/devices` for what was already
+                        // here. Pushed rather than polled now, which also means the Speakers
+                        // list reflects a device appearing without waiting for a refresh.
+                        notify_devices(&cluster.device, &cluster.active_device_id);
                         if let Some(player_state) = cluster.player_state.into_option() {
                             send_playback_state(&player_state);
                             process_and_send_queue(player_state);
