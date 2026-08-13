@@ -68,10 +68,6 @@ SpotiflyResult spotifly_init_player(const char* _Nullable access_token);
 ///   -2 = Superseded by a logout; any credentials written were removed again
 int32_t spotifly_authorize_streaming(const char* _Nonnull access_token);
 
-/// Whether a streaming grant has already been completed on this machine.
-/// Returns 1 when credentials are cached, 0 otherwise.
-int32_t spotifly_has_streaming_credentials(void);
-
 /// The Spotify account id the last successful grant authenticated as, or NULL.
 /// The caller owns the string and must free it with spotifly_free_string().
 char* _Nullable spotifly_last_grant_account(void);

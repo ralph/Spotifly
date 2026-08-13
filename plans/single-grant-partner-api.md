@@ -565,12 +565,15 @@ Only once no `api.spotify.com` call remains — **which is now the case.**
       showing the previous account until a relaunch. Signing in passes no expected account and
       is unaffected, so the guard now catches exactly one case and it is a real one.
 
-      **Two things were dead before this task and are only half swept up.**
+      **One thing was dead before this task and is deliberately left standing.**
       `BlockingState.premiumRequired` and `PremiumRequiredView` were orphaned by 12b alongside
       the whitelist screen — `profileAttributes` carries no `product` field — but whether to
       tell a non-premium user why streaming will not work is a product question, so the screen
-      stays until there is a source for the fact. `spotifly_has_streaming_credentials` is now
-      unreferenced from Swift and still exported from Rust.
+      stays until there is a source for the fact.
+
+      `spotifly_has_streaming_credentials` went in a follow-up: moving the gate off the
+      credentials file left it with no caller on either side of the FFI. It takes no pointer,
+      so the clippy `not_unsafe_ptr_arg_deref` baseline stays at 9 — recounted, not assumed.
 
       Three smaller things fell out. `PlaybackViewModel` took an `accessToken` on five methods
       and had ignored it since 12a — fourteen call sites were awaiting a token refresh to
