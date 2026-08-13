@@ -9,157 +9,143 @@ import Foundation
 @testable import Spotifly
 import Testing
 
-/// What `/me/player/play` is asked to do when playback is routed over the Web API.
+/// Turning a play request into the uri connect-state takes.
 ///
-/// Without streaming credentials this Mac never registers with Spotify Connect, so playback
-/// has to go to whatever device is active. `resumePlayback` only resumes what is already
-/// loaded — starting an album or a set of tracks needs a body, and the device goes in the
-/// query string rather than the body. See
-/// `plans/streaming-auth-needs-a-first-party-client-id.md`.
+/// The Web API needed this split into `context_uri` *or* `uris`, because sending a track as a
+/// context failed. connect-state takes one uri and decides for itself — so what is left to get
+/// right is the normalization: `play(uriOrUrl:)` accepts a share link as readily as a uri, and
+/// only the uri form can be played.
 @MainActor
-struct StartPlaybackRequestTests {
-    private func body(_ request: URLRequest) throws -> [String: Any] {
-        let data = try #require(request.httpBody)
+struct RemoteStartUriTests {
+    @Test func `a track uri passes through`() {
+        #expect(PlaybackViewModel.remoteStartUri(for: "spotify:track:t1") == "spotify:track:t1")
+    }
+
+    @Test func `contexts pass through unchanged`() {
+        for uri in ["spotify:album:a1", "spotify:playlist:p1", "spotify:artist:ar1"] {
+            #expect(PlaybackViewModel.remoteStartUri(for: uri) == uri)
+        }
+    }
+
+    @Test func `a track URL becomes a track uri`() {
+        #expect(
+            PlaybackViewModel.remoteStartUri(for: "https://open.spotify.com/track/t1?si=abc")
+                == "spotify:track:t1",
+        )
+    }
+}
+
+/// How a play request is carried, which is where the Web API was more forgiving.
+///
+/// `/me/player/play` took a bare `uris` array; connect-state plays **contexts**, so a single
+/// track has to be sent as a context with a `skip_to` naming it, and a bare list of tracks as
+/// an inline context with its own `pages`. Sending a track uri as a plain context plays the
+/// first track of whatever Spotify resolves it to instead.
+struct ConnectPlayCommandTests {
+    private func encoded(_ command: ConnectCommand) throws -> String {
+        let data = try JSONEncoder().encode(command)
+        return try #require(String(data: data, encoding: .utf8))
+    }
+
+    /// Decoded rather than matched as a substring: `JSONEncoder` escapes forward slashes, so
+    /// the `context://` url is on the wire as `context:\/\/` and a literal search misses it.
+    private func fields(_ command: ConnectCommand) throws -> [String: Any] {
+        let data = try JSONEncoder().encode(command)
         return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    @Test func `a context start sends context_uri and an offset`() throws {
-        let request = try SpotifyAPI.makeStartPlaybackRequest(
-            contextUri: "spotify:album:a1",
-            uris: nil,
-            offsetIndex: 3,
-            deviceId: nil,
-            accessToken: "tok",
-        )
+    @Test func `a track is a context plus a skip_to naming it`() throws {
+        let command = try fields(.play(uri: "spotify:track:t1"))
 
-        #expect(request.httpMethod == "PUT")
-        #expect(request.url?.path == "/v1/me/player/play")
-        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok")
+        #expect(command["endpoint"] as? String == "play")
 
-        let json = try body(request)
-        #expect(json["context_uri"] as? String == "spotify:album:a1")
-        #expect((json["offset"] as? [String: Any])?["position"] as? Int == 3)
-        #expect(!json.keys.contains("uris"))
+        let context = try #require(command["context"] as? [String: Any])
+        #expect(context["uri"] as? String == "spotify:track:t1")
+        #expect(context["url"] as? String == "context://spotify:track:t1")
+
+        let options = try #require(command["options"] as? [String: Any])
+        let skipTo = try #require(options["skip_to"] as? [String: Any])
+        #expect(skipTo["track_uri"] as? String == "spotify:track:t1")
     }
 
-    @Test func `a track start sends uris and no context`() throws {
-        let request = try SpotifyAPI.makeStartPlaybackRequest(
-            contextUri: nil,
-            uris: ["spotify:track:t1", "spotify:track:t2"],
-            offsetIndex: nil,
-            deviceId: nil,
-            accessToken: "tok",
-        )
+    @Test func `a context with an index skips to that index instead`() throws {
+        let json = try encoded(.play(uri: "spotify:album:a1", trackIndex: 4))
 
-        let json = try body(request)
-        #expect(json["uris"] as? [String] == ["spotify:track:t1", "spotify:track:t2"])
-        #expect(!json.keys.contains("context_uri"))
-        #expect(!json.keys.contains("offset"))
+        #expect(json.contains("\"track_index\":4"))
+        #expect(!json.contains("track_uri"))
     }
 
-    @Test func `a device id goes in the query, never the body`() throws {
-        let request = try SpotifyAPI.makeStartPlaybackRequest(
-            contextUri: "spotify:album:a1",
-            uris: nil,
-            offsetIndex: nil,
-            deviceId: "dev123",
-            accessToken: "tok",
-        )
+    @Test func `a context with no index carries no skip_to at all`() throws {
+        let json = try encoded(.play(uri: "spotify:album:a1"))
 
-        let query = try #require(request.url?.query)
-        #expect(query.contains("device_id=dev123"))
-        #expect(try !body(request).keys.contains("device_id"))
+        #expect(!json.contains("skip_to"))
     }
 
-    @Test func `an empty uris list is omitted rather than sent empty`() throws {
-        // Spotify rejects an empty `uris`; omitting it lets the caller pass a list without
-        // having to check it first.
-        let request = try SpotifyAPI.makeStartPlaybackRequest(
-            contextUri: "spotify:album:a1",
-            uris: [],
-            offsetIndex: nil,
-            deviceId: nil,
-            accessToken: "tok",
-        )
+    /// A negative index means "no offset" at the call site, and must not become `skip_to: -1`.
+    @Test func `a negative index is no index`() throws {
+        let json = try encoded(.play(uri: "spotify:album:a1", trackIndex: -1))
 
-        #expect(try !body(request).keys.contains("uris"))
+        #expect(!json.contains("skip_to"))
+    }
+
+    @Test func `a bare track list becomes an inline context`() throws {
+        let json = try encoded(.play(trackUris: ["spotify:track:t1", "spotify:track:t2"]))
+
+        #expect(json.contains("\"pages\""))
+        #expect(json.contains("spotify:track:t1"))
+        #expect(json.contains("spotify:track:t2"))
     }
 }
 
-/// Where a play request goes when this Mac may or may not be a Connect device.
-///
-/// Local wins whenever it exists. Otherwise an active remote device serves the request over
-/// the Web API — pressing play while a phone is playing must not nag about local streaming.
-/// Only when there is nothing anywhere is there anything to ask the user about.
-@MainActor
-struct PlaybackTargetTests {
-    @Test func `a local player takes precedence`() {
-        #expect(
-            PlaybackViewModel.playbackTarget(isInitialized: true, activeDeviceId: "dev1")
-                == .local,
-        )
+/// The transport commands, whose bodies differ only in one field.
+struct ConnectCommandTests {
+    private func encoded(_ command: ConnectCommand) throws -> String {
+        let data = try JSONEncoder().encode(command)
+        return try #require(String(data: data, encoding: .utf8))
     }
 
-    @Test func `a local player is used even with no device recorded`() {
-        #expect(
-            PlaybackViewModel.playbackTarget(isInitialized: true, activeDeviceId: nil)
-                == .local,
-        )
+    @Test func `the simple commands name only their endpoint`() throws {
+        let cases: [(ConnectCommand, String)] = [
+            (.pause, "pause"),
+            (.resume, "resume"),
+            (.next, "skip_next"),
+            (.previous, "skip_prev"),
+        ]
+
+        for (command, endpoint) in cases {
+            let json = try encoded(command)
+            #expect(json.contains("\"endpoint\":\"\(endpoint)\""))
+            #expect(json.contains("command_id"))
+            #expect(!json.contains("\"value\""))
+        }
     }
 
-    @Test func `no local player routes to the active remote device`() {
-        #expect(
-            PlaybackViewModel.playbackTarget(isInitialized: false, activeDeviceId: "dev1")
-                == .remote(deviceId: "dev1"),
-        )
+    /// `seek_to` and `set_shuffling_context` both carry their argument under `value`, one as a
+    /// number and one as a boolean — which is why the two Swift properties encode to one key.
+    @Test func `seek and shuffle share the value key with different types`() throws {
+        #expect(try encoded(.seek(toMs: 42000)).contains("\"value\":42000"))
+        #expect(try encoded(.shuffle(true)).contains("\"value\":true"))
+        #expect(try encoded(.shuffle(false)).contains("\"value\":false"))
     }
 
-    @Test func `nothing anywhere asks for authorization`() {
-        #expect(
-            PlaybackViewModel.playbackTarget(isInitialized: false, activeDeviceId: nil)
-                == .needsAuthorization,
-        )
-    }
-}
-
-/// Splitting a play request into what `/me/player/play` accepts.
-///
-/// Spotify takes albums, playlists and artists as `context_uri`, but individual tracks only
-/// in `uris` — sending a track as a context fails. `playTrack` and the queue both hand
-/// `play(uriOrUrl:)` a bare `spotify:track:` URI, so the remote path has to tell them apart.
-@MainActor
-struct RemoteStartPayloadTests {
-    @Test func `a track becomes a one-element uris list`() {
-        let payload = PlaybackViewModel.remoteStartPayload(for: "spotify:track:t1")
-        #expect(payload.contextUri == nil)
-        #expect(payload.uris == ["spotify:track:t1"])
+    @Test func `a negative seek is clamped rather than sent`() throws {
+        #expect(try encoded(.seek(toMs: -5)).contains("\"value\":0"))
     }
 
-    @Test func `an album stays a context`() {
-        let payload = PlaybackViewModel.remoteStartPayload(for: "spotify:album:a1")
-        #expect(payload.contextUri == "spotify:album:a1")
-        #expect(payload.uris == nil)
-    }
+    /// The wire wants 0…65535 where the app and the Web API both use a percentage.
+    @Test func `volume is converted from a percentage`() throws {
+        func volume(_ percent: Int) throws -> Int {
+            let data = try JSONEncoder().encode(ConnectVolume(percent: percent))
+            struct Body: Decodable { let volume: Int }
+            return try JSONDecoder().decode(Body.self, from: data).volume
+        }
 
-    @Test func `a playlist stays a context`() {
-        let payload = PlaybackViewModel.remoteStartPayload(for: "spotify:playlist:p1")
-        #expect(payload.contextUri == "spotify:playlist:p1")
-        #expect(payload.uris == nil)
-    }
-
-    @Test func `an artist stays a context`() {
-        // Artists are a valid Web API context, unlike tracks.
-        let payload = PlaybackViewModel.remoteStartPayload(for: "spotify:artist:ar1")
-        #expect(payload.contextUri == "spotify:artist:ar1")
-        #expect(payload.uris == nil)
-    }
-
-    @Test func `a track URL is recognised as a track`() {
-        let payload = PlaybackViewModel.remoteStartPayload(
-            for: "https://open.spotify.com/track/t1?si=abc",
-        )
-        #expect(payload.contextUri == nil)
-        #expect(payload.uris == ["spotify:track:t1"])
+        #expect(try volume(0) == 0)
+        #expect(try volume(100) == 65535)
+        #expect(try volume(50) == 32768)
+        // Out of range in either direction is clamped, not wrapped.
+        #expect(try volume(-10) == 0)
+        #expect(try volume(150) == 65535)
     }
 }
 

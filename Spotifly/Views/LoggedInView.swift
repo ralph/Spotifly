@@ -316,8 +316,6 @@ struct LoggedInView: View {
     }
 
     private func refreshCurrentSection() async {
-        let token = await session.validAccessToken()
-
         switch navigationCoordinator.selectedNavigationItem {
         case .playlists:
             let previousSelection = navigationCoordinator.selectedPlaylistId

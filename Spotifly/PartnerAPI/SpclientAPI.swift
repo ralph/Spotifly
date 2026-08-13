@@ -191,6 +191,65 @@ nonisolated struct SpclientAPI: Sendable {
         }
     }
 
+    // MARK: - Connect state
+
+    /// Sends a player command to the device currently holding playback.
+    ///
+    /// Replaces the `/me/player/*` transport endpoints. `from` is this app's own device id and
+    /// `to` is the active one — and the source segment is **not validated**: the backend derives
+    /// it from the session, which is why librespot's own transfer passes its own id for both
+    /// sides. Measured with three different `from` values on 2026-08-13, all accepted.
+    func sendCommand(_ command: ConnectCommand, from: String, to: String) async throws {
+        try await sendConnectRequest(
+            method: "POST",
+            path: "connect-state/v1/player/command/from/\(from)/to/\(to)",
+            body: command,
+        )
+    }
+
+    /// Sets a remote device's volume. Its own path and its own verb, unlike every other command.
+    func setVolume(percent: Int, from: String, to: String) async throws {
+        try await sendConnectRequest(
+            method: "PUT",
+            path: "connect-state/v1/connect/volume/from/\(from)/to/\(to)",
+            body: ConnectVolume(percent: percent),
+        )
+    }
+
+    /// The one request shape connect-state takes.
+    ///
+    /// No preflight and no `market`, unlike `get` below: this is not a catalogue read, and the
+    /// probe established that a bare authorized request is accepted. Failure is reported by
+    /// status code rather than in the body — `404 DEVICE_NOT_FOUND` when the target is gone —
+    /// so unlike the pathfinder mutations there is no 200-that-means-no to unpick.
+    private func sendConnectRequest(
+        method: String,
+        path: String,
+        body: some Encodable & Sendable,
+    ) async throws {
+        var request = URLRequest(url: Self.baseURL.appending(path: path))
+        request.httpMethod = method
+        request.httpBody = try JSONEncoder().encode(body)
+        try await applyHeaders(to: &request)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let urlString = request.url?.absoluteString ?? path
+        debugLog("SpclientAPI", "[\(method)] \(urlString)")
+
+        let (data, response) = try await transport(request)
+        guard let http = response as? HTTPURLResponse else {
+            throw SpclientError.malformedResponse
+        }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            debugLog(
+                "SpclientAPI",
+                "\(method) \(path) failed (HTTP \(http.statusCode)): \(String(decoding: data.prefix(200), as: UTF8.self))",
+            )
+            throw SpclientError.requestFailed(http.statusCode)
+        }
+    }
+
     // MARK: - Transport
 
     private func get(_ url: URL) async throws -> Data {

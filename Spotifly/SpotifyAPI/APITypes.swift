@@ -144,11 +144,6 @@ struct RecentlyPlayedResponse {
 
 // MARK: - Playback & Connect Types
 
-/// Devices response wrapper
-struct DevicesResponse {
-    let devices: [Device]
-}
-
 // MARK: - User Top Items
 
 /// Time range for top items (artists/tracks)
@@ -437,11 +432,6 @@ struct TopTracksCodable: Decodable {
     let items: [TrackCodable]
     let total: Int
     let next: String?
-}
-
-/// Devices
-struct DevicesCodable: Decodable {
-    let devices: [DeviceCodable]
 }
 
 /// Recently played

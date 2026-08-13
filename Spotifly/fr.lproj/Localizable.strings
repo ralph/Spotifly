@@ -88,6 +88,7 @@
 "error.remove_from_queue" = "Impossible de retirer le titre de la file d'attente";
 "error.reorder_queue" = "Impossible de réorganiser la file d'attente";
 "error.clear_queue" = "Impossible de vider la file d'attente";
+"error.no_playback_device" = "Ce Mac n'est pas connecté à Spotify et ne peut donc pas lancer la lecture ailleurs";
 
 /* Empty States */
 "empty.select_item" = "Sélectionnez un élément dans la barre latérale";

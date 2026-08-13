@@ -88,6 +88,7 @@
 "error.remove_from_queue" = "Entfernen des Tracks aus der Warteschlange fehlgeschlagen";
 "error.reorder_queue" = "Umordnen der Warteschlange fehlgeschlagen";
 "error.clear_queue" = "Leeren der Warteschlange fehlgeschlagen";
+"error.no_playback_device" = "Dieser Mac ist nicht mit Spotify verbunden und kann die Wiedergabe daher nicht anderswo starten";
 
 /* Empty States */
 "empty.select_item" = "Wähle ein Element aus der Seitenleiste";

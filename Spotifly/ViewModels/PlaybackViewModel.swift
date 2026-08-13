@@ -365,7 +365,7 @@ final class PlaybackViewModel {
             await initializeIfNeeded()
         }
 
-        switch await resolvedPlaybackTarget(accessToken: accessToken) {
+        switch resolvedPlaybackTarget() {
         case .local:
             isLoading = true
             errorMessage = nil
@@ -380,12 +380,10 @@ final class PlaybackViewModel {
             isLoading = false
 
         case let .remote(deviceId):
-            let payload = Self.remoteStartPayload(for: uriOrUrl)
+            // One uri either way: the command's own context builder tells a track from a
+            // context, where the Web API needed the caller to split them into two fields.
             await startRemotely(
-                contextUri: payload.contextUri,
-                uris: payload.uris,
-                // An offset only means something inside a context; a single track has none.
-                offsetIndex: payload.contextUri != nil && trackIndex >= 0 ? trackIndex : nil,
+                .play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex),
                 deviceId: deviceId,
                 accessToken: accessToken,
             )
@@ -410,7 +408,7 @@ final class PlaybackViewModel {
             return
         }
 
-        switch await resolvedPlaybackTarget(accessToken: accessToken) {
+        switch resolvedPlaybackTarget() {
         case .local:
             isLoading = true
             errorMessage = nil
@@ -426,9 +424,7 @@ final class PlaybackViewModel {
 
         case let .remote(deviceId):
             await startRemotely(
-                contextUri: nil,
-                uris: trackUris,
-                offsetIndex: nil,
+                .play(trackUris: trackUris),
                 deviceId: deviceId,
                 accessToken: accessToken,
             )
@@ -457,24 +453,18 @@ final class PlaybackViewModel {
         SpotifyPlayer.playRadio(trackUri: trackUri)
     }
 
-    /// What `/me/player/play` should be sent for a play request.
-    struct RemoteStartPayload: Equatable {
-        let contextUri: String?
-        let uris: [String]?
-    }
-
-    /// Splits a play request into the shape the Web API accepts.
+    /// The uri a remote play request should name.
     ///
-    /// Albums, playlists and artists are contexts; an individual track is not, and sending
-    /// one as `context_uri` fails. `playTrack` and the queue both pass bare track URIs into
-    /// `play(uriOrUrl:)`, so this is not an edge case.
-    static func remoteStartPayload(for uriOrUrl: String) -> RemoteStartPayload {
-        // Accepts both `spotify:track:ID` and an open.spotify.com/track/ID link, since
-        // `play(uriOrUrl:)` takes either.
+    /// **One uri, not two fields.** The Web API needed a play request split into `context_uri`
+    /// *or* `uris`, because sending a track as a context failed; connect-state takes one uri
+    /// and `ConnectCommand.Context` decides how to carry it. What survives from that split is
+    /// the normalization: `play(uriOrUrl:)` accepts an `open.spotify.com/track/ID` link as
+    /// readily as a uri, and only the uri form can be played.
+    static func remoteStartUri(for uriOrUrl: String) -> String {
         if let id = trackId(from: uriOrUrl) {
-            return RemoteStartPayload(contextUri: nil, uris: ["spotify:track:\(id)"])
+            return "spotify:track:\(id)"
         }
-        return RemoteStartPayload(contextUri: uriOrUrl, uris: nil)
+        return uriOrUrl
     }
 
     /// The track id in a Spotify track URI or link, if it is one.
@@ -488,32 +478,20 @@ final class PlaybackViewModel {
         return id.isEmpty ? nil : String(id)
     }
 
-    /// Decides where to play, refreshing the device list before giving up on it.
+    /// Decides where to play.
     ///
-    /// `activeDeviceId` is derived from the device table, and without a local session
-    /// nothing pushes device changes to us — the Rust cluster callback is the usual source
-    /// and it does not exist. So a phone that started playing after launch is invisible
-    /// until something asks. Only the "nothing anywhere" answer is worth a round-trip, so
-    /// the refresh happens there and nowhere else.
-    private func resolvedPlaybackTarget(accessToken: String) async -> PlaybackTarget {
-        let target = Self.playbackTarget(
-            isInitialized: isInitialized,
-            activeDeviceId: store?.activeDeviceId,
-        )
-        guard target == .needsAuthorization else { return target }
-
-        // Captured before the request: a logout and a new login during it would replace the
-        // store, and writing this account's devices into the next one leaves a stale active
-        // device that suppresses the very refresh that would correct it.
-        let targetStore = store
-
-        if let response = try? await SpotifyAPI.fetchAvailableDevices(accessToken: accessToken),
-           let targetStore, targetStore === store
-        {
-            targetStore.upsertDevices(response.devices)
-        }
-
-        return Self.playbackTarget(
+    /// **There is no longer a device list to refresh before giving up.** This used to ask
+    /// `/me/player/devices` when it was about to answer "nowhere", because the device table is
+    /// pushed from the cluster and nothing pushes without a local session — so a phone that
+    /// started playing after launch was invisible until something asked.
+    ///
+    /// The cluster is now the only source, and it needs the dealer socket librespot holds, so
+    /// there is nothing left to ask. That narrows what this app can do for a user who declined
+    /// to enable playback on this Mac: with no session there are no devices, so playing to a
+    /// phone is no longer offered and `.needsAuthorization` is the honest answer. Enabling
+    /// playback is also the fix, which is what the alert already says.
+    private func resolvedPlaybackTarget() -> PlaybackTarget {
+        Self.playbackTarget(
             isInitialized: isInitialized,
             activeDeviceId: store?.activeDeviceId,
         )
@@ -524,12 +502,15 @@ final class PlaybackViewModel {
     /// With no Spirc session there are no playback or queue callbacks — a successful start
     /// would otherwise leave the now-playing bar showing whatever it showed before.
     private func startRemotely(
-        contextUri: String?,
-        uris: [String]?,
-        offsetIndex: Int?,
+        _ command: ConnectCommand,
         deviceId: String,
         accessToken: String,
     ) async {
+        guard let from = store?.connection?.deviceId, !from.isEmpty else {
+            errorMessage = String(localized: "error.no_playback_device")
+            return
+        }
+
         isLoading = true
         errorMessage = nil
 
@@ -538,13 +519,7 @@ final class PlaybackViewModel {
         let revisionAtStart = store?.liveStateRevision
 
         do {
-            try await SpotifyAPI.startPlayback(
-                contextUri: contextUri,
-                uris: uris,
-                offsetIndex: offsetIndex,
-                deviceId: deviceId,
-                accessToken: accessToken,
-            )
+            try await SpclientAPI().sendCommand(command, from: from, to: deviceId)
 
             // Let Spotify settle before asking what it thinks is playing.
             try? await Task.sleep(for: .milliseconds(600))
@@ -643,10 +618,10 @@ final class PlaybackViewModel {
         debugLog("PlaybackViewModel", "Reconciled queue current pointer to \(trackId)")
     }
 
-    // MARK: - Playback Control (via Spirc or Web API)
+    // MARK: - Playback Control (via Spirc or connect-state)
 
     /// Issues a transport command locally when Spotifly is the active device, and through
-    /// the Web API otherwise. Returns whether the command was issued at all.
+    /// connect-state otherwise. Returns whether the command was issued at all.
     ///
     /// The local branch is gated on the session being connected: during a reconnect Rust
     /// rejects commands, and the callers that move the UI optimistically must not do so for
@@ -657,11 +632,14 @@ final class PlaybackViewModel {
     /// `isActiveDevice` is two-valued and the cluster is not: Spotifly is active, another
     /// device is, or **nobody** is. The third state is reached routinely — waking from sleep
     /// gets there, because the sleep teardown shuts Spirc down and librespot's
-    /// `SessionDisconnected` handler clears the active flag — and the Web API cannot act on
-    /// it, so it answers 404 and the command silently does nothing. The local player can,
-    /// which is why that 404 falls back rather than being reported.
+    /// `SessionDisconnected` handler clears the active flag.
     ///
-    /// What the fallback recovers is **resume**, which is also the only one that needs
+    /// **That state used to be found out by asking**: the Web API answered 404 and the 404 was
+    /// caught. connect-state addresses the target in the *url*, so with nobody active there is
+    /// no url to build — the same condition, now a precondition instead of a round trip, and
+    /// one fewer request on a path the user is waiting on.
+    ///
+    /// What the local fallback recovers is **resume**, which is also the only one that needs
     /// recovering. `spotifly_resume` activates and reloads the saved context, so playback
     /// comes back where it stopped. The others reach an inactive Spirc, which drops them —
     /// and that is the right outcome rather than a gap to close: with nobody active there is
@@ -673,24 +651,26 @@ final class PlaybackViewModel {
     private func sendTransportCommand(
         _ name: String,
         local: @escaping () -> Void,
-        remote: @escaping (String) async throws -> Void,
+        remote: @escaping (_ from: String, _ to: String) async throws -> Void,
     ) -> Bool {
         guard SpotifyPlayer.isActiveDevice else {
+            guard let route = connectRoute() else {
+                // Nothing out there to command, so command ourselves. Rust takes the
+                // Connect role on the way through — `spotifly_resume` reloads the saved
+                // context and activates — which is what pressing a transport control
+                // with no device active asks for.
+                guard SpotifyPlayer.isSessionConnected else {
+                    debugLog("PlaybackViewModel", "\(name) dropped - no active device and session not connected")
+                    return false
+                }
+                debugLog("PlaybackViewModel", "\(name) had no active device - running locally")
+                local()
+                return true
+            }
+
             Task {
-                guard let token = await tokenProvider?() else { return }
                 do {
-                    try await remote(token)
-                } catch SpotifyAPIError.noActiveDevice {
-                    // Nothing out there to command, so command ourselves. Rust takes the
-                    // Connect role on the way through — `spotifly_resume` reloads the saved
-                    // context and activates — which is what pressing a transport control
-                    // with no device active asks for.
-                    guard SpotifyPlayer.isSessionConnected else {
-                        debugLog("PlaybackViewModel", "\(name) dropped - no active device and session not connected")
-                        return
-                    }
-                    debugLog("PlaybackViewModel", "\(name) had no active device - running locally")
-                    local()
+                    try await remote(route.from, route.to)
                 } catch {
                     errorMessage = error.localizedDescription
                 }
@@ -707,11 +687,25 @@ final class PlaybackViewModel {
         return true
     }
 
+    /// Who to address a connect-state command as, and to. Nil when nothing is active.
+    ///
+    /// `from` is our own device id. The backend does not validate that segment — it derives the
+    /// source from the session, which is why librespot's transfer passes its own id for both
+    /// sides — so this is an identifier for their logs rather than a routing decision.
+    private func connectRoute() -> (from: String, to: String)? {
+        guard let store,
+              let to = store.activeDeviceId, !to.isEmpty,
+              let from = store.connection?.deviceId, !from.isEmpty
+        else { return nil }
+
+        return (from, to)
+    }
+
     func next() {
         guard sendTransportCommand(
             "next()",
             local: { SpotifyPlayer.next() },
-            remote: { try await SpotifyAPI.skipToNext(accessToken: $0) },
+            remote: { try await SpclientAPI().sendCommand(.next, from: $0, to: $1) },
         ) else {
             return
         }
@@ -725,7 +719,7 @@ final class PlaybackViewModel {
         guard sendTransportCommand(
             "previous()",
             local: { SpotifyPlayer.previous() },
-            remote: { try await SpotifyAPI.skipToPrevious(accessToken: $0) },
+            remote: { try await SpclientAPI().sendCommand(.previous, from: $0, to: $1) },
         ) else {
             return
         }
@@ -749,7 +743,7 @@ final class PlaybackViewModel {
         sendTransportCommand(
             "pause()",
             local: { SpotifyPlayer.pause() },
-            remote: { try await SpotifyAPI.pausePlayback(accessToken: $0) },
+            remote: { try await SpclientAPI().sendCommand(.pause, from: $0, to: $1) },
         )
     }
 
@@ -757,7 +751,7 @@ final class PlaybackViewModel {
         guard sendTransportCommand(
             "resume()",
             local: { SpotifyPlayer.resume() },
-            remote: { try await SpotifyAPI.resumePlayback(accessToken: $0) },
+            remote: { try await SpclientAPI().sendCommand(.resume, from: $0, to: $1) },
         ) else {
             return
         }
@@ -775,7 +769,7 @@ final class PlaybackViewModel {
         sendTransportCommand(
             "toggleShuffle()",
             local: { SpotifyPlayer.setShuffle(targetShuffle) },
-            remote: { try await SpotifyAPI.setShuffle(accessToken: $0, enabled: targetShuffle) },
+            remote: { try await SpclientAPI().sendCommand(.shuffle(targetShuffle), from: $0, to: $1) },
         )
     }
 
@@ -1165,7 +1159,7 @@ final class PlaybackViewModel {
         let issued = sendTransportCommand(
             "performSeek",
             local: { SpotifyPlayer.seek(positionMs: positionMs) },
-            remote: { try await SpotifyAPI.seekToPosition(accessToken: $0, positionMs: Int(positionMs)) },
+            remote: { try await SpclientAPI().sendCommand(.seek(toMs: Int(positionMs)), from: $0, to: $1) },
         )
 
         // seek(to:) already moved the anchor so scrubbing feels immediate. If Rust rejected
@@ -1537,9 +1531,13 @@ final class PlaybackViewModel {
                     SpotifyPlayer.setVolume(newVolume)
                 } else {
                     let percent = Int((newVolume * 100).rounded())
-                    Task { [weak self] in
-                        guard let token = await self?.tokenProvider?() else { return }
-                        try? await SpotifyAPI.setVolume(accessToken: token, percent: percent)
+                    guard let route = connectRoute() else { return }
+                    Task {
+                        try? await SpclientAPI().setVolume(
+                            percent: percent,
+                            from: route.from,
+                            to: route.to,
+                        )
                     }
                 }
             }

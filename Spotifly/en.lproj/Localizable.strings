@@ -88,6 +88,7 @@
 "error.remove_from_queue" = "Failed to remove track from queue";
 "error.reorder_queue" = "Failed to reorder queue";
 "error.clear_queue" = "Failed to clear queue";
+"error.no_playback_device" = "This Mac is not connected to Spotify, so it cannot start playback elsewhere";
 
 /* Empty States */
 "empty.select_item" = "Select an item from the sidebar";
