@@ -133,6 +133,14 @@ authorize different accounts, which `rework-auth` had to add a guard for.
   what the favorites list needs to stay live: identifier, `removed`, `addedAt`. Subscribing to
   it is likely cheaper than polling `/me/tracks`, and it is the mechanism the real client uses.
 
+  How much polling it would replace is now measured. In a run on 2026-08-13 the Now Playing bar
+  sent **seven identical `/me/tracks/contains` requests for one track in under two minutes**,
+  while that track played continuously — `.task(id: currentTrackId)` re-firing on view
+  re-creation, into `refreshFavoriteStatuses`, which ignores the resolved cache by design. That
+  is a pre-existing defect rather than migration fallout, and worth fixing on its own; but it is
+  also the shape of the thing the feed removes, so do not port the polling to the client's own
+  API before deciding whether to keep polling at all.
+
 - **Re-derive the track-relinking rules for the new endpoints.** `CLAUDE.md` documents them
   for the Web API, where `market` decides whether you get the track you asked for or a playable
   alternative, and where the identity rule (logical id owns store keys, favorites, queue
