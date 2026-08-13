@@ -19,7 +19,6 @@ extension Notification.Name {
 }
 
 struct QueueListView: View {
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
@@ -219,18 +218,13 @@ struct QueueListView: View {
                         playbackViewModel: playbackViewModel,
                         currentSection: .queue,
                         onDoubleTap: {
-                            let token = await session.validAccessToken()
                             if let contextUri = store.queue.contextUri {
                                 await playbackViewModel.play(
                                     uriOrUrl: contextUri,
                                     trackIndex: index,
-                                    accessToken: token,
                                 )
                             } else {
-                                await playbackViewModel.play(
-                                    uriOrUrl: item.track.uri,
-                                    accessToken: token,
-                                )
+                                await playbackViewModel.play(uriOrUrl: item.track.uri)
                             }
                         },
                     )

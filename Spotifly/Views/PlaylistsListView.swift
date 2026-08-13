@@ -197,7 +197,6 @@ struct PlaylistRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
 
-    @Environment(SpotifySession.self) private var session
     @Environment(\.displayScale) private var displayScale
     @State private var isHovering = false
 
@@ -244,8 +243,7 @@ struct PlaylistRow: View {
             if isHovering {
                 Button {
                     Task {
-                        let token = await session.validAccessToken()
-                        await playbackViewModel.play(uriOrUrl: playlist.uri, accessToken: token)
+                        await playbackViewModel.play(uriOrUrl: playlist.uri)
                     }
                 } label: {
                     Image(systemName: "play.fill")

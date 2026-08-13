@@ -12,7 +12,6 @@ struct AlbumDetailView: View {
     let albumId: String
 
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
     @Environment(TrackService.self) private var trackService
@@ -194,11 +193,9 @@ struct AlbumDetailView: View {
                                 currentSection: .albums,
                                 selectionId: albumId,
                                 onDoubleTap: {
-                                    let token = await session.validAccessToken()
                                     await playbackViewModel.play(
                                         uriOrUrl: album.uri,
                                         trackIndex: index,
-                                        accessToken: token,
                                     )
                                 },
                             )
@@ -246,10 +243,9 @@ struct AlbumDetailView: View {
     private func playAllTracks() {
         guard let album else { return }
         Task {
-            let token = await session.validAccessToken()
             // Use album URI to load via Spirc.load(LoadRequest::from_context_uri())
             // This properly loads the album context instead of individual tracks
-            await playbackViewModel.play(uriOrUrl: album.uri, accessToken: token)
+            await playbackViewModel.play(uriOrUrl: album.uri)
         }
     }
 

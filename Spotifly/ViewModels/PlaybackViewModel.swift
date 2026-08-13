@@ -109,8 +109,6 @@ final class PlaybackViewModel {
     private let seekSubject = PassthroughSubject<UInt32, Never>()
     /// Subscription for debounced seek operations
     private var seekSubscription: AnyCancellable?
-    /// Token provider for reinitialization after session disconnect
-    private var tokenProvider: (@Sendable () async -> String)?
     /// The in-flight initialization or restart, so concurrent callers coalesce onto one
     private var initializationTask: Task<Void, Never>?
 
@@ -155,11 +153,6 @@ final class PlaybackViewModel {
 
         // Start position update timer
         startPositionTimer()
-    }
-
-    /// Sets the token provider for automatic reinitialization after session disconnect.
-    func setTokenProvider(_ provider: @escaping @Sendable () async -> String) {
-        tokenProvider = provider
     }
 
     /// Tears down and rebuilds the player even if it is already initialized.
@@ -359,7 +352,7 @@ final class PlaybackViewModel {
         return .needsAuthorization
     }
 
-    func play(uriOrUrl: String, trackIndex: Int = -1, accessToken: String) async {
+    func play(uriOrUrl: String, trackIndex: Int = -1) async {
         // Initialize if needed
         if !isInitialized {
             await initializeIfNeeded()
@@ -385,7 +378,6 @@ final class PlaybackViewModel {
             await startRemotely(
                 .play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex),
                 deviceId: deviceId,
-                accessToken: accessToken,
             )
 
         case .needsAuthorization:
@@ -393,11 +385,11 @@ final class PlaybackViewModel {
         }
     }
 
-    func playTrack(trackId: String, accessToken: String) async {
-        await play(uriOrUrl: "spotify:track:\(trackId)", accessToken: accessToken)
+    func playTrack(trackId: String) async {
+        await play(uriOrUrl: "spotify:track:\(trackId)")
     }
 
-    func playTracks(_ trackUris: [String], accessToken: String) async {
+    func playTracks(_ trackUris: [String]) async {
         // Initialize if needed
         if !isInitialized {
             await initializeIfNeeded()
@@ -426,7 +418,6 @@ final class PlaybackViewModel {
             await startRemotely(
                 .play(trackUris: trackUris),
                 deviceId: deviceId,
-                accessToken: accessToken,
             )
 
         case .needsAuthorization:
@@ -504,7 +495,6 @@ final class PlaybackViewModel {
     private func startRemotely(
         _ command: ConnectCommand,
         deviceId: String,
-        accessToken _: String,
     ) async {
         guard let from = store?.connection?.deviceId, !from.isEmpty else {
             errorMessage = String(localized: "error.no_playback_device")
@@ -534,7 +524,7 @@ final class PlaybackViewModel {
         isLoading = false
     }
 
-    func addToQueue(uri: String, accessToken _: String) async {
+    func addToQueue(uri: String) async {
         // Initialize if needed
         if !isInitialized {
             await initializeIfNeeded()
@@ -566,7 +556,7 @@ final class PlaybackViewModel {
         // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackUri changes
     }
 
-    func togglePlayPause(trackId: String, accessToken: String) async {
+    func togglePlayPause(trackId: String) async {
         if isPlaying, currentTrackUri == trackId {
             // Route through pause() rather than calling the FFI directly: it carries the
             // connectivity guard and the Web API fallback for remote devices, and it
@@ -576,7 +566,7 @@ final class PlaybackViewModel {
             resume()
         } else {
             // Play new track
-            await playTrack(trackId: trackId, accessToken: accessToken)
+            await playTrack(trackId: trackId)
         }
     }
 

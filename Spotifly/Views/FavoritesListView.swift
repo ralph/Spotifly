@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct FavoritesListView: View {
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
     @Bindable var playbackViewModel: PlaybackViewModel
@@ -64,11 +63,9 @@ struct FavoritesListView: View {
                                 playbackViewModel: playbackViewModel,
                                 currentSection: .favorites,
                                 onDoubleTap: {
-                                    let token = await session.validAccessToken()
                                     await playbackViewModel.play(
                                         uriOrUrl: "spotify:collection:tracks",
                                         trackIndex: index,
-                                        accessToken: token,
                                     )
                                 },
                             )

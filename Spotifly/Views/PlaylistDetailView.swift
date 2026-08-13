@@ -12,7 +12,6 @@ struct PlaylistDetailView: View {
     let playlistId: String
 
     @Bindable var playbackViewModel: PlaybackViewModel
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
     @Environment(PlaylistService.self) private var playlistService
@@ -287,11 +286,9 @@ struct PlaylistDetailView: View {
             selectionId: playlistId,
             onDoubleTap: {
                 guard let uri = playlist?.uri else { return }
-                let token = await session.validAccessToken()
                 await playbackViewModel.play(
                     uriOrUrl: uri,
                     trackIndex: index,
-                    accessToken: token,
                 )
             },
         )
@@ -317,7 +314,6 @@ struct PlaylistDetailView: View {
                         errorMessage: $errorMessage,
                         store: store,
                         playlistService: playlistService,
-                        session: session,
                     ),
                 )
         } else {
@@ -415,10 +411,9 @@ struct PlaylistDetailView: View {
     private func playAllTracks() {
         guard let playlist else { return }
         Task {
-            let token = await session.validAccessToken()
             // Use playlist URI to load via Spirc.load(LoadRequest::from_context_uri())
             // This properly loads the playlist context instead of individual tracks
-            await playbackViewModel.play(uriOrUrl: playlist.uri, accessToken: token)
+            await playbackViewModel.play(uriOrUrl: playlist.uri)
         }
     }
 }
@@ -434,7 +429,6 @@ struct PlaylistReorderDropDelegate: DropDelegate {
     @Binding var errorMessage: String?
     let store: AppStore
     let playlistService: PlaylistService
-    let session: SpotifySession
 
     /// Sends the move the user just made, expressed in uids.
     ///

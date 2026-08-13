@@ -11,7 +11,6 @@ struct SearchAllTracksView: View {
     let trackIds: [String]
     @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(AppStore.self) private var store
-    @Environment(SpotifySession.self) private var session
     @Environment(TrackService.self) private var trackService
 
     private var tracks: [Track] {
@@ -94,11 +93,7 @@ struct SearchAllTracksView: View {
 
     private func playAllTracks() {
         Task {
-            let token = await session.validAccessToken()
-            await playbackViewModel.playTracks(
-                tracks.map(\.uri),
-                accessToken: token,
-            )
+            await playbackViewModel.playTracks(tracks.map(\.uri))
         }
     }
 }

@@ -15,7 +15,6 @@ struct TrackContextMenu: View {
     @Bindable var playbackViewModel: PlaybackViewModel
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
     @Environment(PlaylistService.self) private var playlistService
@@ -78,7 +77,6 @@ struct TrackContextMenu: View {
             }
 
             PlaylistSubmenuContent(
-                session: session,
                 store: store,
                 playlistService: playlistService,
                 onAddToPlaylist: addToPlaylist,
@@ -138,11 +136,7 @@ struct TrackContextMenu: View {
 
     private func addToQueue() {
         Task {
-            let token = await session.validAccessToken()
-            await playbackViewModel.addToQueue(
-                uri: track.uri,
-                accessToken: token,
-            )
+            await playbackViewModel.addToQueue(uri: track.uri)
         }
     }
 
@@ -216,7 +210,6 @@ extension TrackContextMenu {
 
 /// A view that loads playlists on-demand when the submenu appears
 private struct PlaylistSubmenuContent: View {
-    let session: SpotifySession
     let store: AppStore
     let playlistService: PlaylistService
     let onAddToPlaylist: (String) -> Void

@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct SpeakersView: View {
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
     @Environment(AuthViewModel.self) private var authViewModel

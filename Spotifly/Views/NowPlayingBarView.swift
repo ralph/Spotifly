@@ -9,7 +9,6 @@ import AppKit
 import SwiftUI
 
 struct NowPlayingBarView: View {
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService

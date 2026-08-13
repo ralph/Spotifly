@@ -53,8 +53,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 async let home: () = homeService.loadHome()
                 _ = await (profile, home)
 
-                playbackViewModel.setTokenProvider { await session.validAccessToken() }
-
                 await playbackViewModel.initializeIfNeeded()
                 await queueService.fetchInitialPlaybackState()
             }
