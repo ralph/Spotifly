@@ -526,46 +526,6 @@ struct SavedTracksCodable: Decodable {
 // Check saved tracks (returns array of bools)
 // Note: This is just [Bool], decoded directly
 
-/// Album tracks
-struct AlbumTracksCodable: Decodable {
-    let items: [AlbumTrackItemCodable]
-
-    struct AlbumTrackItemCodable: Decodable {
-        let id: String
-        let name: String
-        let uri: String
-        let durationMs: Int
-        let trackNumber: Int?
-        let artists: [ArtistCodable]?
-        let externalUrls: ExternalUrlsCodable?
-
-        enum CodingKeys: String, CodingKey {
-            case id, name, uri, artists
-            case durationMs = "duration_ms"
-            case trackNumber = "track_number"
-            case externalUrls = "external_urls"
-        }
-
-        func toAPITrack(albumId: String, albumName: String?, images: ImageSet) -> APITrack {
-            let artist = artists?.first
-            return APITrack(
-                id: id,
-                addedAt: nil,
-                albumId: albumId,
-                albumName: albumName,
-                artistId: artist?.id,
-                artistName: artist?.name ?? "Unknown",
-                durationMs: durationMs,
-                externalUrl: externalUrls?.spotify,
-                images: images,
-                name: name,
-                trackNumber: trackNumber,
-                uri: uri,
-            )
-        }
-    }
-}
-
 /// Playlist items
 struct PlaylistItemsCodable: Decodable {
     let items: [PlaylistItemWrapperCodable]

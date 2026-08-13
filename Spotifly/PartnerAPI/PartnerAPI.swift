@@ -128,12 +128,36 @@ nonisolated struct PartnerAPI: Sendable {
         return response.results?.playlists?.entities ?? []
     }
 
+    // MARK: - Album
+
+    /// An album's details *and* its track list, in one request.
+    ///
+    /// The Web API needed two — `/albums/{id}` and `/albums/{id}/tracks` — and this replaces
+    /// both. spclient can also answer albums, but its `disc[].track[]` entries carry a `gid`
+    /// and nothing else, so rendering one album would cost a request per track; measured
+    /// against Discovery, that is fifteen requests instead of one.
+    func album(id: String) async throws -> PathfinderAlbumUnion {
+        let response: PathfinderAlbumResponse = try await query(
+            .getAlbum,
+            variables: PathfinderAlbumVariables(uri: "spotify:album:\(id)"),
+        )
+
+        guard let album = response.data?.albumUnion else {
+            throw PartnerAPIError.emptyPayload
+        }
+
+        return album
+    }
+
     // MARK: - Transport
 
-    func query<Payload: Decodable & Sendable>(
+    /// Generic over the whole envelope rather than over a search payload: `getAlbum` answers
+    /// with `data.albumUnion`, not `data.searchV2`, so the shape below `data` is the
+    /// operation's business. Search call sites name `PathfinderResponse<…>` and are unchanged.
+    func query<Envelope: Decodable & Sendable>(
         _ operation: PathfinderOperation,
         variables: some Encodable & Sendable,
-    ) async throws -> PathfinderResponse<Payload> {
+    ) async throws -> Envelope {
         let request = try await makeRequest(operation, variables: variables)
 
         debugLog("PartnerAPI", "[POST] \(Self.endpoint.absoluteString) \(operation.name)")
@@ -192,10 +216,10 @@ nonisolated struct PartnerAPI: Sendable {
     /// GraphQL reports failure in the body with a 200, so the payload has to be inspected even
     /// on success. A retired persisted query is called out by name, because that is the failure
     /// this design invites and "Spotify returned an error" would send the next person hunting.
-    func decode<Payload: Decodable & Sendable>(
+    func decode<Envelope: Decodable & Sendable>(
         _ data: Data,
         operation: PathfinderOperation,
-    ) throws -> PathfinderResponse<Payload> {
+    ) throws -> Envelope {
         if let envelope = try? JSONDecoder().decode(PathfinderErrorEnvelope.self, from: data),
            let errors = envelope.errors,
            !errors.isEmpty
@@ -210,6 +234,6 @@ nonisolated struct PartnerAPI: Sendable {
             throw PartnerAPIError.graphQLErrors(errors.compactMap(\.message))
         }
 
-        return try JSONDecoder().decode(PathfinderResponse<Payload>.self, from: data)
+        return try JSONDecoder().decode(Envelope.self, from: data)
     }
 }

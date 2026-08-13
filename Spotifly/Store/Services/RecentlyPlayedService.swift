@@ -16,8 +16,13 @@ final class RecentlyPlayedService {
     /// Configuration
     private let recentlyPlayedLimit = 30
 
-    init(store: AppStore) {
+    /// Album reads run on the keymaster grant through `PartnerAPI`, which holds that token
+    /// itself; the rest of this service is still on the Web API token passed in per call.
+    private let partnerAPI: PartnerAPI
+
+    init(store: AppStore, partnerAPI: PartnerAPI = PartnerAPI()) {
         self.store = store
+        self.partnerAPI = partnerAPI
     }
 
     // MARK: - Loading
@@ -113,23 +118,22 @@ final class RecentlyPlayedService {
                 }
             }
 
-            // Fetch album details concurrently (return raw API response)
-            let fetchedAlbumResponses = await withTaskGroup(of: (id: String, album: APIAlbum?).self) { group in
+            // Fetch album details concurrently. `getAlbum` answers with the album's tracks
+            // beside it, which this strip does not need but also does not pay for twice —
+            // storing them means opening one of these albums needs no request at all.
+            let partnerAPI = partnerAPI
+            let fetchedAlbumResponses = await withTaskGroup(of: (id: String, album: PathfinderAlbumUnion?).self) { group in
                 for albumId in albumIdsToFetch {
                     group.addTask {
                         do {
-                            let albumDetails = try await SpotifyAPI.fetchAlbumDetails(
-                                accessToken: accessToken,
-                                albumId: albumId,
-                            )
-                            return (albumId, albumDetails)
+                            return try await (albumId, partnerAPI.album(id: albumId))
                         } catch {
                             return (albumId, nil)
                         }
                     }
                 }
 
-                var results: [String: APIAlbum] = [:]
+                var results: [String: PathfinderAlbumUnion] = [:]
                 for await (id, album) in group {
                     if let album {
                         results[id] = album
@@ -140,9 +144,11 @@ final class RecentlyPlayedService {
 
             // Convert to entities on main actor and store
             var fetchedAlbums: [String: Album] = [:]
-            for (id, searchAlbum) in fetchedAlbumResponses {
-                let album = Album(from: searchAlbum)
+            for (id, union) in fetchedAlbumResponses {
+                guard let (album, tracks) = union.entities() else { continue }
+
                 fetchedAlbums[id] = album
+                store.upsertTracks(tracks)
             }
             store.upsertAlbums(Array(fetchedAlbums.values))
 

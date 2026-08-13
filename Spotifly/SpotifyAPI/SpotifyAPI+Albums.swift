@@ -8,44 +8,6 @@
 import Foundation
 
 extension SpotifyAPI {
-    // MARK: - Album Details
-
-    /// Fetches a single album's details from Spotify Web API
-    static func fetchAlbumDetails(accessToken: String, albumId: String) async throws -> APIAlbum {
-        let urlString = "\(baseURL)/albums/\(albumId)?fields=id,name,uri,total_tracks,release_date,album_type,artists(id,name),images,tracks(items(duration_ms)),external_urls(spotify)"
-
-        debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let album = try JSONDecoder().decode(AlbumCodable.self, from: data)
-                return album.toAPIAlbum()
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 404:
-            throw SpotifyAPIError.notFound
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
-
     // MARK: - User's Saved Albums
 
     /// Fetches user's saved albums from Spotify Web API

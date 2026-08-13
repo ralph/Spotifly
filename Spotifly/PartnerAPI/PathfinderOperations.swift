@@ -21,12 +21,16 @@ import Foundation
 /// libspot checkout (`pathfinder/pfrequest/operations.go`), which is the upstream to watch when
 /// something stops resolving.
 ///
-/// If copying from libspot ever stops being enough, they can be harvested directly: load
-/// `open.spotify.com` in a browser, and either read them off the network tab — every
-/// `api-partner` request carries `extensions.persistedQuery.sha256Hash` next to its
-/// `operationName` — or pull the xpui JavaScript bundles and grep for the operation name, which
-/// appears beside its hash in the generated query map. That is how they enter libspot in the
-/// first place, and it is worth doing directly only if this list falls behind.
+/// **When libspot is not enough**, harvest them from the live web client:
+/// `libspot-probe/harvest-hashes.sh [pattern]` fetches the current bundle and prints every
+/// operation with its hash. That is already necessary rather than hypothetical — `getAlbum`
+/// came from there, because libspot declares the operation and then panics.
+///
+/// A harvested hash is a *candidate* until the service answers it. The web client's search
+/// hashes differ from the libspot ones below and both work today, so the two sources are simply
+/// different releases: newer does not mean the older one is dead. libspot's were vendored on
+/// 2026-05-22 and were still being accepted twelve weeks later, which is the useful thing to
+/// know about how fast these actually rot.
 nonisolated struct PathfinderOperation: Sendable, Equatable {
     let name: String
     let sha256Hash: String
@@ -50,6 +54,34 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
         name: "searchPlaylists",
         sha256Hash: "af1730623dc1248b75a61a18bad1f47f1fc7eff802fb0676683de88815c958d8",
     )
+
+    /// Album details *and* its track list in one response — the whole album view.
+    ///
+    /// **Harvested from the web client, not from libspot**, which is the first operation here
+    /// that had to be: libspot declares `OpGetAlbum` and then falls through to
+    /// `panic("not implemented")`, so there was nothing to copy. Taken on 2026-08-13 from
+    /// `open.spotifycdn.com/cdn/build/web-player/web-player.765d5916.js`, where every operation
+    /// is constructed as `new n.l(name, "query", sha256Hash, null)` — grep that shape for the
+    /// operation name. Verified against the live service before use, which matters more than
+    /// where it came from: the web client's *search* hashes differ from the libspot ones above
+    /// and both are currently accepted, so a bundle and a checkout are simply two releases.
+    static let getAlbum = PathfinderOperation(
+        name: "getAlbum",
+        sha256Hash: "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10",
+    )
+}
+
+/// The variables `getAlbum` takes.
+///
+/// `limit` is what the web client sets to 300 for an album track list, and no album approaches
+/// that. Paging is deliberately not implemented: the response reports `totalCount`, so a short
+/// read is detectable rather than silent, and whether `offset` is honoured by this document was
+/// not measured — building a paging loop on an unverified offset risks repeating a page forever.
+nonisolated struct PathfinderAlbumVariables: Encodable, Sendable {
+    var uri: String
+    var locale: String = ""
+    var offset: Int = 0
+    var limit: Int = 300
 }
 
 /// The variables every search operation takes.

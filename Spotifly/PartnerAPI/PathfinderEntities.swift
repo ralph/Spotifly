@@ -76,6 +76,103 @@ extension Album {
     }
 }
 
+extension PathfinderAlbumUnion {
+    /// The store entities this album resolves to: the album itself, and its tracks in order.
+    ///
+    /// One place rather than two, because the album and its tracks have to agree — the album's
+    /// `trackIds` are the ids of exactly the tracks returned beside it, and a track id the
+    /// store has no track for is a row the album view cannot render. Both the album screen and
+    /// the recently-played strip go through here.
+    func entities() -> (album: Album, tracks: [Track])? {
+        guard let albumId = id else { return nil }
+
+        // Built first, because the album's track ids are whichever of these survived.
+        let images = ImageSet(pathfinderSources: coverArt?.sources)
+        let albumTracks = tracks.compactMap {
+            Track(
+                pathfinderAlbumTrack: $0,
+                albumId: albumId,
+                albumName: name,
+                images: images,
+            )
+        }
+
+        guard let album = Album(
+            pathfinderUnion: self,
+            trackIds: albumTracks.map(\.id),
+            totalDurationMs: albumTracks.reduce(0) { $0 + $1.durationMs },
+        ) else {
+            return nil
+        }
+
+        return (album, albumTracks)
+    }
+}
+
+extension Album {
+    /// An album from `getAlbum`, with its track list already resolved.
+    ///
+    /// Takes `trackIds` rather than deriving them, because the caller stores the tracks and has
+    /// to agree with this about which ones made it in — an id here that `AppStore` has no track
+    /// for is a row the album view cannot render.
+    init?(pathfinderUnion album: PathfinderAlbumUnion, trackIds: [String], totalDurationMs: Int?) {
+        guard let id = album.id, let uri = album.uri else { return nil }
+
+        let artist = album.firstArtist
+
+        self.init(
+            id: id,
+            name: album.name ?? "",
+            uri: uri,
+            images: ImageSet(pathfinderSources: album.coverArt?.sources),
+            releaseDate: album.date?.day,
+            // `ALBUM`, `SINGLE`, `COMPILATION` — the Web API's lowercase spelling is what the
+            // views compare against.
+            albumType: album.type?.lowercased(),
+            externalUrl: nil,
+            artistId: artist?.id ?? artist?.uri.flatMap(SpotifyURI.id(from:)),
+            artistName: artist?.profile?.name ?? "Unknown",
+            trackIds: trackIds,
+            totalDurationMs: totalDurationMs,
+            // Nil rather than the reported total: the tracks are here, so the views count them
+            // instead of trusting a number that could disagree with the rows on screen.
+            knownTrackCount: nil,
+            detailsLoaded: true,
+            tracksLoaded: true,
+        )
+    }
+}
+
+extension Track {
+    /// One track of an album.
+    ///
+    /// The album context is passed in because the track carries none — `getAlbum` returns the
+    /// album once and its tracks beneath it, so repeating the cover art on every track would be
+    /// the response saying the same thing twenty times.
+    init?(
+        pathfinderAlbumTrack track: PathfinderAlbumTrack,
+        albumId: String,
+        albumName: String?,
+        images: ImageSet,
+    ) {
+        guard let id = track.id, let uri = track.uri else { return nil }
+
+        self.init(
+            id: id,
+            name: track.name ?? "",
+            uri: uri,
+            durationMs: track.duration?.totalMilliseconds ?? 0,
+            trackNumber: track.trackNumber,
+            externalUrl: nil,
+            albumId: albumId,
+            artistId: track.firstArtistId,
+            artistName: track.artistNames.first ?? "Unknown",
+            albumName: albumName,
+            images: images,
+        )
+    }
+}
+
 extension Artist {
     init?(pathfinder artist: PathfinderArtist) {
         guard let id = artist.id, let uri = artist.uri else { return nil }

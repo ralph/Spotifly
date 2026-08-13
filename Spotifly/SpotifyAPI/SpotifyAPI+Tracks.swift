@@ -160,49 +160,6 @@ extension SpotifyAPI {
         }
     }
 
-    // MARK: - Album Tracks
-
-    /// Fetches tracks for a specific album
-    static func fetchAlbumTracks(
-        accessToken: String,
-        albumId: String,
-        albumName: String? = nil,
-        images: ImageSet = ImageSet.empty,
-    ) async throws -> [APITrack] {
-        let urlString = "\(baseURL)/albums/\(albumId)/tracks?limit=50&fields=items(id,name,uri,duration_ms,track_number,artists(id,name),external_urls(spotify))&market=from_token"
-
-        debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let decoded = try JSONDecoder().decode(AlbumTracksCodable.self, from: data)
-                return decoded.items.map { $0.toAPITrack(albumId: albumId, albumName: albumName, images: images) }
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 404:
-            throw SpotifyAPIError.notFound
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
-
     // MARK: - Playlist Tracks
 
     /// Fetches tracks for a specific playlist, paginating through all items

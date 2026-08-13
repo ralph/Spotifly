@@ -233,7 +233,25 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       may be reported as an absent track, since `TrackService` remembers absences permanently.
       Removed what it orphaned: `fetchTrack`, `fetchTracks`, the `/v1/tracks` envelope, and the
       unreachable `TrackLookupViewModel`.
-- [ ] **Task 9: Albums** (5) and **Task 10: Artists** (6).
+- [x] **Task 9: Albums** — the album *view*: details and tracks, through pathfinder `getAlbum`,
+      one request replacing `/albums/{id}` and `/albums/{id}/tracks`. spclient was measured and
+      rejected: `metadata/4/album` gives `disc[].track[]` entries holding a bare `gid`, so one
+      album would cost a request per track. First hash that could not be vendored — libspot
+      declares `OpGetAlbum` and panics — so it was harvested from the web bundle and verified
+      live; `libspot-probe/harvest-hashes.sh` makes that repeatable. Identity path: album
+      tracks carry a `uri` and no `id`, and pathfinder *does* expose `relinkingInformation`
+      here, unlike search — deliberately not decoded, since the id already is the market id.
+      `RecentlyPlayedService` moved to the same call. Removed `fetchAlbumDetails`,
+      `fetchAlbumTracks` and `AlbumTracksCodable`.
+
+      **Re-scoped by surface rather than by file.** The other three call sites in
+      `SpotifyAPI+Albums.swift` belong to other screens and move with them: `fetchArtistAlbums`
+      with task 10, and `fetchUserAlbums` plus the save/remove writes with task 12. Grouping by
+      file would have meant porting the artist page's discography before the artist page.
+
+- [ ] **Task 10: Artists** (6), plus `fetchArtistAlbums`. Candidate operations already
+      harvested: `queryArtistOverview` (`ae0e2958…`) and `queryArtistDiscographyAll`
+      (`5e07d323…`), both unverified.
 - [ ] **Task 11: Playlists** (9), including the write paths.
 - [ ] **Task 12: User/library** (2) and the saved-tracks writes.
 

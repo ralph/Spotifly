@@ -18,6 +18,11 @@ final class AlbumService {
     /// costs nothing.
     private let tokenProvider: () async -> String
 
+    /// The album reads, which no longer take a token: `PartnerAPI` runs on the keymaster grant
+    /// and holds it itself. `tokenProvider` is the Web API's, still needed by the library
+    /// paths below. Injectable so tests can drive the service without a network.
+    private let partnerAPI: PartnerAPI
+
     /// One run per album ID — see `InFlightRequests`.
     private let albumRequests = InFlightRequests<Void>()
 
@@ -25,9 +30,14 @@ final class AlbumService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-albums"
 
-    init(store: AppStore, tokenProvider: @escaping () async -> String) {
+    init(
+        store: AppStore,
+        tokenProvider: @escaping () async -> String,
+        partnerAPI: PartnerAPI = PartnerAPI(),
+    ) {
         self.store = store
         self.tokenProvider = tokenProvider
+        self.partnerAPI = partnerAPI
     }
 
     // MARK: - User Albums
@@ -104,7 +114,7 @@ final class AlbumService {
         guard needsLoad(albumId) else { return }
 
         try await albumRequests.run(albumId) {
-            try await self.loadAlbum(albumId: albumId, accessToken: self.tokenProvider())
+            try await self.loadAlbum(albumId: albumId)
         }
     }
 
@@ -113,52 +123,28 @@ final class AlbumService {
         return !album.detailsLoaded || !album.tracksLoaded
     }
 
-    private func loadAlbum(albumId: String, accessToken: String) async throws {
-        // Re-checked inside the run: a caller can arrive just as another run finishes.
-        guard let known = store.albums[albumId], known.detailsLoaded else {
-            // Nothing usable in the store — metadata and tracks both have to come down.
-            async let detailsTask = SpotifyAPI.fetchAlbumDetails(
-                accessToken: accessToken,
-                albumId: albumId,
-            )
-            async let tracksTask = SpotifyAPI.fetchAlbumTracks(
-                accessToken: accessToken,
-                albumId: albumId,
-            )
-            let (details, albumTracks) = try await (detailsTask, tracksTask)
+    /// Loads an album and its tracks in **one** request.
+    ///
+    /// The Web API needed two, and the two-branch shape this replaces existed to skip the
+    /// details half when the store already had them. `getAlbum` returns details and tracks
+    /// together, so there is no half to skip — an album whose details are cached but whose
+    /// tracks are not costs the same request either way, and asking once is simpler than
+    /// arranging not to.
+    private func loadAlbum(albumId: String) async throws {
+        let union = try await partnerAPI.album(id: albumId)
 
-            let album = Album(from: details)
-            store.upsertAlbum(album)
-            storeTracks(albumTracks, for: album)
-            return
+        guard let (album, tracks) = union.entities() else {
+            throw PartnerAPIError.emptyPayload
         }
 
-        guard !known.tracksLoaded else { return }
-
-        let albumTracks = try await SpotifyAPI.fetchAlbumTracks(
-            accessToken: accessToken,
-            albumId: albumId,
-        )
-        storeTracks(albumTracks, for: known)
-    }
-
-    /// Stores an album's tracks and marks the album's track list as loaded.
-    /// The album tracks endpoint omits album context, so it is filled in here.
-    private func storeTracks(_ albumTracks: [APITrack], for album: Album) {
-        let tracks = albumTracks.map { albumTrack in
-            Track(
-                from: albumTrack,
-                albumId: album.id,
-                albumName: album.name,
-                images: album.images,
-            )
-        }
+        store.upsertAlbum(album)
         store.upsertTracks(tracks)
-        store.setAlbumTracks(
-            tracks.map(\.id),
-            totalDurationMs: tracks.reduce(0) { $0 + $1.durationMs },
-            for: album.id,
-        )
+
+        // `getAlbum` reports how many tracks the album has, and the request does not page. A
+        // short read would otherwise be a silently truncated album.
+        if let total = union.tracksV2?.totalCount, total > tracks.count {
+            debugLog("AlbumService", "album \(albumId) returned \(tracks.count) of \(total) tracks")
+        }
     }
 
     // MARK: - Library Management
