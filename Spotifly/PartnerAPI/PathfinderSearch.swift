@@ -26,15 +26,40 @@ nonisolated struct PathfinderResponse<Payload: Decodable & Sendable>: Decodable,
     }
 }
 
-/// A page of results. `items[].item.data` is the entity; the two wrappers carry match metadata
-/// this app does not use.
+/// A page of results.
+///
+/// **The item shape is not the same across operations**, which is measured rather than assumed:
+/// `searchTracks` returns `items[].item.data`, with an `item` wrapper carrying `matchedFields`
+/// alongside, while `searchAlbums`, `searchArtists` and `searchPlaylists` return `items[].data`
+/// directly. Requiring the wrapper everywhere is what silently emptied three of the four
+/// categories while tracks worked perfectly.
+///
+/// Both are accepted rather than switched on per operation: the difference belongs to Spotify's
+/// stored queries, and a fifth operation is as likely to take either form.
 nonisolated struct PathfinderItems<Item: Decodable & Sendable>: Decodable, Sendable {
     struct Matched: Decodable, Sendable {
         struct Wrapper: Decodable, Sendable {
             let data: Item?
         }
 
-        let item: Wrapper?
+        let entity: Item?
+
+        private enum CodingKeys: String, CodingKey {
+            case data
+            case item
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+
+            if let direct = try? container.decode(Item.self, forKey: .data) {
+                entity = direct
+            } else if let wrapped = try? container.decode(Wrapper.self, forKey: .item) {
+                entity = wrapped.data
+            } else {
+                entity = nil
+            }
+        }
     }
 
     let items: [Matched]?
@@ -42,7 +67,7 @@ nonisolated struct PathfinderItems<Item: Decodable & Sendable>: Decodable, Senda
 
     /// The entities, with anything unreadable dropped rather than failing the whole page.
     var entities: [Item] {
-        (items ?? []).compactMap(\.item?.data)
+        (items ?? []).compactMap(\.entity)
     }
 }
 

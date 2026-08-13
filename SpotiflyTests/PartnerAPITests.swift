@@ -133,10 +133,11 @@ struct PathfinderResponseTests {
     }
 
     @Test func `albums derive an id from the uri, since search results carry none`() async throws {
+        // items[].data, with no `item` wrapper — unlike tracks. Taken from a live response.
         let album = """
-        {"item":{"data":{"__typename":"AlbumV2","uri":"spotify:album:al1","name":"Discovery",
+        {"data":{"__typename":"AlbumV2","uri":"spotify:album:al1","name":"Discovery",
         "date":{"year":2001},"artists":{"items":[{"uri":"spotify:artist:a1","profile":{"name":"Daft Punk"}}]},
-        "coverArt":{"sources":[{"url":"https://i/big","width":640,"height":640}]}}}}
+        "coverArt":{"sources":[{"url":"https://i/big","width":640,"height":640}]}}}
         """
 
         let api = makeAPI { _ in (searchPayload(kind: "albumsV2", items: album), httpResponse(200)) }
@@ -152,8 +153,8 @@ struct PathfinderResponseTests {
 
     @Test func `artists read their name out of the profile`() async throws {
         let artist = """
-        {"item":{"data":{"__typename":"Artist","uri":"spotify:artist:a1","profile":{"name":"Daft Punk"},
-        "visuals":{"avatarImage":{"sources":[{"url":"https://i/a","width":320,"height":320}]}}}}}
+        {"data":{"__typename":"Artist","uri":"spotify:artist:a1","profile":{"name":"Daft Punk"},
+        "visuals":{"avatarImage":{"sources":[{"url":"https://i/a","width":320,"height":320}]}}}}
         """
 
         let api = makeAPI { _ in (searchPayload(kind: "artists", items: artist), httpResponse(200)) }
@@ -167,9 +168,9 @@ struct PathfinderResponseTests {
 
     @Test func `playlists read their owner and image`() async throws {
         let playlist = """
-        {"item":{"data":{"__typename":"Playlist","uri":"spotify:playlist:p1","name":"Mix",
+        {"data":{"__typename":"Playlist","uri":"spotify:playlist:p1","name":"Mix",
         "description":"nice","ownerV2":{"data":{"name":"Ralph","username":"ralph"}},
-        "images":{"items":[{"sources":[{"url":"https://i/p","width":300,"height":300}]}]}}}}
+        "images":{"items":[{"sources":[{"url":"https://i/p","width":300,"height":300}]}]}}}
         """
 
         let api = makeAPI { _ in (searchPayload(kind: "playlists", items: playlist), httpResponse(200)) }
@@ -180,6 +181,22 @@ struct PathfinderResponseTests {
         #expect(first.name == "Mix")
         #expect(first.ownerName == "Ralph")
         #expect(first.imageURL == "https://i/p")
+    }
+
+    @Test func `both item shapes decode, because Spotify uses both`() async throws {
+        // Measured against the live service: searchTracks nests the entity under an `item`
+        // wrapper beside `matchedFields`, while the other three put it at `data` directly.
+        // Requiring the wrapper everywhere is what emptied albums, artists and playlists while
+        // tracks worked — and the fixtures agreed with the bug, because I wrote both.
+        let wrapped = #"{"item":{"data":{"uri":"spotify:track:t1","name":"Wrapped"}},"matchedFields":[]}"#
+        let direct = #"{"data":{"uri":"spotify:track:t2","name":"Direct"}}"#
+
+        let api = makeAPI { _ in
+            (searchPayload(kind: "tracksV2", items: "\(wrapped),\(direct)"), httpResponse(200))
+        }
+        let results = try await api.searchTracks("x")
+
+        #expect(results.map(\.name) == ["Wrapped", "Direct"])
     }
 
     @Test func `an unreadable item is dropped rather than losing the page`() async throws {
