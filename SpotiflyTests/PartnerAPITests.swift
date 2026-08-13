@@ -258,7 +258,7 @@ struct PathfinderResponseTests {
 struct ClientTokenRecoveryTests {
     @Test func `a 401 drops the cached client token and retries once`() async throws {
         let attempts = Tally()
-        let invalidations = Tally()
+        let rejected = Recorder()
         let payload = Data(#"""
         {"data":{"searchV2":{"tracksV2":{"totalCount":1,
           "items":[{"item":{"data":{"uri":"spotify:track:t1","name":"Good"}}}]}}}}
@@ -267,7 +267,7 @@ struct ClientTokenRecoveryTests {
         let api = PartnerAPI(
             accessToken: { "at" },
             clientToken: { "ct" },
-            invalidateClientToken: { invalidations.increment() },
+            invalidateClientToken: { rejected.record($0) },
             transport: { _ in
                 attempts.increment()
                 return attempts.count == 1
@@ -280,7 +280,9 @@ struct ClientTokenRecoveryTests {
 
         #expect(results.first?.name == "Good")
         #expect(attempts.count == 2)
-        #expect(invalidations.count == 1)
+        // Named, not "whatever is cached now": concurrent requests share a token, so a late
+        // refusal must not discard the replacement an earlier one already fetched.
+        #expect(rejected.values == ["ct"])
     }
 
     /// One retry, not a loop: a 401 that survives a fresh client token is about the bearer or
@@ -291,7 +293,7 @@ struct ClientTokenRecoveryTests {
         let api = PartnerAPI(
             accessToken: { "at" },
             clientToken: { "ct" },
-            invalidateClientToken: {},
+            invalidateClientToken: { _ in },
             transport: { _ in
                 attempts.increment()
                 return (Data(), httpResponse(401))
@@ -305,19 +307,32 @@ struct ClientTokenRecoveryTests {
     }
 
     @Test func `a status that is not 401 does not touch the client token`() async throws {
-        let invalidations = Tally()
+        let rejected = Recorder()
 
         let api = PartnerAPI(
             accessToken: { "at" },
             clientToken: { "ct" },
-            invalidateClientToken: { invalidations.increment() },
+            invalidateClientToken: { rejected.record($0) },
             transport: { _ in (Data(), httpResponse(500)) },
         )
 
         await #expect(throws: PartnerAPIError.self) {
             _ = try await api.searchTracks("x")
         }
-        #expect(invalidations.count == 0)
+        #expect(rejected.values.isEmpty)
+    }
+}
+
+final class Recorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [String] = []
+
+    var values: [String] {
+        lock.withLock { recorded }
+    }
+
+    func record(_ value: String) {
+        lock.withLock { recorded.append(value) }
     }
 }
 

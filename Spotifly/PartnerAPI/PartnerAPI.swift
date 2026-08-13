@@ -84,7 +84,7 @@ nonisolated struct PartnerAPI: Sendable {
 
     private let accessToken: @Sendable () async throws -> String
     private let clientToken: @Sendable () async throws -> String
-    private let invalidateClientToken: @Sendable () async -> Void
+    private let invalidateClientToken: @Sendable (String) async -> Void
     private let transport: Transport
 
     init(
@@ -94,8 +94,8 @@ nonisolated struct PartnerAPI: Sendable {
         clientToken: @escaping @Sendable () async throws -> String = {
             try await ClientTokenProvider.shared.token()
         },
-        invalidateClientToken: @escaping @Sendable () async -> Void = {
-            await ClientTokenProvider.shared.invalidate()
+        invalidateClientToken: @escaping @Sendable (String) async -> Void = {
+            await ClientTokenProvider.shared.invalidate(rejected: $0)
         },
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
     ) {
@@ -429,32 +429,39 @@ nonisolated struct PartnerAPI: Sendable {
         _ operation: PathfinderOperation,
         variables: some Encodable & Sendable,
     ) async throws -> Envelope {
-        let (data, status) = try await send(operation, variables: variables)
+        let sent = try await send(operation, variables: variables)
 
         // A 401 can be either credential, and the client token is the one nothing else would
         // notice: it is cached for the fortnight Spotify says it is good for, so a token
         // revoked before its stated expiry fails every request until the app is relaunched.
         // The bearer refreshes itself, so this costs one wasted retry at worst.
-        if status == 401 {
-            await invalidateClientToken()
-            let (retried, retriedStatus) = try await send(operation, variables: variables)
-            guard retriedStatus == 200 else {
-                throw Self.failure(operation: operation, status: retriedStatus, body: retried)
+        //
+        // The token this request actually carried is named, not just "the current one" —
+        // concurrent requests share a token, so one dead token is refused several times over
+        // and the later refusals would otherwise discard the replacement the first one fetched.
+        if sent.status == 401 {
+            if let rejected = sent.clientToken {
+                await invalidateClientToken(rejected)
             }
-            return try decode(retried, operation: operation)
+            let retried = try await send(operation, variables: variables)
+            guard retried.status == 200 else {
+                throw Self.failure(operation: operation, status: retried.status, body: retried.body)
+            }
+            return try decode(retried.body, operation: operation)
         }
 
-        guard status == 200 else {
-            throw Self.failure(operation: operation, status: status, body: data)
+        guard sent.status == 200 else {
+            throw Self.failure(operation: operation, status: sent.status, body: sent.body)
         }
 
-        return try decode(data, operation: operation)
+        return try decode(sent.body, operation: operation)
     }
 
+    /// One attempt, reporting the client token it carried so a refusal can name it.
     private func send(
         _ operation: PathfinderOperation,
         variables: some Encodable & Sendable,
-    ) async throws -> (body: Data, status: Int) {
+    ) async throws -> (body: Data, status: Int, clientToken: String?) {
         let request = try await makeRequest(operation, variables: variables)
 
         debugLog("PartnerAPI", "[POST] \(Self.endpoint.absoluteString) \(operation.name)")
@@ -465,7 +472,7 @@ nonisolated struct PartnerAPI: Sendable {
             throw PartnerAPIError.emptyPayload
         }
 
-        return (data, http.statusCode)
+        return (data, http.statusCode, request.value(forHTTPHeaderField: "Client-Token"))
     }
 
     private static func failure(

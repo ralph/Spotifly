@@ -136,7 +136,7 @@ nonisolated struct SpclientAPI: Sendable {
 
     private let accessToken: @Sendable () async throws -> String
     private let clientToken: @Sendable () async throws -> String
-    private let invalidateClientToken: @Sendable () async -> Void
+    private let invalidateClientToken: @Sendable (String) async -> Void
     private let transport: Transport
 
     init(
@@ -146,8 +146,8 @@ nonisolated struct SpclientAPI: Sendable {
         clientToken: @escaping @Sendable () async throws -> String = {
             try await ClientTokenProvider.shared.token()
         },
-        invalidateClientToken: @escaping @Sendable () async -> Void = {
-            await ClientTokenProvider.shared.invalidate()
+        invalidateClientToken: @escaping @Sendable (String) async -> Void = {
+            await ClientTokenProvider.shared.invalidate(rejected: $0)
         },
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
     ) {
@@ -338,34 +338,37 @@ nonisolated struct SpclientAPI: Sendable {
         body: some Encodable & Sendable,
     ) async throws -> Data {
         let encoded = try JSONEncoder().encode(body)
-        var (data, status) = try await sendOnce(method: method, path: path, body: encoded)
+        var sent = try await sendOnce(method: method, path: path, body: encoded)
 
         // See `PartnerAPI.query`: a 401 can be either credential, and the cached client token
-        // is the one that would otherwise stay wrong until the app is relaunched.
-        if status == 401 {
-            await invalidateClientToken()
-            (data, status) = try await sendOnce(method: method, path: path, body: encoded)
+        // is the one that would otherwise stay wrong until the app is relaunched. The token
+        // this request carried is named, so a refusal cannot discard a newer one.
+        if sent.status == 401 {
+            if let rejected = sent.clientToken {
+                await invalidateClientToken(rejected)
+            }
+            sent = try await sendOnce(method: method, path: path, body: encoded)
         }
 
-        guard (200 ..< 300).contains(status) else {
+        guard (200 ..< 300).contains(sent.status) else {
             debugLog(
                 "SpclientAPI",
-                "\(method) \(path) failed (HTTP \(status)): \(String(decoding: data.prefix(200), as: UTF8.self))",
+                "\(method) \(path) failed (HTTP \(sent.status)): \(String(decoding: sent.body.prefix(200), as: UTF8.self))",
             )
             throw SpclientError.requestFailed(
-                status,
-                String(decoding: data.prefix(300), as: UTF8.self),
+                sent.status,
+                String(decoding: sent.body.prefix(300), as: UTF8.self),
             )
         }
 
-        return data
+        return sent.body
     }
 
     private func sendOnce(
         method: String,
         path: String,
         body: Data,
-    ) async throws -> (body: Data, status: Int) {
+    ) async throws -> (body: Data, status: Int, clientToken: String?) {
         var request = URLRequest(url: Self.baseURL.appending(path: path))
         request.httpMethod = method
         request.httpBody = body
@@ -381,28 +384,30 @@ nonisolated struct SpclientAPI: Sendable {
             throw SpclientError.malformedResponse
         }
 
-        return (data, http.statusCode)
+        return (data, http.statusCode, request.value(forHTTPHeaderField: "Client-Token"))
     }
 
     // MARK: - Transport
 
     private func get(_ url: URL) async throws -> Data {
-        var (data, status) = try await getOnce(url)
+        var sent = try await getOnce(url)
 
         // See `PartnerAPI.query`.
-        if status == 401 {
-            await invalidateClientToken()
-            (data, status) = try await getOnce(url)
+        if sent.status == 401 {
+            if let rejected = sent.clientToken {
+                await invalidateClientToken(rejected)
+            }
+            sent = try await getOnce(url)
         }
 
-        guard status == 200 else {
-            throw SpclientError.requestFailed(status, "")
+        guard sent.status == 200 else {
+            throw SpclientError.requestFailed(sent.status, "")
         }
 
-        return data
+        return sent.body
     }
 
-    private func getOnce(_ url: URL) async throws -> (body: Data, status: Int) {
+    private func getOnce(_ url: URL) async throws -> (body: Data, status: Int, clientToken: String?) {
         // The desktop client's web view sends a CORS preflight before these, and this endpoint
         // is served to that origin — so the sequence is mimicked rather than the request sent
         // bare. libspot does the same before metadata/4.
@@ -420,7 +425,7 @@ nonisolated struct SpclientAPI: Sendable {
             throw SpclientError.malformedResponse
         }
 
-        return (data, http.statusCode)
+        return (data, http.statusCode, request.value(forHTTPHeaderField: "Client-Token"))
     }
 
     func preflight(_ url: URL) async throws {

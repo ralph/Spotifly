@@ -204,8 +204,28 @@ struct ClientTokenProviderTests {
         let provider = ClientTokenProvider(deviceIdStore: store, fetcher: { _ in counter.fetch(expiresAt: expiry) })
 
         #expect(try await provider.token(now: now) == "ct-1")
-        await provider.invalidate()
+        await provider.invalidate(rejected: "ct-1")
         #expect(try await provider.token(now: now) == "ct-2")
+    }
+
+    /// One dead token is refused by every request carrying it, and those refusals arrive one
+    /// after another — by which time the first has already fetched a replacement. Dropping on
+    /// a late refusal would throw that replacement away and cost a handshake per refused
+    /// request, against an endpoint that can answer with a challenge this app cannot solve.
+    @Test func `a refusal naming an already-replaced token changes nothing`() async throws {
+        let counter = FetchCounter()
+        let expiry = now.addingTimeInterval(3600)
+        let provider = ClientTokenProvider(deviceIdStore: store, fetcher: { _ in counter.fetch(expiresAt: expiry) })
+
+        #expect(try await provider.token(now: now) == "ct-1")
+        await provider.invalidate(rejected: "ct-1")
+        #expect(try await provider.token(now: now) == "ct-2")
+
+        // The second request's 401, arriving late and still naming the first token.
+        await provider.invalidate(rejected: "ct-1")
+
+        #expect(try await provider.token(now: now) == "ct-2")
+        #expect(counter.calls == 2)
     }
 
     @Test func `concurrent callers share one fetch`() async throws {

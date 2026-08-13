@@ -81,7 +81,14 @@ actor ClientTokenProvider {
 
     /// Drops the cached token, so the next caller fetches a fresh one. For a 401, where the
     /// token is dead before its stated expiry.
-    func invalidate() {
+    ///
+    /// **Only if `rejected` is still the cached one.** Requests run concurrently, so one dead
+    /// token is refused several times over, and each refusal arrives separately — the later
+    /// ones after the first has already fetched a replacement. Dropping unconditionally there
+    /// throws that replacement away and costs a handshake per refused request, against an
+    /// endpoint that can answer with a proof-of-work challenge this app cannot solve.
+    func invalidate(rejected: String) {
+        guard cached?.token == rejected else { return }
         cached = nil
     }
 }
