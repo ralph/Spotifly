@@ -467,15 +467,28 @@ struct PlaylistReorderDropDelegate: DropDelegate {
             return true
         }
 
-        // Call the API with the ORIGINAL from index
+        // The move is expressed in uids, not indices: the service names the item to move and
+        // the item to put it before, so a playlist holding the same song twice moves the row
+        // the user dragged rather than its twin.
+        let items = playlist.items
+        guard originalFromIndex < items.count, currentToIndex < items.count else {
+            draggedTrackId = nil
+            draggedFromIndex = nil
+            return true
+        }
+        let movingUid = items[originalFromIndex].uid
+        // Dragging downwards lands *after* the target, which is expressed as "before the one
+        // past it" — and past the end means the bottom, which the service spells with its own
+        // move type.
+        let beforeIndex = currentToIndex > originalFromIndex ? currentToIndex + 1 : currentToIndex
+        let beforeUid = beforeIndex < items.count ? items[beforeIndex].uid : nil
+
         Task {
-            let token = await session.validAccessToken()
             do {
-                try await playlistService.reorderPlaylistTracks(
+                try await playlistService.movePlaylistItem(
                     playlistId: playlistId,
-                    rangeStart: originalFromIndex,
-                    insertBefore: currentToIndex > originalFromIndex ? currentToIndex + 1 : currentToIndex,
-                    accessToken: token,
+                    uid: movingUid,
+                    beforeUid: beforeUid,
                 )
             } catch {
                 // A newer reorder cancelled this one's reconciliation. It owns the

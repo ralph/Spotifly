@@ -57,9 +57,9 @@ struct AppStoreCacheTests {
     @Test func `an emptied playlist still counts as loaded`() {
         let store = AppStore()
         store.upsertPlaylist(playlist(id: "p"))
-        store.setPlaylistTracks(["t1"], totalDurationMs: 500, for: "p")
+        store.setPlaylistTracks([PlaylistItem(uid: "u1", trackId: "t1")], totalDurationMs: 500, for: "p")
 
-        store.removeTrackFromPlaylist("t1", playlistId: "p")
+        store.removePlaylistItem(uid: "u1", playlistId: "p")
 
         #expect(store.playlists["p"]?.tracksLoaded == true)
         #expect(store.playlists["p"]?.trackIds.isEmpty == true)

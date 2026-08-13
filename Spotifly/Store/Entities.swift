@@ -195,20 +195,25 @@ struct Playlist: Identifiable, Hashable, Encodable {
     let externalUrl: String?
 
     // Mutable state (populated when tracks are loaded)
-    var trackIds: [String]
+    var items: [PlaylistItem]
     var totalDurationMs: Int?
 
     /// Whether the track list was fetched. Stored rather than derived from
-    /// `trackIds`, so an empty playlist — or one the user just emptied — is not
+    /// `items`, so an empty playlist — or one the user just emptied — is not
     /// re-fetched on every single visit.
     var tracksLoaded: Bool
 
     /// Known count from API (before tracks are loaded)
     private var _knownTrackCount: Int?
 
-    /// Track count - uses loaded trackIds if available, otherwise falls back to API count
+    /// Track count - uses loaded items if available, otherwise falls back to API count
     var trackCount: Int {
-        tracksLoaded ? trackIds.count : (_knownTrackCount ?? 0)
+        tracksLoaded ? items.count : (_knownTrackCount ?? 0)
+    }
+
+    /// The tracks in order, for the many readers that do not care which occurrence is which.
+    var trackIds: [String] {
+        items.map(\.trackId)
     }
 
     var formattedDuration: String? {
@@ -227,7 +232,7 @@ struct Playlist: Identifiable, Hashable, Encodable {
         ownerId: String,
         ownerName: String,
         externalUrl: String? = nil,
-        trackIds: [String] = [],
+        items: [PlaylistItem] = [],
         totalDurationMs: Int? = nil,
         knownTrackCount: Int? = nil,
         tracksLoaded: Bool = false,
@@ -241,10 +246,31 @@ struct Playlist: Identifiable, Hashable, Encodable {
         self.ownerId = ownerId
         self.ownerName = ownerName
         self.externalUrl = externalUrl
-        self.trackIds = trackIds
+        self.items = items
         self.totalDurationMs = totalDurationMs
         self.tracksLoaded = tracksLoaded
         _knownTrackCount = knownTrackCount
+    }
+}
+
+/// One entry in a playlist: a track, and the id of *this occurrence* of it.
+///
+/// The `uid` is what the client's own API mutates by — `removeFromPlaylist` and
+/// `moveItemsInPlaylist` both take uids, not track uris — and it is why a playlist holds items
+/// rather than plain track ids.
+///
+/// It also fixes a defect the Web API path had: removing by track uri deletes **every** copy of
+/// that track in the playlist, so a playlist holding the same song twice lost both when the user
+/// removed one. A uid names one occurrence.
+struct PlaylistItem: Identifiable, Hashable, Encodable {
+    /// Stable per occurrence, assigned by Spotify.
+    let uid: String
+    let trackId: String
+
+    /// `Identifiable` on the uid rather than the track: two rows for the same song are two
+    /// rows, and a `ForEach` keyed by track id would treat them as one.
+    var id: String {
+        uid
     }
 }
 

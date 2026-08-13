@@ -371,9 +371,9 @@ final class AppStore {
     func upsertPlaylist(_ playlist: Playlist) {
         deletedEntitySelections.remove(.playlist(id: playlist.id))
         if let existing = playlists[playlist.id], existing.tracksLoaded, !playlist.tracksLoaded {
-            // Preserve existing trackIds and duration when new playlist doesn't have them
+            // Preserve existing items and duration when new playlist doesn't have them
             var merged = playlist
-            merged.trackIds = existing.trackIds
+            merged.items = existing.items
             merged.totalDurationMs = existing.totalDurationMs
             merged.tracksLoaded = true
             playlists[playlist.id] = merged
@@ -384,9 +384,9 @@ final class AppStore {
 
     /// Attach a fetched track list to a playlist. Marks it loaded even when the
     /// playlist is empty, so it is not fetched again on the next visit.
-    func setPlaylistTracks(_ trackIds: [String], totalDurationMs: Int?, for playlistId: String) {
+    func setPlaylistTracks(_ items: [PlaylistItem], totalDurationMs: Int?, for playlistId: String) {
         guard var playlist = playlists[playlistId] else { return }
-        playlist.trackIds = trackIds
+        playlist.items = items
         playlist.totalDurationMs = totalDurationMs
         playlist.tracksLoaded = true
         playlists[playlistId] = playlist
@@ -538,9 +538,16 @@ final class AppStore {
 
     // MARK: - Playlist Actions
 
-    /// Add track to playlist
+    /// Add a track to a playlist optimistically.
+    ///
+    /// The uid is Spotify's to assign, and the response does not carry it, so the row is placed
+    /// under a locally generated one. It is replaced by the real uid at the next load — until
+    /// then the row renders and can be reordered, but removing it needs the reload, which is why
+    /// `PlaylistService` refreshes after an add.
     func addTrackToPlaylist(_ trackId: String, playlistId: String) {
-        playlists[playlistId]?.trackIds.append(trackId)
+        playlists[playlistId]?.items.append(
+            PlaylistItem(uid: "local:\(UUID().uuidString)", trackId: trackId),
+        )
         // Recalculate duration if we have the track
         if let track = tracks[trackId] {
             let currentDuration = playlists[playlistId]?.totalDurationMs ?? 0
@@ -548,24 +555,32 @@ final class AppStore {
         }
     }
 
-    /// Remove track from playlist
-    func removeTrackFromPlaylist(_ trackId: String, playlistId: String) {
-        if let track = tracks[trackId], let currentDuration = playlists[playlistId]?.totalDurationMs {
+    /// Remove **one occurrence** from a playlist, named by its uid.
+    ///
+    /// By uid rather than by track id: a playlist may hold the same song more than once, and
+    /// removing "the track" would take every copy — which is what the Web API path did.
+    func removePlaylistItem(uid: String, playlistId: String) {
+        guard let index = playlists[playlistId]?.items.firstIndex(where: { $0.uid == uid }) else {
+            return
+        }
+
+        let trackId = playlists[playlistId]?.items[index].trackId
+        if let trackId, let track = tracks[trackId], let currentDuration = playlists[playlistId]?.totalDurationMs {
             playlists[playlistId]?.totalDurationMs = max(0, currentDuration - track.durationMs)
         }
-        playlists[playlistId]?.trackIds.removeAll { $0 == trackId }
+        playlists[playlistId]?.items.remove(at: index)
     }
 
-    /// Move track within playlist (reorder)
+    /// Move an item within a playlist (reorder)
     func movePlaylistTrack(playlistId: String, fromIndex: Int, toIndex: Int) {
-        guard var trackIds = playlists[playlistId]?.trackIds,
-              fromIndex >= 0, fromIndex < trackIds.count,
-              toIndex >= 0, toIndex < trackIds.count,
+        guard var items = playlists[playlistId]?.items,
+              fromIndex >= 0, fromIndex < items.count,
+              toIndex >= 0, toIndex < items.count,
               fromIndex != toIndex
         else { return }
 
-        trackIds.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-        playlists[playlistId]?.trackIds = trackIds
+        items.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+        playlists[playlistId]?.items = items
     }
 
     /// Update playlist details

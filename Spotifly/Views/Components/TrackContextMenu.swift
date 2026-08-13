@@ -171,11 +171,9 @@ struct TrackContextMenu: View {
     private func addToPlaylist(playlistId: String) {
         Task {
             do {
-                let token = await session.validAccessToken()
                 try await playlistService.addTracksToPlaylist(
                     playlistId: playlistId,
                     trackIds: [track.id],
-                    accessToken: token,
                 )
                 onPlaylistAdded?()
             } catch {
@@ -187,11 +185,9 @@ struct TrackContextMenu: View {
     private func removeFromPlaylist(playlistId: String) {
         Task {
             do {
-                let token = await session.validAccessToken()
                 try await playlistService.removeTracksFromPlaylist(
                     playlistId: playlistId,
                     trackIds: [track.id],
-                    accessToken: token,
                 )
             } catch {
                 playbackViewModel.errorMessage = "Failed to remove from playlist: \(error.localizedDescription)"

@@ -173,6 +173,78 @@ extension Track {
     }
 }
 
+extension PathfinderPlaylistUnion {
+    /// The store entities this playlist resolves to: the playlist with its items, and the
+    /// tracks those items point at.
+    ///
+    /// The item list and the track list are built together for the same reason the album's are:
+    /// an item whose track could not be decoded would be a row the view cannot render, so it is
+    /// dropped from both rather than from one.
+    func entities() -> (playlist: Playlist, tracks: [Track])? {
+        guard let playlistId = id, let uri else { return nil }
+
+        var items: [PlaylistItem] = []
+        var tracks: [Track] = []
+
+        for entry in content?.items ?? [] {
+            guard let uid = entry.uid,
+                  let track = entry.track,
+                  let entity = Track(pathfinderPlaylistTrack: track)
+            else {
+                continue
+            }
+
+            items.append(PlaylistItem(uid: uid, trackId: entity.id))
+            tracks.append(entity)
+        }
+
+        let owner = ownerV2?.data
+
+        let playlist = Playlist(
+            id: playlistId,
+            name: name ?? "",
+            description: description,
+            images: ImageSet(pathfinderSources: (images?.items ?? []).first?.sources),
+            uri: uri,
+            // Not in this projection, and nothing renders it — the Web API path defaulted it too.
+            isPublic: true,
+            ownerId: owner?.uri.flatMap(SpotifyURI.id(from:)) ?? owner?.username ?? "",
+            ownerName: owner?.name ?? owner?.username ?? "",
+            externalUrl: nil,
+            items: items,
+            totalDurationMs: tracks.reduce(0) { $0 + $1.durationMs },
+            knownTrackCount: content?.totalCount,
+            tracksLoaded: true,
+        )
+
+        return (playlist, tracks)
+    }
+}
+
+extension Track {
+    /// One track of a playlist. Carries its own album, unlike an album's tracks.
+    ///
+    /// The item's `addedAt` is deliberately not read: `Track` has never had a field for it, and
+    /// nothing renders one.
+    init?(pathfinderPlaylistTrack track: PathfinderPlaylistTrack) {
+        guard let id = track.id, let uri = track.uri else { return nil }
+
+        self.init(
+            id: id,
+            name: track.name ?? "",
+            uri: uri,
+            durationMs: track.trackDuration?.totalMilliseconds ?? 0,
+            trackNumber: track.trackNumber,
+            externalUrl: nil,
+            albumId: track.albumId,
+            artistId: track.firstArtistId,
+            artistName: track.artistNames.first ?? "Unknown",
+            albumName: track.albumOfTrack?.name,
+            images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
+        )
+    }
+}
+
 extension Artist {
     init?(pathfinder artist: PathfinderArtist) {
         guard let id = artist.id, let uri = artist.uri else { return nil }
@@ -245,7 +317,7 @@ extension Playlist {
             ownerId: owner?.username ?? "",
             ownerName: owner?.name ?? owner?.username ?? "",
             externalUrl: nil,
-            trackIds: [],
+            items: [],
             totalDurationMs: nil,
             knownTrackCount: 0,
         )

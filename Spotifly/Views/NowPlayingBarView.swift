@@ -556,7 +556,6 @@ struct NowPlayingBarView: View {
                 try await playlistService.addTracksToPlaylist(
                     playlistId: newPlaylist.id,
                     trackIds: [track.id],
-                    accessToken: token,
                 )
 
                 showSuccessFeedback()

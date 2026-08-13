@@ -130,14 +130,14 @@ extension Playlist {
             ownerId: playlist.ownerId,
             ownerName: playlist.ownerName,
             externalUrl: playlist.externalUrl,
-            trackIds: [],
+            items: [],
             totalDurationMs: playlist.totalDurationMs,
             knownTrackCount: playlist.trackCount,
         )
     }
 
-    /// Create with explicit track IDs (when loading playlist details with tracks)
-    init(from playlist: APIPlaylist, trackIds: [String], totalDurationMs: Int?) {
+    /// Create with explicit items (when loading playlist details with tracks)
+    init(from playlist: APIPlaylist, items: [PlaylistItem], totalDurationMs: Int?) {
         self.init(
             id: playlist.id,
             name: playlist.name,
@@ -148,7 +148,7 @@ extension Playlist {
             ownerId: playlist.ownerId,
             ownerName: playlist.ownerName,
             externalUrl: playlist.externalUrl,
-            trackIds: trackIds,
+            items: items,
             totalDurationMs: totalDurationMs,
             knownTrackCount: nil, // We have actual tracks
             tracksLoaded: true,

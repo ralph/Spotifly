@@ -87,6 +87,41 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
         name: "queryArtistDiscographyAll",
         sha256Hash: "5e07d323febb57b4a56a42abbf781490e58764aa45feb6e3dc0591564fc56599",
     )
+
+    /// A playlist's details *and* its contents.
+    ///
+    /// **The name matters more than usual here.** `fetchPlaylist`, `fetchPlaylistContents` and
+    /// `fetchPlaylistMetadata` share this hash — one stored document defining three operations
+    /// — and `operationName` selects between them. Asking for the wrong one gets a playlist
+    /// with no tracks, or tracks with no names, rather than an error.
+    static let fetchPlaylist = PathfinderOperation(
+        name: "fetchPlaylist",
+        sha256Hash: "86dde7b9d9356e2369414647cf6950cfed96e778e129cfdfc99aea6c1613b3b0",
+    )
+
+    /// The playlist mutations, which likewise share one hash and differ by name.
+    ///
+    /// Their variables were established by sending each with no variables at all: GraphQL
+    /// rejects that during validation, before any resolver runs, and names what it wanted —
+    /// schema discovery that writes to nobody's playlist. `PlaylistItemPositionInput` came back
+    /// as full SDL, doc comments included, from a deliberately invalid field.
+    static let addToPlaylist = PathfinderOperation(
+        name: "addToPlaylist",
+        sha256Hash: playlistMutationHash,
+    )
+
+    static let removeFromPlaylist = PathfinderOperation(
+        name: "removeFromPlaylist",
+        sha256Hash: playlistMutationHash,
+    )
+
+    static let moveItemsInPlaylist = PathfinderOperation(
+        name: "moveItemsInPlaylist",
+        sha256Hash: playlistMutationHash,
+    )
+
+    private static let playlistMutationHash =
+        "47b2a1234b17748d332dd0431534f22450e9ecbb3d5ddcdacbd83368636a0990"
 }
 
 /// The variables the artist operations take.

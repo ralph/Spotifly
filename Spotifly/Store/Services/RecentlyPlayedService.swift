@@ -152,24 +152,21 @@ final class RecentlyPlayedService {
             }
             store.upsertAlbums(Array(fetchedAlbums.values))
 
-            // Fetch playlist details concurrently (return raw API response)
-            let fetchedPlaylistResponses = await withTaskGroup(of: (id: String, playlist: APIPlaylist?).self) { group in
+            // Fetch playlist details concurrently. `fetchPlaylist` answers with the contents
+            // too, which this strip does not draw — but storing them means opening one of these
+            // playlists needs no request, exactly as with albums.
+            let fetchedPlaylistResponses = await withTaskGroup(of: (id: String, playlist: PathfinderPlaylistUnion?).self) { group in
                 for playlistId in playlistIdsToFetch {
                     group.addTask {
                         do {
-                            let playlistDetails = try await SpotifyAPI.fetchPlaylistDetails(
-                                accessToken: accessToken,
-                                playlistId: playlistId,
-                            )
-                            return (playlistId, playlistDetails)
+                            return try await (playlistId, partnerAPI.playlist(id: playlistId))
                         } catch {
-                            // Skip playlists that can't be fetched
+                            return (playlistId, nil)
                         }
-                        return (playlistId, nil)
                     }
                 }
 
-                var results: [String: APIPlaylist] = [:]
+                var results: [String: PathfinderPlaylistUnion] = [:]
                 for await (id, playlist) in group {
                     if let playlist {
                         results[id] = playlist
@@ -178,11 +175,12 @@ final class RecentlyPlayedService {
                 return results
             }
 
-            // Convert to entities on main actor and store
             var fetchedPlaylists: [String: Playlist] = [:]
-            for (id, searchPlaylist) in fetchedPlaylistResponses {
-                let playlist = Playlist(from: searchPlaylist)
+            for (id, union) in fetchedPlaylistResponses {
+                guard let (playlist, tracks) = union.entities() else { continue }
+
                 fetchedPlaylists[id] = playlist
+                store.upsertTracks(tracks)
             }
             store.upsertPlaylists(Array(fetchedPlaylists.values))
 

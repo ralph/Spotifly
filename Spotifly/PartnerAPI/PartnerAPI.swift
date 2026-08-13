@@ -12,6 +12,8 @@ nonisolated enum PartnerAPIError: Error, LocalizedError {
     case persistedQueryNotFound(String)
     case graphQLErrors([String])
     case emptyPayload
+    /// A write Spotify answered with HTTP 200 and a failure `__typename`.
+    case mutationRejected(String, String)
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +21,8 @@ nonisolated enum PartnerAPIError: Error, LocalizedError {
             "Spotify rejected the request (HTTP \(status))"
         case let .persistedQueryNotFound(operation):
             "Spotify no longer recognises the stored query for \(operation)"
+        case let .mutationRejected(operation, reason):
+            "Spotify rejected \(operation): \(reason)"
         case let .graphQLErrors(messages):
             messages.joined(separator: "; ")
         case .emptyPayload:
@@ -175,6 +179,70 @@ nonisolated struct PartnerAPI: Sendable {
         }
 
         return artist
+    }
+
+    // MARK: - Playlist
+
+    /// A playlist's details and its contents, in one request.
+    func playlist(id: String) async throws -> PathfinderPlaylistUnion {
+        let response: PathfinderPlaylistResponse = try await query(
+            .fetchPlaylist,
+            variables: PathfinderPlaylistVariables(uri: "spotify:playlist:\(id)"),
+        )
+
+        guard let playlist = response.data?.playlistV2 else {
+            throw PartnerAPIError.emptyPayload
+        }
+
+        return playlist
+    }
+
+    func addToPlaylist(
+        playlistId: String,
+        trackUris: [String],
+        position: PlaylistItemPosition = .bottom,
+    ) async throws {
+        try await mutate(.addToPlaylist, variables: PathfinderAddVariables(
+            playlistUri: "spotify:playlist:\(playlistId)",
+            playlistItemUris: trackUris,
+            newPosition: position,
+        ))
+    }
+
+    /// Removes the named **occurrences**, not every copy of a track.
+    func removeFromPlaylist(playlistId: String, uids: [String]) async throws {
+        try await mutate(.removeFromPlaylist, variables: PathfinderRemoveVariables(
+            playlistUri: "spotify:playlist:\(playlistId)",
+            uids: uids,
+        ))
+    }
+
+    func moveInPlaylist(
+        playlistId: String,
+        uids: [String],
+        position: PlaylistItemPosition,
+    ) async throws {
+        try await mutate(.moveItemsInPlaylist, variables: PathfinderMoveVariables(
+            playlistUri: "spotify:playlist:\(playlistId)",
+            uids: uids,
+            newPosition: position,
+        ))
+    }
+
+    /// Runs a mutation and throws unless the response says it happened.
+    ///
+    /// A rejected mutation arrives as HTTP 200 with a `__typename` naming the failure, so the
+    /// transport's status check cannot see it — without this, a failed write would look like a
+    /// successful one and the optimistic update would stand.
+    private func mutate(
+        _ operation: PathfinderOperation,
+        variables: some Encodable & Sendable,
+    ) async throws {
+        let response: PathfinderMutationResponse = try await query(operation, variables: variables)
+
+        if let failure = response.failure {
+            throw PartnerAPIError.mutationRejected(operation.name, failure)
+        }
     }
 
     // MARK: - Transport

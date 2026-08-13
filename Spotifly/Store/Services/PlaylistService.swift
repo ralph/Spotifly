@@ -25,9 +25,19 @@ final class PlaylistService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-playlists"
 
-    init(store: AppStore, tokenProvider: @escaping () async -> String) {
+    /// The playlist reads and the item mutations, which take no token: `PartnerAPI` runs on
+    /// the keymaster grant and holds it itself. `tokenProvider` is the Web API's, still needed
+    /// by the playlist list and the create/rename/delete/follow writes.
+    private let partnerAPI: PartnerAPI
+
+    init(
+        store: AppStore,
+        tokenProvider: @escaping () async -> String,
+        partnerAPI: PartnerAPI = PartnerAPI(),
+    ) {
         self.store = store
         self.tokenProvider = tokenProvider
+        self.partnerAPI = partnerAPI
     }
 
     // MARK: - User Playlists
@@ -102,7 +112,7 @@ final class PlaylistService {
         guard store.playlists[playlistId]?.tracksLoaded != true else { return }
 
         try await playlistRequests.run(playlistId) {
-            try await self.loadPlaylist(playlistId: playlistId, accessToken: self.tokenProvider())
+            try await self.loadPlaylist(playlistId: playlistId)
         }
     }
 
@@ -122,47 +132,32 @@ final class PlaylistService {
         playlistRequests.cancel(playlistId)
 
         try await playlistRequests.run(playlistId) {
-            try await self.loadPlaylist(playlistId: playlistId, accessToken: self.tokenProvider(), forceTracks: true)
+            try await self.loadPlaylist(playlistId: playlistId, forceTracks: true)
         }
     }
 
-    private func loadPlaylist(playlistId: String, accessToken: String, forceTracks: Bool = false) async throws {
-        // Re-read inside the run: a caller can arrive just as another run finishes.
-        guard let known = store.playlists[playlistId] else {
-            async let detailsTask = SpotifyAPI.fetchPlaylistDetails(
-                accessToken: accessToken,
-                playlistId: playlistId,
-            )
-            async let tracksTask = SpotifyAPI.fetchPlaylistTracks(
-                accessToken: accessToken,
-                playlistId: playlistId,
-            )
-            let (details, playlistTracks) = try await (detailsTask, tracksTask)
-            // A reload can supersede this run; it must not write over the fresher order.
-            try Task.checkCancellation()
-
-            store.upsertPlaylist(Playlist(from: details))
-            storeTracks(playlistTracks, for: playlistId)
+    /// Loads a playlist and its contents in **one** request.
+    ///
+    /// `fetchPlaylist` answers with both, so the two-branch shape this replaces — details
+    /// cached, tracks not — has nothing left to skip.
+    private func loadPlaylist(playlistId: String, forceTracks: Bool = false) async throws {
+        if !forceTracks, let known = store.playlists[playlistId], known.tracksLoaded {
             return
         }
 
-        guard forceTracks || !known.tracksLoaded else { return }
-
-        let playlistTracks = try await SpotifyAPI.fetchPlaylistTracks(
-            accessToken: accessToken,
-            playlistId: playlistId,
-        )
+        let union = try await partnerAPI.playlist(id: playlistId)
+        // A reload can supersede this run; it must not write over the fresher order.
         try Task.checkCancellation()
-        storeTracks(playlistTracks, for: playlistId)
-    }
 
-    /// Stores a playlist's tracks and marks its track list as loaded.
-    private func storeTracks(_ playlistTracks: [APITrack], for playlistId: String) {
-        let tracks = playlistTracks.map { Track(from: $0) }
+        guard let (playlist, tracks) = union.entities() else {
+            throw PartnerAPIError.emptyPayload
+        }
+
+        store.upsertPlaylist(playlist)
         store.upsertTracks(tracks)
         store.setPlaylistTracks(
-            tracks.map(\.id),
-            totalDurationMs: tracks.reduce(0) { $0 + $1.durationMs },
+            playlist.items,
+            totalDurationMs: playlist.totalDurationMs,
             for: playlistId,
         )
     }
@@ -236,56 +231,69 @@ final class PlaylistService {
     func addTracksToPlaylist(
         playlistId: String,
         trackIds: [String],
-        accessToken: String,
     ) async throws {
-        let trackUris = trackIds.map { "spotify:track:\($0)" }
-
-        try await SpotifyAPI.addTracksToPlaylist(
-            accessToken: accessToken,
+        try await partnerAPI.addToPlaylist(
             playlistId: playlistId,
-            trackUris: trackUris,
+            trackUris: trackIds.map { "spotify:track:\($0)" },
         )
 
-        // Update store on success
+        // Optimistically, then reload. The mutation does not return the uids Spotify assigned,
+        // and a row without its real uid cannot be removed or reordered — so the placeholder
+        // rows exist only long enough for the refresh to replace them.
         for trackId in trackIds {
             store.addTrackToPlaylist(trackId, playlistId: playlistId)
         }
+        try await reloadPlaylistTracks(playlistId: playlistId)
     }
 
-    /// Remove tracks from a playlist
+    /// Remove a track from a playlist, resolving it to the **first** occurrence.
+    ///
+    /// For callers holding a `Track` and no uid — the context menu, which is shared by every
+    /// list in the app and does not know which row it was opened from. Removing the first
+    /// occurrence is already an improvement on the Web API path, which removed *every* copy of
+    /// a track; making it exact needs the uid threaded through `TrackRow`, and that is worth
+    /// doing when a view other than the playlist page can produce duplicates.
     func removeTracksFromPlaylist(
         playlistId: String,
         trackIds: [String],
-        accessToken: String,
     ) async throws {
-        let trackUris = trackIds.map { "spotify:track:\($0)" }
+        let uids = trackIds.compactMap { trackId in
+            store.playlists[playlistId]?.items.first { $0.trackId == trackId }?.uid
+        }
+        guard !uids.isEmpty else { return }
 
-        try await SpotifyAPI.removeTracksFromPlaylist(
-            accessToken: accessToken,
-            playlistId: playlistId,
-            trackUris: trackUris,
-        )
+        try await removePlaylistItems(playlistId: playlistId, uids: uids)
+    }
 
-        // Update store on success
-        for trackId in trackIds {
-            store.removeTrackFromPlaylist(trackId, playlistId: playlistId)
+    /// Remove **occurrences** from a playlist, named by uid.
+    ///
+    /// Not by track id: a playlist can hold the same song more than once, and the Web API path
+    /// this replaces removed every copy of it. A uid names the row the user actually chose.
+    func removePlaylistItems(
+        playlistId: String,
+        uids: [String],
+    ) async throws {
+        try await partnerAPI.removeFromPlaylist(playlistId: playlistId, uids: uids)
+
+        for uid in uids {
+            store.removePlaylistItem(uid: uid, playlistId: playlistId)
         }
     }
 
-    /// Reorder tracks in a playlist
-    func reorderPlaylistTracks(
+    /// Move one item to sit before another, both named by uid.
+    func movePlaylistItem(
         playlistId: String,
-        rangeStart: Int,
-        insertBefore: Int,
-        rangeLength: Int = 1,
-        accessToken: String,
+        uid: String,
+        beforeUid: String?,
     ) async throws {
-        try await SpotifyAPI.reorderPlaylistTracks(
-            accessToken: accessToken,
+        // No `beforeUid` means the end of the list, which the enum spells as its own move type
+        // rather than as a position.
+        let position = beforeUid.map(PlaylistItemPosition.before(uid:)) ?? .bottom
+
+        try await partnerAPI.moveInPlaylist(
             playlistId: playlistId,
-            rangeStart: rangeStart,
-            insertBefore: insertBefore,
-            rangeLength: rangeLength,
+            uids: [uid],
+            position: position,
         )
 
         // Re-fetch to pick up the order the server actually applied

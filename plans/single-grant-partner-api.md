@@ -276,7 +276,32 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       obvious pathfinder equivalent and need their own decision — the web client builds Home
       from a single `home` operation (`23e37f2e…`, harvested, unverified), which may replace
       several of these calls at once or none of them.
-- [ ] **Task 11: Playlists** (9), including the write paths.
+- [x] **Task 11: Playlists** — the playlist *page* and its item writes. `fetchPlaylist` for
+      details plus contents in one request; `addToPlaylist`, `removeFromPlaylist` and
+      `moveItemsInPlaylist` for the writes. All four share two hashes and are selected by
+      operation *name*, which is load-bearing: the wrong name returns a playlist with no tracks
+      rather than an error.
+
+      **Mutation schemas were discovered without writing.** Sending a mutation with no variables
+      is rejected during GraphQL validation, before any resolver runs, and the rejection names
+      the variables and their types; a deliberately invalid input field returns full SDL with
+      doc comments. Only the final round-trip touched a real (scratch) playlist, and it added
+      and removed one track by the uid it had just created. That technique works for any input
+      type on this API and is worth reaching for before any future write migration.
+
+      **A rejected write is HTTP 200** with a failure `__typename`; success is
+      `AddItemsToPlaylistPayload` / `RemoveItemsFromPlaylistPayload` / `MoveItemsInPlaylistPayload`.
+      Checking only the status code would leave an optimistic update standing after a failed write.
+
+      **Store change: `Playlist` holds `[PlaylistItem]`** (uid + track id), because the writes
+      address entries by per-occurrence uid rather than by track uri. This fixes a real defect:
+      the Web API path removed *every* copy of a track from a playlist that held it twice.
+      `trackIds` survives as a computed property. Remaining gap: `TrackContextMenu` is shared by
+      every list and does not know its row, so removal from there resolves to the first
+      occurrence — exact only once the uid is threaded through `TrackRow`.
+
+      Still on the Web API by surface: `fetchUserPlaylists` and create/rename/delete/follow go
+      with task 12.
 - [ ] **Task 12: User/library** (2) and the saved-tracks writes.
 
       Tasks 11 and 12 are no longer gated. The identity question is settled — the market id
