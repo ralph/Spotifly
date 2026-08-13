@@ -552,8 +552,10 @@ Only once no `api.spotify.com` call remains — **which is now the case.**
       one), and the rootlist being addressed by **username**, so library membership depends on
       the profile having loaded.
 
-      Not built: playlist **images**, `collaborative`, and the `pl3_version` field — the
-      attributes message carries them and no screen sets them.
+      Not built: setting a playlist's **cover image**, `collaborative`, or `pl3_version`. No
+      screen offers any of them, and *reading* a cover was never affected — see
+      `plans/playlist-attributes-not-written.md`, which also records that the image is not part
+      of the attributes message at all and needs an endpoint nobody here has measured.
 
 - [x] **Task 13: Retire the dashboard app.** `SpotifyConfig`, `SpotifyAuth`, `SpotifySession`,
       the client-id field, `UserNotWhitelistedView` and the Web API's keychain items are gone,
