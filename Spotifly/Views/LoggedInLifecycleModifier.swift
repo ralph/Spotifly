@@ -15,7 +15,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
     let deviceService: DeviceService
     let connectionService: ConnectionService
     let homeService: HomeService
-    @Binding var blockingState: LoggedInView.BlockingState?
 
     /// Last observed connection readiness; nil until the first snapshot arrives.
     @State private var wasConnectionReady: Bool?
@@ -131,7 +130,6 @@ extension View {
         deviceService: DeviceService,
         connectionService: ConnectionService,
         homeService: HomeService,
-        blockingState: Binding<LoggedInView.BlockingState?>,
     ) -> some View {
         modifier(
             LoggedInLifecycleModifier(
@@ -141,7 +139,6 @@ extension View {
                 deviceService: deviceService,
                 connectionService: connectionService,
                 homeService: homeService,
-                blockingState: blockingState,
             ),
         )
     }

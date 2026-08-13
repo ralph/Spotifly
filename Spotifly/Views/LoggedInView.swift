@@ -57,12 +57,6 @@ struct LoggedInView: View {
 
     @State private var searchText = ""
 
-    enum BlockingState {
-        case premiumRequired
-    }
-
-    @State private var blockingState: BlockingState?
-
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     /// Preferred sidebar column width. The 2-column and 3-column layouts use two
@@ -82,22 +76,7 @@ struct LoggedInView: View {
     }
 
     var body: some View {
-        content
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch blockingState {
-        case .premiumRequired:
-            PremiumRequiredView(
-                displayName: store.userProfile?.displayName,
-                onLogout: onLogout,
-            )
-            .frame(minWidth: 500, minHeight: 400)
-
-        case nil:
-            mainAppView
-        }
+        mainAppView
     }
 
     private var mainAppView: some View {
@@ -155,7 +134,6 @@ struct LoggedInView: View {
             deviceService: deviceService,
             connectionService: connectionService,
             homeService: homeService,
-            blockingState: $blockingState,
         )
         .onChange(of: store.searchCacheEvictionRevision) {
             navigationCoordinator.invalidateUnviewableRoutes()

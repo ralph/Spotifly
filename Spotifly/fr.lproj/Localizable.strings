@@ -251,11 +251,6 @@
 "error.unfollow_artist %@" = "Impossible de ne plus suivre l'artiste : %@";
 "error.follow_artist %@" = "Impossible de suivre l'artiste : %@";
 
-/* Premium Required */
-"premium.required.title" = "Spotify Premium requis";
-"premium.required.logged_in_as %@" = "Connecté en tant que %@";
-"premium.required.message" = "Spotifly nécessite un compte Spotify Premium. L'app utilise Spotify Connect pour la diffusion de musique, disponible uniquement avec Premium.";
-
 /* Profile */
 "profile.logged_in_as %@" = "Connecté en tant que %@";
 "profile.unavailable" = "Informations du compte indisponibles";
