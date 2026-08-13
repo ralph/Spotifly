@@ -11,8 +11,17 @@ import Foundation
 import Testing
 
 /// Trimmed from a real `libraryV3` response with `filters: ["Playlists"]`, taken with the probe
-/// on 2026-08-13. The third entry is a **folder** — a library item with no playlist under it,
-/// which the account in testing had four of.
+/// on 2026-08-13.
+///
+/// The third entry is a **folder**, copied field for field from the real response rather than
+/// imagined. An earlier version of this fixture guessed that a folder arrived with no `data` at
+/// all, which made the "folders are dropped" test pass against a shape Spotify never sends — a
+/// folder carries a `uri` and a `name` like a playlist does, decodes cleanly as one, and shipped
+/// as four broken rows in the playlist list.
+private let libraryFolderJSON = """
+{"__typename":"Folder","uri":"spotify:user:qixixbr0ox6sik6jc6bkv6y6y:folder:48e4423c174bd89d",
+ "name":"¯\\\\_(ツ)_/¯","folderCount":0,"playlistCount":2}
+"""
 private let libraryPlaylistsJSON = Data("""
 {"data":{"me":{"libraryV3":{
   "__typename":"LibraryPage",
@@ -30,7 +39,9 @@ private let libraryPlaylistsJSON = Data("""
        "data":{"__typename":"Playlist","uri":"spotify:playlist:6bhqYKPyoohraJKQjSOpMe",
          "name":"Second","ownerV2":{"data":{"username":"someone","name":"Someone"}}}}},
     {"addedAt":{"isoString":"2026-06-01T10:00:00Z"},"pinned":false,
-     "item":{"__typename":"LibraryFolderResponse","_uri":"spotify:folder:abc"}}
+     "item":{"__typename":"LibraryFolderResponse",
+       "_uri":"spotify:user:qixixbr0ox6sik6jc6bkv6y6y:folder:48e4423c174bd89d",
+       "data":\(libraryFolderJSON)}}
   ]}}}}
 """.utf8)
 
@@ -86,22 +97,29 @@ struct PathfinderLibraryTests {
 
         #expect(page.totalCount == 3)
         #expect(page.items?.count == 3)
-        #expect(page.entities.map(\.name) == ["relink-test", "Second"])
+        #expect(page.entities.compactMap { Playlist(pathfinder: $0)?.name } == ["relink-test", "Second"])
     }
 
-    /// **A folder is counted but cannot be shown.** `totalCount` is 3 for two playlists, which
-    /// is why pagination advances by the item count rather than the entity count — advancing by
-    /// two would re-request the third entry forever and never reach the end of the list.
-    @Test func `a folder is an item with no entity under it`() throws {
+    /// **A folder is counted but cannot be shown**, which is why pagination advances by the
+    /// item count rather than by how many playlists survived — advancing by the smaller number
+    /// would re-request the difference forever and never reach the end of the list.
+    @Test func `a folder decodes as a playlist and is dropped by its uri kind`() throws {
         let response = try JSONDecoder().decode(
             PathfinderLibraryResponse<PathfinderPlaylist>.self,
             from: libraryPlaylistsJSON,
         )
         let page = try #require(response.page)
+        let folder = try #require(page.entities.last)
 
+        // It decodes, and that is the whole problem: a folder carries a uri and a name, so
+        // nothing about the *shape* rejects it.
         #expect(page.items?.count == 3)
-        #expect(page.entities.count == 2)
-        #expect(page.items?.last?.item?.data == nil)
+        #expect(page.entities.count == 3)
+        #expect(folder.name == "¯\\_(ツ)_/¯")
+
+        // Only the uri's kind tells it apart, and without an id it cannot become a Playlist.
+        #expect(folder.id == nil)
+        #expect(Playlist(pathfinder: folder) == nil)
     }
 
     @Test func `a library playlist becomes the fields the list view reads`() throws {
@@ -342,5 +360,43 @@ struct PaginationAdvanceTests {
         #expect(state.total == 0)
         #expect(state.hasMore)
         #expect(!state.isLoaded)
+    }
+}
+
+/// The `libraryV3` variables that decide whether folders exist at all.
+struct LibraryVariableTests {
+    /// **The default has to be the flat one.** Measured 2026-08-13: `flatten: false` returns 14
+    /// items — 10 playlists and 4 folders — and hides the 24 playlists inside those folders,
+    /// while `flatten: true` with `includeFoldersWhenFlattening: false` returns all 34 and no
+    /// folder. The second is what `/me/playlists` did, so it is what the app's flat list needs.
+    /// Shipping the first is exactly what broke the playlist list.
+    @Test func `playlists are requested flat, without folders`() throws {
+        let encoded = try JSONEncoder().encode(
+            PathfinderLibraryVariables(filters: [LibraryFilter.playlists]),
+        )
+        let json = try #require(String(data: encoded, encoding: .utf8))
+
+        #expect(json.contains("\"flatten\":true"))
+        #expect(json.contains("\"includeFoldersWhenFlattening\":false"))
+    }
+}
+
+/// Kind-checked uri parsing, which is what tells a playlist from a folder.
+struct SpotifyURIKindTests {
+    @Test func `a playlist uri yields its id`() {
+        #expect(SpotifyURI.id(from: "spotify:playlist:abc", kind: "playlist") == "abc")
+    }
+
+    /// The bug in one line: taking the last component of a folder uri returns a plausible id.
+    @Test func `a folder uri yields an id only without the kind check`() {
+        let folder = "spotify:user:someone:folder:48e4423c174bd89d"
+
+        #expect(SpotifyURI.id(from: folder) == "48e4423c174bd89d")
+        #expect(SpotifyURI.id(from: folder, kind: "playlist") == nil)
+    }
+
+    @Test func `the wrong kind is rejected`() {
+        #expect(SpotifyURI.id(from: "spotify:album:abc", kind: "playlist") == nil)
+        #expect(SpotifyURI.id(from: "spotify:album:abc", kind: "album") == "abc")
     }
 }

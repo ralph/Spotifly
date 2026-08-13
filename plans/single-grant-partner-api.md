@@ -349,10 +349,31 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       **Pagination moved into the client**, because these documents report `totalCount` where
       the Web API reported a `next` URL that was null on the last page. Two rules, both real:
       the offset advances by *entries received* rather than entities used, and an empty page
-      ends the list whatever the total claims. The `Playlists` filter counts **folders** the app
-      has no screen for (14 for 10 playlists in testing), and relinking is many-to-one, so both
-      counts genuinely differ. `/me/following` was the app's only cursor-paginated list;
-      `libraryV3` pages by offset, so `PaginationState.nextCursor` is gone.
+      ends the list whatever the total claims. Relinking is many-to-one, so those counts
+      genuinely differ. `/me/following` was the app's only cursor-paginated list; `libraryV3`
+      pages by offset, so `PaginationState.nextCursor` is gone.
+
+      **Playlist folders are a hierarchy the Web API never exposed**, and this was shipped wrong
+      the first time. `libraryV3` returns folders as entries and hides their contents unless the
+      list is flattened — so the first cut showed four unopenable folder rows *and* silently
+      dropped the 24 playlists inside them, 10 of 34 surviving. Measured afterwards:
+
+      | `flatten` | `includeFoldersWhenFlattening` | result |
+      | --- | --- | --- |
+      | `false` | either | 10 playlists + 4 folders |
+      | `true` | `true` | 34 playlists + 4 folders |
+      | `true` | `false` | **34 playlists, no folders** — what `/me/playlists` returned |
+
+      The lesson is about the fixture, not the flag. A folder carries a `uri` and a `name`, so
+      it decodes as a `PathfinderPlaylist` and only its uri's *kind* tells it apart. The test
+      asserting folders were dropped passed because the fixture invented a folder with no `data`
+      — a shape Spotify never sends. **A fixture for a case that has not been observed is a
+      guess wearing a test's clothes**; the probe had already printed the real folder and it was
+      not consulted. `SpotifyURI.id(from:kind:)` now exists because taking the last component of
+      `spotify:user:<user>:folder:<hash>` yields a perfectly plausible id for a non-playlist.
+
+      Folder *hierarchy* — showing the tree, nesting playlists under folders — remains unbuilt
+      and is a genuine feature rather than a migration gap.
 
       **Audiobooks are not asked for.** The account in testing had two, and the app has no
       entity, screen or playback path for one. Not requesting the filter is the whole of

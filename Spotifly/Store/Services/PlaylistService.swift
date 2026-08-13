@@ -69,9 +69,10 @@ final class PlaylistService {
             // See AlbumService.loadUserAlbums: a superseded run must not write.
             try Task.checkCancellation()
 
-            // Fewer than the page holds: the library counts **folders** as playlist entries and
-            // this app has no folder screen, so they arrive and are dropped. That is why the
-            // offset advances by the page's item count rather than by this one.
+            // Can be fewer than the page holds, so the offset advances by the page's item count
+            // rather than by this one. Folders are excluded by asking for the list flattened
+            // (see `PathfinderLibraryVariables`) rather than by being filtered here, which also
+            // brings back the playlists nested inside them.
             let playlists = page.entities.compactMap { Playlist(pathfinder: $0) }
             self.store.upsertPlaylists(playlists)
 

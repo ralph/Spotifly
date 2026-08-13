@@ -242,8 +242,12 @@ nonisolated struct PathfinderPlaylist: Decodable, Sendable {
     let images: Images?
     let ownerV2: Owner?
 
+    /// **Kind-checked**, unlike the other entities here, because this type also decodes the
+    /// *folders* `libraryV3` returns alongside playlists: a folder carries a `uri` and a `name`
+    /// and so decodes perfectly well, and only the uri's kind tells the two apart. Nil here is
+    /// what drops it — `Playlist(pathfinder:)` requires an id.
     var id: String? {
-        uri.flatMap(SpotifyURI.id(from:))
+        uri.flatMap { SpotifyURI.id(from: $0, kind: "playlist") }
     }
 
     var ownerName: String? {
@@ -268,5 +272,20 @@ nonisolated enum SpotifyURI {
             return nil
         }
         return String(last)
+    }
+
+    /// The id of a uri that must be of a particular kind, or nil.
+    ///
+    /// **Taking the last component is not enough**, which the library found the hard way: a
+    /// playlist *folder* is `spotify:user:<user>:folder:<hash>`, so `id(from:)` returned the
+    /// hash and the folder became a playlist with a plausible-looking id — one that rendered as
+    /// a row and answered "Spotify returned no data" when opened. Requiring the kind is what
+    /// tells `spotify:playlist:x` from anything else wearing an id at the end.
+    static func id(from uri: String, kind: String) -> String? {
+        let parts = uri.split(separator: ":")
+        guard parts.count == 3, parts[0] == "spotify", parts[1] == kind, !parts[2].isEmpty else {
+            return nil
+        }
+        return String(parts[2])
     }
 }

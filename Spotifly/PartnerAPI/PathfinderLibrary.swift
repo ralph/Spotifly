@@ -32,19 +32,20 @@ nonisolated struct PathfinderLibraryResponse<Entity: Decodable & Sendable>: Deco
 
 /// A page of library entries.
 ///
-/// **`totalCount` counts more than this page can show.** Measured on 2026-08-13: the `Playlists`
-/// filter reported 14 for 10 playlists and 4 folders, because a folder is a library entry the app
-/// has no screen for. So the count is what Spotify holds, not what the list will render — the
-/// same shape of mismatch the saved-tracks list already lives with, where relinking makes several
-/// saved entries resolve to one track.
+/// **`totalCount` can exceed what the page renders**, so it is what Spotify holds rather than
+/// what the list will show — the same mismatch the saved-tracks list lives with, where relinking
+/// makes several saved entries resolve to one track. Pagination therefore advances by the item
+/// count, never by how many entities survived.
 nonisolated struct PathfinderLibraryPage<Entity: Decodable & Sendable>: Decodable, Sendable {
     let totalCount: Int?
     let items: [PathfinderLibraryItem<Entity>]?
 
     /// The entities, with anything unreadable dropped rather than failing the whole page.
     ///
-    /// That includes the kinds the app cannot show: a folder decodes to an entry with no usable
-    /// entity beneath it, and audiobooks are simply never asked for.
+    /// **Decoding is not a filter.** A playlist *folder* decodes as a `PathfinderPlaylist`
+    /// perfectly well — it carries a `uri` and a `name` — so nothing here rejects it, and the
+    /// kinds the app cannot show are excluded by not asking for them (`flatten`, and no
+    /// `Audiobooks` filter) and by the kind check in `PathfinderPlaylist.id`.
     var entities: [Entity] {
         (items ?? []).compactMap(\.item?.data)
     }
@@ -185,16 +186,29 @@ nonisolated struct PathfinderLibraryMembershipResponse: Decodable, Sendable {
 /// saved instead of an error. Measured by sending `PROBE_INVALID_MEMBER`, which answered HTTP 200
 /// with no errors and a full library. Hence `LibraryFilter` — the strings are not spelled at any
 /// call site.
+/// **`flatten` decides whether folders exist**, and the default here is the one that matches
+/// what the app can show. Measured on 2026-08-13 against an account with four folders:
+///
+/// | `flatten` | `includeFoldersWhenFlattening` | result |
+/// | --- | --- | --- |
+/// | `false` | either | 14 items: 10 playlists and 4 folders, folder contents hidden |
+/// | `true` | `true` | 38 items: 34 playlists and 4 folders |
+/// | `true` | `false` | **34 items: every playlist, no folders** |
+///
+/// The last row is what `/me/playlists` returned — a flat list including playlists nested in
+/// folders, with no folder ever appearing — so the app's existing flat list is a variable pair
+/// rather than a feature away. Leaving `flatten` false is what made this migration show four
+/// broken folder rows *and* hide the 24 playlists inside them.
 nonisolated struct PathfinderLibraryVariables: Encodable, Sendable {
     var filters: [String]
     var offset: Int = 0
     var limit: Int = LibraryFilter.pageLimit
     var order: String?
     var textFilter: String = ""
-    var flatten: Bool = false
+    var flatten: Bool = true
     var expandedFolders: [String] = []
     var folderUri: String?
-    var includeFoldersWhenFlattening: Bool = true
+    var includeFoldersWhenFlattening: Bool = false
 }
 
 /// The library kinds this app asks for.
