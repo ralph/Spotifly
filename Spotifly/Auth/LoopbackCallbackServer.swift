@@ -11,7 +11,7 @@ import Network
 /// Guards a one-time transition across threads, where the callback that performs it can fire
 /// more than once: `NWListener` reports state repeatedly, and a connection can both deliver
 /// and fail.
-private nonisolated final class OnceFlag: @unchecked Sendable {
+private final nonisolated class OnceFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var claimed = false
 
@@ -91,9 +91,18 @@ actor LoopbackCallbackServer {
 
         self.listener = listener
 
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, Error>) in
+        let port = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, Error>) in
             let once = OnceFlag()
-            listener.stateUpdateHandler = { state in
+            // Weakly, because NWListener retains its own stateUpdateHandler: capturing the
+            // listener strongly here makes a cycle, and every grant would leak its listener
+            // and the continuation it captured.
+            listener.stateUpdateHandler = { [weak listener] state in
+                guard let listener else {
+                    guard once.claim() else { return }
+                    continuation.resume(throwing: ServerError.listenerFailed("listener released"))
+                    return
+                }
+
                 switch state {
                 case .ready:
                     guard let port = listener.port?.rawValue, port != 0 else {
@@ -115,6 +124,11 @@ actor LoopbackCallbackServer {
             }
             listener.start(queue: .global(qos: .userInitiated))
         }
+
+        // The handler has done its job; leaving it installed keeps the continuation alive
+        // for as long as the listener is.
+        listener.stateUpdateHandler = nil
+        return port
     }
 
     /// Waits for the redirect, or gives up.
@@ -148,6 +162,11 @@ actor LoopbackCallbackServer {
     func stop() {
         timeout?.cancel()
         timeout = nil
+
+        // Handlers first: NWListener retains them, so cancelling without clearing leaves
+        // whatever they captured alive alongside it.
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
         listener?.cancel()
         listener = nil
 
