@@ -286,20 +286,55 @@ struct HomeRefreshTests {
         #expect(!store.homeIsLoading)
     }
 
-    // **The supersession guard in `HomeService` is reasoned, not covered here.** The bug it
-    // fixes — a cancelled load's teardown clearing the state of the load that replaced it — is
-    // only observable while the loser finishes *and* the winner is still in flight, so a test
-    // for it has to hold the two apart deliberately. An attempt that raced two `Task`s through
-    // an actor gate was withdrawn because it depended on `Task.yield()` landing the scheduler
-    // where it was wanted, which is not something to assert on.
-    //
-    // It was withdrawn under suspicion of hanging the suite, and that suspicion was wrong: the
-    // run stalls identically with this file's concurrency removed and with the whole suite
-    // excluded, so whatever stalls it is not here. Recorded because the wrong conclusion is the
-    // expensive one to inherit.
-    //
-    // If the guard is ever changed, reach for a deterministic interleaving — the transport
-    // itself driving the second load — rather than for `Task.yield()` and hope.
+    /// **The loser's cleanup must not run the winner's.** Cancelling a task unblocks its
+    /// `await`; it does not stop it where it stands, so the cancelled load reaches its own
+    /// teardown *after* the replacement has registered itself. Clearing `loadTask` and
+    /// `homeIsLoading` unconditionally there stops the spinner while a load is still running,
+    /// and makes the next caller start a third request instead of joining the second.
+    ///
+    /// Both loads are held at a gate so the second supersedes the first while the first is
+    /// genuinely in flight, which is the only state the bug is visible in.
+    ///
+    /// **Time-limited on purpose.** A concurrency test that can hang should fail loudly rather
+    /// than stall the run: these tests are `@MainActor`, so one wedged here would block every
+    /// other main-actor suite behind it and the result would read as an infrastructure problem
+    /// rather than a test failure. This test was once withdrawn on exactly that suspicion, and
+    /// the suspicion was wrong — the stall was toolchain state that a reboot cleared, and it
+    /// reproduced with this file's concurrency removed entirely.
+    @Test(.timeLimit(.minutes(1)))
+    func `a superseded refresh does not clear the one that replaced it`() async {
+        let store = AppStore()
+        let gate = Gate()
+        let service = HomeService(store: store, partnerAPI: gatedAPI(gate))
+
+        let first = Task { await service.refresh() }
+        await Task.yield()
+        let second = Task { await service.refresh() }
+        await Task.yield()
+
+        await gate.open()
+        _ = await (first.value, second.value)
+
+        // The winner finished and owns the state: no spinner left running, and the page it
+        // fetched is the one in the store.
+        #expect(!store.homeIsLoading)
+        #expect(store.hasLoadedHome)
+        #expect(!store.homeSections.isEmpty)
+    }
+
+    /// Answers the fixture, but only once the gate is opened.
+    private func gatedAPI(_ gate: Gate) -> PartnerAPI {
+        PartnerAPI(
+            accessToken: { "at" },
+            clientToken: { "ct" },
+            transport: { _ in
+                await gate.wait()
+                return (homeJSON, HTTPURLResponse(
+                    url: PartnerAPI.endpoint, statusCode: 200, httpVersion: nil, headerFields: nil,
+                )!)
+            },
+        )
+    }
 
     /// A failure has to reach the screen, since the page has nothing else to say for itself.
     @Test func `a rejected page is reported rather than left blank and silent`() async {
@@ -311,6 +346,30 @@ struct HomeRefreshTests {
         #expect(store.homeErrorMessage != nil)
         #expect(!store.hasLoadedHome)
         #expect(!store.homeIsLoading)
+    }
+}
+
+/// Holds a transport at the door until the test lets it through.
+///
+/// Opening both sets the flag *and* drains the waiters, so a transport arriving either side of
+/// `open()` is released either way — the gate cannot strand one by losing a race with it.
+private actor Gate {
+    private var isOpen = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen {
+            return
+        }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        for continuation in waiting {
+            continuation.resume()
+        }
+        waiting.removeAll()
     }
 }
 
