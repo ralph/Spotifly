@@ -26,6 +26,11 @@ actor KeymasterSession {
     private let refresher: Refresher
     private var tokens: KeymasterTokens?
     private var refreshInFlight: Task<KeymasterTokens, Error>?
+    /// Advanced by `clear()`. A refresh that was in flight when the grant was cleared must not
+    /// write what it eventually returns: cancellation is cooperative, so the network call can
+    /// still succeed after a logout and would otherwise put the signed-out account's refresh
+    /// token straight back into the keychain.
+    private var generation = 0
 
     init(
         store: KeymasterTokenStoring = KeymasterKeychainStore(),
@@ -54,6 +59,7 @@ actor KeymasterSession {
 
     /// Forgets the grant — on logout, or when the refresh token is dead.
     func clear() {
+        generation &+= 1
         tokens = nil
         refreshInFlight?.cancel()
         refreshInFlight = nil
@@ -84,29 +90,39 @@ actor KeymasterSession {
             return try await refreshInFlight.value
         }
 
-        let task = Task { [refresher, store] () throws -> KeymasterTokens in
-            let renewed = try await refresher(current.refreshToken)
-            // The username only comes back on the initial exchange, so a refresh that omits
-            // it must not blank the one the accesspoint needs.
-            let merged = renewed.username.isEmpty
-                ? KeymasterTokens(
-                    accessToken: renewed.accessToken,
-                    refreshToken: renewed.refreshToken,
-                    expiresAt: renewed.expiresAt,
-                    username: current.username,
-                )
-                : renewed
-
-            try store.save(merged)
-            return merged
+        let startedAt = generation
+        let task = Task { [refresher] () throws -> KeymasterTokens in
+            try await refresher(current.refreshToken)
         }
 
         refreshInFlight = task
         defer { refreshInFlight = nil }
 
         let renewed = try await task.value
-        tokens = renewed
-        return renewed
+
+        // Back on the actor. A logout that landed during the network call already cleared the
+        // grant, so this result belongs to an account that is gone — persisting it would
+        // recreate the keychain item behind logout's back.
+        guard startedAt == generation else {
+            throw KeymasterSessionError.noGrant
+        }
+
+        let merged = merge(renewed, keeping: current)
+        try store.save(merged)
+        tokens = merged
+        return merged
+    }
+
+    /// Carries forward what a refresh response does not repeat.
+    private func merge(_ renewed: KeymasterTokens, keeping current: KeymasterTokens) -> KeymasterTokens {
+        renewed.username.isEmpty
+            ? KeymasterTokens(
+                accessToken: renewed.accessToken,
+                refreshToken: renewed.refreshToken,
+                expiresAt: renewed.expiresAt,
+                username: current.username,
+            )
+            : renewed
     }
 }
 
