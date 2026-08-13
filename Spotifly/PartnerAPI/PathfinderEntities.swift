@@ -341,6 +341,158 @@ extension Album {
     }
 }
 
+extension UserProfile {
+    /// From `profileAttributes`, which is what the web client asks instead of `/me`.
+    ///
+    /// `username` is the id: the Web API's `id` and this are the same string for the same
+    /// account, so nothing that stored one has to be migrated.
+    ///
+    /// The profile URL is **constructed** rather than read, because this response carries no
+    /// `external_urls`. That is a fixed form on Spotify's side, not a guess about this account —
+    /// but it is the one field here that is derived rather than measured.
+    init?(pathfinder profile: PathfinderProfile) {
+        guard let username = profile.username, !username.isEmpty else { return nil }
+
+        id = username
+        displayName = profile.name ?? username
+        imageURL = profile.avatar?.largestURL.flatMap(URL.init(string:))
+        externalUrl = "https://open.spotify.com/user/\(username)"
+        uri = profile.uri ?? "spotify:user:\(username)"
+    }
+}
+
+// MARK: - The start page
+
+/// What one `home` response resolves to: the entities to store, and the shelves that index them.
+///
+/// Pure, and separate from `HomeService`, so the rules below can be tested against a recorded
+/// response rather than against a network. Main-actor isolated because the store entities it
+/// builds are — the decoded response it reads is not, and crosses on its own.
+struct HomePage {
+    var greeting: String?
+    var sections: [HomeSection] = []
+    var albums: [Album] = []
+    var playlists: [Playlist] = []
+    var artists: [Artist] = []
+
+    /// Three rules, each of which was a decision rather than a default:
+    ///
+    /// - **An entry the app cannot open is dropped, and an empty shelf with it.** Podcasts,
+    ///   audiobooks and Spotify's `NotFound` tombstones all arrive on this page, and a title
+    ///   over an empty row reads as a bug.
+    /// - **Duplicates within a shelf are collapsed**, because `ForEach` keys on the item and
+    ///   Spotify does repeat an entity inside one section.
+    /// - **A section with no uri is dropped**, since the uri is its identity across refreshes.
+    init(pathfinder home: PathfinderHome) {
+        greeting = home.greeting?.transformedLabel
+
+        for section in home.sections {
+            guard let uri = section.uri else { continue }
+
+            var items: [HomeItem] = []
+            var seen: Set<HomeItem> = []
+
+            for entry in section.items {
+                for item in resolve(entry.content) where !seen.contains(item) {
+                    seen.insert(item)
+                    items.append(item)
+                }
+            }
+
+            guard !items.isEmpty else { continue }
+
+            sections.append(HomeSection(id: uri, title: section.title, items: items))
+        }
+    }
+
+    /// One shelf entry, which is usually one item and occasionally a whole list of them.
+    private mutating func resolve(_ content: PathfinderHomeContent?) -> [HomeItem] {
+        switch content {
+        case let .album(album):
+            guard let album = Album(pathfinder: album) else { return [] }
+            albums.append(album)
+            return [.album(album.id)]
+
+        case let .playlist(playlist):
+            guard let playlist = Playlist(pathfinder: playlist) else { return [] }
+            playlists.append(playlist)
+            return [.playlist(playlist.id)]
+
+        case let .artist(artist):
+            guard let artist = Artist(pathfinder: artist) else { return [] }
+            artists.append(artist)
+            return [.artist(artist.id)]
+
+        case let .list(list):
+            return list.entities.flatMap { resolve(entity: $0) }
+
+        case .unsupported, .none:
+            return []
+        }
+    }
+
+    /// A "Recents" entry, which names its own kind — and can be wrong about it.
+    ///
+    /// **The uri decides, not `entityTypeTrait`.** Liked Songs arrives declared
+    /// `ENTITY_TYPE_PLAYLIST` with the uri `spotify:collection:tracks`, which is not a playlist
+    /// and has no playlist id; trusting the declared type would put a row on the start page that
+    /// opens an empty playlist screen. Kind-checking the uri drops it instead — the app already
+    /// has a Favorites section for it.
+    private mutating func resolve(entity: PathfinderHomeEntity) -> [HomeItem] {
+        guard let uri = entity.uri else { return [] }
+
+        let images = ImageSet(pathfinderSources: entity.imageSources)
+        let contributor = entity.firstContributor
+
+        if let id = SpotifyURI.id(from: uri, kind: "album") {
+            albums.append(Album(
+                id: id,
+                name: entity.name ?? "",
+                uri: uri,
+                images: images,
+                releaseDate: nil,
+                albumType: nil,
+                externalUrl: nil,
+                artistId: contributor?.uri.flatMap { SpotifyURI.id(from: $0, kind: "artist") },
+                artistName: contributor?.name ?? "Unknown",
+                detailsLoaded: false,
+            ))
+            return [.album(id)]
+        }
+
+        if let id = SpotifyURI.id(from: uri, kind: "playlist") {
+            playlists.append(Playlist(
+                id: id,
+                name: entity.name ?? "",
+                description: nil,
+                images: images,
+                uri: uri,
+                isPublic: true,
+                ownerId: "",
+                ownerName: contributor?.name ?? "",
+                externalUrl: nil,
+                items: [],
+                totalDurationMs: nil,
+                knownTrackCount: 0,
+            ))
+            return [.playlist(id)]
+        }
+
+        if let id = SpotifyURI.id(from: uri, kind: "artist") {
+            artists.append(Artist(
+                id: id,
+                name: entity.name ?? "",
+                uri: uri,
+                images: images,
+                externalUrl: nil,
+            ))
+            return [.artist(id)]
+        }
+
+        return []
+    }
+}
+
 extension Playlist {
     init?(pathfinder playlist: PathfinderPlaylist) {
         guard let id = playlist.id, let uri = playlist.uri else { return nil }

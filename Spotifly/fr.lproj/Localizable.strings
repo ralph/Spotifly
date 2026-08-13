@@ -76,7 +76,6 @@
 "loading.artists" = "Chargement des artistes...";
 "loading.tracks" = "Chargement des titres...";
 "loading.top_tracks" = "Chargement des titres populaires...";
-"loading.recently_played" = "Chargement des écoutes récentes...";
 
 /* Error Messages */
 "error.load_favorites" = "Impossible de charger les titres likés";
@@ -84,7 +83,6 @@
 "error.load_albums" = "Impossible de charger les albums";
 "error.load_artists" = "Impossible de charger les artistes";
 "error.load_queue" = "Impossible de charger la file d'attente";
-"error.load_recently_played" = "Impossible de charger les écoutes récentes : %@";
 "error.remove_from_queue" = "Impossible de retirer le titre de la file d'attente";
 "error.reorder_queue" = "Impossible de réorganiser la file d'attente";
 "error.clear_queue" = "Impossible de vider la file d'attente";
@@ -119,18 +117,10 @@
 "queue.clear.confirm.message %lld" = "Cette action supprimera %lld titres à venir de la file d'attente.";
 "queue.clear.confirm.action" = "Vider";
 
-/* Startpage Sections */
-"startpage.top_artists" = "Vos artistes les plus écoutés";
-"startpage.top_artists.empty" = "Écoutez plus de musique pour voir vos artistes les plus écoutés";
-"startpage.new_releases" = "Nouvelles sorties";
-"startpage.new_releases.empty" = "Aucune nouvelle sortie disponible";
-"startpage.top_albums" = "Vos albums les plus écoutés";
-"startpage.top_albums.empty" = "Écoutez plus de musique pour voir vos albums les plus écoutés";
-"startpage.empty" = "Aucune section activée";
-"startpage.empty.description" = "Activez des sections dans Préférences → Accueil";
-
-/* Recently Played */
-"recently_played.content" = "Écoutés récemment";
+/* Startpage */
+"startpage.empty" = "Rien à afficher pour l'instant";
+"startpage.empty.description" = "Spotify compose cette page à partir de ce que vous écoutez.";
+"startpage.error" = "Impossible de charger la page d'accueil";
 
 /* Sections */
 "section.tracks" = "Titres";
@@ -202,14 +192,6 @@
 "preferences.restart_note" = "Les modifications prennent effet au redémarrage de la lecture.";
 "preferences.version %@ (%@)" = "Version %@ (%@)";
 "preferences.copyright %@" = "© %@ Ralph von der Heyden";
-
-/* Startpage Preferences */
-"preferences.startpage.sections" = "Sections";
-"preferences.startpage.none_enabled" = "La page d'accueil sera vide. Activez au moins une section pour afficher du contenu.";
-"preferences.top_items_time_range" = "Période";
-"preferences.time_range.short_term" = "4 dernières semaines";
-"preferences.time_range.medium_term" = "6 derniers mois";
-"preferences.time_range.long_term" = "12 derniers mois";
 
 /* Album Context Menu & Alerts */
 "album.menu.remove_from_library" = "Retirer de la Bibliothèque";

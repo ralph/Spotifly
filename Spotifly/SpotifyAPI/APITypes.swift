@@ -78,22 +78,6 @@ struct APIArtist: Identifiable {
     let externalUrl: String?
 }
 
-/// Response wrapper for user's top artists endpoint
-struct TopArtistsResponse {
-    let artists: [APIArtist]
-    let hasMore: Bool
-    let nextOffset: Int?
-    let total: Int
-}
-
-/// Response wrapper for user's top tracks endpoint
-struct TopTracksResponse {
-    let tracks: [APITrack]
-    let hasMore: Bool
-    let nextOffset: Int?
-    let total: Int
-}
-
 // MARK: - Playlist Types
 
 /// Playlist metadata from Spotify API
@@ -119,38 +103,6 @@ struct SearchResults: Encodable {
     let artists: [Artist]
     let playlists: [Playlist]
     let tracks: [Track]
-}
-
-// MARK: - Recently Played
-
-/// Recently played context
-struct PlaybackContext {
-    let type: String // "album", "playlist", "artist"
-    let uri: String
-}
-
-/// Recently played item
-struct RecentlyPlayedItem: Identifiable {
-    let id: String // Use played_at as ID since tracks can be played multiple times
-    let context: PlaybackContext?
-    let playedAt: String
-    let track: APITrack
-}
-
-/// Recently played response wrapper
-struct RecentlyPlayedResponse {
-    let items: [RecentlyPlayedItem]
-}
-
-// MARK: - Playback & Connect Types
-
-// MARK: - User Top Items
-
-/// Time range for top items (artists/tracks)
-enum TopItemsTimeRange: String {
-    case longTerm = "long_term" // ~1 year
-    case mediumTerm = "medium_term" // ~6 months (default)
-    case shortTerm = "short_term" // ~4 weeks
 }
 
 // MARK: - Codable Response Types (Internal)
@@ -387,23 +339,6 @@ struct DeviceCodable: Decodable {
 
 // MARK: - Response Codables
 
-/// User profile
-struct UserProfileCodable: Decodable {
-    let id: String
-    let displayName: String?
-    let images: [ImageCodable]?
-    let externalUrls: ExternalUrlsCodable?
-    let uri: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case displayName = "display_name"
-        case images
-        case externalUrls = "external_urls"
-        case uri
-    }
-}
-
 /// Playlist items
 struct PlaylistItemsCodable: Decodable {
     let items: [PlaylistItemWrapperCodable]
@@ -420,66 +355,17 @@ struct PlaylistItemsCodable: Decodable {
     }
 }
 
-/// Top artists
-struct TopArtistsCodable: Decodable {
-    let items: [ArtistCodable]
-    let total: Int
-    let next: String?
-}
-
-/// Top tracks
-struct TopTracksCodable: Decodable {
-    let items: [TrackCodable]
-    let total: Int
-    let next: String?
-}
-
-/// Recently played
-struct RecentlyPlayedCodable: Decodable {
-    let items: [RecentlyPlayedItemCodable]
-
-    struct RecentlyPlayedItemCodable: Decodable {
-        let track: TrackCodable
-        let playedAt: String
-        let context: ContextCodable?
-
-        enum CodingKeys: String, CodingKey {
-            case track
-            case playedAt = "played_at"
-            case context
-        }
-    }
-
-    func toRecentlyPlayedResponse() -> RecentlyPlayedResponse {
-        let items = items.map { item in
-            RecentlyPlayedItem(
-                id: item.playedAt,
-                context: item.context.map { PlaybackContext(type: $0.type, uri: $0.uri) },
-                playedAt: item.playedAt,
-                track: item.track.toAPITrack(),
-            )
-        }
-        return RecentlyPlayedResponse(items: items)
-    }
-}
-
 // MARK: - Errors
 
-/// Errors from Spotify API
+/// Errors from the four playlist-management calls still on `api.spotify.com`.
+///
+/// Three cases went with what they described: `forbidden` was `/me` refusing an account the
+/// dashboard app had not whitelisted, `noActiveDevice` was a `/me/player/*` command finding
+/// nothing to send itself to, and `networkError` was never thrown at all.
 enum SpotifyAPIError: Error, LocalizedError {
     case apiError(String)
-    case forbidden
     case invalidResponse
     case invalidURI
-    case networkError(Error)
-    /// A transport command found no device to send itself to.
-    ///
-    /// Distinct from `notFound` and worth its own case: every `/me/player/*` command targets
-    /// whichever device the cluster says is active, and Spotify answers 404 when there is
-    /// none. That is a routing fact the caller can act on — the local player can take over —
-    /// not a failure to report, so it must not be flattened into `apiError` with everything
-    /// else. See `sendTransportCommand`.
-    case noActiveDevice
     case notFound
     case unauthorized
 
@@ -487,16 +373,10 @@ enum SpotifyAPIError: Error, LocalizedError {
         switch self {
         case let .apiError(message):
             "Spotify API error: \(message)"
-        case .forbidden:
-            "Forbidden - access denied"
         case .invalidResponse:
             "Invalid response from Spotify"
         case .invalidURI:
             "Invalid Spotify URI format"
-        case let .networkError(error):
-            "Network error: \(error.localizedDescription)"
-        case .noActiveDevice:
-            "No active device to control"
         case .notFound:
             "Track not found"
         case .unauthorized:

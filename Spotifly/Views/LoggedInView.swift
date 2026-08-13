@@ -32,8 +32,7 @@ struct LoggedInView: View {
     /// Persisted because they store in-flight load tasks for dedup and
     /// cancellation-resilience across view recreation.
     @State private var trackService: TrackService
-    @State private var recentlyPlayedService: RecentlyPlayedService
-    @State private var topItemsService: TopItemsService
+    @State private var homeService: HomeService
 
     /// Services whose state lives entirely in AppStore.
     private var searchService: SearchService {
@@ -60,11 +59,8 @@ struct LoggedInView: View {
         _deviceService = State(initialValue: DeviceService(store: store))
         _navigationCoordinator = State(initialValue: NavigationCoordinator(store: store))
         _trackService = State(initialValue: trackService)
-        _recentlyPlayedService = State(initialValue: RecentlyPlayedService(store: store))
-        _topItemsService = State(initialValue: TopItemsService(store: store))
+        _homeService = State(initialValue: HomeService(store: store))
     }
-
-    @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
 
     @State private var searchText = ""
 
@@ -166,9 +162,8 @@ struct LoggedInView: View {
         .environment(connectionService)
         .environment(deviceService)
         .environment(queueService)
-        .environment(recentlyPlayedService)
+        .environment(homeService)
         .environment(searchService)
-        .environment(topItemsService)
         .environment(navigationCoordinator)
         .environment(store)
         .environment(trackService)
@@ -177,17 +172,15 @@ struct LoggedInView: View {
         .environment(artistService)
         .focusedValue(\.navigationSelection, navigationSelectionBinding)
         .focusedValue(\.session, session)
-        .focusedValue(\.recentlyPlayedService, recentlyPlayedService)
+        .focusedValue(\.homeService, homeService)
         .loggedInLifecycle(
             session: session,
             store: store,
-            topItemsTimeRange: topItemsTimeRange,
             playbackViewModel: playbackViewModel,
             queueService: queueService,
             deviceService: deviceService,
             connectionService: connectionService,
-            recentlyPlayedService: recentlyPlayedService,
-            topItemsService: topItemsService,
+            homeService: homeService,
             blockingState: $blockingState,
         )
         .onChange(of: store.searchCacheEvictionRevision) {

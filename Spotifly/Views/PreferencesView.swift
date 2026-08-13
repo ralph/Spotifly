@@ -15,9 +15,9 @@ struct PreferencesView: View {
                 PlaybackSettingsView()
             }
 
-            Tab("nav.startpage", systemImage: "house") {
-                StartpageSettingsView()
-            }
+            // No start-page tab. It configured which of three fixed sections to show and over
+            // what time range, and the page no longer has fixed sections: Spotify decides what
+            // is on it. Toggling a shelf Spotify may not send next time is not a setting.
 
             Tab("preferences.info", systemImage: "info.circle") {
                 InfoView()
@@ -70,79 +70,6 @@ struct PlaybackSettingsView: View {
             // Sync UI with actual player settings
             SpotifyPlayer.setBitrate(selectedBitrate)
             SpotifyPlayer.setGapless(gaplessEnabled)
-        }
-    }
-}
-
-// MARK: - Startpage Settings Tab
-
-/// Identifiers for startpage sections
-enum StartpageSection: String, CaseIterable, Identifiable {
-    case topAlbums
-    case topArtists
-    case recentlyPlayed
-
-    var id: String {
-        rawValue
-    }
-
-    var titleKey: LocalizedStringKey {
-        switch self {
-        case .topArtists: "startpage.top_artists"
-        case .recentlyPlayed: "recently_played.content"
-        case .topAlbums: "startpage.top_albums"
-        }
-    }
-}
-
-struct StartpageSettingsView: View {
-    @AppStorage("showTopArtists") private var showTopArtists: Bool = true
-    @AppStorage("showRecentlyPlayed") private var showRecentlyPlayed: Bool = true
-    @AppStorage("showTopAlbums") private var showTopAlbums: Bool = true
-    @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
-
-    /// Whether any section is enabled
-    private var hasAnySectionEnabled: Bool {
-        showTopArtists || showRecentlyPlayed || showTopAlbums
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                ForEach(StartpageSection.allCases) { section in
-                    Toggle(section.titleKey, isOn: bindingForSection(section))
-                }
-            } header: {
-                Text("preferences.startpage.sections")
-            }
-
-            Section {
-                Picker("preferences.top_items_time_range", selection: $topItemsTimeRange) {
-                    Text("preferences.time_range.short_term").tag(TopItemsTimeRange.shortTerm.rawValue)
-                    Text("preferences.time_range.medium_term").tag(TopItemsTimeRange.mediumTerm.rawValue)
-                    Text("preferences.time_range.long_term").tag(TopItemsTimeRange.longTerm.rawValue)
-                }
-            }
-
-            if !hasAnySectionEnabled {
-                Section {
-                    Text("preferences.startpage.none_enabled")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private func bindingForSection(_ section: StartpageSection) -> Binding<Bool> {
-        switch section {
-        case .topArtists:
-            $showTopArtists
-        case .recentlyPlayed:
-            $showRecentlyPlayed
-        case .topAlbums:
-            $showTopAlbums
         }
     }
 }

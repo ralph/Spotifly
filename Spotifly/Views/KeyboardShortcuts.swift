@@ -25,17 +25,6 @@ extension View {
         )
     }
 
-    /// Adds startpage-specific keyboard shortcuts (refresh)
-    func startpageShortcuts(
-        recentlyPlayedService: RecentlyPlayedService,
-    ) -> some View {
-        background(
-            StartpageShortcutsView(
-                recentlyPlayedService: recentlyPlayedService,
-            ),
-        )
-    }
-
     /// Adds search keyboard shortcuts (focus)
     func searchShortcuts() -> some View {
         background(SearchShortcutsView())
@@ -111,23 +100,6 @@ private struct LibraryNavigationShortcutsView: View {
             }
             .keyboardShortcut("4", modifiers: .command)
         }
-        .frame(width: 0, height: 0)
-        .opacity(0)
-    }
-}
-
-private struct StartpageShortcutsView: View {
-    @Bindable var recentlyPlayedService: RecentlyPlayedService
-    @Environment(SpotifySession.self) private var session
-
-    var body: some View {
-        Button("") {
-            Task {
-                let token = await session.validAccessToken()
-                await recentlyPlayedService.refresh(accessToken: token)
-            }
-        }
-        .keyboardShortcut("r", modifiers: .command)
         .frame(width: 0, height: 0)
         .opacity(0)
     }

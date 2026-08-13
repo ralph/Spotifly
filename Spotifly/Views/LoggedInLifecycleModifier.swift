@@ -11,13 +11,11 @@ import SwiftUI
 struct LoggedInLifecycleModifier: ViewModifier {
     let session: SpotifySession
     let store: AppStore
-    let topItemsTimeRange: String
     let playbackViewModel: PlaybackViewModel
     let queueService: QueueService
     let deviceService: DeviceService
     let connectionService: ConnectionService
-    let recentlyPlayedService: RecentlyPlayedService
-    let topItemsService: TopItemsService
+    let homeService: HomeService
     @Binding var blockingState: LoggedInView.BlockingState?
 
     /// Last observed connection readiness; nil until the first snapshot arrives.
@@ -48,24 +46,18 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     SpotifySession.current = session
                 #endif
 
-                let token = await session.validAccessToken()
-
-                do {
-                    let profile = try await SpotifyAPI.getCurrentUserProfile(accessToken: token)
-                    store.setUserProfile(profile)
-                } catch SpotifyAPIError.forbidden {
-                    blockingState = .userNotWhitelisted
-                    return
-                } catch {
-                    // Continue without profile if the request fails for a non-auth reason.
-                }
-
-                let timeRange = TopItemsTimeRange(rawValue: topItemsTimeRange) ?? .mediumTerm
-                async let topArtists: () = topItemsService.loadTopArtists(accessToken: token, timeRange: timeRange)
-                async let topTracks: () = topItemsService.loadTopTracks(accessToken: token, timeRange: timeRange)
-                async let recentlyPlayed: () = recentlyPlayedService.loadRecentlyPlayed(accessToken: token)
-
-                _ = await (topArtists, topTracks, recentlyPlayed)
+                // The profile and the start page are independent requests on the same grant, so
+                // they run together. Neither blocks: an app that cannot say who you are is
+                // still an app that plays music.
+                //
+                // **Nothing sets `.userNotWhitelisted` any more.** It existed because `/me` on
+                // the dashboard grant answered 403 for an account the developer had not added
+                // to their app, and `profileAttributes` runs on the keymaster grant, where
+                // there is no such list. The state and its screen go with the rest of the
+                // dashboard app in the next task.
+                async let profile: () = loadProfile()
+                async let home: () = homeService.loadHome()
+                _ = await (profile, home)
 
                 playbackViewModel.setTokenProvider { await session.validAccessToken() }
 
@@ -101,7 +93,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
 
                 // Re-sync with whatever is playing now.
                 Task {
-                    let token = await session.validAccessToken()
                     await deviceService.waitForTransferSettling()
                     await queueService.fetchInitialPlaybackState()
                 }
@@ -129,32 +120,39 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 }
             }
     }
+
+    /// Who is logged in. Failure is swallowed: the profile names the account in one settings
+    /// screen, and nothing else waits on it.
+    private func loadProfile() async {
+        do {
+            let profile = try await PartnerAPI().profile()
+            store.setUserProfile(UserProfile(pathfinder: profile))
+        } catch {
+            debugLog("LoggedInLifecycle", "Profile unavailable: \(error.localizedDescription)")
+        }
+    }
 }
 
 extension View {
     func loggedInLifecycle(
         session: SpotifySession,
         store: AppStore,
-        topItemsTimeRange: String,
         playbackViewModel: PlaybackViewModel,
         queueService: QueueService,
         deviceService: DeviceService,
         connectionService: ConnectionService,
-        recentlyPlayedService: RecentlyPlayedService,
-        topItemsService: TopItemsService,
+        homeService: HomeService,
         blockingState: Binding<LoggedInView.BlockingState?>,
     ) -> some View {
         modifier(
             LoggedInLifecycleModifier(
                 session: session,
                 store: store,
-                topItemsTimeRange: topItemsTimeRange,
                 playbackViewModel: playbackViewModel,
                 queueService: queueService,
                 deviceService: deviceService,
                 connectionService: connectionService,
-                recentlyPlayedService: recentlyPlayedService,
-                topItemsService: topItemsService,
+                homeService: homeService,
                 blockingState: blockingState,
             ),
         )

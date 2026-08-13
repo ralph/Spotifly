@@ -18,8 +18,8 @@ struct FocusedSession: FocusedValueKey {
     typealias Value = SpotifySession
 }
 
-struct FocusedRecentlyPlayedService: FocusedValueKey {
-    typealias Value = RecentlyPlayedService
+struct FocusedHomeService: FocusedValueKey {
+    typealias Value = HomeService
 }
 
 extension FocusedValues {
@@ -33,9 +33,9 @@ extension FocusedValues {
         set { self[FocusedSession.self] = newValue }
     }
 
-    var recentlyPlayedService: RecentlyPlayedService? {
-        get { self[FocusedRecentlyPlayedService.self] }
-        set { self[FocusedRecentlyPlayedService.self] = newValue }
+    var homeService: HomeService? {
+        get { self[FocusedHomeService.self] }
+        set { self[FocusedHomeService.self] = newValue }
     }
 }
 
@@ -91,7 +91,7 @@ struct SpotiflyApp: App {
 struct SpotiflyCommands: Commands {
     @FocusedValue(\.navigationSelection) var navigationSelection
     @FocusedValue(\.session) var session
-    @FocusedValue(\.recentlyPlayedService) var recentlyPlayedService
+    @FocusedValue(\.homeService) var homeService
 
     private var playbackViewModel: PlaybackViewModel {
         PlaybackViewModel.shared
@@ -162,10 +162,9 @@ struct SpotiflyCommands: Commands {
             .keyboardShortcut("f", modifiers: .command)
 
             Button("menu.refresh") {
-                guard let session, let service = recentlyPlayedService else { return }
+                guard let homeService else { return }
                 Task {
-                    let token = await session.validAccessToken()
-                    await service.refresh(accessToken: token)
+                    await homeService.refresh()
                 }
             }
             .keyboardShortcut("r", modifiers: .command)

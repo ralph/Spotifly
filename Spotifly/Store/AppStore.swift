@@ -131,24 +131,15 @@ final class AppStore {
     /// enough to invalidate a route because a deep-linked entity may still be loading.
     private(set) var deletedEntitySelections: Set<Selection> = []
 
-    // MARK: - Recently Played State
+    // MARK: - Start Page State
 
-    private(set) var recentTrackIds: [String] = []
-    /// URIs of recent albums/artists/playlists (e.g., "spotify:album:123")
-    private(set) var recentItemURIs: [String] = []
-    var recentlyPlayedIsLoading = false
-    var recentlyPlayedErrorMessage: String?
-    var hasLoadedRecentlyPlayed = false
-
-    // MARK: - Top Items State
-
-    var topArtistIds: [String] = []
-    var topArtistsPagination = PaginationState()
-    var topArtistsErrorMessage: String?
-
-    var topTrackAlbumIds: [String] = []
-    var topTrackAlbumsPagination = PaginationState()
-    var topTrackAlbumsErrorMessage: String?
+    /// Spotify's own start page, as shelves of ids. One request fills all of it, so there is a
+    /// single loading flag and a single error rather than one per section.
+    private(set) var homeSections: [HomeSection] = []
+    private(set) var homeGreeting: String?
+    var homeIsLoading = false
+    var homeErrorMessage: String?
+    var hasLoadedHome = false
 
     // MARK: - Queue State
 
@@ -201,38 +192,6 @@ final class AppStore {
     /// Available Spotify devices
     var availableDevices: [Device] {
         Array(devices.values)
-    }
-
-    /// Recent tracks from the store
-    var recentTracks: [Track] {
-        recentTrackIds.compactMap { tracks[$0] }
-    }
-
-    /// Top artists from the store
-    var topArtists: [Artist] {
-        topArtistIds.compactMap { artists[$0] }
-    }
-
-    /// Top albums derived from top tracks
-    var topTrackAlbums: [Album] {
-        topTrackAlbumIds.compactMap { albums[$0] }
-    }
-
-    /// Recent albums and playlists (excludes artists) from URIs
-    var recentAlbumsAndPlaylists: [(id: String, album: Album?, playlist: Playlist?)] {
-        recentItemURIs.compactMap { uri -> (id: String, album: Album?, playlist: Playlist?)? in
-            if uri.hasPrefix("spotify:album:") {
-                let id = String(uri.dropFirst("spotify:album:".count))
-                guard let album = albums[id] else { return nil }
-                return (id: uri, album: album, playlist: nil)
-            } else if uri.hasPrefix("spotify:playlist:") {
-                let id = String(uri.dropFirst("spotify:playlist:".count))
-                guard let playlist = playlists[id] else { return nil }
-                return (id: uri, album: nil, playlist: playlist)
-            }
-            // Skip artists
-            return nil
-        }
     }
 
     // MARK: - Queue Computed Properties
@@ -308,8 +267,9 @@ final class AppStore {
     }
 
     /// Upsert a single album. What we already know is never downgraded: a stub
-    /// entity (the one `TopItemsService` builds from a track's album object) does
-    /// not replace fully fetched metadata, and no upsert drops loaded tracks.
+    /// entity (the one the start page builds out of a shelf entry, which carries no
+    /// release date or album type) does not replace fully fetched metadata, and no
+    /// upsert drops loaded tracks.
     func upsertAlbum(_ album: Album) {
         deletedEntitySelections.remove(.album(id: album.id))
         guard let existing = albums[album.id] else {
@@ -672,14 +632,15 @@ final class AppStore {
         searchErrorMessage = nil
     }
 
-    // MARK: - Recently Played Actions
+    // MARK: - Start Page Actions
 
-    func setRecentTrackIds(_ ids: [String]) {
-        recentTrackIds = ids
-    }
-
-    func setRecentItemURIs(_ uris: [String]) {
-        recentItemURIs = uris
+    /// Replaces the whole page. Shelves are not merged across loads: Spotify rebuilds this list
+    /// on every request — 31 sections in the same account differed in order and membership
+    /// between two requests three minutes apart — so keeping an old shelf that no longer came
+    /// back would show something Spotify has stopped recommending.
+    func setHomePage(sections: [HomeSection], greeting: String?) {
+        homeSections = sections
+        homeGreeting = greeting
     }
 
     // MARK: - Live State Freshness
@@ -796,13 +757,7 @@ final class AppStore {
                 let searchResultQueries: [String]
                 let lastDisplayedSearchQuery: String?
 
-                let recentTrackIds: [String]
-                let recentItemURIs: [String]
-
-                let topArtistIds: [String]
-                let topArtistsPagination: PaginationState
-                let topTrackAlbumIds: [String]
-                let topTrackAlbumsPagination: PaginationState
+                let homeSections: [HomeSection]
 
                 let queue: QueueSnapshot
 
@@ -843,12 +798,7 @@ final class AppStore {
                 searchResultsByQuery: searchResultsByQuery,
                 searchResultQueries: searchResultQueries,
                 lastDisplayedSearchQuery: lastDisplayedSearchQuery,
-                recentTrackIds: recentTrackIds,
-                recentItemURIs: recentItemURIs,
-                topArtistIds: topArtistIds,
-                topArtistsPagination: topArtistsPagination,
-                topTrackAlbumIds: topTrackAlbumIds,
-                topTrackAlbumsPagination: topTrackAlbumsPagination,
+                homeSections: homeSections,
                 queue: StoreSnapshot.QueueSnapshot(
                     previousTracks: queue.previousTracks.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
                     currentTrack: queue.currentTrack.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },

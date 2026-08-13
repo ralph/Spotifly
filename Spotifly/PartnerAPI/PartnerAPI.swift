@@ -333,6 +333,46 @@ nonisolated struct PartnerAPI: Sendable {
         }
     }
 
+    // MARK: - Home
+
+    /// The start page, in one request.
+    ///
+    /// Everything the shelves draw arrives inline — names, cover art, artists — so this is the
+    /// whole page rather than an index into it. That is the real saving over what it replaced:
+    /// `/me/player/recently-played` named its items by uri only, so the strip cost one further
+    /// request per album, playlist and artist on it.
+    ///
+    /// Throws `emptyPayload` when Spotify answers `GenericError`, which it does with HTTP 200
+    /// and an otherwise well-formed body.
+    func home() async throws -> PathfinderHome {
+        let response: PathfinderHomeResponse = try await query(
+            .home,
+            variables: PathfinderHomeVariables(),
+        )
+
+        guard let home = response.home, !home.isError else {
+            throw PartnerAPIError.emptyPayload
+        }
+
+        return home
+    }
+
+    // MARK: - Profile
+
+    /// Who the listener is: id, display name and avatar.
+    func profile() async throws -> PathfinderProfile {
+        let response: PathfinderProfileResponse = try await query(
+            .profileAttributes,
+            variables: EmptyVariables(),
+        )
+
+        guard let profile = response.profile else {
+            throw PartnerAPIError.emptyPayload
+        }
+
+        return profile
+    }
+
     /// Runs a mutation and throws unless the response says it happened.
     ///
     /// A rejected mutation arrives as HTTP 200 with a `__typename` naming the failure, so the

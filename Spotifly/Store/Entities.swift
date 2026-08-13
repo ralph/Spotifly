@@ -274,6 +274,40 @@ struct PlaylistItem: Identifiable, Hashable, Encodable {
     }
 }
 
+// MARK: - Home
+
+/// One shelf of the start page: a heading, and ids into the entity tables.
+///
+/// **Holds ids rather than entities**, like every other ordered collection here, so a playlist
+/// renamed on the playlist page is renamed on the start page too. The entities themselves are
+/// upserted when the page loads.
+struct HomeSection: Identifiable, Hashable, Encodable {
+    /// Spotify's own `spotify:section:…` uri. Stable across loads, which is what lets SwiftUI
+    /// keep scroll position when the page refreshes.
+    let id: String
+    /// Absent for shelves Spotify draws without a heading — the "shorts" row is one.
+    let title: String?
+    let items: [HomeItem]
+}
+
+/// What a shelf entry points at. Deliberately only the three kinds this app can open: a row
+/// leading nowhere is worse than a row that is not there.
+enum HomeItem: Identifiable, Hashable, Encodable {
+    case album(String)
+    case playlist(String)
+    case artist(String)
+
+    /// Qualified by kind, because an album and a playlist can share a base62 id and a `ForEach`
+    /// would then treat them as the same row.
+    var id: String {
+        switch self {
+        case let .album(id): "album:\(id)"
+        case let .playlist(id): "playlist:\(id)"
+        case let .artist(id): "artist:\(id)"
+        }
+    }
+}
+
 // MARK: - User Profile
 
 /// User profile (singleton, not stored in entity table).

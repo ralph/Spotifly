@@ -160,7 +160,32 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     /// Shared with pin/unpin, which this app does not use.
     private static let libraryMutationHash =
         "1ad0d40b3c09660d818b9e770eb1e84745dfbe941df159a64f8772b6fa2bfc3a"
+
+    /// Spotify's own start page: a greeting and a list of titled shelves.
+    ///
+    /// Harvested rather than vendored — libspot has no home operation. The live web client
+    /// currently ships a *different* hash for the same operation name
+    /// (`76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a`, shared with
+    /// `homeSection` and `homePinnedSections`), and this one is still accepted. The older one is
+    /// kept because it is the document whose response the decoders in `PathfinderHome.swift`
+    /// were written against: a different stored document can select different fields, so
+    /// swapping the hash is a change to the response shape and wants re-measuring, not a
+    /// version bump.
+    static let home = PathfinderOperation(
+        name: "home",
+        sha256Hash: "23e37f2e58d82d567f27080101d36609009d8c3676457b1086cb0acc55b72a5d",
+    )
+
+    /// Who the listener is, replacing `/me`.
+    static let profileAttributes = PathfinderOperation(
+        name: "profileAttributes",
+        sha256Hash: "08ffb4730af3746e04a8301396f20875dbbce10c75243803091a9274eacc8ac0",
+    )
 }
+
+/// For operations that declare no variables at all — `{}` on the wire, which is what the
+/// endpoint expects. `profileAttributes` is the only one so far.
+nonisolated struct EmptyVariables: Encodable, Sendable {}
 
 /// The variables the artist operations take.
 nonisolated struct PathfinderArtistVariables: Encodable, Sendable {

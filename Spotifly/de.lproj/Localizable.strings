@@ -76,7 +76,6 @@
 "loading.artists" = "Lade Künstler...";
 "loading.tracks" = "Lade Tracks...";
 "loading.top_tracks" = "Lade Top-Tracks...";
-"loading.recently_played" = "Lade kürzlich gespielt...";
 
 /* Error Messages */
 "error.load_favorites" = "Laden der Favoriten fehlgeschlagen";
@@ -84,7 +83,6 @@
 "error.load_albums" = "Laden der Alben fehlgeschlagen";
 "error.load_artists" = "Laden der Künstler fehlgeschlagen";
 "error.load_queue" = "Laden der Warteschlange fehlgeschlagen";
-"error.load_recently_played" = "Laden von \"Kürzlich gespielt\" fehlgeschlagen: %@";
 "error.remove_from_queue" = "Entfernen des Tracks aus der Warteschlange fehlgeschlagen";
 "error.reorder_queue" = "Umordnen der Warteschlange fehlgeschlagen";
 "error.clear_queue" = "Leeren der Warteschlange fehlgeschlagen";
@@ -119,18 +117,10 @@
 "queue.clear.confirm.message %lld" = "Dies entfernt %lld ausstehende Tracks aus der Warteschlange.";
 "queue.clear.confirm.action" = "Warteschlange leeren";
 
-/* Startpage Sections */
-"startpage.top_artists" = "Deine Top-Künstler";
-"startpage.top_artists.empty" = "Höre mehr Musik, um deine Top-Künstler zu sehen";
-"startpage.new_releases" = "Neuerscheinungen";
-"startpage.new_releases.empty" = "Keine Neuerscheinungen verfügbar";
-"startpage.top_albums" = "Deine Top-Alben";
-"startpage.top_albums.empty" = "Höre mehr Musik, um deine Top-Alben zu sehen";
-"startpage.empty" = "Keine Bereiche aktiviert";
-"startpage.empty.description" = "Aktiviere Bereiche in Einstellungen → Startseite";
-
-/* Recently Played */
-"recently_played.content" = "Kürzlich gespielt";
+/* Startpage */
+"startpage.empty" = "Noch nichts zu zeigen";
+"startpage.empty.description" = "Spotify stellt diese Seite aus dem zusammen, was du hörst.";
+"startpage.error" = "Startseite konnte nicht geladen werden";
 
 /* Sections */
 "section.tracks" = "Tracks";
@@ -207,14 +197,6 @@
 "preferences.speakers.airplay" = "AirPlay Lautsprecher anzeigen";
 "preferences.speakers.airplay_description" = "AirPlay-Ausgabeauswahl anzeigen, um Audio auf AirPlay-kompatible Lautsprecher zu streamen.";
 "preferences.speakers.none_enabled" = "Aktiviere mindestens eine Option, um den Lautsprecher-Bereich in der Seitenleiste anzuzeigen.";
-
-/* Startpage Preferences */
-"preferences.startpage.sections" = "Bereiche";
-"preferences.startpage.none_enabled" = "Die Startseite wird leer sein. Aktiviere mindestens einen Bereich, um Inhalte anzuzeigen.";
-"preferences.top_items_time_range" = "Top-Items-Zeitraum";
-"preferences.time_range.short_term" = "Letzte 4 Wochen";
-"preferences.time_range.medium_term" = "Letzte 6 Monate";
-"preferences.time_range.long_term" = "Letztes Jahr";
 
 /* Album Context Menu & Alerts */
 "album.menu.remove_from_library" = "Aus Bibliothek entfernen";

@@ -2,245 +2,133 @@
 //  StartpageView.swift
 //  Spotifly
 //
-//  Startpage with personalized content sections
+//  Spotify's own start page, as whatever shelves it sends.
 //
 
 import AppKit
 import SwiftUI
 
+/// The start page.
+///
+/// **The sections are not this app's to choose.** It used to draw three fixed rows — top
+/// artists, top albums, recently played — each with its own request, its own toggle in
+/// Preferences and its own "time range" setting, none of which exist on the client APIs. `home`
+/// answers with Spotify's own page instead: a greeting and a list of titled shelves that differs
+/// between accounts and between refreshes. So this view iterates rather than enumerates, and
+/// there is nothing to configure.
 struct StartpageView: View {
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
-    @Environment(RecentlyPlayedService.self) private var recentlyPlayedService
-    @Environment(TopItemsService.self) private var topItemsService
-    // Startpage section preferences
-    @AppStorage("showTopArtists") private var showTopArtists: Bool = true
-    @AppStorage("showRecentlyPlayed") private var showRecentlyPlayed: Bool = true
-    @AppStorage("showTopAlbums") private var showTopAlbums: Bool = true
-    @AppStorage("topItemsTimeRange") private var topItemsTimeRange: String = TopItemsTimeRange.mediumTerm.rawValue
-
-    /// Parsed time range from AppStorage
-    private var timeRange: TopItemsTimeRange {
-        TopItemsTimeRange(rawValue: topItemsTimeRange) ?? .mediumTerm
-    }
-
-    /// Whether any section is enabled
-    private var hasAnySectionEnabled: Bool {
-        showTopArtists || showRecentlyPlayed || showTopAlbums
-    }
-
-    /// Check if a section is enabled
-    private func isSectionEnabled(_ section: StartpageSection) -> Bool {
-        switch section {
-        case .topArtists: showTopArtists
-        case .recentlyPlayed: showRecentlyPlayed
-        case .topAlbums: showTopAlbums
-        }
-    }
+    @Environment(HomeService.self) private var homeService
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                if hasAnySectionEnabled {
-                    ForEach(StartpageSection.allCases) { section in
-                        if isSectionEnabled(section) {
-                            sectionView(for: section)
-                        }
-                    }
+                if let greeting = store.homeGreeting, !greeting.isEmpty {
+                    Text(greeting)
+                        .font(.title2.weight(.semibold))
+                        .padding(.horizontal)
+                }
+
+                if store.homeSections.isEmpty {
+                    placeholder
                 } else {
-                    emptyStateView
+                    ForEach(store.homeSections) { section in
+                        HomeShelf(section: section)
+                    }
                 }
             }
             .padding(.vertical)
         }
         .contentMargins(.bottom, 100)
         .refreshable {
-            let token = await session.validAccessToken()
-            if showTopArtists {
-                await topItemsService.refreshTopArtists(accessToken: token, timeRange: timeRange)
-            }
-            if showRecentlyPlayed {
-                await recentlyPlayedService.refresh(accessToken: token)
-            }
-            if showTopAlbums {
-                await topItemsService.refreshTopTracks(accessToken: token, timeRange: timeRange)
-            }
+            await homeService.refresh()
         }
     }
 
-    @ViewBuilder
-    private func sectionView(for section: StartpageSection) -> some View {
-        switch section {
-        case .topArtists:
-            topArtistsSection
-        case .recentlyPlayed:
-            recentlyPlayedSection
-        case .topAlbums:
-            topAlbumsSection
-        }
-    }
-
-    // MARK: - Empty State
-
-    private var emptyStateView: some View {
+    /// Loading, failure and "Spotify sent nothing" are three states with one row each, so they
+    /// share a frame rather than three near-identical blocks.
+    private var placeholder: some View {
         VStack(spacing: 16) {
-            Image(systemName: "house")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-            Text("startpage.empty")
-                .font(.headline)
-            Text("startpage.empty.description")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            if store.homeIsLoading {
+                ProgressView()
+            } else if let error = store.homeErrorMessage {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary)
+                Text("startpage.error")
+                    .font(.headline)
+                Text(error)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("action.try_again") {
+                    Task { await homeService.refresh() }
+                }
+            } else {
+                Image(systemName: "house")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary)
+                Text("startpage.empty")
+                    .font(.headline)
+                Text("startpage.empty.description")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
     }
-
-    // MARK: - Top Artists Section
-
-    private var topArtistsSection: some View {
-        HorizontalCardSection(
-            titleKey: "startpage.top_artists",
-            items: store.topArtists,
-            isLoading: store.topArtistsPagination.isLoading,
-            errorMessage: store.topArtistsErrorMessage,
-            emptyKey: "startpage.top_artists.empty",
-            hasMore: store.topArtistsPagination.hasMore,
-            loadMore: {
-                let token = await session.validAccessToken()
-                await topItemsService.loadMoreTopArtists(accessToken: token, timeRange: timeRange)
-            },
-        ) { artist in
-            ArtistCard(artist: artist)
-        }
-    }
-
-    // MARK: - Top Albums Section
-
-    private var topAlbumsSection: some View {
-        HorizontalCardSection(
-            titleKey: "startpage.top_albums",
-            items: store.topTrackAlbums,
-            isLoading: store.topTrackAlbumsPagination.isLoading,
-            errorMessage: store.topTrackAlbumsErrorMessage,
-            emptyKey: "startpage.top_albums.empty",
-            hasMore: store.topTrackAlbumsPagination.hasMore,
-            loadMore: {
-                let token = await session.validAccessToken()
-                await topItemsService.loadMoreTopTracks(accessToken: token, timeRange: timeRange)
-            },
-        ) { album in
-            AlbumCard(album: album)
-        }
-    }
-
-    // MARK: - Recently Played Section
-
-    @ViewBuilder
-    private var recentlyPlayedSection: some View {
-        if store.recentlyPlayedIsLoading {
-            HStack {
-                Spacer()
-                ProgressView("loading.recently_played")
-                Spacer()
-            }
-            .padding()
-        } else if let error = store.recentlyPlayedErrorMessage {
-            Text(localizedTextString("error.load_recently_played", error))
-                .foregroundStyle(.red)
-                .padding()
-        } else if !store.recentAlbumsAndPlaylists.isEmpty {
-            RecentContentSection(items: store.recentAlbumsAndPlaylists)
-        }
-    }
 }
 
-// MARK: - Horizontal Card Section
+// MARK: - One shelf
 
-/// Reusable horizontal scrolling section with loading, error, and empty states.
-/// Supports optional pagination via `hasMore` and `loadMore`.
-struct HorizontalCardSection<Item: Identifiable, CardContent: View>: View {
-    let titleKey: LocalizedStringKey
-    let items: [Item]
-    let isLoading: Bool
-    let errorMessage: String?
-    let emptyKey: LocalizedStringKey
-    var hasMore: Bool = false
-    var loadMore: (() async -> Void)?
-    @ViewBuilder let card: (Item) -> CardContent
+/// A heading and a horizontal row of cards.
+///
+/// Reads the entities out of the store by id rather than holding them, so a playlist renamed on
+/// its own page is renamed here without the start page reloading.
+struct HomeShelf: View {
+    let section: HomeSection
+
+    @Environment(AppStore.self) private var store
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(titleKey)
-                .font(.headline)
-                .padding(.horizontal)
-
-            if isLoading, items.isEmpty {
-                HStack {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                }
-                .frame(height: 160)
-            } else if let error = errorMessage {
-                Text(error)
-                    .foregroundStyle(.red)
-                    .font(.caption)
+            // Spotify sends shelves with no heading — the "shorts" row is one — and an empty
+            // `Text` would still take up a line.
+            if let title = section.title, !title.isEmpty {
+                Text(title)
+                    .font(.headline)
                     .padding(.horizontal)
-            } else if items.isEmpty {
-                Text(emptyKey)
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-                    .padding(.horizontal)
-            } else {
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 12) {
-                        ForEach(items) { item in
-                            card(item)
-                        }
-                        if hasMore {
-                            ProgressView()
-                                .frame(width: 120, height: 120)
-                                .onAppear {
-                                    Task {
-                                        await loadMore?()
-                                    }
-                                }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-                .scrollIndicators(.hidden)
             }
-        }
-    }
-}
-
-// MARK: - Recently Played Section
-
-struct RecentContentSection: View {
-    let items: [(id: String, album: Album?, playlist: Playlist?)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("recently_played.content")
-                .font(.headline)
-                .padding(.horizontal)
 
             ScrollView(.horizontal) {
-                HStack(spacing: 12) {
-                    ForEach(items, id: \.id) { item in
-                        if let album = item.album {
-                            AlbumCard(album: album)
-                        } else if let playlist = item.playlist {
-                            PlaylistCard(playlist: playlist)
-                        }
+                LazyHStack(spacing: 12) {
+                    ForEach(section.items) { item in
+                        card(for: item)
                     }
                 }
                 .padding(.horizontal)
             }
             .scrollIndicators(.hidden)
+        }
+    }
+
+    /// An id with no entity draws nothing. That is not defensive: the page is stored as ids, and
+    /// a card cannot be drawn from one alone.
+    @ViewBuilder
+    private func card(for item: HomeItem) -> some View {
+        switch item {
+        case let .album(id):
+            if let album = store.albums[id] {
+                AlbumCard(album: album)
+            }
+        case let .playlist(id):
+            if let playlist = store.playlists[id] {
+                PlaylistCard(playlist: playlist)
+            }
+        case let .artist(id):
+            if let artist = store.artists[id] {
+                ArtistCard(artist: artist)
+            }
         }
     }
 }

@@ -228,7 +228,7 @@ downstream in this plan needs that token in Swift, and Track B needs it there pe
 behind the existing service layer, so `AppStore`, `InFlightRequests` and the views do not move.
 Order runs cheapest-first, and each task is independently shippable and revertible:
 
-- [ ] **Task 7: Search** (`SpotifyAPI+Search.swift`, 1 call site, four result categories) — the
+- [x] **Task 7: Search** (`SpotifyAPI+Search.swift`, 1 call site, four result categories) — the
       smallest real test of `PartnerAPI`, and the one whose relinking behaviour is best
       understood. Parity with the current result shape is the acceptance criterion, not "search
       returns something".
@@ -446,40 +446,90 @@ Order runs cheapest-first, and each task is independently shippable and revertib
         removes the state itself — one grant will serve both — but until then this is a real
         narrowing rather than a deferral.
 
-- [ ] **Task 12b: Home, rebuilt on `home`.** Probed 2026-08-13 and viable — this is the section
-      that unblocks Phase 4, since `/me`, `/me/top/artists`, `/me/top/tracks` and
-      `/me/player/recently-played` have no one-to-one replacements and keep the dashboard grant
-      alive on their own.
+- [x] **Task 12b: Home, rebuilt on `home`.** `home` (`23e37f2e…`) returns Spotify's own start
+      page — a `greeting` and `sectionContainer.sections.items[]`, 31 titled shelves in the test
+      account — and one request replaces `/me/top/artists`, `/me/top/tracks` and
+      `/me/player/recently-played`. `/me` moves to `profileAttributes` in the same task.
 
-      **Do not port the current layout.** `home` (`23e37f2e…`) returns Spotify's own start page:
-      a `greeting`, `homeChips` for filtering, and `sectionContainer.sections.items[]` — 31
-      titled sections in the test account, each holding Playlists, Albums or Artists under
-      `sectionItems.items[].content.data`. "Your favorite artists" subsumes top artists and a
-      "Recents" section (item kind `List`) looks like the recently-played equivalent. Building
-      the page from whatever sections arrive is both less work and closer to what the real
-      client shows than reproducing three Web API calls would be.
+      **The current layout was not ported, and could not have been.** None of the three Web API
+      endpoints has a counterpart here. What `home` offers instead is Spotify's own page, which
+      differs between accounts *and between requests* — two requests three minutes apart
+      returned different sections in a different order — so the app renders whatever arrives.
 
-      Two required variables, `timeZone: String!` and
-      `homeEndUserIntegration: HomeEndUserIntegration!`. The second is an **enum** whose member
-      is `INTEGRATION_WEB_PLAYER` — established by reading the web bundle's call site
-      (`homeEndUserIntegration: (0,p.mg)()`) rather than by guessing, after a wrong guess made
-      the validator's "found JSON string" message look like a type mismatch and sent the probe
-      chasing every other JSON shape. Note for next time: that message means *invalid enum
-      member* as readily as it means wrong type, so read the caller before enumerating shapes.
+      **Rendering by item kind rather than by section kind** is the one design decision worth
+      recording. Sections carry a `__typename` (`HomeGenericSectionData`, `HomeShortsSectionData`,
+      `HomeRecentlyPlayedSectionData`, `HomeFeedBaselineSectionData` — all four in one response)
+      and the set is Spotify's to extend. An earlier draft of this plan proposed a renderer per
+      section type with a fallback; a shelf turned out to mix Playlist, Album and Artist in one
+      section, so the kind has to be decided per *entry* anyway, and once it is, the section type
+      decides nothing and an unknown one still draws.
 
-      Sections carry a per-section `__typename` (`HomeShortsSectionData` and others) that
-      decides presentation, so the page wants a small renderer per section type with a generic
-      fallback — an unknown section should render as a plain shelf rather than disappear.
+      **`sp_t` is optional to GraphQL and required in practice**, which is the measurement that
+      would have cost the most to miss. Only `timeZone` and `homeEndUserIntegration` are
+      declared required, and a request carrying just those is answered
+      `{"data":{"home":{"__typename":"GenericError"}}}` — HTTP 200, no `errors` array, and a
+      body that decodes cleanly into a page with no sections. Its value is never inspected: a
+      real device id, a junk string and the empty string all returned the same 31 sections. So
+      the failure mode of omitting it is a permanently empty start page with nothing in the log,
+      and `PathfinderHome.isError` exists to make that an error rather than an empty page.
+      `sectionItemsLimit` is not sent — it drops whole shelves rather than trimming them
+      (3 → 22 sections where the default gives 31), and the default already stops at 10 items.
+
+      `homeEndUserIntegration` is an **enum** whose member is `INTEGRATION_WEB_PLAYER`,
+      established by reading the web bundle's call site (`homeEndUserIntegration: (0,p.mg)()`)
+      after a wrong guess made the validator's "found JSON string" message look like a type
+      mismatch and sent the probe chasing every other JSON shape. That message means *invalid
+      enum member* as readily as it means wrong type — read the caller before enumerating shapes.
+
+      **Recents is the seventh item shape**, and the only one on this page that is not an entity.
+      It arrives as one entry holding a `List` whose members are *traits* — name, kind,
+      contributors and cover art each behind their own object, with image dimensions spelled
+      `maxWidth`/`maxHeight` where every other pathfinder response says `width`/`height`. It is
+      decoded rather than skipped because it is the replacement for `/me/player/recently-played`.
+      **It is also intermittent**: the same `ListResponseWrapper` answered twenty entities in one
+      request and `GenericError` in another four minutes later, with identical variables. A shelf
+      whose entries all fail to resolve is dropped rather than drawn empty, so this degrades to
+      an absent row.
+
+      **The uri decides an entry's kind, not the type it declares.** Liked Songs arrives in
+      Recents as `ENTITY_TYPE_PLAYLIST` under the uri `spotify:collection:tracks`, which is not
+      a playlist and has no playlist id — believing the declaration would put a row on the start
+      page that opens an empty playlist screen. This is the folder lesson from task 12 in a
+      second costume, and `SpotifyURI.id(from:kind:)` handles both.
+
+      Spotify also lists content it then cannot resolve: `data: {"__typename":"NotFound"}` under
+      the wrapper's own type. Nothing special catches it — the entity has no uri, so it has no
+      id, and the conversion drops it exactly as it drops a folder.
+
+      Both fixtures in `PathfinderHomeTests` are trimmed real responses, including the
+      `NotFound` entry and the `GenericError` list, per the rule task 12 paid for.
+
+      Not built: **paging within a shelf.** `sectionItems.pagingInfo.nextOffset` is there and
+      `homeSection` exists to spend it; 31 shelves of up to 10 is already more than the page
+      shows. **Chips** (`homeChips`, "Music"/"Podcasts"/"Audiobooks" with sub-chips) are decoded
+      by nobody — they filter the page, and the app has no screen for two of the three.
 
 ### Phase 4: Retire the dashboard app
 
 Only once no `api.spotify.com` call remains:
+
+Four calls remain, all playlist management: create, rename, delete and follow. They have their
+own mutations and belong to a playlist-management task rather than to any of the read migrations.
+They do not block Phase 4's purpose — they use the *dashboard* token deliberately, and the
+problem Phase 4 solves is that a keymaster token gets 429 from `api.spotify.com`.
 
 - [ ] **Task 13:** Delete `SpotifyConfig`, the client-id field in `ContentView`,
       `UserNotWhitelistedView` and the whitelist strings in all three localizations, the
       dashboard OAuth in `SpotifyAuth.swift`, and the account-mismatch guard that exists only
       because two grants could disagree. Update the README and the Homebrew tap's setup
       instructions, which currently tell users to register an app.
+
+      Task 12b already left two of these unreachable, and they are dead code until this task
+      runs: nothing sets `LoggedInView.BlockingState.userNotWhitelisted` — that state came from
+      `/me` answering 403 for an account the dashboard app had not whitelisted, and
+      `profileAttributes` runs on a grant with no such list — and the account-mismatch guard's
+      login-step arm is gone for the reason this task deletes the rest of it: both accounts it
+      compared are now the same grant.
 
 ---
 

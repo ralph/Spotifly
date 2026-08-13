@@ -75,7 +75,7 @@ final class AuthViewModel {
             // not necessarily the one the Web API half uses. Accepting a mismatch would
             // leave the app browsing and editing account A while playing and queueing on
             // account B — with no visible sign of it.
-            let mismatch = await streamingAccountMismatch(expectedAccountId: expectedAccountId)
+            let mismatch = streamingAccountMismatch(expectedAccountId: expectedAccountId)
 
             guard startedAt == authLifecycle else {
                 // Logged out while this was deciding, and this run has to undo its own
@@ -167,24 +167,23 @@ final class AuthViewModel {
     /// Not knowing either one counts as agreement. Refusing a grant because an identity was
     /// briefly unavailable would be worse than the case being guarded against, which needs
     /// the user to have deliberately signed the browser into a second account.
-    private func streamingAccountMismatch(expectedAccountId: String?) async -> String? {
-        let granted = SpotifyPlayer.lastGrantAccountId()
-
-        if let expectedAccountId {
-            return Self.accountMismatch(expected: expectedAccountId, granted: granted)
-        }
-
-        // Only the login step reaches here, before a store exists to ask. Its token was
-        // minted moments ago by step 1, so this needs no refresh — which matters, because a
-        // refresh persists to the keychain and a logout crossing it would restore the
-        // credentials logout had just cleared.
-        guard let token = authResult?.accessToken,
-              let profile = try? await SpotifyAPI.getCurrentUserProfile(accessToken: token)
-        else {
-            return nil
-        }
-
-        return Self.accountMismatch(expected: profile.id, granted: granted)
+    ///
+    /// **The login step no longer looks anything up.** It used to ask `/me` on the dashboard
+    /// grant, because that was the only identity that existed before the streaming grant ran.
+    /// The app's own profile now comes from `profileAttributes` on the *same* keymaster grant
+    /// this is checking, so asking it here would compare the granted account with itself and
+    /// report agreement no matter what — a guard that always passes is worse than none. What
+    /// still works, and is the case that actually arises, is re-authorizing while signed in:
+    /// the store holds the previous account and a browser signed into another one is caught.
+    ///
+    /// The narrow case given up is signing the *first* grant into a different account than the
+    /// dashboard OAuth moments earlier. That comparison stops meaning anything at all once the
+    /// dashboard grant is gone, which is the next task.
+    private func streamingAccountMismatch(expectedAccountId: String?) -> String? {
+        Self.accountMismatch(
+            expected: expectedAccountId,
+            granted: SpotifyPlayer.lastGrantAccountId(),
+        )
     }
 
     func startOAuth() {
