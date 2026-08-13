@@ -2477,7 +2477,6 @@ dependencies = [
  "futures-util",
  "librespot-connect",
  "librespot-core",
- "librespot-oauth",
  "librespot-playback",
  "librespot-protocol",
  "log",

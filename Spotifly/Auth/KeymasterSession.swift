@@ -13,6 +13,11 @@ import Foundation
 /// pathfinder and spclient — and a refresh must happen once rather than once per caller.
 /// Concurrent callers arriving during a refresh await the same one.
 actor KeymasterSession {
+    /// The app's grant. One instance, because one grant is what the app has: the accesspoint
+    /// session and both API clients read the same token, and a second instance would refresh
+    /// against a rotating token the first has already spent.
+    static let shared = KeymasterSession()
+
     /// Injected so the rotation policy can be tested without a network. The real one is
     /// `KeymasterAuth.refresh`.
     typealias Refresher = @Sendable (String) async throws -> KeymasterTokens

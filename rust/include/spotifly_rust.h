@@ -54,17 +54,19 @@ typedef enum __attribute__((enum_extensibility(open))) SpotiflyResult : int32_t 
 ///                     normal case: only the first init after a grant carries a token.
 SpotiflyResult spotifly_init_player(const char* _Nullable access_token);
 
-/// Runs the one-time streaming authorization: opens the browser, waits for the loopback
-/// callback, exchanges the code, connects, and persists the credentials.
+/// Completes the one-time streaming authorization with a token Swift has already minted:
+/// connects once and persists the credentials every later init connects from.
 ///
-/// Blocks on a human, so never call this on the main thread. There is no cancellation; the
-/// flow terminates on its own.
+/// Swift owns the OAuth flow itself (see KeymasterAuth), because the same token also
+/// authorizes pathfinder and spclient.
+///
+/// @param access_token A token minted with Spotify's desktop client id. Must not be NULL.
 ///
 /// Returns:
 ///    0 = Authorized, credentials cached
 ///   -1 = Failed
 ///   -2 = Superseded by a logout; any credentials written were removed again
-int32_t spotifly_authorize_streaming(void);
+int32_t spotifly_authorize_streaming(const char* _Nonnull access_token);
 
 /// Whether a streaming grant has already been completed on this machine.
 /// Returns 1 when credentials are cached, 0 otherwise.
