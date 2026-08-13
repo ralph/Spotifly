@@ -55,8 +55,15 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
                 .frame(width: 320)
 
+            // Enabled while waiting, where it cancels rather than starting a second grant:
+            // a browser tab closed without authorizing sends nothing, so this is the only
+            // way back from the wait short of the listener's timeout.
             Button {
-                Task { await viewModel.authorizeStreaming() }
+                if viewModel.isAuthorizingStreaming {
+                    viewModel.cancelStreamingAuthorization()
+                } else {
+                    viewModel.startStreamingAuthorization()
+                }
             } label: {
                 HStack {
                     if viewModel.isAuthorizingStreaming {
@@ -66,7 +73,7 @@ struct ContentView: View {
                     }
                     Text(
                         viewModel.isAuthorizingStreaming
-                            ? "auth.enable_playback_waiting"
+                            ? "auth.enable_playback_cancel"
                             : "auth.enable_playback_button",
                     )
                 }
@@ -74,7 +81,6 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
-            .disabled(viewModel.isAuthorizingStreaming)
 
             // Deliberately stays enabled while the grant is waiting. The librespot callback
             // listener has no timeout and the flow cannot be cancelled in flight, so a user

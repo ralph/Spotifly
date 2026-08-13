@@ -69,6 +69,9 @@ nonisolated enum StreamingAuthResult: Equatable {
     /// A logout landed while the grant was in flight, and the credentials it wrote were
     /// removed again. Nothing went wrong, so this is reported as neither success nor error.
     case superseded
+    /// The user abandoned the flow — closed the browser tab, or pressed Cancel. Distinct from
+    /// `failed` because there is nothing to report: they asked for this.
+    case cancelled
 
     init(code: Int32) {
         switch code {
@@ -1049,6 +1052,9 @@ enum SpotifyPlayer {
         do {
             tokens = try await KeymasterAuth.authorize()
             try await KeymasterSession.shared.adopt(tokens)
+        } catch is CancellationError {
+            debugLog("SpotifyPlayer", "Streaming authorization cancelled")
+            return .cancelled
         } catch {
             debugLog("SpotifyPlayer", "Streaming authorization failed: \(error)")
             return .failed

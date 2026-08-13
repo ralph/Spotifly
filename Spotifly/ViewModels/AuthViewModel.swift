@@ -20,6 +20,8 @@ final class AuthViewModel {
     /// fine: the app browses and drives other devices, it just is not a Connect device
     /// itself. See `plans/streaming-auth-needs-a-first-party-client-id.md`.
     var isAuthorizingStreaming = false
+    /// The grant in flight, held so it can be cancelled. Not observed by any view.
+    @ObservationIgnored private var streamingAuthorization: Task<Void, Never>?
     var hasStreamingCredentials = SpotifyPlayer.hasCachedStreamingCredentials()
 
     /// Bumped by logout. The grant spans a browser round-trip and a `/me` lookup, so it can
@@ -118,9 +120,37 @@ final class AuthViewModel {
             // A logout won the race and the credentials were removed again. Nothing went
             // wrong and there is nothing to report.
             break
+        case .cancelled:
+            // The user closed the browser tab or pressed Cancel. They asked for this, so
+            // there is nothing to report.
+            break
         case .failed:
             errorMessage = String(localized: "auth.enable_playback_failed")
         }
+    }
+
+    /// Starts the grant and keeps hold of it, so it can be abandoned.
+    ///
+    /// The task lives here rather than in the view because the view that started it can be
+    /// torn down — switching away from Speakers, or the login step giving way to the app —
+    /// while the browser round-trip is still outstanding.
+    func startStreamingAuthorization(expectedAccountId: String? = nil) {
+        guard streamingAuthorization == nil else { return }
+
+        streamingAuthorization = Task { [weak self] in
+            await self?.authorizeStreaming(expectedAccountId: expectedAccountId)
+            self?.streamingAuthorization = nil
+        }
+    }
+
+    /// Abandons a grant waiting on the browser.
+    ///
+    /// Only possible now that Swift owns the flow: librespot's listener had no timeout and
+    /// no cancellation, so closing the browser tab left the enable affordance spinning with
+    /// no way back to it.
+    func cancelStreamingAuthorization() {
+        streamingAuthorization?.cancel()
+        streamingAuthorization = nil
     }
 
     /// Describes the account mismatch between the two grants, or nil when they agree.

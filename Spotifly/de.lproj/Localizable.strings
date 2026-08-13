@@ -301,9 +301,11 @@
 "auth.enable_playback_note" = "Spotifly braucht eine zweite Autorisierung, um hier Audio abzuspielen. Spotify verlangt für das Streaming eine andere App-Identität als für deine Bibliothek — daher dieser separate Schritt.";
 "auth.enable_playback_button" = "Wiedergabe aktivieren";
 "auth.enable_playback_waiting" = "Warte auf deinen Browser...";
+"auth.enable_playback_cancel" = "Warte auf deinen Browser — abbrechen";
 "auth.enable_playback_skip" = "Später";
 "auth.enable_playback_failed" = "Wiedergabe konnte nicht aktiviert werden. Bitte versuche es erneut.";
 "speakers.enable_this_mac" = "Diesen Mac aktivieren";
+"speakers.enable_this_mac_cancel" = "Autorisierung abbrechen";
 "playback.needs_authorization_title" = "Wiedergabe auf diesem Mac aktivieren?";
 "playback.needs_authorization_message" = "Es ist kein Gerät zum Abspielen verfügbar. Autorisiere das Streaming, um hier abzuspielen, oder starte die Wiedergabe zuerst auf einem anderen Gerät.";
 "playback.needs_authorization_authorize" = "Autorisieren";

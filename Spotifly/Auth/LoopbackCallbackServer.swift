@@ -166,8 +166,21 @@ actor LoopbackCallbackServer {
         }
 
         defer { stop() }
-        return try await withCheckedThrowingContinuation { continuation in
-            waiter = continuation
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                // A result — including a cancellation — can land between the check above and
+                // this line, since both the callback and the cancellation handler hop onto
+                // the actor. Consuming it here is what stops the caller parking on a
+                // continuation nothing will resume.
+                if let pending {
+                    self.pending = nil
+                    continuation.resume(with: pending)
+                    return
+                }
+                waiter = continuation
+            }
+        } onCancel: {
+            Task { await self.deliver(.failure(CancellationError())) }
         }
     }
 

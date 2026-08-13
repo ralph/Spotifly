@@ -240,7 +240,9 @@ struct LoggedInView: View {
             isPresented: Bindable(playbackViewModel).needsStreamingAuthorization,
         ) {
             Button("playback.needs_authorization_authorize") {
-                Task { await authViewModel.authorizeStreaming(expectedAccountId: store.userId) }
+                // Through the view model, so the grant this starts can be cancelled from
+                // Speakers — the alert is gone by the time the browser answers.
+                authViewModel.startStreamingAuthorization(expectedAccountId: store.userId)
             }
             Button("common.cancel", role: .cancel) {}
         } message: {

@@ -82,8 +82,16 @@ struct SpeakersView: View {
                         // file in place while every initialization fails, and keying on the
                         // file would hide the only way to recover from exactly that.
                         if !playbackViewModel.isLocalPlaybackAvailable {
+                            // Stays enabled while the grant waits, and cancels it instead of
+                            // starting a second one. A browser tab closed without authorizing
+                            // sends nothing at all, so without this the row spun until the
+                            // listener's timeout with no way back to it.
                             Button {
-                                Task { await authViewModel.authorizeStreaming(expectedAccountId: store.userId) }
+                                if authViewModel.isAuthorizingStreaming {
+                                    authViewModel.cancelStreamingAuthorization()
+                                } else {
+                                    authViewModel.startStreamingAuthorization(expectedAccountId: store.userId)
+                                }
                             } label: {
                                 HStack {
                                     if authViewModel.isAuthorizingStreaming {
@@ -94,12 +102,15 @@ struct SpeakersView: View {
                                         Image(systemName: "laptopcomputer.slash")
                                             .foregroundStyle(.secondary)
                                     }
-                                    Text("speakers.enable_this_mac")
+                                    Text(
+                                        authViewModel.isAuthorizingStreaming
+                                            ? "speakers.enable_this_mac_cancel"
+                                            : "speakers.enable_this_mac",
+                                    )
                                     Spacer()
                                 }
                             }
                             .buttonStyle(.plain)
-                            .disabled(authViewModel.isAuthorizingStreaming)
                         }
                     } header: {
                         Text("speakers.spotify_connect")
