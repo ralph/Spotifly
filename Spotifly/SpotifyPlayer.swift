@@ -1119,8 +1119,10 @@ enum SpotifyPlayer {
     /// is adopted into `KeymasterSession` before the connect rather than after, and survives
     /// even if librespot's half fails.
     ///
-    /// Blocks on a human, so it runs off the main actor. There is no cancellation: the flow
-    /// terminates on its own, and the alert's Cancel declines before this is called at all.
+    /// Blocks on a human, so it runs off the main actor, and it is cancellable for the same
+    /// reason: the browser wait unwinds on cancellation, and so does the token exchange behind
+    /// it. The connect that follows does not — it is detached, so that a grant already written
+    /// to the keychain finishes registering this Mac rather than being abandoned half done.
     static func authorizeStreaming() async -> StreamingAuthResult {
         let tokens: KeymasterTokens
         do {
@@ -1128,6 +1130,14 @@ enum SpotifyPlayer {
             try await KeymasterSession.shared.adopt(tokens)
         } catch is CancellationError {
             debugLog("SpotifyPlayer", "Streaming authorization cancelled")
+            return .cancelled
+        } catch let error as URLError where error.code == .cancelled {
+            // The same cancellation, reported differently. Only the browser wait answers with
+            // `CancellationError`; once the redirect has landed the flow is inside
+            // `URLSession`, which reports a cancelled task as a `URLError` of its own — and
+            // falling through to `.failed` there told the user their connection had failed
+            // when what happened is that they pressed Cancel.
+            debugLog("SpotifyPlayer", "Streaming authorization cancelled during token exchange")
             return .cancelled
         } catch {
             debugLog("SpotifyPlayer", "Streaming authorization failed: \(error)")

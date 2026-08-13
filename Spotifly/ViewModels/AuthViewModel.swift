@@ -29,6 +29,10 @@ final class AuthViewModel {
     /// The grant in flight, held so it can be cancelled. Not observed by any view.
     @ObservationIgnored private var streamingAuthorization: Task<Void, Never>?
 
+    /// Names the run that owns `streamingAuthorization`, so a run that has been abandoned
+    /// cannot release a handle belonging to the one that replaced it.
+    private var authorizationRun: UInt64 = 0
+
     /// Held for the life of the view model, which is the life of the app.
     @ObservationIgnored private var revocationSubscription: AnyCancellable?
 
@@ -161,10 +165,24 @@ final class AuthViewModel {
     func startStreamingAuthorization(expectedAccountId: String? = nil) {
         guard streamingAuthorization == nil else { return }
 
+        authorizationRun &+= 1
+        let run = authorizationRun
         streamingAuthorization = Task { [weak self] in
             await self?.authorizeStreaming(expectedAccountId: expectedAccountId)
-            self?.streamingAuthorization = nil
+            self?.finishStreamingAuthorization(run)
         }
+    }
+
+    /// Releases the handle, but only if it is still this run's.
+    ///
+    /// `authorizeStreaming` clears `isAuthorizingStreaming` on its way out, which is what turns
+    /// the button back into "Connect" — and the hop back to this task body is a window in which
+    /// a press can start the next run. Releasing unconditionally there drops the *new* run's
+    /// handle, leaving it uncancellable and letting a further press start a second grant beside
+    /// it. Narrow, but it is the invariant the rest of the app already holds to.
+    private func finishStreamingAuthorization(_ run: UInt64) {
+        guard run == authorizationRun else { return }
+        streamingAuthorization = nil
     }
 
     /// Abandons a grant waiting on the browser.
