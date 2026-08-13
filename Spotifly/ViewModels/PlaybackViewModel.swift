@@ -504,7 +504,7 @@ final class PlaybackViewModel {
     private func startRemotely(
         _ command: ConnectCommand,
         deviceId: String,
-        accessToken: String,
+        accessToken _: String,
     ) async {
         guard let from = store?.connection?.deviceId, !from.isEmpty else {
             errorMessage = String(localized: "error.no_playback_device")
@@ -525,7 +525,7 @@ final class PlaybackViewModel {
             try? await Task.sleep(for: .milliseconds(600))
 
             if let queueService, store?.liveStateRevision == revisionAtStart {
-                _ = await queueService.fetchInitialPlaybackState(accessToken: accessToken)
+                _ = await queueService.fetchInitialPlaybackState()
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -1231,48 +1231,6 @@ final class PlaybackViewModel {
         } else if wasPlaying != isPlaying {
             updateNowPlayingPosition()
         }
-    }
-
-    /// Apply playback state from Web API (used for initial sync when Spirc connects).
-    /// This populates the UI with the current playback state from any active device.
-    func applyWebAPIPlaybackState(
-        isPlaying: Bool,
-        progressMs: Int,
-        durationMs: Int,
-        trackUri: String?,
-        timestampMs: Int64,
-        shuffleEnabled: Bool,
-    ) {
-        debugLog(
-            "PlaybackViewModel",
-            "Applying Web API state: playing=\(isPlaying), progress=\(progressMs)ms, duration=\(durationMs)ms, shuffle=\(shuffleEnabled), uri=\(trackUri ?? "nil")",
-        )
-
-        // Update playing state
-        self.isPlaying = isPlaying
-        isShuffleEnabled = shuffleEnabled
-
-        // Update track if provided
-        if let uri = trackUri, !uri.isEmpty {
-            currentTrackUri = uri
-            lastHandledTrackUri = uri
-        }
-
-        // Update duration
-        if durationMs > 0 {
-            trackDurationMs = UInt32(durationMs)
-        }
-
-        // Set position anchor accounting for elapsed time since the API timestamp.
-        if progressMs >= 0 {
-            let posMs = UInt32(progressMs)
-            let anchor = positionAnchor(forPosition: Int64(progressMs), takenAt: timestampMs)
-            debugLog("PlaybackViewModel", "Web API position anchor: \(posMs)ms\(anchor.logSuffix)")
-            anchorPosition(posMs, at: anchor.time)
-        }
-
-        // Update Now Playing info
-        updateNowPlayingInfo()
     }
 
     // MARK: - Position Tracking

@@ -70,7 +70,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 playbackViewModel.setTokenProvider { await session.validAccessToken() }
 
                 await playbackViewModel.initializeIfNeeded()
-                await queueService.fetchInitialPlaybackState(accessToken: token)
+                await queueService.fetchInitialPlaybackState()
             }
             // Connection handling is driven by the connection snapshot, not by the Connect
             // activation callbacks. Activation and connection are different facts: another
@@ -103,7 +103,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 Task {
                     let token = await session.validAccessToken()
                     await deviceService.waitForTransferSettling()
-                    await queueService.fetchInitialPlaybackState(accessToken: token)
+                    await queueService.fetchInitialPlaybackState()
                 }
             }
             .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in

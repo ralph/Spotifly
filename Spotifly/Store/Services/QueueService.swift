@@ -14,7 +14,6 @@ import Foundation
 @Observable
 final class QueueService {
     private let store: AppStore
-    private let tokenProvider: () async -> String
     private let trackService: TrackService
     private var queueSubscription: AnyCancellable?
     private var setQueueSubscription: AnyCancellable?
@@ -39,13 +38,11 @@ final class QueueService {
 
     init(
         store: AppStore,
-        tokenProvider: @escaping () async -> String,
         trackService: TrackService,
     ) {
         Self.instanceCount += 1
         tag = "[svc#\(Self.instanceCount) store:\(storeTag(store))]"
         self.store = store
-        self.tokenProvider = tokenProvider
         self.trackService = trackService
     }
 
@@ -153,8 +150,7 @@ final class QueueService {
             for _ in 0 ..< Self.queueRefreshAttempts {
                 try? await Task.sleep(for: .milliseconds(800))
                 guard !Task.isCancelled, let self else { return }
-                let token = await tokenProvider()
-                if await fetchInitialPlaybackState(accessToken: token) {
+                if await fetchInitialPlaybackState() {
                     return
                 }
                 log("Queue refresh did not apply — retrying")
@@ -299,110 +295,71 @@ final class QueueService {
     /// pending tracks — the one part no later callback reconstructs — are destroyed, along
     /// with the current pointer that `Queue.reconciled` then cannot repair, because it can
     /// only re-split a list that still contains the track.
-    static func responseCarriesPlayback(
-        playbackState: SpotifyAPI.PlaybackStateResponse?,
-        queueResponse: SpotifyAPI.QueueResponse,
-    ) -> Bool {
-        playbackState != nil
-            || queueResponse.currentlyPlaying != nil
-            || !queueResponse.queue.isEmpty
-    }
-
-    /// Fetches initial playback state and queue from Web API.
-    /// Called after Spirc becomes ready to sync with whatever device is currently playing.
-    /// Mercury only receives push updates, so we need this to get the current state.
+    /// Adopts whatever the Connect cluster last said is playing.
     ///
-    /// - Returns: `false` when nothing was applied: the request failed, live state from Rust
-    ///   advanced while it was in flight, or the response carried no playback at all. Most callers can
-    ///   ignore that — a discarded response means the live callbacks already told Swift
-    ///   what it was about to learn. Whether the queue *contents* changed is not a usable
-    ///   substitute: a provisional `SetQueue` preserves the previous queue, so a discarded
-    ///   response and an applied one can leave identical-looking state.
+    /// **This used to be two Web API requests**, `/me/player` and `/me/player/queue`, asked
+    /// because Mercury only pushes and a client that just started had never been pushed to.
+    /// The cluster answers both, and librespot already receives it — so this reads a snapshot
+    /// of the last update rather than going to the network.
+    ///
+    /// Two consequences of having one source instead of two. The **freshness barrier is gone**:
+    /// it existed because an HTTP snapshot could be older than a Rust callback that landed
+    /// while it was in flight, and a snapshot that *is* the last callback cannot be. And the
+    /// **previous tracks survive** — `/me/player/queue` returned none at all, so the old code
+    /// had to pass `previous: nil` and hope something else filled it in.
+    ///
+    /// - Returns: `false` when nothing was applied, which for this source means only one
+    ///   thing: no cluster update has arrived yet. Callers that can wait should try again —
+    ///   `scheduleQueueRefresh` is the one that must.
     @discardableResult
-    func fetchInitialPlaybackState(accessToken: String) async -> Bool {
-        log("Fetching initial playback state from Web API...")
-
-        // Freshness barrier: remember where live state stood before going to the network.
-        // Rust callbacks can land while these requests are in flight, and they are
-        // authoritative — applying the response afterwards would replace correct live state
-        // with an older snapshot, which looks like Swift not knowing what Rust is doing.
-        let revisionBeforeFetch = store.liveStateRevision
-
-        // Fetch playback state and queue in parallel
-        async let playbackStateTask = SpotifyAPI.fetchPlaybackState(accessToken: accessToken)
-        async let queueTask = SpotifyAPI.fetchQueue(accessToken: accessToken)
-
-        do {
-            let (playbackState, queueResponse) = try await (playbackStateTask, queueTask)
-
-            guard store.liveStateRevision == revisionBeforeFetch else {
-                debugLog(
-                    "QueueService",
-                    "Discarding Web API bootstrap: live state advanced from \(revisionBeforeFetch) to \(store.liveStateRevision) while fetching",
-                )
-                return false
-            }
-
-            guard Self.responseCarriesPlayback(playbackState: playbackState, queueResponse: queueResponse) else {
-                log("Web API reports no playback anywhere — keeping the existing queue")
-                return false
-            }
-
-            // Process queue response
-            let currentEntry: QueueEntry? = queueResponse.currentlyPlaying.flatMap { track in
-                QueueEntry(trackId: track.id, provider: .context)
-            }
-            let nextEntries: [QueueEntry] = queueResponse.queue.map { track in
-                QueueEntry(trackId: track.id, provider: .context)
-            }
-
-            // Web API doesn't provide previous tracks, so preserve existing or use empty
-            store.setQueue(previous: nil, current: currentEntry, next: nextEntries)
-            reconcileQueueCurrentTrack()
-
-            log("Initial queue: current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
-
-            // Fetch track metadata
-            var allIds = (currentEntry.map { [$0.trackId] } ?? []) + nextEntries.map(\.trackId)
-
-            // Also add the track from playback state if different (shouldn't be, but just in case)
-            if let playbackTrack = playbackState?.item, !allIds.contains(playbackTrack.id) {
-                allIds.append(playbackTrack.id)
-            }
-
-            fetchTrackMetadata(for: allIds)
-
-            // Process playback state if available
-            if let state = playbackState {
-                // Get duration from playback state, or fall back to queue's currently playing track
-                let playbackStateDuration = state.item?.durationMs
-                let queueDuration = queueResponse.currentlyPlaying?.durationMs
-                let durationMs = playbackStateDuration ?? queueDuration ?? 0
-
-                debugLog(
-                    "QueueService",
-                    "Initial playback: playing=\(state.isPlaying), progress=\(state.progressMs ?? 0)ms, " +
-                        "duration from /me/player: \(playbackStateDuration.map { String($0) } ?? "nil"), " +
-                        "duration from /me/player/queue: \(queueDuration.map { String($0) } ?? "nil"), " +
-                        "using duration: \(durationMs)ms, device=\(state.device?.name ?? "unknown")",
-                )
-
-                // Update PlaybackViewModel with the current state
-                let vm = PlaybackViewModel.shared
-                vm.applyWebAPIPlaybackState(
-                    isPlaying: state.isPlaying,
-                    progressMs: state.progressMs ?? 0,
-                    durationMs: durationMs,
-                    trackUri: state.item?.uri ?? queueResponse.currentlyPlaying?.uri,
-                    timestampMs: state.timestamp ?? 0,
-                    shuffleEnabled: state.shuffleState ?? false,
-                )
-            }
-
-            return true
-        } catch {
-            log("Failed to fetch initial playback state: \(error)")
+    func fetchInitialPlaybackState() async -> Bool {
+        guard let update = Self.queueUpdate(from: currentQueueSnapshot()) else {
+            log("Cluster says nothing usable yet — keeping the existing queue")
             return false
         }
+
+        store.setQueue(previous: update.previous, current: update.current, next: update.next)
+        reconcileQueueCurrentTrack()
+
+        log("Initial queue: prev=\(update.previous.count), current=\(update.current != nil ? 1 : 0), next=\(update.next.count)")
+
+        let allIds = update.previous.map(\.trackId)
+            + (update.current.map { [$0.trackId] } ?? [])
+            + update.next.map(\.trackId)
+        fetchTrackMetadata(for: allIds)
+
+        return true
+    }
+
+    /// What a cluster snapshot resolves to, or **nil when it must not be applied**.
+    ///
+    /// This is the guard that `responseCarriesPlayback` used to be, and it exists for the same
+    /// reason: an answer meaning "I have nothing to tell you" decodes identically to one
+    /// meaning "nothing is queued", and applying the second when you were given the first
+    /// wipes a real queue. That is what emptied the queue on every wake from sleep — see
+    /// `plans/wake-from-sleep-loses-queue-and-resume.md`.
+    ///
+    /// The two forms it takes here: **nil**, when no cluster update has arrived at all, and a
+    /// snapshot that yields no current track and nothing pending. Previous tracks alone are
+    /// not enough — history with nothing playing is what a wiped queue looks like.
+    static func queueUpdate(
+        from snapshot: QueueState?,
+    ) -> (previous: [QueueEntry], current: QueueEntry?, next: [QueueEntry])? {
+        guard let snapshot else { return nil }
+
+        let current = snapshot.currentTrack.flatMap(queueEntry(from:))
+        let next = snapshot.nextTracks.compactMap(queueEntry(from:))
+        let previous = (snapshot.previousTracks ?? []).compactMap(queueEntry(from:))
+
+        guard current != nil || !next.isEmpty else { return nil }
+
+        return (previous, current, next)
+    }
+
+    /// A queue item becomes an entry only if its uri names a track — the cluster can carry
+    /// episodes and ads, which this app has no row for.
+    private static func queueEntry(from item: QueueItem) -> QueueEntry? {
+        guard let trackId = SpotifyAPI.parseTrackURI(item.uri) else { return nil }
+        return QueueEntry(trackId: trackId, provider: TrackProvider(from: item.provider))
     }
 }

@@ -247,6 +247,11 @@ typedef void (*ActiveDeviceCallback)(const char* device_id);
 /// without polling the Web API.
 void spotifly_register_active_device_callback(ActiveDeviceCallback callback);
 
+/// Returns the last queue the Connect cluster described, as JSON, or NULL if no cluster
+/// update has arrived yet. Caller owns the string and must free it with spotifly_free_string.
+/// Replaces the Web API's /me/player and /me/player/queue for Swift's bootstrap.
+char* spotifly_get_queue_snapshot(void);
+
 /// Callback function type for Connect device-list updates.
 /// Receives the JSON array `/me/player/devices` used to return, so the same decoder serves both.
 typedef void (*DevicesCallback)(const char* devices_json);

@@ -399,7 +399,7 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       Still on the Web API by surface: playlist create/rename/delete/follow, which have their
       own mutations and belong with a playlist-management task rather than this one.
 
-- [ ] **Task 12a: Player control** (`SpotifyAPI+Player.swift`, 12 call sites) — last, but not
+- [x] **Task 12a: Player control** (`SpotifyAPI+Player.swift`, 12 call sites) — last, but not
       optional. An earlier draft of this plan left it undecided, which quietly made Phase 4
       unreachable: a keymaster token gets 429 from `api.spotify.com`, so any call left there
       keeps the dashboard grant alive and the whole point of the plan with it.
@@ -409,8 +409,42 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       play, pause, skip, seek, shuffle, repeat and queue-add (`connect/endpoints.go`), plus
       transfer, device list, playback state and queue reads (`connect/commands.go`). That
       covers every call site in `SpotifyAPI+Player.swift`, including the `startPlayback` and
-      device-transfer paths `rework-auth` added, so the remote-device fallback survives the
-      migration rather than being dropped for it.
+      device-transfer paths `rework-auth` added.
+
+      **The surface splits in two, and one measurement decides where the line falls.** Reading
+      connect-state — `PUT /connect-state/v1/devices/hobs_<id>` — is rejected without an
+      `x-spotify-connection-id`, which is assigned over a **dealer websocket**. Swift holds no
+      dealer connection and librespot does, so every *read* belongs in Rust. Commands need no
+      such id: a bare bearer-plus-client-token `POST .../player/command/from/{from}/to/{to}`
+      answers `200 {"ack_id": …}` and the device acts on it, so they belong in Swift beside the
+      other spclient calls. Both measured 2026-08-13.
+
+      The reads turned out to need no new request at all. `spawn_cluster_listener` was already
+      receiving the whole cluster and using two fields of it — so `cluster.device` was the
+      device list, arriving and being discarded, while Swift asked `/me/player/devices` for it.
+      A poll became a push, and `DeviceService` lost the throttle, the in-flight task, the
+      post-transfer refresh and the error state that only an HTTP fetch needed. The queue
+      bootstrap reads the same cluster and **gains previous tracks**, which `/me/player/queue`
+      never returned at all.
+
+      **Probing separated two questions that look like one.** A command aimed at a device id
+      that does not exist answers `404 DEVICE_NOT_FOUND` — which establishes that the url,
+      headers and body were understood, independently of whether anything was there to obey
+      them. Worth reaching for whenever a write cannot be tried for real yet: it is the
+      write-path equivalent of the empty-variable trick task 11 used for schemas.
+
+      Three consequences worth carrying forward:
+
+      - **connect-state plays contexts, not tracks**, where `/me/player/play` took a bare
+        `uris` array. A single track goes as a context plus a `skip_to` naming it; a bare list
+        of tracks as an inline context with its own `pages`. Sending a track uri as a plain
+        context plays the first track of whatever it resolves to.
+      - **"Nothing is active" stopped costing a request.** It used to be a caught 404; the
+        target is in the url now, so there is no url to build and the answer is local.
+      - **Playing to a phone with local playback disabled is gone.** The device list needs the
+        dealer socket only a session holds, so with no session there are no devices. Task 13
+        removes the state itself — one grant will serve both — but until then this is a real
+        narrowing rather than a deferral.
 
 - [ ] **Task 12b: Home, rebuilt on `home`.** Probed 2026-08-13 and viable — this is the section
       that unblocks Phase 4, since `/me`, `/me/top/artists`, `/me/top/tracks` and

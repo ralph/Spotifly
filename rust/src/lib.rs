@@ -85,6 +85,9 @@ static DEVICES_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
 /// The last device list sent to Swift, so an unchanged cluster update stays silent. Cluster
 /// updates arrive for every playback tick, and the device list changes far more rarely.
 static LAST_DEVICES_JSON: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
+/// The last queue the cluster described, so Swift can ask again rather than re-deriving it
+/// from the Web API. See `spotifly_get_queue_snapshot`.
+static LAST_QUEUE_JSON: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static LAST_ACTIVE_DEVICE_ID: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 /// Serializes snapshot building so a revision always orders snapshots by the state they
 /// actually saw. Held only across the build, never across delivery into Swift.
@@ -2351,14 +2354,38 @@ fn process_and_send_queue(player_state: PlayerState) {
         prev_tracks.len()
     );
 
-    send_json(
-        callback,
-        &QueueState {
-            track: current_track,
-            next_tracks,
-            prev_tracks,
-        },
-    );
+    let state = QueueState {
+        track: current_track,
+        next_tracks,
+        prev_tracks,
+    };
+
+    // Remembered as well as sent. A callback is a one-shot, and Swift has recovery paths that
+    // need to ask "what is playing?" at a moment of their own choosing — a provisional
+    // SetQueue from librespot being the awkward one, since it arrives carrying no queue at
+    // all. That question used to go to `/me/player/queue`; now it comes back here.
+    if let Ok(json) = serde_json::to_string(&state) {
+        *LAST_QUEUE_JSON.lock().unwrap() = Some(json);
+    }
+
+    send_json(callback, &state);
+}
+
+/// The last queue the cluster described, as JSON, or null if no cluster update has arrived.
+///
+/// Replaces `/me/player/queue` and `/me/player` for Swift's bootstrap. Deliberately a snapshot
+/// of what was already pushed rather than a fresh request: the cluster is the only source now,
+/// so there is nothing newer to fetch, and a caller that gets null has genuinely not been told
+/// anything yet rather than having been told there is nothing.
+#[no_mangle]
+pub extern "C" fn spotifly_get_queue_snapshot() -> *mut c_char {
+    let snapshot = LAST_QUEUE_JSON.lock().unwrap().clone();
+    match snapshot {
+        Some(json) => CString::new(json)
+            .map(|c| c.into_raw())
+            .unwrap_or(std::ptr::null_mut()),
+        None => std::ptr::null_mut(),
+    }
 }
 
 /// Helper to ensure the device is active before loading content.

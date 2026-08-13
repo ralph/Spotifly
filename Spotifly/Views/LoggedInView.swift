@@ -55,7 +55,7 @@ struct LoggedInView: View {
         _albumService = State(initialValue: AlbumService(store: store))
         _artistService = State(initialValue: ArtistService(store: store))
         let trackService = TrackService(store: store)
-        _queueService = State(initialValue: QueueService(store: store, tokenProvider: tokenProvider, trackService: trackService))
+        _queueService = State(initialValue: QueueService(store: store, trackService: trackService))
         _connectionService = State(initialValue: ConnectionService(store: store))
         _deviceService = State(initialValue: DeviceService(store: store))
         _navigationCoordinator = State(initialValue: NavigationCoordinator(store: store))

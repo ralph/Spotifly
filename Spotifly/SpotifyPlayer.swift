@@ -615,6 +615,28 @@ private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
     Task { @MainActor in queueSubject.send(state) }
 }
 
+/// The last queue the Connect cluster described, or nil if no cluster update has arrived.
+///
+/// The push equivalent of `/me/player/queue`, for the recovery paths that need to ask rather
+/// than wait — chiefly a *provisional* `SetQueue`, which librespot emits before `fill_up` with
+/// no queue in it at all. Nil is meaningful and distinct from an empty queue: it means nothing
+/// has been heard yet, so a caller should try again rather than conclude nothing is playing.
+nonisolated func currentQueueSnapshot() -> QueueState? {
+    // Bridged as non-optional, so the null Rust returns for "no cluster update yet" has to be
+    // checked rather than unwrapped.
+    let pointer: UnsafeMutablePointer<CChar>? = spotifly_get_queue_snapshot()
+    guard let pointer else { return nil }
+    defer { spotifly_free_string(pointer) }
+
+    guard let json = decodeJSONObject(pointer, context: "currentQueueSnapshot") else { return nil }
+
+    return QueueState(
+        currentTrack: (json["track"] as? [String: Any]).flatMap { parseQueueItem(from: $0) },
+        nextTracks: (json["next_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
+        previousTracks: (json["prev_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
+    )
+}
+
 /// Errors that can occur during playback
 enum SpotifyPlayerError: Error, LocalizedError {
     case initializationFailed
