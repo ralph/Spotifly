@@ -150,3 +150,49 @@ struct QueueBootstrapTests {
         #expect(!store.reconcileQueueCurrentTrack(with: "playing"))
     }
 }
+
+/// Which row of a list is drawn as playing.
+///
+/// A list can legitimately hold the same recording twice — an album with a reprise, a playlist
+/// a track was added to twice, or two catalogue entries that relink to one market id. Deciding
+/// by uri lights up all of them, which is what drew two rows of an 11-track queue green while
+/// only one of them advanced.
+@MainActor
+struct CurrentRowIdentityTests {
+    /// The queue knows a current *position*, so position is what it uses.
+    @Test func `only the row at the current index is current`() {
+        let currentIndex = 0
+        let uris = [
+            "spotify:track:street",
+            "spotify:track:away",
+            "spotify:track:street",
+        ]
+
+        let flags = uris.indices.map { index in
+            TrackRow.isCurrent(index: index, currentIndex: currentIndex, uri: uris[index], playingUri: uris[0])
+        }
+
+        #expect(flags == [true, false, false])
+    }
+
+    @Test func `a later position is current when playback has advanced`() {
+        let uris = ["spotify:track:street", "spotify:track:away", "spotify:track:street"]
+
+        let flags = uris.indices.map { index in
+            TrackRow.isCurrent(index: index, currentIndex: 2, uri: uris[index], playingUri: uris[2])
+        }
+
+        #expect(flags == [false, false, true])
+    }
+
+    /// Lists with no current position — an album page, a playlist, search results — have
+    /// nothing better than the uri to go on, and keep the old behaviour.
+    @Test func `without a current index the uri decides`() {
+        #expect(TrackRow.isCurrent(index: 3, currentIndex: nil, uri: "spotify:track:a", playingUri: "spotify:track:a"))
+        #expect(!TrackRow.isCurrent(index: 3, currentIndex: nil, uri: "spotify:track:a", playingUri: "spotify:track:b"))
+    }
+
+    @Test func `a row with no index at all falls back to the uri`() {
+        #expect(TrackRow.isCurrent(index: nil, currentIndex: 0, uri: "spotify:track:a", playingUri: "spotify:track:a"))
+    }
+}

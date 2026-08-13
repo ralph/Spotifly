@@ -9,6 +9,28 @@ import SwiftUI
 
 /// Reusable track row view
 struct TrackRow: View {
+    /// Whether this row is the one playing.
+    ///
+    /// **Position wins over uri where the list knows both.** A list can legitimately hold the
+    /// same recording twice — an album with a reprise, a playlist a track was added to twice,
+    /// or two catalogue entries that relink to one market id (see AGENTS.md, "Relinking is
+    /// many-to-one") — and matching on uri lights up every one of them. That drew two rows of
+    /// an eleven-track queue green while only one of them advanced.
+    ///
+    /// Only the queue passes `currentIndex`, because only the queue has a current *position*.
+    /// An album page or a search result has nothing better than the uri to go on.
+    static func isCurrent(
+        index: Int?,
+        currentIndex: Int?,
+        uri: String,
+        playingUri: String?,
+    ) -> Bool {
+        if let index, let currentIndex {
+            return index == currentIndex
+        }
+        return playingUri == uri
+    }
+
     let track: Track
     let showTrackNumber: Bool // Show track number instead of index
     let index: Int? // Optional index for queue
@@ -67,7 +89,12 @@ struct TrackRow: View {
         self.track = track
         self.showTrackNumber = showTrackNumber
         self.index = index
-        isCurrentTrack = currentlyPlayingURI == track.uri
+        isCurrentTrack = Self.isCurrent(
+            index: index,
+            currentIndex: currentIndex,
+            uri: track.uri,
+            playingUri: currentlyPlayingURI,
+        )
         isPlayedTrack = if let index, let currentIndex {
             index < currentIndex
         } else {
