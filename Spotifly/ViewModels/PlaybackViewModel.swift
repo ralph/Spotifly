@@ -652,6 +652,7 @@ final class PlaybackViewModel {
         _ name: String,
         local: @escaping () -> Void,
         remote: @escaping (_ from: String, _ to: String) async throws -> Void,
+        declined: @escaping (SpclientError) -> Void = { _ in },
     ) -> Bool {
         guard SpotifyPlayer.isActiveDevice else {
             guard let route = connectRoute() else {
@@ -671,6 +672,12 @@ final class PlaybackViewModel {
             Task {
                 do {
                     try await remote(route.from, route.to)
+                } catch let error as SpclientError where error.isDeclined {
+                    // Spotify refusing on its own terms — no track to go back to, or a device
+                    // that will not take the command. The user pressed a control deliberately
+                    // and nothing is broken, so this is a log line rather than an error banner.
+                    debugLog("PlaybackViewModel", "\(name) declined: \(error.localizedDescription)")
+                    declined(error)
                 } catch {
                     errorMessage = error.localizedDescription
                 }
@@ -715,11 +722,22 @@ final class PlaybackViewModel {
         updateNowPlayingInfo()
     }
 
+    /// Previous track, or the start of this one.
+    ///
+    /// `hasPrevious` enables the control once playback is more than three seconds in even with
+    /// no earlier track, because restarting is what pressing it then means — and the local
+    /// player does exactly that. A remote device does not: `skip_prev` comes back
+    /// `403 no_prev_track`, which left the button enabled and doing nothing while an error
+    /// banner blamed Spotify. So the refusal is answered with the seek it stood for.
     func previous() {
         guard sendTransportCommand(
             "previous()",
             local: { SpotifyPlayer.previous() },
             remote: { try await SpclientAPI().sendCommand(.previous, from: $0, to: $1) },
+            declined: { [weak self] error in
+                guard error.isNoPreviousTrack else { return }
+                self?.seek(to: 0)
+            },
         ) else {
             return
         }

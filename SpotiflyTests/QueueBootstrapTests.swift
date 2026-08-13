@@ -196,3 +196,43 @@ struct CurrentRowIdentityTests {
         #expect(TrackRow.isCurrent(index: nil, currentIndex: 0, uri: "spotify:track:a", playingUri: "spotify:track:a"))
     }
 }
+
+/// Telling Spotify declining from something being wrong.
+///
+/// Thirteen of twenty-eight commands in one measured session failed, and every one was a
+/// control the user had pressed deliberately against a device or a state that would not take
+/// it. Reporting those as errors makes a working app look broken.
+struct DeclinedCommandTests {
+    @Test func `a restricted skip is a decline, not a failure`() {
+        let error = SpclientError.requestFailed(
+            403,
+            #"{"error_code":"9","error_description":"skip_to_prev_restricted","reasons":["no_prev_track"]}"#,
+        )
+
+        #expect(error.isDeclined)
+        #expect(error.isNoPreviousTrack)
+    }
+
+    /// An iPhone will not take a remote volume change — iOS policy, not a Spotify one.
+    @Test func `an unsupported command is a decline, not a failure`() {
+        let error = SpclientError.requestFailed(400, #"{"error_type":"DEVICE_DOES_NOT_SUPPORT_COMMAND"}"#)
+
+        #expect(error.isDeclined)
+        #expect(!error.isNoPreviousTrack)
+    }
+
+    @Test func `a genuine failure is still a failure`() {
+        let missing = SpclientError.requestFailed(404, #"{"error_type":"DEVICE_NOT_FOUND"}"#)
+        let broken = SpclientError.requestFailed(500, "")
+
+        #expect(!missing.isDeclined)
+        #expect(!broken.isDeclined)
+    }
+
+    @Test func `the body is carried into the message so a log says why`() {
+        let error = SpclientError.requestFailed(400, #"{"error_type":"DEVICE_DOES_NOT_SUPPORT_COMMAND"}"#)
+
+        #expect(error.localizedDescription.contains("400"))
+        #expect(error.localizedDescription.contains("DEVICE_DOES_NOT_SUPPORT_COMMAND"))
+    }
+}

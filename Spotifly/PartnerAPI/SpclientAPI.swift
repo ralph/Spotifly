@@ -10,7 +10,7 @@ import Foundation
 nonisolated enum SpclientError: Error, LocalizedError {
     case invalidId(String)
     case preflightRejected(Int)
-    case requestFailed(Int)
+    case requestFailed(Int, String)
     case malformedResponse
 
     var errorDescription: String? {
@@ -19,11 +19,38 @@ nonisolated enum SpclientError: Error, LocalizedError {
             "\(id) is not a Spotify id"
         case let .preflightRejected(status):
             "Spotify rejected the preflight (HTTP \(status))"
-        case let .requestFailed(status):
-            "Spotify rejected the request (HTTP \(status))"
+        case let .requestFailed(status, detail):
+            detail.isEmpty
+                ? "Spotify rejected the request (HTTP \(status))"
+                : "Spotify rejected the request (HTTP \(status)): \(detail)"
         case .malformedResponse:
             "The Spotify response could not be read"
         }
+    }
+
+    /// **Spotify declining, rather than something being wrong.**
+    ///
+    /// A connect-state command can fail because the target device or the current playback
+    /// state does not permit it, and neither is a fault the user can act on:
+    ///
+    /// - `403 skip_to_prev_restricted / no_prev_track` — Previous with nothing behind it.
+    /// - `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` — an iPhone will not take a remote volume
+    ///   change, which is iOS policy rather than a Spotify one.
+    ///
+    /// Measured on 2026-08-13: thirteen of twenty-eight commands in one session came back this
+    /// way, every one of them a control the user had pressed deliberately. Reporting them as
+    /// errors makes the app look broken while it is behaving correctly.
+    var isDeclined: Bool {
+        guard case let .requestFailed(status, detail) = self else { return false }
+
+        return (status == 403 && detail.contains("restricted"))
+            || detail.contains("DEVICE_DOES_NOT_SUPPORT_COMMAND")
+    }
+
+    /// Whether this is Spotify saying there is nothing before the current track.
+    var isNoPreviousTrack: Bool {
+        guard case let .requestFailed(_, detail) = self else { return false }
+        return detail.contains("no_prev_track")
     }
 }
 
@@ -184,7 +211,7 @@ nonisolated struct SpclientAPI: Sendable {
     private func trackIfPresent(id: String) async throws -> SpclientTrack? {
         do {
             return try await track(id: id)
-        } catch let SpclientError.requestFailed(status) where status == 404 {
+        } catch let SpclientError.requestFailed(status, _) where status == 404 {
             return nil
         } catch SpclientError.invalidId {
             return nil
@@ -246,7 +273,10 @@ nonisolated struct SpclientAPI: Sendable {
                 "SpclientAPI",
                 "\(method) \(path) failed (HTTP \(http.statusCode)): \(String(decoding: data.prefix(200), as: UTF8.self))",
             )
-            throw SpclientError.requestFailed(http.statusCode)
+            throw SpclientError.requestFailed(
+                http.statusCode,
+                String(decoding: data.prefix(300), as: UTF8.self),
+            )
         }
     }
 
@@ -270,7 +300,7 @@ nonisolated struct SpclientAPI: Sendable {
             throw SpclientError.malformedResponse
         }
         guard http.statusCode == 200 else {
-            throw SpclientError.requestFailed(http.statusCode)
+            throw SpclientError.requestFailed(http.statusCode, "")
         }
 
         return data
