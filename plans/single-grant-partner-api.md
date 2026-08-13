@@ -80,6 +80,26 @@ authorize different accounts, which `rework-auth` had to add a guard for.
   the migration both tokens exist; they are not interchangeable and must not share a provider.
 - **Persist the rotated refresh token on every refresh**, or the session dies at the second
   refresh.
+- **Relinking: measured, and it bites.** Settled on 2026-08-13 with a known pair — Xavier Rudd,
+  "The Letter": original `459GknUJgpky3io0y482bi`, DE substitute `7FcObTmCbQYyC8qzlTL2SE`, taken
+  from `/v1/me/tracks?market=DE` where `linked_from` names both.
+
+  - **pathfinder returns the substitute** (`7FcObT…`) and never the original, with nothing in
+    the response to say a substitution happened.
+  - **spclient is id-faithful**: asked for either id it returns that id, so it neither relinks
+    nor exposes the relationship.
+  - The Web API library returns the **original**, because that is what was saved.
+
+  So the same track now has two identities depending on where the app found it, and **writes
+  are the sharp edge**: favoriting from a search result would save the substitute while the
+  library row is keyed to the original — the heart would not light up and removal would fail.
+  Recovering the original from a substitute is not possible by asking for it; the substitute
+  looks canonical from every angle. The one bridge is `external_ids.isrc`, which both share.
+
+  Consequences for the tasks below: library and playlist writes (tasks 11–12) must not use a
+  pathfinder id directly, and the track store needs one identity per track rather than one per
+  source. Decide that before those tasks, not during them.
+
 - **Re-derive the track-relinking rules for the new endpoints.** `CLAUDE.md` documents them
   for the Web API, where `market` decides whether you get the track you asked for or a playable
   alternative, and where the identity rule (logical id owns store keys, favorites, queue
@@ -176,6 +196,11 @@ Order runs cheapest-first, and each task is independently shippable and revertib
 - [ ] **Task 9: Albums** (5) and **Task 10: Artists** (6).
 - [ ] **Task 11: Playlists** (9), including the write paths.
 - [ ] **Task 12: User/library** (2) and the saved-tracks writes.
+
+      Tasks 11 and 12 are gated on the relinking decision above, not merely informed by it.
+      Pathfinder ids are substitutes; saving one is what Spotify's own documentation says will
+      misbehave. Settle identity first — one entity per track, with the original id owning the
+      store key and the favorites state — then move the writes.
 
 - [ ] **Task 12a: Player control** (`SpotifyAPI+Player.swift`, 12 call sites) — last, but not
       optional. An earlier draft of this plan left it undecided, which quietly made Phase 4
