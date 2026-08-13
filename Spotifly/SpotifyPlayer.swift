@@ -1080,7 +1080,13 @@ enum SpotifyPlayer {
 
     /// Removes the cached streaming credentials so the next launch cannot connect the
     /// account that just logged out.
+    ///
+    /// Clears both halves of the grant. librespot's AP credentials are a file in the app
+    /// container; the keymaster tokens are a keychain item Swift owns. Forgetting only the
+    /// first would leave a long-lived refresh token for the signed-out account behind, and it
+    /// is the half the partner API clients read.
     static func clearStreamingCredentials() async {
+        await KeymasterSession.shared.clear()
         await Task.detached(priority: .userInitiated) {
             spotifly_clear_streaming_credentials()
         }.value
