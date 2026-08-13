@@ -77,6 +77,119 @@ private func makeService(_ calls: Calls) -> (PlaylistService, AppStore) {
     return (service, store)
 }
 
+/// Adding tracks, which writes optimistically and then has to reconcile.
+@MainActor
+struct PlaylistAddReconciliationTests {
+    /// A one-item playlist carrying a real uid, as a load would have left it.
+    private func seededStore() -> AppStore {
+        let store = AppStore()
+        store.upsertPlaylist(
+            Playlist(
+                id: "p1",
+                name: "Mix",
+                description: nil,
+                images: ImageSet(variants: []),
+                uri: "spotify:playlist:p1",
+                isPublic: true,
+                ownerId: "ralph",
+                ownerName: "Ralph",
+                externalUrl: nil,
+                items: [PlaylistItem(uid: "aaaa1111", trackId: "t1")],
+                totalDurationMs: 0,
+                knownTrackCount: 1,
+                tracksLoaded: true,
+            ),
+        )
+        return store
+    }
+
+    /// Routes by operation name: the mutation succeeds, the reload behind it does not.
+    private func api(reloadStatus: Int) -> PartnerAPI {
+        PartnerAPI(
+            accessToken: { "at" },
+            clientToken: { "ct" },
+            transport: { request in
+                let body = try #require(request.httpBody)
+                let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+                let isMutation = json["operationName"] as? String == "addToPlaylist"
+
+                let payload = isMutation
+                    ? Data(#"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#.utf8)
+                    : Data()
+                let response = HTTPURLResponse(
+                    url: PartnerAPI.endpoint,
+                    statusCode: isMutation ? 200 : reloadStatus,
+                    httpVersion: nil,
+                    headerFields: nil,
+                )!
+                return (payload, response)
+            },
+        )
+    }
+
+    /// The add succeeded, so the row belongs there — but it carries a locally generated uid,
+    /// and only the reload replaces it with Spotify's. Leaving the playlist marked loaded meant
+    /// nothing ever fetched it again, and a removal or a drag would send a `local:` uid the
+    /// service has never heard of.
+    @Test func `an add whose refresh fails leaves the contents reloadable`() async throws {
+        let store = seededStore()
+        let service = PlaylistService(store: store, partnerAPI: api(reloadStatus: 500))
+
+        await #expect(throws: (any Error).self) {
+            try await service.addTracksToPlaylist(playlistId: "p1", trackIds: ["t2"])
+        }
+
+        let playlist = try #require(store.playlists["p1"])
+        // The optimistic row stays on screen; only the "these are Spotify's uids" claim goes.
+        #expect(playlist.items.count == 2)
+        #expect(playlist.tracksLoaded == false)
+        #expect(playlist.items.contains { $0.uid.hasPrefix("local:") })
+    }
+
+    @Test func `an add is not marked stale when nothing failed`() async throws {
+        let store = seededStore()
+        let reload = Data("""
+        {"data":{"playlistV2":{"__typename":"Playlist","uri":"spotify:playlist:p1","name":"Mix",
+          "ownerV2":{"data":{"__typename":"User","username":"ralph","name":"Ralph",
+                             "uri":"spotify:user:ralph"}},
+          "content":{"totalCount":2,"items":[
+            {"uid":"aaaa1111","itemV2":{"data":{"uri":"spotify:track:t1","name":"One",
+              "trackDuration":{"totalMilliseconds":1000}}}},
+            {"uid":"bbbb2222","itemV2":{"data":{"uri":"spotify:track:t2","name":"Two",
+              "trackDuration":{"totalMilliseconds":1000}}}}]}}}}
+        """.utf8)
+
+        let service = PlaylistService(
+            store: store,
+            partnerAPI: PartnerAPI(
+                accessToken: { "at" },
+                clientToken: { "ct" },
+                transport: { request in
+                    let body = try #require(request.httpBody)
+                    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+                    let isMutation = json["operationName"] as? String == "addToPlaylist"
+                    let payload = isMutation
+                        ? Data(#"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#.utf8)
+                        : reload
+                    let response = HTTPURLResponse(
+                        url: PartnerAPI.endpoint,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: nil,
+                    )!
+                    return (payload, response)
+                },
+            ),
+        )
+
+        try await service.addTracksToPlaylist(playlistId: "p1", trackIds: ["t2"])
+
+        let playlist = try #require(store.playlists["p1"])
+        #expect(playlist.tracksLoaded)
+        #expect(playlist.items.map(\.uid) == ["aaaa1111", "bbbb2222"])
+    }
+}
+
 @MainActor
 struct PlaylistLibraryWriteTests {
     /// The startup profile request swallows its own failure — nothing on that path should block

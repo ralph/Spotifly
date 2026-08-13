@@ -297,7 +297,17 @@ final class PlaylistService {
         for trackId in trackIds {
             store.addTrackToPlaylist(trackId, playlistId: playlistId)
         }
-        try await reloadPlaylistTracks(playlistId: playlistId)
+
+        do {
+            try await reloadPlaylistTracks(playlistId: playlistId)
+        } catch {
+            // The write happened; only the refresh did not. Left alone, the playlist stays
+            // marked loaded with placeholder uids in it, so nothing fetches it again for the
+            // rest of the session and a removal or a drag sends Spotify a `local:` uid it has
+            // never heard of. Marking the contents stale is what lets the next visit repair it.
+            store.invalidatePlaylistTracks(for: playlistId)
+            throw error
+        }
     }
 
     /// Remove **occurrences** from a playlist, named by uid.

@@ -353,6 +353,18 @@ final class AppStore {
         playlists[playlistId] = playlist
     }
 
+    /// Marks a playlist's contents as needing a fetch, without emptying the list on screen.
+    ///
+    /// For the case where the rows in the store are known to be wrong: an add places its rows
+    /// under locally generated uids, and only a reload replaces them with Spotify's. If that
+    /// reload fails, the placeholders are left marked `tracksLoaded`, so nothing would ever
+    /// fetch them again — and a uid the service has never heard of cannot be removed or moved.
+    /// Clearing the flag rather than the items keeps the rows visible until a load replaces
+    /// them, which is what an optimistic update is for.
+    func invalidatePlaylistTracks(for playlistId: String) {
+        playlists[playlistId]?.tracksLoaded = false
+    }
+
     /// Upsert multiple playlists, preserving loaded tracks if present
     func upsertPlaylists(_ newPlaylists: [Playlist]) {
         for playlist in newPlaylists {
