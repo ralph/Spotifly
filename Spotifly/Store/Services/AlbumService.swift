@@ -13,14 +13,9 @@ import Foundation
 final class AlbumService {
     private let store: AppStore
 
-    /// Used by the loading entry points, which often decide there is nothing to
-    /// fetch. They take the token themselves, *after* deciding, so a cache hit
-    /// costs nothing.
-    private let tokenProvider: () async -> String
-
-    /// The album reads, which no longer take a token: `PartnerAPI` runs on the keymaster grant
-    /// and holds it itself. `tokenProvider` is the Web API's, still needed by the library
-    /// paths below. Injectable so tests can drive the service without a network.
+    /// Every album path now runs on the keymaster grant, which `PartnerAPI` holds itself — so
+    /// this service no longer takes a Web API token at all. Injectable so tests can drive it
+    /// without a network.
     private let partnerAPI: PartnerAPI
 
     /// One run per album ID — see `InFlightRequests`.
@@ -32,11 +27,9 @@ final class AlbumService {
 
     init(
         store: AppStore,
-        tokenProvider: @escaping () async -> String,
         partnerAPI: PartnerAPI = PartnerAPI(),
     ) {
         self.store = store
-        self.tokenProvider = tokenProvider
         self.partnerAPI = partnerAPI
     }
 
@@ -56,7 +49,6 @@ final class AlbumService {
 
         try await listRequests.run(Self.listKey) {
             let offset = self.store.albumsPagination.nextOffset ?? 0
-            let accessToken = await self.tokenProvider()
             self.store.albumsPagination.isLoading = true
             defer {
                 // Only if this run is still the one loading: a superseded run
@@ -66,17 +58,13 @@ final class AlbumService {
                 }
             }
 
-            let response = try await SpotifyAPI.fetchUserAlbums(
-                accessToken: accessToken,
-                limit: 20,
-                offset: offset,
-            )
+            let page = try await self.partnerAPI.libraryAlbums(offset: offset)
             // A force refresh cancels this run and starts another. Cancellation is
             // cooperative, so without this the superseded page would still be
             // written — over the reset its replacement just performed.
             try Task.checkCancellation()
 
-            let albums = response.albums.map { Album(from: $0) }
+            let albums = page.entities.compactMap { Album(pathfinder: $0) }
             self.store.upsertAlbums(albums)
 
             let albumIds = albums.map(\.id)
@@ -87,9 +75,10 @@ final class AlbumService {
             }
 
             self.store.albumsPagination.isLoaded = true
-            self.store.albumsPagination.hasMore = response.hasMore
-            self.store.albumsPagination.nextOffset = response.nextOffset
-            self.store.albumsPagination.total = response.total
+            self.store.albumsPagination.advance(
+                by: page.items?.count ?? 0,
+                total: page.totalCount ?? 0,
+            )
         }
     }
 
@@ -149,23 +138,21 @@ final class AlbumService {
 
     // MARK: - Library Management
 
-    /// Save an album to the user's library
-    func saveAlbumToLibrary(albumId: String, accessToken: String) async throws {
-        try await SpotifyAPI.saveUserAlbum(
-            accessToken: accessToken,
-            albumId: albumId,
-        )
+    /// Save an album to the user's library.
+    ///
+    /// The same mutation that saves a track or follows an artist — only the uri prefix differs.
+    /// Kept as its own method anyway, because what happens *around* the call is per-kind: this
+    /// one updates the album list, and the views calling it know nothing about uris.
+    func saveAlbumToLibrary(albumId: String) async throws {
+        try await partnerAPI.addToLibrary(uris: ["spotify:album:\(albumId)"])
 
         // Update store on success
         store.addAlbumToUserLibrary(albumId)
     }
 
     /// Remove an album from the user's library
-    func removeAlbumFromLibrary(albumId: String, accessToken: String) async throws {
-        try await SpotifyAPI.removeUserAlbum(
-            accessToken: accessToken,
-            albumId: albumId,
-        )
+    func removeAlbumFromLibrary(albumId: String) async throws {
+        try await partnerAPI.removeFromLibrary(uris: ["spotify:album:\(albumId)"])
 
         // Update store on success
         store.removeAlbumFromUserLibrary(albumId)

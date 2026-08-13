@@ -66,14 +66,6 @@ struct APIAlbum: Identifiable, DurationFormattable {
     let uri: String
 }
 
-/// Response wrapper for albums endpoint
-struct AlbumsResponse {
-    let albums: [APIAlbum]
-    let hasMore: Bool
-    let nextOffset: Int?
-    let total: Int
-}
-
 // MARK: - Artist Types
 
 /// Artist metadata from Spotify API
@@ -84,14 +76,6 @@ struct APIArtist: Identifiable {
     let name: String
     let uri: String
     let externalUrl: String?
-}
-
-/// Response wrapper for artists endpoint
-struct ArtistsResponse {
-    let artists: [APIArtist]
-    let hasMore: Bool
-    let nextCursor: String?
-    let total: Int
 }
 
 /// Response wrapper for user's top artists endpoint
@@ -127,33 +111,7 @@ struct APIPlaylist: Identifiable, DurationFormattable {
     let externalUrl: String?
 }
 
-/// Response wrapper for playlists endpoint
-struct PlaylistsResponse {
-    let hasMore: Bool
-    let nextOffset: Int?
-    let playlists: [APIPlaylist]
-    let total: Int
-}
-
-// MARK: - Saved Tracks
-
-/// Response wrapper for saved tracks endpoint
-struct SavedTracksResponse {
-    let hasMore: Bool
-    let nextOffset: Int?
-    let total: Int
-    let tracks: [APITrack]
-}
-
 // MARK: - Search Types
-
-/// Search result type
-enum SearchType: String {
-    case album
-    case artist
-    case playlist
-    case track
-}
 
 /// Search results wrapper (uses unified Entity types)
 struct SearchResults: Encodable {
@@ -258,10 +216,6 @@ struct OwnerCodable: Decodable {
     }
 }
 
-struct CursorsCodable: Decodable {
-    let after: String?
-}
-
 // MARK: Artist Codable
 
 struct ArtistCodable: Decodable {
@@ -298,57 +252,6 @@ struct AlbumSimpleCodable: Decodable {
     let id: String?
     let name: String
     let images: [ImageCodable]?
-}
-
-// MARK: Album Codable (full)
-
-struct AlbumCodable: Decodable {
-    let id: String
-    let name: String
-    let uri: String
-    let albumType: String?
-    let totalTracks: Int?
-    let releaseDate: String?
-    let artists: [ArtistCodable]?
-    let images: [ImageCodable]?
-    let tracks: TracksPagingCodable?
-    let externalUrls: ExternalUrlsCodable?
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, uri, artists, images, tracks
-        case albumType = "album_type"
-        case totalTracks = "total_tracks"
-        case releaseDate = "release_date"
-        case externalUrls = "external_urls"
-    }
-
-    struct TracksPagingCodable: Decodable {
-        let items: [TrackItemCodable]?
-        struct TrackItemCodable: Decodable {
-            let durationMs: Int?
-            enum CodingKeys: String, CodingKey {
-                case durationMs = "duration_ms"
-            }
-        }
-    }
-
-    func toAPIAlbum() -> APIAlbum {
-        let artist = artists?.first
-        let totalDurationMs = tracks?.items?.compactMap(\.durationMs).reduce(0, +)
-        return APIAlbum(
-            id: id,
-            albumType: albumType,
-            artistId: artist?.id,
-            artistName: artist?.name ?? "Unknown",
-            externalUrl: externalUrls?.spotify,
-            images: images?.toImageSet ?? ImageSet.empty,
-            name: name,
-            releaseDate: releaseDate ?? "",
-            totalDurationMs: totalDurationMs,
-            trackCount: totalTracks ?? 0,
-            uri: uri,
-        )
-    }
 }
 
 // MARK: Track Codable
@@ -506,26 +409,6 @@ struct UserProfileCodable: Decodable {
     }
 }
 
-/// Saved tracks
-struct SavedTracksCodable: Decodable {
-    let items: [SavedTrackItemCodable]
-    let total: Int
-    let next: String?
-
-    struct SavedTrackItemCodable: Decodable {
-        let addedAt: String?
-        let track: TrackCodable
-
-        enum CodingKeys: String, CodingKey {
-            case addedAt = "added_at"
-            case track
-        }
-    }
-}
-
-// Check saved tracks (returns array of bools)
-// Note: This is just [Bool], decoded directly
-
 /// Playlist items
 struct PlaylistItemsCodable: Decodable {
     let items: [PlaylistItemWrapperCodable]
@@ -542,34 +425,6 @@ struct PlaylistItemsCodable: Decodable {
     }
 }
 
-/// User albums
-struct UserAlbumsCodable: Decodable {
-    let items: [UserAlbumItemCodable]
-    let total: Int
-    let next: String?
-
-    struct UserAlbumItemCodable: Decodable {
-        let album: AlbumCodable
-    }
-}
-
-/// Artist albums
-struct ArtistAlbumsCodable: Decodable {
-    let items: [AlbumCodable]
-}
-
-/// New releases
-/// User artists (followed)
-struct UserArtistsCodable: Decodable {
-    let artists: ArtistsPagingCodable
-
-    struct ArtistsPagingCodable: Decodable {
-        let items: [ArtistCodable]
-        let total: Int
-        let cursors: CursorsCodable?
-    }
-}
-
 /// Top artists
 struct TopArtistsCodable: Decodable {
     let items: [ArtistCodable]
@@ -580,13 +435,6 @@ struct TopArtistsCodable: Decodable {
 /// Top tracks
 struct TopTracksCodable: Decodable {
     let items: [TrackCodable]
-    let total: Int
-    let next: String?
-}
-
-/// User playlists
-struct UserPlaylistsCodable: Decodable {
-    let items: [PlaylistCodable]
     let total: Int
     let next: String?
 }

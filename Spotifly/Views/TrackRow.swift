@@ -240,11 +240,7 @@ struct TrackRow: View {
             isTogglingFavorite = true
 
             do {
-                let token = await session.validAccessToken()
-                try await trackService.toggleFavorite(
-                    trackId: track.id,
-                    accessToken: token,
-                )
+                try await trackService.toggleFavorite(trackId: track.id)
             } catch {
                 // Error is handled by optimistic rollback in TrackService
                 playbackViewModel.errorMessage = "Failed to update favorite: \(error.localizedDescription)"

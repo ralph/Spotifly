@@ -309,9 +309,8 @@ Order runs cheapest-first, and each task is independently shippable and revertib
 
       Still on the Web API by surface: `fetchUserPlaylists` and create/rename/delete/follow go
       with task 12.
-- [ ] **Task 12: User/library.** Schemas probed 2026-08-13, no writes performed. The surface
-      collapses hard — six Web API write endpoints become two mutations, and three list calls
-      become one query:
+- [x] **Task 12: User/library.** The surface collapses hard — six Web API write endpoints become
+      two mutations, and three list calls become one query:
 
       | Web API today | Replacement |
       | --- | --- |
@@ -322,29 +321,62 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       | `removeSavedTrack`, `removeUserAlbum`, `unfollowArtist` | `removeFromLibrary($libraryItemUris: [String!]!)` |
 
       `libraryV3` and `fetchLibraryTracks` both accept **empty variables**, so nothing is
-      required; `libraryV3` answers `data.me.libraryV3` with `availableFilters`
-      (Playlists/Artists/Albums/Audiobooks), `totalCount`, and mixed `items[]` of
-      `{addedAt, depth, item{__typename,_uri,data}, pinnable, pinned, playedAt}`. The test
-      account returned 120 items across four kinds in one page, so the three separate library
-      sections are one query filtered three ways.
+      required. `filters` is a list of plain strings, *not* an enum — an unrecognised member is
+      silently ignored and the whole library comes back rather than an error, which is why
+      `LibraryFilter` exists and no call site spells the strings.
 
-      Two consequences worth deciding before writing code. **Audiobooks appear in the library**
-      and the app has no concept of them — they need filtering out or a placeholder, not a crash.
-      And **`addToLibrary` takes uris of any kind**, so `TrackService.toggleFavorite`,
-      `AlbumService.saveAlbumToLibrary` and `ArtistService.followArtist` all become the same
-      call with a different uri prefix; whether they stay three service methods or become one is
-      a judgement call, and three thin wrappers over one call is probably still right, since the
-      views and the optimistic store updates differ per kind.
+      **Four shapes were measured, and each would have failed silently.**
 
-      Writes must be verified the way task 11's were: schema by empty-variable rejection first,
-      then one reversible round-trip against something disposable. `addToLibrary` on a track is
-      self-cleaning (add, check, remove), so it needs no scratch entity — but it does touch the
-      real library, so confirm before running it.
+      - `fetchLibraryTracks` is the one track-bearing response where **the entity does not carry
+        its own uri**: it sits on the wrapper as `_uri` beside the data. Reading `data.uri`
+        would be nil for every row and empty the favorites list. This is the sixth distinct item
+        shape from this API.
+      - `areEntitiesInLibrary` answers **positionally** — `lookup[i]` answers `uris[i]` and
+        nothing in the response names the uri it is about. A short answer is therefore left out
+        rather than padded, so an unanswered track stays unresolved instead of being cached as
+        "not a favorite" on the strength of a truncated response. A playlist uri comes back as a
+        bare wrapper with no `data` at all; only tracks are asked about in practice.
+      - `libraryV3` returns the same `PathfinderAlbum` as search but spells the date
+        `{isoString, precision}` where search sends `{year}`. `ReleaseDate` accepts both.
+      - **The mutations answer under names the operation does not predict.** `addToLibrary`
+        replies as `addLibraryItems` / `AddLibraryItemsResponse`; `removeFromLibrary` as
+        `removeLibraryItems` / `RemoveLibraryItemsResponse`. The symmetry with task 11
+        (`addToPlaylist` → `AddItemsToPlaylistPayload`) predicts `AddToLibraryPayload`, which is
+        wrong — and since a rejected write here is also HTTP 200 with a failure `__typename`, a
+        client trusting the symmetry would treat every successful save as a rejection and roll
+        back a write that landed. That guess was made and caught by probing, not by reasoning.
+
+      **Pagination moved into the client**, because these documents report `totalCount` where
+      the Web API reported a `next` URL that was null on the last page. Two rules, both real:
+      the offset advances by *entries received* rather than entities used, and an empty page
+      ends the list whatever the total claims. The `Playlists` filter counts **folders** the app
+      has no screen for (14 for 10 playlists in testing), and relinking is many-to-one, so both
+      counts genuinely differ. `/me/following` was the app's only cursor-paginated list;
+      `libraryV3` pages by offset, so `PaginationState.nextCursor` is gone.
+
+      **Audiobooks are not asked for.** The account in testing had two, and the app has no
+      entity, screen or playback path for one. Not requesting the filter is the whole of
+      handling them — there is no partial support to build, and a row that cannot be opened
+      would be worse than an absence.
+
+      **The three save methods stayed three.** `addToLibrary` takes uris of any kind, so
+      `TrackService.toggleFavorite`, `AlbumService.saveAlbumToLibrary` and
+      `ArtistService.followArtist` are the same call with a different prefix — but what happens
+      around the call is per-kind, and the views know nothing about uris.
+
+      Writes were verified as task 11's were, in two steps: `removeFromLibrary` on a track uri
+      that resolves to nothing, which cannot change the library and still names the response
+      type; then one add-then-remove round trip on a track that was **checked as unsaved first**,
+      so the removal restored the starting state exactly. Membership was read back from Spotify
+      between each step rather than inferred from the mutation's own answer — a write that
+      reports success and changes nothing is the failure worth ruling out.
 
       The identity question that once gated tasks 11 and 12 is settled — the market id owns the
       store key and the favorites state — and so is the write question: Spotify accepts market
-      ids for saves and removals, measured. See the relinking constraint above, including the
-      collection Mercury feed, which is the more interesting way to build task 12.
+      ids for saves and removals, measured.
+
+      Still on the Web API by surface: playlist create/rename/delete/follow, which have their
+      own mutations and belong with a playlist-management task rather than this one.
 
 - [ ] **Task 12a: Player control** (`SpotifyAPI+Player.swift`, 12 call sites) — last, but not
       optional. An earlier draft of this plan left it undecided, which quietly made Phase 4

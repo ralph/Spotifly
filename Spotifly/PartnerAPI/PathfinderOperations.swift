@@ -122,6 +122,44 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
 
     private static let playlistMutationHash =
         "47b2a1234b17748d332dd0431534f22450e9ecbb3d5ddcdacbd83368636a0990"
+
+    /// The user's library — playlists, albums and followed artists — selected by `filters`.
+    ///
+    /// Three Web API endpoints in one document. Saved *tracks* are not part of it; they have
+    /// their own operation below.
+    static let libraryV3 = PathfinderOperation(
+        name: "libraryV3",
+        sha256Hash: "390c78e5b951029bad359785e69b07b536a509c581cbcd0aded5e5067f187455",
+    )
+
+    /// The saved tracks, replacing `/me/tracks`.
+    static let fetchLibraryTracks = PathfinderOperation(
+        name: "fetchLibraryTracks",
+        sha256Hash: "087278b20b743578a6262c2b0b4bcd20d879c503cc359a2285baf083ef944240",
+    )
+
+    /// "Is each of these in the library?", replacing `/me/tracks/contains`. Answers positionally.
+    static let areEntitiesInLibrary = PathfinderOperation(
+        name: "areEntitiesInLibrary",
+        sha256Hash: "134337999233cc6fdd6b1e6dbf94841409f04a946c5c7b744b09ba0dfe5a85ed",
+    )
+
+    /// The library writes, which share one hash and differ by name — and which take uris of
+    /// *any* kind, so saving a track, saving an album and following an artist are the same call
+    /// with different prefixes. Six Web API endpoints collapse into these two.
+    static let addToLibrary = PathfinderOperation(
+        name: "addToLibrary",
+        sha256Hash: libraryMutationHash,
+    )
+
+    static let removeFromLibrary = PathfinderOperation(
+        name: "removeFromLibrary",
+        sha256Hash: libraryMutationHash,
+    )
+
+    /// Shared with pin/unpin, which this app does not use.
+    private static let libraryMutationHash =
+        "1ad0d40b3c09660d818b9e770eb1e84745dfbe941df159a64f8772b6fa2bfc3a"
 }
 
 /// The variables the artist operations take.

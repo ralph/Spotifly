@@ -1457,7 +1457,11 @@ final class PlaybackViewModel {
     // MARK: - Favorite Management
 
     /// Toggle favorite status for the currently playing track via the global store.
-    func toggleCurrentTrackFavorite(accessToken: String) async {
+    ///
+    /// A second copy of `TrackService.toggleFavorite`, kept because its callers — the menu bar
+    /// item and the ⌘L shortcut — reach the view model and not the services. Worth collapsing
+    /// into one when those two get a service; not worth restructuring for this migration.
+    func toggleCurrentTrackFavorite() async {
         guard let uri = currentTrackUri, let trackId = SpotifyAPI.parseTrackURI(uri),
               let store
         else { return }
@@ -1471,11 +1475,13 @@ final class PlaybackViewModel {
             store.addTrackToFavorites(trackId)
         }
 
+        let uris = ["spotify:track:\(trackId)"]
+
         do {
             if wasFavorite {
-                try await SpotifyAPI.removeSavedTrack(accessToken: accessToken, trackId: trackId)
+                try await PartnerAPI().removeFromLibrary(uris: uris)
             } else {
-                try await SpotifyAPI.saveTrack(accessToken: accessToken, trackId: trackId)
+                try await PartnerAPI().addToLibrary(uris: uris)
             }
         } catch {
             // Rollback

@@ -152,8 +152,7 @@ private struct LoggedInContextToolbarActions: View {
             } else {
                 Button {
                     Task {
-                        let token = await session.validAccessToken()
-                        try? await albumService.saveAlbumToLibrary(albumId: album.id, accessToken: token)
+                        try? await albumService.saveAlbumToLibrary(albumId: album.id)
                     }
                 } label: {
                     Label("album.menu.add_to_library", systemImage: "plus.circle")
@@ -181,8 +180,7 @@ private struct LoggedInContextToolbarActions: View {
             } else {
                 Button {
                     Task {
-                        let token = await session.validAccessToken()
-                        try? await artistService.followArtist(artistId: artist.id, accessToken: token)
+                        try? await artistService.followArtist(artistId: artist.id)
                     }
                 } label: {
                     Label("artist.menu.follow", systemImage: "person.badge.plus")

@@ -56,7 +56,6 @@ final class PlaylistService {
 
         try await listRequests.run(Self.listKey) {
             let offset = self.store.playlistsPagination.nextOffset ?? 0
-            let accessToken = await self.tokenProvider()
             self.store.playlistsPagination.isLoading = true
             defer {
                 // Only if this run is still the one loading: a superseded run
@@ -66,15 +65,14 @@ final class PlaylistService {
                 }
             }
 
-            let response = try await SpotifyAPI.fetchUserPlaylists(
-                accessToken: accessToken,
-                limit: 50,
-                offset: offset,
-            )
+            let page = try await self.partnerAPI.libraryPlaylists(offset: offset)
             // See AlbumService.loadUserAlbums: a superseded run must not write.
             try Task.checkCancellation()
 
-            let playlists = response.playlists.map { Playlist(from: $0) }
+            // Fewer than the page holds: the library counts **folders** as playlist entries and
+            // this app has no folder screen, so they arrive and are dropped. That is why the
+            // offset advances by the page's item count rather than by this one.
+            let playlists = page.entities.compactMap { Playlist(pathfinder: $0) }
             self.store.upsertPlaylists(playlists)
 
             let playlistIds = playlists.map(\.id)
@@ -85,9 +83,10 @@ final class PlaylistService {
             }
 
             self.store.playlistsPagination.isLoaded = true
-            self.store.playlistsPagination.hasMore = response.hasMore
-            self.store.playlistsPagination.nextOffset = response.nextOffset
-            self.store.playlistsPagination.total = response.total
+            self.store.playlistsPagination.advance(
+                by: page.items?.count ?? 0,
+                total: page.totalCount ?? 0,
+            )
         }
     }
 

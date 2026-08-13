@@ -411,7 +411,6 @@ struct PaginationState: Encodable {
     var isLoading = false
     var hasMore = true
     var nextOffset: Int? = 0
-    var nextCursor: String? // For cursor-based pagination (artists)
     var total: Int = 0
 
     mutating func reset() {
@@ -419,7 +418,26 @@ struct PaginationState: Encodable {
         isLoading = false
         hasMore = true
         nextOffset = 0
-        nextCursor = nil
         total = 0
+    }
+
+    /// Records a page that has arrived, and works out whether to ask for another.
+    ///
+    /// The Web API used to answer this directly, with a `next` URL that was null on the last
+    /// page. The client APIs report a `totalCount` instead and leave the arithmetic here, so the
+    /// offset advances by **how many entries came back**, not by how many the caller could use.
+    /// Those differ: a page of the library can hold folders, and a page of saved tracks can name
+    /// the same relinked recording twice. Advancing by the usable count would re-request the
+    /// difference on every page and never reach the end.
+    ///
+    /// `receivedCount == 0` ends the list whatever `total` claims — otherwise a total that
+    /// overcounts what the pages actually yield would leave `hasMore` true forever, and the
+    /// list views ask for more as long as it is.
+    mutating func advance(by receivedCount: Int, total: Int) {
+        let offset = (nextOffset ?? 0) + receivedCount
+
+        self.total = total
+        nextOffset = offset
+        hasMore = receivedCount > 0 && offset < total
     }
 }

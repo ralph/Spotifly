@@ -376,9 +376,8 @@ struct NowPlayingBarView: View {
         Button {
             Task {
                 guard let trackId = currentTrackId else { return }
-                let token = await session.validAccessToken()
                 do {
-                    try await trackService.toggleFavorite(trackId: trackId, accessToken: token)
+                    try await trackService.toggleFavorite(trackId: trackId)
                 } catch {
                     playbackViewModel.errorMessage = "Failed to update favorite: \(error.localizedDescription)"
                 }

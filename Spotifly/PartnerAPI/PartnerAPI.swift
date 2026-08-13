@@ -231,6 +231,108 @@ nonisolated struct PartnerAPI: Sendable {
         ))
     }
 
+    // MARK: - Library
+
+    /// One page of the user's saved playlists.
+    ///
+    /// The page can hold **folders** as well as playlists — a library entry the app has no
+    /// screen for — so it returns fewer entities than `totalCount` claims. See
+    /// `PathfinderLibraryPage`.
+    func libraryPlaylists(offset: Int, limit: Int = LibraryFilter.pageLimit) async throws
+        -> PathfinderLibraryPage<PathfinderPlaylist>
+    {
+        try await libraryPage(filter: LibraryFilter.playlists, offset: offset, limit: limit)
+    }
+
+    func libraryAlbums(offset: Int, limit: Int = LibraryFilter.pageLimit) async throws
+        -> PathfinderLibraryPage<PathfinderAlbum>
+    {
+        try await libraryPage(filter: LibraryFilter.albums, offset: offset, limit: limit)
+    }
+
+    func libraryArtists(offset: Int, limit: Int = LibraryFilter.pageLimit) async throws
+        -> PathfinderLibraryPage<PathfinderArtist>
+    {
+        try await libraryPage(filter: LibraryFilter.artists, offset: offset, limit: limit)
+    }
+
+    /// One `libraryV3` request, typed to the kind its filter selects.
+    ///
+    /// Generic rather than three near-identical bodies, because the operation genuinely is one
+    /// document: only `filters` differs, and the entity type follows from it.
+    private func libraryPage<Entity: Decodable & Sendable>(
+        filter: String,
+        offset: Int,
+        limit: Int,
+    ) async throws -> PathfinderLibraryPage<Entity> {
+        let response: PathfinderLibraryResponse<Entity> = try await query(
+            .libraryV3,
+            variables: PathfinderLibraryVariables(
+                filters: [filter],
+                offset: offset,
+                limit: limit,
+            ),
+        )
+
+        guard let page = response.page else {
+            throw PartnerAPIError.emptyPayload
+        }
+
+        return page
+    }
+
+    /// One page of the user's saved tracks.
+    func libraryTracks(offset: Int, limit: Int = 50) async throws -> PathfinderLibraryTrackPage {
+        let response: PathfinderLibraryTracksResponse = try await query(
+            .fetchLibraryTracks,
+            variables: PathfinderLibraryTracksVariables(offset: offset, limit: limit),
+        )
+
+        guard let page = response.page else {
+            throw PartnerAPIError.emptyPayload
+        }
+
+        return page
+    }
+
+    /// Which of these are in the library, keyed by id.
+    ///
+    /// A uri the service does not answer for is **left out** rather than reported false, so a
+    /// truncated response leaves a track unresolved and asked about again instead of cached as
+    /// "not saved".
+    func entitiesInLibrary(uris: [String]) async throws -> [String: Bool] {
+        guard !uris.isEmpty else { return [:] }
+
+        let response: PathfinderLibraryMembershipResponse = try await query(
+            .areEntitiesInLibrary,
+            variables: PathfinderLibraryLookupVariables(uris: uris),
+        )
+
+        return response.statuses(for: uris)
+    }
+
+    /// Saves anything — a track, an album, an artist — by uri.
+    func addToLibrary(uris: [String]) async throws {
+        try await mutateLibrary(.addToLibrary, uris: uris)
+    }
+
+    func removeFromLibrary(uris: [String]) async throws {
+        try await mutateLibrary(.removeFromLibrary, uris: uris)
+    }
+
+    private func mutateLibrary(_ operation: PathfinderOperation, uris: [String]) async throws {
+        guard !uris.isEmpty else { return }
+
+        let response: PathfinderLibraryMutationResponse = try await query(
+            operation,
+            variables: PathfinderLibraryWriteVariables(libraryItemUris: uris),
+        )
+
+        if let failure = response.failure {
+            throw PartnerAPIError.mutationRejected(operation.name, failure)
+        }
+    }
+
     /// Runs a mutation and throws unless the response says it happened.
     ///
     /// A rejected mutation arrives as HTTP 200 with a `__typename` naming the failure, so the

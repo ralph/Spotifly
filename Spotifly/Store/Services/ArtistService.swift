@@ -13,11 +13,6 @@ import Foundation
 final class ArtistService {
     private let store: AppStore
 
-    /// Used by the loading entry points, which often decide there is nothing to
-    /// fetch. They take the token themselves, *after* deciding, so a cache hit
-    /// costs nothing.
-    private let tokenProvider: () async -> String
-
     /// One run per artist ID — see `InFlightRequests`.
     private let artistRequests = InFlightRequests<Void>()
 
@@ -25,20 +20,15 @@ final class ArtistService {
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-artists"
 
-    // How many albums an artist page shows. The endpoint is not paginated here.
-
-    /// The artist reads, which take no token: `PartnerAPI` runs on the keymaster grant and
-    /// holds it itself. `tokenProvider` is the Web API's, still needed by the followed-artists
-    /// list and the follow/unfollow writes.
+    /// Every artist path now runs on the keymaster grant, which `PartnerAPI` holds itself, so
+    /// this service no longer takes a Web API token.
     private let partnerAPI: PartnerAPI
 
     init(
         store: AppStore,
-        tokenProvider: @escaping () async -> String,
         partnerAPI: PartnerAPI = PartnerAPI(),
     ) {
         self.store = store
-        self.tokenProvider = tokenProvider
         self.partnerAPI = partnerAPI
     }
 
@@ -57,9 +47,10 @@ final class ArtistService {
         }
 
         try await listRequests.run(Self.listKey) {
-            // Artists use cursor-based pagination
-            let cursor = self.store.artistsPagination.nextCursor
-            let accessToken = await self.tokenProvider()
+            // Followed artists used to be the one cursor-paginated list in the app, because
+            // `/me/following` took an `after` id rather than an offset. `libraryV3` pages by
+            // offset like everything else, so the special case is gone.
+            let offset = self.store.artistsPagination.nextOffset ?? 0
             self.store.artistsPagination.isLoading = true
             defer {
                 // Only if this run is still the one loading: a superseded run
@@ -69,28 +60,25 @@ final class ArtistService {
                 }
             }
 
-            let response = try await SpotifyAPI.fetchUserArtists(
-                accessToken: accessToken,
-                limit: 20,
-                after: cursor,
-            )
+            let page = try await self.partnerAPI.libraryArtists(offset: offset)
             // See AlbumService.loadUserAlbums: a superseded run must not write.
             try Task.checkCancellation()
 
-            let artists = response.artists.map { Artist(from: $0) }
+            let artists = page.entities.compactMap { Artist(pathfinder: $0) }
             self.store.upsertArtists(artists)
 
             let artistIds = artists.map(\.id)
-            if cursor == nil {
+            if offset == 0 {
                 self.store.setUserArtistIds(artistIds)
             } else {
                 self.store.appendUserArtistIds(artistIds)
             }
 
             self.store.artistsPagination.isLoaded = true
-            self.store.artistsPagination.hasMore = response.hasMore
-            self.store.artistsPagination.nextCursor = response.nextCursor
-            self.store.artistsPagination.total = response.total
+            self.store.artistsPagination.advance(
+                by: page.items?.count ?? 0,
+                total: page.totalCount ?? 0,
+            )
         }
     }
 
@@ -154,23 +142,21 @@ final class ArtistService {
 
     // MARK: - Follow/Unfollow Artist
 
-    /// Follow an artist (add to followed artists)
-    func followArtist(artistId: String, accessToken: String) async throws {
-        try await SpotifyAPI.followArtist(
-            accessToken: accessToken,
-            artistId: artistId,
-        )
+    /// Follow an artist (add to followed artists).
+    ///
+    /// Following *is* saving, as far as this API is concerned: the same mutation that saves a
+    /// track or an album, with an artist uri. The Web API's separate `/me/following` endpoints
+    /// are gone.
+    func followArtist(artistId: String) async throws {
+        try await partnerAPI.addToLibrary(uris: ["spotify:artist:\(artistId)"])
 
         // Update store on success
         store.addArtistToUserLibrary(artistId)
     }
 
     /// Unfollow an artist (remove from followed artists)
-    func unfollowArtist(artistId: String, accessToken: String) async throws {
-        try await SpotifyAPI.unfollowArtist(
-            accessToken: accessToken,
-            artistId: artistId,
-        )
+    func unfollowArtist(artistId: String) async throws {
+        try await partnerAPI.removeFromLibrary(uris: ["spotify:artist:\(artistId)"])
 
         // Update store on success
         store.removeArtistFromUserLibrary(artistId)

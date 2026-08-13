@@ -157,11 +157,7 @@ struct TrackContextMenu: View {
     private func toggleFavorite() {
         Task {
             do {
-                let token = await session.validAccessToken()
-                try await trackService.toggleFavorite(
-                    trackId: track.id,
-                    accessToken: token,
-                )
+                try await trackService.toggleFavorite(trackId: track.id)
             } catch {
                 playbackViewModel.errorMessage = "Failed to update favorite: \(error.localizedDescription)"
             }

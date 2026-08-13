@@ -8,51 +8,6 @@
 import Foundation
 
 extension SpotifyAPI {
-    // MARK: - User Playlists
-
-    /// Fetches user's playlists from Spotify Web API
-    static func fetchUserPlaylists(accessToken: String, limit: Int = 50, offset: Int = 0) async throws -> PlaylistsResponse {
-        let urlString = "\(baseURL)/me/playlists?limit=\(limit)&offset=\(offset)&fields=items(id,name,uri,description,images,tracks(total,items(track(duration_ms))),public,owner(id,display_name),external_urls(spotify)),total,next"
-
-        debugLog("SpotifyAPI", "[GET] \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            throw SpotifyAPIError.invalidURI
-        }
-
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SpotifyAPIError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            do {
-                let decoded = try JSONDecoder().decode(UserPlaylistsCodable.self, from: data)
-                let playlists = decoded.items.map { $0.toAPIPlaylist() }
-                let hasMore = decoded.next != nil
-                return PlaylistsResponse(
-                    hasMore: hasMore,
-                    nextOffset: hasMore ? offset + limit : nil,
-                    playlists: playlists,
-                    total: decoded.total,
-                )
-            } catch {
-                throw SpotifyAPIError.invalidResponse
-            }
-        case 401:
-            throw SpotifyAPIError.unauthorized
-        case 404:
-            throw SpotifyAPIError.notFound
-        default:
-            try throwAPIError(data: data, statusCode: httpResponse.statusCode)
-        }
-    }
-
     // MARK: - Playlist Management
 
     /// Creates a new playlist for the current user

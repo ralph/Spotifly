@@ -256,11 +256,7 @@ struct AlbumDetailView: View {
     private func removeFromLibrary() {
         Task {
             do {
-                let token = await session.validAccessToken()
-                try await albumService.removeAlbumFromLibrary(
-                    albumId: albumId,
-                    accessToken: token,
-                )
+                try await albumService.removeAlbumFromLibrary(albumId: albumId)
                 // Navigate away from the removed album
                 navigationCoordinator.clearAlbumSelection()
             } catch {

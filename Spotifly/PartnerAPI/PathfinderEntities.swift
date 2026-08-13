@@ -59,9 +59,9 @@ extension Album {
             name: album.name ?? "",
             uri: uri,
             images: ImageSet(pathfinderSources: album.coverArt?.sources),
-            // Search returns only the year, where the Web API returns a full date. Rendered as
-            // a year either way, so this is parity rather than loss.
-            releaseDate: album.date?.year.map(String.init),
+            // Search returns only the year, where the library returns a full date. Rendered as
+            // a year either way, so the difference does not reach the screen.
+            releaseDate: album.date?.formatted,
             albumType: album.type?.lowercased(),
             externalUrl: nil,
             artistId: album.artists?.items?.first?.id,
@@ -242,6 +242,48 @@ extension Track {
             albumName: track.albumOfTrack?.name,
             images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
         )
+    }
+}
+
+extension Track {
+    /// One saved track, from `fetchLibraryTracks`.
+    ///
+    /// **The uri comes from the caller**, because this is the one track-bearing response where
+    /// the entity does not carry its own: the saved-tracks page puts it on the wrapper as `_uri`
+    /// beside the data. Reading `track.uri` here would be nil for every row and silently empty
+    /// the whole favorites list.
+    ///
+    /// The id is derived from that uri, which keeps the rule the rest of the app follows — the
+    /// id Spotify returned is the identity, and nothing reconstructs an original from it.
+    init?(pathfinderLibraryTrack track: PathfinderTrack, uri: String) {
+        guard let id = SpotifyURI.id(from: uri) else { return nil }
+
+        self.init(
+            id: id,
+            name: track.name ?? "",
+            uri: uri,
+            durationMs: track.durationMs ?? 0,
+            trackNumber: track.trackNumber,
+            externalUrl: nil,
+            albumId: track.albumOfTrack?.id ?? track.albumOfTrack?.uri.flatMap(SpotifyURI.id(from:)),
+            artistId: track.artists?.items?.first?.id,
+            artistName: track.artistNames.first ?? "Unknown",
+            albumName: track.albumOfTrack?.name,
+            images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
+        )
+    }
+}
+
+extension PathfinderLibraryTrackPage {
+    /// The saved tracks this page resolves to, in the order Spotify listed them.
+    ///
+    /// Rows whose uri or entity is missing are dropped rather than failing the page, which is
+    /// the same tolerance every other list here has.
+    var tracks: [Track] {
+        (items ?? []).compactMap { item in
+            guard let uri = item.track?.uri, let data = item.track?.data else { return nil }
+            return Track(pathfinderLibraryTrack: data, uri: uri)
+        }
     }
 }
 

@@ -151,6 +151,8 @@ nonisolated struct PathfinderTrack: Decodable, Sendable {
     let artists: PathfinderArtistList?
     let duration: Duration?
     let playability: Playability?
+    /// Absent from search results, present in the saved-tracks page.
+    let trackNumber: Int?
 
     var durationMs: Int? {
         duration?.totalMilliseconds
@@ -162,8 +164,22 @@ nonisolated struct PathfinderTrack: Decodable, Sendable {
 }
 
 nonisolated struct PathfinderAlbum: Decodable, Sendable {
+    /// **The two operations that return this type spell the date differently**: search sends
+    /// `{year}` and nothing else, while `libraryV3` sends `{isoString, precision}` and no year.
+    /// Both are accepted, and `formatted` prefers the precise one — a decoder written against
+    /// either alone would leave the other's albums with no release date at all.
     struct ReleaseDate: Decodable, Sendable {
         let year: Int?
+        let isoString: String?
+
+        /// `2025-05-09` where a full date is known, the bare year otherwise. Trimmed at the `T`
+        /// rather than parsed, because the views format it as a year anyway.
+        var formatted: String? {
+            if let isoString {
+                return String(isoString.prefix(while: { $0 != "T" }))
+            }
+            return year.map(String.init)
+        }
     }
 
     /// Search results carry no `id` — only the URI — so it is derived. `AppStore` keys albums

@@ -125,10 +125,8 @@ struct SpotiflyCommands: Commands {
             Divider()
 
             Button("menu.like_track") {
-                guard let session else { return }
                 Task {
-                    let token = await session.validAccessToken()
-                    await playbackViewModel.toggleCurrentTrackFavorite(accessToken: token)
+                    await playbackViewModel.toggleCurrentTrackFavorite()
                 }
             }
             .keyboardShortcut("l", modifiers: .command)
