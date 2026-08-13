@@ -23,7 +23,10 @@ struct SpotifyAuthResult {
 
     /// Refresh once the access token has this many seconds or less of validity left.
     /// Single source of truth shared by every refresh path (launch and runtime).
-    static let refreshBufferSeconds: TimeInterval = 300
+    /// `nonisolated` because the keymaster half reads it too, from off the main actor: its
+    /// grant runs detached, and one refresh policy shared by both halves beats two constants
+    /// that can drift apart.
+    nonisolated static let refreshBufferSeconds: TimeInterval = 300
 }
 
 /// Errors that can occur during Spotify authentication
