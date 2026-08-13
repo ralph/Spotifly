@@ -384,7 +384,9 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       `spotify:user:<user>:folder:<hash>` yields a perfectly plausible id for a non-playlist.
 
       Folder *hierarchy* — showing the tree, nesting playlists under folders — remains unbuilt
-      and is a genuine feature rather than a migration gap.
+      and is a genuine feature rather than a migration gap. Deferred deliberately; the shape of
+      the work and the two variables still unmeasured are in
+      `plans/playlist-folder-hierarchy.md`.
 
       **Audiobooks are not asked for.** The account in testing had two, and the app has no
       entity, screen or playback path for one. Not requesting the filter is the whole of
