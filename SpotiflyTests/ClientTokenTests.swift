@@ -232,8 +232,12 @@ struct ClientTokenProviderTests {
     @Test func `the device id is 40 hex characters, as the desktop client sends`() {
         let generated = UserDefaultsDeviceIdStore.generate()
 
+        // Computed outside the macro on purpose: swiftformat rewrites the closure to a key
+        // path, and a key path as a function reference reads as throwing inside #expect.
+        let isAllHex = generated.allSatisfy(\.isHexDigit)
+
         #expect(generated.count == 40)
-        #expect(generated.allSatisfy(\.isHexDigit))
+        #expect(isAllHex)
         #expect(generated != UserDefaultsDeviceIdStore.generate())
     }
 }
