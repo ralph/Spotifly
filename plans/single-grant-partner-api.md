@@ -90,15 +90,37 @@ authorize different accounts, which `rework-auth` had to add a guard for.
     nor exposes the relationship.
   - The Web API library returns the **original**, because that is what was saved.
 
-  So the same track now has two identities depending on where the app found it, and **writes
-  are the sharp edge**: favoriting from a search result would save the substitute while the
-  library row is keyed to the original — the heart would not light up and removal would fail.
-  Recovering the original from a substitute is not possible by asking for it; the substitute
-  looks canonical from every angle. The one bridge is `external_ids.isrc`, which both share.
+  So the same track had two identities depending on where the app found it, and it showed:
+  favoriting from a search result saved the substitute while the library row was keyed to the
+  original, so the heart did not light and removal missed.
 
-  Consequences for the tasks below: library and playlist writes (tasks 11–12) must not use a
-  pathfinder id directly, and the track store needs one identity per track rather than one per
-  source. Decide that before those tasks, not during them.
+  **Settled on 2026-08-13: the market id is the identity.** Recovering an original from a
+  substitute is not possible by asking for it — the substitute looks canonical from every
+  angle, and the only bridge is the shared `external_ids.isrc`. So the app stopped trying:
+  `RelinkableTrackCodable`, `logicalId`/`logicalUri` and the `linked_from` projections are
+  deleted, every path takes the id it was given, and `market=from_token` goes everywhere it is
+  supported so the Web API answers with the same recording pathfinder and playback use.
+
+  Why that direction rather than the other, given Spotify's docs require the original id for
+  Web API writes:
+
+  - it is the only id every source can produce — pathfinder cannot produce the original at all,
+    so "always original" is unimplementable while "always market" is not;
+  - Spotify's own client holds nothing else. pathfinder gives it no `linked_from`, and it saves
+    from search perfectly well, so the client's own collection API — where these writes are
+    going — must accept market ids;
+  - nothing keyed by track id is persisted. `AppStore` is in-memory, so a market-scoped id
+    never outlives a launch and a market change repairs itself.
+
+  What still holds from the old rule: **one identity per track, or the store corrupts.** Two
+  ids for one song is a queue pointing at a key `store.tracks` misses. Consistency was always
+  the requirement; which id carries it was not.
+
+  **Open, and deliberately not assumed:** whether `api.spotify.com` accepts a market id for
+  `saveTrack`, `removeSavedTrack` and `checkSavedTracks`. The docs warn it "will likely return
+  an error or other unexpected result". If it does not, the failure is confined to relinked
+  tracks and looks exactly like today's, and it disappears when task 12 moves those writes off
+  the Web API. Worth one measurement against a live session before task 12 rather than after.
 
 - **Re-derive the track-relinking rules for the new endpoints.** `CLAUDE.md` documents them
   for the Web API, where `market` decides whether you get the track you asked for or a playable
@@ -191,16 +213,25 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       smallest real test of `PartnerAPI`, and the one whose relinking behaviour is best
       understood. Parity with the current result shape is the acceptance criterion, not "search
       returns something".
-- [ ] **Task 8: Tracks** (8 call sites) — batch metadata through `ensureTracksLoaded`. State the
-      identity path explicitly; this is where relinking bites hardest.
+- [x] **Task 8: Tracks** — batch metadata through `ensureTracksLoaded`, on spclient rather than
+      pathfinder. Identity path: spclient is **id-faithful**, so it hydrates whatever id the
+      store already holds and introduces no second identity; the conversion keys on the
+      requested id, not the returned gid. `metadata/4` is one entity per request where
+      `/v1/tracks` took fifty, so batches run eight in flight — `extended-metadata` is the
+      endpoint that batches properly, and it is protobuf, so it waits for Track B. Only a 404
+      may be reported as an absent track, since `TrackService` remembers absences permanently.
+      Removed what it orphaned: `fetchTrack`, `fetchTracks`, the `/v1/tracks` envelope, and the
+      unreachable `TrackLookupViewModel`.
 - [ ] **Task 9: Albums** (5) and **Task 10: Artists** (6).
 - [ ] **Task 11: Playlists** (9), including the write paths.
 - [ ] **Task 12: User/library** (2) and the saved-tracks writes.
 
-      Tasks 11 and 12 are gated on the relinking decision above, not merely informed by it.
-      Pathfinder ids are substitutes; saving one is what Spotify's own documentation says will
-      misbehave. Settle identity first — one entity per track, with the original id owning the
-      store key and the favorites state — then move the writes.
+      The identity question that used to gate tasks 11 and 12 is settled — the market id owns
+      the store key and the favorites state, see the relinking constraint above — so they are
+      informed by it rather than blocked on it. What remains for task 12 is the measurement:
+      confirm how the Web API's saved-track writes behave with a market id before moving them,
+      so the move is not credited with fixing something it did not, or blamed for something it
+      did not break.
 
 - [ ] **Task 12a: Player control** (`SpotifyAPI+Player.swift`, 12 call sites) — last, but not
       optional. An earlier draft of this plan left it undecided, which quietly made Phase 4

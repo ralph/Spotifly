@@ -19,7 +19,7 @@ struct TrackServiceTests {
         let service = TrackService(
             store: store,
             tokenProvider: { tokens.count += 1; return "token" },
-            metadataFetcher: { _, trackIds in
+            metadataFetcher: { trackIds in
                 requests.trackIdBatches.append(trackIds)
                 return metadata(for: trackIds)
             },
@@ -38,7 +38,7 @@ struct TrackServiceTests {
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
-            metadataFetcher: { _, trackIds in
+            metadataFetcher: { trackIds in
                 requests.trackIdBatches.append(trackIds)
                 if trackIds.contains("a") {
                     await gate.wait()
@@ -75,7 +75,7 @@ struct TrackServiceTests {
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
-            metadataFetcher: { _, trackIds in
+            metadataFetcher: { trackIds in
                 requests.count += 1
                 if requests.count == 1 {
                     throw TrackMetadataFailure()
@@ -99,7 +99,7 @@ struct TrackServiceTests {
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
-            metadataFetcher: { _, trackIds in
+            metadataFetcher: { trackIds in
                 requests.count += 1
                 // Spotify omits IDs that do not resolve for this market.
                 return metadata(for: trackIds.filter { $0 != "unavailable" })
@@ -120,7 +120,7 @@ struct TrackServiceTests {
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
-            metadataFetcher: { _, trackIds in
+            metadataFetcher: { trackIds in
                 requests.count += 1
                 if requests.count == 1 {
                     throw TrackMetadataFailure()
@@ -146,7 +146,7 @@ struct TrackServiceTests {
         let service = TrackService(
             store: store,
             tokenProvider: { "token" },
-            metadataFetcher: { _, trackIds in
+            metadataFetcher: { trackIds in
                 requests.count += 1
                 await gate.wait()
                 return metadata(for: trackIds)
@@ -250,8 +250,8 @@ private final class RequestGate {
 }
 
 @MainActor
-private func metadata(for trackIds: [String]) -> [String: APITrack] {
-    Dictionary(uniqueKeysWithValues: trackIds.map { ($0, apiTrack(id: $0)) })
+private func metadata(for trackIds: [String]) -> [String: Track] {
+    Dictionary(uniqueKeysWithValues: trackIds.map { ($0, Track(from: apiTrack(id: $0))) })
 }
 
 @MainActor

@@ -136,6 +136,61 @@ nonisolated struct SpclientAPI: Sendable {
         }
     }
 
+    /// How many metadata requests are allowed to be in the air at once.
+    ///
+    /// `metadata/4` addresses one entity per request, where the Web API's `/v1/tracks` took
+    /// fifty ids at a time, so a queue hydration that was one request is now one per track.
+    /// Capped rather than unbounded: a fifty-track batch fired at once is a burst Spotify has
+    /// no reason to tolerate, and the waves cost little when the requests are small.
+    ///
+    /// The batching endpoint the real client uses for this is `extended-metadata`, which is
+    /// protobuf and deliberately out of scope until the Swift playback track needs it
+    /// (`plans/single-grant-partner-api.md`, task 6). Move this there if the request volume
+    /// ever shows up.
+    static let metadataConcurrency = 8
+
+    /// Track metadata for many ids, keyed by the id that was asked for.
+    ///
+    /// Ids Spotify has no track for are absent from the result rather than an error, matching
+    /// what `/v1/tracks` did with its positional nulls — callers read the absence as "asked,
+    /// and there is nothing". Every other failure throws, because `TrackService` remembers an
+    /// absent id and stops asking for it: a request that failed for a reason that might not
+    /// recur must not be recorded as a track that does not exist.
+    func tracks(ids: [String]) async throws -> [String: SpclientTrack] {
+        guard !ids.isEmpty else { return [:] }
+
+        var found: [String: SpclientTrack] = [:]
+
+        for start in stride(from: 0, to: ids.count, by: Self.metadataConcurrency) {
+            let wave = ids[start ..< min(start + Self.metadataConcurrency, ids.count)]
+
+            try await withThrowingTaskGroup(of: (String, SpclientTrack?).self) { group in
+                for id in wave {
+                    group.addTask { try await (id, trackIfPresent(id: id)) }
+                }
+                for try await (id, track) in group {
+                    guard let track else { continue }
+
+                    found[id] = track
+                }
+            }
+        }
+
+        return found
+    }
+
+    /// Nil for the two cases that mean "there is no such track", so they can be told apart
+    /// from a request that merely failed.
+    private func trackIfPresent(id: String) async throws -> SpclientTrack? {
+        do {
+            return try await track(id: id)
+        } catch let SpclientError.requestFailed(status) where status == 404 {
+            return nil
+        } catch SpclientError.invalidId {
+            return nil
+        }
+    }
+
     // MARK: - Transport
 
     private func get(_ url: URL) async throws -> Data {
@@ -233,5 +288,46 @@ nonisolated enum SpotifyGID {
         }
 
         return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The inverse, for the gids spclient uses to *reference* entities.
+    ///
+    /// A track's metadata names its album and artists by gid, and `AppStore` keys them by
+    /// base62, so a track fetched here cannot link anywhere without this. Nil rather than a
+    /// best effort on anything that is not 32 hex characters: a mangled id addresses some
+    /// other entity, and a nil album id merely leaves a track unlinked.
+    static func base62(fromGID gid: String) -> String? {
+        guard gid.count == 32 else { return nil }
+
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(16)
+        var index = gid.startIndex
+        while index < gid.endIndex {
+            let next = gid.index(index, offsetBy: 2)
+            guard let byte = UInt8(gid[index ..< next], radix: 16) else { return nil }
+            bytes.append(byte)
+            index = next
+        }
+
+        // Long division by 62 over the 16 bytes, least significant digit first, for the same
+        // reason the forward direction multiplies: Swift has no 128-bit integer.
+        var digits: [Character] = []
+        while bytes.contains(where: { $0 != 0 }) {
+            var remainder = 0
+            for position in bytes.indices {
+                let accumulated = remainder << 8 | Int(bytes[position])
+                bytes[position] = UInt8(accumulated / 62)
+                remainder = accumulated % 62
+            }
+            digits.append(alphabet[remainder])
+        }
+
+        // Spotify ids are a fixed 22 characters, zero-padded — `0000000000000000000001` is a
+        // real id shape, and trimming it to "1" would not resolve.
+        while digits.count < 22 {
+            digits.append("0")
+        }
+
+        return String(digits.reversed())
     }
 }

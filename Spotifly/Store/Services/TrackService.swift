@@ -13,16 +13,21 @@ import Foundation
 final class TrackService {
     private let store: AppStore
 
-    /// Used by the loading entry points and the favorite-status checks, which
-    /// often decide there is nothing to fetch. They take the token themselves,
-    /// *after* deciding, so a cache hit costs nothing.
+    /// The **Web API** token, used by the favorites paths — the only ones still on
+    /// `api.spotify.com`. They often decide there is nothing to fetch, so they take the token
+    /// themselves, *after* deciding, and a cache hit costs nothing.
     private let tokenProvider: () async -> String
 
     /// Injectable for tests; production uses Spotify's batched contains endpoint.
     private let favoriteStatusFetcher: (_ accessToken: String, _ trackIds: [String]) async throws -> [String: Bool]
 
     /// The single metadata fetch path shared by queue hydration and current-track recovery.
-    private let metadataFetcher: (_ accessToken: String, _ trackIds: [String]) async throws -> [String: APITrack]
+    ///
+    /// Takes no token, unlike the favorites fetcher beside it: this one reads spclient on the
+    /// keymaster grant, which `SpclientAPI` holds itself, and the token `tokenProvider` returns
+    /// is the Web API's. The two are not interchangeable — a keymaster token gets 429 from
+    /// `api.spotify.com` — so they must not meet in one parameter.
+    private let metadataFetcher: (_ trackIds: [String]) async throws -> [String: Track]
 
     /// The favorites list, whose pages are one run at a time under one key.
     private let listRequests = InFlightRequests<Void>()
@@ -31,7 +36,9 @@ final class TrackService {
     /// `/me/tracks/contains` checks, deduplicated per track ID.
     private let statusChecks = BatchInFlightRequests()
 
-    /// `/v1/tracks` metadata loads, deduplicated per track ID.
+    /// spclient metadata loads, deduplicated per track ID. Worth more than it was: one call
+    /// here is now one request *per track*, so a joined run saves a request rather than a slot
+    /// in someone else's batch.
     private let metadataLoads = BatchInFlightRequests()
 
     /// Track IDs a *successful* request came back without.
@@ -49,8 +56,8 @@ final class TrackService {
         favoriteStatusFetcher: @escaping (_ accessToken: String, _ trackIds: [String]) async throws -> [String: Bool] = { accessToken, trackIds in
             try await SpotifyAPI.checkSavedTracks(accessToken: accessToken, trackIds: trackIds)
         },
-        metadataFetcher: @escaping (_ accessToken: String, _ trackIds: [String]) async throws -> [String: APITrack] = { accessToken, trackIds in
-            try await SpotifyAPI.fetchTracks(accessToken: accessToken, trackIds: trackIds)
+        metadataFetcher: @escaping (_ trackIds: [String]) async throws -> [String: Track] = { trackIds in
+            try await SpclientAPI().trackEntities(ids: trackIds)
         },
     ) {
         self.store = store
@@ -63,10 +70,11 @@ final class TrackService {
 
     /// Ensures every available track in `trackIds` is present in the normalized store.
     ///
-    /// Cache hits return before requesting a token. Overlapping callers join any request
+    /// Cache hits return before anything is fetched. Overlapping callers join any request
     /// already carrying an ID and fetch only the uncovered remainder. A failed run removes
     /// its entries, so a later call retries normally, while an ID Spotify answered without
-    /// is not asked for again.
+    /// is not asked for again — which is why `SpclientAPI.tracks` is careful to report only a
+    /// genuine 404 as an absence, and to throw on anything that might not recur.
     func ensureTracksLoaded(trackIds: [String]) async throws {
         let missingTrackIds = uniqueTrackIds(trackIds).filter {
             store.tracks[$0] == nil && !unavailableTrackIds.contains($0)
@@ -74,9 +82,8 @@ final class TrackService {
         guard !missingTrackIds.isEmpty else { return }
 
         try await metadataLoads.run(missingTrackIds) { uncoveredTrackIds in
-            let accessToken = await self.tokenProvider()
-            let fetched = try await self.metadataFetcher(accessToken, uncoveredTrackIds)
-            self.store.upsertTracks(uncoveredTrackIds.compactMap { fetched[$0] }.map { Track(from: $0) })
+            let fetched = try await self.metadataFetcher(uncoveredTrackIds)
+            self.store.upsertTracks(uncoveredTrackIds.compactMap { fetched[$0] })
             self.unavailableTrackIds.formUnion(uncoveredTrackIds.filter { fetched[$0] == nil })
         }
     }

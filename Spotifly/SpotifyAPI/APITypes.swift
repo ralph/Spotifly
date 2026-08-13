@@ -401,12 +401,6 @@ struct TrackCodable: Decodable {
     }
 }
 
-/// The `/v1/tracks?ids=` envelope. Entries are positional and nullable: Spotify keeps
-/// the slot of an ID it has no track for and fills it with null.
-struct TracksCodable: Decodable {
-    let tracks: [TrackCodable?]
-}
-
 // MARK: Playlist Codable
 
 struct PlaylistCodable: Decodable {
