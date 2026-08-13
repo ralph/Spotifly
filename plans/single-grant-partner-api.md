@@ -329,6 +329,31 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       device-transfer paths `rework-auth` added, so the remote-device fallback survives the
       migration rather than being dropped for it.
 
+- [ ] **Task 12b: Home, rebuilt on `home`.** Probed 2026-08-13 and viable — this is the section
+      that unblocks Phase 4, since `/me`, `/me/top/artists`, `/me/top/tracks` and
+      `/me/player/recently-played` have no one-to-one replacements and keep the dashboard grant
+      alive on their own.
+
+      **Do not port the current layout.** `home` (`23e37f2e…`) returns Spotify's own start page:
+      a `greeting`, `homeChips` for filtering, and `sectionContainer.sections.items[]` — 31
+      titled sections in the test account, each holding Playlists, Albums or Artists under
+      `sectionItems.items[].content.data`. "Your favorite artists" subsumes top artists and a
+      "Recents" section (item kind `List`) looks like the recently-played equivalent. Building
+      the page from whatever sections arrive is both less work and closer to what the real
+      client shows than reproducing three Web API calls would be.
+
+      Two required variables, `timeZone: String!` and
+      `homeEndUserIntegration: HomeEndUserIntegration!`. The second is an **enum** whose member
+      is `INTEGRATION_WEB_PLAYER` — established by reading the web bundle's call site
+      (`homeEndUserIntegration: (0,p.mg)()`) rather than by guessing, after a wrong guess made
+      the validator's "found JSON string" message look like a type mismatch and sent the probe
+      chasing every other JSON shape. Note for next time: that message means *invalid enum
+      member* as readily as it means wrong type, so read the caller before enumerating shapes.
+
+      Sections carry a per-section `__typename` (`HomeShortsSectionData` and others) that
+      decides presentation, so the page wants a small renderer per section type with a generic
+      fallback — an unknown section should render as a plain shelf rather than disappear.
+
 ### Phase 4: Retire the dashboard app
 
 Only once no `api.spotify.com` call remains:
