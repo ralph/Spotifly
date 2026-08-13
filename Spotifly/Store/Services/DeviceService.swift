@@ -67,10 +67,14 @@ final class DeviceService {
     // what is left is a subscription. A device appearing or disappearing now reaches Speakers
     // without anyone asking.
     //
-    // The one thing a push cannot do is answer on demand, so the list is empty until the first
-    // cluster update arrives. That is not a wait in practice: registering our own device
-    // changes the cluster, so an update follows connecting. `devicesIsLoading` stays true
-    // until the first one lands, and the publisher replays it to a Speakers view opened later.
+    // **A push alone is not enough to start with**, which was measured the hard way: the
+    // dealer only carries *changes*, and librespot's own registration is answered over HTTP
+    // rather than pushed — so on a quiet account nothing arrived at all and Speakers stayed
+    // empty while a Connect stereo sat there reachable. Rust now asks for the cluster once as
+    // well as subscribing to it, and both arrive here by the same route.
+    //
+    // `devicesIsLoading` stays true until the first list lands, and the publisher replays it
+    // to a Speakers view opened later.
 
     // MARK: - Playback Transfer
 

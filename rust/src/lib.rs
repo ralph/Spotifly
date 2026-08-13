@@ -11,7 +11,7 @@ use librespot_playback::config::{AudioFormat, Bitrate, PlayerConfig};
 use librespot_playback::mixer::softmixer::SoftMixer;
 use librespot_playback::mixer::{Mixer, MixerConfig, NoOpVolume};
 use librespot_playback::player::{Player, PlayerEvent, QueueTrack};
-use librespot_protocol::connect::ClusterUpdate;
+use librespot_protocol::connect::{Cluster, ClusterUpdate, MemberType, PutStateRequest};
 use librespot_protocol::player::{PlayerState, ProvidedTrack};
 use log::debug;
 use once_cell::sync::Lazy;
@@ -1200,6 +1200,122 @@ fn spawn_session_health_check(generation: u64) {
     });
 }
 
+/// Asks for the cluster once, because subscribing to it is not enough to be told what it is.
+///
+/// **The dealer only pushes changes.** librespot registers its own device and receives the
+/// current cluster in the *HTTP response* to that PUT — which this app's separate dealer
+/// subscription never sees. Measured on 2026-08-13: registration completed at :04.702 and the
+/// first push arrived at :27.035, twenty-three seconds later, and only because a phone
+/// connected. With nothing else on the account, Speakers stayed empty indefinitely while a
+/// Connect-enabled stereo sat there reachable.
+///
+/// So this registers a **hidden member** — `can_be_player: false, hidden: true` — the way any
+/// pure controller does, and reads the cluster out of the reply. Hidden because this is not a
+/// second playback device: librespot already registered the real one under its own id, and
+/// re-PUTing that id with a partial state would disturb its registration rather than ask a
+/// question.
+fn spawn_initial_cluster_fetch(session: &Session, generation: u64) {
+    let session = session.clone();
+
+    RUNTIME.spawn(async move {
+        // The connection id is assigned over the dealer websocket, which is launched
+        // alongside the session rather than before it, so it can be a moment behind.
+        let mut connection_id = String::new();
+        for _ in 0..40 {
+            connection_id = session.connection_id();
+            if !connection_id.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+
+        if connection_id.is_empty() {
+            debug!("Initial cluster fetch: no connection id, giving up");
+            return;
+        }
+
+        if !listener_may_act(generation, SESSION_GENERATION.load(Ordering::SeqCst)) {
+            return;
+        }
+
+        match fetch_cluster(&session).await {
+            Ok(cluster) => {
+                debug!(
+                    "Initial cluster fetch: {} device(s), active={}",
+                    cluster.device.len(),
+                    cluster.active_device_id
+                );
+                // Same handling a pushed update gets, so there is one path into Swift rather
+                // than two that can drift.
+                apply_cluster(cluster);
+            }
+            Err(e) => debug!("Initial cluster fetch failed: {}", e),
+        }
+    });
+}
+
+/// Registers a hidden connect-state member and returns the cluster the service answers with.
+async fn fetch_cluster(session: &Session) -> Result<Cluster, String> {
+    use protobuf::Message;
+
+    let mut request = PutStateRequest::new();
+    request.member_type = MemberType::CONNECT_STATE.into();
+
+    let device = request.device.mut_or_insert_default();
+    let info = device.device_info.mut_or_insert_default();
+    let capabilities = info.capabilities.mut_or_insert_default();
+    capabilities.can_be_player = false;
+    capabilities.hidden = true;
+    capabilities.needs_full_player_state = true;
+
+    // A member id of our own, distinct from the one librespot registered.
+    let endpoint = format!(
+        "/connect-state/v1/devices/hobs_{}",
+        session.device_id().chars().take(32).collect::<String>()
+    );
+
+    let mut headers = http::HeaderMap::new();
+    headers.insert(
+        "x-spotify-connection-id",
+        session
+            .connection_id()
+            .parse()
+            .map_err(|_| "connection id is not a valid header value".to_string())?,
+    );
+
+    let bytes = session
+        .spclient()
+        .request_with_protobuf(&http::Method::PUT, &endpoint, Some(headers), &request)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+
+    Cluster::parse_from_bytes(&bytes).map_err(|e| format!("could not parse cluster: {e:?}"))
+}
+
+/// Everything a cluster says, delivered to Swift. Shared by the push and the initial fetch,
+/// so what the app learns cannot depend on which of the two told it.
+///
+/// Our own activity is derived from the cluster rather than inferred from whichever command
+/// ran last. This is the same comparison `SpircTask` makes internally; Spotifly runs a second
+/// subscription to the same dealer topic and has to reach the same conclusion, or playback
+/// routing and the UI disagree.
+///
+/// The device list rides along and used to be dropped on the floor, so Swift asked
+/// `/me/player/devices` for what was already here.
+fn apply_cluster(cluster: Cluster) {
+    set_active_device(is_active_in_cluster(
+        &cluster.active_device_id,
+        current_device_id().as_deref(),
+    ));
+    notify_active_device_id(&cluster.active_device_id);
+    notify_devices(&cluster.device, &cluster.active_device_id);
+
+    if let Some(player_state) = cluster.player_state.into_option() {
+        send_playback_state(&player_state);
+        process_and_send_queue(player_state);
+    }
+}
+
 /// Subscribes to cluster updates on the session's dealer and spawns a task to process them.
 ///
 /// When the stream ends, the Spirc it belonged to is gone, so this triggers reconnection —
@@ -1228,25 +1344,7 @@ fn spawn_cluster_listener(session: &Session, generation: u64) -> Result<(), Stri
             match msg_result {
                 Ok(cluster_update) => {
                     if let Some(cluster) = cluster_update.cluster.into_option() {
-                        // Derive our own activity from the cluster rather than inferring it
-                        // from whichever command happened to run last. This is the same
-                        // comparison SpircTask makes internally; Spotifly runs a second
-                        // subscription to the same dealer topic and has to reach the same
-                        // conclusion, or playback routing and the UI disagree.
-                        set_active_device(is_active_in_cluster(
-                            &cluster.active_device_id,
-                            current_device_id().as_deref(),
-                        ));
-                        notify_active_device_id(&cluster.active_device_id);
-                        // The device list rides the same update and used to be dropped on the
-                        // floor, so Swift asked `/me/player/devices` for what was already
-                        // here. Pushed rather than polled now, which also means the Speakers
-                        // list reflects a device appearing without waiting for a refresh.
-                        notify_devices(&cluster.device, &cluster.active_device_id);
-                        if let Some(player_state) = cluster.player_state.into_option() {
-                            send_playback_state(&player_state);
-                            process_and_send_queue(player_state);
-                        }
+                        apply_cluster(cluster);
                     }
                 }
                 Err(e) => {
@@ -1967,6 +2065,7 @@ async fn build_player_async(
     *PLAYER_EVENT_TX.lock().unwrap() = Some(tx);
 
     spawn_cluster_listener(&session, current_generation)?;
+    spawn_initial_cluster_fetch(&session, current_generation);
     spawn_session_health_check(current_generation);
 
     match create_and_store_spirc(&session, &credentials, player, mixer).await {
