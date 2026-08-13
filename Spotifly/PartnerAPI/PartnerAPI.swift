@@ -185,11 +185,37 @@ nonisolated struct PartnerAPI: Sendable {
 
     // MARK: - Playlist
 
-    /// A playlist's details and its contents, in one request.
+    /// A playlist's details and all of its contents.
+    ///
+    /// **One request is one page.** `fetchPlaylist` caps its answer at `limit` items and reports
+    /// the real length as `content.totalCount`, so a playlist longer than a page arrives
+    /// silently truncated. The Web API path this replaces paginated to the end, and stopping at
+    /// the first page hid every item past the 300th — not just from the list, but from removal
+    /// and reordering, which can only name an item the app has seen.
     func playlist(id: String) async throws -> PathfinderPlaylistUnion {
+        let uri = "spotify:playlist:\(id)"
+        let first = try await playlistPage(uri: uri, offset: 0)
+
+        var items = first.content?.items ?? []
+        let total = first.content?.totalCount ?? items.count
+
+        while items.count < total {
+            let page = try await playlistPage(uri: uri, offset: items.count)
+            let next = page.content?.items ?? []
+            // A page that adds nothing ends the walk rather than repeating it forever: the
+            // playlist can lose items between requests, and `totalCount` would then name a
+            // length no offset ever reaches.
+            guard !next.isEmpty else { break }
+            items += next
+        }
+
+        return first.withItems(items)
+    }
+
+    private func playlistPage(uri: String, offset: Int) async throws -> PathfinderPlaylistUnion {
         let response: PathfinderPlaylistResponse = try await query(
             .fetchPlaylist,
-            variables: PathfinderPlaylistVariables(uri: "spotify:playlist:\(id)"),
+            variables: PathfinderPlaylistVariables(uri: uri, offset: offset),
         )
 
         guard let playlist = response.data?.playlistV2 else {

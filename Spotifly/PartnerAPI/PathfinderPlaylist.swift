@@ -53,6 +53,21 @@ nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable {
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))
     }
+
+    /// The same playlist carrying a longer item list, for stitching pages together.
+    ///
+    /// `totalCount` is kept rather than recomputed: it counts the playlist, not the page it was
+    /// read on, and it is what tells the caller whether there is more to fetch.
+    func withItems(_ items: [PathfinderPlaylistItem]) -> PathfinderPlaylistUnion {
+        PathfinderPlaylistUnion(
+            uri: uri,
+            name: name,
+            description: description,
+            ownerV2: ownerV2,
+            images: images,
+            content: Content(items: items, totalCount: content?.totalCount),
+        )
+    }
 }
 
 /// One entry in a playlist.

@@ -253,6 +253,99 @@ struct PathfinderResponseTests {
     }
 }
 
+/// Walking a playlist that is longer than one page.
+struct PathfinderPlaylistPagingTests {
+    /// The item shape is the one `PathfinderPlaylistTests` decodes, taken with the probe on
+    /// 2026-08-13; only the uid varies, so a page can be assembled at any length.
+    private func page(uids: [String], totalCount: Int) -> Data {
+        let items = uids.map { uid in
+            """
+            {"uid":"\(uid)","addedAt":{"isoString":"2026-08-01T09:07:43.167Z"},
+             "itemV2":{"__typename":"TrackResponseWrapper","data":{
+               "uri":"spotify:track:3CCyVdprlcXui4ZwMw1hNS","name":"I Took A Pill In Ibiza",
+               "trackNumber":1,"trackDuration":{"totalMilliseconds":280800},
+               "artists":{"items":[{"uri":"spotify:artist:xyz789","profile":{"name":"Mike Posner"}}]}}}}
+            """
+        }.joined(separator: ",")
+
+        return Data("""
+        {"data":{"playlistV2":{"__typename":"Playlist",
+          "uri":"spotify:playlist:p1","name":"long",
+          "ownerV2":{"data":{"__typename":"User","username":"ralph","name":"Ralph",
+                             "uri":"spotify:user:ralph"}},
+          "content":{"totalCount":\(totalCount),"items":[\(items)]}}}}
+        """.utf8)
+    }
+
+    private func offset(of request: URLRequest) throws -> Int {
+        let data = try #require(request.httpBody)
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let variables = try #require(json["variables"] as? [String: Any])
+        return try #require(variables["offset"] as? Int)
+    }
+
+    @Test func `a playlist longer than a page is fetched to the end`() async throws {
+        let recorder = OffsetRecorder()
+        let api = makeAPI { request in
+            let offset = try offset(of: request)
+            recorder.record(offset)
+            let uids = (offset ..< min(offset + 2, 5)).map { "uid\($0)" }
+            return (page(uids: uids, totalCount: 5), httpResponse(200))
+        }
+
+        let playlist = try await api.playlist(id: "p1")
+
+        // Every item, not just the first page — an item the app never saw cannot be removed or
+        // reordered, because both name a uid.
+        #expect(playlist.content?.items?.compactMap(\.uid) == ["uid0", "uid1", "uid2", "uid3", "uid4"])
+        #expect(recorder.offsets == [0, 2, 4])
+        // Read on the first page, and it counts the playlist rather than the page.
+        #expect(playlist.content?.totalCount == 5)
+    }
+
+    @Test func `a playlist that fits in one page is one request`() async throws {
+        let recorder = OffsetRecorder()
+        let api = makeAPI { request in
+            try recorder.record(offset(of: request))
+            return (page(uids: ["a", "b"], totalCount: 2), httpResponse(200))
+        }
+
+        let playlist = try await api.playlist(id: "p1")
+
+        #expect(playlist.content?.items?.count == 2)
+        #expect(recorder.offsets == [0])
+    }
+
+    /// A playlist can lose items between requests, and `totalCount` then names a length no
+    /// offset reaches. The walk has to end on the empty page rather than asking forever.
+    @Test func `a page that adds nothing ends the walk`() async throws {
+        let recorder = OffsetRecorder()
+        let api = makeAPI { request in
+            let offset = try offset(of: request)
+            recorder.record(offset)
+            return (page(uids: offset == 0 ? ["a", "b"] : [], totalCount: 500), httpResponse(200))
+        }
+
+        let playlist = try await api.playlist(id: "p1")
+
+        #expect(playlist.content?.items?.count == 2)
+        #expect(recorder.offsets == [0, 2])
+    }
+}
+
+private final class OffsetRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [Int] = []
+
+    var offsets: [Int] {
+        lock.withLock { recorded }
+    }
+
+    func record(_ offset: Int) {
+        lock.withLock { recorded.append(offset) }
+    }
+}
+
 struct SpotifyURITests {
     @Test func `an id is taken from the last component`() {
         #expect(SpotifyURI.id(from: "spotify:track:6rqhFgbbKwnb9MLmUQDhG6") == "6rqhFgbbKwnb9MLmUQDhG6")
