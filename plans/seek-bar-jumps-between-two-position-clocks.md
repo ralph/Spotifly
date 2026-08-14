@@ -136,7 +136,9 @@ Step 2 happens that often because each `PUT /connect-state` is echoed back as a 
 update, and `handle_cluster_update` sets `update_state = true` even for our own echo
 (`connect/src/spirc.rs:1005`, marked `fixme` upstream), which PUTs again. That loop is
 librespot's, and it is not the bug — it only sets the *rate* at which the honest clock
-gets a chance to correct the dishonest one.
+gets a chance to correct the dishonest one. It has its own write-up in
+`plans/connect-state-put-echoes-itself-into-a-429.md`, including how it ends: sometimes
+Spotify rate-limits it.
 
 ## Why it settles, and why only the first track
 
@@ -309,6 +311,10 @@ playback-state callback and by Rust's rehydration as well as by the getter.
   dropout headroom the throttle exists to provide.
 
 ### Left standing, same root cause
+
+All four are written up in
+`plans/the-reported-position-is-the-decoder-not-the-playhead.md`, which is where the work
+lives if it gets done. In short:
 
 Each of these is the decoder clock leaking into something user-visible, and each needs the
 bigger change above:
