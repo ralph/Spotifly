@@ -4,9 +4,14 @@ Status: **fixed 2026-08-14, confirmed at runtime.** Two runs, `../seek-after.log
 `../seek-after2.log`: the jitter is gone, every dense run of snapshots now chains exactly
 (`X` equals the previous `Y`) where before `X` ran ~1550 ms high every other line, and the
 second run played 74 seconds untouched with **no** Connect snapshots and **no** drift
-correction — the stretch that used to be corrected once a second. Both runs also caught the
-first attempt at the abandoned-command case firing wrongly during a scrub; that is fixed
-and is the one part still unconfirmed at runtime.
+correction — the stretch that used to be corrected once a second.
+
+Both of those runs also caught the first attempt at the abandoned-command case firing
+wrongly during a scrub. `../seek-after3.log` confirms the command-scoped replacement: three
+and a half minutes of a context's first track from `10:20:32.026`, then a backward scrub of
+134 seconds in four steps, and **zero** `Drift correction:` lines. Of 80 consecutive
+snapshot pairs less than a second apart, every one chains exactly except the two the scrub
+itself moved — and not one of them jumps *forward*, which was the whole signature.
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`
 Found: 2026-08-14, from `../seek.log`
 
