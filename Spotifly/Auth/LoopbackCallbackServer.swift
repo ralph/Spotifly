@@ -237,12 +237,12 @@ actor LoopbackCallbackServer {
     ) {
         let once = OnceFlag()
 
-        func finish(_ result: Result<URLComponents, Error>) {
+        @Sendable func finish(_ result: Result<URLComponents, Error>) {
             guard once.claim() else { return }
             completion(result)
         }
 
-        func read(_ accumulated: Data) {
+        @Sendable func read(_ accumulated: Data) {
             connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, isComplete, error in
                 if let error {
                     finish(.failure(ServerError.listenerFailed(String(describing: error))))
