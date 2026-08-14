@@ -1404,10 +1404,20 @@ final class PlaybackViewModel {
         // Remote playback position is interpolated from cluster timestamp, not real-time.
         // Compare even when the Rust value did not change: a frozen value is precisely the
         // signal that must pull a still-running Swift clock back to reality.
+        //
+        // Only one direction is evidence. Rust reports where the *decoder* is, and the
+        // decoder runs ahead of what is audible by whatever `AudioRenderer` still holds
+        // buffered — up to `maxBufferAheadSeconds`. A display behind it is therefore just
+        // the buffer, and correcting to it would jump the bar forward into audio nobody
+        // has heard yet; that fight against the Spirc position is what made the bar jitter
+        // through the first seconds of a context. A display *ahead* of it cannot come from
+        // buffering, since the decoder is always in front, so it means the Player stopped
+        // producing while our clock kept running — the case this check exists for.
         if SpotifyPlayer.isActiveDevice {
             let rustPosition = SpotifyPlayer.positionMs
-            let drift = abs(Int64(rustPosition) - Int64(interpolatedPositionMs))
-            if drift > 500 {
+            let displayedPosition = interpolatedPositionMs
+            if Int64(displayedPosition) - Int64(rustPosition) > 500 {
+                debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(rustPosition)")
                 anchorPosition(rustPosition)
                 didCorrectDrift = true
             }
