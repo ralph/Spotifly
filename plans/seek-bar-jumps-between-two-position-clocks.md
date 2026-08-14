@@ -158,38 +158,51 @@ later tracks are *also* ~1.5 s ahead, and this fix does not change that.
 
 ## Fix
 
-**Make the drift correction one-sided.** The decoder clock is not a rival measurement of
-the same quantity — it is an *upper bound* on it. It is never behind the music, and it
-runs ahead by however much audio is buffered. So the two directions carry different
-information:
+**Give the drift correction two thresholds, because it is detecting two things.** The
+decoder clock is not a rival measurement of the same quantity — it is an *upper bound* on
+it. It is never behind the music, and it runs ahead by however much audio is buffered. So
+the directions do not mean the same thing:
 
-- The UI **behind** the decoder clock is expected buffering. It says nothing, and must not
-  move the bar.
 - The UI **ahead** of the decoder clock cannot happen while audio is flowing — the decoder
   is always in front. It means the Player has stopped producing while the Swift clock kept
-  running, which is precisely the stall the check was written to catch.
+  running, which is precisely the stall the check was written to catch. 500 ms.
+- The UI **behind** the decoder clock is, up to the buffer depth, expected. It says
+  nothing, and correcting on it is the bug. Beyond any depth a buffer could explain it
+  says something else entirely — see below. 5 s.
 
 ```swift
-// The Rust position is where the *decoder* is, which is ahead of what is audible by
-// whatever AudioRenderer still has buffered. So only one direction is evidence: a
-// display that has run past the decoder means the Player stopped while our clock did
-// not. A display behind it is just the buffer, and correcting to it would jump the bar
-// forward into audio nobody has heard yet.
 let rustPosition = SpotifyPlayer.positionMs
-let displayedLead = Int64(interpolatedPositionMs) - Int64(rustPosition)
-if displayedLead > 500 {
-    debugLog("PlaybackViewModel", "Drift correction: \(interpolatedPositionMs) -> \(rustPosition)")
+let displayedPosition = interpolatedPositionMs
+let displayedLead = Int64(displayedPosition) - Int64(rustPosition)
+if displayedLead > Self.stalledPlayerLeadMs || -displayedLead > Self.abandonedCommandLagMs {
+    debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(rustPosition)")
     anchorPosition(rustPosition)
     didCorrectDrift = true
 }
 ```
 
+The asymmetric threshold is not a fudge factor; it is there because the old symmetric
+check was quietly load-bearing for something else. `seek(to:)`, `next` and `previous`
+anchor **optimistically** (`PlaybackViewModel.swift:701`, `:722`, `:740`) so scrubbing
+feels immediate. `performSeek` rolls that back only when the command could not be *issued*
+(`:1176`); a command that was issued and then rejected reports nothing back, because
+`SpotifyPlayer.seek` discards `spotifly_seek`'s result in a detached task
+(`SpotifyPlayer.swift:1057`). Until now the drift check was what noticed — a failed
+backward seek from 100 s to 20 s left an 80-second gap that `abs(…) > 500` corrected on
+the next tick. A purely one-sided check would drop that silently. The two phenomena are
+orders of magnitude apart — two seconds of buffer against seconds-to-minutes of abandoned
+seek — so a threshold between them separates them without needing to be precise.
+
+The real repair for that case is for the transport commands to report their result instead
+of relying on a drift check to notice; that is a separate change and is listed below.
+
 Why this shape:
 
 - **It removes the fight without removing the check.** The stall recovery the comment at
   `PlaybackViewModel.swift:1404` describes — "a frozen value is precisely the signal that
-  must pull a still-running Swift clock back to reality" — is entirely on the surviving
-  side of the comparison.
+  must pull a still-running Swift clock back to reality" — is entirely on the 500 ms side,
+  and `plans/position-interpolation-runs-on-during-outage.md` confirms it at runtime: the
+  correction that made this check load-bearing was `104403 -> 99403`, backwards.
 - **The bar then stays on the Connect clock,** which is the honest one for the reported
   case, all the way to the end of the track. Nothing pulls it forward, so the ~1.6 s of
   silent lead after the snapshots stop goes away too.
@@ -245,6 +258,10 @@ playback-state callback and by Rust's rehydration as well as by the getter.
 Each of these is the decoder clock leaking into something user-visible, and each needs the
 bigger change above:
 
+- transport commands do not report whether Rust accepted them — `spotifly_seek`,
+  `spotifly_next` and `spotifly_previous` all return a status that
+  `SpotifyPlayer.swift:1039`, `:1048` and `:1057` throw away in a detached task — so an
+  optimistic anchor is repaired by a threshold rather than by an answer;
 - pausing reports the decoder position, so the bar steps ~2 s at pause
   (`rust/src/lib.rs:2343`);
 - `freezePositionForDisconnect` freezes at the decoder position

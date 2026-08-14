@@ -1249,6 +1249,14 @@ final class PlaybackViewModel {
     private var positionAnchorTime: Double = CACurrentMediaTime()
     private var driftCorrectionTask: Task<Void, Never>?
 
+    /// How far the display may run past Rust before it is treated as a stalled Player.
+    private static let stalledPlayerLeadMs: Int64 = 500
+
+    /// How far the display may sit behind Rust before it is treated as an anchor from a
+    /// command that never happened. Above the ~2 s the render buffer accounts for, and far
+    /// below the gap an abandoned seek or skip leaves.
+    private static let abandonedCommandLagMs: Int64 = 5000
+
     /// Re-anchors the displayed position: `positionMs` is where playback is, `time` is the
     /// moment it was there.
     ///
@@ -1405,18 +1413,28 @@ final class PlaybackViewModel {
         // Compare even when the Rust value did not change: a frozen value is precisely the
         // signal that must pull a still-running Swift clock back to reality.
         //
-        // Only one direction is evidence. Rust reports where the *decoder* is, and the
-        // decoder runs ahead of what is audible by whatever `AudioRenderer` still holds
-        // buffered — up to `maxBufferAheadSeconds`. A display behind it is therefore just
-        // the buffer, and correcting to it would jump the bar forward into audio nobody
-        // has heard yet; that fight against the Spirc position is what made the bar jitter
-        // through the first seconds of a context. A display *ahead* of it cannot come from
-        // buffering, since the decoder is always in front, so it means the Player stopped
-        // producing while our clock kept running — the case this check exists for.
+        // The two directions are not the same measurement, so they do not share a
+        // threshold. Rust reports where the *decoder* is, and the decoder runs ahead of
+        // what is audible by whatever `AudioRenderer` still holds buffered — up to
+        // `maxBufferAheadSeconds`.
+        //
+        // - **Display ahead of Rust** cannot come from buffering, since the decoder is
+        //   always in front. It means the Player stopped producing while our clock kept
+        //   running, which is the stall this check exists for. Half a second is plenty.
+        // - **Display behind Rust** is normally just that buffer, and correcting to it
+        //   would jump the bar forward into audio nobody has heard yet — the fight with
+        //   the Spirc position that made the bar jitter through a context's first track.
+        //   Only a gap far larger than any buffer means something: an optimistic anchor
+        //   from a seek or a skip that Rust never carried out. `performSeek` rolls back a
+        //   command it could not issue, but a command that *was* issued and then rejected
+        //   reports nothing back — `SpotifyPlayer.seek` discards the FFI result — so this
+        //   is the only thing that notices. The two are orders of magnitude apart: the
+        //   buffer runs to about two seconds, a lost seek leaves seconds to minutes.
         if SpotifyPlayer.isActiveDevice {
             let rustPosition = SpotifyPlayer.positionMs
             let displayedPosition = interpolatedPositionMs
-            if Int64(displayedPosition) - Int64(rustPosition) > 500 {
+            let displayedLead = Int64(displayedPosition) - Int64(rustPosition)
+            if displayedLead > Self.stalledPlayerLeadMs || -displayedLead > Self.abandonedCommandLagMs {
                 debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(rustPosition)")
                 anchorPosition(rustPosition)
                 didCorrectDrift = true
