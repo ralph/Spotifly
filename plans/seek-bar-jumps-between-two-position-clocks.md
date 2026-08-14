@@ -1,7 +1,10 @@
 # The seek bar jumps because two clocks measure two different things
 
-Status: **fixed 2026-08-14, not yet confirmed at runtime.** The confirming run is the
-one in *Verification* below; until it is done, the fix is reasoning plus a green build.
+Status: **fixed 2026-08-14, confirmed at runtime for the reported symptom.** A first
+run (`../seek-after.log`) showed the jitter gone — 171 anchor updates, each continuous
+with the last, against a once-a-second forward jump before — and exposed one wrong
+correction while scrubbing, fixed by scoping the second case to an outstanding command.
+That fix is itself unconfirmed; the run in *Verification* below is what confirms it.
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`
 Found: 2026-08-14, from `../seek.log`
 
@@ -167,50 +170,57 @@ the directions do not mean the same thing:
 - The UI **ahead** of the decoder clock cannot happen while audio is flowing — the decoder
   is always in front. It means the Player has stopped producing while the Swift clock kept
   running, which is precisely the stall the check was written to catch. 500 ms.
-- The UI **behind** the decoder clock is, up to the buffer depth, expected. It says
-  nothing, and correcting on it is the bug. Beyond any depth a buffer could explain it
-  says something else entirely — see below. 5 s.
+- The UI **behind** the decoder clock is expected: that is the buffer. It says nothing,
+  and correcting on it is the bug.
+- Either direction is evidence while an **optimistic anchor** from a transport command has
+  gone unconfirmed past its grace window, because then the display is somewhere playback
+  never went — see below.
 
 ```swift
-let rustPosition = SpotifyPlayer.positionMs
-let displayedPosition = interpolatedPositionMs
-let displayedLead = Int64(displayedPosition) - Int64(rustPosition)
-if displayedLead > Self.stalledPlayerLeadMs || -displayedLead > Self.abandonedCommandLagMs {
-    debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(rustPosition)")
-    anchorPosition(rustPosition)
-    didCorrectDrift = true
+let unconfirmedFor = optimisticAnchorTime.map { CACurrentMediaTime() - $0 }
+let correct = switch unconfirmedFor {
+case let .some(elapsed) where elapsed < Self.optimisticAnchorGrace: false
+case .some: abs(displayedLead) > Self.positionDisagreementMs
+case .none: displayedLead > Self.positionDisagreementMs
 }
 ```
 
-The asymmetric threshold is not a fudge factor; it is there because the old symmetric
-check was quietly load-bearing for something else. `seek(to:)`, `next` and `previous`
-anchor **optimistically** (`PlaybackViewModel.swift:701`, `:722`, `:740`) so scrubbing
-feels immediate. `performSeek` rolls that back only when the command could not be *issued*
+The third case exists because the old symmetric check was quietly load-bearing for
+something other than stall recovery. `seek(to:)`, `next` and `previous` anchor
+**optimistically** (`PlaybackViewModel.swift:701`, `:722`, `:740`) so scrubbing feels
+immediate. `performSeek` rolls that back only when the command could not be *issued*
 (`:1176`); a command that was issued and then rejected reports nothing back, because
 `SpotifyPlayer.seek` discards `spotifly_seek`'s result in a detached task
-(`SpotifyPlayer.swift:1057`). Until now the drift check was what noticed — a failed
-backward seek from 100 s to 20 s left an 80-second gap that `abs(…) > 500` corrected on
-the next tick. A purely one-sided check would drop that silently.
+(`SpotifyPlayer.swift:1057`). The drift check was what noticed — a failed backward seek
+from 100 s to 20 s left an 80-second gap that `abs(…) > 500` corrected on the next tick.
 
-**The 5 s threshold is a compromise, and it is worth being exact about what it does not
-do.** An abandoned command can leave a gap of any size, so a failed backward seek of
-three seconds — or a failed skip less than five seconds into a track, where the anchor
-resets to zero — now goes unrepaired until some later `Loading`, `Playing` or cluster
-snapshot arrives. In the other direction the buffer lead is not strictly bounded either:
-`maxBufferAheadSeconds` is a pacing target enforced by sleeping *after* a write
-(`AudioRenderer.swift:217`), and re-arming the throttle on a route change or on a `start()`
-that finds the pipeline already rendering (`AudioRenderer.swift:345`, `:417`) banks more
-lead without clearing the buffer, so a determined sequence of route changes could cross 5 s
-and produce one spurious forward correction.
+**That job is scoped by state, not by distance.** A first attempt used a second, larger
+threshold — correct when the display sits more than 5 s *behind* Rust — and the
+verification run showed exactly why that is wrong. Scrubbing backwards from 1:57 to 0:43,
+the optimistic anchor legitimately sat 50 s behind Rust while the 150 ms seek debounce
+ran, and the timer fired inside that window:
 
-Both residues are strictly smaller than what they replace — the symmetric check corrected
-wrongly on *every* tick during normal playback — but neither is zero, and no scalar
-separates the two phenomena in general. **The boundary that would is state, not distance:
-correct an optimistic anchor only while a command is actually outstanding.** That needs a
-real acknowledgement, which does not exist today — `spotifly_seek`'s return says only that
-the command reached Spirc's channel, not that Spirc applied it, and Spirc can drop a
-command later while inactive. Building it is a Rust, FFI and Swift change with its own
-risk, and it is listed below rather than bundled in here.
+```
+07:17:47.729  Position anchor: 67624 -> 117311   (Spirc still reporting the pre-seek position)
+07:17:47.778  Drift correction: 66760 -> 117523  ← wrong: the seek had not been sent yet
+07:17:48.431  Position anchor: 43745 -> 43596    (the seek lands, 25 ms after it is issued)
+```
+
+No scalar separates those cases: an abandoned command can leave a gap of any size, and a
+legitimate in-flight one can leave a large gap. So the anchor carries a mark instead.
+`anchorPosition(_:at:optimistic:)` records *when* a transport command wrote a promise, and
+every other caller — all of which anchor something measured — clears the mark by writing.
+The grace window then means "the command has not landed yet", and it re-stamps on each
+drag update, so a long scrub extends it rather than outliving it. Past the window an
+unconfirmed promise is one that was never kept, and any disagreement is evidence.
+
+This is the command-scoped recovery the review asked for, without needing an
+acknowledgement from Spirc that does not exist: `spotifly_seek`'s return says only that the
+command reached Spirc's channel, not that Spirc applied it. "A measurement arrived" is the
+acknowledgement, and it is already there. What remains unhandled is a command that is
+rejected *and* followed by an unrelated authoritative update within the grace window; that
+would clear the mark on a display that is still wrong, and it needs the real ack listed
+below.
 
 Why this shape:
 

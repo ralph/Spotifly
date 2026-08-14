@@ -708,7 +708,7 @@ final class PlaybackViewModel {
         }
 
         // Immediately reset position to 0 for responsive UI
-        anchorPosition(0)
+        anchorPosition(0, optimistic: true)
         updateNowPlayingInfo()
     }
 
@@ -733,13 +733,13 @@ final class PlaybackViewModel {
         }
 
         // Immediately reset position to 0 for responsive UI
-        anchorPosition(0)
+        anchorPosition(0, optimistic: true)
         updateNowPlayingInfo()
     }
 
     func seek(to positionMs: UInt32) {
         // Update anchor immediately for smooth UI feedback during scrubbing
-        anchorPosition(positionMs)
+        anchorPosition(positionMs, optimistic: true)
         updateNowPlayingPosition()
 
         // Debounce the actual seek operation to avoid flooding Spirc/API with requests
@@ -1249,15 +1249,20 @@ final class PlaybackViewModel {
     private var positionAnchorTime: Double = CACurrentMediaTime()
     private var driftCorrectionTask: Task<Void, Never>?
 
-    /// How far the display may run past Rust before it is treated as a stalled Player.
-    private static let stalledPlayerLeadMs: Int64 = 500
+    /// How far the display may disagree with Rust before the disagreement means something.
+    private static let positionDisagreementMs: Int64 = 500
 
-    /// How far the display may sit behind Rust before it is treated as an anchor from a
-    /// command that never happened. Chosen to sit above the lead the render buffer
-    /// normally accounts for, so ordinary buffering never trips it. It is a compromise,
-    /// not a boundary: a smaller abandoned seek leaves a gap under this and goes
-    /// unrepaired, and a renderer that has banked extra lead could cross it.
-    private static let abandonedCommandLagMs: Int64 = 5000
+    /// How long an optimistic anchor is given to be confirmed before it is treated as a
+    /// command that never happened. Long enough to cover the 150 ms seek debounce and the
+    /// round trip after it — measured at ~25 ms from `spotifly_seek` to the state callback
+    /// — and it restarts on each drag update, so a long scrub extends it rather than
+    /// outliving it.
+    private static let optimisticAnchorGrace: Double = 1.0
+
+    /// When the anchor was last written by a transport command rather than by a
+    /// measurement, and so is a promise about where playback is *going*. Cleared by the
+    /// next authoritative anchor, which is what "the command landed" looks like from here.
+    private var optimisticAnchorTime: Double?
 
     /// Re-anchors the displayed position: `positionMs` is where playback is, `time` is the
     /// moment it was there.
@@ -1269,9 +1274,19 @@ final class PlaybackViewModel {
     /// `time` defaults to now. A caller holding a snapshot that was true *earlier* — a
     /// Mercury or Web API state carrying a timestamp — passes that moment instead, so
     /// interpolation accounts for the delay rather than restarting the clock.
-    private func anchorPosition(_ positionMs: UInt32, at time: Double = CACurrentMediaTime()) {
+    ///
+    /// `optimistic` marks the anchors that transport commands write ahead of playback, to
+    /// keep scrubbing and skipping responsive. Those are promises rather than
+    /// measurements, and `checkDriftAndSync` has to know the difference — so every other
+    /// caller, all of which anchor something measured, clears the mark by writing.
+    private func anchorPosition(
+        _ positionMs: UInt32,
+        at time: Double = CACurrentMediaTime(),
+        optimistic: Bool = false,
+    ) {
         positionAnchorMs = positionMs
         positionAnchorTime = time
+        optimisticAnchorTime = optimistic ? CACurrentMediaTime() : nil
     }
 
     /// The position to report while playback is not advancing.
@@ -1428,18 +1443,28 @@ final class PlaybackViewModel {
         // - **Display behind Rust** is normally just that buffer, and correcting to it
         //   would jump the bar forward into audio nobody has heard yet — the fight with
         //   the Spirc position that made the bar jitter through a context's first track.
-        //   Only a gap far larger than any buffer means something: an optimistic anchor
-        //   from a seek or a skip that Rust never carried out. `performSeek` rolls back a
-        //   command it could not issue, but a command that *was* issued and then rejected
-        //   reports nothing back — `SpotifyPlayer.seek` discards the FFI result — so this
-        //   is the only thing that notices. A threshold is a poor proxy for it: it repairs
-        //   an abandoned command only when the gap is large, and the honest repair is an
-        //   acknowledgement from Spirc that the command was applied. See the plan.
+        //
+        // The exception in both directions is an anchor a transport command wrote ahead of
+        // playback. That is a promise, not a measurement, and the two disagree by design
+        // until the command lands — so nothing can be judged inside the grace window. Past
+        // it, an optimistic anchor that no measurement has confirmed is one Rust never
+        // carried out: `performSeek` rolls back a command it could not *issue*, but one
+        // that was issued and then rejected reports nothing back, since
+        // `SpotifyPlayer.seek` discards the FFI result. Then either direction is evidence,
+        // because the display is somewhere playback never went.
         if SpotifyPlayer.isActiveDevice {
             let rustPosition = SpotifyPlayer.positionMs
             let displayedPosition = interpolatedPositionMs
             let displayedLead = Int64(displayedPosition) - Int64(rustPosition)
-            if displayedLead > Self.stalledPlayerLeadMs || -displayedLead > Self.abandonedCommandLagMs {
+
+            let unconfirmedFor = optimisticAnchorTime.map { CACurrentMediaTime() - $0 }
+            let correct = switch unconfirmedFor {
+            case let .some(elapsed) where elapsed < Self.optimisticAnchorGrace: false
+            case .some: abs(displayedLead) > Self.positionDisagreementMs
+            case .none: displayedLead > Self.positionDisagreementMs
+            }
+
+            if correct {
                 debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(rustPosition)")
                 anchorPosition(rustPosition)
                 didCorrectDrift = true
