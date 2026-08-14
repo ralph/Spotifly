@@ -1,6 +1,7 @@
 # The seek bar jumps because two clocks measure two different things
 
-Status: **diagnosed, not fixed.**
+Status: **fixed 2026-08-14, not yet confirmed at runtime.** The confirming run is the
+one in *Verification* below; until it is done, the fix is reasoning plus a green build.
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`
 Found: 2026-08-14, from `../seek.log`
 
@@ -189,12 +190,27 @@ feels immediate. `performSeek` rolls that back only when the command could not b
 `SpotifyPlayer.seek` discards `spotifly_seek`'s result in a detached task
 (`SpotifyPlayer.swift:1057`). Until now the drift check was what noticed — a failed
 backward seek from 100 s to 20 s left an 80-second gap that `abs(…) > 500` corrected on
-the next tick. A purely one-sided check would drop that silently. The two phenomena are
-orders of magnitude apart — two seconds of buffer against seconds-to-minutes of abandoned
-seek — so a threshold between them separates them without needing to be precise.
+the next tick. A purely one-sided check would drop that silently.
 
-The real repair for that case is for the transport commands to report their result instead
-of relying on a drift check to notice; that is a separate change and is listed below.
+**The 5 s threshold is a compromise, and it is worth being exact about what it does not
+do.** An abandoned command can leave a gap of any size, so a failed backward seek of
+three seconds — or a failed skip less than five seconds into a track, where the anchor
+resets to zero — now goes unrepaired until some later `Loading`, `Playing` or cluster
+snapshot arrives. In the other direction the buffer lead is not strictly bounded either:
+`maxBufferAheadSeconds` is a pacing target enforced by sleeping *after* a write
+(`AudioRenderer.swift:217`), and re-arming the throttle on a route change or on a `start()`
+that finds the pipeline already rendering (`AudioRenderer.swift:345`, `:417`) banks more
+lead without clearing the buffer, so a determined sequence of route changes could cross 5 s
+and produce one spurious forward correction.
+
+Both residues are strictly smaller than what they replace — the symmetric check corrected
+wrongly on *every* tick during normal playback — but neither is zero, and no scalar
+separates the two phenomena in general. **The boundary that would is state, not distance:
+correct an optimistic anchor only while a command is actually outstanding.** That needs a
+real acknowledgement, which does not exist today — `spotifly_seek`'s return says only that
+the command reached Spirc's channel, not that Spirc applied it, and Spirc can drop a
+command later while inactive. Building it is a Rust, FFI and Swift change with its own
+risk, and it is listed below rather than bundled in here.
 
 Why this shape:
 
@@ -258,10 +274,13 @@ playback-state callback and by Rust's rehydration as well as by the getter.
 Each of these is the decoder clock leaking into something user-visible, and each needs the
 bigger change above:
 
-- transport commands do not report whether Rust accepted them — `spotifly_seek`,
-  `spotifly_next` and `spotifly_previous` all return a status that
-  `SpotifyPlayer.swift:1039`, `:1048` and `:1057` throw away in a detached task — so an
-  optimistic anchor is repaired by a threshold rather than by an answer;
+- **transport commands are never acknowledged**, so an optimistic anchor is repaired by a
+  threshold rather than by an answer. `spotifly_seek`, `spotifly_next` and
+  `spotifly_previous` return a status that `SpotifyPlayer.swift:1039`, `:1048` and `:1057`
+  throw away in a detached task — and exposing it would not be enough on its own, since it
+  reports delivery to Spirc's channel rather than application by Spirc. A real ack, scoped
+  to an outstanding command with a bounded timeout, would replace `abandonedCommandLagMs`
+  entirely and is the follow-up this plan most wants;
 - pausing reports the decoder position, so the bar steps ~2 s at pause
   (`rust/src/lib.rs:2343`);
 - `freezePositionForDisconnect` freezes at the decoder position

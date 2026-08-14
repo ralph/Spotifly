@@ -1253,8 +1253,10 @@ final class PlaybackViewModel {
     private static let stalledPlayerLeadMs: Int64 = 500
 
     /// How far the display may sit behind Rust before it is treated as an anchor from a
-    /// command that never happened. Above the ~2 s the render buffer accounts for, and far
-    /// below the gap an abandoned seek or skip leaves.
+    /// command that never happened. Chosen to sit above the lead the render buffer
+    /// normally accounts for, so ordinary buffering never trips it. It is a compromise,
+    /// not a boundary: a smaller abandoned seek leaves a gap under this and goes
+    /// unrepaired, and a renderer that has banked extra lead could cross it.
     private static let abandonedCommandLagMs: Int64 = 5000
 
     /// Re-anchors the displayed position: `positionMs` is where playback is, `time` is the
@@ -1415,8 +1417,10 @@ final class PlaybackViewModel {
         //
         // The two directions are not the same measurement, so they do not share a
         // threshold. Rust reports where the *decoder* is, and the decoder runs ahead of
-        // what is audible by whatever `AudioRenderer` still holds buffered — up to
-        // `maxBufferAheadSeconds`.
+        // what is audible by whatever `AudioRenderer` still holds buffered — normally
+        // around `maxBufferAheadSeconds`, though that is a pacing target enforced by
+        // sleeping after a write rather than a ceiling, and re-arming the throttle on a
+        // route change can bank more.
         //
         // - **Display ahead of Rust** cannot come from buffering, since the decoder is
         //   always in front. It means the Player stopped producing while our clock kept
@@ -1428,8 +1432,9 @@ final class PlaybackViewModel {
         //   from a seek or a skip that Rust never carried out. `performSeek` rolls back a
         //   command it could not issue, but a command that *was* issued and then rejected
         //   reports nothing back — `SpotifyPlayer.seek` discards the FFI result — so this
-        //   is the only thing that notices. The two are orders of magnitude apart: the
-        //   buffer runs to about two seconds, a lost seek leaves seconds to minutes.
+        //   is the only thing that notices. A threshold is a poor proxy for it: it repairs
+        //   an abandoned command only when the gap is large, and the honest repair is an
+        //   acknowledgement from Spirc that the command was applied. See the plan.
         if SpotifyPlayer.isActiveDevice {
             let rustPosition = SpotifyPlayer.positionMs
             let displayedPosition = interpolatedPositionMs
