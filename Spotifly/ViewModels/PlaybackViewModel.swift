@@ -765,9 +765,9 @@ final class PlaybackViewModel {
         }
 
         // Don't call syncPositionAnchor() - Rust returns 0 immediately after resume.
-        // Re-anchor to the position we already hold, which is correct from the paused state:
-        // only the clock restarts.
-        anchorPosition(positionAnchorMs)
+        // The position we already hold is correct from the paused state: only the clock
+        // restarts.
+        restartPositionClock()
         updateNowPlayingPosition()
     }
 
@@ -1289,6 +1289,17 @@ final class PlaybackViewModel {
         optimisticAnchorTime = optimistic ? CACurrentMediaTime() : nil
     }
 
+    /// Restarts interpolation at the position already held, without claiming to have
+    /// measured it.
+    ///
+    /// Resume is the only caller: it moves neither the position nor its truth, just the
+    /// clock. Going through `anchorPosition` instead would re-assign the position to
+    /// itself and, worse, clear the optimistic mark — telling `checkDriftAndSync` that a
+    /// seek made while paused had been confirmed, when resuming confirms nothing.
+    private func restartPositionClock() {
+        positionAnchorTime = CACurrentMediaTime()
+    }
+
     /// The position to report while playback is not advancing.
     ///
     /// Derived rather than stored. This used to be a third field assigned beside the anchor
@@ -1462,6 +1473,16 @@ final class PlaybackViewModel {
             case let .some(elapsed) where elapsed < Self.optimisticAnchorGrace: false
             case .some: abs(displayedLead) > Self.positionDisagreementMs
             case .none: displayedLead > Self.positionDisagreementMs
+            }
+
+            // One grace window, one verdict. A measurement clears the mark by arriving,
+            // but nothing guarantees one does: a rejected command produces no callback,
+            // and a command issued while paused or while a remote device held the floor is
+            // not judged here at all. Expiring the mark on the tick that judges it is what
+            // stops it outliving its command — otherwise it sits set for the session, and
+            // the buffer lead that turns up later reads as evidence of a lost seek.
+            if let unconfirmedFor, unconfirmedFor >= Self.optimisticAnchorGrace {
+                optimisticAnchorTime = nil
             }
 
             if correct {

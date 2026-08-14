@@ -232,10 +232,24 @@ unconfirmed promise is one that was never kept, and any disagreement is evidence
 This is the command-scoped recovery the review asked for, without needing an
 acknowledgement from Spirc that does not exist: `spotifly_seek`'s return says only that the
 command reached Spirc's channel, not that Spirc applied it. "A measurement arrived" is the
-acknowledgement, and it is already there. What remains unhandled is a command that is
-rejected *and* followed by an unrelated authoritative update within the grace window; that
-would clear the mark on a display that is still wrong, and it needs the real ack listed
-below.
+acknowledgement, and it is already there.
+
+Two things the mark has to get right beyond being set, both from review:
+
+- **A clock restart is not a measurement.** `resume()` re-times the position it already
+  holds, so it goes through `restartPositionClock()` rather than `anchorPosition`. Routing
+  it through the anchor would clear the mark, which would tell the check that a seek made
+  while paused had been confirmed — and resuming confirms nothing.
+- **The mark expires on the tick that judges it**, not only when it causes a correction.
+  Nothing guarantees a measurement ever arrives to clear it: a rejected command produces no
+  callback, and one issued while paused or while a remote device held the floor is never
+  judged here. Without the expiry the mark would sit set for the rest of the session, and
+  the ordinary buffer lead turning up later would read as evidence of a lost seek — the
+  original bug, back through the other door.
+
+What remains unhandled is a command that is rejected *and* followed by an unrelated
+authoritative update inside the grace window; that clears the mark on a display that is
+still wrong, and it needs the real acknowledgement listed below.
 
 Why this shape:
 
