@@ -139,6 +139,13 @@ nonisolated struct SpclientAPI: Sendable {
     private let invalidateClientToken: @Sendable (String) async -> Void
     private let transport: Transport
 
+    /// Hoisted for the same reason as `PartnerAPI.invalidateSharedClientToken`: a closure
+    /// literal in a default-argument list is not isolation-checked, so the `await` on the hop
+    /// onto `ClientTokenProvider` is reported as unnecessary there.
+    private static let invalidateSharedClientToken: @Sendable (String) async -> Void = {
+        await ClientTokenProvider.shared.invalidate(rejected: $0)
+    }
+
     init(
         accessToken: @escaping @Sendable () async throws -> String = {
             try await KeymasterSession.shared.accessToken()
@@ -146,9 +153,7 @@ nonisolated struct SpclientAPI: Sendable {
         clientToken: @escaping @Sendable () async throws -> String = {
             try await ClientTokenProvider.shared.token()
         },
-        invalidateClientToken: @escaping @Sendable (String) async -> Void = {
-            await ClientTokenProvider.shared.invalidate(rejected: $0)
-        },
+        invalidateClientToken: @escaping @Sendable (String) async -> Void = SpclientAPI.invalidateSharedClientToken,
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
     ) {
         self.accessToken = accessToken

@@ -87,6 +87,14 @@ nonisolated struct PartnerAPI: Sendable {
     private let invalidateClientToken: @Sendable (String) async -> Void
     private let transport: Transport
 
+    /// Hoisted out of the default-argument list below, where a closure literal is not
+    /// isolation-checked: written inline, the hop onto `ClientTokenProvider` goes unnoticed and
+    /// the `await` that expresses it is reported as unnecessary. The emitted code hops either
+    /// way — the checking is what differs, and here the call is checked like any other.
+    private static let invalidateSharedClientToken: @Sendable (String) async -> Void = {
+        await ClientTokenProvider.shared.invalidate(rejected: $0)
+    }
+
     init(
         accessToken: @escaping @Sendable () async throws -> String = {
             try await KeymasterSession.shared.accessToken()
@@ -94,9 +102,7 @@ nonisolated struct PartnerAPI: Sendable {
         clientToken: @escaping @Sendable () async throws -> String = {
             try await ClientTokenProvider.shared.token()
         },
-        invalidateClientToken: @escaping @Sendable (String) async -> Void = {
-            await ClientTokenProvider.shared.invalidate(rejected: $0)
-        },
+        invalidateClientToken: @escaping @Sendable (String) async -> Void = PartnerAPI.invalidateSharedClientToken,
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
     ) {
         self.accessToken = accessToken
