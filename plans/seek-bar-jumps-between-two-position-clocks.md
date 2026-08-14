@@ -1,10 +1,12 @@
 # The seek bar jumps because two clocks measure two different things
 
-Status: **fixed 2026-08-14, confirmed at runtime for the reported symptom.** A first
-run (`../seek-after.log`) showed the jitter gone — 171 anchor updates, each continuous
-with the last, against a once-a-second forward jump before — and exposed one wrong
-correction while scrubbing, fixed by scoping the second case to an outstanding command.
-That fix is itself unconfirmed; the run in *Verification* below is what confirms it.
+Status: **fixed 2026-08-14, confirmed at runtime.** Two runs, `../seek-after.log` and
+`../seek-after2.log`: the jitter is gone, every dense run of snapshots now chains exactly
+(`X` equals the previous `Y`) where before `X` ran ~1550 ms high every other line, and the
+second run played 74 seconds untouched with **no** Connect snapshots and **no** drift
+correction — the stretch that used to be corrected once a second. Both runs also caught the
+first attempt at the abandoned-command case firing wrongly during a scrub; that is fixed
+and is the one part still unconfirmed at runtime.
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`
 Found: 2026-08-14, from `../seek.log`
 
@@ -148,17 +150,25 @@ runs out while the audio drains for another ~1.5 s, and `clampedToTrack` pins th
 there. The predicted symptom is "bar reaches the end and sits there for a beat", which is
 what "in sync" looks like. Only the log settles this.
 
-**Why later tracks look fine:** unconfirmed. Two candidates, possibly both:
+**Why later tracks look fine: confirmed 2026-08-14** from `../seek-after2.log`, and it is
+the first of the two candidates. On a gapless transition librespot emits `Playing` for
+track *n+1* at the instant the **decoder** switches — the same millisecond as the previous
+track's `EndOfTrack`, while ~2 s of that track is still queued in the renderer:
 
-- On a gapless transition librespot emits `Playing` for track *n+1* when the **decoder**
-  switches, while the previous track's audio is still draining. Spirc anchors
-  `nominal_start_time` there, so the Connect clock picks up the same ~1.5 s lead as the
-  decoder clock. Two clocks that agree do not fight — and both are ahead of the music.
-- The Connect PUT/echo storm is a context-start phenomenon. Without frequent snapshots
-  there is nothing to pull the anchor back, whatever the two clocks think.
+```
+07:27:15.655  PlayerEvent::EndOfTrack: …5aIfLbdgkbH7NbQryd1poB at 168398ms
+07:27:15.655  PlayerEvent::Playing:    …3bz5lCYoTVdnhB2rCaMYKz at 0ms
+```
 
-The distinction matters for how much this fix is expected to achieve: under the first,
-later tracks are *also* ~1.5 s ahead, and this fix does not change that.
+Spirc anchors `nominal_start_time` there, and the Connect positions that follow are exact
+wall-clock from it — 370 ms at `07:27:16.025`, 1197 ms at `07:27:16.852`. So from track two
+onward **both clocks are ahead of the music by the buffer depth**, they agree with each
+other, and nothing jitters because nothing disagrees.
+
+That is worth stating plainly: this fix removes the *fight*, and it makes the first track
+of a context honest. It does not make tracks two onward honest — they run about two
+seconds ahead of what you hear, quietly and consistently. Only a real audible playhead
+fixes that, which is the change listed under *Left standing*.
 
 ## Fix
 
@@ -297,8 +307,10 @@ bigger change above:
   (`PlaybackViewModel.swift:1084`);
 - resume-after-deactivation rehydrates from raw `POSITION_MS` (`rust/src/lib.rs:1998`,
   `:2753`), so it resumes ~2 s late;
-- gapless track boundaries, if the first candidate above is what makes later tracks look
-  fine.
+- **gapless track boundaries**, now confirmed above: every track after a context's first
+  runs ~2 s ahead of its own audio, because Spirc's epoch for it is the decoder switch
+  rather than the moment it becomes audible. This is the largest of the four and the one
+  that most wants the audible playhead.
 
 ## Verification
 
