@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The last warning in the test target, which the six-warning sweep did not cover because it is not in the app. `PlaylistServiceTests`' fake transport declared `profile()` as `throws` and reached for `lock.withLock` with a `try`, but nothing inside it throws — the failure case it models is a 500 status code, not a thrown error. The `throws` was not load-bearing either: `PartnerAPI.Transport` is a throwing closure type, and a non-throwing function satisfies one, which the non-throwing `rootlist` in the same fake had been demonstrating all along. Both are gone, so the two halves of the fake now have the same shape
+
 ## [1.2.7] - 2026-08-14
 
 ### Added

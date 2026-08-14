@@ -31,8 +31,8 @@ private final class Calls: @unchecked Sendable {
         self.failuresBeforeSuccess = failuresBeforeSuccess
     }
 
-    func profile() throws -> (Data, URLResponse) {
-        try lock.withLock {
+    func profile() -> (Data, URLResponse) {
+        lock.withLock {
             profileRequests += 1
             let response = HTTPURLResponse(
                 url: PartnerAPI.endpoint,
@@ -66,7 +66,7 @@ private func makeService(_ calls: Calls) -> (PlaylistService, AppStore) {
         partnerAPI: PartnerAPI(
             accessToken: { "at" },
             clientToken: { "ct" },
-            transport: { _ in try calls.profile() },
+            transport: { _ in calls.profile() },
         ),
         spclientAPI: SpclientAPI(
             accessToken: { "at" },
