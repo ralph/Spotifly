@@ -68,8 +68,6 @@ static PLAYBACK_STATE_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>
 static VOLUME_CALLBACK: Lazy<Mutex<Option<extern "C" fn(u16)>>> = Lazy::new(|| Mutex::new(None));
 static LOADING_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
     Lazy::new(|| Mutex::new(None));
-static QUEUE_CHANGED_CALLBACK: Lazy<Mutex<Option<extern "C" fn(*const c_char)>>> =
-    Lazy::new(|| Mutex::new(None));
 static BECAME_INACTIVE_CALLBACK: Lazy<Mutex<Option<extern "C" fn()>>> =
     Lazy::new(|| Mutex::new(None));
 static BECAME_ACTIVE_CALLBACK: Lazy<Mutex<Option<extern "C" fn()>>> =
@@ -609,6 +607,16 @@ fn registered_callback<F: Copy>(slot: &Mutex<Option<F>>) -> Option<F> {
     *slot.lock().unwrap()
 }
 
+/// Hands an owned string to Swift, which frees it with `spotifly_free_string`.
+///
+/// A string carrying an interior NUL cannot cross the boundary, and every caller already
+/// treats null as "nothing to report", so that is what it becomes.
+fn into_owned_c_string(value: String) -> *mut c_char {
+    CString::new(value)
+        .map(CString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
+
 /// Serializes `payload` and hands it to a Swift callback as a C string.
 ///
 /// The C string outlives the call and is freed on return: Swift copies what it needs
@@ -623,31 +631,44 @@ fn send_json<T: Serialize>(callback: extern "C" fn(*const c_char), payload: &T) 
     }
 }
 
-/// Runs a command against the current Spirc and maps the outcome to an FFI error code.
+/// The current Spirc, or `None` after logging that there is none.
 ///
-/// `what` names the command in the error logs. A closed channel is reported separately
-/// (`ERROR_NEEDS_REINIT`) because Swift responds to it by rebuilding the player rather
-/// than by surfacing a failure.
+/// Handed out as a clone rather than behind the guard: several callers go on to publish a
+/// connection snapshot, which re-enters Swift, and Swift may call straight back into Rust.
+/// No FFI entry point may hold the `SPIRC` lock across that.
+fn current_spirc(what: &str) -> Option<Arc<Spirc>> {
+    let spirc = SPIRC.lock().unwrap().clone();
+    if spirc.is_none() {
+        debug!("{} error: Spirc not initialized", what);
+    }
+    spirc
+}
+
+/// Logs a failed Spirc command against `what` and maps it to its FFI error code.
+///
+/// A closed channel is reported separately (`ERROR_NEEDS_REINIT`) because Swift responds to
+/// it by rebuilding the player rather than by surfacing a failure.
+fn spirc_error(what: &str, err: &librespot_core::Error) -> i32 {
+    debug!("{} error: {:?}", what, err);
+    if format!("{:?}", err).contains("channel closed") {
+        ERROR_NEEDS_REINIT
+    } else {
+        ERROR_GENERAL
+    }
+}
+
+/// Runs a command against the current Spirc and maps the outcome to an FFI error code.
 fn spirc_command(
     what: &str,
     command: impl FnOnce(&Spirc) -> Result<(), librespot_core::Error>,
 ) -> i32 {
-    let spirc_guard = SPIRC.lock().unwrap();
-    let Some(spirc) = spirc_guard.as_ref() else {
-        debug!("{} error: Spirc not initialized", what);
+    let Some(spirc) = current_spirc(what) else {
         return ERROR_GENERAL;
     };
 
-    match command(spirc) {
+    match command(&spirc) {
         Ok(()) => 0,
-        Err(e) => {
-            debug!("{} error: {:?}", what, e);
-            if is_channel_closed_error(&e) {
-                ERROR_NEEDS_REINIT
-            } else {
-                ERROR_GENERAL
-            }
-        }
+        Err(e) => spirc_error(what, &e),
     }
 }
 
@@ -703,14 +724,6 @@ pub extern "C" fn spotifly_register_volume_callback(callback: extern "C" fn(u16)
 #[no_mangle]
 pub extern "C" fn spotifly_register_loading_callback(callback: extern "C" fn(*const c_char)) {
     *LOADING_CALLBACK.lock().unwrap() = Some(callback);
-}
-
-/// Registers a callback to receive queue change notifications.
-/// Called when a remote device adds a track to the queue.
-/// The callback receives JSON with track_uri.
-#[no_mangle]
-pub extern "C" fn spotifly_register_queue_changed_callback(callback: extern "C" fn(*const c_char)) {
-    *QUEUE_CHANGED_CALLBACK.lock().unwrap() = Some(callback);
 }
 
 /// Registers a callback fired when this device stops being the active Connect device.
@@ -798,9 +811,8 @@ pub extern "C" fn spotifly_register_audio_control_callback(callback: extern "C" 
 /// Caller must free the returned string using spotifly_free_string().
 #[no_mangle]
 pub extern "C" fn spotifly_get_connection_state() -> *mut c_char {
-    let state = build_connection_state_info();
-    match serde_json::to_string(&state) {
-        Ok(json) => CString::new(json).unwrap().into_raw(),
+    match serde_json::to_string(&build_connection_state_info()) {
+        Ok(json) => into_owned_c_string(json),
         Err(_) => std::ptr::null_mut(),
     }
 }
@@ -983,10 +995,7 @@ pub extern "C" fn spotifly_clear_streaming_credentials() {
 #[no_mangle]
 pub extern "C" fn spotifly_last_grant_account() -> *mut c_char {
     let account = LAST_GRANT_ACCOUNT.lock().unwrap().clone();
-    match account.and_then(|a| CString::new(a).ok()) {
-        Some(c) => c.into_raw(),
-        None => std::ptr::null_mut(),
-    }
+    account.map_or(std::ptr::null_mut(), into_owned_c_string)
 }
 
 /// Completes the one-time streaming authorization with a token Swift has already minted:
@@ -1694,14 +1703,6 @@ fn create_new_player(session: &Session) -> Arc<Player> {
     player
 }
 
-/// Builds a complete, settled session and publishes its readiness exactly once, at the end.
-///
-/// The ordering matters. Readiness used to be published the moment Spirc existed, while
-/// activation and the rehydrating load still had to run — so Swift, which reacts to that
-/// publication by bootstrapping from the Web API, fetched and applied a server snapshot
-/// that Rust then immediately overwrote. That was visible as the playback position jumping
-/// forward to a stale value and back. Publishing once, when nothing further is pending,
-/// removes the window rather than racing it.
 /// Builds a session, and clears anything it left behind if a teardown began while it ran.
 ///
 /// `build_player_async` stores Session, Player, Mixer and Spirc in the globals well before
@@ -1725,6 +1726,14 @@ async fn init_player_async(
     result
 }
 
+/// Builds a complete, settled session and publishes its readiness exactly once, at the end.
+///
+/// The ordering matters. Readiness used to be published the moment Spirc existed, while
+/// activation and the rehydrating load still had to run — so Swift, which reacts to that
+/// publication by bootstrapping from the Web API, fetched and applied a server snapshot
+/// that Rust then immediately overwrote. That was visible as the playback position jumping
+/// forward to a stale value and back. Publishing once, when nothing further is pending,
+/// removes the window rather than racing it.
 async fn build_player_async(
     access_token: Option<&str>,
     activate_after_connect: bool,
@@ -2233,12 +2242,6 @@ fn check_and_send_volume(volume: u32) {
     }
 }
 
-/// Checks if an error indicates the Spirc channel is closed (needs reinit)
-fn is_channel_closed_error(err: &librespot_core::Error) -> bool {
-    let err_string = format!("{:?}", err);
-    err_string.contains("channel closed")
-}
-
 /// Error codes:
 /// -1 = general error
 /// -2 = channel closed, needs reinit (call spotifly_init_player again)
@@ -2496,12 +2499,7 @@ fn process_and_send_queue(player_state: PlayerState) {
 #[no_mangle]
 pub extern "C" fn spotifly_get_queue_snapshot() -> *mut c_char {
     let snapshot = LAST_QUEUE_JSON.lock().unwrap().clone();
-    match snapshot {
-        Some(json) => CString::new(json)
-            .map(|c| c.into_raw())
-            .unwrap_or(std::ptr::null_mut()),
-        None => std::ptr::null_mut(),
-    }
+    snapshot.map_or(std::ptr::null_mut(), into_owned_c_string)
 }
 
 /// Helper to ensure the device is active before loading content.
@@ -2555,36 +2553,31 @@ pub extern "C" fn spotifly_play_tracks(track_uris_json: *const c_char) -> i32 {
     }
 
     // Use Spirc.load() for proper Connect state sync
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => {
-            // Ensure device is active before loading
-            if let Err(e) = ensure_active_for_playback(spirc) {
-                return e;
-            }
+    let Some(spirc) = current_spirc("Play tracks") else {
+        return -1;
+    };
 
-            let load_request = LoadRequest::from_tracks(
-                track_uris,
-                LoadRequestOptions {
-                    start_playing: true,
-                    seek_to: 0,
-                    ..Default::default()
-                },
-            );
-            match spirc.load(load_request) {
-                Ok(_) => {
-                    debug!("Spirc.load(tracks) succeeded");
-                    set_active_device(true);
-                    0
-                }
-                Err(_e) => {
-                    debug!("Play tracks error: Spirc.load() failed: {:?}", _e);
-                    -1
-                }
-            }
+    // Ensure device is active before loading
+    if let Err(e) = ensure_active_for_playback(&spirc) {
+        return e;
+    }
+
+    let load_request = LoadRequest::from_tracks(
+        track_uris,
+        LoadRequestOptions {
+            start_playing: true,
+            seek_to: 0,
+            ..Default::default()
+        },
+    );
+    match spirc.load(load_request) {
+        Ok(_) => {
+            debug!("Spirc.load(tracks) succeeded");
+            set_active_device(true);
+            0
         }
-        None => {
-            debug!("Play tracks error: Spirc not initialized");
+        Err(_e) => {
+            debug!("Play tracks error: Spirc.load() failed: {:?}", _e);
             -1
         }
     }
@@ -2614,66 +2607,61 @@ pub extern "C" fn spotifly_play_uri(uri_or_url: *const c_char, track_index: i32)
     }
 
     // Use Spirc.load() with LoadRequest for proper Connect state sync
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => {
-            // Ensure device is active before loading
-            if let Err(e) = ensure_active_for_playback(spirc) {
-                return e;
-            }
+    let Some(spirc) = current_spirc("Play") else {
+        return -1;
+    };
 
-            // Determine playing_track option based on track_index
-            let playing_track = if track_index >= 0 {
-                Some(PlayingTrack::Index(track_index as u32))
-            } else {
-                None
-            };
+    // Ensure device is active before loading
+    if let Err(e) = ensure_active_for_playback(&spirc) {
+        return e;
+    }
 
-            // Create LoadRequest - use from_context_uri for albums/playlists/artists,
-            // from_tracks for single tracks (legacy behavior, prefer using radio for tracks)
-            let load_request = if uri_str.starts_with("spotify:track:") {
-                // Legacy single-track behavior - prefer using spotifly_play_radio instead
-                debug!("Spirc.load(LoadRequest::from_tracks([{}]))", uri_str);
-                LoadRequest::from_tracks(
-                    vec![uri_str.clone()],
-                    LoadRequestOptions {
-                        start_playing: true,
-                        seek_to: 0,
-                        ..Default::default()
-                    },
-                )
-            } else {
-                // Context-based playback with optional starting track
-                debug!(
-                    "Spirc.load(LoadRequest::from_context_uri({}, playing_track={:?}))",
-                    uri_str, playing_track
-                );
-                LoadRequest::from_context_uri(
-                    uri_str.clone(),
-                    LoadRequestOptions {
-                        start_playing: true,
-                        seek_to: 0,
-                        playing_track,
-                        ..Default::default()
-                    },
-                )
-            };
+    // Determine playing_track option based on track_index
+    let playing_track = if track_index >= 0 {
+        Some(PlayingTrack::Index(track_index as u32))
+    } else {
+        None
+    };
 
-            match spirc.load(load_request) {
-                Ok(_) => {
-                    debug!("Spirc.load() succeeded");
-                    IS_PLAYING.store(true, Ordering::SeqCst);
-                    set_active_device(true);
-                    0
-                }
-                Err(_e) => {
-                    debug!("Play error: Spirc.load() failed: {:?}", _e);
-                    -1
-                }
-            }
+    // Create LoadRequest - use from_context_uri for albums/playlists/artists,
+    // from_tracks for single tracks (legacy behavior, prefer using radio for tracks)
+    let load_request = if uri_str.starts_with("spotify:track:") {
+        // Legacy single-track behavior - prefer using spotifly_play_radio instead
+        debug!("Spirc.load(LoadRequest::from_tracks([{}]))", uri_str);
+        LoadRequest::from_tracks(
+            vec![uri_str.clone()],
+            LoadRequestOptions {
+                start_playing: true,
+                seek_to: 0,
+                ..Default::default()
+            },
+        )
+    } else {
+        // Context-based playback with optional starting track
+        debug!(
+            "Spirc.load(LoadRequest::from_context_uri({}, playing_track={:?}))",
+            uri_str, playing_track
+        );
+        LoadRequest::from_context_uri(
+            uri_str.clone(),
+            LoadRequestOptions {
+                start_playing: true,
+                seek_to: 0,
+                playing_track,
+                ..Default::default()
+            },
+        )
+    };
+
+    match spirc.load(load_request) {
+        Ok(_) => {
+            debug!("Spirc.load() succeeded");
+            IS_PLAYING.store(true, Ordering::SeqCst);
+            set_active_device(true);
+            0
         }
-        None => {
-            debug!("Play error: Spirc not initialized");
+        Err(_e) => {
+            debug!("Play error: Spirc.load() failed: {:?}", _e);
             -1
         }
     }
@@ -2706,36 +2694,51 @@ pub extern "C" fn spotifly_clear_audio_buffer() {
     proxy_sink::ProxySink::clear_buffer();
 }
 
-fn wait_for_playing_event(previous_seq: u64, timeout_ms: u64) -> bool {
-    let start_ms = current_timestamp_ms();
-    loop {
-        if PLAYING_EVENT_SEQ.load(Ordering::SeqCst) > previous_seq {
-            return true;
-        }
-        if current_timestamp_ms().saturating_sub(start_ms) >= timeout_ms {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-}
+/// How often the two waits below re-read `PLAYING_EVENT_SEQ`.
+const PLAYING_EVENT_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
+/// How long `spotifly_resume` gives `Spirc::play` before falling back to a load. `play` only
+/// queues a command, so this is the window in which an accepted one produces audio.
+const PLAY_COMMAND_PLAYING_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// How long the resume fallback then gives its load, which has a context to fetch first.
+const RESUME_LOAD_PLAYING_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// How long rehydration waits for the Player to actually start before giving up on the
 /// wait (not on the session). Observed load-to-playing is around a second.
 const REHYDRATE_PLAYING_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Waits for the Player to report playback, without parking a runtime worker.
+/// Waits for the Player to report playback, blocking the calling thread.
 ///
-/// The blocking twin above is fine in synchronous FFI entry points; this one runs inside
-/// `init_player_async`, where a thread sleep would block a tokio worker thread.
-async fn wait_for_playing_event_async(previous_seq: u64, timeout: Duration) -> bool {
-    let deadline = tokio::time::Instant::now() + timeout;
-    while tokio::time::Instant::now() < deadline {
+/// For the synchronous FFI entry points, which are called on Swift's own threads. Inside the
+/// runtime use the async twin below instead.
+fn wait_for_playing_event(previous_seq: u64, timeout: Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
         if PLAYING_EVENT_SEQ.load(Ordering::SeqCst) > previous_seq {
             return true;
         }
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(PLAYING_EVENT_POLL_INTERVAL);
     }
-    PLAYING_EVENT_SEQ.load(Ordering::SeqCst) > previous_seq
+}
+
+/// Waits for the Player to report playback, without parking a runtime worker.
+///
+/// Runs inside `init_player_async`, where the thread sleep above would block a tokio worker.
+async fn wait_for_playing_event_async(previous_seq: u64, timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if PLAYING_EVENT_SEQ.load(Ordering::SeqCst) > previous_seq {
+            return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(PLAYING_EVENT_POLL_INTERVAL).await;
+    }
 }
 
 /// Reloads what was playing, at the position it stopped.
@@ -2751,6 +2754,19 @@ async fn wait_for_playing_event_async(previous_seq: u64, timeout: Duration) -> b
 /// the rehydration in `init_player_async` runs only when `should_resume()` held, which
 /// implies `was_active` and therefore that `spirc.activate()` already ran.
 fn resume_via_load(spirc: &Arc<Spirc>) -> i32 {
+    /// Issues one resume load. `None` means "this one did not take, try the next fallback";
+    /// a closed channel is the one failure that is terminal, since the next load would fail
+    /// on the same channel.
+    fn try_load(spirc: &Spirc, what: &str, request: LoadRequest) -> Option<i32> {
+        match spirc.load(request) {
+            Ok(_) => Some(0),
+            Err(e) => match spirc_error(what, &e) {
+                ERROR_NEEDS_REINIT => Some(ERROR_NEEDS_REINIT),
+                _ => None,
+            },
+        }
+    }
+
     // Read rather than taken. `Spirc::load` only queues a command, so reaching this point
     // does not mean playback resumed — the load can fail on a closed channel, or be accepted
     // and never produce audio. Clearing here would throw away the only pre-deactivation
@@ -2780,14 +2796,8 @@ fn resume_via_load(spirc: &Arc<Spirc>) -> i32 {
             },
         );
 
-        match spirc.load(load_request) {
-            Ok(_) => return 0,
-            Err(e) => {
-                debug!("Resume fallback context load failed: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    return ERROR_NEEDS_REINIT;
-                }
-            }
+        if let Some(result) = try_load(spirc, "Resume fallback context load", load_request) {
+            return result;
         }
     }
 
@@ -2805,14 +2815,8 @@ fn resume_via_load(spirc: &Arc<Spirc>) -> i32 {
             },
         );
 
-        match spirc.load(load_request) {
-            Ok(_) => return 0,
-            Err(e) => {
-                debug!("Resume fallback track load failed: {:?}", e);
-                if is_channel_closed_error(&e) {
-                    return ERROR_NEEDS_REINIT;
-                }
-            }
+        if let Some(result) = try_load(spirc, "Resume fallback track load", load_request) {
+            return result;
         }
     }
 
@@ -2840,61 +2844,42 @@ pub extern "C" fn spotifly_resume() -> i32 {
     }
     let _resuming = ResumeGuard;
 
-    let spirc = {
-        let spirc_guard = SPIRC.lock().unwrap();
-        spirc_guard.as_ref().cloned()
+    let Some(spirc) = current_spirc("Resume") else {
+        return ERROR_GENERAL;
     };
 
-    match spirc {
-        Some(spirc) => {
-            // Activation is a precondition, not an optimization. `SpircTask` matches
-            // `_ if !self.connect_state.is_active()` ahead of every transport command, so
-            // `Play`, `Load`, `Next`, `Prev`, `Shuffle` and `SetPosition` are discarded with
-            // a warning while inactive — the whole resume path below, load fallback
-            // included, would be dropped and nothing would play. Waking from sleep lands
-            // here every time: the sleep teardown shuts Spirc down, librespot answers with
-            // `SessionDisconnected`, and its handler clears the active flag.
-            if let Err(e) = ensure_active_for_playback(&spirc) {
-                return e;
-            }
+    // Activation is a precondition, not an optimization. `SpircTask` matches
+    // `_ if !self.connect_state.is_active()` ahead of every transport command, so `Play`,
+    // `Load`, `Next`, `Prev`, `Shuffle` and `SetPosition` are discarded with a warning while
+    // inactive — the whole resume path below, load fallback included, would be dropped and
+    // nothing would play. Waking from sleep lands here every time: the sleep teardown shuts
+    // Spirc down, librespot answers with `SessionDisconnected`, and its handler clears the
+    // active flag.
+    if let Err(e) = ensure_active_for_playback(&spirc) {
+        return e;
+    }
 
-            let play_seq_before = PLAYING_EVENT_SEQ.load(Ordering::SeqCst);
-            match spirc.play() {
-                Ok(_) => {
-                    if wait_for_playing_event(play_seq_before, 500) {
-                        return 0;
-                    }
+    let play_seq_before = PLAYING_EVENT_SEQ.load(Ordering::SeqCst);
+    if let Err(e) = spirc.play() {
+        return spirc_error("Resume", &e);
+    }
 
-                    debug!(
-                        "Resume play() produced no Playing event within timeout; attempting load fallback"
-                    );
-                    let fallback_seq_before = PLAYING_EVENT_SEQ.load(Ordering::SeqCst);
-                    let load_result = resume_via_load(&spirc);
-                    if load_result != 0 {
-                        return load_result;
-                    }
+    if wait_for_playing_event(play_seq_before, PLAY_COMMAND_PLAYING_TIMEOUT) {
+        return 0;
+    }
 
-                    if wait_for_playing_event(fallback_seq_before, 2000) {
-                        0
-                    } else {
-                        debug!("Resume fallback load produced no Playing event within timeout");
-                        ERROR_GENERAL
-                    }
-                }
-                Err(e) => {
-                    debug!("Resume error: {:?}", e);
-                    if is_channel_closed_error(&e) {
-                        ERROR_NEEDS_REINIT
-                    } else {
-                        ERROR_GENERAL
-                    }
-                }
-            }
-        }
-        None => {
-            debug!("Resume error: Spirc not initialized");
-            ERROR_GENERAL
-        }
+    debug!("Resume play() produced no Playing event within timeout; attempting load fallback");
+    let fallback_seq_before = PLAYING_EVENT_SEQ.load(Ordering::SeqCst);
+    let load_result = resume_via_load(&spirc);
+    if load_result != 0 {
+        return load_result;
+    }
+
+    if wait_for_playing_event(fallback_seq_before, RESUME_LOAD_PLAYING_TIMEOUT) {
+        0
+    } else {
+        debug!("Resume fallback load produced no Playing event within timeout");
+        ERROR_GENERAL
     }
 }
 
@@ -2946,13 +2931,7 @@ pub extern "C" fn spotifly_shutdown() -> i32 {
     });
     notify_connection_state_change();
 
-    let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        if spirc.shutdown().is_ok() {
-            return 0;
-        }
-    }
-    -1
+    spirc_command("Shutdown", |spirc| spirc.shutdown())
 }
 
 /// Disconnects from Spotify Connect without preventing future reconnection.
@@ -2966,28 +2945,29 @@ pub extern "C" fn spotifly_disconnect() -> i32 {
     // Set sleeping flag to prevent auto-reconnect when cluster listener ends
     SLEEPING.store(true, Ordering::SeqCst);
 
-    let spirc_guard = SPIRC.lock().unwrap();
-    if let Some(spirc) = spirc_guard.as_ref() {
-        // First pause playback to stop producing new audio
-        let _ = spirc.pause();
-        debug!("spotifly_disconnect: paused playback");
+    let Some(spirc) = current_spirc("Disconnect") else {
+        return -1;
+    };
 
-        // Clear the audio buffer synchronously to flush any remaining samples
-        // This must complete before we return, otherwise stale audio plays on wake
-        drop(spirc_guard); // Release lock before blocking call
-        proxy_sink::ProxySink::clear_buffer();
-        debug!("spotifly_disconnect: audio buffer cleared");
+    // First pause playback to stop producing new audio
+    let _ = spirc.pause();
+    debug!("spotifly_disconnect: paused playback");
 
-        // Now shutdown Spirc (disconnect from Spotify Connect)
-        let spirc_guard = SPIRC.lock().unwrap();
-        if let Some(spirc) = spirc_guard.as_ref() {
-            if spirc.shutdown().is_ok() {
-                debug!("spotifly_disconnect: spirc shutdown complete");
-                return 0;
-            }
+    // Clear the audio buffer synchronously to flush any remaining samples.
+    // This must complete before we return, otherwise stale audio plays on wake — and it
+    // blocks, which is the second reason `current_spirc` hands out a clone rather than a
+    // guard.
+    proxy_sink::ProxySink::clear_buffer();
+    debug!("spotifly_disconnect: audio buffer cleared");
+
+    // Now shutdown Spirc (disconnect from Spotify Connect)
+    match spirc.shutdown() {
+        Ok(()) => {
+            debug!("spotifly_disconnect: spirc shutdown complete");
+            0
         }
+        Err(e) => spirc_error("Disconnect", &e),
     }
-    -1
 }
 
 /// Cleans up all player state, allowing a fresh reinitialization.
@@ -3202,35 +3182,30 @@ async fn play_radio_async(uri_str: &str) -> i32 {
 
     debug!("Loading radio playlist: {} at {}ms", playlist_uri, seek_to);
 
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => {
-            if let Err(e) = ensure_active_for_playback(spirc) {
-                return e;
-            }
+    let Some(spirc) = current_spirc("Play radio") else {
+        return -1;
+    };
 
-            let load_request = LoadRequest::from_context_uri(
-                playlist_uri.clone(),
-                LoadRequestOptions {
-                    start_playing: true,
-                    seek_to,
-                    playing_track: Some(PlayingTrack::Uri(uri_str.to_string())),
-                    ..Default::default()
-                },
-            );
-            match spirc.load(load_request) {
-                Ok(_) => {
-                    set_active_device(true);
-                    0
-                }
-                Err(_e) => {
-                    debug!("Play radio error: {:?}", _e);
-                    -1
-                }
-            }
+    if let Err(e) = ensure_active_for_playback(&spirc) {
+        return e;
+    }
+
+    let load_request = LoadRequest::from_context_uri(
+        playlist_uri.clone(),
+        LoadRequestOptions {
+            start_playing: true,
+            seek_to,
+            playing_track: Some(PlayingTrack::Uri(uri_str.to_string())),
+            ..Default::default()
+        },
+    );
+    match spirc.load(load_request) {
+        Ok(_) => {
+            set_active_device(true);
+            0
         }
-        None => {
-            debug!("Play radio error: Spirc not initialized");
+        Err(_e) => {
+            debug!("Play radio error: {:?}", _e);
             -1
         }
     }
@@ -3335,23 +3310,8 @@ pub extern "C" fn spotifly_transfer_to_local() -> i32 {
     if let Err(e) = require_session_connected() {
         return e;
     }
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => {
-            // Pass None to transfer from whatever device is currently playing
-            match spirc.transfer(None) {
-                Ok(_) => 0,
-                Err(_e) => {
-                    debug!("Transfer error: {:?}", _e);
-                    -1
-                }
-            }
-        }
-        None => {
-            debug!("Transfer error: Spirc not initialized");
-            -1
-        }
-    }
+    // Pass None to transfer from whatever device is currently playing
+    spirc_command("Transfer", |spirc| spirc.transfer(None))
 }
 
 /// Transfers playback from this local player to another device.
@@ -3458,23 +3418,7 @@ pub extern "C" fn spotifly_add_to_queue(uri: *const c_char) -> i32 {
         }
     };
 
-    let spirc_guard = SPIRC.lock().unwrap();
-    match spirc_guard.as_ref() {
-        Some(spirc) => match spirc.add_to_queue(spotify_uri) {
-            Ok(_) => {
-                debug!("[Spotifly] add_to_queue succeeded");
-                0
-            }
-            Err(e) => {
-                debug!("Add to queue error: {:?}", e);
-                -1
-            }
-        },
-        None => {
-            debug!("Add to queue error: Spirc not initialized");
-            -1
-        }
-    }
+    spirc_command("Add to queue", |spirc| spirc.add_to_queue(spotify_uri))
 }
 
 #[cfg(test)]
@@ -3810,5 +3754,4 @@ mod tests {
 
         assert!(!dir.exists());
     }
-
 }

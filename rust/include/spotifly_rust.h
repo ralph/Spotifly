@@ -126,9 +126,9 @@ int32_t spotifly_is_active_device(void);
 /// Returns 1 if Spirc is initialized and connected, 0 otherwise.
 int32_t spotifly_is_spirc_ready(void);
 
-/// Returns the current playback position in milliseconds.
-/// If playing, interpolates from last known position.
-/// Returns 0 if not playing or no position available.
+/// Returns the last position the Player reported, in milliseconds, or 0 if it has not
+/// reported one. Deliberately not interpolated — Swift owns display interpolation, and
+/// doing it on both sides made the two clocks disagree.
 uint32_t spotifly_get_position_ms(void);
 
 /// Callback function type for queue updates.
@@ -161,14 +161,6 @@ typedef void (*LoadingCallback)(const char* loading_json);
 /// Registers a callback to receive loading notifications.
 /// Called when a new track starts loading (before metadata is fetched).
 void spotifly_register_loading_callback(LoadingCallback callback);
-
-/// Callback function type for queue change notifications.
-/// Receives a JSON string containing track_uri of the added track.
-typedef void (*QueueChangedCallback)(const char* queue_changed_json);
-
-/// Registers a callback to receive queue change notifications.
-/// Called when a remote device adds a track to the queue.
-void spotifly_register_queue_changed_callback(QueueChangedCallback callback);
 
 /// Callback function type for Connect device deactivation notifications.
 typedef void (*BecameInactiveCallback)(void);
@@ -209,23 +201,6 @@ int32_t spotifly_is_session_connected(void);
 ///   2 = No session initialized (nothing to reconnect)
 int32_t spotifly_force_reconnect(void);
 
-/// Callback function type for context loaded notifications.
-/// Receives a JSON string containing context_uri, current track, next tracks, and previous tracks.
-typedef void (*ContextLoadedCallback)(const char* context_json);
-
-/// Registers a callback to receive context loaded notifications.
-/// Called when a context (playlist, album, etc.) is loaded with the list of track URIs.
-/// This fires immediately when context is loaded locally (before Spotify servers acknowledge).
-void spotifly_register_context_loaded_callback(ContextLoadedCallback callback);
-
-/// Callback function type for added to queue notifications.
-/// Receives a JSON string containing track_uri of the queued track.
-typedef void (*AddedToQueueCallback)(const char* added_json);
-
-/// Registers a callback to receive added to queue notifications.
-/// Called when a track is manually added to the queue (via add_to_queue).
-void spotifly_register_added_to_queue_callback(AddedToQueueCallback callback);
-
 /// Callback function type for set queue notifications.
 /// Receives a JSON string containing next_tracks and prev_tracks arrays with uri and provider.
 typedef void (*SetQueueCallback)(const char* set_queue_json);
@@ -246,7 +221,7 @@ void spotifly_register_active_device_callback(ActiveDeviceCallback callback);
 /// Returns the last queue the Connect cluster described, as JSON, or NULL if no cluster
 /// update has arrived yet. Caller owns the string and must free it with spotifly_free_string.
 /// Replaces the Web API's /me/player and /me/player/queue for Swift's bootstrap.
-char* spotifly_get_queue_snapshot(void);
+char* _Nullable spotifly_get_queue_snapshot(void);
 
 /// Callback function type for Connect device-list updates.
 /// Receives the JSON array `/me/player/devices` used to return, so the same decoder serves both.

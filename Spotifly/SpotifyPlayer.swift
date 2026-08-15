@@ -142,11 +142,6 @@ struct LoadingNotification {
 /// Global subject for loading notifications (nonisolated for C callback access)
 private nonisolated(unsafe) let loadingSubject = PassthroughSubject<LoadingNotification, Never>()
 
-/// Queue changed notification containing the track URI that was added
-struct QueueChangedNotification {
-    nonisolated let trackUri: String
-}
-
 /// Track info in a set queue notification
 struct SetQueueTrackInfo {
     nonisolated let uri: String
@@ -275,9 +270,6 @@ private nonisolated func decodeJSONObject(
     }
 }
 
-/// Global subject for queue changed notifications (nonisolated for C callback access)
-private nonisolated(unsafe) let queueChangedSubject = PassthroughSubject<QueueChangedNotification, Never>()
-
 /// Global subject for set queue notifications (nonisolated for C callback access)
 private nonisolated(unsafe) let setQueueSubject = PassthroughSubject<SetQueueNotification, Never>()
 
@@ -356,13 +348,6 @@ private nonisolated func handleLoadingCallback(_ jsonPtr: UnsafePointer<CChar>?)
     Task { @MainActor in loadingSubject.send(notification) }
 }
 
-/// Registers the queue changed callback with Rust (fires when remote device adds to queue)
-private nonisolated func registerQueueChangedCallback() {
-    spotifly_register_queue_changed_callback { jsonPtr in
-        handleQueueChangedCallback(jsonPtr)
-    }
-}
-
 /// Registers the connection state callback with Rust (fires on state changes)
 private nonisolated func registerConnectionStateCallback() {
     spotifly_register_connection_state_callback { jsonPtr in
@@ -408,15 +393,6 @@ private nonisolated func handleConnectionStateCallback(_ jsonPtr: UnsafePointer<
     }
 
     Task { @MainActor in deliverConnectionState(state) }
-}
-
-/// C callback for queue changed notifications from Rust
-/// Fires when a remote device adds a track to the queue
-private nonisolated func handleQueueChangedCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let json = decodeJSONObject(jsonPtr, context: "handleQueueChangedCallback") else { return }
-
-    let notification = QueueChangedNotification(trackUri: json["track_uri"] as? String ?? "")
-    Task { @MainActor in queueChangedSubject.send(notification) }
 }
 
 /// Registers the set queue callback with Rust (fires when queue is modified)
@@ -598,16 +574,24 @@ private nonisolated func parseQueueItem(from dict: [String: Any]) -> QueueItem? 
     )
 }
 
+/// Builds a queue state from a decoded Rust payload.
+///
+/// Shared by the push callback and the `currentQueueSnapshot()` pull, which read the same
+/// three fields off the same `QueueState` serialization in Rust.
+private nonisolated func parseQueueState(from json: [String: Any]) -> QueueState {
+    QueueState(
+        currentTrack: (json["track"] as? [String: Any]).flatMap { parseQueueItem(from: $0) },
+        nextTracks: (json["next_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
+        previousTracks: (json["prev_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
+    )
+}
+
 /// C callback for queue updates from Rust
 /// Uses manual JSON parsing to avoid Decodable actor isolation issues
 private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
     guard let json = decodeJSONObject(jsonPtr, context: "handleQueueCallback") else { return }
 
-    let state = QueueState(
-        currentTrack: (json["track"] as? [String: Any]).flatMap { parseQueueItem(from: $0) },
-        nextTracks: (json["next_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
-        previousTracks: (json["prev_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
-    )
+    let state = parseQueueState(from: json)
 
     let currentName = state.currentTrack?.name ?? "none"
     let nextCount = state.nextTracks.count
@@ -624,27 +608,18 @@ private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
 /// no queue in it at all. Nil is meaningful and distinct from an empty queue: it means nothing
 /// has been heard yet, so a caller should try again rather than conclude nothing is playing.
 nonisolated func currentQueueSnapshot() -> QueueState? {
-    // Bridged as non-optional, so the null Rust returns for "no cluster update yet" has to be
-    // checked rather than unwrapped.
-    let pointer: UnsafeMutablePointer<CChar>? = spotifly_get_queue_snapshot()
-    guard let pointer else { return nil }
+    guard let pointer = spotifly_get_queue_snapshot() else { return nil }
     defer { spotifly_free_string(pointer) }
 
     guard let json = decodeJSONObject(pointer, context: "currentQueueSnapshot") else { return nil }
 
-    return QueueState(
-        currentTrack: (json["track"] as? [String: Any]).flatMap { parseQueueItem(from: $0) },
-        nextTracks: (json["next_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
-        previousTracks: (json["prev_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
-    )
+    return parseQueueState(from: json)
 }
 
 /// Errors that can occur during playback
 enum SpotifyPlayerError: Error, LocalizedError {
     case initializationFailed
     case playbackFailed
-    case notInitialized
-    case queueFetchFailed
 
     var errorDescription: String? {
         switch self {
@@ -652,10 +627,6 @@ enum SpotifyPlayerError: Error, LocalizedError {
             "Failed to initialize player"
         case .playbackFailed:
             "Failed to play track"
-        case .notInitialized:
-            "Player not initialized"
-        case .queueFetchFailed:
-            "Failed to fetch queue"
         }
     }
 }
@@ -697,7 +668,6 @@ enum SpotifyPlayer {
         registerPlaybackStateCallback()
         registerVolumeCallback()
         registerLoadingCallback()
-        registerQueueChangedCallback()
         registerSetQueueCallback()
         registerBecameInactiveCallback()
         registerBecameActiveCallback()
@@ -749,12 +719,6 @@ enum SpotifyPlayer {
     /// Use this for faster Now Playing updates when playing from remote devices.
     static var loading: AnyPublisher<LoadingNotification, Never> {
         loadingSubject.eraseToAnyPublisher()
-    }
-
-    /// Returns a publisher for queue changed notifications.
-    /// Fires when a remote device adds a track to the queue.
-    static var queueChanged: AnyPublisher<QueueChangedNotification, Never> {
-        queueChangedSubject.eraseToAnyPublisher()
     }
 
     /// Returns a publisher for set queue notifications.
