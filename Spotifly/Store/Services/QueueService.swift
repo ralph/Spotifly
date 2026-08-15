@@ -124,9 +124,7 @@ final class QueueService {
         store.setQueue(previous: prevEntries, current: currentEntry, next: nextEntries, contextUri: notification.contextUri)
         reconcileQueueCurrentTrack()
 
-        // Fetch track metadata for IDs not already in store
-        let allIds = prevEntries.map(\.trackId) + (currentEntry.map { [$0.trackId] } ?? []) + nextEntries.map(\.trackId)
-        fetchTrackMetadata(for: allIds)
+        fetchTrackMetadata(for: Self.trackIds(prevEntries, currentEntry, nextEntries))
     }
 
     /// Number of times a queue refresh may be re-attempted after coming back empty-handed.
@@ -182,16 +180,10 @@ final class QueueService {
             return
         }
 
-        /// Convert QueueItem to QueueEntry (extract track ID and provider)
-        func toQueueEntry(_ item: QueueItem) -> QueueEntry? {
-            guard let trackId = SpotifyAPI.parseTrackURI(item.uri) else { return nil }
-            return QueueEntry(trackId: trackId, provider: TrackProvider(from: item.provider))
-        }
-
-        let currentEntry: QueueEntry? = state.currentTrack.flatMap { toQueueEntry($0) }
-        let nextEntries = state.nextTracks.compactMap { toQueueEntry($0) }
+        let currentEntry = state.currentTrack.flatMap(Self.queueEntry(from:))
+        let nextEntries = state.nextTracks.compactMap(Self.queueEntry(from:))
         // previousTracks is nil when from Web API (which doesn't provide history)
-        let previousEntries = state.previousTracks?.compactMap { toQueueEntry($0) }
+        let previousEntries = state.previousTracks?.compactMap(Self.queueEntry(from:))
 
         if let prevCount = previousEntries?.count {
             log("Queue updated from Mercury: prev=\(prevCount), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
@@ -208,9 +200,7 @@ final class QueueService {
             cancelPendingQueueRefresh()
         }
 
-        // Fetch track metadata for IDs not already in store
-        let allIds = (previousEntries ?? []).map(\.trackId) + (currentEntry.map { [$0.trackId] } ?? []) + nextEntries.map(\.trackId)
-        fetchTrackMetadata(for: allIds)
+        fetchTrackMetadata(for: Self.trackIds(previousEntries ?? [], currentEntry, nextEntries))
     }
 
     // MARK: - Metadata Fetching
@@ -218,10 +208,8 @@ final class QueueService {
     /// Fetch track metadata from Web API for tracks not already in the store
     /// Uses debouncing to avoid cancelling requests during rapid queue updates
     private func fetchTrackMetadata(for trackIds: [String]) {
-        // Deduplicate IDs (queue can have duplicates)
-        var seenIds = Set<String>()
-        let uniqueTrackIds = trackIds.filter { seenIds.insert($0).inserted }
-
+        // A queue can name the same track more than once.
+        let uniqueTrackIds = trackIds.uniqued()
         guard !uniqueTrackIds.isEmpty else { return }
 
         // Filter to only tracks not already in the store
@@ -283,18 +271,6 @@ final class QueueService {
 
     // MARK: - Initial State Fetch
 
-    /// Whether a Web API bootstrap response says anything at all about playback.
-    ///
-    /// Spotify answers both `/me/player` and `/me/player/queue` with 204 when no device is
-    /// active, and those decode to a nil state and an empty queue — indistinguishable from a
-    /// genuinely empty queue. It is the *absence of an answer*, not an answer that nothing is
-    /// queued, and the difference decides whether the queue survives a reconnect.
-    ///
-    /// Applying it is worse than it looks, because `AppStore.setQueue`'s `previous: nil`
-    /// contract splits the queue the wrong way round: the history is preserved and the
-    /// pending tracks — the one part no later callback reconstructs — are destroyed, along
-    /// with the current pointer that `Queue.reconciled` then cannot repair, because it can
-    /// only re-split a list that still contains the track.
     /// Adopts whatever the Connect cluster last said is playing.
     ///
     /// **This used to be two Web API requests**, `/me/player` and `/me/player/queue`, asked
@@ -323,12 +299,18 @@ final class QueueService {
 
         log("Initial queue: prev=\(update.previous.count), current=\(update.current != nil ? 1 : 0), next=\(update.next.count)")
 
-        let allIds = update.previous.map(\.trackId)
-            + (update.current.map { [$0.trackId] } ?? [])
-            + update.next.map(\.trackId)
-        fetchTrackMetadata(for: allIds)
+        fetchTrackMetadata(for: Self.trackIds(update.previous, update.current, update.next))
 
         return true
+    }
+
+    /// The whole queue's track ids in play order, which is what a metadata fetch needs.
+    private static func trackIds(
+        _ previous: [QueueEntry],
+        _ current: QueueEntry?,
+        _ next: [QueueEntry],
+    ) -> [String] {
+        (previous + (current.map { [$0] } ?? []) + next).map(\.trackId)
     }
 
     /// What a cluster snapshot resolves to, or **nil when it must not be applied**.

@@ -48,37 +48,25 @@ final class AlbumService {
         }
 
         try await listRequests.run(Self.listKey) {
-            let offset = self.store.albumsPagination.nextOffset ?? 0
-            self.store.albumsPagination.isLoading = true
-            defer {
-                // Only if this run is still the one loading: a superseded run
-                // must not clear the state its replacement just set.
-                if !Task.isCancelled {
-                    self.store.albumsPagination.isLoading = false
+            try await self.store.loadLibraryPage(\.albumsPagination) { offset in
+                let page = try await self.partnerAPI.libraryAlbums(offset: offset)
+                // A force refresh cancels this run and starts another. Cancellation is
+                // cooperative, so without this the superseded page would still be
+                // written — over the reset its replacement just performed.
+                try Task.checkCancellation()
+
+                let albums = page.entities.compactMap { Album(pathfinder: $0) }
+                self.store.upsertAlbums(albums)
+
+                let albumIds = albums.map(\.id)
+                if offset == 0 {
+                    self.store.setUserAlbumIds(albumIds)
+                } else {
+                    self.store.appendUserAlbumIds(albumIds)
                 }
+
+                return (page.items?.count ?? 0, page.totalCount ?? 0)
             }
-
-            let page = try await self.partnerAPI.libraryAlbums(offset: offset)
-            // A force refresh cancels this run and starts another. Cancellation is
-            // cooperative, so without this the superseded page would still be
-            // written — over the reset its replacement just performed.
-            try Task.checkCancellation()
-
-            let albums = page.entities.compactMap { Album(pathfinder: $0) }
-            self.store.upsertAlbums(albums)
-
-            let albumIds = albums.map(\.id)
-            if offset == 0 {
-                self.store.setUserAlbumIds(albumIds)
-            } else {
-                self.store.appendUserAlbumIds(albumIds)
-            }
-
-            self.store.albumsPagination.isLoaded = true
-            self.store.albumsPagination.advance(
-                by: page.items?.count ?? 0,
-                total: page.totalCount ?? 0,
-            )
         }
     }
 
@@ -100,16 +88,13 @@ final class AlbumService {
     /// callers share one run, and the run outlives a caller whose view was torn
     /// down mid-flight — see `InFlightRequests`.
     func ensureAlbumLoaded(albumId: String) async throws {
-        guard needsLoad(albumId) else { return }
+        if let album = store.albums[albumId], album.detailsLoaded, album.tracksLoaded {
+            return
+        }
 
         try await albumRequests.run(albumId) {
             try await self.loadAlbum(albumId: albumId)
         }
-    }
-
-    private func needsLoad(_ albumId: String) -> Bool {
-        guard let album = store.albums[albumId] else { return true }
-        return !album.detailsLoaded || !album.tracksLoaded
     }
 
     /// Loads an album and its tracks in **one** request.

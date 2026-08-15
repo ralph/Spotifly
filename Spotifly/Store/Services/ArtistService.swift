@@ -46,39 +46,27 @@ final class ArtistService {
             store.artistsPagination.reset()
         }
 
+        // Followed artists used to be the one cursor-paginated list in the app, because
+        // `/me/following` took an `after` id rather than an offset. `libraryV3` pages by
+        // offset like everything else, so the special case is gone.
         try await listRequests.run(Self.listKey) {
-            // Followed artists used to be the one cursor-paginated list in the app, because
-            // `/me/following` took an `after` id rather than an offset. `libraryV3` pages by
-            // offset like everything else, so the special case is gone.
-            let offset = self.store.artistsPagination.nextOffset ?? 0
-            self.store.artistsPagination.isLoading = true
-            defer {
-                // Only if this run is still the one loading: a superseded run
-                // must not clear the state its replacement just set.
-                if !Task.isCancelled {
-                    self.store.artistsPagination.isLoading = false
+            try await self.store.loadLibraryPage(\.artistsPagination) { offset in
+                let page = try await self.partnerAPI.libraryArtists(offset: offset)
+                // See AlbumService.loadUserAlbums: a superseded run must not write.
+                try Task.checkCancellation()
+
+                let artists = page.entities.compactMap { Artist(pathfinder: $0) }
+                self.store.upsertArtists(artists)
+
+                let artistIds = artists.map(\.id)
+                if offset == 0 {
+                    self.store.setUserArtistIds(artistIds)
+                } else {
+                    self.store.appendUserArtistIds(artistIds)
                 }
+
+                return (page.items?.count ?? 0, page.totalCount ?? 0)
             }
-
-            let page = try await self.partnerAPI.libraryArtists(offset: offset)
-            // See AlbumService.loadUserAlbums: a superseded run must not write.
-            try Task.checkCancellation()
-
-            let artists = page.entities.compactMap { Artist(pathfinder: $0) }
-            self.store.upsertArtists(artists)
-
-            let artistIds = artists.map(\.id)
-            if offset == 0 {
-                self.store.setUserArtistIds(artistIds)
-            } else {
-                self.store.appendUserArtistIds(artistIds)
-            }
-
-            self.store.artistsPagination.isLoaded = true
-            self.store.artistsPagination.advance(
-                by: page.items?.count ?? 0,
-                total: page.totalCount ?? 0,
-            )
         }
     }
 

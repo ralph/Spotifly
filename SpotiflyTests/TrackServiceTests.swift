@@ -17,7 +17,7 @@ struct TrackServiceTests {
     /// store costs no request.
     @Test func `cached metadata returns without a request`() async throws {
         let store = AppStore()
-        store.upsertTrack(Track(from: apiTrack(id: "cached")))
+        store.upsertTracks([track(id: "cached")])
         let requests = RequestRecorder()
         let service = TrackService(
             store: store,
@@ -246,24 +246,23 @@ private final class RequestGate {
 
 @MainActor
 private func metadata(for trackIds: [String]) -> [String: Track] {
-    Dictionary(uniqueKeysWithValues: trackIds.map { ($0, Track(from: apiTrack(id: $0))) })
+    Dictionary(uniqueKeysWithValues: trackIds.map { ($0, track(id: $0)) })
 }
 
 @MainActor
-private func apiTrack(id: String) -> APITrack {
-    APITrack(
+private func track(id: String) -> Track {
+    Track(
         id: id,
-        addedAt: nil,
+        name: "Track \(id)",
+        uri: "spotify:track:\(id)",
+        durationMs: 180_000,
+        trackNumber: 1,
+        externalUrl: nil,
         albumId: "album",
-        albumName: "Album",
         artistId: "artist",
         artistName: "Artist",
-        durationMs: 180_000,
-        externalUrl: nil,
+        albumName: "Album",
         images: .empty,
-        name: "Track \(id)",
-        trackNumber: 1,
-        uri: "spotify:track:\(id)",
     )
 }
 

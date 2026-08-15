@@ -61,7 +61,7 @@ struct ImageSet: Hashable, Encodable {
 // MARK: - Track
 
 /// Unified track entity - single source of truth for all track data.
-/// Constructed from APITrack via EntityConversions.
+/// Built from the pathfinder and spclient responses in `PartnerAPI/`.
 struct Track: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
@@ -81,11 +81,6 @@ struct Track: Identifiable, Hashable, Encodable {
 
     var durationFormatted: String {
         formatTrackTime(milliseconds: durationMs)
-    }
-
-    /// Returns externalUrl if available, otherwise generates from ID
-    var externalUrlOrGenerated: String {
-        externalUrl ?? spotifyExternalUrl(type: .track, id: id)
     }
 }
 
@@ -111,10 +106,10 @@ struct Album: Identifiable, Hashable, Encodable {
 
     /// Whether every field came from a source that returns them all.
     ///
-    /// False for the stub `TopItemsService` builds out of a track's album object,
-    /// which carries no release date, album type or external URL. `AlbumService`
-    /// uses this to decide whether the metadata request can be skipped — presence
-    /// in the store alone would not be enough.
+    /// False for the stubs built out of a shelf entry or an artist's release list, which
+    /// carry no release date, album type or external URL. `AlbumService` uses this to decide
+    /// whether the metadata request can be skipped — presence in the store alone would not
+    /// be enough.
     var detailsLoaded: Bool
 
     /// Whether the track list was fetched. Stored rather than derived from
@@ -128,11 +123,6 @@ struct Album: Identifiable, Hashable, Encodable {
     /// Track count - uses loaded trackIds if available, otherwise falls back to API count
     var trackCount: Int {
         tracksLoaded ? trackIds.count : (_knownTrackCount ?? 0)
-    }
-
-    var formattedDuration: String? {
-        guard let totalDurationMs else { return nil }
-        return formatDuration(milliseconds: totalDurationMs)
     }
 
     /// Memberwise initializer with all fields
@@ -214,11 +204,6 @@ struct Playlist: Identifiable, Hashable, Encodable {
     /// The tracks in order, for the many readers that do not care which occurrence is which.
     var trackIds: [String] {
         items.map(\.trackId)
-    }
-
-    var formattedDuration: String? {
-        guard let totalDurationMs else { return nil }
-        return formatDuration(milliseconds: totalDurationMs)
     }
 
     /// Memberwise initializer with all fields
@@ -367,52 +352,36 @@ enum TrackProvider: String, Codable {
     case autoplay // Autoplay suggestion
     case unavailable // Track is unavailable
 
-    /// Parse from librespot provider string
+    /// Parse from librespot provider string. Anything unrecognised is a track this app has
+    /// no row for, which is what `.unavailable` already means.
     init(from providerString: String) {
-        switch providerString {
-        case "queue": self = .queue
-        case "context": self = .context
-        case "autoplay": self = .autoplay
-        case "unavailable": self = .unavailable
-        default: self = .unavailable // Unknown provider values treated as unavailable
-        }
+        self = TrackProvider(rawValue: providerString) ?? .unavailable
     }
 }
 
-/// A track in the queue with provider information
-struct QueueTrack: Identifiable {
-    let id: String // Unique ID for list diffing (track.id + index or UUID)
-    let track: Track
-    let provider: TrackProvider
+// MARK: - Search Results
 
-    /// Create from a Track with provider info
-    init(id: String = UUID().uuidString, track: Track, provider: TrackProvider) {
-        self.id = id
-        self.track = track
-        self.provider = provider
-    }
+/// One search's four result lists, cached per query by `AppStore`.
+struct SearchResults: Encodable {
+    let albums: [Album]
+    let artists: [Artist]
+    let playlists: [Playlist]
+    let tracks: [Track]
 }
 
-/// Represents the current playback queue state
-struct PlaybackQueue {
-    var currentTrack: QueueTrack?
-    var manualQueue: [QueueTrack] // Manually queued tracks (provider: .queue)
-    var contextTracks: [QueueTrack] // Tracks from current context (provider: .context)
+// MARK: - Duplicate Ids
 
-    /// All upcoming tracks - manual queue plays first, then context
-    var allUpcoming: [QueueTrack] {
-        manualQueue + contextTracks
-    }
-
-    /// Total count of upcoming tracks
-    var upcomingCount: Int {
-        manualQueue.count + contextTracks.count
-    }
-
-    init(currentTrack: QueueTrack? = nil, manualQueue: [QueueTrack] = [], contextTracks: [QueueTrack] = []) {
-        self.currentTrack = currentTrack
-        self.manualQueue = manualQueue
-        self.contextTracks = contextTracks
+extension Sequence where Element: Hashable {
+    /// First occurrence of each element, in order.
+    ///
+    /// Needed in more places than it looks, because relinking is **many-to-one**: several
+    /// saved recordings can share one market id, which is the id the app keys tracks by
+    /// (`AGENTS.md`, "Track identity is the market id"). So a library page can name the same
+    /// track twice, a queue can hold one track more than once, and every collection built
+    /// from track ids has to survive that.
+    nonisolated func uniqued() -> [Element] {
+        var seen = Set<Element>()
+        return filter { seen.insert($0).inserted }
     }
 }
 

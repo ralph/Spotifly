@@ -129,6 +129,9 @@ final class AppStore {
 
     /// Entities explicitly deleted during this session. Missing entities are not
     /// enough to invalidate a route because a deep-linked entity may still be loading.
+    ///
+    /// Only playlists can land here: an album or artist dropped from the library still
+    /// exists and its page still opens, so unsaving one invalidates no route.
     private(set) var deletedEntitySelections: Set<Selection> = []
 
     // MARK: - Start Page State
@@ -254,12 +257,7 @@ final class AppStore {
         resolvedFavoriteTrackIds.contains(trackId)
     }
 
-    /// Upsert a single track
-    func upsertTrack(_ track: Track) {
-        tracks[track.id] = track
-    }
-
-    /// Upsert multiple tracks
+    /// Upsert tracks
     func upsertTracks(_ newTracks: [Track]) {
         for track in newTracks {
             tracks[track.id] = track
@@ -271,7 +269,6 @@ final class AppStore {
     /// release date or album type) does not replace fully fetched metadata, and no
     /// upsert drops loaded tracks.
     func upsertAlbum(_ album: Album) {
-        deletedEntitySelections.remove(.album(id: album.id))
         guard let existing = albums[album.id] else {
             albums[album.id] = album
             return
@@ -306,7 +303,6 @@ final class AppStore {
 
     /// Upsert a single artist
     func upsertArtist(_ artist: Artist) {
-        deletedEntitySelections.remove(.artist(id: artist.id))
         artists[artist.id] = artist
     }
 
@@ -425,6 +421,40 @@ final class AppStore {
         devices = updatedDevices
     }
 
+    // MARK: - Library Paging
+
+    /// Runs one page of a paged library list: hands `load` the offset to ask for, and records
+    /// what came back.
+    ///
+    /// The four lists — playlists, albums, artists, favorites — page identically, and the two
+    /// subtleties in that sequence had been copied into each of them. First, the loading flag is
+    /// only cleared by the run that is still the current one: a force refresh cancels its
+    /// predecessor, and the cancelled run must not clear the state its replacement just set.
+    /// Second, `advance` is given the number of **entries the page held**, which `load` returns,
+    /// not the number the caller could use — a page of the library can hold folders, and a page
+    /// of saved tracks can name the same relinked recording twice, so advancing by the usable
+    /// count would re-request the difference forever.
+    ///
+    /// `load` writes the entities itself, because only it knows what kind they are. It is also
+    /// where `try Task.checkCancellation()` belongs, between its network call and its writes.
+    func loadLibraryPage(
+        _ pagination: ReferenceWritableKeyPath<AppStore, PaginationState>,
+        _ load: (_ offset: Int) async throws -> (received: Int, total: Int),
+    ) async throws {
+        let offset = self[keyPath: pagination].nextOffset ?? 0
+        self[keyPath: pagination].isLoading = true
+        defer {
+            if !Task.isCancelled {
+                self[keyPath: pagination].isLoading = false
+            }
+        }
+
+        let page = try await load(offset)
+
+        self[keyPath: pagination].isLoaded = true
+        self[keyPath: pagination].advance(by: page.received, total: page.total)
+    }
+
     // MARK: - User Library Mutations
 
     /// Set user's playlist IDs (replaces existing)
@@ -457,31 +487,23 @@ final class AppStore {
         userArtistIds.append(contentsOf: ids)
     }
 
-    /// Set saved track IDs for the Favorites section (replaces existing list order only)
-    func setSavedTrackIds(_ ids: [String]) {
-        savedTrackIds = Self.deduplicated(ids)
-    }
-
-    /// Append saved track IDs for Favorites pagination
-    func appendSavedTrackIds(_ ids: [String]) {
-        savedTrackIds = Self.deduplicated(savedTrackIds + ids)
-    }
-
-    /// Relinking is **many-to-one**: several saved recordings can share one market id, which is
-    /// the id the app keys tracks by (`AGENTS.md`, "Track identity is the market id"). So a
-    /// library page can name the same track twice, and two pages can each name it once.
+    /// Set saved track IDs for the Favorites section (replaces existing list order only).
     ///
-    /// One row per track is not cosmetic here. `favoriteTracks` feeds a SwiftUI `ForEach` keyed
-    /// by `Track.id`, and duplicate ids there are undefined behaviour rather than a duplicate
-    /// row. Deduplicating across the whole list rather than per page is what makes the second
-    /// case work.
+    /// One row per track is not cosmetic: `favoriteTracks` feeds a SwiftUI `ForEach` keyed by
+    /// `Track.id`, and duplicate ids there are undefined behaviour rather than a duplicate row.
+    /// Relinking makes them arrive — see `uniqued()`.
     ///
     /// A knock-on worth knowing: the list can be shorter than the `total` Spotify reports,
     /// because that counts saved entries and this counts tracks. Pagination is unaffected —
     /// offsets are Spotify's side of the conversation.
-    private static func deduplicated(_ ids: [String]) -> [String] {
-        var seen = Set<String>()
-        return ids.filter { seen.insert($0).inserted }
+    func setSavedTrackIds(_ ids: [String]) {
+        savedTrackIds = ids.uniqued()
+    }
+
+    /// Append saved track IDs for Favorites pagination. Deduplicated across the whole list
+    /// rather than per page, so two pages can each name the same relinked recording.
+    func appendSavedTrackIds(_ ids: [String]) {
+        savedTrackIds = (savedTrackIds + ids).uniqued()
     }
 
     // MARK: - Favorite Actions
@@ -515,13 +537,11 @@ final class AppStore {
     }
 
     /// Mark fetched Favorites-section tracks as favorited without changing list order.
-    ///
-    /// Tolerates a repeated id rather than trapping on one: a library page can name the same
-    /// market recording twice, for the reason `deduplicated` explains. The status is the same
-    /// `true` either way, so collapsing them loses nothing.
     func markTracksAsFavorite(_ trackIds: [String]) {
-        let statuses = Dictionary(trackIds.map { ($0, true) }, uniquingKeysWith: { first, _ in first })
-        updateFavoriteStatuses(statuses)
+        for trackId in trackIds {
+            resolvedFavoriteTrackIds.insert(trackId)
+            favoriteTrackIds.insert(trackId)
+        }
     }
 
     // MARK: - Playlist Actions
@@ -610,14 +630,12 @@ final class AppStore {
     /// Add album to user's library
     func addAlbumToUserLibrary(_ albumId: String) {
         guard !userAlbumIds.contains(albumId) else { return }
-        deletedEntitySelections.remove(.album(id: albumId))
         userAlbumIds.insert(albumId, at: 0)
     }
 
     /// Add artist to user's followed artists
     func addArtistToUserLibrary(_ artistId: String) {
         guard !userArtistIds.contains(artistId) else { return }
-        deletedEntitySelections.remove(.artist(id: artistId))
         userArtistIds.insert(artistId, at: 0)
     }
 
@@ -720,26 +738,6 @@ final class AppStore {
         guard reconciledQueue != queue else { return false }
         queue = reconciledQueue
         return true
-    }
-
-    /// Insert a track into the queue after any existing manually queued items (provider: .queue),
-    /// but before context tracks. This is used for immediate UI feedback when adding to queue.
-    func insertQueuedTrack(trackId: String) {
-        let entry = QueueEntry(trackId: trackId, provider: .queue)
-
-        // Find the position to insert: after all existing .queue items, before context items
-        let insertIndex = queue.nextTracks.firstIndex { $0.provider != .queue } ?? queue.nextTracks.count
-        queue.nextTracks.insert(entry, at: insertIndex)
-    }
-
-    /// Set queue loading state
-    func setQueueLoading(_ isLoading: Bool) {
-        queue.isLoading = isLoading
-    }
-
-    /// Set queue error message
-    func setQueueError(_ message: String?) {
-        queue.errorMessage = message
     }
 
     // MARK: - User Profile Actions

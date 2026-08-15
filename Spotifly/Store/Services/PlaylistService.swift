@@ -57,39 +57,26 @@ final class PlaylistService {
         }
 
         try await listRequests.run(Self.listKey) {
-            let offset = self.store.playlistsPagination.nextOffset ?? 0
-            self.store.playlistsPagination.isLoading = true
-            defer {
-                // Only if this run is still the one loading: a superseded run
-                // must not clear the state its replacement just set.
-                if !Task.isCancelled {
-                    self.store.playlistsPagination.isLoading = false
+            try await self.store.loadLibraryPage(\.playlistsPagination) { offset in
+                let page = try await self.partnerAPI.libraryPlaylists(offset: offset)
+                // See AlbumService.loadUserAlbums: a superseded run must not write.
+                try Task.checkCancellation()
+
+                // Can be fewer than the page holds. Folders are excluded by asking for the
+                // list flattened (see `PathfinderLibraryVariables`) rather than by being
+                // filtered here, which also brings back the playlists nested inside them.
+                let playlists = page.entities.compactMap { Playlist(pathfinder: $0) }
+                self.store.upsertPlaylists(playlists)
+
+                let playlistIds = playlists.map(\.id)
+                if offset == 0 {
+                    self.store.setUserPlaylistIds(playlistIds)
+                } else {
+                    self.store.appendUserPlaylistIds(playlistIds)
                 }
+
+                return (page.items?.count ?? 0, page.totalCount ?? 0)
             }
-
-            let page = try await self.partnerAPI.libraryPlaylists(offset: offset)
-            // See AlbumService.loadUserAlbums: a superseded run must not write.
-            try Task.checkCancellation()
-
-            // Can be fewer than the page holds, so the offset advances by the page's item count
-            // rather than by this one. Folders are excluded by asking for the list flattened
-            // (see `PathfinderLibraryVariables`) rather than by being filtered here, which also
-            // brings back the playlists nested inside them.
-            let playlists = page.entities.compactMap { Playlist(pathfinder: $0) }
-            self.store.upsertPlaylists(playlists)
-
-            let playlistIds = playlists.map(\.id)
-            if offset == 0 {
-                self.store.setUserPlaylistIds(playlistIds)
-            } else {
-                self.store.appendUserPlaylistIds(playlistIds)
-            }
-
-            self.store.playlistsPagination.isLoaded = true
-            self.store.playlistsPagination.advance(
-                by: page.items?.count ?? 0,
-                total: page.totalCount ?? 0,
-            )
         }
     }
 
@@ -130,6 +117,7 @@ final class PlaylistService {
     /// postcondition — a caller can join either one. So a playlist that is somehow
     /// not in the store still gets loaded whole here; this only *adds* the guarantee
     /// that the tracks are freshly fetched.
+    ///
     /// A forced reload means the store's copy is already known to be wrong — after an add,
     /// whose rows carry locally generated uids, or after a move, whose order is optimistic. So
     /// if the refetch does not land, the contents are marked stale: left marked loaded, nothing
@@ -148,20 +136,14 @@ final class PlaylistService {
                 try await self.loadPlaylist(playlistId: playlistId, forceTracks: true)
             }
         } catch {
-            if !Self.isSupersession(error) {
+            // Cancellation reaches here in two forms, because the run can be cut at two
+            // points: `loadPlaylist` checks cancellation itself, and `URLSession` reports a
+            // cancelled task as a `URLError` rather than a `CancellationError`.
+            if !isCancellation(error) {
                 store.invalidatePlaylistTracks(for: playlistId)
             }
             throw error
         }
-    }
-
-    /// Whether a failure means "something newer owns this" rather than "the request failed".
-    ///
-    /// Two forms, because the run can be cut at two points: `loadPlaylist` checks cancellation
-    /// itself, and `URLSession` reports a cancelled task as a `URLError` of its own rather than
-    /// as a `CancellationError`.
-    private static func isSupersession(_ error: any Error) -> Bool {
-        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 
     /// Loads a playlist and its contents in **one** request.

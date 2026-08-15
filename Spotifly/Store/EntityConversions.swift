@@ -2,107 +2,54 @@
 //  EntityConversions.swift
 //  Spotifly
 //
-//  Conversion initializers from API response types to unified entities.
+//  What is left of the wire-type → entity conversions after the partner-API migration.
+//  Everything pathfinder and spclient return is converted in `PartnerAPI/`; these two are
+//  the stragglers, one from the FFI and one shared by both playlist sources.
 //
 
 import Foundation
 
-// MARK: - Track Conversions
+// MARK: - Device
 
-extension Track {
-    /// Convert from APITrack (unified track type from all API sources)
-    init(from track: APITrack) {
-        id = track.id
-        name = track.name
-        uri = track.uri
-        durationMs = track.durationMs
-        trackNumber = track.trackNumber
-        externalUrl = track.externalUrl
-        albumId = track.albumId
-        artistId = track.artistId
-        artistName = track.artistName
-        albumName = track.albumName
-        images = track.images
+/// A Connect device as Rust hands it over the FFI. The field names are the cluster's, which is
+/// why they arrive snake-cased.
+struct DeviceCodable: Decodable {
+    let id: String?
+    let name: String
+    let type: String
+    let isActive: Bool?
+    let isPrivateSession: Bool?
+    let isRestricted: Bool?
+    let volumePercent: Int?
+    let disableVolume: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, type
+        case isActive = "is_active"
+        case isPrivateSession = "is_private_session"
+        case isRestricted = "is_restricted"
+        case volumePercent = "volume_percent"
+        case disableVolume = "disable_volume"
     }
 
-    /// Convert from APITrack with album context override
-    /// Used when album info isn't included in the API response (e.g., album tracks endpoint)
-    init(from track: APITrack, albumId: String, albumName: String, images: ImageSet) {
-        id = track.id
-        name = track.name
-        uri = track.uri
-        durationMs = track.durationMs
-        trackNumber = track.trackNumber
-        externalUrl = track.externalUrl
-        self.albumId = albumId
-        artistId = track.artistId
-        artistName = track.artistName
-        self.albumName = albumName
-        self.images = images
-    }
-}
-
-// MARK: - Album Conversions
-
-extension Album {
-    /// Convert from APIAlbum.
-    ///
-    /// Every endpoint that produces an `APIAlbum` — `/albums/{id}`, `/me/albums`,
-    /// `/artists/{id}/albums`, search — returns the full set of fields this entity
-    /// has, so the result counts as details-loaded.
-    init(from album: APIAlbum) {
-        self.init(
-            id: album.id,
-            name: album.name,
-            uri: album.uri,
-            images: album.images,
-            releaseDate: album.releaseDate,
-            albumType: album.albumType,
-            externalUrl: album.externalUrl,
-            artistId: album.artistId,
-            artistName: album.artistName,
-            trackIds: [],
-            totalDurationMs: album.totalDurationMs,
-            knownTrackCount: album.trackCount,
-            detailsLoaded: true,
-        )
-    }
-
-    /// Create with explicit track IDs (when loading album details with tracks)
-    init(from album: APIAlbum, trackIds: [String], totalDurationMs: Int?) {
-        self.init(
-            id: album.id,
-            name: album.name,
-            uri: album.uri,
-            images: album.images,
-            releaseDate: album.releaseDate,
-            albumType: album.albumType,
-            externalUrl: album.externalUrl,
-            artistId: album.artistId,
-            artistName: album.artistName,
-            trackIds: trackIds,
-            totalDurationMs: totalDurationMs,
-            knownTrackCount: nil, // We have actual tracks
-            detailsLoaded: true,
-            tracksLoaded: true,
+    func toDevice() -> Device? {
+        guard let id else { return nil }
+        return Device(
+            id: id,
+            name: name,
+            type: type,
+            isActive: isActive ?? false,
+            isPrivateSession: isPrivateSession ?? false,
+            isRestricted: isRestricted ?? false,
+            volumePercent: volumePercent,
+            // Absent means nothing was declared, which is not a declaration that volume is
+            // refused — so the slider stays live and the command decides, as before.
+            disableVolume: disableVolume ?? false,
         )
     }
 }
 
-// MARK: - Artist Conversions
-
-extension Artist {
-    /// Convert from APIArtist
-    init(from artist: APIArtist) {
-        id = artist.id
-        name = artist.name
-        uri = artist.uri
-        images = artist.images
-        externalUrl = artist.externalUrl
-    }
-}
-
-// MARK: - Playlist Conversions
+// MARK: - Playlist
 
 extension String? {
     /// Spotify's playlist list answers with the literal string `"null"` when a playlist has no

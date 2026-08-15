@@ -149,8 +149,9 @@ final class DeviceService {
         return true
     }
 
-    /// Waits if a transfer happened recently, giving the Web API time to reflect the new state.
-    /// Call before `fetchInitialPlaybackState` on reconnect.
+    /// Waits if a transfer happened recently, giving the cluster time to push the state the
+    /// transfer produced. Call before `fetchInitialPlaybackState` on reconnect, which reads
+    /// the last cluster update and would otherwise read the one from before the transfer.
     func waitForTransferSettling() async {
         guard let transferTime = lastTransferTime else { return }
         let elapsed = transferTime.duration(to: .now)

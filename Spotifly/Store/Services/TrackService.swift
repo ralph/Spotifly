@@ -70,7 +70,7 @@ final class TrackService {
     /// is not asked for again — which is why `SpclientAPI.tracks` is careful to report only a
     /// genuine 404 as an absence, and to throw on anything that might not recur.
     func ensureTracksLoaded(trackIds: [String]) async throws {
-        let missingTrackIds = uniqueTrackIds(trackIds).filter {
+        let missingTrackIds = trackIds.uniqued().filter {
             store.tracks[$0] == nil && !unavailableTrackIds.contains($0)
         }
         guard !missingTrackIds.isEmpty else { return }
@@ -105,40 +105,24 @@ final class TrackService {
         }
 
         try await listRequests.run(Self.listKey) {
-            let offset = self.store.favoritesPagination.nextOffset ?? 0
-            self.store.favoritesPagination.isLoading = true
-            defer {
-                // Only if this run is still the one loading: a superseded run
-                // must not clear the state its replacement just set.
-                if !Task.isCancelled {
-                    self.store.favoritesPagination.isLoading = false
+            try await self.store.loadLibraryPage(\.favoritesPagination) { offset in
+                let page = try await self.partnerAPI.libraryTracks(offset: offset, limit: 50)
+                // See AlbumService.loadUserAlbums: a superseded run must not write.
+                try Task.checkCancellation()
+
+                let tracks = page.tracks
+                self.store.upsertTracks(tracks)
+
+                let trackIds = tracks.map(\.id)
+                if offset == 0 {
+                    self.store.setSavedTrackIds(trackIds)
+                } else {
+                    self.store.appendSavedTrackIds(trackIds)
                 }
+                self.store.markTracksAsFavorite(trackIds)
+
+                return (page.items?.count ?? 0, page.totalCount ?? 0)
             }
-
-            let page = try await self.partnerAPI.libraryTracks(offset: offset, limit: 50)
-            // See AlbumService.loadUserAlbums: a superseded run must not write.
-            try Task.checkCancellation()
-
-            let tracks = page.tracks
-            self.store.upsertTracks(tracks)
-
-            let trackIds = tracks.map(\.id)
-            if offset == 0 {
-                self.store.setSavedTrackIds(trackIds)
-            } else {
-                self.store.appendSavedTrackIds(trackIds)
-            }
-            self.store.markTracksAsFavorite(trackIds)
-
-            self.store.favoritesPagination.isLoaded = true
-            // By the page's entry count, not by the track count: relinking is many-to-one, so
-            // several saved entries can resolve to one recording and the list is legitimately
-            // shorter than the page. Advancing by the shorter number would ask for the
-            // difference again on every page.
-            self.store.favoritesPagination.advance(
-                by: page.items?.count ?? 0,
-                total: page.totalCount ?? 0,
-            )
         }
     }
 
@@ -190,51 +174,36 @@ final class TrackService {
 
     // MARK: - Favorite Status Check
 
-    /// The one request the checks below are built out of. Private so every caller goes
-    /// through `ensureFavoriteStatuses` and is deduplicated against `checksInFlight`.
+    /// How many track ids one `entitiesInLibrary` request may carry.
+    private static let statusBatchSize = 50
+
+    /// Resolve favorite status for any tracks we haven't checked yet.
+    /// Callers should batch track IDs (e.g. all tracks in a list) for efficiency.
     ///
-    /// There was a `refreshFavoriteStatuses` beside it that skipped the resolved cache, for
+    /// There was a `refreshFavoriteStatuses` beside this that skipped the resolved cache, for
     /// callers wanting to re-ask. Its only caller was the Now Playing bar, firing on every view
     /// re-appearance — seven identical requests for one track in under two minutes — so it was
     /// removed with that call rather than left as a loaded gun. A genuine need to re-ask should
     /// come from Spotify's collection change feed rather than from polling.
-    private func checkFavoriteStatuses(trackIds: [String]) async throws {
-        guard !trackIds.isEmpty else { return }
-
-        let statuses = try await favoriteStatusFetcher(trackIds)
-
-        store.updateFavoriteStatuses(statuses)
-    }
-
-    /// Resolve favorite status for any tracks we haven't checked yet.
-    /// Callers should batch track IDs (e.g. all tracks in a list) for efficiency.
     func ensureFavoriteStatuses(trackIds: [String]) async {
-        let unresolved = uniqueTrackIds(trackIds).filter {
+        let unresolved = trackIds.uniqued().filter {
             !store.hasResolvedFavoriteStatus(for: $0)
         }
-        await check(unresolved)
-    }
-
-    private func check(_ trackIds: [String]) async {
-        guard !trackIds.isEmpty else { return }
+        guard !unresolved.isEmpty else { return }
 
         // A failed check is not worth reporting — the heart just stays as it was — so
         // the run swallows its own errors and `run` has nothing left to throw.
-        try? await statusChecks.run(trackIds) { uncheckedTrackIds in
-            for batch in self.batches(of: uncheckedTrackIds, size: 50) {
-                try? await self.checkFavoriteStatuses(trackIds: batch)
+        try? await statusChecks.run(unresolved) { uncheckedTrackIds in
+            for batch in Self.statusBatches(of: uncheckedTrackIds) {
+                guard let statuses = try? await self.favoriteStatusFetcher(batch) else { continue }
+                self.store.updateFavoriteStatuses(statuses)
             }
         }
     }
 
-    private func uniqueTrackIds(_ trackIds: [String]) -> [String] {
-        var seen = Set<String>()
-        return trackIds.filter { seen.insert($0).inserted }
-    }
-
-    private func batches(of trackIds: [String], size: Int) -> [[String]] {
-        stride(from: 0, to: trackIds.count, by: size).map {
-            Array(trackIds[$0 ..< min($0 + size, trackIds.count)])
+    private static func statusBatches(of trackIds: [String]) -> [[String]] {
+        stride(from: 0, to: trackIds.count, by: statusBatchSize).map {
+            Array(trackIds[$0 ..< min($0 + statusBatchSize, trackIds.count)])
         }
     }
 }
