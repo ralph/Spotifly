@@ -99,47 +99,31 @@ nonisolated struct PathfinderPlaylistItem: Decodable, Sendable {
 
 /// A track as a playlist lists it.
 nonisolated struct PathfinderPlaylistTrack: Decodable, Sendable {
-    struct Duration: Decodable, Sendable {
-        let totalMilliseconds: Int?
-    }
-
     struct AlbumOfTrack: Decodable, Sendable {
         let uri: String?
         let name: String?
         let coverArt: PathfinderImage?
     }
 
-    struct ArtistList: Decodable, Sendable {
-        struct Item: Decodable, Sendable {
-            struct Profile: Decodable, Sendable {
-                let name: String?
-            }
-
-            let uri: String?
-            let profile: Profile?
-        }
-
-        let items: [Item]?
-    }
-
     let uri: String?
     let name: String?
     let trackNumber: Int?
     let discNumber: Int?
-    let trackDuration: Duration?
+    /// `trackDuration` here, `duration` everywhere else — the same object under another key.
+    let trackDuration: PathfinderDuration?
     let albumOfTrack: AlbumOfTrack?
-    let artists: ArtistList?
+    let artists: PathfinderArtistList?
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))
     }
 
     var artistNames: [String] {
-        (artists?.items ?? []).compactMap { $0.profile?.name }
+        artists?.names ?? []
     }
 
     var firstArtistId: String? {
-        (artists?.items ?? []).first?.uri.flatMap(SpotifyURI.id(from:))
+        artists?.firstId
     }
 
     var albumId: String? {
@@ -149,34 +133,24 @@ nonisolated struct PathfinderPlaylistTrack: Decodable, Sendable {
 
 // MARK: - Mutations
 
-/// What a playlist mutation answers with.
+/// What a playlist mutation answers with. `PathfinderMutationResult` has the trap it shares with
+/// the library writes: the status code does not report success, so the `__typename` decides.
 ///
-/// **The status code does not report success.** A rejected mutation comes back as HTTP 200 with
-/// a `__typename` naming the failure — `{"addItemsToPlaylist":{"__typename":"NotFound"}}` for a
-/// playlist that does not exist. A client checking only the status would record the write as
-/// having happened and never roll back its optimistic update.
-///
-/// So success is recognised by name, and anything else is a failure. Measured on 2026-08-13:
-/// `AddItemsToPlaylistPayload` and `RemoveItemsFromPlaylistPayload` on success.
+/// The three operations answer under three different fields, and only one is ever filled in.
 nonisolated struct PathfinderMutationResponse: Decodable, Sendable {
-    struct Result: Decodable, Sendable {
-        let __typename: String?
-        let message: String?
-    }
-
     struct Payload: Decodable, Sendable {
-        let addItemsToPlaylist: Result?
-        let removeItemsFromPlaylist: Result?
-        let moveItemsInPlaylist: Result?
+        let addItemsToPlaylist: PathfinderMutationResult?
+        let removeItemsFromPlaylist: PathfinderMutationResult?
+        let moveItemsInPlaylist: PathfinderMutationResult?
 
-        var result: Result? {
+        var result: PathfinderMutationResult? {
             addItemsToPlaylist ?? removeItemsFromPlaylist ?? moveItemsInPlaylist
         }
     }
 
     let data: Payload?
 
-    /// The names Spotify returns when the write actually happened.
+    /// The names Spotify returns when the write actually happened, measured on 2026-08-13.
     private static let successTypes: Set<String> = [
         "AddItemsToPlaylistPayload",
         "RemoveItemsFromPlaylistPayload",
@@ -185,12 +159,7 @@ nonisolated struct PathfinderMutationResponse: Decodable, Sendable {
 
     /// Nil when the mutation succeeded, otherwise what went wrong.
     var failure: String? {
-        guard let result = data?.result, let typename = result.__typename else {
-            return "the response named no result"
-        }
-        guard !Self.successTypes.contains(typename) else { return nil }
-
-        return result.message.map { "\(typename): \($0)" } ?? typename
+        PathfinderMutationResult.failure(data?.result, unless: Self.successTypes)
     }
 }
 

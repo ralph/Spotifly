@@ -89,35 +89,28 @@ nonisolated struct PathfinderArtistUnion: Decodable, Sendable {
 /// section added is as likely to take either form.
 nonisolated struct PathfinderReleaseGroup: Decodable, Sendable {
     struct Item: Decodable, Sendable {
-        struct Inner: Decodable, Sendable {
-            let items: [PathfinderRelease]?
-        }
+        /// What this entry holds: a whole group's releases, or the single release the entry
+        /// itself turned out to be.
+        let all: [PathfinderRelease]
 
-        let releases: Inner?
-        let direct: PathfinderRelease?
+        private struct Group: Decodable {
+            struct Releases: Decodable {
+                let items: [PathfinderRelease]?
+            }
+
+            let releases: Releases?
+        }
 
         init(from decoder: any Decoder) throws {
             let container = try decoder.singleValueContainer()
 
-            let wrapped = try? container.decode(Wrapper.self)
-            if let inner = wrapped?.releases {
-                releases = inner
-                direct = nil
+            if let group = try? container.decode(Group.self), let releases = group.releases {
+                all = releases.items ?? []
+            } else if let release = try? container.decode(PathfinderRelease.self) {
+                all = [release]
             } else {
-                releases = nil
-                direct = try? container.decode(PathfinderRelease.self)
+                all = []
             }
-        }
-
-        private struct Wrapper: Decodable {
-            let releases: Inner?
-        }
-
-        var all: [PathfinderRelease] {
-            if let releases {
-                return releases.items ?? []
-            }
-            return direct.map { [$0] } ?? []
         }
     }
 

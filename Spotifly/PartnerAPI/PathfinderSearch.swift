@@ -124,8 +124,26 @@ nonisolated struct PathfinderArtistSnippet: Decodable, Sendable {
     }
 }
 
+/// The artists beside a track, in the one shape every track-bearing operation returns them:
+/// search, the album view, the playlist view and the saved-tracks page all send `items[]` of a
+/// uri and a `profile.name`.
 nonisolated struct PathfinderArtistList: Decodable, Sendable {
     let items: [PathfinderArtistSnippet]?
+
+    var names: [String] {
+        (items ?? []).compactMap(\.name)
+    }
+
+    /// The id of the first artist, which is the one `Track` records.
+    var firstId: String? {
+        items?.first?.id
+    }
+}
+
+/// `{ "totalMilliseconds": 320357 }`, which is how this API spells every duration. The *key* it
+/// arrives under differs by operation — `duration` on a track, `trackDuration` in a playlist.
+nonisolated struct PathfinderDuration: Decodable, Sendable {
+    let totalMilliseconds: Int?
 }
 
 nonisolated struct PathfinderTrack: Decodable, Sendable {
@@ -136,21 +154,12 @@ nonisolated struct PathfinderTrack: Decodable, Sendable {
         let coverArt: PathfinderImage?
     }
 
-    struct Duration: Decodable, Sendable {
-        let totalMilliseconds: Int?
-    }
-
-    struct Playability: Decodable, Sendable {
-        let playable: Bool?
-    }
-
     let id: String?
     let uri: String?
     let name: String?
     let albumOfTrack: AlbumOfTrack?
     let artists: PathfinderArtistList?
-    let duration: Duration?
-    let playability: Playability?
+    let duration: PathfinderDuration?
     /// Absent from search results, present in the saved-tracks page.
     let trackNumber: Int?
 
@@ -159,7 +168,11 @@ nonisolated struct PathfinderTrack: Decodable, Sendable {
     }
 
     var artistNames: [String] {
-        (artists?.items ?? []).compactMap(\.name)
+        artists?.names ?? []
+    }
+
+    var firstArtistId: String? {
+        artists?.firstId
     }
 }
 
@@ -196,7 +209,7 @@ nonisolated struct PathfinderAlbum: Decodable, Sendable {
     }
 
     var artistNames: [String] {
-        (artists?.items ?? []).compactMap(\.name)
+        artists?.names ?? []
     }
 }
 

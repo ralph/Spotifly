@@ -105,7 +105,6 @@ nonisolated struct SpclientTrack: Decodable, Sendable {
     let duration: Int?
     let number: Int?
     let discNumber: Int?
-    let hasLyrics: Bool?
 
     enum CodingKeys: String, CodingKey {
         case gid
@@ -115,7 +114,6 @@ nonisolated struct SpclientTrack: Decodable, Sendable {
         case duration
         case number
         case discNumber = "disc_number"
-        case hasLyrics = "has_lyrics"
     }
 
     var artistNames: [String] {
@@ -130,21 +128,10 @@ nonisolated struct SpclientTrack: Decodable, Sendable {
 /// hashes to rotate, and an entity comes back whole rather than field-selected.
 nonisolated struct SpclientAPI: Sendable {
     static let baseURL = URL(string: "https://spclient.wg.spotify.com/")!
-    static let origin = "https://xpui.app.spotify.com"
 
-    typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+    typealias Transport = SpotifyCredentials.Transport
 
-    private let accessToken: @Sendable () async throws -> String
-    private let clientToken: @Sendable () async throws -> String
-    private let invalidateClientToken: @Sendable (String) async -> Void
-    private let transport: Transport
-
-    /// Hoisted for the same reason as `PartnerAPI.invalidateSharedClientToken`: a closure
-    /// literal in a default-argument list is not isolation-checked, so the `await` on the hop
-    /// onto `ClientTokenProvider` is reported as unnecessary there.
-    private static let invalidateSharedClientToken: @Sendable (String) async -> Void = {
-        await ClientTokenProvider.shared.invalidate(rejected: $0)
-    }
+    private let credentials: SpotifyCredentials
 
     init(
         accessToken: @escaping @Sendable () async throws -> String = {
@@ -153,13 +140,15 @@ nonisolated struct SpclientAPI: Sendable {
         clientToken: @escaping @Sendable () async throws -> String = {
             try await ClientTokenProvider.shared.token()
         },
-        invalidateClientToken: @escaping @Sendable (String) async -> Void = SpclientAPI.invalidateSharedClientToken,
+        invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
     ) {
-        self.accessToken = accessToken
-        self.clientToken = clientToken
-        self.invalidateClientToken = invalidateClientToken
-        self.transport = transport
+        credentials = SpotifyCredentials(
+            accessToken: accessToken,
+            clientToken: clientToken,
+            invalidateClientToken: invalidateClientToken,
+            transport: transport,
+        )
     }
 
     /// Track metadata for a base62 id, the form the rest of the app uses.
@@ -343,16 +332,8 @@ nonisolated struct SpclientAPI: Sendable {
         body: some Encodable & Sendable,
     ) async throws -> Data {
         let encoded = try JSONEncoder().encode(body)
-        var sent = try await sendOnce(method: method, path: path, body: encoded)
-
-        // See `PartnerAPI.query`: a 401 can be either credential, and the cached client token
-        // is the one that would otherwise stay wrong until the app is relaunched. The token
-        // this request carried is named, so a refusal cannot discard a newer one.
-        if sent.status == 401 {
-            if let rejected = sent.clientToken {
-                await invalidateClientToken(rejected)
-            }
-            sent = try await sendOnce(method: method, path: path, body: encoded)
+        let sent = try await credentials.retryingRefusedToken {
+            try await sendOnce(method: method, path: path, body: encoded)
         }
 
         guard (200 ..< 300).contains(sent.status) else {
@@ -373,18 +354,18 @@ nonisolated struct SpclientAPI: Sendable {
         method: String,
         path: String,
         body: Data,
-    ) async throws -> (body: Data, status: Int, clientToken: String?) {
+    ) async throws -> SpotifyCredentials.Attempt {
         var request = URLRequest(url: Self.baseURL.appending(path: path))
         request.httpMethod = method
         request.httpBody = body
-        try await applyHeaders(to: &request)
+        try await credentials.sign(&request)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let urlString = request.url?.absoluteString ?? path
         debugLog("SpclientAPI", "[\(method)] \(urlString)")
 
-        let (data, response) = try await transport(request)
+        let (data, response) = try await credentials.transport(request)
         guard let http = response as? HTTPURLResponse else {
             throw SpclientError.malformedResponse
         }
@@ -395,15 +376,7 @@ nonisolated struct SpclientAPI: Sendable {
     // MARK: - Transport
 
     private func get(_ url: URL) async throws -> Data {
-        var sent = try await getOnce(url)
-
-        // See `PartnerAPI.query`.
-        if sent.status == 401 {
-            if let rejected = sent.clientToken {
-                await invalidateClientToken(rejected)
-            }
-            sent = try await getOnce(url)
-        }
+        let sent = try await credentials.retryingRefusedToken { try await getOnce(url) }
 
         guard sent.status == 200 else {
             throw SpclientError.requestFailed(sent.status, "")
@@ -412,7 +385,7 @@ nonisolated struct SpclientAPI: Sendable {
         return sent.body
     }
 
-    private func getOnce(_ url: URL) async throws -> (body: Data, status: Int, clientToken: String?) {
+    private func getOnce(_ url: URL) async throws -> SpotifyCredentials.Attempt {
         // The desktop client's web view sends a CORS preflight before these, and this endpoint
         // is served to that origin — so the sequence is mimicked rather than the request sent
         // bare. libspot does the same before metadata/4.
@@ -420,12 +393,12 @@ nonisolated struct SpclientAPI: Sendable {
 
         var request = URLRequest(url: Self.withMarket(url))
         request.httpMethod = "GET"
-        try await applyHeaders(to: &request)
+        try await credentials.sign(&request)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         debugLog("SpclientAPI", "[GET] \(request.url?.absoluteString ?? url.absoluteString)")
 
-        let (data, response) = try await transport(request)
+        let (data, response) = try await credentials.transport(request)
         guard let http = response as? HTTPURLResponse else {
             throw SpclientError.malformedResponse
         }
@@ -442,26 +415,18 @@ nonisolated struct SpclientAPI: Sendable {
             "app-platform,authorization,client-token,spotify-app-version",
             forHTTPHeaderField: "Access-Control-Request-Headers",
         )
-        request.setValue(Self.origin, forHTTPHeaderField: "Origin")
-        request.setValue(Self.origin + "/", forHTTPHeaderField: "Referer")
+        request.setValue(SpotifyCredentials.origin, forHTTPHeaderField: "Origin")
+        request.setValue(SpotifyCredentials.origin + "/", forHTTPHeaderField: "Referer")
 
         debugLog("SpclientAPI", "[OPTIONS] \(request.url?.absoluteString ?? url.absoluteString)")
 
-        let (_, response) = try await transport(request)
+        let (_, response) = try await credentials.transport(request)
         guard let http = response as? HTTPURLResponse else {
             throw SpclientError.malformedResponse
         }
         guard http.statusCode < 400 else {
             throw SpclientError.preflightRejected(http.statusCode)
         }
-    }
-
-    private func applyHeaders(to request: inout URLRequest) async throws {
-        request.setValue(PartnerAPI.appPlatform, forHTTPHeaderField: "App-Platform")
-        request.setValue(Self.origin, forHTTPHeaderField: "Origin")
-        request.setValue(Self.origin, forHTTPHeaderField: "Referer")
-        try await request.setValue("Bearer \(accessToken())", forHTTPHeaderField: "Authorization")
-        try await request.setValue(clientToken(), forHTTPHeaderField: "Client-Token")
     }
 
     /// `market=from_token` resolves the catalogue against the account rather than the caller's

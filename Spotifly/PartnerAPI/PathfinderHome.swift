@@ -81,13 +81,7 @@ nonisolated struct PathfinderHome: Decodable, Sendable {
 /// rather than a decode failure.
 nonisolated struct PathfinderHomeSection: Decodable, Sendable {
     struct SectionData: Decodable, Sendable {
-        let typename: String?
         let title: PathfinderHome.Label?
-
-        private enum CodingKeys: String, CodingKey {
-            case typename = "__typename"
-            case title
-        }
     }
 
     struct SectionItems: Decodable, Sendable {
@@ -140,25 +134,24 @@ nonisolated enum PathfinderHomeContent: Decodable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let typename = try container.decodeIfPresent(String.self, forKey: .typename)
 
+        // Each case reads the same `data` key as the type its wrapper announces. A wrapper with
+        // no `data` — Spotify's `NotFound` tombstone — falls through to `.unsupported`.
         switch typename {
         case "AlbumResponseWrapper":
-            self = try Self.decode(container, as: PathfinderAlbum.self).map(Self.album) ?? .unsupported
+            self = try container.decodeIfPresent(PathfinderAlbum.self, forKey: .data)
+                .map(Self.album) ?? .unsupported
         case "ArtistResponseWrapper":
-            self = try Self.decode(container, as: PathfinderArtist.self).map(Self.artist) ?? .unsupported
+            self = try container.decodeIfPresent(PathfinderArtist.self, forKey: .data)
+                .map(Self.artist) ?? .unsupported
         case "PlaylistResponseWrapper":
-            self = try Self.decode(container, as: PathfinderPlaylist.self).map(Self.playlist) ?? .unsupported
+            self = try container.decodeIfPresent(PathfinderPlaylist.self, forKey: .data)
+                .map(Self.playlist) ?? .unsupported
         case "ListResponseWrapper":
-            self = try Self.decode(container, as: PathfinderHomeList.self).map(Self.list) ?? .unsupported
+            self = try container.decodeIfPresent(PathfinderHomeList.self, forKey: .data)
+                .map(Self.list) ?? .unsupported
         default:
             self = .unsupported
         }
-    }
-
-    private static func decode<Entity: Decodable>(
-        _ container: KeyedDecodingContainer<CodingKeys>,
-        as _: Entity.Type,
-    ) throws -> Entity? {
-        try container.decodeIfPresent(Entity.self, forKey: .data)
     }
 }
 
@@ -209,10 +202,6 @@ nonisolated struct PathfinderHomeEntity: Decodable, Sendable {
         let contributors: Contributors?
     }
 
-    struct EntityTypeTrait: Decodable, Sendable {
-        let type: String?
-    }
-
     struct VisualIdentityTrait: Decodable, Sendable {
         struct CoverImage: Decodable, Sendable {
             struct Image: Decodable, Sendable {
@@ -235,9 +224,10 @@ nonisolated struct PathfinderHomeEntity: Decodable, Sendable {
         let squareCoverImage: CoverImage?
     }
 
+    /// `entityTypeTrait` sits beside these on the wire and is deliberately not decoded: it can
+    /// be wrong about its own kind, so the uri decides. See `HomePage.resolve(entity:)`.
     let uri: String?
     let identityTrait: IdentityTrait?
-    let entityTypeTrait: EntityTypeTrait?
     let visualIdentityTrait: VisualIdentityTrait?
 
     var name: String? {

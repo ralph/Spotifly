@@ -251,12 +251,8 @@ nonisolated struct PathfinderLibraryWriteVariables: Encodable, Sendable {
 
 // MARK: - Mutation results
 
-/// What `addToLibrary` and `removeFromLibrary` answer with.
-///
-/// Same trap as the playlist mutations: **a rejected write is HTTP 200** with a `__typename`
-/// naming the failure, so the transport's status check cannot see it, and an optimistic update
-/// would stand over a write that never happened. Success is recognised by name and everything
-/// else is a failure.
+/// What `addToLibrary` and `removeFromLibrary` answer with. Same trap as the playlist mutations,
+/// and the same reading of it — see `PathfinderMutationResult`.
 ///
 /// **The response field is not the operation name**, and neither is the payload type — the
 /// operation `addToLibrary` answers under `addLibraryItems` with `AddLibraryItemsResponse`, and
@@ -266,16 +262,11 @@ nonisolated struct PathfinderLibraryWriteVariables: Encodable, Sendable {
 /// `AddToLibraryPayload`, which is wrong, and a client that assumed it would treat every
 /// successful write as a rejection.
 nonisolated struct PathfinderLibraryMutationResponse: Decodable, Sendable {
-    struct Result: Decodable, Sendable {
-        let __typename: String?
-        let message: String?
-    }
-
     struct Payload: Decodable, Sendable {
-        let addLibraryItems: Result?
-        let removeLibraryItems: Result?
+        let addLibraryItems: PathfinderMutationResult?
+        let removeLibraryItems: PathfinderMutationResult?
 
-        var result: Result? {
+        var result: PathfinderMutationResult? {
             addLibraryItems ?? removeLibraryItems
         }
     }
@@ -290,11 +281,6 @@ nonisolated struct PathfinderLibraryMutationResponse: Decodable, Sendable {
 
     /// Nil when the mutation succeeded, otherwise what went wrong.
     var failure: String? {
-        guard let result = data?.result, let typename = result.__typename else {
-            return "the response named no result"
-        }
-        guard !Self.successTypes.contains(typename) else { return nil }
-
-        return result.message.map { "\(typename): \($0)" } ?? typename
+        PathfinderMutationResult.failure(data?.result, unless: Self.successTypes)
     }
 }

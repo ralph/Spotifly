@@ -187,12 +187,6 @@ nonisolated struct ConnectVolume: Encodable, Sendable {
     }
 }
 
-/// What a command request answers with.
-///
-/// Success is `{"ack_id": "..."}`. Unlike the pathfinder mutations, failure here *is* reported
-/// by status code — `404 DEVICE_NOT_FOUND` when the target is gone — so there is no
-/// 200-that-means-no to guard against, and this type exists only to make the ack readable in a
-/// log.
 /// The body a player command is actually sent as.
 ///
 /// **The command goes inside a `command` object**, and forgetting that is not a subtle failure:
@@ -200,18 +194,14 @@ nonisolated struct ConnectVolume: Encodable, Sendable {
 /// type exists so the envelope cannot be forgotten at a call site — and so a test can assert on
 /// it, which is what was missing when the first version of this shipped encoding the command's
 /// fields at the top level.
+///
+/// A successful command answers `{"ack_id": "..."}`, which nothing reads: unlike the pathfinder
+/// mutations, failure here *is* reported by status code, so there is no 200-that-means-no to
+/// unpick and no reason to decode the ack.
 nonisolated struct ConnectCommandEnvelope: Encodable, Sendable {
     let command: ConnectCommand
 
     init(_ command: ConnectCommand) {
         self.command = command
-    }
-}
-
-nonisolated struct ConnectCommandAck: Decodable, Sendable {
-    let ackId: String?
-
-    enum CodingKeys: String, CodingKey {
-        case ackId = "ack_id"
     }
 }

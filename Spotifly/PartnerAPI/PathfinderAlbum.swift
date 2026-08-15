@@ -88,44 +88,22 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable {
 /// by the market id, and the id here already is one (`AGENTS.md`, "Track identity is the market
 /// id"). Reading it would only invite reintroducing the second identity that rule removed.
 nonisolated struct PathfinderAlbumTrack: Decodable, Sendable {
-    struct Duration: Decodable, Sendable {
-        let totalMilliseconds: Int?
-    }
-
-    struct Playability: Decodable, Sendable {
-        let playable: Bool?
-    }
-
-    struct ArtistList: Decodable, Sendable {
-        struct Item: Decodable, Sendable {
-            struct Profile: Decodable, Sendable {
-                let name: String?
-            }
-
-            let uri: String?
-            let profile: Profile?
-        }
-
-        let items: [Item]?
-    }
-
     let uri: String?
     let name: String?
     let trackNumber: Int?
     let discNumber: Int?
-    let duration: Duration?
-    let playability: Playability?
-    let artists: ArtistList?
+    let duration: PathfinderDuration?
+    let artists: PathfinderArtistList?
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))
     }
 
     var artistNames: [String] {
-        (artists?.items ?? []).compactMap { $0.profile?.name }
+        artists?.names ?? []
     }
 
     var firstArtistId: String? {
-        (artists?.items ?? []).first?.uri.flatMap(SpotifyURI.id(from:))
+        artists?.firstId
     }
 }

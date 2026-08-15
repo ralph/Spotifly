@@ -42,7 +42,7 @@ extension Track {
             trackNumber: nil,
             externalUrl: nil,
             albumId: track.albumOfTrack?.id ?? track.albumOfTrack?.uri.flatMap(SpotifyURI.id(from:)),
-            artistId: track.artists?.items?.first?.id,
+            artistId: track.firstArtistId,
             artistName: track.artistNames.first ?? "Unknown",
             albumName: track.albumOfTrack?.name,
             images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
@@ -266,7 +266,7 @@ extension Track {
             trackNumber: track.trackNumber,
             externalUrl: nil,
             albumId: track.albumOfTrack?.id ?? track.albumOfTrack?.uri.flatMap(SpotifyURI.id(from:)),
-            artistId: track.artists?.items?.first?.id,
+            artistId: track.firstArtistId,
             artistName: track.artistNames.first ?? "Unknown",
             albumName: track.albumOfTrack?.name,
             images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
@@ -512,7 +512,7 @@ extension Playlist {
             // Pathfinder identifies the owner by name, not by id. Used for display only here;
             // the playlist detail load supplies the id when it is needed.
             ownerId: owner?.username ?? "",
-            ownerName: owner?.name ?? owner?.username ?? "",
+            ownerName: playlist.ownerName ?? "",
             externalUrl: nil,
             items: [],
             totalDurationMs: nil,

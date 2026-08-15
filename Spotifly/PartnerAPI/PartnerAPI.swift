@@ -65,35 +65,116 @@ private nonisolated struct PathfinderErrorEnvelope: Decodable {
     let errors: [Failure]?
 }
 
-/// Sends persisted queries to `api-partner.spotify.com`.
+/// What a pathfinder *write* answers with, on both the playlist and the library operations.
 ///
-/// Authorized by the keymaster token *and* a client token: the bearer alone is a 401 here.
-/// Both come from the single grant this app now performs — see
-/// `plans/single-grant-partner-api.md`.
-nonisolated struct PartnerAPI: Sendable {
-    static let endpoint = URL(string: "https://api-partner.spotify.com/pathfinder/v2/query")!
+/// **A rejected mutation arrives as HTTP 200**, naming the failure in a `__typename` rather than
+/// in a status code — `{"addItemsToPlaylist":{"__typename":"NotFound"}}` for a playlist that does
+/// not exist. A client checking only the status would record the write as having happened and
+/// never roll back its optimistic update. So success is recognised by name, and anything else is
+/// a failure.
+nonisolated struct PathfinderMutationResult: Decodable, Sendable {
+    let typename: String?
+    let message: String?
 
-    /// The headers the desktop client sends. `App-Platform` and the xpui origin are not
-    /// cosmetic — this endpoint is not a public API, and the requests that work are the ones
-    /// shaped like the client's own.
-    static let appPlatform = "OSX_ARM64"
-    static let origin = "https://xpui.app.spotify.com"
+    private enum CodingKeys: String, CodingKey {
+        case typename = "__typename"
+        case message
+    }
 
+    /// Nil when the mutation succeeded, otherwise what went wrong.
+    ///
+    /// Takes an optional because a response that named no result at all is itself a failure —
+    /// an absent payload is not a write that happened.
+    static func failure(_ result: Self?, unless successTypes: Set<String>) -> String? {
+        guard let result, let typename = result.typename else {
+            return "the response named no result"
+        }
+        guard !successTypes.contains(typename) else { return nil }
+
+        return result.message.map { "\(typename): \($0)" } ?? typename
+    }
+}
+
+/// The credentials every request to Spotify's own APIs carries, and the retry that keeps them
+/// fresh.
+///
+/// `api-partner` and `spclient` are separate hosts with separate request shapes, but they are
+/// authorized identically — a keymaster bearer identifying the user and a client token
+/// identifying the application, both from the single grant this app now performs (see
+/// `plans/single-grant-partner-api.md`) — and they refuse identically. Held in one place so the
+/// refusal rule below is written once rather than three times.
+nonisolated struct SpotifyCredentials: Sendable {
     /// Injected so request construction and decoding can be tested without a network.
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
-    private let accessToken: @Sendable () async throws -> String
-    private let clientToken: @Sendable () async throws -> String
-    private let invalidateClientToken: @Sendable (String) async -> Void
-    private let transport: Transport
+    /// One attempt's outcome, naming the client token it carried so a refusal can name it too.
+    typealias Attempt = (body: Data, status: Int, clientToken: String?)
 
-    /// Hoisted out of the default-argument list below, where a closure literal is not
+    /// The headers the desktop client sends. `App-Platform` and the xpui origin are not
+    /// cosmetic — neither host is a public API, and the requests that work are the ones shaped
+    /// like the client's own.
+    static let appPlatform = "OSX_ARM64"
+    static let origin = "https://xpui.app.spotify.com"
+
+    /// Hoisted out of the default-argument lists that name it, where a closure literal is not
     /// isolation-checked: written inline, the hop onto `ClientTokenProvider` goes unnoticed and
     /// the `await` that expresses it is reported as unnecessary. The emitted code hops either
     /// way — the checking is what differs, and here the call is checked like any other.
-    private static let invalidateSharedClientToken: @Sendable (String) async -> Void = {
+    static let invalidateShared: @Sendable (String) async -> Void = {
         await ClientTokenProvider.shared.invalidate(rejected: $0)
     }
+
+    let accessToken: @Sendable () async throws -> String
+    let clientToken: @Sendable () async throws -> String
+    let invalidateClientToken: @Sendable (String) async -> Void
+    let transport: Transport
+
+    /// Signs a request as the desktop client: both credentials, and the headers naming which
+    /// client is asking. Both, always — the bearer identifies the user, the client token the
+    /// application, and these hosts want to see both.
+    func sign(_ request: inout URLRequest) async throws {
+        request.setValue(Self.appPlatform, forHTTPHeaderField: "App-Platform")
+        request.setValue(Self.origin, forHTTPHeaderField: "Origin")
+        request.setValue(Self.origin, forHTTPHeaderField: "Referer")
+        try await request.setValue("Bearer \(accessToken())", forHTTPHeaderField: "Authorization")
+        try await request.setValue(clientToken(), forHTTPHeaderField: "Client-Token")
+    }
+
+    /// Runs the attempt, and runs it once more against a fresh client token when Spotify refuses
+    /// the first with a 401.
+    ///
+    /// A 401 can be either credential, and the client token is the one nothing else would
+    /// notice: it is cached for the fortnight Spotify says it is good for, so a token revoked
+    /// before its stated expiry fails every request until the app is relaunched. The bearer
+    /// refreshes itself, so this costs one wasted retry at worst.
+    ///
+    /// The token the request actually carried is named, not just "the current one" — concurrent
+    /// requests share a token, so one dead token is refused several times over and the later
+    /// refusals would otherwise discard the replacement the first one fetched.
+    func retryingRefusedToken(
+        _ attempt: () async throws -> Attempt,
+    ) async throws -> (body: Data, status: Int) {
+        let sent = try await attempt()
+        guard sent.status == 401 else { return (sent.body, sent.status) }
+
+        if let rejected = sent.clientToken {
+            await invalidateClientToken(rejected)
+        }
+
+        let retried = try await attempt()
+        return (retried.body, retried.status)
+    }
+}
+
+/// Sends persisted queries to `api-partner.spotify.com`.
+///
+/// Authorized by the keymaster token *and* a client token: the bearer alone is a 401 here.
+nonisolated struct PartnerAPI: Sendable {
+    static let endpoint = URL(string: "https://api-partner.spotify.com/pathfinder/v2/query")!
+
+    typealias Transport = SpotifyCredentials.Transport
+
+    private let credentials: SpotifyCredentials
 
     init(
         accessToken: @escaping @Sendable () async throws -> String = {
@@ -102,13 +183,15 @@ nonisolated struct PartnerAPI: Sendable {
         clientToken: @escaping @Sendable () async throws -> String = {
             try await ClientTokenProvider.shared.token()
         },
-        invalidateClientToken: @escaping @Sendable (String) async -> Void = PartnerAPI.invalidateSharedClientToken,
+        invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
     ) {
-        self.accessToken = accessToken
-        self.clientToken = clientToken
-        self.invalidateClientToken = invalidateClientToken
-        self.transport = transport
+        credentials = SpotifyCredentials(
+            accessToken: accessToken,
+            clientToken: clientToken,
+            invalidateClientToken: invalidateClientToken,
+            transport: transport,
+        )
     }
 
     // MARK: - Searches
@@ -435,25 +518,8 @@ nonisolated struct PartnerAPI: Sendable {
         _ operation: PathfinderOperation,
         variables: some Encodable & Sendable,
     ) async throws -> Envelope {
-        let sent = try await send(operation, variables: variables)
-
-        // A 401 can be either credential, and the client token is the one nothing else would
-        // notice: it is cached for the fortnight Spotify says it is good for, so a token
-        // revoked before its stated expiry fails every request until the app is relaunched.
-        // The bearer refreshes itself, so this costs one wasted retry at worst.
-        //
-        // The token this request actually carried is named, not just "the current one" —
-        // concurrent requests share a token, so one dead token is refused several times over
-        // and the later refusals would otherwise discard the replacement the first one fetched.
-        if sent.status == 401 {
-            if let rejected = sent.clientToken {
-                await invalidateClientToken(rejected)
-            }
-            let retried = try await send(operation, variables: variables)
-            guard retried.status == 200 else {
-                throw Self.failure(operation: operation, status: retried.status, body: retried.body)
-            }
-            return try decode(retried.body, operation: operation)
+        let sent = try await credentials.retryingRefusedToken {
+            try await send(operation, variables: variables)
         }
 
         guard sent.status == 200 else {
@@ -467,12 +533,12 @@ nonisolated struct PartnerAPI: Sendable {
     private func send(
         _ operation: PathfinderOperation,
         variables: some Encodable & Sendable,
-    ) async throws -> (body: Data, status: Int, clientToken: String?) {
+    ) async throws -> SpotifyCredentials.Attempt {
         let request = try await makeRequest(operation, variables: variables)
 
         debugLog("PartnerAPI", "[POST] \(Self.endpoint.absoluteString) \(operation.name)")
 
-        let (data, response) = try await transport(request)
+        let (data, response) = try await credentials.transport(request)
 
         guard let http = response as? HTTPURLResponse else {
             throw PartnerAPIError.emptyPayload
@@ -507,14 +573,7 @@ nonisolated struct PartnerAPI: Sendable {
 
         request.setValue("application/json;charset=UTF-8", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(Self.appPlatform, forHTTPHeaderField: "App-Platform")
-        request.setValue(Self.origin, forHTTPHeaderField: "Origin")
-        request.setValue(Self.origin, forHTTPHeaderField: "Referer")
-
-        // Both, always. The bearer identifies the user, the client token the application, and
-        // this host wants to see both.
-        try await request.setValue("Bearer \(accessToken())", forHTTPHeaderField: "Authorization")
-        try await request.setValue(clientToken(), forHTTPHeaderField: "Client-Token")
+        try await credentials.sign(&request)
 
         return request
     }
