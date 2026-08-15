@@ -95,6 +95,14 @@ our own echo.
 
 ## Verification
 
+- [ ] **Run librespot's own checks in `../../librespot`, not just ours.** `rust/` is a
+      single-package workspace whose only member is `spotifly-rust`: path dependencies are
+      *compiled* by `cargo check` there, but librespot's unit tests, formatting and lints never
+      run. Verified — `cargo test --no-run` in `rust/` builds one test binary,
+      `spotifly_rust`. So the patched package needs `cargo test -p librespot-connect`,
+      `cargo fmt --check` and `cargo clippy` **from the librespot checkout**, or this
+      checklist can pass green while the package we changed fails its own validation. That
+      also matters for Task 4: an upstream PR is judged by librespot's CI, not ours.
 - [ ] `cargo check`, `cargo test`, `cargo fmt --check` in `rust/`; `cargo clippy` compared to
       the branch baseline rather than expected to be zero
 - [ ] `xcodebuild … build` — BUILD SUCCEEDED
