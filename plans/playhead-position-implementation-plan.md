@@ -72,18 +72,39 @@ alongside the stream rather than derived from it.
 - [ ] **S2b. Rebase it at every point the correspondence breaks**: seek, flush, pause/resume,
       route change (which recreates the renderer entirely, `AudioRenderer.swift:463`), and
       track transition.
-- [ ] **S2c. Track transition is the hard one** and deserves its own attention: the boundary is
-      exactly where two tracks' audio coexist in the buffer, which is the case this whole plan
-      is about. librespot starts the next track's clock when the decoder switches — the same
-      millisecond as the previous track's `EndOfTrack`, with ~2 s of that track still queued.
+- [ ] **S2c. Track transition is the hard one**, and observing the events is not enough to
+      solve it. The boundary is exactly where two tracks' audio coexist in the buffer, which is
+      the case this whole plan is about. librespot starts the next track's clock when the
+      decoder switches — the same millisecond as the previous track's `EndOfTrack`, with ~2 s
+      of that track still queued.
+
+      **Do not rebase the epoch when `EndOfTrack`/`Playing` is observed.** Doing so switches to
+      track n+1 while two seconds of track n are still waiting to be heard, so the playhead
+      reports a position for the wrong track around *every* boundary — replacing a uniform 2 s
+      error with a wrong-track error, which is worse. The events are also delivered
+      asynchronously from `ProxySink::write`, so new-track samples may already be written by
+      the time the event is observed; observation order is not sample order.
+
+      The boundary has to travel **with the PCM**: send an ordered boundary marker or sample
+      offset alongside the samples, keep *both* track epochs (URI and position) alive, and
+      switch only when `currentTime()` actually crosses the boundary.
 - [ ] **S2d. Move the four consumers over**, none of which go through the Swift getter today:
 
       | Consumer | Today |
       |---|---|
-      | `send_local_playback_state` | `rust/src/lib.rs:2343` |
+      | `send_local_playback_state` | `rust/src/lib.rs:2346` |
+      | **`send_playback_state`, the cluster path** | `rust/src/lib.rs:2287`, forwarding `position_as_of_timestamp` at `:2320` |
       | resume rehydration | `rust/src/lib.rs:1998`, `:2753` |
       | `freezePositionForDisconnect` | `PlaybackViewModel.swift:1084` |
       | `checkDriftAndSync` | via `SpotifyPlayer.positionMs` |
+
+      **The cluster path is the one the ticket's table missed, and it would have undone the
+      work.** `send_playback_state` is a separate function from `send_local_playback_state`:
+      when the local device is active and a Mercury cluster update arrives, `apply_cluster`
+      (`:1325`) routes through it, forwarding a value that stays decoder-anchored across
+      gapless transitions — and Swift reanchors on every callback. Move only the original four
+      and the very next self-echo restores the ~2 s lead, after either stage. That would look
+      like the fix silently not working.
 
 - [ ] **S2e. Re-check the seek-bar fix still holds.** `seek-bar-jumps-between-two-position-clocks.md`
       was fixed by treating the decoder position as an *upper bound* rather than a rival
@@ -92,7 +113,17 @@ alongside the stream rather than derived from it.
 
 ## Verification
 
-Timing bugs do not show up in unit tests, so the log comparison is the real gate.
+The hardware timing needs a runtime check, but **"timing bugs do not show up in unit tests" is
+too broad an excuse and does not apply to most of this.** The epoch conversion, the rebasing
+rules and the boundary arithmetic are deterministic core logic: given a synthetic renderer time
+and a sample offset, the answer is fixed. `AGENTS-twostraws.md` asks for unit tests on core
+application logic, and seek, route-change and gapless math are exactly that.
+
+- [ ] **Unit-test the epoch math directly**, with synthetic renderer times and sample offsets:
+      conversion, rebase-on-seek, rebase-on-route-change, and the two-epoch gapless boundary
+      from S2c — including the case where the boundary marker arrives before `currentTime()`
+      reaches it, which is the whole point of keeping both epochs. These run in
+      `SpotiflyTests` and cost nothing per run.
 
 - [ ] `cargo check`, `cargo test`, `cargo fmt --check` in `rust/`
 - [ ] `xcodebuild … build` — BUILD SUCCEEDED
