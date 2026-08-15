@@ -150,7 +150,15 @@ nonisolated enum KeymasterAuth {
         let callback = try await server.waitForCallback()
         let code = try authorizationCode(from: callback, expectedState: state)
 
-        return try await exchange(code: code, verifier: verifier, port: port)
+        let body = formURLEncoded([
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirectURI(port: port),
+            "client_id": clientId,
+            "code_verifier": verifier,
+        ])
+
+        return try await postToken(body: body, fallbackRefreshToken: nil)
     }
 
     /// Exchanges a refreshed token, returning the *new* refresh token with it.
@@ -289,26 +297,13 @@ nonisolated enum KeymasterAuth {
 
     // MARK: - Private
 
-    private static func exchange(code: String, verifier: String, port: UInt16) async throws -> KeymasterTokens {
-        let body = formURLEncoded([
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": redirectURI(port: port),
-            "client_id": clientId,
-            "code_verifier": verifier,
-        ])
-
-        return try await postToken(body: body, fallbackRefreshToken: nil)
-    }
-
     private static func postToken(body: Data, fallbackRefreshToken: String?) async throws -> KeymasterTokens {
         var request = URLRequest(url: tokenEndpoint)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
 
-        let urlString = tokenEndpoint.absoluteString
-        debugLog("KeymasterAuth", "[POST] \(urlString)")
+        debugLog("KeymasterAuth", "[POST] \(tokenEndpoint.absoluteString)")
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -333,9 +328,7 @@ nonisolated enum KeymasterAuth {
 /// on its way out; it has since gone, and this is the only copy left.
 nonisolated enum PKCE {
     static func codeVerifier() -> String {
-        var bytes = [UInt8](repeating: 0, count: 64)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        return base64URLEncode(Data(bytes))
+        randomBase64URL(byteCount: 64)
     }
 
     static func codeChallenge(for verifier: String) -> String {
@@ -343,12 +336,16 @@ nonisolated enum PKCE {
     }
 
     static func randomState() -> String {
-        var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        randomBase64URL(byteCount: 16)
+    }
+
+    private static func randomBase64URL(byteCount: Int) -> String {
+        var bytes = [UInt8](repeating: 0, count: byteCount)
+        _ = SecRandomCopyBytes(kSecRandomDefault, byteCount, &bytes)
         return base64URLEncode(Data(bytes))
     }
 
-    static func base64URLEncode(_ data: Data) -> String {
+    private static func base64URLEncode(_ data: Data) -> String {
         data.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")

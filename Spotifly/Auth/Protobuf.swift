@@ -67,7 +67,7 @@ nonisolated struct ProtobufWriter {
 /// without warning, and a reader that insists on knowing every one of them would break on a
 /// server change that costs us nothing.
 nonisolated struct ProtobufReader {
-    enum Value {
+    private enum Value {
         case varint(UInt64)
         case bytes(Data)
     }
@@ -75,14 +75,14 @@ nonisolated struct ProtobufReader {
     private let data: Data
     private var index: Data.Index
 
-    init(_ data: Data) {
+    private init(_ data: Data) {
         self.data = data
         index = data.startIndex
     }
 
     /// The next field, or nil at the end. Returns nil on malformed input too: a truncated
     /// message and a finished one are the same thing to every caller here.
-    mutating func next() -> (field: Int, value: Value)? {
+    private mutating func next() -> (field: Int, value: Value)? {
         guard let tag = readVarint() else { return nil }
 
         let field = Int(tag >> 3)

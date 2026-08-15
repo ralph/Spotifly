@@ -8,25 +8,6 @@
 import Foundation
 import Network
 
-/// Guards a one-time transition across threads, where the callback that performs it can fire
-/// more than once: `NWListener` reports state repeatedly, and a connection can both deliver
-/// and fail.
-private final nonisolated class OnceFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var claimed = false
-
-    /// True exactly once, for the first caller.
-    func claim() -> Bool {
-        lock.withLock {
-            if claimed {
-                return false
-            }
-            claimed = true
-            return true
-        }
-    }
-}
-
 /// Receives a single OAuth redirect on `http://127.0.0.1:<port>/login`.
 ///
 /// `ASWebAuthenticationSession` cannot serve this flow: Spotify's desktop client id is
@@ -103,29 +84,22 @@ actor LoopbackCallbackServer {
             // callback, so `stop()` and the listener's own state cannot both resume — the
             // stored continuation is the one-shot guard.
             listener.stateUpdateHandler = { [weak self, weak listener] state in
+                let result: Result<UInt16, Error>
                 switch state {
                 case .ready:
-                    let port = listener?.port?.rawValue ?? 0
-                    Task {
-                        await self?.resumeStart(
-                            port == 0
-                                ? .failure(ServerError.listenerFailed("no port assigned"))
-                                : .success(port),
-                        )
+                    if let port = listener?.port?.rawValue, port != 0 {
+                        result = .success(port)
+                    } else {
+                        result = .failure(ServerError.listenerFailed("no port assigned"))
                     }
                 case let .failed(error):
-                    Task {
-                        await self?.resumeStart(
-                            .failure(ServerError.listenerFailed(String(describing: error))),
-                        )
-                    }
+                    result = .failure(ServerError.listenerFailed(String(describing: error)))
                 case .cancelled:
-                    Task {
-                        await self?.resumeStart(.failure(ServerError.listenerFailed("listener cancelled")))
-                    }
+                    result = .failure(ServerError.listenerFailed("listener cancelled"))
                 default:
-                    break
+                    return
                 }
+                Task { await self?.resumeStart(result) }
             }
             listener.start(queue: .global(qos: .userInitiated))
         }
@@ -153,12 +127,6 @@ actor LoopbackCallbackServer {
     /// it in a task group, so whichever arrives first is the answer and the other cannot leave
     /// a continuation dangling.
     func waitForCallback(timeout duration: Duration = .seconds(300)) async throws -> URLComponents {
-        if let pending {
-            self.pending = nil
-            stop()
-            return try pending.get()
-        }
-
         timeout = Task { [weak self] in
             try? await Task.sleep(for: duration)
             guard !Task.isCancelled else { return }
@@ -168,10 +136,10 @@ actor LoopbackCallbackServer {
         defer { stop() }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                // A result — including a cancellation — can land between the check above and
-                // this line, since both the callback and the cancellation handler hop onto
-                // the actor. Consuming it here is what stops the caller parking on a
-                // continuation nothing will resume.
+                // A result may already be here: the browser can redirect before the caller
+                // reaches this line, and a cancellation hops onto the actor the same way.
+                // Consuming it here is what stops the caller parking on a continuation
+                // nothing will resume.
                 if let pending {
                     self.pending = nil
                     continuation.resume(with: pending)
@@ -231,21 +199,17 @@ actor LoopbackCallbackServer {
     /// byte is available, and TCP does not promise the browser's request arrives in one piece,
     /// so parsing the first chunk would reject a perfectly good redirect that happened to be
     /// split.
+    ///
+    /// Every path here reports once and stops reading; `deliver` is the one-shot guard for
+    /// anything that slips through, so this needs no second one of its own.
     private nonisolated static func receiveRequest(
         on connection: NWConnection,
         completion: @escaping @Sendable (Result<URLComponents, Error>) -> Void,
     ) {
-        let once = OnceFlag()
-
-        @Sendable func finish(_ result: Result<URLComponents, Error>) {
-            guard once.claim() else { return }
-            completion(result)
-        }
-
         @Sendable func read(_ accumulated: Data) {
             connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, isComplete, error in
                 if let error {
-                    finish(.failure(ServerError.listenerFailed(String(describing: error))))
+                    completion(.failure(ServerError.listenerFailed(String(describing: error))))
                     connection.cancel()
                     return
                 }
@@ -258,7 +222,7 @@ actor LoopbackCallbackServer {
                     // Not a whole request line yet. Keep reading unless the peer is done or
                     // the request is implausibly large for what a redirect can carry.
                     if isComplete || buffer.count >= 8192 {
-                        finish(.failure(ServerError.malformedRequest))
+                        completion(.failure(ServerError.malformedRequest))
                         connection.cancel()
                     } else {
                         read(buffer)
@@ -267,7 +231,7 @@ actor LoopbackCallbackServer {
                 }
 
                 guard let components = parseRequestLine(text) else {
-                    finish(.failure(ServerError.malformedRequest))
+                    completion(.failure(ServerError.malformedRequest))
                     connection.cancel()
                     return
                 }
@@ -285,7 +249,7 @@ actor LoopbackCallbackServer {
                 connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
                     connection.cancel()
                 })
-                finish(.success(components))
+                completion(.success(components))
             }
         }
 
@@ -296,8 +260,9 @@ actor LoopbackCallbackServer {
     ///
     /// Split out so the parsing can be tested without a socket.
     nonisolated static func parseRequestLine(_ request: String) -> URLComponents? {
-        guard let line = request.split(separator: "\r\n", maxSplits: 1).first ?? request.split(separator: "\n").first
-        else { return nil }
+        // Splitting on "\n" alone is enough: a trailing "\r" lands on the version, which is
+        // not read.
+        guard let line = request.split(separator: "\n").first else { return nil }
 
         let parts = line.split(separator: " ")
         guard parts.count >= 2, parts[0] == "GET" else { return nil }

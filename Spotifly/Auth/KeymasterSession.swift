@@ -48,10 +48,9 @@ actor KeymasterSession {
     private let refresher: Refresher
     private var tokens: KeymasterTokens?
     private var refreshInFlight: Task<KeymasterTokens, Error>?
-    /// Advanced by `clear()`. A refresh that was in flight when the grant was cleared must not
-    /// write what it eventually returns: cancellation is cooperative, so the network call can
-    /// still succeed after a logout and would otherwise put the signed-out account's refresh
-    /// token straight back into the keychain.
+    /// Advanced by `supersedeRefresh()`. A refresh that was in flight when the grant was
+    /// cleared or replaced must not write what it eventually returns — that would put the
+    /// signed-out account's refresh token straight back into the keychain.
     private var generation = 0
 
     init(
@@ -74,29 +73,34 @@ actor KeymasterSession {
     }
 
     /// Records the outcome of a fresh grant.
-    ///
-    /// Supersedes any refresh already running, for the same reason `clear()` does. A refresh
-    /// spends the *previous* refresh token, and Spotify keeps one live token per client id and
-    /// account — so a refresh that started before this grant either returns tokens the new
-    /// grant has already replaced, and overwrites it, or is refused as `invalid_grant` for the
-    /// token the new grant retired, and discards it. The second is the likelier of the two and
-    /// logs the user out moments after they authorized. Re-authorizing while signed in is a
-    /// real path here: Speakers and the play alert both offer it.
     func adopt(_ newTokens: KeymasterTokens) throws {
-        generation &+= 1
-        refreshInFlight?.cancel()
-        refreshInFlight = nil
+        supersedeRefresh()
         tokens = newTokens
         try store.save(newTokens)
     }
 
     /// Forgets the grant — on logout, or when the refresh token is dead.
     func clear() {
-        generation &+= 1
+        supersedeRefresh()
         tokens = nil
+        store.clear()
+    }
+
+    /// Abandons any refresh in flight and disowns whatever it eventually returns.
+    ///
+    /// A refresh spends the *previous* refresh token, and Spotify keeps one live token per
+    /// client id and account — so a refresh that started before a new grant either returns
+    /// tokens that grant has already replaced, and overwrites it, or is refused as
+    /// `invalid_grant` for the token it retired, and discards it. The second is the likelier of
+    /// the two and logs the user out moments after they authorized. Re-authorizing while signed
+    /// in is a real path here: Speakers and the play alert both offer it.
+    ///
+    /// Cancellation is cooperative, so the network call can still succeed afterwards; the
+    /// generation is what stops its result from being written.
+    private func supersedeRefresh() {
+        generation &+= 1
         refreshInFlight?.cancel()
         refreshInFlight = nil
-        store.clear()
     }
 
     /// A token that is valid now, refreshing first if it is close enough to expiry.
@@ -168,22 +172,16 @@ actor KeymasterSession {
             throw KeymasterSessionError.noGrant
         }
 
-        let merged = merge(renewed, keeping: current)
+        // Only the initial exchange carries the username, so a refresh that omits it must not
+        // blank the stored one.
+        var merged = renewed
+        if merged.username.isEmpty {
+            merged.username = current.username
+        }
+
         try store.save(merged)
         tokens = merged
         return merged
-    }
-
-    /// Carries forward what a refresh response does not repeat.
-    private func merge(_ renewed: KeymasterTokens, keeping current: KeymasterTokens) -> KeymasterTokens {
-        renewed.username.isEmpty
-            ? KeymasterTokens(
-                accessToken: renewed.accessToken,
-                refreshToken: renewed.refreshToken,
-                expiresAt: renewed.expiresAt,
-                username: current.username,
-            )
-            : renewed
     }
 }
 

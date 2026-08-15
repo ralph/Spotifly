@@ -9,10 +9,10 @@ import Foundation
 import Security
 
 /// Manages secure storage of authentication tokens in the Keychain
-enum KeychainManager {
+nonisolated enum KeychainManager {
     /// Shared keychain access group - allows both dev and release builds to access the same items
     /// Format: TeamID.groupName (must match keychain-access-groups in entitlements)
-    private nonisolated static let accessGroup = "89S4HZY343.com.spotifly.keychain"
+    private static let accessGroup = "89S4HZY343.com.spotifly.keychain"
 
     // MARK: - The dashboard grant, which no longer exists
 
@@ -23,7 +23,7 @@ enum KeychainManager {
     /// cheaper to run it. The refresh token is a live credential for an app Spotifly no longer
     /// speaks to, and leaving it in the user's keychain forever is not ours to do. Delete this
     /// once enough releases have passed that no installed copy still holds one.
-    nonisolated static func purgeDashboardGrant() {
+    static func purgeDashboardGrant() {
         for key in ["spotify_access_token", "spotify_refresh_token", "spotify_expires_at"] {
             delete(key: key, service: "com.spotifly.oauth")
         }
@@ -32,14 +32,14 @@ enum KeychainManager {
 
     // MARK: - Keymaster grant
 
-    private nonisolated static let keymasterService = "com.spotifly.keymaster"
-    private nonisolated static let keymasterTokensKey = "keymaster_tokens"
+    private static let keymasterService = "com.spotifly.keymaster"
+    private static let keymasterTokensKey = "keymaster_tokens"
 
     /// Stored as one item rather than a key per field, which is how the Web API tokens were
     /// kept. The four values are only meaningful together — an access token paired with another
     /// grant's expiry, or with a refresh token that has since rotated, is worse than nothing —
     /// and a single write cannot leave them half-updated.
-    nonisolated static func saveKeymasterTokens(_ tokens: KeymasterTokens) throws {
+    static func saveKeymasterTokens(_ tokens: KeymasterTokens) throws {
         try save(
             key: keymasterTokensKey,
             data: JSONEncoder().encode(tokens),
@@ -47,52 +47,47 @@ enum KeychainManager {
         )
     }
 
-    nonisolated static func loadKeymasterTokens() -> KeymasterTokens? {
+    static func loadKeymasterTokens() -> KeymasterTokens? {
         guard let data = load(key: keymasterTokensKey, service: keymasterService) else {
             return nil
         }
         return try? JSONDecoder().decode(KeymasterTokens.self, from: data)
     }
 
-    nonisolated static func clearKeymasterTokens() {
+    static func clearKeymasterTokens() {
         delete(key: keymasterTokensKey, service: keymasterService)
     }
 
     // MARK: - Private Keychain Operations
 
-    private nonisolated static func save(key: String, data: Data, service: String) throws {
+    private static func save(key: String, data: Data, service: String) throws {
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+        ]
+
         var addQuery = makeQuery(key: key, service: service)
-        addQuery[kSecValueData as String] = data
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        addQuery.merge(attributes) { _, new in new }
 
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-
         if addStatus == errSecSuccess {
             return
         }
-
-        if addStatus == errSecDuplicateItem {
-            let updateQuery = makeQuery(key: key, service: service)
-            // Update in place so Keychain keeps existing trusted app ACL entries.
-            let updateAttributes: [String: Any] = [
-                kSecValueData as String: data,
-                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-            ]
-
-            let updateStatus = SecItemUpdate(
-                updateQuery as CFDictionary,
-                updateAttributes as CFDictionary,
-            )
-            guard updateStatus == errSecSuccess else {
-                throw KeychainError.saveFailed(updateStatus)
-            }
-            return
+        guard addStatus == errSecDuplicateItem else {
+            throw KeychainError.saveFailed(addStatus)
         }
 
-        throw KeychainError.saveFailed(addStatus)
+        // Update in place so Keychain keeps existing trusted app ACL entries.
+        let updateStatus = SecItemUpdate(
+            makeQuery(key: key, service: service) as CFDictionary,
+            attributes as CFDictionary,
+        )
+        guard updateStatus == errSecSuccess else {
+            throw KeychainError.saveFailed(updateStatus)
+        }
     }
 
-    private nonisolated static func load(key: String, service: String) -> Data? {
+    private static func load(key: String, service: String) -> Data? {
         var query = makeQuery(key: key, service: service)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -107,12 +102,11 @@ enum KeychainManager {
         return result as? Data
     }
 
-    private nonisolated static func delete(key: String, service: String) {
-        let query = makeQuery(key: key, service: service)
-        SecItemDelete(query as CFDictionary)
+    private static func delete(key: String, service: String) {
+        SecItemDelete(makeQuery(key: key, service: service) as CFDictionary)
     }
 
-    private nonisolated static func makeQuery(key: String, service: String) -> [String: Any] {
+    private static func makeQuery(key: String, service: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

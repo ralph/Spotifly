@@ -63,8 +63,7 @@ final class AuthViewModel {
     func loadFromKeychain() {
         isLoading = true
         Task {
-            let hasGrant = await KeymasterSession.shared.hasGrant
-            isSignedIn = hasGrant
+            isSignedIn = await KeymasterSession.shared.hasGrant
             isLoading = false
         }
     }
@@ -94,7 +93,10 @@ final class AuthViewModel {
             // not be the one already signed in here. Accepting a mismatch would swap the
             // account under a library, a queue and a now-playing bar that go on showing the
             // previous one — with no visible sign of it.
-            let mismatch = streamingAccountMismatch(expectedAccountId: expectedAccountId)
+            let mismatch = Self.accountMismatch(
+                expected: expectedAccountId,
+                granted: SpotifyPlayer.lastGrantAccountId(),
+            )
 
             guard startedAt == authLifecycle else {
                 // Logged out while this was deciding, and this run has to undo its own
@@ -105,9 +107,7 @@ final class AuthViewModel {
                 // the AP credentials and the keymaster tokens — belongs to an account that
                 // is gone, and logout cleared the cache before either was written.
                 debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
-                await PlaybackViewModel.shared.shutdownForLogout()
-                await SpotifyPlayer.clearStreamingCredentials()
-                isSignedIn = false
+                await discardGrant()
                 return
             }
 
@@ -115,19 +115,12 @@ final class AuthViewModel {
                 debugLog("AuthViewModel", "Streaming grant rejected: \(mismatch)")
                 // A play or retry may have initialized the player from the cached
                 // credentials while the comparison was in flight, so there can be a live
-                // session for the wrong account. Removing the directory would leave it
-                // connected and able to write its credentials back.
-                // Through the playback lifecycle, not straight to Rust: tearing the
-                // session down behind PlaybackViewModel leaves `isInitialized` true — the
-                // connection subscription deliberately does not clear it on a disconnect —
-                // so the app would hide the re-authorization affordance and keep aiming
-                // plays at a player that no longer exists.
-                await PlaybackViewModel.shared.shutdownForLogout()
-                await SpotifyPlayer.clearStreamingCredentials()
+                // session for the wrong account.
+                //
                 // A mismatch caught at sign-in cannot arise — there is nothing to mismatch
                 // against — so this only ever refuses a *change* of account, and the previous
                 // grant it declined to replace is the one that just went with the clear.
-                isSignedIn = false
+                await discardGrant()
                 errorMessage = String(localized: "auth.enable_playback_wrong_account")
                 return
             }
@@ -200,14 +193,8 @@ final class AuthViewModel {
     ///
     /// Pure, so the rule is testable and so the common path performs no I/O at all: callers
     /// inside the app already know who is signed in.
-    static func accountMismatch(expected: String?, granted: String?) -> String? {
-        guard let expected, let granted, expected != granted else { return nil }
-        return "streaming account \(granted) is not the signed-in account \(expected)"
-    }
-
-    /// Resolves both accounts and compares them.
     ///
-    /// Not knowing either one counts as agreement. Refusing a grant because an identity was
+    /// Not knowing either account counts as agreement. Refusing a grant because an identity was
     /// briefly unavailable would be worse than the case being guarded against, which needs
     /// the user to have deliberately signed the browser into a second account.
     ///
@@ -222,40 +209,42 @@ final class AuthViewModel {
     ///
     /// Signing in has nothing to compare against and passes nil, which is agreement by the
     /// rule above. That is not a gap: at that point the granted account *is* the account.
-    private func streamingAccountMismatch(expectedAccountId: String?) -> String? {
-        Self.accountMismatch(
-            expected: expectedAccountId,
-            granted: SpotifyPlayer.lastGrantAccountId(),
-        )
+    static func accountMismatch(expected: String?, granted: String?) -> String? {
+        guard let expected, let granted, expected != granted else { return nil }
+        return "streaming account \(granted) is not the signed-in account \(expected)"
+    }
+
+    /// Gives up the grant: tears the librespot session down, removes both credentials, and
+    /// leaves the app signed out. The whole of logging out, and of undoing a grant that must
+    /// not stand.
+    ///
+    /// The teardown comes first, and is awaited. Without it the Spirc connection stayed
+    /// registered on Spotify Connect for the account that just logged out — and because
+    /// nothing set the shutdown flag, the recovery loop treated the next network hiccup as an
+    /// outage worth fixing and re-announced the device. The flag is raised before Spirc is
+    /// touched, so recovery stops even when the goodbye itself cannot go out — logging out
+    /// mid-outage is exactly when that matters — and is cleared again by
+    /// `spotifly_init_player`. It goes through the playback lifecycle rather than straight to
+    /// Rust: tearing the session down behind `PlaybackViewModel` leaves `isInitialized` true,
+    /// since the connection subscription deliberately does not clear it on a disconnect, so
+    /// the app would hide the re-authorization affordance and keep aiming plays at a player
+    /// that no longer exists.
+    ///
+    /// Only then are the credentials removed — the keymaster tokens in the keychain and
+    /// librespot's AP credentials, which are a file and would otherwise let the next launch
+    /// connect the account that just logged out. After the teardown, so no live session can
+    /// write them back.
+    private func discardGrant() async {
+        await PlaybackViewModel.shared.shutdownForLogout()
+        await SpotifyPlayer.clearStreamingCredentials()
+        isSignedIn = false
     }
 
     func logout() async {
-        // Tear the librespot session down, not just the Swift-side token. Without this the
-        // Spirc connection stayed registered on Spotify Connect for the account that just
-        // logged out — and because nothing set the shutdown flag, the recovery loop treated
-        // the next network hiccup as an outage worth fixing and re-announced the device.
-        // Clearing state alone deferred the teardown to the next login, which runs
-        // `spotifly_cleanup()` before building a session.
-        //
-        // The teardown flag is raised before Spirc is touched, so recovery stops even when
-        // the goodbye itself cannot go out — logging out mid-outage is exactly when this
-        // matters. The flag is cleared again by `spotifly_init_player`.
-        //
-        // Awaited before the auth state is cleared so the login screen cannot come back and
-        // start a new session while this one is still going down. Rust only hands Spirc a
-        // command, so there is nothing slow to wait for.
         // Invalidates any streaming grant still deciding, so it cannot resume into the
         // session this is tearing down.
         authLifecycle &+= 1
 
-        await PlaybackViewModel.shared.shutdownForLogout()
-
-        // Clears both halves of the grant: the keymaster tokens in the keychain and
-        // librespot's AP credentials, which are a file and would otherwise let the next launch
-        // connect the account that just logged out. After the teardown, so no live session can
-        // write them back — and it is the whole of logging out now, since this is the only
-        // credential the app holds.
-        await SpotifyPlayer.clearStreamingCredentials()
-        isSignedIn = false
+        await discardGrant()
     }
 }
