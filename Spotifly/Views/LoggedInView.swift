@@ -69,10 +69,7 @@ struct LoggedInView: View {
     private static let sidebarMaxWidth: CGFloat = 400
 
     private var navigationSelectionBinding: Binding<NavigationItem?> {
-        Binding(
-            get: { navigationCoordinator.selectedNavigationItem },
-            set: { navigationCoordinator.selectNavigationItem($0) },
-        )
+        Bindable(navigationCoordinator).selectedNavigationItem
     }
 
     var body: some View {
@@ -123,13 +120,15 @@ struct LoggedInView: View {
         .environment(artistService)
         .focusedValue(\.navigationSelection, navigationSelectionBinding)
         .focusedValue(\.homeService, homeService)
-        .loggedInLifecycle(
-            store: store,
-            playbackViewModel: playbackViewModel,
-            queueService: queueService,
-            deviceService: deviceService,
-            connectionService: connectionService,
-            homeService: homeService,
+        .modifier(
+            LoggedInLifecycleModifier(
+                store: store,
+                playbackViewModel: playbackViewModel,
+                queueService: queueService,
+                deviceService: deviceService,
+                connectionService: connectionService,
+                homeService: homeService,
+            ),
         )
         .onChange(of: store.searchCacheEvictionRevision) {
             navigationCoordinator.invalidateUnviewableRoutes()
@@ -206,7 +205,6 @@ struct LoggedInView: View {
     private func sidebarView() -> some View {
         SidebarView(
             selection: navigationSelectionBinding,
-            onLogout: handleLogout,
             hasSearchResults: store.lastDisplayedSearchQuery.flatMap(store.searchResults(for:)) != nil,
             userProfile: store.userProfile,
         )

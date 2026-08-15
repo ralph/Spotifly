@@ -44,7 +44,7 @@ struct LoggedInContentToolbar: ToolbarContent {
 }
 
 struct LoggedInDetailToolbar: ToolbarContent {
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
 
     @ToolbarContentBuilder
     var body: some ToolbarContent {
@@ -86,7 +86,7 @@ private struct LoggedInContextToolbarActions: View {
     @Environment(ArtistService.self) private var artistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
 
     var body: some View {
         switch navigationCoordinator.selectedNavigationItem {
@@ -114,134 +114,114 @@ private struct LoggedInContextToolbarActions: View {
     }
 
     private func albumToolbarActions(album: Album) -> some View {
-        let isInLibrary = store.userAlbumIds.contains(album.id)
-
-        return HStack(spacing: 8) {
-            Button {
+        HStack(spacing: 8) {
+            ToolbarActionButton(
+                title: "track.menu.play_next",
+                systemImage: "text.line.first.and.arrowtriangle.forward",
+            ) {
                 Task {
                     await playbackViewModel.addToQueue(uri: album.uri)
                 }
-            } label: {
-                Label("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
-            .labelStyle(.iconOnly)
-            .help("track.menu.play_next")
 
             ShareToolbarButton(externalUrl: album.externalUrl)
 
             if let artistId = album.artistId {
-                Button {
+                ToolbarActionButton(title: "track.menu.go_to_artist", systemImage: "person") {
                     navigationCoordinator.navigateToArtistSection(artistId: artistId)
-                } label: {
-                    Label("track.menu.go_to_artist", systemImage: "person")
                 }
-                .labelStyle(.iconOnly)
-                .help("track.menu.go_to_artist")
             }
 
-            if isInLibrary {
-                Button(role: .destructive) {
+            if store.userAlbumIds.contains(album.id) {
+                ToolbarActionButton(
+                    title: "album.menu.remove_from_library",
+                    systemImage: "minus.circle",
+                    role: .destructive,
+                ) {
                     NotificationCenter.default.post(name: .showAlbumRemoveConfirmation, object: album.id)
-                } label: {
-                    Label("album.menu.remove_from_library", systemImage: "minus.circle")
                 }
-                .labelStyle(.iconOnly)
-                .help("album.menu.remove_from_library")
             } else {
-                Button {
+                ToolbarActionButton(title: "album.menu.add_to_library", systemImage: "plus.circle") {
                     Task {
                         try? await albumService.saveAlbumToLibrary(albumId: album.id)
                     }
-                } label: {
-                    Label("album.menu.add_to_library", systemImage: "plus.circle")
                 }
-                .labelStyle(.iconOnly)
-                .help("album.menu.add_to_library")
             }
         }
     }
 
     private func artistToolbarActions(artist: Artist) -> some View {
-        let isFollowing = store.userArtistIds.contains(artist.id)
-
-        return HStack(spacing: 8) {
+        HStack(spacing: 8) {
             ShareToolbarButton(externalUrl: artist.externalUrl)
 
-            if isFollowing {
-                Button(role: .destructive) {
+            if store.userArtistIds.contains(artist.id) {
+                ToolbarActionButton(
+                    title: "artist.menu.unfollow",
+                    systemImage: "person.badge.minus",
+                    role: .destructive,
+                ) {
                     NotificationCenter.default.post(name: .showArtistUnfollowConfirmation, object: artist.id)
-                } label: {
-                    Label("artist.menu.unfollow", systemImage: "person.badge.minus")
                 }
-                .labelStyle(.iconOnly)
-                .help("artist.menu.unfollow")
             } else {
-                Button {
+                ToolbarActionButton(title: "artist.menu.follow", systemImage: "person.badge.plus") {
                     Task {
                         try? await artistService.followArtist(artistId: artist.id)
                     }
-                } label: {
-                    Label("artist.menu.follow", systemImage: "person.badge.plus")
                 }
-                .labelStyle(.iconOnly)
-                .help("artist.menu.follow")
             }
         }
     }
 
     private func playlistToolbarActions(playlist: Playlist) -> some View {
-        let isOwner = playlist.ownerId == store.userId
-        let isInLibrary = store.userPlaylistIds.contains(playlist.id)
-
-        return HStack(spacing: 8) {
-            Button {
+        HStack(spacing: 8) {
+            ToolbarActionButton(
+                title: "track.menu.play_next",
+                systemImage: "text.line.first.and.arrowtriangle.forward",
+            ) {
                 Task {
                     await playbackViewModel.addToQueue(uri: playlist.uri)
                 }
-            } label: {
-                Label("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
-            .labelStyle(.iconOnly)
-            .help("track.menu.play_next")
 
             ShareToolbarButton(externalUrl: playlist.externalUrl)
 
-            if isOwner {
-                Button {
+            if playlist.ownerId == store.userId {
+                ToolbarActionButton(title: "playlist.menu.edit_details", systemImage: "pencil") {
                     NotificationCenter.default.post(name: .showPlaylistEditDetails, object: playlist.id)
-                } label: {
-                    Label("playlist.menu.edit_details", systemImage: "pencil")
                 }
-                .labelStyle(.iconOnly)
-                .help("playlist.menu.edit_details")
 
-                Button(role: .destructive) {
+                ToolbarActionButton(title: "playlist.menu.delete", systemImage: "trash", role: .destructive) {
                     NotificationCenter.default.post(name: .showPlaylistDeleteConfirmation, object: playlist.id)
-                } label: {
-                    Label("playlist.menu.delete", systemImage: "trash")
                 }
-                .labelStyle(.iconOnly)
-                .help("playlist.menu.delete")
-            } else if isInLibrary {
-                Button(role: .destructive) {
+            } else if store.userPlaylistIds.contains(playlist.id) {
+                ToolbarActionButton(title: "playlist.menu.unfollow", systemImage: "minus.circle", role: .destructive) {
                     NotificationCenter.default.post(name: .showPlaylistUnfollowConfirmation, object: playlist.id)
-                } label: {
-                    Label("playlist.menu.unfollow", systemImage: "minus.circle")
                 }
-                .labelStyle(.iconOnly)
-                .help("playlist.menu.unfollow")
             } else {
-                Button {
+                ToolbarActionButton(title: "playlist.menu.follow", systemImage: "plus.circle") {
                     Task {
                         try? await playlistService.followPlaylist(playlistId: playlist.id)
                     }
-                } label: {
-                    Label("playlist.menu.follow", systemImage: "plus.circle")
                 }
-                .labelStyle(.iconOnly)
-                .help("playlist.menu.follow")
             }
         }
+    }
+}
+
+/// The shape every action in the context toolbar has: an icon-only button whose tooltip
+/// repeats its own label.
+private struct ToolbarActionButton: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    var role: ButtonRole?
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: role, action: action) {
+            Label(title, systemImage: systemImage)
+        }
+        .labelStyle(.iconOnly)
+        .help(title)
     }
 }
 
@@ -252,7 +232,7 @@ private struct ShareToolbarButton: View {
     @State private var linkCopiedDismissTask: Task<Void, Never>?
 
     var body: some View {
-        Button {
+        ToolbarActionButton(title: "action.share", systemImage: "square.and.arrow.up") {
             guard let externalUrl else { return }
 
             let pasteboard = NSPasteboard.general
@@ -266,11 +246,7 @@ private struct ShareToolbarButton: View {
                 guard !Task.isCancelled else { return }
                 showLinkCopied = false
             }
-        } label: {
-            Label("action.share", systemImage: "square.and.arrow.up")
         }
-        .labelStyle(.iconOnly)
-        .help("action.share")
         .disabled(externalUrl == nil)
         .popover(isPresented: $showLinkCopied, arrowEdge: .bottom) {
             Text("action.link_copied")

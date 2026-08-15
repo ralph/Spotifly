@@ -84,22 +84,17 @@ enum NavigationItem: Hashable, Identifiable {
 
 struct SidebarView: View {
     @Binding var selection: NavigationItem?
-    let onLogout: () -> Void
     var hasSearchResults: Bool = false
     var userProfile: UserProfile?
 
-    /// Navigation items in the main section
-    private var mainNavItems: [NavigationItem] {
-        [.startpage, .queue, .speakers]
-    }
+    private static let mainNavItems: [NavigationItem] = [.startpage, .queue, .speakers]
+    private static let libraryNavItems: [NavigationItem] = [.favorites, .playlists, .albums, .artists]
 
     var body: some View {
         List(selection: $selection) {
             Section {
-                ForEach(mainNavItems) { item in
-                    NavigationLink(value: item) {
-                        Label(item.title, systemImage: item.icon)
-                    }
+                ForEach(Self.mainNavItems) { item in
+                    navigationLink(for: item)
                 }
             } header: {
                 HStack(spacing: 8) {
@@ -112,17 +107,13 @@ struct SidebarView: View {
 
             if hasSearchResults {
                 Section {
-                    NavigationLink(value: NavigationItem.searchResults) {
-                        Label(String(localized: "nav.search_results"), systemImage: "magnifyingglass")
-                    }
+                    navigationLink(for: .searchResults)
                 }
             }
 
             Section {
-                ForEach([NavigationItem.favorites, NavigationItem.playlists, NavigationItem.albums, NavigationItem.artists]) { item in
-                    NavigationLink(value: item) {
-                        Label(item.title, systemImage: item.icon)
-                    }
+                ForEach(Self.libraryNavItems) { item in
+                    navigationLink(for: item)
                 }
             } header: {
                 Text("nav.library")
@@ -168,6 +159,12 @@ struct SidebarView: View {
             .padding(.bottom, 8)
         }
         .navigationTitle("app.name")
+    }
+
+    private func navigationLink(for item: NavigationItem) -> some View {
+        NavigationLink(value: item) {
+            Label(item.title, systemImage: item.icon)
+        }
     }
 }
 

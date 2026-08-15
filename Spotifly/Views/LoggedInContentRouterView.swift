@@ -11,25 +11,11 @@ struct LoggedInContentRouterView: View {
     @Environment(AppStore.self) private var store
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
     let onLogout: () -> Void
 
-    private var navigationPathBinding: Binding<[NavigationDestination]> {
-        Binding(
-            get: { navigationCoordinator.navigationPath },
-            set: { navigationCoordinator.setNavigationPath($0) },
-        )
-    }
-
-    private var navigationSelectionBinding: Binding<NavigationItem?> {
-        Binding(
-            get: { navigationCoordinator.selectedNavigationItem },
-            set: { navigationCoordinator.selectNavigationItem($0) },
-        )
-    }
-
     var body: some View {
-        NavigationStack(path: navigationPathBinding) {
+        NavigationStack(path: Bindable(navigationCoordinator).navigationPath) {
             Group {
                 if let query = navigationCoordinator.displayedSearchQuery,
                    let searchResults = store.searchResults(for: query)
@@ -39,7 +25,7 @@ struct LoggedInContentRouterView: View {
                 } else {
                     contentView
                         .playbackShortcuts(playbackViewModel: playbackViewModel)
-                        .libraryNavigationShortcuts(selection: navigationSelectionBinding)
+                        .libraryNavigationShortcuts(selection: Bindable(navigationCoordinator).selectedNavigationItem)
                 }
             }
             .navigationDestination(for: NavigationDestination.self) { destination in

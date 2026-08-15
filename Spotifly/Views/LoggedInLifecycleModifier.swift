@@ -125,25 +125,3 @@ struct LoggedInLifecycleModifier: ViewModifier {
         }
     }
 }
-
-extension View {
-    func loggedInLifecycle(
-        store: AppStore,
-        playbackViewModel: PlaybackViewModel,
-        queueService: QueueService,
-        deviceService: DeviceService,
-        connectionService: ConnectionService,
-        homeService: HomeService,
-    ) -> some View {
-        modifier(
-            LoggedInLifecycleModifier(
-                store: store,
-                playbackViewModel: playbackViewModel,
-                queueService: queueService,
-                deviceService: deviceService,
-                connectionService: connectionService,
-                homeService: homeService,
-            ),
-        )
-    }
-}

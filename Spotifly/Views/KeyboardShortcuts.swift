@@ -32,7 +32,7 @@ extension View {
 }
 
 private struct PlaybackShortcutsView: View {
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
 
     var body: some View {
         Group {
