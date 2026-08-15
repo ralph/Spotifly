@@ -176,26 +176,27 @@ struct PathfinderPlaylistEntityTests {
 /// status check cannot see it. Without this discrimination a failed write would look like a
 /// successful one and the optimistic update would stand.
 struct PathfinderMutationTests {
+    private func decode(_ json: String) throws -> PathfinderMutationResponse {
+        try JSONDecoder().decode(PathfinderMutationResponse.self, from: Data(json.utf8))
+    }
+
     @Test func `a success payload reports no failure`() throws {
         for typename in [
             "AddItemsToPlaylistPayload",
             "RemoveItemsFromPlaylistPayload",
             "MoveItemsInPlaylistPayload",
         ] {
-            let json = Data(#"{"data":{"addItemsToPlaylist":{"__typename":"\#(typename)"}}}"#.utf8)
-            let response = try JSONDecoder().decode(PathfinderMutationResponse.self, from: json)
+            let response = try decode(#"{"data":{"addItemsToPlaylist":{"__typename":"\#(typename)"}}}"#)
 
             #expect(response.failure == nil)
         }
     }
 
     @Test func `a rejection arrives with a 200 and is still a failure`() throws {
-        let json = Data("""
+        let response = try decode("""
         {"data":{"addItemsToPlaylist":{"__typename":"NotFound",
           "message":"Object with uri 'spotify:playlist:x' not found"}}}
-        """.utf8)
-
-        let response = try JSONDecoder().decode(PathfinderMutationResponse.self, from: json)
+        """)
         let failure = try #require(response.failure)
 
         #expect(failure.contains("NotFound"))
@@ -203,10 +204,7 @@ struct PathfinderMutationTests {
     }
 
     @Test func `a response naming no result is a failure rather than a success`() throws {
-        let json = Data(#"{"data":{}}"#.utf8)
-        let response = try JSONDecoder().decode(PathfinderMutationResponse.self, from: json)
-
-        #expect(response.failure != nil)
+        #expect(try decode(#"{"data":{}}"#).failure != nil)
     }
 
     /// The stored query references every variable it declares, so a missing one is a 400

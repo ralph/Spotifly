@@ -466,42 +466,4 @@ struct NavigationCoordinatorTests {
     private var emptySearchResults: SearchResults {
         SearchResults(albums: [], artists: [], playlists: [], tracks: [])
     }
-
-    private func album(id: String, name: String) -> Album {
-        Album(
-            id: id,
-            name: name,
-            uri: "spotify:album:\(id)",
-            images: .empty,
-            releaseDate: nil,
-            albumType: "album",
-            externalUrl: nil,
-            artistId: nil,
-            artistName: "Artist",
-            detailsLoaded: true,
-        )
-    }
-
-    private func artist(id: String, name: String) -> Artist {
-        Artist(
-            id: id,
-            name: name,
-            uri: "spotify:artist:\(id)",
-            images: .empty,
-            externalUrl: nil,
-        )
-    }
-
-    private func playlist(id: String) -> Playlist {
-        Playlist(
-            id: id,
-            name: "Playlist",
-            description: nil,
-            images: .empty,
-            uri: "spotify:playlist:\(id)",
-            isPublic: true,
-            ownerId: "owner",
-            ownerName: "Owner",
-        )
-    }
 }

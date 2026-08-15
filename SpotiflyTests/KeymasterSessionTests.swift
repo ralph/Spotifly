@@ -62,56 +62,6 @@ private final class SpyRefresher: @unchecked Sendable {
     }
 }
 
-private final class Counter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var count = 0
-
-    func increment() {
-        lock.withLock { count += 1 }
-    }
-
-    var value: Int {
-        lock.withLock { count }
-    }
-}
-
-/// Lets a test hold a refresh open at a chosen point, so a logout can be landed *inside* it.
-///
-/// Without this the stub throws before the test's next line runs, and a supersession test
-/// silently exercises the ordinary path instead.
-private actor Gate {
-    private var isOpen = false
-    private var hasEntered = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var arrivals: [CheckedContinuation<Void, Never>] = []
-
-    func entered() {
-        hasEntered = true
-        for arrival in arrivals {
-            arrival.resume()
-        }
-        arrivals.removeAll()
-    }
-
-    func waitUntilEntered() async {
-        guard !hasEntered else { return }
-        await withCheckedContinuation { arrivals.append($0) }
-    }
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    func open() {
-        isOpen = true
-        for waiter in waiters {
-            waiter.resume()
-        }
-        waiters.removeAll()
-    }
-}
-
 private func tokens(
     access: String = "access-0",
     refresh: String = "refresh-0",
@@ -243,7 +193,7 @@ struct KeymasterSessionTests {
 
         // Forgetting the tokens stops the retry loop; the announcement is what gets the user
         // to a screen they can sign in from, so it is half the fix and worth asserting.
-        let announcements = Counter()
+        let announcements = Tally()
         let subscription = session.grantRevoked.sink { announcements.increment() }
         defer { subscription.cancel() }
 
@@ -253,7 +203,7 @@ struct KeymasterSessionTests {
 
         #expect(store.load() == nil)
         #expect(await !session.hasGrant)
-        #expect(announcements.value == 1)
+        #expect(announcements.count == 1)
     }
 
     @Test func `a transient failure keeps the grant`() async throws {
@@ -277,7 +227,7 @@ struct KeymasterSessionTests {
         // inside it. The revocation belongs to the token this run spent, not to the good grant
         // now holding the slot. The gate is what makes that orderable: without it the refusal
         // lands before the replacement and the test proves nothing.
-        let gate = Gate()
+        let gate = AsyncGate()
         let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(buffer - 60)))
         let session = KeymasterSession(store: store, refresher: { _ in
             await gate.entered()
@@ -304,7 +254,7 @@ struct KeymasterSessionTests {
         // grant can land while a routine refresh is still on the wire. The refresh spent the
         // token that grant has just replaced; whatever it answers belongs to a grant that is
         // gone.
-        let gate = Gate()
+        let gate = AsyncGate()
         let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(buffer - 60)))
         let session = KeymasterSession(store: store, refresher: { _ in
             await gate.entered()
@@ -329,7 +279,7 @@ struct KeymasterSessionTests {
         // The likelier half: Spotify keeps one live refresh token per client id and account, so
         // the grant just adopted is exactly what killed the token the refresh is spending. Left
         // unguarded, authorizing successfully logs the user straight back out.
-        let gate = Gate()
+        let gate = AsyncGate()
         let store = RecordingStore(initial: tokens(expiresAt: now.addingTimeInterval(buffer - 60)))
         let session = KeymasterSession(store: store, refresher: { _ in
             await gate.entered()
@@ -337,7 +287,7 @@ struct KeymasterSessionTests {
             throw KeymasterAuthError.grantRevoked
         })
 
-        let announcements = Counter()
+        let announcements = Tally()
         let subscription = session.grantRevoked.sink { announcements.increment() }
         defer { subscription.cancel() }
 
@@ -352,7 +302,7 @@ struct KeymasterSessionTests {
 
         #expect(store.load() == fresh)
         #expect(await session.hasGrant)
-        #expect(announcements.value == 0)
+        #expect(announcements.count == 0)
     }
 
     @Test func `clearing forgets the grant in memory and on disk`() async {

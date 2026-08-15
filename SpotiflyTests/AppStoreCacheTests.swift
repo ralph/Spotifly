@@ -78,48 +78,20 @@ struct AppStoreCacheTests {
 
     // MARK: - Fixtures
 
+    /// Everything a metadata fetch answers with.
     private func fetchedAlbum(id: String, name: String) -> Album {
-        Album(
+        album(
             id: id,
             name: name,
-            uri: "spotify:album:\(id)",
-            images: .empty,
             releaseDate: "2025-06-13",
-            albumType: "album",
             externalUrl: "https://open.spotify.com/album/\(id)",
             artistId: "artist",
-            artistName: "Artist",
-            detailsLoaded: true,
         )
     }
 
     /// What `TopItemsService` can build out of a track's album object.
     private func stubAlbum(id: String, name: String) -> Album {
-        Album(
-            id: id,
-            name: name,
-            uri: "spotify:album:\(id)",
-            images: .empty,
-            releaseDate: nil,
-            albumType: nil,
-            externalUrl: nil,
-            artistId: "artist",
-            artistName: "Artist",
-            detailsLoaded: false,
-        )
-    }
-
-    private func playlist(id: String) -> Playlist {
-        Playlist(
-            id: id,
-            name: "Playlist",
-            description: nil,
-            images: .empty,
-            uri: "spotify:playlist:\(id)",
-            isPublic: true,
-            ownerId: "owner",
-            ownerName: "Owner",
-        )
+        album(id: id, name: name, albumType: nil, artistId: "artist", detailsLoaded: false)
     }
 }
 

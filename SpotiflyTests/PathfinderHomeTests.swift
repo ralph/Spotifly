@@ -261,15 +261,7 @@ struct PathfinderHomeRequestTests {
 @MainActor
 struct HomeRefreshTests {
     private func api(answering body: Data) -> PartnerAPI {
-        PartnerAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            transport: { _ in
-                (body, HTTPURLResponse(
-                    url: PartnerAPI.endpoint, statusCode: 200, httpVersion: nil, headerFields: nil,
-                )!)
-            },
-        )
+        partnerAPI { _ in (body, httpResponse(200)) }
     }
 
     @Test func `a loaded page is not fetched again unless refreshed`() async {
@@ -304,7 +296,7 @@ struct HomeRefreshTests {
     @Test(.timeLimit(.minutes(1)))
     func `a superseded refresh does not clear the one that replaced it`() async {
         let store = AppStore()
-        let gate = Gate()
+        let gate = AsyncGate()
         let service = HomeService(store: store, partnerAPI: gatedAPI(gate))
 
         let first = Task { await service.refresh() }
@@ -323,17 +315,11 @@ struct HomeRefreshTests {
     }
 
     /// Answers the fixture, but only once the gate is opened.
-    private func gatedAPI(_ gate: Gate) -> PartnerAPI {
-        PartnerAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            transport: { _ in
-                await gate.wait()
-                return (homeJSON, HTTPURLResponse(
-                    url: PartnerAPI.endpoint, statusCode: 200, httpVersion: nil, headerFields: nil,
-                )!)
-            },
-        )
+    private func gatedAPI(_ gate: AsyncGate) -> PartnerAPI {
+        partnerAPI { _ in
+            await gate.wait()
+            return (homeJSON, httpResponse(200))
+        }
     }
 
     /// A failure has to reach the screen, since the page has nothing else to say for itself.
@@ -346,30 +332,6 @@ struct HomeRefreshTests {
         #expect(store.homeErrorMessage != nil)
         #expect(!store.hasLoadedHome)
         #expect(!store.homeIsLoading)
-    }
-}
-
-/// Holds a transport at the door until the test lets it through.
-///
-/// Opening both sets the flag *and* drains the waiters, so a transport arriving either side of
-/// `open()` is released either way — the gate cannot strand one by losing a race with it.
-private actor Gate {
-    private var isOpen = false
-    private var waiting: [CheckedContinuation<Void, Never>] = []
-
-    func wait() async {
-        if isOpen {
-            return
-        }
-        await withCheckedContinuation { waiting.append($0) }
-    }
-
-    func open() {
-        isOpen = true
-        for continuation in waiting {
-            continuation.resume()
-        }
-        waiting.removeAll()
     }
 }
 

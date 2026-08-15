@@ -9,29 +9,8 @@ import Foundation
 @testable import Spotifly
 import Testing
 
-private func makeAPI(
-    accessToken: String = "at",
-    clientToken: String = "ct",
-    transport: @escaping PartnerAPI.Transport,
-) -> PartnerAPI {
-    PartnerAPI(
-        accessToken: { accessToken },
-        clientToken: { clientToken },
-        transport: transport,
-    )
-}
-
-private func httpResponse(_ status: Int) -> HTTPURLResponse {
-    HTTPURLResponse(url: PartnerAPI.endpoint, statusCode: status, httpVersion: nil, headerFields: nil)!
-}
-
 /// What goes out on the wire.
 struct PathfinderRequestTests {
-    private func body(_ request: URLRequest) throws -> [String: Any] {
-        let data = try #require(request.httpBody)
-        return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    }
-
     @Test func `the request names the operation and its stored query, and sends no query text`() throws {
         let encoded = try PartnerAPI.encodeBody(
             .searchTracks,
@@ -82,7 +61,7 @@ struct PathfinderRequestTests {
     }
 
     @Test func `the request carries both tokens and the client's own headers`() async throws {
-        let api = makeAPI(accessToken: "the-bearer", clientToken: "the-client-token") { _ in
+        let api = partnerAPI(accessToken: "the-bearer", clientToken: "the-client-token") { _ in
             (Data(), httpResponse(200))
         }
 
@@ -118,7 +97,7 @@ struct PathfinderResponseTests {
         {"url":"https://i/big","width":640,"height":640}]}}}}}
         """
 
-        let api = makeAPI { _ in (searchPayload(kind: "tracksV2", items: track), httpResponse(200)) }
+        let api = partnerAPI { _ in (searchPayload(kind: "tracksV2", items: track), httpResponse(200)) }
         let results = try await api.searchTracks("daft punk")
 
         #expect(results.count == 1)
@@ -140,7 +119,7 @@ struct PathfinderResponseTests {
         "coverArt":{"sources":[{"url":"https://i/big","width":640,"height":640}]}}}
         """
 
-        let api = makeAPI { _ in (searchPayload(kind: "albumsV2", items: album), httpResponse(200)) }
+        let api = partnerAPI { _ in (searchPayload(kind: "albumsV2", items: album), httpResponse(200)) }
         let results = try await api.searchAlbums("discovery")
 
         let first = try #require(results.first)
@@ -157,7 +136,7 @@ struct PathfinderResponseTests {
         "visuals":{"avatarImage":{"sources":[{"url":"https://i/a","width":320,"height":320}]}}}}
         """
 
-        let api = makeAPI { _ in (searchPayload(kind: "artists", items: artist), httpResponse(200)) }
+        let api = partnerAPI { _ in (searchPayload(kind: "artists", items: artist), httpResponse(200)) }
         let results = try await api.searchArtists("daft")
 
         let first = try #require(results.first)
@@ -173,7 +152,7 @@ struct PathfinderResponseTests {
         "images":{"items":[{"sources":[{"url":"https://i/p","width":300,"height":300}]}]}}}
         """
 
-        let api = makeAPI { _ in (searchPayload(kind: "playlists", items: playlist), httpResponse(200)) }
+        let api = partnerAPI { _ in (searchPayload(kind: "playlists", items: playlist), httpResponse(200)) }
         let results = try await api.searchPlaylists("mix")
 
         let first = try #require(results.first)
@@ -191,7 +170,7 @@ struct PathfinderResponseTests {
         let wrapped = #"{"item":{"data":{"uri":"spotify:track:t1","name":"Wrapped"}},"matchedFields":[]}"#
         let direct = #"{"data":{"uri":"spotify:track:t2","name":"Direct"}}"#
 
-        let api = makeAPI { _ in
+        let api = partnerAPI { _ in
             (searchPayload(kind: "tracksV2", items: "\(wrapped),\(direct)"), httpResponse(200))
         }
         let results = try await api.searchTracks("x")
@@ -204,7 +183,7 @@ struct PathfinderResponseTests {
         {"item":{"data":{"uri":"spotify:track:t1","name":"Good"}}},{"item":null},{"nothing":true}
         """
 
-        let api = makeAPI { _ in (searchPayload(kind: "tracksV2", items: items), httpResponse(200)) }
+        let api = partnerAPI { _ in (searchPayload(kind: "tracksV2", items: items), httpResponse(200)) }
         let results = try await api.searchTracks("x")
 
         #expect(results.count == 1)
@@ -212,7 +191,7 @@ struct PathfinderResponseTests {
     }
 
     @Test func `an empty result set is empty, not an error`() async throws {
-        let api = makeAPI { _ in
+        let api = partnerAPI { _ in
             (Data(#"{"data":{"searchV2":{"tracksV2":{"totalCount":0,"items":[]}}}}"#.utf8), httpResponse(200))
         }
 
@@ -222,7 +201,7 @@ struct PathfinderResponseTests {
     @Test func `a retired persisted query is reported as such`() async throws {
         // The failure this design invites: Spotify ships a new web client and the vendored
         // hash stops resolving. Naming it saves the next person the hunt.
-        let api = makeAPI { _ in
+        let api = partnerAPI { _ in
             (
                 Data(#"{"errors":[{"message":"PersistedQueryNotFound"}]}"#.utf8),
                 httpResponse(200),
@@ -235,7 +214,7 @@ struct PathfinderResponseTests {
     }
 
     @Test func `a GraphQL error in a 200 body is still an error`() async throws {
-        let api = makeAPI { _ in
+        let api = partnerAPI { _ in
             (Data(#"{"errors":[{"message":"Something broke"}]}"#.utf8), httpResponse(200))
         }
 
@@ -245,7 +224,7 @@ struct PathfinderResponseTests {
     }
 
     @Test func `a non-200 is an error before the body is trusted`() async throws {
-        let api = makeAPI { _ in (Data(), httpResponse(403)) }
+        let api = partnerAPI { _ in (Data(), httpResponse(403)) }
 
         await #expect(throws: PartnerAPIError.self) {
             _ = try await api.searchTracks("x")
@@ -258,23 +237,18 @@ struct PathfinderResponseTests {
 struct ClientTokenRecoveryTests {
     @Test func `a 401 drops the cached client token and retries once`() async throws {
         let attempts = Tally()
-        let rejected = Recorder()
+        let rejected = Recorder<String>()
         let payload = Data(#"""
         {"data":{"searchV2":{"tracksV2":{"totalCount":1,
           "items":[{"item":{"data":{"uri":"spotify:track:t1","name":"Good"}}}]}}}}
         """#.utf8)
 
-        let api = PartnerAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            invalidateClientToken: { rejected.record($0) },
-            transport: { _ in
-                attempts.increment()
-                return attempts.count == 1
-                    ? (Data(), httpResponse(401))
-                    : (payload, httpResponse(200))
-            },
-        )
+        let api = partnerAPI(invalidateClientToken: { rejected.record($0) }) { _ in
+            attempts.increment()
+            return attempts.count == 1
+                ? (Data(), httpResponse(401))
+                : (payload, httpResponse(200))
+        }
 
         let results = try await api.searchTracks("x")
 
@@ -290,15 +264,10 @@ struct ClientTokenRecoveryTests {
     @Test func `a second 401 is reported rather than retried again`() async throws {
         let attempts = Tally()
 
-        let api = PartnerAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            invalidateClientToken: { _ in },
-            transport: { _ in
-                attempts.increment()
-                return (Data(), httpResponse(401))
-            },
-        )
+        let api = partnerAPI(invalidateClientToken: { _ in }) { _ in
+            attempts.increment()
+            return (Data(), httpResponse(401))
+        }
 
         await #expect(throws: PartnerAPIError.self) {
             _ = try await api.searchTracks("x")
@@ -307,45 +276,16 @@ struct ClientTokenRecoveryTests {
     }
 
     @Test func `a status that is not 401 does not touch the client token`() async throws {
-        let rejected = Recorder()
+        let rejected = Recorder<String>()
 
-        let api = PartnerAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            invalidateClientToken: { rejected.record($0) },
-            transport: { _ in (Data(), httpResponse(500)) },
-        )
+        let api = partnerAPI(invalidateClientToken: { rejected.record($0) }) { _ in
+            (Data(), httpResponse(500))
+        }
 
         await #expect(throws: PartnerAPIError.self) {
             _ = try await api.searchTracks("x")
         }
         #expect(rejected.values.isEmpty)
-    }
-}
-
-final class Recorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var recorded: [String] = []
-
-    var values: [String] {
-        lock.withLock { recorded }
-    }
-
-    func record(_ value: String) {
-        lock.withLock { recorded.append(value) }
-    }
-}
-
-final class Tally: @unchecked Sendable {
-    private let lock = NSLock()
-    private var tally = 0
-
-    var count: Int {
-        lock.withLock { tally }
-    }
-
-    func increment() {
-        lock.withLock { tally += 1 }
     }
 }
 
@@ -381,10 +321,10 @@ struct PathfinderPlaylistPagingTests {
     }
 
     @Test func `a playlist longer than a page is fetched to the end`() async throws {
-        let recorder = OffsetRecorder()
-        let api = makeAPI { request in
+        let offsets = Recorder<Int>()
+        let api = partnerAPI { request in
             let offset = try offset(of: request)
-            recorder.record(offset)
+            offsets.record(offset)
             let uids = (offset ..< min(offset + 2, 5)).map { "uid\($0)" }
             return (page(uids: uids, totalCount: 5), httpResponse(200))
         }
@@ -394,51 +334,38 @@ struct PathfinderPlaylistPagingTests {
         // Every item, not just the first page — an item the app never saw cannot be removed or
         // reordered, because both name a uid.
         #expect(playlist.content?.items?.compactMap(\.uid) == ["uid0", "uid1", "uid2", "uid3", "uid4"])
-        #expect(recorder.offsets == [0, 2, 4])
+        #expect(offsets.values == [0, 2, 4])
         // Read on the first page, and it counts the playlist rather than the page.
         #expect(playlist.content?.totalCount == 5)
     }
 
     @Test func `a playlist that fits in one page is one request`() async throws {
-        let recorder = OffsetRecorder()
-        let api = makeAPI { request in
-            try recorder.record(offset(of: request))
+        let offsets = Recorder<Int>()
+        let api = partnerAPI { request in
+            try offsets.record(offset(of: request))
             return (page(uids: ["a", "b"], totalCount: 2), httpResponse(200))
         }
 
         let playlist = try await api.playlist(id: "p1")
 
         #expect(playlist.content?.items?.count == 2)
-        #expect(recorder.offsets == [0])
+        #expect(offsets.values == [0])
     }
 
     /// A playlist can lose items between requests, and `totalCount` then names a length no
     /// offset reaches. The walk has to end on the empty page rather than asking forever.
     @Test func `a page that adds nothing ends the walk`() async throws {
-        let recorder = OffsetRecorder()
-        let api = makeAPI { request in
+        let offsets = Recorder<Int>()
+        let api = partnerAPI { request in
             let offset = try offset(of: request)
-            recorder.record(offset)
+            offsets.record(offset)
             return (page(uids: offset == 0 ? ["a", "b"] : [], totalCount: 500), httpResponse(200))
         }
 
         let playlist = try await api.playlist(id: "p1")
 
         #expect(playlist.content?.items?.count == 2)
-        #expect(recorder.offsets == [0, 2])
-    }
-}
-
-private final class OffsetRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var recorded: [Int] = []
-
-    var offsets: [Int] {
-        lock.withLock { recorded }
-    }
-
-    func record(_ offset: Int) {
-        lock.withLock { recorded.append(offset) }
+        #expect(offsets.values == [0, 2])
     }
 }
 

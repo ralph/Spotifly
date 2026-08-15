@@ -86,14 +86,18 @@ private let libraryTracksJSON = Data("""
   ]}}}}}
 """.utf8)
 
+private func playlistsPage() throws -> PathfinderLibraryPage<PathfinderPlaylist> {
+    let response = try JSONDecoder().decode(
+        PathfinderLibraryResponse<PathfinderPlaylist>.self,
+        from: libraryPlaylistsJSON,
+    )
+    return try #require(response.page)
+}
+
 @MainActor
 struct PathfinderLibraryTests {
     @Test func `the library envelope decodes down to its playlists`() throws {
-        let response = try JSONDecoder().decode(
-            PathfinderLibraryResponse<PathfinderPlaylist>.self,
-            from: libraryPlaylistsJSON,
-        )
-        let page = try #require(response.page)
+        let page = try playlistsPage()
 
         #expect(page.totalCount == 3)
         #expect(page.items?.count == 3)
@@ -104,11 +108,7 @@ struct PathfinderLibraryTests {
     /// item count rather than by how many playlists survived — advancing by the smaller number
     /// would re-request the difference forever and never reach the end of the list.
     @Test func `a folder decodes as a playlist and is dropped by its uri kind`() throws {
-        let response = try JSONDecoder().decode(
-            PathfinderLibraryResponse<PathfinderPlaylist>.self,
-            from: libraryPlaylistsJSON,
-        )
-        let page = try #require(response.page)
+        let page = try playlistsPage()
         let folder = try #require(page.entities.last)
 
         // It decodes, and that is the whole problem: a folder carries a uri and a name, so
@@ -123,11 +123,7 @@ struct PathfinderLibraryTests {
     }
 
     @Test func `a library playlist becomes the fields the list view reads`() throws {
-        let response = try JSONDecoder().decode(
-            PathfinderLibraryResponse<PathfinderPlaylist>.self,
-            from: libraryPlaylistsJSON,
-        )
-        let first = try #require(response.page?.entities.first)
+        let first = try #require(playlistsPage().entities.first)
         let playlist = try #require(Playlist(pathfinder: first))
 
         #expect(playlist.id == "2Cngv8qX0kwH5vwkOY6wdJ")
@@ -164,16 +160,17 @@ struct PathfinderLibraryTests {
     }
 }
 
+private func tracksPage() throws -> PathfinderLibraryTrackPage {
+    let response = try JSONDecoder().decode(PathfinderLibraryTracksResponse.self, from: libraryTracksJSON)
+    return try #require(response.page)
+}
+
 @MainActor
 struct PathfinderLibraryTrackTests {
     /// **The uri is on the wrapper, not the entity.** Reading `data.uri` would be nil for every
     /// row and silently empty the favorites list, so the conversion takes the uri as a parameter.
     @Test func `a saved track takes its identity from the wrapper's uri`() throws {
-        let response = try JSONDecoder().decode(
-            PathfinderLibraryTracksResponse.self,
-            from: libraryTracksJSON,
-        )
-        let page = try #require(response.page)
+        let page = try tracksPage()
         let track = try #require(page.tracks.first)
 
         #expect(page.totalCount == 607)
@@ -188,11 +185,7 @@ struct PathfinderLibraryTrackTests {
     }
 
     @Test func `a row with no uri is dropped rather than failing the page`() throws {
-        let response = try JSONDecoder().decode(
-            PathfinderLibraryTracksResponse.self,
-            from: libraryTracksJSON,
-        )
-        let page = try #require(response.page)
+        let page = try tracksPage()
 
         #expect(page.items?.count == 2)
         #expect(page.tracks.count == 1)
@@ -255,16 +248,16 @@ struct PathfinderLibraryMembershipTests {
 /// `__typename` — but under **different names than the operation**, which is the part that
 /// cannot be guessed.
 struct PathfinderLibraryMutationTests {
+    private func decode(_ json: String) throws -> PathfinderLibraryMutationResponse {
+        try JSONDecoder().decode(PathfinderLibraryMutationResponse.self, from: Data(json.utf8))
+    }
+
     @Test func `a success payload reports no failure`() throws {
         for (field, typename) in [
             ("addLibraryItems", "AddLibraryItemsResponse"),
             ("removeLibraryItems", "RemoveLibraryItemsResponse"),
         ] {
-            let json = Data(#"{"data":{"\#(field)":{"__typename":"\#(typename)"}}}"#.utf8)
-            let response = try JSONDecoder().decode(
-                PathfinderLibraryMutationResponse.self,
-                from: json,
-            )
+            let response = try decode(#"{"data":{"\#(field)":{"__typename":"\#(typename)"}}}"#)
 
             #expect(response.failure == nil)
         }
@@ -274,24 +267,15 @@ struct PathfinderLibraryMutationTests {
     /// `addToPlaylist` → `AddItemsToPlaylistPayload`. It is wrong, and a client that assumed it
     /// would call every successful save a rejection and roll back a write that landed.
     @Test func `the payload name the operation name suggests is not the real one`() throws {
-        let json = Data(#"{"data":{"addLibraryItems":{"__typename":"AddToLibraryPayload"}}}"#.utf8)
-        let response = try JSONDecoder().decode(
-            PathfinderLibraryMutationResponse.self,
-            from: json,
-        )
+        let response = try decode(#"{"data":{"addLibraryItems":{"__typename":"AddToLibraryPayload"}}}"#)
 
         #expect(response.failure != nil)
     }
 
     @Test func `a rejection arrives with a 200 and is still a failure`() throws {
-        let json = Data("""
+        let response = try decode("""
         {"data":{"addLibraryItems":{"__typename":"NotFound","message":"no such uri"}}}
-        """.utf8)
-
-        let response = try JSONDecoder().decode(
-            PathfinderLibraryMutationResponse.self,
-            from: json,
-        )
+        """)
         let failure = try #require(response.failure)
 
         #expect(failure.contains("NotFound"))
@@ -299,13 +283,7 @@ struct PathfinderLibraryMutationTests {
     }
 
     @Test func `a response naming no result is a failure rather than a success`() throws {
-        let json = Data(#"{"data":{}}"#.utf8)
-        let response = try JSONDecoder().decode(
-            PathfinderLibraryMutationResponse.self,
-            from: json,
-        )
-
-        #expect(response.failure != nil)
+        #expect(try decode(#"{"data":{}}"#).failure != nil)
     }
 }
 

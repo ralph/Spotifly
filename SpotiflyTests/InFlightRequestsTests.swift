@@ -13,8 +13,8 @@ import Testing
 struct InFlightRequestsTests {
     @Test func `a second caller joins the running operation instead of starting another`() async throws {
         let requests = InFlightRequests<Int>()
-        let gate = Gate()
-        let runs = Counter()
+        let gate = MainActorGate()
+        let runs = MainActorCounter()
 
         let first = Task { try await requests.run("k") { runs.count += 1; await gate.wait(); return runs.count } }
         try await waitUntil { requests.isRunning("k") }
@@ -31,8 +31,8 @@ struct InFlightRequestsTests {
 
     @Test func `cancelling the caller does not cancel the run`() async throws {
         let requests = InFlightRequests<Int>()
-        let gate = Gate()
-        let didFinish = Counter()
+        let gate = MainActorGate()
+        let didFinish = MainActorCounter()
 
         let caller = Task { try await requests.run("k") { await gate.wait(); didFinish.count += 1; return 7 } }
         try await waitUntil { requests.isRunning("k") }
@@ -46,7 +46,7 @@ struct InFlightRequestsTests {
 
     @Test func `a failed run is not remembered, so the next caller retries`() async throws {
         let requests = InFlightRequests<Int>()
-        let runs = Counter()
+        let runs = MainActorCounter()
 
         await #expect(throws: TestFailure.self) {
             try await requests.run("k") { runs.count += 1; throw TestFailure() }
@@ -59,8 +59,8 @@ struct InFlightRequestsTests {
 
     @Test func `a cancelled run does not drop the run that replaced it`() async throws {
         let requests = InFlightRequests<Int>()
-        let firstGate = Gate()
-        let secondGate = Gate()
+        let firstGate = MainActorGate()
+        let secondGate = MainActorGate()
 
         let first = Task { try await requests.run("k") { await firstGate.wait(); return 1 } }
         try await waitUntil { requests.isRunning("k") }
@@ -83,8 +83,8 @@ struct InFlightRequestsTests {
 
     @Test func `a cancelled run can see that it was superseded`() async throws {
         let requests = InFlightRequests<Int>()
-        let gate = Gate()
-        let wrote = Counter()
+        let gate = MainActorGate()
+        let wrote = MainActorCounter()
 
         // What the list loads do: check cancellation after the network call, before
         // writing, so a run replaced by a force refresh cannot clobber it.
@@ -107,7 +107,7 @@ struct InFlightRequestsTests {
 
     @Test func `keys are independent`() async throws {
         let requests = InFlightRequests<Int>()
-        let runs = Counter()
+        let runs = MainActorCounter()
 
         let a = try await requests.run("a") { runs.count += 1; return runs.count }
         let b = try await requests.run("b") { runs.count += 1; return runs.count }
@@ -117,53 +117,4 @@ struct InFlightRequestsTests {
     }
 }
 
-// MARK: - Helpers
-
 private struct TestFailure: Error {}
-
-/// Mutable counter usable from the `@MainActor` operation closures.
-@MainActor
-private final class Counter {
-    var count = 0
-}
-
-/// Suspends operations until the test decides to let them finish.
-@MainActor
-private final class Gate {
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-    private var isOpen = false
-
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    func open() {
-        isOpen = true
-        let resuming = waiters
-        waiters.removeAll()
-        for waiter in resuming {
-            waiter.resume()
-        }
-    }
-}
-
-/// Yields until `condition` holds, so tests synchronise on state rather than sleeps.
-@MainActor
-private func waitUntil(_ condition: () -> Bool) async throws {
-    for _ in 0 ..< 1000 {
-        if condition() {
-            return
-        }
-        await Task.yield()
-    }
-    Issue.record("Condition never became true")
-}
-
-/// Yields enough times for pending main-actor work to reach its next suspension.
-@MainActor
-private func settle() async {
-    for _ in 0 ..< 20 {
-        await Task.yield()
-    }
-}

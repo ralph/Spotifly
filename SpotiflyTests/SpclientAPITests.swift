@@ -91,12 +91,7 @@ private final class RequestRecorder: @unchecked Sendable {
             // The preflight is answered separately: it carries no body, and a status meant for
             // the GET would fail the request before it was made.
             let isPreflight = request.httpMethod == "OPTIONS"
-            let response = HTTPURLResponse(
-                url: request.url!,
-                statusCode: isPreflight ? 200 : status,
-                httpVersion: nil,
-                headerFields: nil,
-            )!
+            let response = httpResponse(isPreflight ? 200 : status, url: request.url!)
             return (isPreflight ? Data() : body, response)
         }
     }
@@ -120,7 +115,7 @@ struct SpclientAPITests {
     """.utf8)
 
     private func api(_ recorder: RequestRecorder) -> SpclientAPI {
-        SpclientAPI(accessToken: { "at" }, clientToken: { "ct" }, transport: { recorder.handle($0) })
+        spclientAPI { recorder.handle($0) }
     }
 
     @Test func `a track is fetched by gid and decoded`() async throws {
@@ -272,7 +267,7 @@ struct SpclientAPITests {
     /// The same rule as `PartnerAPI`: a client token can die before its stated expiry, and it
     /// is cached — so without this the whole REST half stays 401 until the app is relaunched.
     @Test func `a 401 drops the cached client token and retries once`() async throws {
-        let rejected = Recorder()
+        let rejected = Recorder<String>()
         let attempts = Tally()
         let recorder = RequestRecorder(responder: { [trackJSON] request in
             // The responder sees the preflight too; only the GET is the request under test.
@@ -281,12 +276,7 @@ struct SpclientAPITests {
             return attempts.count == 1 ? (401, Data()) : (200, trackJSON)
         })
 
-        let api = SpclientAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            invalidateClientToken: { rejected.record($0) },
-            transport: { recorder.handle($0) },
-        )
+        let api = spclientAPI(invalidateClientToken: { rejected.record($0) }) { recorder.handle($0) }
 
         let track = try await api.track(id: "4PTG3Z6ehGkBFwjybzWkR8")
 
@@ -297,15 +287,10 @@ struct SpclientAPITests {
     }
 
     @Test func `a second 401 is reported rather than retried again`() async throws {
-        let rejected = Recorder()
+        let rejected = Recorder<String>()
         let recorder = RequestRecorder(responder: { _ in (401, Data()) })
 
-        let api = SpclientAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            invalidateClientToken: { rejected.record($0) },
-            transport: { recorder.handle($0) },
-        )
+        let api = spclientAPI(invalidateClientToken: { rejected.record($0) }) { recorder.handle($0) }
 
         await #expect(throws: SpclientError.self) {
             _ = try await api.track(id: "4PTG3Z6ehGkBFwjybzWkR8")

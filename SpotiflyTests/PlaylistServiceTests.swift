@@ -34,26 +34,15 @@ private final class Calls: @unchecked Sendable {
     func profile() -> (Data, URLResponse) {
         lock.withLock {
             profileRequests += 1
-            let response = HTTPURLResponse(
-                url: PartnerAPI.endpoint,
-                statusCode: profileRequests <= failuresBeforeSuccess ? 500 : 200,
-                httpVersion: nil,
-                headerFields: nil,
-            )!
-            return (profileJSON, response)
+            let status = profileRequests <= failuresBeforeSuccess ? 500 : 200
+            return (profileJSON, httpResponse(status))
         }
     }
 
     func rootlist(_ request: URLRequest) -> (Data, URLResponse) {
         lock.withLock {
             rootlistWrites += 1
-            let response = HTTPURLResponse(
-                url: request.url!,
-                statusCode: 200,
-                httpVersion: nil,
-                headerFields: nil,
-            )!
-            return (Data("{}".utf8), response)
+            return (Data("{}".utf8), httpResponse(200, url: request.url!))
         }
     }
 }
@@ -63,16 +52,8 @@ private func makeService(_ calls: Calls) -> (PlaylistService, AppStore) {
     let store = AppStore()
     let service = PlaylistService(
         store: store,
-        partnerAPI: PartnerAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            transport: { _ in calls.profile() },
-        ),
-        spclientAPI: SpclientAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            transport: { calls.rootlist($0) },
-        ),
+        partnerAPI: partnerAPI(transport: { _ in calls.profile() }),
+        spclientAPI: spclientAPI(transport: { calls.rootlist($0) }),
     )
     return (service, store)
 }
@@ -109,24 +90,14 @@ struct PlaylistAddReconciliationTests {
             ? #"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#
             : #"{"data":{"moveItemsInPlaylist":{"__typename":"MoveItemsInPlaylistPayload"}}}"#
 
-        return PartnerAPI(
-            accessToken: { "at" },
-            clientToken: { "ct" },
-            transport: { request in
-                let body = try #require(request.httpBody)
-                let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-                let isMutation = json["operationName"] as? String == mutation
+        return partnerAPI { request in
+            let body = try #require(request.httpBody)
+            let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let isMutation = json["operationName"] as? String == mutation
 
-                let payload = isMutation ? Data(success.utf8) : Data()
-                let response = HTTPURLResponse(
-                    url: PartnerAPI.endpoint,
-                    statusCode: isMutation ? 200 : reloadStatus,
-                    httpVersion: nil,
-                    headerFields: nil,
-                )!
-                return (payload, response)
-            },
-        )
+            let payload = isMutation ? Data(success.utf8) : Data()
+            return (payload, httpResponse(isMutation ? 200 : reloadStatus))
+        }
     }
 
     /// The add succeeded, so the row belongs there — but it carries a locally generated uid,
@@ -207,22 +178,18 @@ struct PlaylistAddReconciliationTests {
         // `URLSession` task throws out of the same call.
         let service = PlaylistService(
             store: store,
-            partnerAPI: PartnerAPI(
-                accessToken: { "at" },
-                clientToken: { "ct" },
-                transport: { request in
-                    let body = try #require(request.httpBody)
-                    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-                    guard json["operationName"] as? String == "addToPlaylist" else {
-                        throw CancellationError()
-                    }
+            partnerAPI: partnerAPI(transport: { request in
+                let body = try #require(request.httpBody)
+                let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+                guard json["operationName"] as? String == "addToPlaylist" else {
+                    throw CancellationError()
+                }
 
-                    return (
-                        Data(#"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#.utf8),
-                        HTTPURLResponse(url: PartnerAPI.endpoint, statusCode: 200, httpVersion: nil, headerFields: nil)!,
-                    )
-                },
-            ),
+                return (
+                    Data(#"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#.utf8),
+                    httpResponse(200),
+                )
+            }),
         )
 
         await #expect(throws: CancellationError.self) {
@@ -266,25 +233,15 @@ struct PlaylistAddReconciliationTests {
 
         let service = PlaylistService(
             store: store,
-            partnerAPI: PartnerAPI(
-                accessToken: { "at" },
-                clientToken: { "ct" },
-                transport: { request in
-                    let body = try #require(request.httpBody)
-                    let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
-                    let isMutation = json["operationName"] as? String == "addToPlaylist"
-                    let payload = isMutation
-                        ? Data(#"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#.utf8)
-                        : reload
-                    let response = HTTPURLResponse(
-                        url: PartnerAPI.endpoint,
-                        statusCode: 200,
-                        httpVersion: nil,
-                        headerFields: nil,
-                    )!
-                    return (payload, response)
-                },
-            ),
+            partnerAPI: partnerAPI(transport: { request in
+                let body = try #require(request.httpBody)
+                let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+                let isMutation = json["operationName"] as? String == "addToPlaylist"
+                let payload = isMutation
+                    ? Data(#"{"data":{"addItemsToPlaylist":{"__typename":"AddItemsToPlaylistPayload"}}}"#.utf8)
+                    : reload
+                return (payload, httpResponse(200))
+            }),
         )
 
         try await service.addTracksToPlaylist(playlistId: "p1", trackIds: ["t2"])
