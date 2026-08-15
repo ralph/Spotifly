@@ -108,6 +108,13 @@ makes either one possible.
 The hard part: **nobody here has a free Spotify account**, which is why this was never
 reproduced.
 
+- [ ] **Run librespot's own checks in `../../librespot`, not just ours.** Task 2a patches
+      `librespot/core/src/session.rs`, but `rust/` is a single-package workspace whose only
+      member is `spotifly-rust`: path dependencies are *compiled* there, while librespot's unit
+      tests, formatting and lints never run. Verified — `cargo test --no-run` in `rust/` builds
+      one test binary, `spotifly_rust`. The patched package needs `cargo test -p librespot-core`,
+      `cargo fmt --check` and `cargo clippy` **from the librespot checkout**. This matters twice
+      over for Task 5: an upstream PR is judged by librespot's CI, not ours.
 - [ ] `cargo check` and `cargo clippy` in `rust/`, clippy compared against the branch baseline
       rather than expected to be zero
 - [ ] `xcodebuild … build` — BUILD SUCCEEDED
