@@ -44,19 +44,42 @@ Three fit the log, and nothing so far separates them:
 3. **The market librespot checks against is not the one the ids were resolved under.** Ours,
    but configuration-shaped rather than identity-shaped.
 
-- [ ] **A1. Ask spclient about the three known-failing ids**, both with `market=from_token`
-      and without: `4kVIImqwUPakCujdyQ3YP2`, `4771ccpHnvLwaEacV0dh9E`, `2X7Bo34Z1c375Jo6JQaVnL`.
-      Record for each whether it comes back playable, substituted, or neither. This single step
-      separates "genuinely unavailable" from "we sent the wrong id".
-      **Use the web client's DevTools rather than `libspot-probe`** — the probe shares the
-      app's grant and running it revokes Spotifly's refresh token.
+- [ ] **A1. Ask a source that actually reports availability and alternatives**, for the three
+      known-failing ids: `4kVIImqwUPakCujdyQ3YP2`, `4771ccpHnvLwaEacV0dh9E`,
+      `2X7Bo34Z1c375Jo6JQaVnL`. Record for each whether it is restricted in the session's
+      country and whether an alternative exists.
+
+      **Not spclient, and not `market=from_token`.** The ticket proposed that and it cannot
+      decide anything: `CLAUDE.md` records that **spclient is id-faithful — it returns whatever
+      id you ask for** and exposes no relationship to a market substitute. So the query comes
+      back with the track you named whether or not a substitute exists, and toggling `market`
+      changes nothing about that. It cannot produce a "substituted" answer, which means it
+      cannot distinguish story 1 from story 2 — the entire point of Phase A.
+
+      Use something that names restrictions and alternatives explicitly: librespot's own track
+      metadata carries both (they are what its availability check reads, and the source of the
+      `no alternatives found` message), and the extended-metadata endpoint on spclient is the
+      other candidate. Confirm the chosen source reports the `country`/restriction pair before
+      trusting a negative result.
+
+      **If using `libspot-probe`, note it shares the app's grant** and running it revokes
+      Spotifly's refresh token; prefer the web client's DevTools where it can answer.
 - [ ] **A2. Read the session country librespot logged** (`librespot_core::session`, `DE` in the
       failing run) and compare it against the market the ids were resolved under. If these
       differ, story 3 is live and the rest of A is moot.
-- [ ] **A3. Capture a fresh reproduction with the queue's ids logged.** The existing log records
-      only the ids that *failed*, not what the queue held, so it cannot show whether the id we
-      sent is the id we resolved. Add a temporary debug line where the queue is handed to
-      librespot (`rust/src/lib.rs`) and reproduce with the same playlist.
+- [ ] **A3. Capture a fresh reproduction with the ids logged on the Swift side.** The existing
+      log records only the ids that *failed*, not what the queue held, so it cannot show
+      whether the id we sent is the id we resolved.
+
+      **Do not instrument the FFI handoff — there are no track ids there.** Starting a playlist
+      passes only the *context* uri: `spotifly_play_uri` (`rust/src/lib.rs:2592`) builds
+      `LoadRequest::from_context_uri` (`:2645`) and librespot resolves the individual tracks
+      itself. A debug line at that point would print one playlist uri and prove nothing.
+
+      Log the track ids **the store holds** when playback starts, then compare them against the
+      Connect queue librespot resolves. If those two sets differ, story 1 is live and the
+      difference names the bug. If they match and tracks still fail, the id we sent is the id
+      the API gave us and the cause is elsewhere.
 - [ ] **A4. Write the answer into the ticket** and pick the Phase B branch below. If A says
       story 2, Phase B is empty and Phase C is the whole fix — record that plainly rather than
       inventing work.
@@ -83,16 +106,32 @@ Only one of these runs, chosen by A.
 genuinely unplayable, skipping silently through a whole playlist in half a second is the wrong
 behaviour."* Today nothing in the UI says anything and the queue simply drains.
 
-- [ ] **C1. Surface unavailability across the FFI.** librespot already knows; Spotifly does not.
-      An entry point in the shape of the existing callbacks carries "this track id was skipped
-      as unavailable" up to Swift. Keep it to one signal — this is not the place for a general
-      player-event bus.
-- [ ] **C2. Mark the track in the store**, so the queue and track lists can render it. A single
-      field on the entity, set by the callback; no new state machine.
-- [ ] **C3. Render it.** Greyed row with an explanatory label, in the queue and in track lists.
-      New localization keys go in all three of `de`, `en` and `fr` — note that
-      `speakers.airplay_disabled_hint` is currently missing from `de`, so check rather than
-      assume the three are in sync.
+- [ ] **C1. Surface unavailability across the FFI — but not by forwarding
+      `PlayerEvent::Unavailable`.** That event is not the signal it appears to be. This repo's
+      own [upstream analysis](librespot/upstream-transient-load-failure.md) records that it
+      collapses genuine restrictions and *transport failures* into one value, so a twenty-second
+      network blip would arrive as "unavailable". Forwarding it verbatim and then writing it
+      into the store means a brief outage permanently labels a perfectly playable track as
+      unplayable — a worse bug than the one being fixed, and a stickier one.
+
+      So C1 must carry a reason that means *genuine* unavailability, which requires either
+      narrowing librespot's event semantics first (the same change the upstream draft proposes)
+      or deriving the reason from the availability check rather than the load failure. Keep it
+      to one signal; this is not the place for a general player-event bus.
+- [ ] **C2. A field on `Track` is not enough, because the row will not exist.** librespot does
+      not flag an unavailable track, it **deletes** it: `mark_unavailable`
+      (`librespot/connect/src/state/tracks.rs:384`) loops `next_tracks.remove(pos)` and does the
+      same for `prev_tracks`. `QueueService.handleQueueUpdate` then replaces the store's queue
+      with that already-shortened snapshot, and `QueueListView` renders only what the queue
+      references. The entity stays cached and has nowhere to appear.
+
+      This needs an ordered **tombstone** — the queue retaining the skipped entry in place,
+      marked — or an upstream change that stops `mark_unavailable` removing entries. Decide
+      which before building C3; a store field alone renders nothing.
+- [ ] **C3. Render it**, once C2 gives it a place to live: greyed row with an explanatory
+      label, in the queue and in track lists. New localization keys go in all three of `de`,
+      `en` and `fr` — note that `speakers.airplay_disabled_hint` is currently missing from
+      `de`, so check rather than assume the three are in sync.
 - [ ] **C4. Do not let a cascade look like playback.** If every remaining track is skipped, the
       app should stop and say so rather than sit on a playing UI with a drained queue. Decide
       the wording with the owner; the failure to avoid is the current one, where nothing at all
@@ -117,3 +156,11 @@ behaviour."* Today nothing in the UI says anything and the queue simply drains.
   `rust/include/spotifly_rust.h` and every Swift call site together.
 - **Scope creep into a player-event bus.** C1 wants one signal. The moment it grows a general
   event type, stop and re-scope.
+- **Phase C may need an upstream change to be possible at all.** Both C1 and C2 run into the
+  same wall from different sides: librespot conflates the reasons and then deletes the
+  evidence. If the tombstone route is rejected, C2 becomes an upstream patch, and Phase C
+  inherits the reproducibility question that patching an unpinned sibling checkout always
+  carries — it must end upstream or somewhere versioned, not in a local working copy.
+- **A fix that makes transient failures sticky.** The single worst outcome here is turning a
+  network blip into a permanent "unavailable" label on a playable track. C1 exists to prevent
+  exactly that; treat any design that cannot distinguish the two as not ready.
