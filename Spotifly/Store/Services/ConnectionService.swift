@@ -29,23 +29,16 @@ final class ConnectionService {
     func activate() {
         guard connectionStateSubscription == nil else { return }
         recordActivation(self)
-        setupConnectionStateSubscription()
-        refreshConnectionState()
-    }
 
-    /// Subscribe to connection state updates from SpotifyPlayer
-    private func setupConnectionStateSubscription() {
         connectionStateSubscription = SpotifyPlayer.connectionState
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.store.setConnection(Self.convert(state))
             }
-    }
 
-    /// Manually refresh connection state from SpotifyPlayer
-    func refreshConnectionState() {
-        let state = SpotifyPlayer.getConnectionState()
-        store.setConnection(Self.convert(state))
+        // The subscription delivers on a later main-actor hop; this reads the FFI directly,
+        // so the store holds the current state before activation returns.
+        store.setConnection(Self.convert(SpotifyPlayer.getConnectionState()))
     }
 
     /// Convert FFI state to app-level connection model

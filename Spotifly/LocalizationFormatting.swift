@@ -7,7 +7,7 @@
 
 import Foundation
 
-func localizedString(_ key: String) -> String {
+private func localizedString(_ key: String) -> String {
     NSLocalizedString(key, comment: "")
 }
 

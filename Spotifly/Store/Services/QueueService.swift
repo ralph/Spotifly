@@ -54,33 +54,36 @@ final class QueueService {
     func activate() {
         guard setQueueSubscription == nil else { return }
         recordActivation(self)
-        setupQueueSubscription()
-        setupSetQueueSubscription()
-        setupFetchDebounceSubscription()
-        log("activated")
-    }
 
-    // MARK: - Queue Subscriptions
-
-    /// Subscribe to queue updates from Spirc (via Mercury protocol)
-    /// This fires after round-trip to Spotify servers
-    private func setupQueueSubscription() {
+        // Queue updates from Spirc (via Mercury protocol), which arrive after a round-trip
+        // to Spotify's servers.
         queueSubscription = SpotifyPlayer.queue
             .receive(on: DispatchQueue.main)
             .sink { [weak self] queueState in
                 self?.handleQueueUpdate(queueState)
             }
-    }
 
-    /// Subscribe to set queue events from Spirc
-    /// This fires immediately when the queue is set/modified (e.g., from mobile app)
-    private func setupSetQueueSubscription() {
+        // Set queue events from Spirc, which arrive immediately when the queue is set or
+        // modified (e.g. from the mobile app).
         setQueueSubscription = SpotifyPlayer.setQueue
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
                 self?.handleSetQueue(notification)
             }
+
+        // Debounced so rapid queue updates do not cancel an in-flight metadata fetch.
+        fetchDebounceSubscription = fetchSubject
+            .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
+            .sink { [weak self] in
+                Task { @MainActor in
+                    await self?.executeFetch()
+                }
+            }
+
+        log("activated")
     }
+
+    // MARK: - Queue Updates
 
     /// Handle set queue notification (fires immediately when queue is set or context is loaded)
     private func handleSetQueue(_ notification: SetQueueNotification) {
@@ -106,20 +109,9 @@ final class QueueService {
         cancelPendingQueueRefresh()
         store.noteLiveStateReceived()
 
-        /// Convert to QueueEntries
-        func toQueueEntry(_ trackInfo: SetQueueTrackInfo) -> QueueEntry? {
-            guard let trackId = SpotifyAPI.parseTrackURI(trackInfo.uri) else { return nil }
-            return QueueEntry(trackId: trackId, provider: TrackProvider(from: trackInfo.provider))
-        }
-
-        // Current track
-        let currentEntry: QueueEntry? = notification.currentTrack.flatMap { toQueueEntry($0) }
-
-        // Next tracks
-        let nextEntries: [QueueEntry] = notification.nextTracks.compactMap { toQueueEntry($0) }
-
-        // Previous tracks
-        let prevEntries: [QueueEntry] = notification.prevTracks.compactMap { toQueueEntry($0) }
+        let currentEntry = notification.currentTrack.flatMap(Self.queueEntry(from:))
+        let nextEntries = notification.nextTracks.compactMap(Self.queueEntry(from:))
+        let prevEntries = notification.prevTracks.compactMap(Self.queueEntry(from:))
 
         store.setQueue(previous: prevEntries, current: currentEntry, next: nextEntries, contextUri: notification.contextUri)
         reconcileQueueCurrentTrack()
@@ -212,33 +204,16 @@ final class QueueService {
         let uniqueTrackIds = trackIds.uniqued()
         guard !uniqueTrackIds.isEmpty else { return }
 
-        // Filter to only tracks not already in the store
         let trackIdsToFetch = uniqueTrackIds.filter { store.tracks[$0] == nil }
 
         guard !trackIdsToFetch.isEmpty else {
             log("All \(uniqueTrackIds.count) unique tracks already cached in store")
-            // Update queue items from cached data
             updateNowPlayingMetadata()
             return
         }
 
-        // Accumulate track IDs and debounce the fetch
         pendingTrackIds.formUnion(trackIdsToFetch)
-
-        // Signal the debounced fetch
         fetchSubject.send()
-    }
-
-    /// Subscribe to debounced fetch requests
-    /// Debounces rapid queue updates to avoid cancelling in-flight metadata fetches
-    private func setupFetchDebounceSubscription() {
-        fetchDebounceSubscription = fetchSubject
-            .debounce(for: .milliseconds(100), scheduler: DispatchQueue.main)
-            .sink { [weak self] in
-                Task { @MainActor in
-                    await self?.executeFetch()
-                }
-            }
     }
 
     /// Execute the actual fetch for accumulated track IDs
@@ -338,10 +313,20 @@ final class QueueService {
         return (previous, current, next)
     }
 
-    /// A queue item becomes an entry only if its uri names a track — the cluster can carry
+    /// A queue track becomes an entry only if its uri names a track — the cluster can carry
     /// episodes and ads, which this app has no row for.
+    private static func queueEntry(uri: String, provider: String) -> QueueEntry? {
+        guard let trackId = SpotifyAPI.parseTrackURI(uri) else { return nil }
+        return QueueEntry(trackId: trackId, provider: TrackProvider(from: provider))
+    }
+
+    /// The two shapes a queue track arrives in: an item of a cluster snapshot, and a track
+    /// of a SetQueue notification.
     private static func queueEntry(from item: QueueItem) -> QueueEntry? {
-        guard let trackId = SpotifyAPI.parseTrackURI(item.uri) else { return nil }
-        return QueueEntry(trackId: trackId, provider: TrackProvider(from: item.provider))
+        queueEntry(uri: item.uri, provider: item.provider)
+    }
+
+    private static func queueEntry(from track: SetQueueTrackInfo) -> QueueEntry? {
+        queueEntry(uri: track.uri, provider: track.provider)
     }
 }

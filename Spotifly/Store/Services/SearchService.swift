@@ -25,9 +25,7 @@ final class SearchService {
     /// is the point of the migration. The Web API token this used to need was minted with the
     /// user's dashboard client id, and `api-partner` rejects it.
     func search(query: String) async {
-        guard !query.isEmpty else { return }
-
-        guard !store.searchIsLoading else { return }
+        guard !query.isEmpty, !store.searchIsLoading else { return }
 
         store.searchIsLoading = true
         store.searchErrorMessage = nil
@@ -42,7 +40,6 @@ final class SearchService {
             store.upsertAlbums(results.albums)
             store.upsertArtists(results.artists)
             store.upsertPlaylists(results.playlists)
-
         } catch {
             store.searchErrorMessage = error.localizedDescription
         }

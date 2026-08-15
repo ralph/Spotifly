@@ -17,22 +17,10 @@ struct Route: Hashable {
     var section: NavigationItem?
     var selection: Selection?
     var query: String?
-    var path: [NavigationDestination]
-
-    /// Spelled out because the memberwise initializer cannot carry defaults here —
-    /// most routes set only a section, and naming the empty fields at every call site
-    /// hides the one that distinguishes them.
-    init(
-        section: NavigationItem?,
-        selection: Selection? = nil,
-        query: String? = nil,
-        path: [NavigationDestination] = [],
-    ) {
-        self.section = section
-        self.selection = selection
-        self.query = query
-        self.path = path
-    }
+    /// Defaulted so the memberwise initializer carries defaults for every field but the
+    /// section — most routes set only that one, and naming the empty fields at every call
+    /// site hides the one that distinguishes them.
+    var path: [NavigationDestination] = []
 
     static let startpage = Route(section: .startpage)
 }

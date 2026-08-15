@@ -21,13 +21,8 @@ final class NavigationCoordinator {
     private(set) var back: [Route] = []
     private(set) var forward: [Route] = []
 
-    init(store: AppStore? = nil) {
+    init(store: AppStore) {
         self.store = store
-    }
-
-    func setStore(_ store: AppStore) {
-        self.store = store
-        noteRouteDisplayed(current)
     }
 
     // MARK: - Route Projections
@@ -192,17 +187,17 @@ final class NavigationCoordinator {
 
     /// Navigate directly to the Albums section and a specific album.
     func navigateToAlbumSection(albumId: String) {
-        navigateToSection(.albums, selection: .album(id: albumId))
+        navigate(to: Route(section: .albums, selection: .album(id: albumId)))
     }
 
     /// Navigate directly to the Artists section and a specific artist.
     func navigateToArtistSection(artistId: String) {
-        navigateToSection(.artists, selection: .artist(id: artistId))
+        navigate(to: Route(section: .artists, selection: .artist(id: artistId)))
     }
 
     /// Navigate directly to the Playlists section and a specific playlist.
     func navigateToPlaylistSection(playlistId: String) {
-        navigateToSection(.playlists, selection: .playlist(id: playlistId))
+        navigate(to: Route(section: .playlists, selection: .playlist(id: playlistId)))
     }
 
     /// Navigate directly to the queue.
@@ -297,10 +292,6 @@ final class NavigationCoordinator {
     private struct RouteRun {
         var route: Route
         var firstIndex: Int
-    }
-
-    private func navigateToSection(_ section: NavigationItem, selection: Selection) {
-        navigate(to: Route(section: section, selection: selection))
     }
 
     private func setSelection(_ selection: Selection?, for section: NavigationItem, recordsHistory: Bool) {
