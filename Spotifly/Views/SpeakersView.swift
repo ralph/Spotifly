@@ -10,7 +10,7 @@ import SwiftUI
 struct SpeakersView: View {
     @Environment(AppStore.self) private var store
     @Environment(AuthViewModel.self) private var authViewModel
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
 
     /// Whether AirPlay is available (only when Spotifly is the active device)
     private var isAirPlayEnabled: Bool {
@@ -118,15 +118,9 @@ struct SpeakersView: View {
                         } header: {
                             Text("speakers.audio_output")
                         } footer: {
-                            if isAirPlayEnabled {
-                                Text("speakers.airplay_hint")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text("speakers.airplay_disabled_hint")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text(isAirPlayEnabled ? "speakers.airplay_hint" : "speakers.airplay_disabled_hint")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     #endif
 

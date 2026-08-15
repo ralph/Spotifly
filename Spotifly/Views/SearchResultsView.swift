@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SearchResultsView: View {
     let searchResults: SearchResults
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
     @Environment(TrackService.self) private var trackService
 
     var body: some View {
@@ -22,17 +22,29 @@ struct SearchResultsView: View {
 
                 // Artists section
                 if !searchResults.artists.isEmpty {
-                    artistsSection
+                    cardSection("section.artists") {
+                        ForEach(searchResults.artists) { artist in
+                            ArtistCard(artist: artist)
+                        }
+                    }
                 }
 
                 // Albums section
                 if !searchResults.albums.isEmpty {
-                    albumsSection
+                    cardSection("section.albums") {
+                        ForEach(searchResults.albums) { album in
+                            AlbumCard(album: album)
+                        }
+                    }
                 }
 
                 // Playlists section
                 if !searchResults.playlists.isEmpty {
-                    playlistsSection
+                    cardSection("section.playlists") {
+                        ForEach(searchResults.playlists) { playlist in
+                            PlaylistCard(playlist: playlist)
+                        }
+                    }
                 }
             }
             .padding(.vertical)
@@ -81,59 +93,22 @@ struct SearchResultsView: View {
         }
     }
 
-    // MARK: - Artists Section
+    // MARK: - Card Sections
 
-    private var artistsSection: some View {
+    /// A heading over a horizontal row of cards — the shape three of the four sections have
+    /// exactly. Tracks keeps its own because its heading also carries the "show all" link.
+    private func cardSection(
+        _ title: LocalizedStringKey,
+        @ViewBuilder cards: () -> some View,
+    ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("section.artists")
+            Text(title)
                 .font(.headline)
                 .padding(.horizontal)
 
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
-                    ForEach(searchResults.artists) { artist in
-                        ArtistCard(artist: artist)
-                    }
-                }
-                .padding(.horizontal)
-            }
-            .scrollIndicators(.hidden)
-        }
-    }
-
-    // MARK: - Albums Section
-
-    private var albumsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("section.albums")
-                .font(.headline)
-                .padding(.horizontal)
-
-            ScrollView(.horizontal) {
-                HStack(spacing: 12) {
-                    ForEach(searchResults.albums) { album in
-                        AlbumCard(album: album)
-                    }
-                }
-                .padding(.horizontal)
-            }
-            .scrollIndicators(.hidden)
-        }
-    }
-
-    // MARK: - Playlists Section
-
-    private var playlistsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("section.playlists")
-                .font(.headline)
-                .padding(.horizontal)
-
-            ScrollView(.horizontal) {
-                HStack(spacing: 12) {
-                    ForEach(searchResults.playlists) { playlist in
-                        PlaylistCard(playlist: playlist)
-                    }
+                    cards()
                 }
                 .padding(.horizontal)
             }

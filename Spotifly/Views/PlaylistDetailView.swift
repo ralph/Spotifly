@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 struct PlaylistDetailView: View {
     let playlistId: String
 
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
     @Environment(PlaylistService.self) private var playlistService
@@ -115,22 +115,16 @@ struct PlaylistDetailView: View {
         } message: {
             Text("playlist.unfollow.message \(playlistName)")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .showPlaylistEditDetails)) { notification in
-            if let notificationPlaylistId = notification.object as? String, notificationPlaylistId == playlistId {
-                editingPlaylistName = playlistName
-                editingPlaylistDescription = playlistDescription
-                showEditDetailsDialog = true
-            }
+        .onToolbarAction(.showPlaylistEditDetails, addressedTo: playlistId) {
+            editingPlaylistName = playlistName
+            editingPlaylistDescription = playlistDescription
+            showEditDetailsDialog = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: .showPlaylistDeleteConfirmation)) { notification in
-            if let notificationPlaylistId = notification.object as? String, notificationPlaylistId == playlistId {
-                showDeleteConfirmation = true
-            }
+        .onToolbarAction(.showPlaylistDeleteConfirmation, addressedTo: playlistId) {
+            showDeleteConfirmation = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: .showPlaylistUnfollowConfirmation)) { notification in
-            if let notificationPlaylistId = notification.object as? String, notificationPlaylistId == playlistId {
-                showUnfollowConfirmation = true
-            }
+        .onToolbarAction(.showPlaylistUnfollowConfirmation, addressedTo: playlistId) {
+            showUnfollowConfirmation = true
         }
     }
 
@@ -204,24 +198,16 @@ struct PlaylistDetailView: View {
 
             HStack(spacing: 4) {
                 Text(localizedTextString("metadata.by_owner", playlist.ownerName))
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
                 Text("metadata.separator")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
                 // Use actual track count once loaded, otherwise fall back to playlist metadata
                 Text(localizedNumberString("metadata.tracks", tracks.isEmpty ? playlist.trackCount : tracks.count))
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
                 if !tracks.isEmpty {
                     Text("metadata.separator")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
                     Text(totalDuration(of: tracks))
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
                 }
             }
+            .font(.subheadline)
+            .foregroundStyle(.tertiary)
         }
     }
 

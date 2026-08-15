@@ -37,7 +37,7 @@ struct TrackRow: View {
     let isCurrentTrack: Bool
     let isPlayedTrack: Bool // For queue - tracks that have already played
     let provider: TrackProvider? // Optional provider (queue, context, autoplay, unavailable)
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
     let currentSection: NavigationItem // Current sidebar section (for "Go to" navigation)
     let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
     /// Which *occurrence* this row is, where the list knows — only a playlist does.
@@ -51,12 +51,10 @@ struct TrackRow: View {
 
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
-    @Environment(PlaylistService.self) private var playlistService
     @Environment(\.displayScale) private var displayScale
 
     @State private var isTogglingFavorite = false
     @State private var showNewPlaylistDialog = false
-    @State private var newPlaylistName = ""
     @State private var showPlaylistAddedSuccess = false
 
     /// Favorite status from the store (single source of truth)
@@ -120,21 +118,17 @@ struct TrackRow: View {
             ZStack {
                 if isCurrentTrack {
                     Image(systemName: "waveform")
-                        .font(.caption)
                         .foregroundStyle(.green)
                 } else if showTrackNumber, let trackNumber = track.trackNumber {
                     Text("\(trackNumber)")
-                        .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if let index {
                     Text("\(index + 1)")
-                        .font(.caption)
                         .foregroundStyle(.secondary)
-                } else {
-                    // No number shown
-                    EmptyView()
                 }
+                // Otherwise no number is shown.
             }
+            .font(.caption)
             .frame(width: 30, alignment: showTrackNumber ? .trailing : .center)
 
             // Album art (if available)
@@ -255,19 +249,12 @@ struct TrackRow: View {
         .task(id: track.id) {
             await resolveFavoriteStatusIfNeeded()
         }
-        .alert("playlist.new.title", isPresented: $showNewPlaylistDialog) {
-            TextField("playlist.new.placeholder", text: $newPlaylistName)
-            Button("action.cancel", role: .cancel) {
-                newPlaylistName = ""
-            }
-            Button("action.create") {
-                createAndAddToPlaylist(name: newPlaylistName)
-                newPlaylistName = ""
-            }
-            .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
-        } message: {
-            Text("playlist.new.message")
-        }
+        .newPlaylistPrompt(
+            isPresented: $showNewPlaylistDialog,
+            trackId: track.id,
+            playbackViewModel: playbackViewModel,
+            onAdded: showSuccessFeedback,
+        )
     }
 
     /// Toggle favorite using TrackService (optimistic update)
@@ -290,31 +277,87 @@ struct TrackRow: View {
         await trackService.ensureFavoriteStatuses(trackIds: [track.id])
     }
 
-    /// Create a new playlist and add the track to it
-    private func createAndAddToPlaylist(name: String) {
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmedName.isEmpty else { return }
-
-        Task {
-            do {
-                let newPlaylist = try await playlistService.createPlaylist(name: trimmedName)
-                try await playlistService.addTracksToPlaylist(
-                    playlistId: newPlaylist.id,
-                    trackIds: [track.id],
-                )
-                showSuccessFeedback()
-            } catch {
-                playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
-            }
-        }
-    }
-
     private func showSuccessFeedback() {
         showPlaylistAddedSuccess = true
         Task {
             try? await Task.sleep(for: .seconds(2))
             showPlaylistAddedSuccess = false
         }
+    }
+}
+
+// MARK: - New Playlist Prompt
+
+/// The "New Playlist…" dialog, and the create-then-add behind it.
+///
+/// Two places offer it — a track row's menu and the now-playing bar's — with the same dialog,
+/// the same two calls in the same order and the same failure sink. The name being typed lives
+/// here rather than in either host, since neither has any other use for it.
+///
+/// The checkmark that follows a successful add does *not* live here: it is drawn on the host's
+/// own button, and a track row shows it for its right-click menu too. So the host keeps that
+/// flag and hands the prompt a way to raise it.
+struct NewPlaylistPrompt: ViewModifier {
+    @Binding var isPresented: Bool
+    /// The track to put in the new playlist — optional because the now-playing bar carries the
+    /// prompt whether or not something is playing.
+    let trackId: String?
+    let playbackViewModel: PlaybackViewModel
+    let onAdded: () -> Void
+
+    @Environment(PlaylistService.self) private var playlistService
+
+    @State private var newPlaylistName = ""
+
+    func body(content: Content) -> some View {
+        content
+            .alert("playlist.new.title", isPresented: $isPresented) {
+                TextField("playlist.new.placeholder", text: $newPlaylistName)
+                Button("action.cancel", role: .cancel) {
+                    newPlaylistName = ""
+                }
+                Button("action.create") {
+                    createAndAddToPlaylist(name: newPlaylistName)
+                    newPlaylistName = ""
+                }
+                .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
+            } message: {
+                Text("playlist.new.message")
+            }
+    }
+
+    private func createAndAddToPlaylist(name: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty, let trackId else { return }
+
+        Task {
+            do {
+                let newPlaylist = try await playlistService.createPlaylist(name: trimmedName)
+                try await playlistService.addTracksToPlaylist(
+                    playlistId: newPlaylist.id,
+                    trackIds: [trackId],
+                )
+                onAdded()
+            } catch {
+                playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
+            }
+        }
+    }
+}
+
+extension View {
+    func newPlaylistPrompt(
+        isPresented: Binding<Bool>,
+        trackId: String?,
+        playbackViewModel: PlaybackViewModel,
+        onAdded: @escaping () -> Void,
+    ) -> some View {
+        modifier(NewPlaylistPrompt(
+            isPresented: isPresented,
+            trackId: trackId,
+            playbackViewModel: playbackViewModel,
+            onAdded: onAdded,
+        ))
     }
 }
 

@@ -11,7 +11,7 @@ import SwiftUI
 struct AlbumDetailView: View {
     let albumId: String
 
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
     @Environment(TrackService.self) private var trackService
@@ -61,10 +61,8 @@ struct AlbumDetailView: View {
         } message: {
             Text("album.remove.message \(album?.name ?? "")")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .showAlbumRemoveConfirmation)) { notification in
-            if let notificationAlbumId = notification.object as? String, notificationAlbumId == albumId {
-                showRemoveConfirmation = true
-            }
+        .onToolbarAction(.showAlbumRemoveConfirmation, addressedTo: albumId) {
+            showRemoveConfirmation = true
         }
     }
 
@@ -87,21 +85,13 @@ struct AlbumDetailView: View {
                                     .clipShape(.rect(cornerRadius: 8))
                                     .shadow(radius: 10)
                             case .failure:
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 60))
-                                    .frame(width: 200, height: 200)
-                                    .background(Color.gray.opacity(0.2))
-                                    .clipShape(.rect(cornerRadius: 8))
+                                albumArtworkPlaceholder
                             @unknown default:
                                 EmptyView()
                             }
                         }
                     } else {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 60))
-                            .frame(width: 200, height: 200)
-                            .background(Color.gray.opacity(0.2))
-                            .clipShape(.rect(cornerRadius: 8))
+                        albumArtworkPlaceholder
                     }
 
                     VStack(spacing: 8) {
@@ -109,13 +99,17 @@ struct AlbumDetailView: View {
                             .font(.title2.weight(.semibold))
                             .multilineTextAlignment(.center)
 
+                        // The same label either way; only an album that names its artist can
+                        // offer the way to them.
+                        let artistLabel = Text(album.artistName)
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+
                         if let artistId = album.artistId {
                             Button {
                                 navigationCoordinator.navigateToArtistSection(artistId: artistId)
                             } label: {
-                                Text(album.artistName)
-                                    .font(.title3)
-                                    .foregroundStyle(.secondary)
+                                artistLabel
                             }
                             .buttonStyle(.plain)
                             .onHover { hovering in
@@ -126,32 +120,22 @@ struct AlbumDetailView: View {
                                 }
                             }
                         } else {
-                            Text(album.artistName)
-                                .font(.title3)
-                                .foregroundStyle(.secondary)
+                            artistLabel
                         }
 
                         HStack(spacing: 4) {
                             Text(localizedNumberString("metadata.tracks", album.trackCount))
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
                             if !tracks.isEmpty {
                                 Text("metadata.separator")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.tertiary)
                                 Text(totalDuration(of: tracks))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.tertiary)
                             }
                             if let releaseDate = album.releaseDate {
                                 Text("metadata.separator")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.tertiary)
                                 Text(releaseDate)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.tertiary)
                             }
                         }
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
                     }
 
                     // Play All button
@@ -208,6 +192,14 @@ struct AlbumDetailView: View {
                 }
             }
         }
+    }
+
+    private var albumArtworkPlaceholder: some View {
+        Image(systemName: "music.note")
+            .font(.system(size: 60))
+            .frame(width: 200, height: 200)
+            .background(Color.gray.opacity(0.2))
+            .clipShape(.rect(cornerRadius: 8))
     }
 
     private func loadAlbum() async {

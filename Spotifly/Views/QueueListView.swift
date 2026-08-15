@@ -18,12 +18,31 @@ extension Notification.Name {
     static let showPlaylistUnfollowConfirmation = Notification.Name("showPlaylistUnfollowConfirmation")
 }
 
+extension View {
+    /// Runs `action` when one of the toolbar menu actions above is addressed to this view's
+    /// entity.
+    ///
+    /// The toolbar has no way to reach the open detail view but a notification, and every
+    /// detail view asks the same question of the ones it receives: is this one for me? The
+    /// entity id travels as the notification's object.
+    func onToolbarAction(
+        _ name: Notification.Name,
+        addressedTo id: String,
+        perform action: @escaping () -> Void,
+    ) -> some View {
+        onReceive(NotificationCenter.default.publisher(for: name)) { notification in
+            guard notification.object as? String == id else { return }
+            action()
+        }
+    }
+}
+
 struct QueueListView: View {
     @Environment(AppStore.self) private var store
     @Environment(DeviceService.self) private var deviceService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
 
     @State private var scrollPosition = ScrollPosition(idType: Int.self)
 
@@ -57,21 +76,6 @@ struct QueueListView: View {
         }
 
         return items
-    }
-
-    /// Currently playing index (position after previous tracks)
-    private var currentIndex: Int {
-        store.currentIndex
-    }
-
-    /// Total song count for header
-    private var totalSongCount: Int {
-        store.queueLength
-    }
-
-    /// Unplayed song count for header (next tracks only)
-    private var unplayedSongCount: Int {
-        store.nextTrackEntities.count
     }
 
     /// Context info parsed from context URI
@@ -110,9 +114,7 @@ struct QueueListView: View {
             Divider()
 
             // Scrollable content
-            if let error = store.queue.errorMessage {
-                errorView(error)
-            } else if allQueueItems.isEmpty {
+            if allQueueItems.isEmpty {
                 emptyView
             } else {
                 normalModeContent
@@ -144,9 +146,9 @@ struct QueueListView: View {
                     playingFromText(device: device)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else if totalSongCount > 0 {
+                } else if store.queueLength > 0 {
                     // Fallback to song count if no active device
-                    Text("queue.song_count \(totalSongCount) \(unplayedSongCount)")
+                    Text("queue.song_count \(store.queueLength) \(store.nextTrackEntities.count)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -160,13 +162,14 @@ struct QueueListView: View {
 
     @ViewBuilder
     private func playingFromText(device: Device) -> some View {
-        let contextName = contextInfo?.name ?? String(localized: "queue.title")
+        let context = contextInfo
+        let contextName = context?.name ?? String(localized: "queue.title")
         let deviceIcon = deviceService.deviceIcon(for: device.type)
 
         HStack(spacing: 4) {
             Text("queue.playing_from")
 
-            if let context = contextInfo {
+            if let context {
                 // Context name is a tappable link
                 Button {
                     navigateToContext(type: context.type, id: context.id)
@@ -213,7 +216,7 @@ struct QueueListView: View {
                         track: item.track,
                         index: index,
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                        currentIndex: currentIndex,
+                        currentIndex: store.currentIndex,
                         provider: item.provider,
                         playbackViewModel: playbackViewModel,
                         currentSection: .queue,
@@ -242,22 +245,7 @@ struct QueueListView: View {
         .contentMargins(.bottom, 100)
     }
 
-    // MARK: - Error and Empty States
-
-    private func errorView(_ error: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-            Text("error.load_queue")
-                .font(.headline)
-            Text(error)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
-        .frame(maxHeight: .infinity)
-    }
+    // MARK: - Empty State
 
     private var emptyView: some View {
         VStack(spacing: 16) {
@@ -277,9 +265,9 @@ struct QueueListView: View {
     // MARK: - Navigation
 
     private func scrollToCurrentTrack() {
-        guard currentIndex < allQueueItems.count else { return }
+        guard store.currentIndex < allQueueItems.count else { return }
         withAnimation {
-            scrollPosition.scrollTo(id: currentIndex, anchor: .center)
+            scrollPosition.scrollTo(id: store.currentIndex, anchor: .center)
         }
     }
 }

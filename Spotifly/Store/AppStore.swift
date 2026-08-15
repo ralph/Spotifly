@@ -27,10 +27,6 @@ struct Queue: Equatable {
     var nextTracks: [QueueEntry] = []
     /// Context URI (e.g., "spotify:album:123" or "spotify:playlist:456")
     var contextUri: String?
-    /// Whether queue is currently being fetched/updated
-    var isLoading = false
-    /// Error message if queue fetch failed
-    var errorMessage: String?
 
     /// Returns the same queue ordering, split around the occurrence of `trackId` nearest
     /// the currently reported split. librespot can report a stale split while its ordering
@@ -803,8 +799,6 @@ final class AppStore {
                     let previousTracks: [QueueItemSnapshot]
                     let currentTrack: QueueItemSnapshot?
                     let nextTracks: [QueueItemSnapshot]
-                    let isLoading: Bool
-                    let errorMessage: String?
                 }
 
                 let connection: SpotifyConnection?
@@ -834,8 +828,6 @@ final class AppStore {
                     previousTracks: queue.previousTracks.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
                     currentTrack: queue.currentTrack.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
                     nextTracks: queue.nextTracks.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
-                    isLoading: queue.isLoading,
-                    errorMessage: queue.errorMessage,
                 ),
                 activeDeviceId: activeDeviceId,
                 connection: connection,

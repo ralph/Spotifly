@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SearchAllTracksView: View {
     let trackIds: [String]
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
 
@@ -35,15 +35,11 @@ struct SearchAllTracksView: View {
 
                         HStack(spacing: 4) {
                             Text(localizedNumberString("metadata.tracks", trackIds.count))
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
                             Text("metadata.separator")
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
                             Text(totalDuration(of: tracks))
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
                         }
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
                     }
 
                     Button {

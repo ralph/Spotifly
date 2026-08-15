@@ -56,10 +56,8 @@ struct ArtistDetailView: View {
         } message: {
             Text("artist.unfollow.message \(artist?.name ?? "")")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .showArtistUnfollowConfirmation)) { notification in
-            if let notificationArtistId = notification.object as? String, notificationArtistId == artistId {
-                showUnfollowConfirmation = true
-            }
+        .onToolbarAction(.showArtistUnfollowConfirmation, addressedTo: artistId) {
+            showUnfollowConfirmation = true
         }
     }
 
@@ -82,19 +80,13 @@ struct ArtistDetailView: View {
                                     .clipShape(Circle())
                                     .shadow(radius: 10)
                             case .failure:
-                                Image(systemName: "person.circle.fill")
-                                    .resizable()
-                                    .frame(width: 200, height: 200)
-                                    .foregroundStyle(.gray.opacity(0.3))
+                                artistImagePlaceholder
                             @unknown default:
                                 EmptyView()
                             }
                         }
                     } else {
-                        Image(systemName: "person.circle.fill")
-                            .resizable()
-                            .frame(width: 200, height: 200)
-                            .foregroundStyle(.gray.opacity(0.3))
+                        artistImagePlaceholder
                     }
 
                     Text(artist.name)
@@ -152,6 +144,13 @@ struct ArtistDetailView: View {
             }
             .padding(.bottom, 100)
         }
+    }
+
+    private var artistImagePlaceholder: some View {
+        Image(systemName: "person.circle.fill")
+            .resizable()
+            .frame(width: 200, height: 200)
+            .foregroundStyle(.gray.opacity(0.3))
     }
 
     /// A card view for displaying an album in the grid

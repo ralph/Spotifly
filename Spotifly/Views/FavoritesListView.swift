@@ -10,7 +10,7 @@ import SwiftUI
 struct FavoritesListView: View {
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
 
     @State private var errorMessage: String?
 

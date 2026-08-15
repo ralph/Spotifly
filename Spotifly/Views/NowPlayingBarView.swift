@@ -12,9 +12,8 @@ struct NowPlayingBarView: View {
     @Environment(AppStore.self) private var store
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
-    @Environment(PlaylistService.self) private var playlistService
     @Environment(\.displayScale) private var displayScale
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
     let windowState: WindowState
 
     @State private var cachedAlbumArtImage: Image?
@@ -23,7 +22,6 @@ struct NowPlayingBarView: View {
     @State private var showAlbumArtMenu = false
     @State private var isHoveringSeekBar = false
     @State private var showNewPlaylistDialog = false
-    @State private var newPlaylistName = ""
     @State private var showPlaylistAddedSuccess = false
 
     /// Whether something is currently playing or queued
@@ -54,19 +52,12 @@ struct NowPlayingBarView: View {
             .modifier(NowPlayingBarBackground(isMiniPlayerMode: windowState.isMiniPlayerMode))
             .padding([.leading, .trailing], windowState.isMiniPlayerMode ? 0 : 40)
             .padding([.bottom], windowState.isMiniPlayerMode ? 0 : 20)
-            .alert("playlist.new.title", isPresented: $showNewPlaylistDialog) {
-                TextField("playlist.new.placeholder", text: $newPlaylistName)
-                Button("action.cancel", role: .cancel) {
-                    newPlaylistName = ""
-                }
-                Button("action.create") {
-                    createAndAddToPlaylist(name: newPlaylistName)
-                    newPlaylistName = ""
-                }
-                .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
-            } message: {
-                Text("playlist.new.message")
-            }
+            .newPlaylistPrompt(
+                isPresented: $showNewPlaylistDialog,
+                trackId: currentTrack?.id,
+                playbackViewModel: playbackViewModel,
+                onAdded: showSuccessFeedback,
+            )
             .task(id: currentTrackId) {
                 await resolveCurrentTrackMetadataIfNeeded()
             }
@@ -559,24 +550,6 @@ struct NowPlayingBarView: View {
         Task {
             try? await Task.sleep(for: .seconds(2))
             showPlaylistAddedSuccess = false
-        }
-    }
-
-    private func createAndAddToPlaylist(name: String) {
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmedName.isEmpty, let track = currentTrack else { return }
-
-        Task {
-            do {
-                let newPlaylist = try await playlistService.createPlaylist(name: trimmedName)
-                try await playlistService.addTracksToPlaylist(
-                    playlistId: newPlaylist.id,
-                    trackIds: [track.id],
-                )
-                showSuccessFeedback()
-            } catch {
-                playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
-            }
         }
     }
 }
