@@ -435,8 +435,13 @@ final class AppStore {
     /// of saved tracks can name the same relinked recording twice, so advancing by the usable
     /// count would re-request the difference forever.
     ///
-    /// `load` writes the entities itself, because only it knows what kind they are. It is also
-    /// where `try Task.checkCancellation()` belongs, between its network call and its writes.
+    /// `load` writes the entities itself, because only it knows what kind they are, and it checks
+    /// cancellation between its network call and those writes. The check is repeated here because
+    /// splitting the sequence moved these two writes out of the region `load` guards: every call
+    /// site happens to be synchronous from its own check to its `return`, so today nothing can
+    /// interleave, but that is a property of the callers rather than of this helper, and an
+    /// `await` added to one of them later would silently let a superseded run advance the offset
+    /// over the reset its replacement had just performed.
     func loadLibraryPage(
         _ pagination: ReferenceWritableKeyPath<AppStore, PaginationState>,
         _ load: (_ offset: Int) async throws -> (received: Int, total: Int),
@@ -450,6 +455,7 @@ final class AppStore {
         }
 
         let page = try await load(offset)
+        try Task.checkCancellation()
 
         self[keyPath: pagination].isLoaded = true
         self[keyPath: pagination].advance(by: page.received, total: page.total)
