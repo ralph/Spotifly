@@ -14,7 +14,7 @@ struct TrackContextMenu: View {
     let selectionId: String?
     /// The playlist item this menu was opened from, where the caller knows which one.
     let itemUid: String?
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(AppStore.self) private var store

@@ -12,15 +12,11 @@ import SwiftUI
 
 /// A single status indicator row with icon and label
 private struct ConnectionStatusRow: View {
-    let label: String
+    let label: LocalizedStringKey
     let isConnected: Bool
+    /// Shown in place of the connected/disconnected text where the row has something more
+    /// specific to say — a connection id, or how far Spirc got.
     let detail: String?
-
-    init(label: String, isConnected: Bool, detail: String? = nil) {
-        self.label = label
-        self.isConnected = isConnected
-        self.detail = detail
-    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -52,7 +48,7 @@ private struct ConnectionStatusRow: View {
 
 /// A key/value info row for displaying connection metadata
 private struct MetadataRow: View {
-    let label: String
+    let label: LocalizedStringKey
     let value: String
 
     var body: some View {
@@ -74,7 +70,7 @@ private struct MetadataRow: View {
 
 /// Displays connection uptime with automatic timer updates
 private struct UptimeDisplay: View {
-    let connectedSince: Date?
+    let connectedSince: Date
     @State private var currentTime = Date()
 
     /// Timer that fires every second to update the display
@@ -97,8 +93,6 @@ private struct UptimeDisplay: View {
     }
 
     private var formattedUptime: String {
-        guard let connectedSince else { return "--" }
-
         let interval = currentTime.timeIntervalSince(connectedSince)
         guard interval >= 0 else { return "--" }
 
@@ -127,7 +121,6 @@ struct ConnectionStatusView: View {
     var body: some View {
         if let connection = store.connection {
             VStack(alignment: .leading, spacing: 12) {
-                // Overall status header
                 HStack {
                     Text("connection.status")
                         .font(.headline)
@@ -137,16 +130,15 @@ struct ConnectionStatusView: View {
 
                 Divider()
 
-                // Status indicators
                 VStack(spacing: 8) {
                     ConnectionStatusRow(
-                        label: String(localized: "connection.session"),
+                        label: "connection.session",
                         isConnected: connection.isConnected,
                         detail: connection.connectionId.map { truncateId($0) },
                     )
 
                     ConnectionStatusRow(
-                        label: String(localized: "connection.spirc"),
+                        label: "connection.spirc",
                         isConnected: connection.spircReady,
                         detail: connection.spircReady ? String(localized: "connection.spirc_ready") : String(localized: "connection.spirc_not_ready"),
                     )
@@ -154,28 +146,26 @@ struct ConnectionStatusView: View {
 
                 Divider()
 
-                // Metadata
                 VStack(spacing: 8) {
                     if connection.isConnected, let connectedSince = connection.connectedSince {
                         UptimeDisplay(connectedSince: connectedSince)
                     } else {
-                        MetadataRow(label: String(localized: "connection.uptime"), value: "--")
+                        MetadataRow(label: "connection.uptime", value: "--")
                     }
 
                     MetadataRow(
-                        label: String(localized: "connection.reconnect_attempts"),
+                        label: "connection.reconnect_attempts",
                         value: "\(connection.reconnectAttempts)",
                     )
 
                     if let deviceId = connection.deviceId {
                         MetadataRow(
-                            label: String(localized: "connection.device_id"),
+                            label: "connection.device_id",
                             value: truncateId(deviceId),
                         )
                     }
                 }
 
-                // Error banner (if present)
                 if let lastError = connection.lastError {
                     Divider()
                     HStack(spacing: 6) {
@@ -188,7 +178,6 @@ struct ConnectionStatusView: View {
                     }
                 }
 
-                // Reconnect button
                 if let onReconnect {
                     Divider()
                     Button {
@@ -216,7 +205,7 @@ struct ConnectionStatusView: View {
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(.rect(cornerRadius: 8))
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "network.slash")
@@ -237,7 +226,6 @@ struct ConnectionStatusView: View {
                 .fill(isConnected ? Color.green : Color.orange)
                 .frame(width: 8, height: 8)
             Text(isConnected ? String(localized: "connection.connected") : String(localized: "connection.disconnected"))
-                .font(.caption)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(isConnected ? .green : .orange)
         }

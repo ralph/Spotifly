@@ -13,54 +13,21 @@ struct PlaylistCard: View {
     let images: ImageSet
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Button {
             navigationCoordinator.navigateToPlaylistSection(playlistId: id)
         } label: {
             VStack(spacing: 8) {
-                if let url = images.url(for: 120, scale: displayScale) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(width: 120, height: 120)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .clipShape(.rect(cornerRadius: 4))
-                                .shadow(radius: 2)
-                        case .failure:
-                            playlistPlaceholder
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
-                } else {
-                    playlistPlaceholder
-                }
+                CardArtwork(images: images, outline: .roundedSquare, symbol: "music.note.list", symbolSize: 40)
 
                 Text(name)
                     .font(.caption.weight(.medium))
                     .lineLimit(2)
-                    .frame(width: 120, alignment: .leading)
+                    .frame(width: CardArtwork.size, alignment: .leading)
             }
         }
         .buttonStyle(.plain)
-    }
-
-    private var playlistPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.gray.opacity(0.2))
-            .frame(width: 120, height: 120)
-            .overlay(
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary),
-            )
     }
 }
 

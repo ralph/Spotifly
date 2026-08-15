@@ -13,55 +13,22 @@ struct ArtistCard: View {
     let images: ImageSet
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Button {
             navigationCoordinator.navigateToArtistSection(artistId: id)
         } label: {
             VStack(spacing: 8) {
-                if let url = images.url(for: 120, scale: displayScale) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(width: 120, height: 120)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .clipShape(.circle)
-                                .shadow(radius: 2)
-                        case .failure:
-                            artistPlaceholder
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
-                } else {
-                    artistPlaceholder
-                }
+                CardArtwork(images: images, outline: .circle, symbol: "person.circle.fill", symbolSize: 60)
 
                 Text(name)
                     .font(.caption.weight(.medium))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .frame(width: 120)
+                    .frame(width: CardArtwork.size)
             }
         }
         .buttonStyle(.plain)
-    }
-
-    private var artistPlaceholder: some View {
-        Circle()
-            .fill(Color.gray.opacity(0.2))
-            .frame(width: 120, height: 120)
-            .overlay(
-                Image(systemName: "person.circle.fill")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.secondary),
-            )
     }
 }
 

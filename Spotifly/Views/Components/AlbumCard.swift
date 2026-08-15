@@ -14,35 +14,13 @@ struct AlbumCard: View {
     let images: ImageSet
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Button {
             navigationCoordinator.navigateToAlbumSection(albumId: id)
         } label: {
             VStack(spacing: 8) {
-                if let url = images.url(for: 120, scale: displayScale) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(width: 120, height: 120)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .clipShape(.rect(cornerRadius: 4))
-                                .shadow(radius: 2)
-                        case .failure:
-                            albumPlaceholder
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
-                } else {
-                    albumPlaceholder
-                }
+                CardArtwork(images: images, outline: .roundedSquare, symbol: "music.note", symbolSize: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
@@ -53,21 +31,10 @@ struct AlbumCard: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                .frame(width: 120, alignment: .leading)
+                .frame(width: CardArtwork.size, alignment: .leading)
             }
         }
         .buttonStyle(.plain)
-    }
-
-    private var albumPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.gray.opacity(0.2))
-            .frame(width: 120, height: 120)
-            .overlay(
-                Image(systemName: "music.note")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary),
-            )
     }
 }
 
