@@ -102,41 +102,20 @@ struct NowPlayingBarView: View {
                     .popover(isPresented: $showAlbumArtMenu, arrowEdge: .top) {
                         VStack(alignment: .leading, spacing: 0) {
                             if let artistId = currentTrack?.artistId {
-                                Button {
-                                    showAlbumArtMenu = false
+                                albumArtMenuItem("track.menu.go_to_artist", systemImage: "person.circle") {
                                     navigationCoordinator.navigateToArtistSection(artistId: artistId)
-                                } label: {
-                                    Label("track.menu.go_to_artist", systemImage: "person.circle")
-                                        .frame(maxWidth: .infinity, alignment: .leading)
                                 }
-                                .buttonStyle(.plain)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
                             }
 
                             if let albumId = currentTrack?.albumId {
-                                Button {
-                                    showAlbumArtMenu = false
+                                albumArtMenuItem("track.menu.go_to_album", systemImage: "square.stack") {
                                     navigationCoordinator.navigateToAlbumSection(albumId: albumId)
-                                } label: {
-                                    Label("track.menu.go_to_album", systemImage: "square.stack")
-                                        .frame(maxWidth: .infinity, alignment: .leading)
                                 }
-                                .buttonStyle(.plain)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
                             }
 
-                            Button {
-                                showAlbumArtMenu = false
+                            albumArtMenuItem("queue.title", systemImage: "list.number") {
                                 navigationCoordinator.navigateToQueue()
-                            } label: {
-                                Label("queue.title", systemImage: "list.number")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
                         }
                         .padding(.vertical, 4)
                     }
@@ -167,6 +146,25 @@ struct NowPlayingBarView: View {
     }
 
     // MARK: - Shared Components
+
+    /// One row of the cover-art popover. Every row dismisses the popover before it
+    /// navigates, so that is here rather than repeated in each action.
+    private func albumArtMenuItem(
+        _ titleKey: LocalizedStringKey,
+        systemImage: String,
+        action: @escaping () -> Void,
+    ) -> some View {
+        Button {
+            showAlbumArtMenu = false
+            action()
+        } label: {
+            Label(titleKey, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
 
     @ViewBuilder
     private func albumArt(size: CGFloat) -> some View {
@@ -570,15 +568,11 @@ struct NowPlayingBarView: View {
 
         Task {
             do {
-                // Create the playlist using PlaylistService
                 let newPlaylist = try await playlistService.createPlaylist(name: trimmedName)
-
-                // Add the track to the new playlist
                 try await playlistService.addTracksToPlaylist(
                     playlistId: newPlaylist.id,
                     trackIds: [track.id],
                 )
-
                 showSuccessFeedback()
             } catch {
                 playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"

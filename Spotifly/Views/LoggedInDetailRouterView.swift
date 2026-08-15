@@ -53,11 +53,8 @@ struct LoggedInDetailRouterView: View {
     @ViewBuilder
     private var artistDetailView: some View {
         if let artistId = navigationCoordinator.selectedArtistId {
-            ArtistDetailView(
-                artistId: artistId,
-                playbackViewModel: playbackViewModel,
-            )
-            .id(artistId)
+            ArtistDetailView(artistId: artistId)
+                .id(artistId)
         } else {
             Text("empty.select_artist")
                 .foregroundStyle(.secondary)

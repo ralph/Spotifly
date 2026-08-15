@@ -76,10 +76,6 @@ struct LoggedInView: View {
     }
 
     var body: some View {
-        mainAppView
-    }
-
-    private var mainAppView: some View {
         Group {
             if windowState.isMiniPlayerMode {
                 NowPlayingBarView(
@@ -94,8 +90,8 @@ struct LoggedInView: View {
                 }
                 .navigationSplitViewStyle(.automatic)
                 // Always-visible search field, attached to the NavigationSplitView
-                // itself (as in the original) — attaching it to an inner view inside
-                // the detail column does not surface the field in the window toolbar.
+                // itself — attaching it to an inner view inside the detail column
+                // does not surface the field in the window toolbar.
                 .searchable(text: $searchText)
                 .onSubmit(of: .search) { performSearch() }
                 .onChange(of: searchText) { _, newValue in handleSearchTextChange(newValue) }
@@ -196,7 +192,7 @@ struct LoggedInView: View {
     }
 
     /// The main content router with its content toolbar attached directly. Search is
-    /// attached to the NavigationSplitView (see mainAppView), not here.
+    /// attached to the NavigationSplitView (see `body`), not here.
     private var contentRouter: some View {
         LoggedInContentRouterView(
             playbackViewModel: playbackViewModel,

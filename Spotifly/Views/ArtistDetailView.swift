@@ -10,7 +10,6 @@ import SwiftUI
 struct ArtistDetailView: View {
     let artistId: String
 
-    @Bindable var playbackViewModel: PlaybackViewModel
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(AppStore.self) private var store
     @Environment(ArtistService.self) private var artistService
@@ -30,11 +29,6 @@ struct ArtistDetailView: View {
     /// The artist's albums, cached in the store rather than re-fetched per visit.
     private var albums: [Album] {
         store.albums(forArtist: artistId) ?? []
-    }
-
-    /// Whether this artist is in the user's followed artists
-    private var isFollowing: Bool {
-        store.userArtistIds.contains(artistId)
     }
 
     var body: some View {
@@ -103,12 +97,10 @@ struct ArtistDetailView: View {
                             .foregroundStyle(.gray.opacity(0.3))
                     }
 
-                    VStack(spacing: 8) {
-                        Text(artist.name)
-                            .font(.title)
-                            .bold()
-                            .multilineTextAlignment(.center)
-                    }
+                    Text(artist.name)
+                        .font(.title)
+                        .bold()
+                        .multilineTextAlignment(.center)
                 }
                 .padding(.top, 24)
 

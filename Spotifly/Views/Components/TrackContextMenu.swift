@@ -233,22 +233,16 @@ private struct PlaylistSubmenuContent: View {
     }
 
     var body: some View {
-        // Loading state
-        if store.playlistsPagination.isLoading, ownedPlaylists.isEmpty {
-            Text("playlist.loading")
-                .foregroundStyle(.secondary)
-                .onAppear {
-                    triggerLoadIfNeeded()
-                }
-        } else if ownedPlaylists.isEmpty {
-            // No playlists yet - trigger load and show placeholder
+        // Nothing to list yet — whether a load is running or has not started — so show the
+        // placeholder and kick one off. Both cases used to be spelled out separately with
+        // byte-identical bodies.
+        if ownedPlaylists.isEmpty {
             Text("playlist.loading")
                 .foregroundStyle(.secondary)
                 .onAppear {
                     triggerLoadIfNeeded()
                 }
         } else {
-            // Show playlists
             Divider()
 
             ForEach(ownedPlaylists) { playlist in

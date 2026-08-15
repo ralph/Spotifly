@@ -57,7 +57,6 @@ struct TrackRow: View {
     @State private var isTogglingFavorite = false
     @State private var showNewPlaylistDialog = false
     @State private var newPlaylistName = ""
-    @State private var isAddingToPlaylist = false
     @State private var showPlaylistAddedSuccess = false
 
     /// Favorite status from the store (single source of truth)
@@ -297,22 +296,16 @@ struct TrackRow: View {
         guard !trimmedName.isEmpty else { return }
 
         Task {
-            isAddingToPlaylist = true
             do {
-                // Create the playlist using PlaylistService
                 let newPlaylist = try await playlistService.createPlaylist(name: trimmedName)
-
-                // Add the track to the new playlist
                 try await playlistService.addTracksToPlaylist(
                     playlistId: newPlaylist.id,
                     trackIds: [track.id],
                 )
-
                 showSuccessFeedback()
             } catch {
                 playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
             }
-            isAddingToPlaylist = false
         }
     }
 

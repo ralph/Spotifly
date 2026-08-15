@@ -9,7 +9,6 @@ import SwiftUI
 
 struct SpeakersView: View {
     @Environment(AppStore.self) private var store
-    @Environment(DeviceService.self) private var deviceService
     @Environment(AuthViewModel.self) private var authViewModel
     @Bindable var playbackViewModel: PlaybackViewModel
 

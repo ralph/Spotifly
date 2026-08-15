@@ -65,11 +65,6 @@ struct PlaylistDetailView: View {
         playlist?.ownerId == store.userId
     }
 
-    /// Whether this playlist is in the user's library
-    private var isInLibrary: Bool {
-        store.userPlaylistIds.contains(playlistId)
-    }
-
     var body: some View {
         Group {
             if let playlist {
@@ -263,7 +258,7 @@ struct PlaylistDetailView: View {
             ForEach(rows.enumerated(), id: \.offset) { index, row in
                 trackRowView(item: row.item, track: row.track, index: index)
 
-                if index < tracks.count - 1 {
+                if index < rows.count - 1 {
                     Divider()
                         .padding(.leading, 94)
                 }

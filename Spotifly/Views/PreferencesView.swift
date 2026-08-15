@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct PreferencesView: View {
     var body: some View {
@@ -34,8 +33,7 @@ struct PlaybackSettingsView: View {
     @AppStorage("gaplessPlayback") private var gaplessEnabled: Bool = true
 
     private var selectedBitrate: SpotifyPlayer.Bitrate {
-        get { SpotifyPlayer.Bitrate(rawValue: UInt8(bitrateRawValue)) ?? .normal }
-        set { bitrateRawValue = Int(newValue.rawValue) }
+        SpotifyPlayer.Bitrate(rawValue: UInt8(bitrateRawValue)) ?? .normal
     }
 
     var body: some View {

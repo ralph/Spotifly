@@ -353,24 +353,15 @@ final class PlaybackViewModel {
     }
 
     func play(uriOrUrl: String, trackIndex: Int = -1) async {
-        // Initialize if needed
         if !isInitialized {
             await initializeIfNeeded()
         }
 
         switch resolvedPlaybackTarget() {
         case .local:
-            isLoading = true
-            errorMessage = nil
-
-            do {
+            await startLocally(startedUri: uriOrUrl) {
                 try await SpotifyPlayer.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex)
-                handlePlaybackStarted(trackId: uriOrUrl)
-            } catch {
-                errorMessage = error.localizedDescription
             }
-
-            isLoading = false
 
         case let .remote(deviceId):
             // One uri either way: the command's own context builder tells a track from a
@@ -390,7 +381,6 @@ final class PlaybackViewModel {
     }
 
     func playTracks(_ trackUris: [String]) async {
-        // Initialize if needed
         if !isInitialized {
             await initializeIfNeeded()
         }
@@ -402,17 +392,9 @@ final class PlaybackViewModel {
 
         switch resolvedPlaybackTarget() {
         case .local:
-            isLoading = true
-            errorMessage = nil
-
-            do {
+            await startLocally(startedUri: trackUris[0]) {
                 try await SpotifyPlayer.playTracks(trackUris)
-                handlePlaybackStarted(trackId: trackUris[0])
-            } catch {
-                errorMessage = error.localizedDescription
             }
-
-            isLoading = false
 
         case let .remote(deviceId):
             await startRemotely(
@@ -488,6 +470,28 @@ final class PlaybackViewModel {
         )
     }
 
+    /// Runs a local Spirc start and folds its outcome into `isLoading` / `errorMessage`.
+    ///
+    /// `play` and `playTracks` differ only in the call they make and in which uri counts as
+    /// the one that started, so the state-keeping around it is written once. The remote
+    /// half is `startRemotely` below.
+    private func startLocally(
+        startedUri: String,
+        _ start: @MainActor () async throws -> Void,
+    ) async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            try await start()
+            handlePlaybackStarted(trackId: startedUri)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+
     /// Starts content on a remote device and then resyncs, because nothing else will.
     ///
     /// With no Spirc session there are no playback or queue callbacks — a successful start
@@ -525,7 +529,6 @@ final class PlaybackViewModel {
     }
 
     func addToQueue(uri: String) async {
-        // Initialize if needed
         if !isInitialized {
             await initializeIfNeeded()
         }

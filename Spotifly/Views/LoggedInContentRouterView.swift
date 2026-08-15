@@ -99,10 +99,7 @@ struct LoggedInContentRouterView: View {
     private func destinationView(for destination: NavigationDestination) -> some View {
         switch destination {
         case let .artist(id):
-            ArtistDetailView(
-                artistId: id,
-                playbackViewModel: playbackViewModel,
-            )
+            ArtistDetailView(artistId: id)
 
         case let .album(id):
             AlbumDetailView(

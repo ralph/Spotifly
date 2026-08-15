@@ -33,11 +33,6 @@ struct AlbumDetailView: View {
         album?.trackIds.compactMap { store.tracks[$0] } ?? []
     }
 
-    /// Whether this album is in the user's library
-    private var isInLibrary: Bool {
-        store.userAlbumIds.contains(albumId)
-    }
-
     var body: some View {
         Group {
             if let album {

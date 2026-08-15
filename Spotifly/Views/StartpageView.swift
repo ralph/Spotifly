@@ -5,7 +5,6 @@
 //  Spotify's own start page, as whatever shelves it sends.
 //
 
-import AppKit
 import SwiftUI
 
 /// The start page.
