@@ -1,6 +1,11 @@
 # The connect-state PUT echoes back to itself and runs into a 429
 
-Status: **diagnosed, not fixed.** Noticed while diagnosing
+Status: **fixed and verified at runtime 2026-08-16**, on `break-connect-state-echo-loop` in
+the sibling librespot checkout — 75 PUTs → 1 in the comparable window, no 429s, and a second
+device's pause/resume/volume still handled without a position de-sync. Not yet offered
+upstream. Detail in
+[`connect-state-echo-implementation-plan.md`](connect-state-echo-implementation-plan.md).
+Noticed while diagnosing
 `plans/seek-bar-jumps-between-two-position-clocks.md`, where this loop is what made that
 bug visible; it is not the cause of it.
 Components: `librespot/connect/src/spirc.rs` — an upstream `fixme`, so a fix is a patch to

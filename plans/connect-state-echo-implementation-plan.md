@@ -1,9 +1,10 @@
 # Break the connect-state echo loop
 
 Ticket: [`connect-state-put-echoes-itself-into-a-429.md`](connect-state-put-echoes-itself-into-a-429.md)
-Status: **Tasks 1 and 2 done; Task 3 needs a runtime session.** Branch
+Status: **fixed and verified at runtime 2026-08-16; Task 4 (upstream) open.** Branch
 `plan/connect-state-echo` for this plan; the patch itself is
 `break-connect-state-echo-loop` in `../../librespot` (local only, not pushed).
+**75 PUTs → 1** in the comparable window, and no 429s.
 Priority: **4 of 5.** ~80 Connect PUTs in twenty seconds, answered with a 429.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
@@ -127,21 +128,50 @@ cluster's `active_device_id` is already known to be ours — `became_inactive` a
 other case — so "the only changed device is ours" is a check against `self.session.device_id()`
 and not merely against the active device.
 
-## Task 3 — verify by counting
+## Task 3 — verify by counting ✅ done, 2026-08-16
 
-- [ ] **T6.** Reproduce the original scenario — a context start, the one that produced 80+ PUTs
-      — and count PUTs in the log. Success is a small number, not zero: legitimate state changes
-      still PUT (track change at `spirc.rs:758`, player events at `:884`, remote requests at
-      `:1163`). **Compare PUTs per minute inside a burst window, not raw totals** — the 79 and
-      83 in the pre-fix logs are rate-limited floors, so a raw total is not a like-for-like
-      baseline.
-- [ ] **T7.** Confirm no 429s across a session that previously produced them.
-- [ ] **T8. Check the case the workaround exists for.** Have a *second* device send a
-      connect-state update while Spotifly is active, and confirm the position does not de-sync.
-      This is the regression that matters and the one that is easy to skip, since it needs a
-      second device.
-- [ ] **T9.** Confirm Spotifly still appears correctly to other clients — the 429s were landing
-      on the request that advertises this Mac.
+Captured in `../echo-fix.log`: login, a context start, ~90 s of untouched playback, then a
+second device (`c077d34a96…`) pausing, resuming and changing the volume.
+
+**Like-for-like, PUTs in the 60 s after `PlayerEvent::Playing`:**
+
+| run | PUTs in first 60 s | 429s |
+| --- | --- | --- |
+| `../seek.log` (before) | **75** | 2 |
+| `../seek-after3.log` (before) | 24 — *floor, the burst was cut by a 429 at 11 s* | 3 |
+| `../echo-fix.log` (after) | **1** | **0** |
+
+Whole session after the fix: **17 device-state PUTs in 2m38s, 11 echoes suppressed, no 429.**
+The loop is broken rather than slowed — each suppression is the end of its chain, and the
+longest stretch without a PUT is 88 s of steady playback that previously would have been the
+densest part of the burst.
+
+- [x] **T6.** 75 → 1 in the comparable window; 17 across the whole session. Not zero, as
+      wanted: the survivors are the legitimate paths — track change (`spirc.rs:758`), player
+      events (`:884`), remote requests (`:1163`).
+- [x] **T7.** **Zero 429s**, in a scenario that produced them every previous run.
+- [x] **T8. The case the workaround exists for still works.** The second device paused,
+      resumed and changed the volume, and **the position did not de-sync**:
+
+      05:18:35.799  handling: 'endpoint: pause' from c077d34a96…
+      05:18:35.848  PlayerEvent::Paused  at 112197ms
+      05:18:41.212  handling: 'endpoint: resume' from c077d34a96…
+      05:18:41.213  PlayerEvent::Playing at 112197ms
+
+      Paused and resumed on the same millisecond, held flat across four state updates in
+      between, and tracked real time correctly afterwards. Volume propagated too
+      (65535 → 38911 in four steps, and again later).
+- [x] **T9.** Spotifly stayed visible and addressable throughout — the second device found it
+      in the device list and successfully commanded it three times, which is the property the
+      429s were destroying.
+
+**The reason gate paid for itself immediately.** At 05:18:36.958 a `DEVICE_VOLUME_CHANGED`
+arrived naming only us — the echo of our own delayed volume PUT. The gate let it through to
+the workaround, costing exactly one PUT of the seventeen. Filtering on "names only us" alone,
+as this plan originally proposed, would have swallowed it.
+
+The only warnings in the run are two `context is not available` at startup; both pre-fix logs
+carry the same two, so they are unrelated.
 
 ## Task 4 — upstream it
 
@@ -173,10 +203,11 @@ Run against the patch, 2026-08-16 — all green:
 - [x] `cargo fmt --check`, `cargo check`, `cargo test` in `rust/` — all exit 0, 33 passed
 - [x] `xcodebuild … test -only-testing:SpotiflyTests` — **TEST SUCCEEDED, 294 passed /
       0 failed**, matching the `main` baseline exactly
-- [ ] The PUT count from T6, the 429 check from T7, and the second-device regression from T8
+- [x] The PUT count from T6, the 429 check from T7, and the second-device regression from T8 —
+      all in Task 3 above, from `../echo-fix.log`
 
-**None of the above exercises the change** — it is a build-and-don't-regress gate. Task 3 is
-the verification, and it needs a runtime session.
+**None of the static checks exercises the change** — they are a build-and-don't-regress gate.
+Task 3 is the verification.
 
 ## Risks
 
@@ -189,6 +220,13 @@ the verification, and it needs a runtime session.
   failed. T8 is not optional.
 - **A quieter log is not proof of correctness** — see the seek-bar note above. Judge by the
   PUT count and the second-device check, not by the absence of noise.
+- **The seek-bar warning above came true, exactly as written.** With the loop gone, the
+  honest clock arrives far less often: `../echo-fix.log` has one stretch of **88 seconds**
+  where the position anchor was never refreshed, and when the correction finally landed it
+  moved 581 ms (local extrapolation 88 730 ms, server 89 311 ms). That gap is not a
+  regression from this fix — it is the same two-clock disagreement, now free-running for
+  longer between corrections instead of being papered over by a request storm. It is the
+  reason a calm log must not be read as proof the seek bar is correct.
 - **The one way the narrow fix could bite.** If Spotify ever changes *our* device entry
   server-side without routing a command to us, the filter swallows it and we do not re-PUT.
   Not seen in 449 cluster updates, and the separate-channels argument in Task 2 says remote
