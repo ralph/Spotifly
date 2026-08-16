@@ -1,7 +1,9 @@
 # Break the connect-state echo loop
 
 Ticket: [`connect-state-put-echoes-itself-into-a-429.md`](connect-state-put-echoes-itself-into-a-429.md)
-Status: **Task 1 done, Task 2 not started.** Branch `plan/connect-state-echo`.
+Status: **Tasks 1 and 2 done; Task 3 needs a runtime session.** Branch
+`plan/connect-state-echo` for this plan; the patch itself is
+`break-connect-state-echo-loop` in `../../librespot` (local only, not pushed).
 Priority: **4 of 5.** ~80 Connect PUTs in twenty seconds, answered with a 429.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
@@ -91,17 +93,29 @@ in `devices_that_changed` while Spotifly is active — `85a8659955…` twice in
 `../seek-after3.log`, `c077d34a96…` in `../playlist2.log`. T8 therefore has a known repro
 rather than a hypothetical one, and the filter has something to distinguish.
 
-## Task 2 — the narrow change
+## Task 2 — the narrow change ✅ done, 2026-08-16
 
 Skip `update_state = true` when the **only** changed device is ours. This leaves the workaround
 intact for the case it was written for — another device sending an update — and removes only
 our own echo.
 
-- [ ] **T4.** Implement in the checked-out librespot. `rust/Cargo.toml` uses path dependencies
-      with no revision pin precisely so a local librespot patch is a checkout and a rebuild.
-- [ ] **T5.** Keep it narrow. The tempting larger change is to delete the workaround branch
-      entirely; the upstream comment is evidence against that, and a de-sync it was hiding
-      would be a worse bug than the one being fixed.
+- [x] **T4.** Implemented in the checked-out librespot as
+      `break-connect-state-echo-loop` (branched from `dev`), one commit touching
+      `connect/src/spirc.rs` only. `rust/Cargo.toml` uses path dependencies with no revision
+      pin precisely so a local librespot patch is a checkout and a rebuild.
+- [x] **T5.** Kept narrow — and narrower than this plan first proposed. The guard is
+      `DEVICE_STATE_CHANGED` **and** `devices_that_changed == [our device id]` exactly.
+      Adding the reason gate costs one condition and buys the claim being made honestly:
+      "named only us" implies "caused by us" for a *state change*, not for a device
+      appearing, disappearing, or changing volume. An empty list and a list naming us
+      alongside another device both fall through to the workaround.
+
+**The skip is logged** (`debug!("ignoring cluster update caused by our own state update")`),
+so T6 can count suppressions directly rather than inferring them from a lower PUT total.
+
+The tempting larger change was to delete the workaround branch entirely; the upstream comment
+is evidence against that, and a de-sync it was hiding would be a worse bug than the one being
+fixed. It stays.
 
 **Why the filter cannot swallow a remote command.** Cluster updates and connect-state requests
 arrive on **separate select arms** — `spirc.rs:486` and `spirc.rs:493`. A remote transfer,
@@ -150,11 +164,19 @@ and not merely against the active device.
       `connect/` is `shuffle_vec.rs`, nowhere near `spirc.rs`. They are a
       did-not-break-anything gate and a prerequisite for upstreaming; T6–T9 are the actual
       verification.
-- [ ] `cargo check`, `cargo test`, `cargo fmt --check` in `rust/`; `cargo clippy` compared to
-      the branch baseline rather than expected to be zero
-- [ ] `xcodebuild … build` — BUILD SUCCEEDED
-- [ ] `xcodebuild … test -only-testing:SpotiflyTests` — TEST SUCCEEDED (294 on `main`)
+Run against the patch, 2026-08-16 — all green:
+
+- [x] From `../../librespot`: `cargo fmt --check -p librespot-connect` exit 0,
+      `cargo check -p librespot-connect` exit 0, `cargo clippy -p librespot-connect
+      --all-targets` exit 0 with **zero** warnings, `cargo test -p librespot-connect`
+      3 passed / 0 failed
+- [x] `cargo fmt --check`, `cargo check`, `cargo test` in `rust/` — all exit 0, 33 passed
+- [x] `xcodebuild … test -only-testing:SpotiflyTests` — **TEST SUCCEEDED, 294 passed /
+      0 failed**, matching the `main` baseline exactly
 - [ ] The PUT count from T6, the 429 check from T7, and the second-device regression from T8
+
+**None of the above exercises the change** — it is a build-and-don't-regress gate. Task 3 is
+the verification, and it needs a runtime session.
 
 ## Risks
 
