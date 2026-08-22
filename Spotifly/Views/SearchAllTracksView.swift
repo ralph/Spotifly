@@ -8,9 +8,14 @@
 import SwiftUI
 
 struct SearchAllTracksView: View {
-    let tracks: [Track]
-    @Bindable var playbackViewModel: PlaybackViewModel
-    @Environment(SpotifySession.self) private var session
+    let trackIds: [String]
+    let playbackViewModel: PlaybackViewModel
+    @Environment(AppStore.self) private var store
+    @Environment(TrackService.self) private var trackService
+
+    private var tracks: [Track] {
+        trackIds.compactMap { store.tracks[$0] }
+    }
 
     var body: some View {
         ScrollView {
@@ -22,24 +27,19 @@ struct SearchAllTracksView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 120, height: 120)
                         .background(Color.gray.opacity(0.2))
-                        .cornerRadius(8)
+                        .clipShape(.rect(cornerRadius: 8))
 
                     VStack(spacing: 8) {
                         Text("section.tracks")
-                            .font(.title2)
-                            .fontWeight(.semibold)
+                            .font(.title2.weight(.semibold))
 
                         HStack(spacing: 4) {
-                            Text(String(format: String(localized: "metadata.tracks"), tracks.count))
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
+                            Text(localizedNumberString("metadata.tracks", trackIds.count))
                             Text("metadata.separator")
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
                             Text(totalDuration(of: tracks))
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
                         }
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
                     }
 
                     Button {
@@ -58,13 +58,16 @@ struct SearchAllTracksView: View {
 
                 // Track list
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                    ForEach(tracks.enumerated(), id: \.element.id) { index, track in
                         TrackRow(
                             track: track,
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                             playbackViewModel: playbackViewModel,
                             currentSection: .searchResults,
+                            onDoubleTap: {
+                                await playbackViewModel.playRadio(trackUri: track.uri)
+                            },
                         )
 
                         if index < tracks.count - 1 {
@@ -74,20 +77,19 @@ struct SearchAllTracksView: View {
                     }
                 }
                 .background(Color(NSColor.controlBackgroundColor))
-                .cornerRadius(8)
+                .clipShape(.rect(cornerRadius: 8))
                 .padding(.horizontal)
             }
         }
         .navigationTitle("section.tracks")
+        .task(id: trackIds.joined()) {
+            await trackService.ensureFavoriteStatuses(trackIds: trackIds)
+        }
     }
 
     private func playAllTracks() {
         Task {
-            let token = await session.validAccessToken()
-            await playbackViewModel.playTracks(
-                tracks.map(\.uri),
-                accessToken: token,
-            )
+            await playbackViewModel.playTracks(tracks.map(\.uri))
         }
     }
 }

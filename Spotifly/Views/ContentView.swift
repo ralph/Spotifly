@@ -9,23 +9,30 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var viewModel = AuthViewModel()
-    @State private var clientId: String = KeychainManager.loadCustomClientId() ?? ""
 
     var body: some View {
-        Group {
-            if viewModel.isLoading {
-                ProgressView(String(localized: "auth.loading"))
-                    .frame(minWidth: 500, minHeight: 400)
-            } else if let authResult = viewModel.authResult {
-                LoggedInView(authResult: authResult, onLogout: { viewModel.logout() })
-            } else {
-                loginView
-                    .frame(minWidth: 500, minHeight: 400)
-            }
+        if viewModel.isLoading {
+            ProgressView(String(localized: "auth.loading"))
+                .frame(minWidth: 500, minHeight: 400)
+        } else if viewModel.isSignedIn {
+            LoggedInView(onLogout: { Task { await viewModel.logout() } })
+                // Speakers and the play alert both offer the grant again, and it is this view
+                // model that runs it.
+                .environment(viewModel)
+        } else {
+            loginView
+                .frame(minWidth: 500, minHeight: 400)
         }
     }
 
-    @ViewBuilder
+    /// The whole login: one authorization, which signs the user in *and* makes this Mac a
+    /// playback device.
+    ///
+    /// It used to be two screens. The first ran an OAuth against a Spotify app the user had to
+    /// register themselves, because the Web API would not answer without one; the second ran
+    /// this grant, because Spotify lets neither client id do the other's job. Nothing calls the
+    /// Web API any more, so the first screen — and the Client ID field on it — has nothing left
+    /// to authorize.
     private var loginView: some View {
         VStack(spacing: 20) {
             Image(systemName: "music.note.list")
@@ -35,51 +42,42 @@ struct ContentView: View {
 
             Text("app.name")
                 .font(.largeTitle)
-                .fontWeight(.bold)
+                .bold()
 
             Text("auth.connect.description")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .frame(width: 320)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("auth.client_id_label")
-                    .font(.headline)
-
-                TextField("auth.client_id_placeholder", text: $clientId)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 280)
-
-                Link(destination: URL(string: "https://github.com/ralph/homebrew-spotifly?tab=readme-ov-file#setting-up-your-client-id")!) {
-                    Text("auth.client_id_help_link")
-                        .font(.caption)
-                }
-
-                Text("auth.client_id_existing_app_note")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 280, alignment: .leading)
-            }
-            .frame(width: 280, alignment: .leading)
-
+            // Enabled while waiting, where it cancels rather than starting a second grant:
+            // a browser tab closed without authorizing sends nothing, so this is the only
+            // way back from the wait short of the listener's timeout.
+            //
+            // No account to compare against yet, so no `expectedAccountId` — at sign-in the
+            // account the browser grants *is* the account.
             Button {
-                if !clientId.isEmpty {
-                    try? KeychainManager.saveCustomClientId(clientId)
+                if viewModel.isAuthorizingStreaming {
+                    viewModel.cancelStreamingAuthorization()
+                } else {
+                    viewModel.startStreamingAuthorization()
                 }
-                viewModel.startOAuth()
             } label: {
                 HStack {
-                    if viewModel.isAuthenticating {
+                    if viewModel.isAuthorizingStreaming {
                         ProgressView()
                             .progressViewStyle(.circular)
                             .scaleEffect(0.8)
                     }
-                    Text(viewModel.isAuthenticating ? "auth.authenticating" : "auth.connect.button")
+                    Text(
+                        viewModel.isAuthorizingStreaming
+                            ? "auth.connect_cancel"
+                            : "auth.connect.button",
+                    )
                 }
                 .frame(minWidth: 200)
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
-            .disabled(viewModel.isAuthenticating || clientId.isEmpty)
 
             if let error = viewModel.errorMessage {
                 Text(error)
@@ -93,5 +91,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .environmentObject(WindowState())
+        .environment(WindowState())
 }

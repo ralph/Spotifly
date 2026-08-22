@@ -1,0 +1,272 @@
+//
+//  LoopbackCallbackServer.swift
+//  Spotifly
+//
+//  A one-shot HTTP listener on loopback, for OAuth redirects that are not a custom scheme.
+//
+
+import Foundation
+import Network
+
+/// Receives a single OAuth redirect on `http://127.0.0.1:<port>/login`.
+///
+/// `ASWebAuthenticationSession` cannot serve this flow: Spotify's desktop client id is
+/// registered with a plain-HTTP loopback redirect rather than a custom scheme, and
+/// `ASWebAuthenticationSession` only intercepts custom schemes and associated-domain HTTPS.
+/// So the browser opens normally and the redirect lands here.
+///
+/// One request, one answer, then the listener closes — nothing about this outlives the grant.
+/// The port is assigned by the system rather than fixed: Spotify accepts any loopback port for
+/// a first-party client id, and a hardcoded one would collide with whatever else is listening.
+actor LoopbackCallbackServer {
+    enum ServerError: Error, LocalizedError {
+        case listenerFailed(String)
+        case timedOut
+        case malformedRequest
+
+        var errorDescription: String? {
+            switch self {
+            case let .listenerFailed(message):
+                "Could not listen for the Spotify redirect: \(message)"
+            case .timedOut:
+                "Timed out waiting for the Spotify redirect"
+            case .malformedRequest:
+                "The Spotify redirect could not be read"
+            }
+        }
+    }
+
+    private var listener: NWListener?
+    private var startWaiter: CheckedContinuation<UInt16, Error>?
+    private var waiter: CheckedContinuation<URLComponents, Error>?
+    /// A result that arrived before anyone was waiting for it. The browser can redirect faster
+    /// than the caller gets from `start()` to `waitForCallback()`, and a valid authorization
+    /// must not be lost to that race.
+    private var pending: Result<URLComponents, Error>?
+    private var finished = false
+    private var timeout: Task<Void, Never>?
+
+    /// Starts listening on a system-assigned loopback port and returns it.
+    ///
+    /// Waits for the listener to reach `.ready`: until then the port is a placeholder, and
+    /// advertising it would send Spotify a redirect to `127.0.0.1:0`, which reaches nothing.
+    func start() async throws -> UInt16 {
+        let parameters = NWParameters.tcp
+        parameters.allowLocalEndpointReuse = true
+        // Loopback only. The redirect never leaves this machine, so nothing else should be
+        // able to reach the listener.
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+
+        let listener: NWListener
+        do {
+            listener = try NWListener(using: parameters)
+        } catch {
+            throw ServerError.listenerFailed(String(describing: error))
+        }
+
+        listener.newConnectionHandler = { [weak self] connection in
+            connection.start(queue: .global(qos: .userInitiated))
+            Self.receiveRequest(on: connection) { [weak self] result in
+                Task { await self?.deliver(result) }
+            }
+        }
+
+        self.listener = listener
+
+        let port = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, Error>) in
+            startWaiter = continuation
+
+            // Weakly, because NWListener retains its own stateUpdateHandler: capturing the
+            // listener strongly here makes a cycle, and every grant would leak its listener
+            // and the continuation it captured.
+            //
+            // Every outcome goes back through the actor rather than resuming from the
+            // callback, so `stop()` and the listener's own state cannot both resume — the
+            // stored continuation is the one-shot guard.
+            listener.stateUpdateHandler = { [weak self, weak listener] state in
+                let result: Result<UInt16, Error>
+                switch state {
+                case .ready:
+                    if let port = listener?.port?.rawValue, port != 0 {
+                        result = .success(port)
+                    } else {
+                        result = .failure(ServerError.listenerFailed("no port assigned"))
+                    }
+                case let .failed(error):
+                    result = .failure(ServerError.listenerFailed(String(describing: error)))
+                case .cancelled:
+                    result = .failure(ServerError.listenerFailed("listener cancelled"))
+                default:
+                    return
+                }
+                Task { await self?.resumeStart(result) }
+            }
+            listener.start(queue: .global(qos: .userInitiated))
+        }
+
+        // The handler has done its job; leaving it installed keeps the listener — and what it
+        // captured — alive for as long as anything holds the listener.
+        listener.stateUpdateHandler = nil
+        return port
+    }
+
+    /// Resolves `start()`, at most once.
+    private func resumeStart(_ result: Result<UInt16, Error>) {
+        guard let startWaiter else { return }
+        self.startWaiter = nil
+        startWaiter.resume(with: result)
+    }
+
+    /// Waits for the redirect, or gives up.
+    ///
+    /// The wait is bounded because the other end of it is a person: closing the browser tab
+    /// without authorizing produces no request at all, and an unbounded wait would strand the
+    /// caller — which is exactly what a user pressing Cancel in the browser looks like.
+    ///
+    /// The timeout delivers into the same one-shot path as a real callback rather than racing
+    /// it in a task group, so whichever arrives first is the answer and the other cannot leave
+    /// a continuation dangling.
+    func waitForCallback(timeout duration: Duration = .seconds(300)) async throws -> URLComponents {
+        timeout = Task { [weak self] in
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled else { return }
+            await self?.deliver(.failure(ServerError.timedOut))
+        }
+
+        defer { stop() }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                // A result may already be here: the browser can redirect before the caller
+                // reaches this line, and a cancellation hops onto the actor the same way.
+                // Consuming it here is what stops the caller parking on a continuation
+                // nothing will resume.
+                if let pending {
+                    self.pending = nil
+                    continuation.resume(with: pending)
+                    return
+                }
+                waiter = continuation
+            }
+        } onCancel: {
+            Task { await self.deliver(.failure(CancellationError())) }
+        }
+    }
+
+    func stop() {
+        timeout?.cancel()
+        timeout = nil
+
+        // NWListener retains its handlers, so cancelling without clearing them leaves
+        // whatever they captured alive alongside it.
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
+        listener?.cancel()
+        listener = nil
+
+        // Explicitly, rather than relying on the `.cancelled` state that clearing the handler
+        // above has just suppressed: a `start()` suspended when this ran would otherwise stay
+        // suspended forever.
+        resumeStart(.failure(ServerError.listenerFailed("listener cancelled")))
+
+        // A caller still parked here would wait forever otherwise.
+        if let waiter {
+            self.waiter = nil
+            finished = true
+            waiter.resume(throwing: ServerError.timedOut)
+        }
+    }
+
+    /// The single point where a result becomes *the* result — first one wins, later ones are
+    /// dropped rather than resuming a continuation twice.
+    private func deliver(_ result: Result<URLComponents, Error>) {
+        guard !finished else { return }
+        finished = true
+
+        timeout?.cancel()
+        timeout = nil
+
+        if let waiter {
+            self.waiter = nil
+            waiter.resume(with: result)
+        } else {
+            pending = result
+        }
+    }
+
+    /// Reads one HTTP request and answers it, so the browser tab shows something human.
+    ///
+    /// Accumulates until the request line is complete: `receive` returns as soon as a single
+    /// byte is available, and TCP does not promise the browser's request arrives in one piece,
+    /// so parsing the first chunk would reject a perfectly good redirect that happened to be
+    /// split.
+    ///
+    /// Every path here reports once and stops reading; `deliver` is the one-shot guard for
+    /// anything that slips through, so this needs no second one of its own.
+    private nonisolated static func receiveRequest(
+        on connection: NWConnection,
+        completion: @escaping @Sendable (Result<URLComponents, Error>) -> Void,
+    ) {
+        @Sendable func read(_ accumulated: Data) {
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, isComplete, error in
+                if let error {
+                    completion(.failure(ServerError.listenerFailed(String(describing: error))))
+                    connection.cancel()
+                    return
+                }
+
+                let buffer = accumulated + (data ?? Data())
+
+                guard let text = String(data: buffer, encoding: .utf8),
+                      text.contains("\r\n") || text.contains("\n")
+                else {
+                    // Not a whole request line yet. Keep reading unless the peer is done or
+                    // the request is implausibly large for what a redirect can carry.
+                    if isComplete || buffer.count >= 8192 {
+                        completion(.failure(ServerError.malformedRequest))
+                        connection.cancel()
+                    } else {
+                        read(buffer)
+                    }
+                    return
+                }
+
+                guard let components = parseRequestLine(text) else {
+                    completion(.failure(ServerError.malformedRequest))
+                    connection.cancel()
+                    return
+                }
+
+                let body = "<html><body>Spotifly is authorized. You can close this tab.</body></html>"
+                let response = """
+                HTTP/1.1 200 OK\r
+                Content-Type: text/html; charset=utf-8\r
+                Content-Length: \(body.utf8.count)\r
+                Connection: close\r
+                \r
+                \(body)
+                """
+
+                connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
+                    connection.cancel()
+                })
+                completion(.success(components))
+            }
+        }
+
+        read(Data())
+    }
+
+    /// Pulls the query out of an HTTP request line: `GET /login?code=…&state=… HTTP/1.1`.
+    ///
+    /// Split out so the parsing can be tested without a socket.
+    nonisolated static func parseRequestLine(_ request: String) -> URLComponents? {
+        // Splitting on "\n" alone is enough: a trailing "\r" lands on the version, which is
+        // not read.
+        guard let line = request.split(separator: "\n").first else { return nil }
+
+        let parts = line.split(separator: " ")
+        guard parts.count >= 2, parts[0] == "GET" else { return nil }
+
+        return URLComponents(string: "http://127.0.0.1\(parts[1])")
+    }
+}

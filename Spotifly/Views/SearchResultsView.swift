@@ -9,8 +9,7 @@ import SwiftUI
 
 struct SearchResultsView: View {
     let searchResults: SearchResults
-    @Bindable var playbackViewModel: PlaybackViewModel
-    @Environment(SpotifySession.self) private var session
+    let playbackViewModel: PlaybackViewModel
     @Environment(TrackService.self) private var trackService
 
     var body: some View {
@@ -23,26 +22,37 @@ struct SearchResultsView: View {
 
                 // Artists section
                 if !searchResults.artists.isEmpty {
-                    artistsSection
+                    cardSection("section.artists") {
+                        ForEach(searchResults.artists) { artist in
+                            ArtistCard(artist: artist)
+                        }
+                    }
                 }
 
                 // Albums section
                 if !searchResults.albums.isEmpty {
-                    albumsSection
+                    cardSection("section.albums") {
+                        ForEach(searchResults.albums) { album in
+                            AlbumCard(album: album)
+                        }
+                    }
                 }
 
                 // Playlists section
                 if !searchResults.playlists.isEmpty {
-                    playlistsSection
+                    cardSection("section.playlists") {
+                        ForEach(searchResults.playlists) { playlist in
+                            PlaylistCard(playlist: playlist)
+                        }
+                    }
                 }
             }
             .padding(.vertical)
         }
         .task(id: searchResults.tracks.map(\.id).joined()) {
             // Check favorite status for all search tracks
-            let token = await session.validAccessToken()
             let trackIds = searchResults.tracks.map(\.id)
-            try? await trackService.checkFavoriteStatuses(trackIds: trackIds, accessToken: token)
+            await trackService.ensureFavoriteStatuses(trackIds: trackIds)
         }
     }
 
@@ -57,9 +67,9 @@ struct SearchResultsView: View {
                 Spacer()
 
                 if searchResults.tracks.count > 5 {
-                    NavigationLink(value: NavigationDestination.searchTracks(tracks: searchResults.tracks)) {
+                    NavigationLink(value: NavigationDestination.searchTracks(ids: searchResults.tracks.map(\.id))) {
                         HStack(spacing: 4) {
-                            Text(String(format: String(localized: "show_all.tracks"), searchResults.tracks.count))
+                            Text(localizedNumberString("show_all.tracks", searchResults.tracks.count))
                                 .font(.subheadline)
                             Image(systemName: "chevron.right")
                                 .font(.caption)
@@ -71,7 +81,7 @@ struct SearchResultsView: View {
             }
             .padding(.horizontal)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 12) {
                     ForEach(searchResults.tracks) { track in
                         TrackCard(track: track, playbackViewModel: playbackViewModel)
@@ -79,63 +89,30 @@ struct SearchResultsView: View {
                 }
                 .padding(.horizontal)
             }
+            .scrollIndicators(.hidden)
         }
     }
 
-    // MARK: - Artists Section
+    // MARK: - Card Sections
 
-    private var artistsSection: some View {
+    /// A heading over a horizontal row of cards — the shape three of the four sections have
+    /// exactly. Tracks keeps its own because its heading also carries the "show all" link.
+    private func cardSection(
+        _ title: LocalizedStringKey,
+        @ViewBuilder cards: () -> some View,
+    ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("section.artists")
+            Text(title)
                 .font(.headline)
                 .padding(.horizontal)
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal) {
                 HStack(spacing: 12) {
-                    ForEach(searchResults.artists) { artist in
-                        ArtistCard(artist: artist, currentSection: .searchResults)
-                    }
+                    cards()
                 }
                 .padding(.horizontal)
             }
-        }
-    }
-
-    // MARK: - Albums Section
-
-    private var albumsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("section.albums")
-                .font(.headline)
-                .padding(.horizontal)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(searchResults.albums) { album in
-                        AlbumCard(album: album, currentSection: .searchResults)
-                    }
-                }
-                .padding(.horizontal)
-            }
-        }
-    }
-
-    // MARK: - Playlists Section
-
-    private var playlistsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("section.playlists")
-                .font(.headline)
-                .padding(.horizontal)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(searchResults.playlists) { playlist in
-                        PlaylistCard(playlist: playlist)
-                    }
-                }
-                .padding(.horizontal)
-            }
+            .scrollIndicators(.hidden)
         }
     }
 }

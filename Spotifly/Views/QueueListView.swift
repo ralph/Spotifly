@@ -18,13 +18,33 @@ extension Notification.Name {
     static let showPlaylistUnfollowConfirmation = Notification.Name("showPlaylistUnfollowConfirmation")
 }
 
-struct QueueListView: View {
-    @Environment(SpotifySession.self) private var session
-    @Environment(AppStore.self) private var store
-    @Environment(QueueService.self) private var queueService
-    @Bindable var playbackViewModel: PlaybackViewModel
+extension View {
+    /// Runs `action` when one of the toolbar menu actions above is addressed to this view's
+    /// entity.
+    ///
+    /// The toolbar has no way to reach the open detail view but a notification, and every
+    /// detail view asks the same question of the ones it receives: is this one for me? The
+    /// entity id travels as the notification's object.
+    func onToolbarAction(
+        _ name: Notification.Name,
+        addressedTo id: String,
+        perform action: @escaping () -> Void,
+    ) -> some View {
+        onReceive(NotificationCenter.default.publisher(for: name)) { notification in
+            guard notification.object as? String == id else { return }
+            action()
+        }
+    }
+}
 
-    @State private var scrollProxy: ScrollViewProxy?
+struct QueueListView: View {
+    @Environment(AppStore.self) private var store
+    @Environment(DeviceService.self) private var deviceService
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(TrackService.self) private var trackService
+    let playbackViewModel: PlaybackViewModel
+
+    @State private var scrollPosition = ScrollPosition(idType: Int.self)
 
     /// Queue item with track and provider info
     private struct QueueDisplayItem {
@@ -58,19 +78,32 @@ struct QueueListView: View {
         return items
     }
 
-    /// Currently playing index (position after previous tracks)
-    private var currentIndex: Int {
-        store.currentIndex
+    /// Context info parsed from context URI
+    private var contextInfo: (type: ContextType, id: String, name: String)? {
+        guard let uri = store.queue.contextUri else { return nil }
+
+        if uri.hasPrefix("spotify:album:") {
+            let id = String(uri.dropFirst("spotify:album:".count))
+            if let album = store.albums[id] {
+                return (.album, id, album.name)
+            }
+        } else if uri.hasPrefix("spotify:playlist:") {
+            let id = String(uri.dropFirst("spotify:playlist:".count))
+            if let playlist = store.playlists[id] {
+                return (.playlist, id, playlist.name)
+            }
+        } else if uri.hasPrefix("spotify:artist:") {
+            let id = String(uri.dropFirst("spotify:artist:".count))
+            if let artist = store.artists[id] {
+                return (.artist, id, artist.name)
+            }
+        }
+
+        return nil
     }
 
-    /// Total song count for header
-    private var totalSongCount: Int {
-        store.queueLength
-    }
-
-    /// Unplayed song count for header (next tracks only)
-    private var unplayedSongCount: Int {
-        store.nextTrackEntities.count
+    private enum ContextType {
+        case album, playlist, artist
     }
 
     var body: some View {
@@ -81,24 +114,18 @@ struct QueueListView: View {
             Divider()
 
             // Scrollable content
-            if let error = store.queue.errorMessage {
-                errorView(error)
-            } else if allQueueItems.isEmpty {
+            if allQueueItems.isEmpty {
                 emptyView
             } else {
                 normalModeContent
             }
         }
         .task {
-            // Load favorites for queue items (queue itself auto-updates via Spirc subscription)
-            let token = await session.validAccessToken()
-            await queueService.loadFavorites(accessToken: token)
+            await syncQueueFavoriteStatuses()
         }
         .onChange(of: store.queue.currentTrack?.trackId) { _, _ in
-            // When queue updates, refresh favorites for new items
             Task {
-                let token = await session.validAccessToken()
-                await queueService.loadFavorites(accessToken: token)
+                await syncQueueFavoriteStatuses()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .scrollToCurrentTrack)) { _ in
@@ -110,12 +137,18 @@ struct QueueListView: View {
 
     private var queueHeader: some View {
         HStack(spacing: 12) {
-            // Song count
             VStack(alignment: .leading, spacing: 2) {
                 Text("queue.title")
                     .font(.headline)
-                if totalSongCount > 0 {
-                    Text("queue.song_count \(totalSongCount) \(unplayedSongCount)")
+
+                // "Playing from X on Y" subtitle
+                if let device = store.activeDevice {
+                    playingFromText(device: device)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if store.queueLength > 0 {
+                    // Fallback to song count if no active device
+                    Text("queue.song_count \(store.queueLength) \(store.nextTrackEntities.count)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -127,53 +160,92 @@ struct QueueListView: View {
         .background(.regularMaterial)
     }
 
+    @ViewBuilder
+    private func playingFromText(device: Device) -> some View {
+        let context = contextInfo
+        let contextName = context?.name ?? String(localized: "queue.title")
+        let deviceIcon = deviceService.deviceIcon(for: device.type)
+
+        HStack(spacing: 4) {
+            Text("queue.playing_from")
+
+            if let context {
+                // Context name is a tappable link
+                Button {
+                    navigateToContext(type: context.type, id: context.id)
+                } label: {
+                    Text("\"\(contextName)\"")
+                        .foregroundStyle(.green)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text("\"\(contextName)\"")
+            }
+
+            Text("queue.on_device")
+            Image(systemName: deviceIcon)
+            Text(device.name)
+        }
+    }
+
+    private func navigateToContext(type: ContextType, id: String) {
+        switch type {
+        case .album:
+            navigationCoordinator.navigateToAlbumSection(albumId: id)
+        case .playlist:
+            navigationCoordinator.navigateToPlaylistSection(playlistId: id)
+        case .artist:
+            navigationCoordinator.navigateToArtistSection(artistId: id)
+        }
+    }
+
+    private func syncQueueFavoriteStatuses() async {
+        let trackIds = allQueueItems.map(\.track.id)
+        guard !trackIds.isEmpty else { return }
+
+        await trackService.ensureFavoriteStatuses(trackIds: trackIds)
+    }
+
     // MARK: - Normal Mode Content
 
     private var normalModeContent: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(allQueueItems.enumerated()), id: \.offset) { index, item in
-                        TrackRow(
-                            track: item.track,
-                            index: index,
-                            currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                            currentIndex: currentIndex,
-                            provider: item.provider,
-                            playbackViewModel: playbackViewModel,
-                            doubleTapBehavior: .playTrack,
-                            currentSection: .queue,
-                        )
-                        .id(index)
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(allQueueItems.enumerated(), id: \.offset) { index, item in
+                    TrackRow(
+                        track: item.track,
+                        index: index,
+                        currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+                        currentIndex: store.currentIndex,
+                        provider: item.provider,
+                        playbackViewModel: playbackViewModel,
+                        currentSection: .queue,
+                        onDoubleTap: {
+                            if let contextUri = store.queue.contextUri {
+                                await playbackViewModel.play(
+                                    uriOrUrl: contextUri,
+                                    trackIndex: index,
+                                )
+                            } else {
+                                await playbackViewModel.play(uriOrUrl: item.track.uri)
+                            }
+                        },
+                    )
+                    .id(index)
 
-                        if index < allQueueItems.count - 1 {
-                            Divider()
-                                .padding(.leading, 78)
-                        }
+                    if index < allQueueItems.count - 1 {
+                        Divider()
+                            .padding(.leading, 78)
                     }
                 }
             }
-            .contentMargins(.bottom, 100)
-            .onAppear { scrollProxy = proxy }
+            .scrollTargetLayout()
         }
+        .scrollPosition($scrollPosition)
+        .contentMargins(.bottom, 100)
     }
 
-    // MARK: - Error and Empty States
-
-    private func errorView(_ error: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-            Text("error.load_queue")
-                .font(.headline)
-            Text(error)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
-        .frame(maxHeight: .infinity)
-    }
+    // MARK: - Empty State
 
     private var emptyView: some View {
         VStack(spacing: 16) {
@@ -193,9 +265,9 @@ struct QueueListView: View {
     // MARK: - Navigation
 
     private func scrollToCurrentTrack() {
-        guard currentIndex < allQueueItems.count else { return }
+        guard store.currentIndex < allQueueItems.count else { return }
         withAnimation {
-            scrollProxy?.scrollTo(currentIndex, anchor: .center)
+            scrollPosition.scrollTo(id: store.currentIndex, anchor: .center)
         }
     }
 }

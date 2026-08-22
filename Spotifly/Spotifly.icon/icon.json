@@ -1,18 +1,59 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+    "linear-gradient" : [
+      "display-p3:0.46826,0.82471,0.46558,1.00000",
+      "display-p3:0.26465,0.57959,0.54395,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
   },
   "groups" : [
     {
+      "blur-material" : null,
       "layers" : [
         {
-          "image-name" : "Gemini_Generated_Image_1331.png",
-          "name" : "Gemini_Generated_Image_1331",
+          "hidden" : false,
+          "image-name" : "airplane_depth 2.png",
+          "name" : "airplane_depth 2",
           "position" : {
-            "scale" : 1,
+            "scale" : 1.22,
             "translation-in-points" : [
-              -34.109375,
-              19.53125
+              0,
+              17.870831280096354
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill" : {
+            "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+          },
+          "image-name" : "Untitled.png",
+          "name" : "Untitled",
+          "position" : {
+            "scale" : 1.22,
+            "translation-in-points" : [
+              0,
+              0
             ]
           }
         }

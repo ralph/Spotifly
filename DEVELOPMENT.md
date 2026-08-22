@@ -6,7 +6,7 @@ This document covers building Spotifly from source and contributing to the proje
 
 Spotifly is a Swift/SwiftUI app that integrates with Spotify using the [librespot](https://github.com/librespot-org/librespot) Rust library for OAuth authentication.
 
-This project demonstrates Swift 6.2's C interoperability to call Rust code:
+This project demonstrates Swift 6.3's C interoperability to call Rust code:
 
 ```
 ┌─────────────────────┐
@@ -33,7 +33,7 @@ This project demonstrates Swift 6.2's C interoperability to call Rust code:
 
 ## Prerequisites
 
-- Xcode 26.2+ (Swift 6.2)
+- Xcode 26.6+ (Swift 6.3)
 - Rust toolchain (install via [rustup](https://rustup.rs/))
 - macOS 26.2+ (or adjust deployment target)
 
@@ -89,7 +89,7 @@ Spotifly/
 3. **Swift Wrapper** (`Spotifly/SpotifyAuth.swift`):
    - Imports the `SpotiflyRust` C module
    - Provides a Swift-native async API using `@globalActor`
-   - Follows Swift 6.2 concurrency best practices
+   - Follows Swift 6.3 concurrency best practices
 
 4. **SwiftUI** (`Spotifly/ContentView.swift`):
    - Uses `@Observable` for state management

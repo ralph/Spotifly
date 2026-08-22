@@ -2,15 +2,10 @@
 "app.name" = "Spotifly";
 
 /* Authentication */
-"auth.connect.description" = "Connect your Spotify account to get started";
+"auth.connect.description" = "Connect your Spotify account to get started. This authorizes Spotifly in your browser and makes this Mac available as a Spotify Connect device.";
 "auth.connect.button" = "Connect with Spotify";
-"auth.authenticating" = "Authenticating...";
 "auth.loading" = "Loading...";
 "auth.logout" = "Logout";
-"auth.client_id_label" = "Spotify Client ID";
-"auth.client_id_placeholder" = "Enter your Client ID";
-"auth.client_id_help_link" = "How do I get a Client ID?";
-"auth.client_id_existing_app_note" = "You can use an existing Spotify app if you add the redirect URI de.rvdh.spotifly://callback";
 
 /* Navigation */
 "nav.startpage" = "Startpage";
@@ -22,7 +17,12 @@
 "nav.queue" = "Queue";
 "nav.speakers" = "Speakers";
 "nav.library" = "Library";
+"nav.profile" = "Profile";
+"nav.settings" = "Settings";
 "nav.back_to %@" = "Back to %@";
+"nav.back" = "Back";
+"nav.forward_to %@" = "Forward to %@";
+"nav.forward" = "Forward";
 "nav.currently_viewing" = "Currently Viewing";
 "nav.your_library" = "Your Library";
 
@@ -34,6 +34,7 @@
 "action.cancel" = "Cancel";
 "action.create" = "Create";
 "action.share" = "Share";
+"action.link_copied" = "Link copied";
 
 /* Track Context Menu */
 "track.menu.play_next" = "Play Next";
@@ -43,6 +44,7 @@
 "track.menu.remove_from_favorites" = "Remove from Favorites";
 "track.menu.add_to_playlist" = "Add to Playlist";
 "track.menu.add_to_new_playlist" = "Add to New Playlist...";
+"track.menu.remove_from_playlist" = "Remove from this Playlist";
 "track.menu.go_to_artist" = "Go to Artist";
 "track.menu.go_to_album" = "Go to Album";
 
@@ -69,7 +71,6 @@
 "loading.artists" = "Loading artists...";
 "loading.tracks" = "Loading tracks...";
 "loading.top_tracks" = "Loading top tracks...";
-"loading.recently_played" = "Loading recently played...";
 
 /* Error Messages */
 "error.load_favorites" = "Failed to load favorites";
@@ -77,10 +78,10 @@
 "error.load_albums" = "Failed to load albums";
 "error.load_artists" = "Failed to load artists";
 "error.load_queue" = "Failed to load queue";
-"error.load_recently_played" = "Failed to load recently played: %@";
 "error.remove_from_queue" = "Failed to remove track from queue";
 "error.reorder_queue" = "Failed to reorder queue";
 "error.clear_queue" = "Failed to clear queue";
+"error.no_playback_device" = "This Mac is not connected to Spotify, so it cannot start playback elsewhere";
 
 /* Empty States */
 "empty.select_item" = "Select an item from the sidebar";
@@ -100,6 +101,9 @@
 
 /* Queue */
 "queue.title" = "Queue";
+"queue.open" = "Open queue";
+"queue.playing_from" = "Playing from";
+"queue.on_device" = "on";
 "queue.song_count %lld %lld" = "%lld songs (%lld upcoming)";
 "queue.scroll_to_current" = "Scroll to current track";
 "queue.refresh" = "Refresh queue";
@@ -108,16 +112,10 @@
 "queue.clear.confirm.message %lld" = "This will remove %lld upcoming tracks from the queue.";
 "queue.clear.confirm.action" = "Clear Queue";
 
-/* Startpage Sections */
-"startpage.top_artists" = "Your Top Artists";
-"startpage.top_artists.empty" = "Listen to more music to see your top artists";
-"startpage.new_releases" = "New Releases";
-"startpage.new_releases.empty" = "No new releases available";
-"startpage.empty" = "No sections enabled";
-"startpage.empty.description" = "Enable sections in Preferences → Startpage";
-
-/* Recently Played */
-"recently_played.content" = "Recently Played";
+/* Startpage */
+"startpage.empty" = "Nothing to show yet";
+"startpage.empty.description" = "Spotify builds this page from what you listen to.";
+"startpage.error" = "Could not load the startpage";
 
 /* Sections */
 "section.tracks" = "Tracks";
@@ -144,7 +142,6 @@
 "speakers.active" = "Active";
 "speakers.empty" = "No speakers found";
 "speakers.empty_hint" = "Open Spotify on another device to see it here";
-"speakers.error.failed_to_load" = "Failed to load speakers";
 "speakers.error.failed_to_transfer" = "Failed to transfer playback";
 "speakers.now_playing" = "Now Playing";
 "speakers.audio_output" = "AirPlay";
@@ -160,6 +157,10 @@
 "speakers.this_computer" = "This Computer";
 "speakers.this_computer.name" = "Spotifly";
 "speakers.this_computer.hint" = "Transfer playback here";
+
+/* Volume */
+"volume.device_controls_itself %@" = "%@ controls its own volume";
+
 
 /* Menu Commands */
 "menu.playback" = "Playback";
@@ -191,6 +192,82 @@
 "preferences.version %@ (%@)" = "Version %@ (%@)";
 "preferences.copyright %@" = "© %@ Ralph von der Heyden";
 
-/* Startpage Preferences */
-"preferences.startpage.sections" = "Sections";
-"preferences.startpage.none_enabled" = "The startpage will be empty. Enable at least one section to show content.";
+/* Album Context Menu & Alerts */
+"album.menu.remove_from_library" = "Remove from Library";
+"album.menu.add_to_library" = "Add to Library";
+"album.remove.title" = "Remove from Library";
+"album.remove.action" = "Remove";
+"album.remove.message %@" = "Are you sure you want to remove \"%@\" from your library?";
+
+/* Artist Context Menu & Alerts */
+"artist.menu.unfollow" = "Unfollow";
+"artist.menu.follow" = "Follow";
+"artist.unfollow.title" = "Unfollow Artist";
+"artist.unfollow.action" = "Unfollow";
+"artist.unfollow.message %@" = "Are you sure you want to unfollow \"%@\"?";
+"artist.show_less" = "Show Less";
+"artist.show_all %lld" = "Show All (%lld)";
+
+/* Playlist Context Menu & Alerts */
+"playlist.menu.edit_details" = "Edit Details";
+"playlist.menu.delete" = "Delete Playlist";
+"playlist.menu.unfollow" = "Unfollow Playlist";
+"playlist.menu.follow" = "Follow Playlist";
+"playlist.edit_details.title" = "Edit Playlist";
+"playlist.edit_details.name" = "Name";
+"playlist.edit_details.description" = "Description";
+"playlist.edit_details.message" = "Edit playlist name and description";
+"playlist.edit_details.save" = "Save";
+"playlist.delete.title" = "Delete Playlist";
+"playlist.delete.action" = "Delete";
+"playlist.delete.message %@" = "Are you sure you want to delete \"%@\"? This action cannot be undone.";
+"playlist.unfollow.title" = "Unfollow Playlist";
+"playlist.unfollow.action" = "Unfollow";
+"playlist.unfollow.message %@" = "Are you sure you want to unfollow \"%@\"?";
+
+/* Connection Status */
+"connection.status" = "Connection Status";
+"connection.session" = "Session";
+"connection.spirc" = "Spirc";
+"connection.spirc_ready" = "Ready";
+"connection.spirc_not_ready" = "Not Ready";
+"connection.uptime" = "Uptime";
+"connection.reconnect_attempts" = "Reconnect Attempts";
+"connection.device_id" = "Device ID";
+"connection.reconnect" = "Reconnect";
+"connection.no_data" = "No Connection Data";
+"connection.connected" = "Connected";
+"connection.disconnected" = "Disconnected";
+
+/* Speakers */
+"speakers.librespot_connection" = "Librespot Connection";
+
+/* Error Messages - Actions */
+"error.delete_playlist %@" = "Failed to delete playlist: %@";
+"error.unfollow_playlist %@" = "Failed to unfollow playlist: %@";
+"error.update_playlist %@" = "Failed to update playlist: %@";
+"error.reorder_tracks %@" = "Failed to reorder tracks: %@";
+"error.remove_album %@" = "Failed to remove album: %@";
+"error.unfollow_artist %@" = "Failed to unfollow artist: %@";
+"error.follow_artist %@" = "Failed to follow artist: %@";
+
+/* Profile */
+"profile.logged_in_as %@" = "Logged in as %@";
+"profile.unavailable" = "Account details unavailable";
+"profile.unavailable.description" = "Sign out and back in to reconnect your Spotify account.";
+"profile.open_in_spotify" = "Open in Spotify";
+"profile.email" = "Email";
+"profile.country" = "Country";
+"profile.subscription" = "Subscription";
+"profile.followers" = "Followers";
+
+// The grant: signing in on the login screen, re-authorizing playback everywhere else
+"auth.connect_cancel" = "Waiting for your browser — cancel";
+"auth.connect_failed" = "Could not connect to Spotify. Please try again.";
+"speakers.enable_this_mac" = "Enable this Mac";
+"speakers.enable_this_mac_cancel" = "Cancel authorization";
+"playback.needs_authorization_title" = "Enable playback on this Mac?";
+"playback.needs_authorization_message" = "There is no device to play on. Authorize streaming to play here, or start playback on another device first.";
+"playback.needs_authorization_authorize" = "Authorize";
+"common.cancel" = "Cancel";
+"auth.enable_playback_wrong_account" = "That Spotify account is not the one you are signed in with. Sign the browser into the same account and try again.";

@@ -12,178 +12,132 @@ import Foundation
 @Observable
 final class AlbumService {
     private let store: AppStore
-    private var loadingAlbumTrackIds: Set<String> = []
-    private var userAlbumsTask: Task<Void, Error>?
 
-    init(store: AppStore) {
+    /// Every album path now runs on the keymaster grant, which `PartnerAPI` holds itself — so
+    /// this service no longer takes a Web API token at all. Injectable so tests can drive it
+    /// without a network.
+    private let partnerAPI: PartnerAPI
+
+    /// One run per album ID — see `InFlightRequests`.
+    private let albumRequests = InFlightRequests<Void>()
+
+    /// The saved-albums list, whose pages are one run at a time under one key.
+    private let listRequests = InFlightRequests<Void>()
+    private static let listKey = "user-albums"
+
+    init(
+        store: AppStore,
+        partnerAPI: PartnerAPI = PartnerAPI(),
+    ) {
         self.store = store
+        self.partnerAPI = partnerAPI
     }
 
     // MARK: - User Albums
 
-    /// Load user's saved albums
-    func loadUserAlbums(accessToken: String, forceRefresh: Bool = false) async throws {
+    /// Load the next page of the user's saved albums, or the first if none is loaded.
+    func loadUserAlbums(forceRefresh: Bool = false) async throws {
         // Skip if already loaded and not forcing refresh (but only if we actually have data)
         if store.albumsPagination.isLoaded, !forceRefresh, !store.albumsPagination.hasMore, !store.userAlbumIds.isEmpty {
             return
         }
 
-        // Handle force refresh
         if forceRefresh {
-            userAlbumsTask?.cancel()
-            userAlbumsTask = nil
+            listRequests.cancel(Self.listKey)
             store.albumsPagination.reset()
         }
 
-        // If already loading, await existing task
-        if let existingTask = userAlbumsTask {
-            _ = try? await existingTask.value
-            return
-        }
+        try await listRequests.run(Self.listKey) {
+            try await self.store.loadLibraryPage(\.albumsPagination) { offset in
+                let page = try await self.partnerAPI.libraryAlbums(offset: offset)
+                // A force refresh cancels this run and starts another. Cancellation is
+                // cooperative, so without this the superseded page would still be
+                // written — over the reset its replacement just performed.
+                try Task.checkCancellation()
 
-        // Create and store the loading task
-        let offset = forceRefresh ? 0 : (store.albumsPagination.nextOffset ?? 0)
-        store.albumsPagination.isLoading = true
-        userAlbumsTask = Task {
-            defer {
-                self.userAlbumsTask = nil
-                self.store.albumsPagination.isLoading = false
+                let albums = page.entities.compactMap { Album(pathfinder: $0) }
+                self.store.upsertAlbums(albums)
+
+                let albumIds = albums.map(\.id)
+                if offset == 0 {
+                    self.store.setUserAlbumIds(albumIds)
+                } else {
+                    self.store.appendUserAlbumIds(albumIds)
+                }
+
+                return (page.items?.count ?? 0, page.totalCount ?? 0)
             }
-
-            let response = try await SpotifyAPI.fetchUserAlbums(
-                accessToken: accessToken,
-                limit: 20,
-                offset: offset,
-            )
-
-            // Convert to unified Album entities
-            let albums = response.albums.map { Album(from: $0) }
-
-            // Upsert albums into store
-            self.store.upsertAlbums(albums)
-
-            // Update user album IDs
-            let albumIds = albums.map(\.id)
-            if forceRefresh {
-                self.store.setUserAlbumIds(albumIds)
-            } else {
-                self.store.appendUserAlbumIds(albumIds)
-            }
-
-            // Update pagination state
-            self.store.albumsPagination.isLoaded = true
-            self.store.albumsPagination.hasMore = response.hasMore
-            self.store.albumsPagination.nextOffset = response.nextOffset
-            self.store.albumsPagination.total = response.total
         }
-
-        try await userAlbumsTask!.value
     }
 
     /// Load more albums (pagination)
-    func loadMoreAlbums(accessToken: String) async throws {
-        guard store.albumsPagination.hasMore, userAlbumsTask == nil else {
+    func loadMoreAlbums() async throws {
+        guard store.albumsPagination.hasMore, !listRequests.isRunning(Self.listKey) else {
             return
         }
-        try await loadUserAlbums(accessToken: accessToken)
+        try await loadUserAlbums()
     }
 
     // MARK: - Album Details
 
-    /// Fetch album details and tracks
-    func fetchAlbumDetails(albumId: String, accessToken: String) async throws -> Album {
-        // Fetch details and tracks in parallel
-        async let detailsTask = SpotifyAPI.fetchAlbumDetails(
-            accessToken: accessToken,
-            albumId: albumId,
-        )
-        async let tracksTask = SpotifyAPI.fetchAlbumTracks(
-            accessToken: accessToken,
-            albumId: albumId,
-        )
-
-        let (details, albumTracks) = try await (detailsTask, tracksTask)
-
-        // Convert tracks to unified entities with album context
-        let tracks = albumTracks.map { albumTrack in
-            Track(
-                from: albumTrack,
-                albumId: details.id,
-                albumName: details.name,
-                imageURL: details.imageURL,
-            )
+    /// Makes sure the album's metadata *and* its track list are in the store.
+    ///
+    /// Only what is missing goes over the network. An album opened from the library
+    /// list, an artist page or a search result already has its metadata, so just
+    /// `/albums/{id}/tracks` is fetched; on a second visit nothing is. Concurrent
+    /// callers share one run, and the run outlives a caller whose view was torn
+    /// down mid-flight — see `InFlightRequests`.
+    func ensureAlbumLoaded(albumId: String) async throws {
+        if let album = store.albums[albumId], album.detailsLoaded, album.tracksLoaded {
+            return
         }
-        store.upsertTracks(tracks)
 
-        // Calculate total duration
-        let totalDurationMs = tracks.reduce(0) { $0 + $1.durationMs }
+        try await albumRequests.run(albumId) {
+            try await self.loadAlbum(albumId: albumId)
+        }
+    }
 
-        // Create album with track IDs
-        let album = Album(
-            from: details,
-            trackIds: tracks.map(\.id),
-            totalDurationMs: totalDurationMs,
-        )
+    /// Loads an album and its tracks in **one** request.
+    ///
+    /// The Web API needed two, and the two-branch shape this replaces existed to skip the
+    /// details half when the store already had them. `getAlbum` returns details and tracks
+    /// together, so there is no half to skip — an album whose details are cached but whose
+    /// tracks are not costs the same request either way, and asking once is simpler than
+    /// arranging not to.
+    private func loadAlbum(albumId: String) async throws {
+        let union = try await partnerAPI.album(id: albumId)
+
+        guard let (album, tracks) = union.entities() else {
+            throw PartnerAPIError.emptyPayload
+        }
 
         store.upsertAlbum(album)
-        return album
-    }
+        store.upsertTracks(tracks)
 
-    /// Get tracks for an album (from store or fetch)
-    func getAlbumTracks(albumId: String, accessToken: String) async throws -> [Track] {
-        // Check if tracks are already loaded
-        if let album = store.albums[albumId], album.tracksLoaded {
-            return album.trackIds.compactMap { store.tracks[$0] }
+        // `getAlbum` reports how many tracks the album has, and the request does not page. A
+        // short read would otherwise be a silently truncated album.
+        if let total = union.tracksV2?.totalCount, total > tracks.count {
+            debugLog("AlbumService", "album \(albumId) returned \(tracks.count) of \(total) tracks")
         }
-
-        // Prevent concurrent fetches for the same album
-        guard !loadingAlbumTrackIds.contains(albumId) else {
-            // Wait for the other request to complete by polling
-            while loadingAlbumTrackIds.contains(albumId) {
-                try await Task.sleep(for: .milliseconds(50))
-            }
-            // Now return from store (should be loaded)
-            if let album = store.albums[albumId] {
-                return album.trackIds.compactMap { store.tracks[$0] }
-            }
-            return []
-        }
-
-        loadingAlbumTrackIds.insert(albumId)
-        defer { loadingAlbumTrackIds.remove(albumId) }
-
-        // Fetch album details (which includes tracks)
-        let album = try await fetchAlbumDetails(albumId: albumId, accessToken: accessToken)
-        return album.trackIds.compactMap { store.tracks[$0] }
-    }
-
-    /// Get album from store or fetch if needed
-    func getAlbum(albumId: String, accessToken: String) async throws -> Album {
-        if let album = store.albums[albumId] {
-            return album
-        }
-        return try await fetchAlbumDetails(albumId: albumId, accessToken: accessToken)
     }
 
     // MARK: - Library Management
 
-    /// Save an album to the user's library
-    func saveAlbumToLibrary(albumId: String, accessToken: String) async throws {
-        try await SpotifyAPI.saveUserAlbum(
-            accessToken: accessToken,
-            albumId: albumId,
-        )
+    /// Save an album to the user's library.
+    ///
+    /// The same mutation that saves a track or follows an artist — only the uri prefix differs.
+    /// Kept as its own method anyway, because what happens *around* the call is per-kind: this
+    /// one updates the album list, and the views calling it know nothing about uris.
+    func saveAlbumToLibrary(albumId: String) async throws {
+        try await partnerAPI.addToLibrary(uris: ["spotify:album:\(albumId)"])
 
         // Update store on success
         store.addAlbumToUserLibrary(albumId)
     }
 
     /// Remove an album from the user's library
-    func removeAlbumFromLibrary(albumId: String, accessToken: String) async throws {
-        try await SpotifyAPI.removeUserAlbum(
-            accessToken: accessToken,
-            albumId: albumId,
-        )
+    func removeAlbumFromLibrary(albumId: String) async throws {
+        try await partnerAPI.removeFromLibrary(uris: ["spotify:album:\(albumId)"])
 
         // Update store on success
         store.removeAlbumFromUserLibrary(albumId)

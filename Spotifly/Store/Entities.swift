@@ -8,11 +8,61 @@
 
 import Foundation
 
+// MARK: - Image Types
+
+/// A single image variant with its URL and pixel dimensions.
+struct ImageVariant: Hashable, Encodable {
+    let url: URL
+    let size: Int // width in pixels (images are square)
+}
+
+/// A collection of image variants at different resolutions.
+/// Stores all sizes returned by the Spotify API and provides
+/// resolution-aware selection based on display size and scale.
+struct ImageSet: Hashable, Encodable {
+    /// Sorted descending by size (largest first), matching Spotify's default order.
+    let variants: [ImageVariant]
+
+    /// Returns the best image URL for a given display size in points.
+    ///
+    /// Uses 20% tolerance — accepts a variant that covers at least 80% of the
+    /// target pixel size. This lets small views (34–40pt) use the 64px variant
+    /// instead of downloading the 300px image.
+    ///
+    /// - Parameters:
+    ///   - points: The display size in SwiftUI points (e.g. 120 for a 120×120pt view).
+    ///   - scale: The display scale factor (1.0 for non-retina, 2.0 for retina).
+    ///            Defaults to 2.0 since all modern Macs are retina.
+    /// - Returns: The URL of the best-fit image, or nil if no variants exist.
+    func url(for points: CGFloat, scale: CGFloat = 2.0) -> URL? {
+        guard !variants.isEmpty else { return nil }
+        let target = Int(points * scale)
+        let threshold = target * 4 / 5
+        // Smallest variant >= threshold, fallback to largest
+        let best = variants.reversed().first(where: { $0.size >= threshold })
+        return (best ?? variants.first)?.url
+    }
+
+    /// The medium image URL (~300px), suitable for Now Playing metadata
+    /// and general-purpose use where display size is unknown.
+    var mediumURL: URL? {
+        let medium = variants.first(where: { $0.size <= 400 && $0.size >= 100 })
+        return (medium ?? variants.first)?.url
+    }
+
+    var isEmpty: Bool {
+        variants.isEmpty
+    }
+
+    /// An empty image set with no variants.
+    static let empty = ImageSet(variants: [])
+}
+
 // MARK: - Track
 
 /// Unified track entity - single source of truth for all track data.
-/// Constructed from APITrack via EntityConversions.
-struct Track: Identifiable, Sendable, Hashable, Encodable {
+/// Built from the pathfinder and spclient responses in `PartnerAPI/`.
+struct Track: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
     let uri: String
@@ -27,26 +77,21 @@ struct Track: Identifiable, Sendable, Hashable, Encodable {
     // Denormalized for display (avoids extra lookups for common display patterns)
     let artistName: String
     let albumName: String?
-    let imageURL: URL?
+    let images: ImageSet
 
     var durationFormatted: String {
         formatTrackTime(milliseconds: durationMs)
-    }
-
-    /// Returns externalUrl if available, otherwise generates from ID
-    var externalUrlOrGenerated: String {
-        externalUrl ?? spotifyExternalUrl(type: .track, id: id)
     }
 }
 
 // MARK: - Album
 
 /// Unified album entity.
-struct Album: Identifiable, Sendable, Hashable, Encodable {
+struct Album: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
     let uri: String
-    let imageURL: URL?
+    let images: ImageSet
     let releaseDate: String?
     let albumType: String?
     let externalUrl: String?
@@ -59,20 +104,25 @@ struct Album: Identifiable, Sendable, Hashable, Encodable {
     var trackIds: [String]
     var totalDurationMs: Int?
 
-    // Known count from API (before tracks are loaded)
+    /// Whether every field came from a source that returns them all.
+    ///
+    /// False for the stubs built out of a shelf entry or an artist's release list, which
+    /// carry no release date, album type or external URL. `AlbumService` uses this to decide
+    /// whether the metadata request can be skipped — presence in the store alone would not
+    /// be enough.
+    var detailsLoaded: Bool
+
+    /// Whether the track list was fetched. Stored rather than derived from
+    /// `trackIds`, so an album that genuinely has no tracks is not re-fetched on
+    /// every single visit.
+    var tracksLoaded: Bool
+
+    /// Known count from API (before tracks are loaded)
     private var _knownTrackCount: Int?
 
     /// Track count - uses loaded trackIds if available, otherwise falls back to API count
     var trackCount: Int {
-        trackIds.isEmpty ? (_knownTrackCount ?? 0) : trackIds.count
-    }
-
-    /// Whether tracks have been loaded
-    var tracksLoaded: Bool { !trackIds.isEmpty }
-
-    var formattedDuration: String? {
-        guard let totalDurationMs else { return nil }
-        return formatDuration(milliseconds: totalDurationMs)
+        tracksLoaded ? trackIds.count : (_knownTrackCount ?? 0)
     }
 
     /// Memberwise initializer with all fields
@@ -80,7 +130,7 @@ struct Album: Identifiable, Sendable, Hashable, Encodable {
         id: String,
         name: String,
         uri: String,
-        imageURL: URL?,
+        images: ImageSet,
         releaseDate: String?,
         albumType: String?,
         externalUrl: String?,
@@ -89,11 +139,13 @@ struct Album: Identifiable, Sendable, Hashable, Encodable {
         trackIds: [String] = [],
         totalDurationMs: Int? = nil,
         knownTrackCount: Int? = nil,
+        detailsLoaded: Bool,
+        tracksLoaded: Bool = false,
     ) {
         self.id = id
         self.name = name
         self.uri = uri
-        self.imageURL = imageURL
+        self.images = images
         self.releaseDate = releaseDate
         self.albumType = albumType
         self.externalUrl = externalUrl
@@ -101,6 +153,8 @@ struct Album: Identifiable, Sendable, Hashable, Encodable {
         self.artistName = artistName
         self.trackIds = trackIds
         self.totalDurationMs = totalDurationMs
+        self.detailsLoaded = detailsLoaded
+        self.tracksLoaded = tracksLoaded
         _knownTrackCount = knownTrackCount
     }
 }
@@ -108,24 +162,22 @@ struct Album: Identifiable, Sendable, Hashable, Encodable {
 // MARK: - Artist
 
 /// Unified artist entity.
-struct Artist: Identifiable, Sendable, Hashable, Encodable {
+struct Artist: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
     let uri: String
-    let imageURL: URL?
-    let genres: [String]
-    let followers: Int?
+    let images: ImageSet
     let externalUrl: String?
 }
 
 // MARK: - Playlist
 
 /// Unified playlist entity.
-struct Playlist: Identifiable, Sendable, Hashable, Encodable {
+struct Playlist: Identifiable, Hashable, Encodable {
     let id: String
     var name: String // Mutable - can be edited
     var description: String?
-    var imageURL: URL?
+    var images: ImageSet
     let uri: String
     var isPublic: Bool
     let ownerId: String
@@ -133,23 +185,25 @@ struct Playlist: Identifiable, Sendable, Hashable, Encodable {
     let externalUrl: String?
 
     // Mutable state (populated when tracks are loaded)
-    var trackIds: [String]
+    var items: [PlaylistItem]
     var totalDurationMs: Int?
 
-    // Known count from API (before tracks are loaded)
+    /// Whether the track list was fetched. Stored rather than derived from
+    /// `items`, so an empty playlist — or one the user just emptied — is not
+    /// re-fetched on every single visit.
+    var tracksLoaded: Bool
+
+    /// Known count from API (before tracks are loaded)
     private var _knownTrackCount: Int?
 
-    /// Track count - uses loaded trackIds if available, otherwise falls back to API count
+    /// Track count - uses loaded items if available, otherwise falls back to API count
     var trackCount: Int {
-        trackIds.isEmpty ? (_knownTrackCount ?? 0) : trackIds.count
+        tracksLoaded ? items.count : (_knownTrackCount ?? 0)
     }
 
-    /// Whether tracks have been loaded
-    var tracksLoaded: Bool { !trackIds.isEmpty }
-
-    var formattedDuration: String? {
-        guard let totalDurationMs else { return nil }
-        return formatDuration(milliseconds: totalDurationMs)
+    /// The tracks in order, for the many readers that do not care which occurrence is which.
+    var trackIds: [String] {
+        items.map(\.trackId)
     }
 
     /// Memberwise initializer with all fields
@@ -157,35 +211,103 @@ struct Playlist: Identifiable, Sendable, Hashable, Encodable {
         id: String,
         name: String,
         description: String?,
-        imageURL: URL?,
+        images: ImageSet,
         uri: String,
         isPublic: Bool,
         ownerId: String,
         ownerName: String,
         externalUrl: String? = nil,
-        trackIds: [String] = [],
+        items: [PlaylistItem] = [],
         totalDurationMs: Int? = nil,
         knownTrackCount: Int? = nil,
+        tracksLoaded: Bool = false,
     ) {
         self.id = id
         self.name = name
         self.description = description
-        self.imageURL = imageURL
+        self.images = images
         self.uri = uri
         self.isPublic = isPublic
         self.ownerId = ownerId
         self.ownerName = ownerName
         self.externalUrl = externalUrl
-        self.trackIds = trackIds
+        self.items = items
         self.totalDurationMs = totalDurationMs
+        self.tracksLoaded = tracksLoaded
         _knownTrackCount = knownTrackCount
     }
+}
+
+/// One entry in a playlist: a track, and the id of *this occurrence* of it.
+///
+/// The `uid` is what the client's own API mutates by — `removeFromPlaylist` and
+/// `moveItemsInPlaylist` both take uids, not track uris — and it is why a playlist holds items
+/// rather than plain track ids.
+///
+/// It also fixes a defect the Web API path had: removing by track uri deletes **every** copy of
+/// that track in the playlist, so a playlist holding the same song twice lost both when the user
+/// removed one. A uid names one occurrence.
+struct PlaylistItem: Identifiable, Hashable, Encodable {
+    /// Stable per occurrence, assigned by Spotify.
+    let uid: String
+    let trackId: String
+
+    /// `Identifiable` on the uid rather than the track: two rows for the same song are two
+    /// rows, and a `ForEach` keyed by track id would treat them as one.
+    var id: String {
+        uid
+    }
+}
+
+// MARK: - Home
+
+/// One shelf of the start page: a heading, and ids into the entity tables.
+///
+/// **Holds ids rather than entities**, like every other ordered collection here, so a playlist
+/// renamed on the playlist page is renamed on the start page too. The entities themselves are
+/// upserted when the page loads.
+struct HomeSection: Identifiable, Hashable, Encodable {
+    /// Spotify's own `spotify:section:…` uri. Stable across loads, which is what lets SwiftUI
+    /// keep scroll position when the page refreshes.
+    let id: String
+    /// Absent for shelves Spotify draws without a heading — the "shorts" row is one.
+    let title: String?
+    let items: [HomeItem]
+}
+
+/// What a shelf entry points at. Deliberately only the three kinds this app can open: a row
+/// leading nowhere is worse than a row that is not there.
+enum HomeItem: Identifiable, Hashable, Encodable {
+    case album(String)
+    case playlist(String)
+    case artist(String)
+
+    /// Qualified by kind, because an album and a playlist can share a base62 id and a `ForEach`
+    /// would then treat them as the same row.
+    var id: String {
+        switch self {
+        case let .album(id): "album:\(id)"
+        case let .playlist(id): "playlist:\(id)"
+        case let .artist(id): "artist:\(id)"
+        }
+    }
+}
+
+// MARK: - User Profile
+
+/// User profile (singleton, not stored in entity table).
+struct UserProfile {
+    let id: String
+    let displayName: String
+    let imageURL: URL?
+    let externalUrl: String?
+    let uri: String?
 }
 
 // MARK: - Device
 
 /// Spotify Connect device.
-struct Device: Identifiable, Sendable, Hashable, Encodable {
+struct Device: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
     let type: String
@@ -193,13 +315,24 @@ struct Device: Identifiable, Sendable, Hashable, Encodable {
     let isPrivateSession: Bool
     let isRestricted: Bool
     let volumePercent: Int?
+
+    /// Whether the device refuses remote volume changes, as the cluster declares.
+    ///
+    /// Named after the wire field rather than flipped to `canSetVolume`, so one term can be
+    /// followed from the protobuf through Rust, the FFI JSON and the codable to here without
+    /// a reader having to notice where the sense inverts.
+    ///
+    /// An iPhone sets it — iOS will not let an app change system volume for another app — and
+    /// the app used to find out only by sending the command and getting
+    /// `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` back, after the user had already dragged the slider.
+    var disableVolume: Bool = false
 }
 
 // MARK: - Spotify Connection
 
 /// Our app's connection state to Spotify (single source of truth for connection info).
 /// Converted from LibrespotConnectionState at the FFI boundary.
-struct SpotifyConnection: Sendable, Equatable, Encodable {
+struct SpotifyConnection: Equatable, Encodable {
     let deviceId: String?
     let deviceName: String
     let isConnected: Bool
@@ -213,58 +346,42 @@ struct SpotifyConnection: Sendable, Equatable, Encodable {
 // MARK: - Queue Models
 
 /// Indicates the source of a track in the queue (matches librespot provider values)
-enum TrackProvider: String, Codable, Sendable {
+enum TrackProvider: String, Codable {
     case queue // Manually added to queue
     case context // From current album/playlist/artist
     case autoplay // Autoplay suggestion
     case unavailable // Track is unavailable
 
-    /// Parse from librespot provider string
+    /// Parse from librespot provider string. Anything unrecognised is a track this app has
+    /// no row for, which is what `.unavailable` already means.
     init(from providerString: String) {
-        switch providerString {
-        case "queue": self = .queue
-        case "context": self = .context
-        case "autoplay": self = .autoplay
-        case "unavailable": self = .unavailable
-        default: self = .unavailable // Unknown provider values treated as unavailable
-        }
+        self = TrackProvider(rawValue: providerString) ?? .unavailable
     }
 }
 
-/// A track in the queue with provider information
-struct QueueTrack: Identifiable, Sendable {
-    let id: String // Unique ID for list diffing (track.id + index or UUID)
-    let track: Track
-    let provider: TrackProvider
+// MARK: - Search Results
 
-    /// Create from a Track with provider info
-    init(id: String = UUID().uuidString, track: Track, provider: TrackProvider) {
-        self.id = id
-        self.track = track
-        self.provider = provider
-    }
+/// One search's four result lists, cached per query by `AppStore`.
+struct SearchResults: Encodable {
+    let albums: [Album]
+    let artists: [Artist]
+    let playlists: [Playlist]
+    let tracks: [Track]
 }
 
-/// Represents the current playback queue state
-struct PlaybackQueue: Sendable {
-    var currentTrack: QueueTrack?
-    var manualQueue: [QueueTrack] // Manually queued tracks (provider: .queue)
-    var contextTracks: [QueueTrack] // Tracks from current context (provider: .context)
+// MARK: - Duplicate Ids
 
-    /// All upcoming tracks - manual queue plays first, then context
-    var allUpcoming: [QueueTrack] {
-        manualQueue + contextTracks
-    }
-
-    /// Total count of upcoming tracks
-    var upcomingCount: Int {
-        manualQueue.count + contextTracks.count
-    }
-
-    init(currentTrack: QueueTrack? = nil, manualQueue: [QueueTrack] = [], contextTracks: [QueueTrack] = []) {
-        self.currentTrack = currentTrack
-        self.manualQueue = manualQueue
-        self.contextTracks = contextTracks
+extension Sequence where Element: Hashable {
+    /// First occurrence of each element, in order.
+    ///
+    /// Needed in more places than it looks, because relinking is **many-to-one**: several
+    /// saved recordings can share one market id, which is the id the app keys tracks by
+    /// (`AGENTS.md`, "Track identity is the market id"). So a library page can name the same
+    /// track twice, a queue can hold one track more than once, and every collection built
+    /// from track ids has to survive that.
+    nonisolated func uniqued() -> [Element] {
+        var seen = Set<Element>()
+        return filter { seen.insert($0).inserted }
     }
 }
 
@@ -275,6 +392,9 @@ nonisolated func formatTrackTime(milliseconds: Int) -> String {
     let totalSeconds = milliseconds / 1000
     let minutes = totalSeconds / 60
     let seconds = totalSeconds % 60
+    // Using String(format:) intentionally: .formatted() is locale-sensitive and
+    // can produce non-ASCII digits (e.g. Arabic-Indic) in some locales. Track
+    // time is a technical display value that must always render as ASCII "3:05".
     return String(format: "%d:%02d", minutes, seconds)
 }
 
@@ -285,9 +405,9 @@ func formatDuration(milliseconds: Int) -> String {
     let minutes = (totalSeconds % 3600) / 60
 
     if hours > 0 {
-        return String(format: "%d hr %d min", hours, minutes)
+        return "\(hours.formatted()) hr \(minutes.formatted()) min"
     } else {
-        return String(format: "%d min", minutes)
+        return "\(minutes.formatted()) min"
     }
 }
 
@@ -300,12 +420,11 @@ func totalDuration(of tracks: some Sequence<Track>) -> String {
 // MARK: - Pagination State
 
 /// Tracks pagination state for a collection.
-struct PaginationState: Sendable, Encodable {
+struct PaginationState: Encodable {
     var isLoaded = false
     var isLoading = false
     var hasMore = true
     var nextOffset: Int? = 0
-    var nextCursor: String? // For cursor-based pagination (artists)
     var total: Int = 0
 
     mutating func reset() {
@@ -313,7 +432,26 @@ struct PaginationState: Sendable, Encodable {
         isLoading = false
         hasMore = true
         nextOffset = 0
-        nextCursor = nil
         total = 0
+    }
+
+    /// Records a page that has arrived, and works out whether to ask for another.
+    ///
+    /// The Web API used to answer this directly, with a `next` URL that was null on the last
+    /// page. The client APIs report a `totalCount` instead and leave the arithmetic here, so the
+    /// offset advances by **how many entries came back**, not by how many the caller could use.
+    /// Those differ: a page of the library can hold folders, and a page of saved tracks can name
+    /// the same relinked recording twice. Advancing by the usable count would re-request the
+    /// difference on every page and never reach the end.
+    ///
+    /// `receivedCount == 0` ends the list whatever `total` claims — otherwise a total that
+    /// overcounts what the pages actually yield would leave `hasMore` true forever, and the
+    /// list views ask for more as long as it is.
+    mutating func advance(by receivedCount: Int, total: Int) {
+        let offset = (nextOffset ?? 0) + receivedCount
+
+        self.total = total
+        nextOffset = offset
+        hasMore = receivedCount > 0 && offset < total
     }
 }

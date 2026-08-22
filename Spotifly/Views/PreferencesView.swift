@@ -6,25 +6,21 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct PreferencesView: View {
     var body: some View {
         TabView {
-            PlaybackSettingsView()
-                .tabItem {
-                    Label("preferences.playback", systemImage: "speaker.wave.3")
-                }
+            Tab("preferences.playback", systemImage: "speaker.wave.3") {
+                PlaybackSettingsView()
+            }
 
-            StartpageSettingsView()
-                .tabItem {
-                    Label("nav.startpage", systemImage: "house")
-                }
+            // No start-page tab. It configured which of three fixed sections to show and over
+            // what time range, and the page no longer has fixed sections: Spotify decides what
+            // is on it. Toggling a shelf Spotify may not send next time is not a setting.
 
-            InfoView()
-                .tabItem {
-                    Label("preferences.info", systemImage: "info.circle")
-                }
+            Tab("preferences.info", systemImage: "info.circle") {
+                InfoView()
+            }
         }
         .frame(width: 450)
     }
@@ -37,8 +33,7 @@ struct PlaybackSettingsView: View {
     @AppStorage("gaplessPlayback") private var gaplessEnabled: Bool = true
 
     private var selectedBitrate: SpotifyPlayer.Bitrate {
-        get { SpotifyPlayer.Bitrate(rawValue: UInt8(bitrateRawValue)) ?? .normal }
-        set { bitrateRawValue = Int(newValue.rawValue) }
+        SpotifyPlayer.Bitrate(rawValue: UInt8(bitrateRawValue)) ?? .normal
     }
 
     var body: some View {
@@ -77,68 +72,6 @@ struct PlaybackSettingsView: View {
     }
 }
 
-// MARK: - Startpage Settings Tab
-
-/// Identifiers for startpage sections
-enum StartpageSection: String, CaseIterable, Identifiable {
-    case topArtists
-    case recentlyPlayed
-    case newReleases
-
-    var id: String { rawValue }
-
-    var titleKey: LocalizedStringKey {
-        switch self {
-        case .topArtists: "startpage.top_artists"
-        case .recentlyPlayed: "recently_played.content"
-        case .newReleases: "startpage.new_releases"
-        }
-    }
-}
-
-struct StartpageSettingsView: View {
-    @AppStorage("showTopArtists") private var showTopArtists: Bool = true
-    @AppStorage("showRecentlyPlayed") private var showRecentlyPlayed: Bool = true
-    @AppStorage("showNewReleases") private var showNewReleases: Bool = true
-
-    /// Whether any section is enabled
-    private var hasAnySectionEnabled: Bool {
-        showTopArtists || showRecentlyPlayed || showNewReleases
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                ForEach(StartpageSection.allCases) { section in
-                    Toggle(section.titleKey, isOn: bindingForSection(section))
-                }
-            } header: {
-                Text("preferences.startpage.sections")
-            }
-
-            if !hasAnySectionEnabled {
-                Section {
-                    Text("preferences.startpage.none_enabled")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private func bindingForSection(_ section: StartpageSection) -> Binding<Bool> {
-        switch section {
-        case .topArtists:
-            $showTopArtists
-        case .recentlyPlayed:
-            $showRecentlyPlayed
-        case .newReleases:
-            $showNewReleases
-        }
-    }
-}
-
 // MARK: - Info Tab
 
 struct InfoView: View {
@@ -162,8 +95,7 @@ struct InfoView: View {
                 .frame(width: 64, height: 64)
 
             Text("Spotifly")
-                .font(.title2)
-                .fontWeight(.semibold)
+                .font(.title2.weight(.semibold))
 
             Text("preferences.version \(appVersion) (\(buildNumber))")
                 .font(.callout)
@@ -173,10 +105,10 @@ struct InfoView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Link(destination: URL(string: "https://github.com/ralph/homebrew-spotifly")!) {
+            Link(destination: URL(string: "https://github.com/ralph/Spotifly")!) {
                 HStack(spacing: 4) {
                     Image(systemName: "link")
-                    Text("github.com/ralph/homebrew-spotifly")
+                    Text("github.com/ralph/Spotifly")
                 }
                 .font(.callout)
             }

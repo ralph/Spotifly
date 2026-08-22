@@ -6,14 +6,14 @@
 //
 
 import AppKit
-import Combine
 import SwiftUI
 
 @MainActor
-class WindowState: ObservableObject {
-    @Published var isMiniPlayerMode: Bool = false
+@Observable
+final class WindowState {
+    var isMiniPlayerMode = false
 
-    // Store the previous window frame to restore when exiting mini player
+    /// Store the previous window frame to restore when exiting mini player
     private var savedWindowFrame: NSRect?
 
     static let miniPlayerSize = NSSize(width: 600, height: 96)
@@ -27,8 +27,12 @@ class WindowState: ObservableObject {
         }
     }
 
+    private func resolvedWindow(preferred window: NSWindow? = nil) -> NSWindow? {
+        window ?? NSApp.mainWindow ?? NSApp.keyWindow ?? NSApp.windows.first
+    }
+
     private func enterMiniPlayerMode() {
-        guard let window = NSApp.mainWindow ?? NSApp.windows.first else { return }
+        guard let window = resolvedWindow() else { return }
 
         // Save current window frame before switching
         savedWindowFrame = window.frame
@@ -38,7 +42,7 @@ class WindowState: ObservableObject {
         isMiniPlayerMode = true
 
         // Give SwiftUI a chance to update the view hierarchy
-        DispatchQueue.main.async {
+        Task { @MainActor [window] in
             // Remove resizable style
             window.styleMask.remove(.resizable)
 
@@ -56,8 +60,9 @@ class WindowState: ObservableObject {
         }
     }
 
-    private func exitMiniPlayerMode() {
-        guard let window = NSApp.mainWindow ?? NSApp.windows.first else { return }
+    func exitMiniPlayerMode(window preferredWindow: NSWindow? = nil) {
+        guard isMiniPlayerMode else { return }
+        guard let window = resolvedWindow(preferred: preferredWindow) else { return }
 
         // Restore resizable style
         window.styleMask.insert(.resizable)

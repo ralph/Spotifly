@@ -2,137 +2,62 @@
 //  EntityConversions.swift
 //  Spotifly
 //
-//  Conversion initializers from API response types to unified entities.
+//  What is left of the wire-type → entity conversions after the partner-API migration.
+//  Everything pathfinder and spclient return is converted in `PartnerAPI/`; these two are
+//  the stragglers, one from the FFI and one shared by both playlist sources.
 //
 
 import Foundation
 
-// MARK: - Track Conversions
+// MARK: - Device
 
-extension Track {
-    /// Convert from APITrack (unified track type from all API sources)
-    init(from track: APITrack) {
-        id = track.id
-        name = track.name
-        uri = track.uri
-        durationMs = track.durationMs
-        trackNumber = track.trackNumber
-        externalUrl = track.externalUrl
-        albumId = track.albumId
-        artistId = track.artistId
-        artistName = track.artistName
-        albumName = track.albumName
-        imageURL = track.imageURL
+/// A Connect device as Rust hands it over the FFI. The field names are the cluster's, which is
+/// why they arrive snake-cased.
+struct DeviceCodable: Decodable {
+    let id: String?
+    let name: String
+    let type: String
+    let isActive: Bool?
+    let isPrivateSession: Bool?
+    let isRestricted: Bool?
+    let volumePercent: Int?
+    let disableVolume: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, type
+        case isActive = "is_active"
+        case isPrivateSession = "is_private_session"
+        case isRestricted = "is_restricted"
+        case volumePercent = "volume_percent"
+        case disableVolume = "disable_volume"
     }
 
-    /// Convert from APITrack with album context override
-    /// Used when album info isn't included in the API response (e.g., album tracks endpoint)
-    init(from track: APITrack, albumId: String, albumName: String, imageURL: URL?) {
-        id = track.id
-        name = track.name
-        uri = track.uri
-        durationMs = track.durationMs
-        trackNumber = track.trackNumber
-        externalUrl = track.externalUrl
-        self.albumId = albumId
-        artistId = track.artistId
-        artistName = track.artistName
-        self.albumName = albumName
-        self.imageURL = imageURL
-    }
-}
-
-// MARK: - Album Conversions
-
-extension Album {
-    /// Convert from APIAlbum
-    init(from album: APIAlbum) {
-        self.init(
-            id: album.id,
-            name: album.name,
-            uri: album.uri,
-            imageURL: album.imageURL,
-            releaseDate: album.releaseDate,
-            albumType: album.albumType,
-            externalUrl: album.externalUrl,
-            artistId: album.artistId,
-            artistName: album.artistName,
-            trackIds: [],
-            totalDurationMs: album.totalDurationMs,
-            knownTrackCount: album.trackCount,
-        )
-    }
-
-    /// Create with explicit track IDs (when loading album details with tracks)
-    init(from album: APIAlbum, trackIds: [String], totalDurationMs: Int?) {
-        self.init(
-            id: album.id,
-            name: album.name,
-            uri: album.uri,
-            imageURL: album.imageURL,
-            releaseDate: album.releaseDate,
-            albumType: album.albumType,
-            externalUrl: album.externalUrl,
-            artistId: album.artistId,
-            artistName: album.artistName,
-            trackIds: trackIds,
-            totalDurationMs: totalDurationMs,
-            knownTrackCount: nil, // We have actual tracks
+    func toDevice() -> Device? {
+        guard let id else { return nil }
+        return Device(
+            id: id,
+            name: name,
+            type: type,
+            isActive: isActive ?? false,
+            isPrivateSession: isPrivateSession ?? false,
+            isRestricted: isRestricted ?? false,
+            volumePercent: volumePercent,
+            // Absent means nothing was declared, which is not a declaration that volume is
+            // refused — so the slider stays live and the command decides, as before.
+            disableVolume: disableVolume ?? false,
         )
     }
 }
 
-// MARK: - Artist Conversions
+// MARK: - Playlist
 
-extension Artist {
-    /// Convert from APIArtist
-    init(from artist: APIArtist) {
-        id = artist.id
-        name = artist.name
-        uri = artist.uri
-        imageURL = artist.imageURL
-        genres = artist.genres
-        followers = artist.followers
-        externalUrl = artist.externalUrl
-    }
-}
-
-// MARK: - Playlist Conversions
-
-extension Playlist {
-    /// Convert from APIPlaylist
-    init(from playlist: APIPlaylist) {
-        self.init(
-            id: playlist.id,
-            name: playlist.name,
-            description: playlist.description,
-            imageURL: playlist.imageURL,
-            uri: playlist.uri,
-            isPublic: playlist.isPublic ?? true,
-            ownerId: playlist.ownerId,
-            ownerName: playlist.ownerName,
-            externalUrl: playlist.externalUrl,
-            trackIds: [],
-            totalDurationMs: playlist.totalDurationMs,
-            knownTrackCount: playlist.trackCount,
-        )
-    }
-
-    /// Create with explicit track IDs (when loading playlist details with tracks)
-    init(from playlist: APIPlaylist, trackIds: [String], totalDurationMs: Int?) {
-        self.init(
-            id: playlist.id,
-            name: playlist.name,
-            description: playlist.description,
-            imageURL: playlist.imageURL,
-            uri: playlist.uri,
-            isPublic: playlist.isPublic ?? true,
-            ownerId: playlist.ownerId,
-            ownerName: playlist.ownerName,
-            externalUrl: playlist.externalUrl,
-            trackIds: trackIds,
-            totalDurationMs: totalDurationMs,
-            knownTrackCount: nil, // We have actual tracks
-        )
+extension String? {
+    /// Spotify's playlist list answers with the literal string `"null"` when a playlist has no
+    /// description, and the detail header rendered it verbatim — the view's `?? ""` never saw a
+    /// nil to fall back from. Normalised at the entity boundary rather than in the view, so
+    /// every reader gets the same answer.
+    var normalizedPlaylistDescription: String? {
+        guard let self, self != "null", !self.isEmpty else { return nil }
+        return self
     }
 }

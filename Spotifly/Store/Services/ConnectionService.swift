@@ -17,23 +17,28 @@ final class ConnectionService {
 
     init(store: AppStore) {
         self.store = store
-        setupConnectionStateSubscription()
-        refreshConnectionState()
     }
 
-    /// Subscribe to connection state updates from SpotifyPlayer
-    private func setupConnectionStateSubscription() {
+    /// Starts observing connection state. Call once, from the view that kept this instance.
+    ///
+    /// Deliberately not done in `init`: SwiftUI runs a View's `init` repeatedly and keeps
+    /// only the first `State(initialValue:)`, so a subscription made there outlives the
+    /// object's usefulness and keeps writing into an `AppStore` nothing reads.
+    ///
+    /// Idempotent — the guard reads the subscription it protects.
+    func activate() {
+        guard connectionStateSubscription == nil else { return }
+        recordActivation(self)
+
         connectionStateSubscription = SpotifyPlayer.connectionState
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.store.setConnection(Self.convert(state))
             }
-    }
 
-    /// Manually refresh connection state from SpotifyPlayer
-    func refreshConnectionState() {
-        let state = SpotifyPlayer.getConnectionState()
-        store.setConnection(Self.convert(state))
+        // The subscription delivers on a later main-actor hop; this reads the FFI directly,
+        // so the store holds the current state before activation returns.
+        store.setConnection(Self.convert(SpotifyPlayer.getConnectionState()))
     }
 
     /// Convert FFI state to app-level connection model
@@ -54,7 +59,7 @@ final class ConnectionService {
             connectedSince: connectedSince,
             spircReady: state.spircReady,
             reconnectAttempts: state.reconnectAttempt,
-            lastError: state.lastError,
+            lastError: state.sessionConnected ? nil : state.lastError,
         )
     }
 }

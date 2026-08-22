@@ -8,10 +8,9 @@
 import SwiftUI
 
 struct SpeakersView: View {
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
-    @Environment(DeviceService.self) private var deviceService
-    @Bindable var playbackViewModel: PlaybackViewModel
+    @Environment(AuthViewModel.self) private var authViewModel
+    let playbackViewModel: PlaybackViewModel
 
     /// Whether AirPlay is available (only when Spotifly is the active device)
     private var isAirPlayEnabled: Bool {
@@ -24,7 +23,7 @@ struct SpeakersView: View {
             HStack {
                 Text("speakers.title")
                     .font(.title2)
-                    .fontWeight(.bold)
+                    .bold()
                 Spacer()
             }
             .padding()
@@ -36,16 +35,6 @@ struct SpeakersView: View {
                 Spacer()
                 ProgressView()
                     .controlSize(.large)
-                Spacer()
-            } else if let errorMessage = store.devicesErrorMessage {
-                Spacer()
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.secondary)
-                    Text(errorMessage)
-                        .foregroundStyle(.secondary)
-                }
                 Spacer()
             } else {
                 List {
@@ -71,6 +60,46 @@ struct SpeakersView: View {
                                 SpeakerRow(device: device)
                             }
                         }
+
+                        // Without a usable local player this Mac never registers with
+                        // Spotify Connect, so it is genuinely absent from the list above.
+                        // That absence is the indicator; this row is the way back.
+                        //
+                        // Keyed on whether playback actually works, not on whether a
+                        // credentials file exists: revoked or stale credentials leave the
+                        // file in place while every initialization fails, and keying on the
+                        // file would hide the only way to recover from exactly that.
+                        if !playbackViewModel.isLocalPlaybackAvailable {
+                            // Stays enabled while the grant waits, and cancels it instead of
+                            // starting a second one. A browser tab closed without authorizing
+                            // sends nothing at all, so without this the row spun until the
+                            // listener's timeout with no way back to it.
+                            Button {
+                                if authViewModel.isAuthorizingStreaming {
+                                    authViewModel.cancelStreamingAuthorization()
+                                } else {
+                                    authViewModel.startStreamingAuthorization(expectedAccountId: store.userId)
+                                }
+                            } label: {
+                                HStack {
+                                    if authViewModel.isAuthorizingStreaming {
+                                        ProgressView()
+                                            .progressViewStyle(.circular)
+                                            .scaleEffect(0.6)
+                                    } else {
+                                        Image(systemName: "laptopcomputer.slash")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(
+                                        authViewModel.isAuthorizingStreaming
+                                            ? "speakers.enable_this_mac_cancel"
+                                            : "speakers.enable_this_mac",
+                                    )
+                                    Spacer()
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
                     } header: {
                         Text("speakers.spotify_connect")
                     } footer: {
@@ -89,23 +118,21 @@ struct SpeakersView: View {
                         } header: {
                             Text("speakers.audio_output")
                         } footer: {
-                            if isAirPlayEnabled {
-                                Text("speakers.airplay_hint")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text("speakers.airplay_disabled_hint")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text(isAirPlayEnabled ? "speakers.airplay_hint" : "speakers.airplay_disabled_hint")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     #endif
 
                     // Librespot Connection Status
                     Section {
-                        ConnectionStatusView()
+                        ConnectionStatusView {
+                            // Reconnecting re-registers our device, which changes the cluster
+                            // and pushes a fresh device list back on its own.
+                            await playbackViewModel.forceReinitialize()
+                        }
                     } header: {
-                        Text("Librespot Connection")
+                        Text("speakers.librespot_connection")
                     }
                 }
                 .listStyle(.inset)
@@ -114,23 +141,17 @@ struct SpeakersView: View {
                 }
             }
         }
-        .task {
-            let token = await session.validAccessToken()
-            await deviceService.loadDevices(accessToken: token)
-        }
     }
 }
 
 struct SpeakerRow: View {
     let device: Device
-    @Environment(SpotifySession.self) private var session
     @Environment(DeviceService.self) private var deviceService
 
     var body: some View {
         Button {
             Task {
-                let token = await session.validAccessToken()
-                _ = await deviceService.transferPlayback(to: device, accessToken: token)
+                _ = await deviceService.transferPlayback(to: device)
             }
         } label: {
             HStack(spacing: 12) {
@@ -141,8 +162,7 @@ struct SpeakerRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(device.name)
-                        .font(.body)
-                        .fontWeight(device.isActive ? .semibold : .regular)
+                        .font(device.isActive ? .body.weight(.semibold) : .body)
                         .foregroundStyle(.primary)
 
                     HStack(spacing: 4) {

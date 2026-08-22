@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if canImport(AppKit)
+    import AppKit
+#endif
 
 enum NavigationItem: Hashable, Identifiable {
     case startpage
@@ -16,6 +19,7 @@ enum NavigationItem: Hashable, Identifiable {
     case artists
     case queue
     case speakers
+    case profile
 
     var id: String {
         switch self {
@@ -27,6 +31,7 @@ enum NavigationItem: Hashable, Identifiable {
         case .artists: "artists"
         case .queue: "queue"
         case .speakers: "speakers"
+        case .profile: "profile"
         }
     }
 
@@ -48,6 +53,8 @@ enum NavigationItem: Hashable, Identifiable {
             String(localized: "nav.queue")
         case .speakers:
             String(localized: "nav.speakers")
+        case .profile:
+            String(localized: "nav.profile")
         }
     }
 
@@ -62,39 +69,36 @@ enum NavigationItem: Hashable, Identifiable {
         case .playlists:
             "music.note.list"
         case .albums:
-            "square.stack.fill"
+            "opticaldisc"
         case .artists:
             "mic.fill"
         case .queue:
-            "list.bullet"
+            "text.line.first.and.arrowtriangle.forward"
         case .speakers:
             "hifispeaker.2.fill"
+        case .profile:
+            "person.circle.fill"
         }
     }
 }
 
 struct SidebarView: View {
     @Binding var selection: NavigationItem?
-    let onLogout: () -> Void
     var hasSearchResults: Bool = false
+    var userProfile: UserProfile?
 
-    /// Navigation items in the main section
-    private var mainNavItems: [NavigationItem] {
-        [.startpage, .queue, .speakers]
-    }
+    private static let mainNavItems: [NavigationItem] = [.startpage, .queue, .speakers]
+    private static let libraryNavItems: [NavigationItem] = [.favorites, .playlists, .albums, .artists]
 
     var body: some View {
         List(selection: $selection) {
             Section {
-                ForEach(mainNavItems) { item in
-                    NavigationLink(value: item) {
-                        Label(item.title, systemImage: item.icon)
-                    }
+                ForEach(Self.mainNavItems) { item in
+                    navigationLink(for: item)
                 }
             } header: {
-                HStack {
-                    Image(systemName: "music.note.list")
-                        .foregroundStyle(.green)
+                HStack(spacing: 8) {
+                    AppBrandIcon(size: 22)
                     Text("app.name")
                         .font(.headline)
                 }
@@ -103,29 +107,122 @@ struct SidebarView: View {
 
             if hasSearchResults {
                 Section {
-                    NavigationLink(value: NavigationItem.searchResults) {
-                        Label(String(localized: "nav.search_results"), systemImage: "magnifyingglass")
-                    }
+                    navigationLink(for: .searchResults)
                 }
             }
 
             Section {
-                ForEach([NavigationItem.favorites, NavigationItem.playlists, NavigationItem.albums, NavigationItem.artists]) { item in
-                    NavigationLink(value: item) {
-                        Label(item.title, systemImage: item.icon)
-                    }
+                ForEach(Self.libraryNavItems) { item in
+                    navigationLink(for: item)
                 }
             } header: {
                 Text("nav.library")
             }
-
-            Section {
-                Button(action: onLogout) {
-                    Label("auth.logout", systemImage: "rectangle.portrait.and.arrow.right")
-                        .foregroundStyle(.red)
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 6) {
+                // Opens the native macOS Preferences window (Settings scene).
+                SettingsLink {
+                    Label("nav.settings", systemImage: "gearshape")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+
+                Button {
+                    selection = .profile
+                } label: {
+                    HStack(spacing: 8) {
+                        ProfileAvatarView(userProfile: userProfile, size: 28)
+                        Text(userProfile?.displayName ?? String(localized: "nav.profile"))
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(selection == .profile
+                                ? AnyShapeStyle(Color.accentColor.opacity(0.15))
+                                : AnyShapeStyle(Color(nsColor: .controlBackgroundColor))),
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1),
+                    )
+                }
+                .buttonStyle(.plain)
             }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
         }
         .navigationTitle("app.name")
+    }
+
+    private func navigationLink(for item: NavigationItem) -> some View {
+        NavigationLink(value: item) {
+            Label(item.title, systemImage: item.icon)
+        }
+    }
+}
+
+// MARK: - App Brand Icon
+
+/// The app's real icon (the same one shown in the Dock), used as the sidebar brand mark.
+struct AppBrandIcon: View {
+    var size: CGFloat = 22
+
+    var body: some View {
+        #if canImport(AppKit)
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: size, height: size)
+        #else
+            Image(systemName: "music.note.list")
+                .foregroundStyle(.green)
+                .frame(width: size, height: size)
+        #endif
+    }
+}
+
+// MARK: - Profile Avatar
+
+struct ProfileAvatarView: View {
+    let userProfile: UserProfile?
+    var size: CGFloat = 32
+
+    var body: some View {
+        if let imageURL = userProfile?.imageURL {
+            AsyncImage(url: imageURL) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+            } placeholder: {
+                initialsView(for: userProfile?.displayName)
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+        } else if let displayName = userProfile?.displayName {
+            initialsView(for: displayName)
+        } else {
+            Circle()
+                .fill(.quaternary)
+                .frame(width: size, height: size)
+        }
+    }
+
+    private func initialsView(for name: String?) -> some View {
+        let initials = String((name ?? "?").prefix(2)).uppercased()
+        return Circle()
+            .fill(.green.gradient)
+            .frame(width: size, height: size)
+            .overlay {
+                Text(initials)
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
     }
 }

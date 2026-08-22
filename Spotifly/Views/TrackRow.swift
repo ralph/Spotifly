@@ -7,34 +7,54 @@
 
 import SwiftUI
 
-/// Double-tap behavior for TrackRow
-enum TrackRowDoubleTapBehavior {
-    case playTrack // Play just this track
-}
-
 /// Reusable track row view
 struct TrackRow: View {
+    /// Whether this row is the one playing.
+    ///
+    /// **Position wins over uri where the list knows both.** A list can legitimately hold the
+    /// same recording twice — an album with a reprise, a playlist a track was added to twice,
+    /// or two catalogue entries that relink to one market id (see AGENTS.md, "Relinking is
+    /// many-to-one") — and matching on uri lights up every one of them. That drew two rows of
+    /// an eleven-track queue green while only one of them advanced.
+    ///
+    /// Only the queue passes `currentIndex`, because only the queue has a current *position*.
+    /// An album page or a search result has nothing better than the uri to go on.
+    static func isCurrent(
+        index: Int?,
+        currentIndex: Int?,
+        uri: String,
+        playingUri: String?,
+    ) -> Bool {
+        if let index, let currentIndex {
+            return index == currentIndex
+        }
+        return playingUri == uri
+    }
+
     let track: Track
     let showTrackNumber: Bool // Show track number instead of index
     let index: Int? // Optional index for queue
     let isCurrentTrack: Bool
     let isPlayedTrack: Bool // For queue - tracks that have already played
     let provider: TrackProvider? // Optional provider (queue, context, autoplay, unavailable)
-    @Bindable var playbackViewModel: PlaybackViewModel
-    let doubleTapBehavior: TrackRowDoubleTapBehavior
+    let playbackViewModel: PlaybackViewModel
     let currentSection: NavigationItem // Current sidebar section (for "Go to" navigation)
     let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
+    /// Which *occurrence* this row is, where the list knows — only a playlist does.
+    ///
+    /// `selectionId` names the list and `track` names the song, and between them they still do
+    /// not name a row: a playlist can hold the same song twice, and the two rows are equal on
+    /// both. The uid is the only thing that tells them apart, which is why removing from the
+    /// context menu needs it.
+    let itemUid: String?
+    let onDoubleTap: (@MainActor () async -> Void)? // Playback action on double-tap
 
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
-    @Environment(PlaylistService.self) private var playlistService
+    @Environment(\.displayScale) private var displayScale
 
     @State private var isTogglingFavorite = false
     @State private var showNewPlaylistDialog = false
-    @State private var newPlaylistName = ""
-    @State private var isAddingToPlaylist = false
     @State private var showPlaylistAddedSuccess = false
 
     /// Favorite status from the store (single source of truth)
@@ -65,14 +85,20 @@ struct TrackRow: View {
         currentIndex: Int? = nil,
         provider: TrackProvider? = nil,
         playbackViewModel: PlaybackViewModel,
-        doubleTapBehavior: TrackRowDoubleTapBehavior = .playTrack,
         currentSection: NavigationItem = .startpage,
         selectionId: String? = nil,
+        itemUid: String? = nil,
+        onDoubleTap: (@MainActor () async -> Void)? = nil,
     ) {
         self.track = track
         self.showTrackNumber = showTrackNumber
         self.index = index
-        isCurrentTrack = currentlyPlayingURI == track.uri
+        isCurrentTrack = Self.isCurrent(
+            index: index,
+            currentIndex: currentIndex,
+            uri: track.uri,
+            playingUri: currentlyPlayingURI,
+        )
         isPlayedTrack = if let index, let currentIndex {
             index < currentIndex
         } else {
@@ -80,9 +106,10 @@ struct TrackRow: View {
         }
         self.provider = provider
         self.playbackViewModel = playbackViewModel
-        self.doubleTapBehavior = doubleTapBehavior
         self.currentSection = currentSection
         self.selectionId = selectionId
+        self.itemUid = itemUid
+        self.onDoubleTap = onDoubleTap
     }
 
     var body: some View {
@@ -91,27 +118,22 @@ struct TrackRow: View {
             ZStack {
                 if isCurrentTrack {
                     Image(systemName: "waveform")
-                        .font(.caption)
                         .foregroundStyle(.green)
-                        .symbolEffect(.variableColor.iterative, isActive: playbackViewModel.isPlaying)
                 } else if showTrackNumber, let trackNumber = track.trackNumber {
                     Text("\(trackNumber)")
-                        .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if let index {
                     Text("\(index + 1)")
-                        .font(.caption)
                         .foregroundStyle(.secondary)
-                } else {
-                    // No number shown
-                    EmptyView()
                 }
+                // Otherwise no number is shown.
             }
+            .font(.caption)
             .frame(width: 30, alignment: showTrackNumber ? .trailing : .center)
 
             // Album art (if available)
-            if let imageURL = track.imageURL {
-                AsyncImage(url: imageURL) { phase in
+            if let url = track.images.url(for: 40, scale: displayScale) {
+                AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()
@@ -121,13 +143,13 @@ struct TrackRow: View {
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(width: 40, height: 40)
-                            .cornerRadius(4)
+                            .clipShape(.rect(cornerRadius: 4))
                     case .failure:
                         Image(systemName: "music.note")
                             .font(.caption)
                             .frame(width: 40, height: 40)
                             .background(Color.gray.opacity(0.2))
-                            .cornerRadius(4)
+                            .clipShape(.rect(cornerRadius: 4))
                     @unknown default:
                         EmptyView()
                     }
@@ -137,8 +159,7 @@ struct TrackRow: View {
             // Track info
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.name)
-                    .font(.subheadline)
-                    .fontWeight(isCurrentTrack ? .semibold : .regular)
+                    .font(isCurrentTrack ? .subheadline.weight(.semibold) : .subheadline)
                     .foregroundStyle(isCurrentTrack ? .green : .primary)
                     .lineLimit(1)
 
@@ -187,6 +208,7 @@ struct TrackRow: View {
                     track: track,
                     currentSection: currentSection,
                     selectionId: selectionId,
+                    itemUid: itemUid,
                     playbackViewModel: playbackViewModel,
                     showNewPlaylistDialog: $showNewPlaylistDialog,
                     onPlaylistAdded: showSuccessFeedback,
@@ -194,7 +216,7 @@ struct TrackRow: View {
             } label: {
                 Image(systemName: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
                     .font(.caption)
-                    .foregroundColor(showPlaylistAddedSuccess ? Color.green : Color.secondary)
+                    .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
                     .frame(width: 20, height: 20)
                     .contentShape(Rectangle())
                     .animation(.easeInOut(duration: 0.2), value: showPlaylistAddedSuccess)
@@ -214,40 +236,25 @@ struct TrackRow: View {
                 track: track,
                 currentSection: currentSection,
                 selectionId: selectionId,
+                itemUid: itemUid,
                 playbackViewModel: playbackViewModel,
                 showNewPlaylistDialog: $showNewPlaylistDialog,
                 onPlaylistAdded: showSuccessFeedback,
             )
         }
         .onTapGesture(count: 2) {
-            handleDoubleTap()
+            guard let onDoubleTap else { return }
+            Task { await onDoubleTap() }
         }
-        .alert("playlist.new.title", isPresented: $showNewPlaylistDialog) {
-            TextField("playlist.new.placeholder", text: $newPlaylistName)
-            Button("action.cancel", role: .cancel) {
-                newPlaylistName = ""
-            }
-            Button("action.create") {
-                createAndAddToPlaylist(name: newPlaylistName)
-                newPlaylistName = ""
-            }
-            .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
-        } message: {
-            Text("playlist.new.message")
+        .task(id: track.id) {
+            await resolveFavoriteStatusIfNeeded()
         }
-    }
-
-    private func handleDoubleTap() {
-        switch doubleTapBehavior {
-        case .playTrack:
-            Task {
-                let token = await session.validAccessToken()
-                await playbackViewModel.play(
-                    uriOrUrl: track.uri,
-                    accessToken: token,
-                )
-            }
-        }
+        .newPlaylistPrompt(
+            isPresented: $showNewPlaylistDialog,
+            trackId: track.id,
+            playbackViewModel: playbackViewModel,
+            onAdded: showSuccessFeedback,
+        )
     }
 
     /// Toggle favorite using TrackService (optimistic update)
@@ -256,11 +263,7 @@ struct TrackRow: View {
             isTogglingFavorite = true
 
             do {
-                let token = await session.validAccessToken()
-                try await trackService.toggleFavorite(
-                    trackId: track.id,
-                    accessToken: token,
-                )
+                try await trackService.toggleFavorite(trackId: track.id)
             } catch {
                 // Error is handled by optimistic rollback in TrackService
                 playbackViewModel.errorMessage = "Failed to update favorite: \(error.localizedDescription)"
@@ -270,36 +273,8 @@ struct TrackRow: View {
         }
     }
 
-    /// Create a new playlist and add the track to it
-    private func createAndAddToPlaylist(name: String) {
-        let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmedName.isEmpty else { return }
-
-        Task {
-            isAddingToPlaylist = true
-            do {
-                let token = await session.validAccessToken()
-
-                // Create the playlist using PlaylistService
-                let newPlaylist = try await playlistService.createPlaylist(
-                    userId: session.userId ?? "",
-                    name: trimmedName,
-                    accessToken: token,
-                )
-
-                // Add the track to the new playlist
-                try await playlistService.addTracksToPlaylist(
-                    playlistId: newPlaylist.id,
-                    trackIds: [track.id],
-                    accessToken: token,
-                )
-
-                showSuccessFeedback()
-            } catch {
-                playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
-            }
-            isAddingToPlaylist = false
-        }
+    private func resolveFavoriteStatusIfNeeded() async {
+        await trackService.ensureFavoriteStatuses(trackIds: [track.id])
     }
 
     private func showSuccessFeedback() {
@@ -311,12 +286,90 @@ struct TrackRow: View {
     }
 }
 
+// MARK: - New Playlist Prompt
+
+/// The "New Playlist…" dialog, and the create-then-add behind it.
+///
+/// Two places offer it — a track row's menu and the now-playing bar's — with the same dialog,
+/// the same two calls in the same order and the same failure sink. The name being typed lives
+/// here rather than in either host, since neither has any other use for it.
+///
+/// The checkmark that follows a successful add does *not* live here: it is drawn on the host's
+/// own button, and a track row shows it for its right-click menu too. So the host keeps that
+/// flag and hands the prompt a way to raise it.
+struct NewPlaylistPrompt: ViewModifier {
+    @Binding var isPresented: Bool
+    /// The track to put in the new playlist — optional because the now-playing bar carries the
+    /// prompt whether or not something is playing.
+    let trackId: String?
+    let playbackViewModel: PlaybackViewModel
+    let onAdded: () -> Void
+
+    @Environment(PlaylistService.self) private var playlistService
+
+    @State private var newPlaylistName = ""
+
+    func body(content: Content) -> some View {
+        content
+            .alert("playlist.new.title", isPresented: $isPresented) {
+                TextField("playlist.new.placeholder", text: $newPlaylistName)
+                Button("action.cancel", role: .cancel) {
+                    newPlaylistName = ""
+                }
+                Button("action.create") {
+                    createAndAddToPlaylist(name: newPlaylistName)
+                    newPlaylistName = ""
+                }
+                .disabled(newPlaylistName.trimmingCharacters(in: .whitespaces).isEmpty)
+            } message: {
+                Text("playlist.new.message")
+            }
+    }
+
+    private func createAndAddToPlaylist(name: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty, let trackId else { return }
+
+        Task {
+            do {
+                let newPlaylist = try await playlistService.createPlaylist(name: trimmedName)
+                try await playlistService.addTracksToPlaylist(
+                    playlistId: newPlaylist.id,
+                    trackIds: [trackId],
+                )
+                onAdded()
+            } catch {
+                playbackViewModel.errorMessage = "Failed to create playlist: \(error.localizedDescription)"
+            }
+        }
+    }
+}
+
+extension View {
+    func newPlaylistPrompt(
+        isPresented: Binding<Bool>,
+        trackId: String?,
+        playbackViewModel: PlaybackViewModel,
+        onAdded: @escaping () -> Void,
+    ) -> some View {
+        modifier(NewPlaylistPrompt(
+            isPresented: isPresented,
+            trackId: trackId,
+            playbackViewModel: playbackViewModel,
+            onAdded: onAdded,
+        ))
+    }
+}
+
 // MARK: - QueueItem to Track Conversion
 
 extension QueueItem {
-    /// Convert QueueItem to Track for use with TrackRow and store operations
+    /// Convert QueueItem to Track for use with TrackRow and store operations.
+    /// Wraps the single FFI image URL as a ~300px variant; full metadata
+    /// arrives later via QueueService and replaces this in the store.
     func toTrack() -> Track {
-        Track(
+        let images = imageURL.map { ImageSet(variants: [ImageVariant(url: $0, size: 300)]) } ?? .empty
+        return Track(
             id: SpotifyAPI.parseTrackURI(uri) ?? id,
             name: name,
             uri: uri,
@@ -327,7 +380,7 @@ extension QueueItem {
             artistId: artistId,
             artistName: artistName,
             albumName: nil,
-            imageURL: imageURL,
+            images: images,
         )
     }
 }

@@ -9,50 +9,30 @@ import SwiftUI
 
 struct TrackCard: View {
     let track: Track
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
     var currentSection: NavigationItem = .searchResults
 
-    @Environment(SpotifySession.self) private var session
+    @Environment(TrackService.self) private var trackService
 
     var body: some View {
         Button {
-            playTrack()
+            Task {
+                await playbackViewModel.playRadio(trackUri: track.uri)
+            }
         } label: {
             VStack(spacing: 8) {
-                if let imageURL = track.imageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(width: 120, height: 120)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 120)
-                                .cornerRadius(4)
-                                .shadow(radius: 2)
-                        case .failure:
-                            trackPlaceholder
-                        @unknown default:
-                            EmptyView()
-                        }
-                    }
-                } else {
-                    trackPlaceholder
-                }
+                CardArtwork(images: track.images, outline: .roundedSquare, symbol: "music.note", symbolSize: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.name)
-                        .font(.caption)
-                        .fontWeight(.medium)
+                        .font(.caption.weight(.medium))
                         .lineLimit(2)
                     Text(track.artistName)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                .frame(width: 120, alignment: .leading)
+                .frame(width: CardArtwork.size, alignment: .leading)
             }
         }
         .buttonStyle(.plain)
@@ -64,23 +44,8 @@ struct TrackCard: View {
                 playbackViewModel: playbackViewModel,
             )
         }
-    }
-
-    private var trackPlaceholder: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.gray.opacity(0.2))
-            .frame(width: 120, height: 120)
-            .overlay(
-                Image(systemName: "music.note")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary),
-            )
-    }
-
-    private func playTrack() {
-        Task {
-            let token = await session.validAccessToken()
-            await playbackViewModel.playTracks([track.uri], accessToken: token)
+        .task(id: track.id) {
+            await trackService.ensureFavoriteStatuses(trackIds: [track.id])
         }
     }
 }

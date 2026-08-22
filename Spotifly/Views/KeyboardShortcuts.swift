@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if canImport(AppKit)
+    import AppKit
+#endif
 
 extension View {
     /// Adds playback control keyboard shortcuts
@@ -22,28 +25,14 @@ extension View {
         )
     }
 
-    /// Adds startpage-specific keyboard shortcuts (refresh)
-    func startpageShortcuts(
-        recentlyPlayedService: RecentlyPlayedService,
-    ) -> some View {
-        background(
-            StartpageShortcutsView(
-                recentlyPlayedService: recentlyPlayedService,
-            ),
-        )
-    }
-
     /// Adds search keyboard shortcuts (focus)
-    func searchShortcuts(searchFieldFocused: Binding<Bool>) -> some View {
-        background(
-            SearchShortcutsView(searchFieldFocused: searchFieldFocused),
-        )
+    func searchShortcuts() -> some View {
+        background(SearchShortcutsView())
     }
 }
 
 private struct PlaybackShortcutsView: View {
-    @Bindable var playbackViewModel: PlaybackViewModel
-    @Environment(SpotifySession.self) private var session
+    let playbackViewModel: PlaybackViewModel
 
     var body: some View {
         Group {
@@ -72,8 +61,7 @@ private struct PlaybackShortcutsView: View {
             // Cmd+L - Like/Unlike current track
             Button("") {
                 Task {
-                    let token = await session.validAccessToken()
-                    await playbackViewModel.toggleCurrentTrackFavorite(accessToken: token)
+                    await playbackViewModel.toggleCurrentTrackFavorite()
                 }
             }
             .keyboardShortcut("l", modifiers: .command)
@@ -117,38 +105,43 @@ private struct LibraryNavigationShortcutsView: View {
     }
 }
 
-private struct StartpageShortcutsView: View {
-    @Bindable var recentlyPlayedService: RecentlyPlayedService
-    @Environment(SpotifySession.self) private var session
-
-    var body: some View {
-        Group {
-            // Cmd+R - Refresh recently played
-            Button("") {
-                Task {
-                    let token = await session.validAccessToken()
-                    await recentlyPlayedService.refresh(accessToken: token)
-                }
-            }
-            .keyboardShortcut("r", modifiers: .command)
-        }
-        .frame(width: 0, height: 0)
-        .opacity(0)
-    }
-}
-
 private struct SearchShortcutsView: View {
-    @Binding var searchFieldFocused: Bool
-
     var body: some View {
-        Group {
-            // Cmd+F - Focus search field
-            Button("") {
-                searchFieldFocused = true
-            }
-            .keyboardShortcut("f", modifiers: .command)
+        Button("") {
+            focusToolbarSearchField()
         }
+        .keyboardShortcut("f", modifiers: .command)
         .frame(width: 0, height: 0)
         .opacity(0)
     }
 }
+
+#if canImport(AppKit)
+    /// Focuses the toolbar's always-visible `.searchable` field. SwiftUI offers no API
+    /// to focus an always-visible search field, so we make the underlying NSSearchField
+    /// the window's first responder. No-op if the field can't be found.
+    @MainActor
+    func focusToolbarSearchField() {
+        let windows = NSApp.windows.sorted { $0.isKeyWindow && !$1.isKeyWindow }
+        for window in windows where window.isVisible {
+            // The toolbar lives in the window frame view, above contentView.
+            if let field = firstSearchField(in: window.contentView?.superview ?? window.contentView) {
+                window.makeFirstResponder(field)
+                return
+            }
+        }
+    }
+
+    private func firstSearchField(in view: NSView?) -> NSSearchField? {
+        guard let view else { return nil }
+        if let field = view as? NSSearchField {
+            return field
+        }
+        for subview in view.subviews {
+            if let field = firstSearchField(in: subview) {
+                return field
+            }
+        }
+        return nil
+    }
+#endif

@@ -1,0 +1,31 @@
+go into planning first. once you have a plan, work on your own, and commit early and often to the `swift-librespot` branch. if you cannot finish one thing on your own, move on to the next thing.
+
+I want to try to create a Spotify client in Swift. librespot is nice, but i cannot really share state with librespot, so i need to create a lot of callbacks with ffi and trigger them at the right time. this is why i want to create my own streaming backend/spirc client in swift, but we can use librespot (https://github.com/librespot-org/librespot, checked out in the librespot folder) and go-librespot (https://github.com/devgianlu/go-librespot, checked out in the go-librespot folder) as a blueprint. Also the protocol files in the librespot could be helpful. we don't have to copy all the functionality, just the parts that i don't have in swift yet.
+
+For example, i have these things in swift already:
+
+* Authentication via OAuth
+* Querying the web api
+
+
+I don't have these things in swift yet:
+
+* Connecting to spotify connect / spirc, and receiving cluster updates, publishing state
+* audio playback
+* Managing the spotify session
+
+I want to build on the most modern foundation, this is why i only support macOS 26, and maybe later ipados/ios 26, but no version before. I also want to use the most modern foundation for audio playback, so i can e.g. redirect just the audio stream from spotify to airplay speakers via airplay 2. does this mean we use AVFoundation? Also, this is a mac app for now, but if possible with minimal effort, i'd like to extend it to ipad/ios, too. so if there's a mac only api and a mac/ios/ipados alternative, use the alternative, if it's not a big hassle to do so.
+
+As I'm short on time, I'd like you to work on your own on this project. this means i am going to give you your own branch and yolo mode, and you do the work as good as you can. you will have to run builds to make sure your code compiles, run the app to see if it launches, add logging that you can read to make sure it does what you want it to do, kill the app when you're done testing, just iterate on your own. as the app is using a web based oauth login flow, you will need to have remote control over safari to click the login button. safari is already logged into spotify, so it's just one button click, but you have to make sure you can do this to obtain a token. the spotify client id will be available as env var `SPOTIFY_CLIENT_ID` in your terminal, but not in the xcode builds.
+
+
+I have the following rough plan in order to convert to the swift based spotify backend:
+1. remove all the rust code, files and build pipeline, the automatic compile of rust code in xcode, everything. replace all the calls to rust with noop method stubs, make sure the project compiles again.
+2. carefully start adding functionality back. stick to spotify api conventions for naming things, use what's already there, like the global store.
+3. test everything you do with logging that you can read back.
+4. if you want to test the swift-librespot part in isolation, you can do so. if you need an oauth access token, use the flow from the app and log the token so you can read it.
+5. develop everything with stability and decoupling in mind. e.g. i want the player to be as independent as possible from spirc and the spotify session. so e.g. in the case of a short networking outage, and the session breaks and the spirc websocket disconnects, i want the player to keep playing as long as the buffer is filled. then, i want to reestablish the session and spirc websocket in the background automatically when the network comes back, and then publish the current player state (e.g. seek position) to spirc and take over control over the player again. basically a player hot plug.
+6. i want to receive cluster state from spirc and write it to the global app store, and all ui should use this global app store, too.
+7. i want to support full spotify connect/spirc. i want to be able to stream to and control remote speakers, and i want my app to act as a speaker/player that can be controlled e.g. by a phone.
+
+in order to test audio playback, you can autoplay a random song on spotify and log if it actually worked. try to find testing strategies for everything you do so you can work on your own. i want to finish this with minimal interaction from me.

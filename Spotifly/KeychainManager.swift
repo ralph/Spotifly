@@ -9,200 +9,88 @@ import Foundation
 import Security
 
 /// Manages secure storage of authentication tokens in the Keychain
-enum KeychainManager {
-    private static let service = "com.spotifly.oauth"
-    private static let accessTokenKey = "spotify_access_token"
-    private static let refreshTokenKey = "spotify_refresh_token"
-    private static let expiresAtKey = "spotify_expires_at"
-
+nonisolated enum KeychainManager {
     /// Shared keychain access group - allows both dev and release builds to access the same items
     /// Format: TeamID.groupName (must match keychain-access-groups in entitlements)
     private static let accessGroup = "89S4HZY343.com.spotifly.keychain"
 
-    // MARK: - Public API
+    // MARK: - The dashboard grant, which no longer exists
 
-    /// Saves the OAuth result to the keychain
-    static func saveAuthResult(_ result: SpotifyAuthResult) throws {
-        // Calculate absolute expiration time
-        let expiresAt = Date().addingTimeInterval(TimeInterval(result.expiresIn))
-
-        try save(key: accessTokenKey, data: result.accessToken.data(using: .utf8)!)
-
-        if let refreshToken = result.refreshToken {
-            try save(key: refreshTokenKey, data: refreshToken.data(using: .utf8)!)
+    /// Deletes what the dashboard app left behind: the Web API access and refresh tokens, and
+    /// the client id the user typed in to obtain them.
+    ///
+    /// Housekeeping on someone else's machine, run once per launch because there is nowhere
+    /// cheaper to run it. The refresh token is a live credential for an app Spotifly no longer
+    /// speaks to, and leaving it in the user's keychain forever is not ours to do. Delete this
+    /// once enough releases have passed that no installed copy still holds one.
+    static func purgeDashboardGrant() {
+        for key in ["spotify_access_token", "spotify_refresh_token", "spotify_expires_at"] {
+            delete(key: key, service: "com.spotifly.oauth")
         }
-
-        // Store expiration as ISO8601 string
-        let formatter = ISO8601DateFormatter()
-        let expiresAtString = formatter.string(from: expiresAt)
-        try save(key: expiresAtKey, data: expiresAtString.data(using: .utf8)!)
+        delete(key: "spotify_custom_client_id", service: "com.spotifly.config")
     }
 
-    /// Loads the OAuth result from the keychain, returns nil if not found or expired
-    /// Note: This method does NOT attempt to refresh expired tokens. Use loadAuthResultWithRefresh() for that.
-    static func loadAuthResult() -> SpotifyAuthResult? {
-        guard let accessTokenData = load(key: accessTokenKey),
-              let accessToken = String(data: accessTokenData, encoding: .utf8),
-              let expiresAtData = load(key: expiresAtKey),
-              let expiresAtString = String(data: expiresAtData, encoding: .utf8)
-        else {
-            return nil
-        }
+    // MARK: - Keymaster grant
 
-        let formatter = ISO8601DateFormatter()
-        guard let expiresAt = formatter.date(from: expiresAtString) else {
-            return nil
-        }
+    private static let keymasterService = "com.spotifly.keymaster"
+    private static let keymasterTokensKey = "keymaster_tokens"
 
-        // Calculate remaining seconds
-        let now = Date()
-        let expiresIn = UInt64(max(0, expiresAt.timeIntervalSince(now)))
-
-        // Load optional refresh token
-        var refreshToken: String? = nil
-        if let refreshTokenData = load(key: refreshTokenKey) {
-            refreshToken = String(data: refreshTokenData, encoding: .utf8)
-        }
-
-        return SpotifyAuthResult(
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-            expiresIn: expiresIn,
+    /// Stored as one item rather than a key per field, which is how the Web API tokens were
+    /// kept. The four values are only meaningful together — an access token paired with another
+    /// grant's expiry, or with a refresh token that has since rotated, is worse than nothing —
+    /// and a single write cannot leave them half-updated.
+    static func saveKeymasterTokens(_ tokens: KeymasterTokens) throws {
+        try save(
+            key: keymasterTokensKey,
+            data: JSONEncoder().encode(tokens),
+            service: keymasterService,
         )
     }
 
-    /// Loads the OAuth result from the keychain and attempts to refresh if expired
-    /// - Returns: A valid auth result, or nil if unable to load/refresh
-    static func loadAuthResultWithRefresh() async -> SpotifyAuthResult? {
-        guard let result = loadAuthResult() else {
+    static func loadKeymasterTokens() -> KeymasterTokens? {
+        guard let data = load(key: keymasterTokensKey, service: keymasterService) else {
             return nil
         }
-
-        // Check if token is expired or expiring soon (within 5 minutes)
-        let isExpired = result.expiresIn < 300 // 5 minutes
-
-        if isExpired, let refreshToken = result.refreshToken {
-            // Attempt to refresh the token
-            do {
-                let newResult = try await SpotifyAuth.refreshAccessToken(refreshToken: refreshToken)
-
-                // Save the new result to keychain
-                try saveAuthResult(newResult)
-
-                return newResult
-            } catch {
-                #if DEBUG
-                    print("Failed to refresh token: \(error)")
-                #endif
-                // If refresh fails, clear the stored credentials
-                clearAuthResult()
-                return nil
-            }
-        }
-
-        // Token is still valid
-        return result
+        return try? JSONDecoder().decode(KeymasterTokens.self, from: data)
     }
 
-    /// Clears all stored OAuth data from the keychain
-    static func clearAuthResult() {
-        delete(key: accessTokenKey)
-        delete(key: refreshTokenKey)
-        delete(key: expiresAtKey)
-    }
-
-    /// Checks if a valid (non-expired) auth result exists
-    static var hasValidAuthResult: Bool {
-        loadAuthResult() != nil
-    }
-
-    // MARK: - Custom Client ID
-
-    /// Saves a custom Spotify Client ID to the keychain
-    nonisolated static func saveCustomClientId(_ clientId: String) throws {
-        // Delete any existing item first
-        clearCustomClientId()
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.spotifly.config",
-            kSecAttrAccount as String: "spotify_custom_client_id",
-            kSecAttrAccessGroup as String: "89S4HZY343.com.spotifly.keychain",
-            kSecValueData as String: clientId.data(using: .utf8)!,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-        ]
-
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw KeychainError.saveFailed(status)
-        }
-    }
-
-    /// Loads the custom Spotify Client ID from the keychain, returns nil if not found
-    nonisolated static func loadCustomClientId() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.spotifly.config",
-            kSecAttrAccount as String: "spotify_custom_client_id",
-            kSecAttrAccessGroup as String: "89S4HZY343.com.spotifly.keychain",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let clientId = String(data: data, encoding: .utf8)
-        else {
-            return nil
-        }
-        return clientId
-    }
-
-    /// Clears the custom Client ID from the keychain
-    nonisolated static func clearCustomClientId() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.spotifly.config",
-            kSecAttrAccount as String: "spotify_custom_client_id",
-            kSecAttrAccessGroup as String: "89S4HZY343.com.spotifly.keychain",
-        ]
-        SecItemDelete(query as CFDictionary)
+    static func clearKeymasterTokens() {
+        delete(key: keymasterTokensKey, service: keymasterService)
     }
 
     // MARK: - Private Keychain Operations
 
-    private static func save(key: String, data: Data) throws {
-        // Delete any existing item first
-        delete(key: key)
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
+    private static func save(key: String, data: Data, service: String) throws {
+        let attributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
 
-        let status = SecItemAdd(query as CFDictionary, nil)
+        var addQuery = makeQuery(key: key, service: service)
+        addQuery.merge(attributes) { _, new in new }
 
-        guard status == errSecSuccess else {
-            throw KeychainError.saveFailed(status)
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        if addStatus == errSecSuccess {
+            return
+        }
+        guard addStatus == errSecDuplicateItem else {
+            throw KeychainError.saveFailed(addStatus)
+        }
+
+        // Update in place so Keychain keeps existing trusted app ACL entries.
+        let updateStatus = SecItemUpdate(
+            makeQuery(key: key, service: service) as CFDictionary,
+            attributes as CFDictionary,
+        )
+        guard updateStatus == errSecSuccess else {
+            throw KeychainError.saveFailed(updateStatus)
         }
     }
 
-    private static func load(key: String) -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+    private static func load(key: String, service: String) -> Data? {
+        var query = makeQuery(key: key, service: service)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -214,15 +102,17 @@ enum KeychainManager {
         return result as? Data
     }
 
-    private static func delete(key: String) {
-        let query: [String: Any] = [
+    private static func delete(key: String, service: String) {
+        SecItemDelete(makeQuery(key: key, service: service) as CFDictionary)
+    }
+
+    private static func makeQuery(key: String, service: String) -> [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
             kSecAttrAccessGroup as String: accessGroup,
         ]
-
-        SecItemDelete(query as CFDictionary)
     }
 }
 

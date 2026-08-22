@@ -1,0 +1,522 @@
+//
+//  PathfinderEntities.swift
+//  Spotifly
+//
+//  Turning pathfinder results into the entities AppStore holds.
+//
+
+import Foundation
+
+/// # Identity
+///
+/// Pathfinder resolves the catalogue against the account server-side and returns one entity,
+/// whose `id` and `uri` are the identity. There is no `linked_from`, no second id, and nothing
+/// to unwind — so these conversions take the id as given.
+///
+/// That measurement is what set the app's rule rather than the other way round: pathfinder
+/// returns the market recording and offers no way back to the original, so the market id is the
+/// identity everywhere (`AGENTS.md`, "Track identity is the market id"). The Web API path was
+/// changed to match, not this one.
+extension ImageSet {
+    /// Pathfinder returns image sources with dimensions, in the same shape as the Web API's
+    /// images once unwrapped.
+    init(pathfinderSources sources: [PathfinderImage.Source]?) {
+        let variants = (sources ?? []).compactMap { source -> ImageVariant? in
+            guard let urlString = source.url, let url = URL(string: urlString) else { return nil }
+            return ImageVariant(url: url, size: source.width ?? source.height ?? 0)
+        }
+        self.init(variants: variants.sorted { $0.size > $1.size })
+    }
+}
+
+extension Track {
+    /// Nil when the result carries no id or uri — an entity `AppStore` could not key.
+    init?(pathfinder track: PathfinderTrack) {
+        guard let id = track.id, let uri = track.uri else { return nil }
+
+        self.init(
+            id: id,
+            name: track.name ?? "",
+            uri: uri,
+            durationMs: track.durationMs ?? 0,
+            trackNumber: nil,
+            externalUrl: nil,
+            albumId: track.albumOfTrack?.id ?? track.albumOfTrack?.uri.flatMap(SpotifyURI.id(from:)),
+            artistId: track.firstArtistId,
+            artistName: track.artistNames.first ?? "Unknown",
+            albumName: track.albumOfTrack?.name,
+            images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
+        )
+    }
+}
+
+extension Album {
+    init?(pathfinder album: PathfinderAlbum) {
+        guard let id = album.id, let uri = album.uri else { return nil }
+
+        self.init(
+            id: id,
+            name: album.name ?? "",
+            uri: uri,
+            images: ImageSet(pathfinderSources: album.coverArt?.sources),
+            // Search returns only the year, where the library returns a full date. Rendered as
+            // a year either way, so the difference does not reach the screen.
+            releaseDate: album.date?.formatted,
+            albumType: album.type?.lowercased(),
+            externalUrl: nil,
+            artistId: album.artists?.items?.first?.id,
+            artistName: album.artistNames.first ?? "Unknown",
+            trackIds: [],
+            totalDurationMs: nil,
+            // Search carries no track count, and claiming zero would be a lie the album view
+            // would then display. The detail load fills it in.
+            knownTrackCount: 0,
+            detailsLoaded: false,
+        )
+    }
+}
+
+extension PathfinderAlbumUnion {
+    /// The store entities this album resolves to: the album itself, and its tracks in order.
+    ///
+    /// One place rather than two, because the album and its tracks have to agree — the album's
+    /// `trackIds` are the ids of exactly the tracks returned beside it, and a track id the
+    /// store has no track for is a row the album view cannot render. Both the album screen and
+    /// the recently-played strip go through here.
+    func entities() -> (album: Album, tracks: [Track])? {
+        guard let albumId = id else { return nil }
+
+        // Built first, because the album's track ids are whichever of these survived.
+        let images = ImageSet(pathfinderSources: coverArt?.sources)
+        let albumTracks = tracks.compactMap {
+            Track(
+                pathfinderAlbumTrack: $0,
+                albumId: albumId,
+                albumName: name,
+                images: images,
+            )
+        }
+
+        guard let album = Album(
+            pathfinderUnion: self,
+            trackIds: albumTracks.map(\.id),
+            totalDurationMs: albumTracks.reduce(0) { $0 + $1.durationMs },
+        ) else {
+            return nil
+        }
+
+        return (album, albumTracks)
+    }
+}
+
+extension Album {
+    /// An album from `getAlbum`, with its track list already resolved.
+    ///
+    /// Takes `trackIds` rather than deriving them, because the caller stores the tracks and has
+    /// to agree with this about which ones made it in — an id here that `AppStore` has no track
+    /// for is a row the album view cannot render.
+    init?(pathfinderUnion album: PathfinderAlbumUnion, trackIds: [String], totalDurationMs: Int?) {
+        guard let id = album.id, let uri = album.uri else { return nil }
+
+        let artist = album.firstArtist
+
+        self.init(
+            id: id,
+            name: album.name ?? "",
+            uri: uri,
+            images: ImageSet(pathfinderSources: album.coverArt?.sources),
+            releaseDate: album.date?.day,
+            // `ALBUM`, `SINGLE`, `COMPILATION` — the Web API's lowercase spelling is what the
+            // views compare against.
+            albumType: album.type?.lowercased(),
+            externalUrl: nil,
+            artistId: artist?.id ?? artist?.uri.flatMap(SpotifyURI.id(from:)),
+            artistName: artist?.profile?.name ?? "Unknown",
+            trackIds: trackIds,
+            totalDurationMs: totalDurationMs,
+            // Nil rather than the reported total: the tracks are here, so the views count them
+            // instead of trusting a number that could disagree with the rows on screen.
+            knownTrackCount: nil,
+            detailsLoaded: true,
+            tracksLoaded: true,
+        )
+    }
+}
+
+extension Track {
+    /// One track of an album.
+    ///
+    /// The album context is passed in because the track carries none — `getAlbum` returns the
+    /// album once and its tracks beneath it, so repeating the cover art on every track would be
+    /// the response saying the same thing twenty times.
+    init?(
+        pathfinderAlbumTrack track: PathfinderAlbumTrack,
+        albumId: String,
+        albumName: String?,
+        images: ImageSet,
+    ) {
+        guard let id = track.id, let uri = track.uri else { return nil }
+
+        self.init(
+            id: id,
+            name: track.name ?? "",
+            uri: uri,
+            durationMs: track.duration?.totalMilliseconds ?? 0,
+            trackNumber: track.trackNumber,
+            externalUrl: nil,
+            albumId: albumId,
+            artistId: track.firstArtistId,
+            artistName: track.artistNames.first ?? "Unknown",
+            albumName: albumName,
+            images: images,
+        )
+    }
+}
+
+extension PathfinderPlaylistUnion {
+    /// The store entities this playlist resolves to: the playlist with its items, and the
+    /// tracks those items point at.
+    ///
+    /// The item list and the track list are built together for the same reason the album's are:
+    /// an item whose track could not be decoded would be a row the view cannot render, so it is
+    /// dropped from both rather than from one.
+    func entities() -> (playlist: Playlist, tracks: [Track])? {
+        guard let playlistId = id, let uri else { return nil }
+
+        var items: [PlaylistItem] = []
+        var tracks: [Track] = []
+
+        for entry in content?.items ?? [] {
+            guard let uid = entry.uid,
+                  let track = entry.track,
+                  let entity = Track(pathfinderPlaylistTrack: track)
+            else {
+                continue
+            }
+
+            items.append(PlaylistItem(uid: uid, trackId: entity.id))
+            tracks.append(entity)
+        }
+
+        let owner = ownerV2?.data
+
+        let playlist = Playlist(
+            id: playlistId,
+            name: name ?? "",
+            description: description.normalizedPlaylistDescription,
+            images: ImageSet(pathfinderSources: (images?.items ?? []).first?.sources),
+            uri: uri,
+            // Not in this projection, and nothing renders it — the Web API path defaulted it too.
+            isPublic: true,
+            ownerId: owner?.uri.flatMap(SpotifyURI.id(from:)) ?? owner?.username ?? "",
+            ownerName: owner?.name ?? owner?.username ?? "",
+            externalUrl: nil,
+            items: items,
+            totalDurationMs: tracks.reduce(0) { $0 + $1.durationMs },
+            knownTrackCount: content?.totalCount,
+            tracksLoaded: true,
+        )
+
+        return (playlist, tracks)
+    }
+}
+
+extension Track {
+    /// One track of a playlist. Carries its own album, unlike an album's tracks.
+    ///
+    /// The item's `addedAt` is deliberately not read: `Track` has never had a field for it, and
+    /// nothing renders one.
+    init?(pathfinderPlaylistTrack track: PathfinderPlaylistTrack) {
+        guard let id = track.id, let uri = track.uri else { return nil }
+
+        self.init(
+            id: id,
+            name: track.name ?? "",
+            uri: uri,
+            durationMs: track.trackDuration?.totalMilliseconds ?? 0,
+            trackNumber: track.trackNumber,
+            externalUrl: nil,
+            albumId: track.albumId,
+            artistId: track.firstArtistId,
+            artistName: track.artistNames.first ?? "Unknown",
+            albumName: track.albumOfTrack?.name,
+            images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
+        )
+    }
+}
+
+extension Track {
+    /// One saved track, from `fetchLibraryTracks`.
+    ///
+    /// **The uri comes from the caller**, because this is the one track-bearing response where
+    /// the entity does not carry its own: the saved-tracks page puts it on the wrapper as `_uri`
+    /// beside the data. Reading `track.uri` here would be nil for every row and silently empty
+    /// the whole favorites list.
+    ///
+    /// The id is derived from that uri, which keeps the rule the rest of the app follows — the
+    /// id Spotify returned is the identity, and nothing reconstructs an original from it.
+    init?(pathfinderLibraryTrack track: PathfinderTrack, uri: String) {
+        guard let id = SpotifyURI.id(from: uri) else { return nil }
+
+        self.init(
+            id: id,
+            name: track.name ?? "",
+            uri: uri,
+            durationMs: track.durationMs ?? 0,
+            trackNumber: track.trackNumber,
+            externalUrl: nil,
+            albumId: track.albumOfTrack?.id ?? track.albumOfTrack?.uri.flatMap(SpotifyURI.id(from:)),
+            artistId: track.firstArtistId,
+            artistName: track.artistNames.first ?? "Unknown",
+            albumName: track.albumOfTrack?.name,
+            images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
+        )
+    }
+}
+
+extension PathfinderLibraryTrackPage {
+    /// The saved tracks this page resolves to, in the order Spotify listed them.
+    ///
+    /// Rows whose uri or entity is missing are dropped rather than failing the page, which is
+    /// the same tolerance every other list here has.
+    var tracks: [Track] {
+        (items ?? []).compactMap { item in
+            guard let uri = item.track?.uri, let data = item.track?.data else { return nil }
+            return Track(pathfinderLibraryTrack: data, uri: uri)
+        }
+    }
+}
+
+extension Artist {
+    init?(pathfinder artist: PathfinderArtist) {
+        guard let id = artist.id, let uri = artist.uri else { return nil }
+
+        self.init(
+            id: id,
+            name: artist.name ?? "",
+            uri: uri,
+            images: ImageSet(pathfinderSources: artist.visuals?.avatarImage?.sources),
+            externalUrl: nil,
+        )
+    }
+
+    /// From `queryArtistOverview`, which is where the artist page gets its identity.
+    init?(pathfinderOverview artist: PathfinderArtistUnion) {
+        guard let id = artist.artistId else { return nil }
+
+        self.init(
+            id: id,
+            name: artist.profile?.name ?? "",
+            uri: artist.uri ?? "spotify:artist:\(id)",
+            images: ImageSet(pathfinderSources: artist.visuals?.avatarImage?.sources),
+            externalUrl: nil,
+        )
+    }
+}
+
+extension Album {
+    /// One release from an artist's discography.
+    ///
+    /// Thinner than `init?(pathfinderUnion:…)`: a discography entry has no track list, so the
+    /// album lands with `detailsLoaded` false and opening it fetches the rest. `knownTrackCount`
+    /// comes from the release's own count, so the list can show "12 tracks" without that fetch.
+    init?(pathfinderRelease release: PathfinderRelease, artistId: String?, artistName: String) {
+        guard let id = release.releaseId else { return nil }
+
+        self.init(
+            id: id,
+            name: release.name ?? "",
+            uri: release.uri ?? "spotify:album:\(id)",
+            images: ImageSet(pathfinderSources: release.coverArt?.sources),
+            releaseDate: release.date?.formatted,
+            albumType: release.type?.lowercased(),
+            externalUrl: nil,
+            artistId: artistId,
+            artistName: artistName,
+            trackIds: [],
+            totalDurationMs: nil,
+            knownTrackCount: release.tracks?.totalCount ?? 0,
+            detailsLoaded: false,
+        )
+    }
+}
+
+extension UserProfile {
+    /// From `profileAttributes`, which is what the web client asks instead of `/me`.
+    ///
+    /// `username` is the id: the Web API's `id` and this are the same string for the same
+    /// account, so nothing that stored one has to be migrated.
+    ///
+    /// The profile URL is **constructed** rather than read, because this response carries no
+    /// `external_urls`. That is a fixed form on Spotify's side, not a guess about this account —
+    /// but it is the one field here that is derived rather than measured.
+    init?(pathfinder profile: PathfinderProfile) {
+        guard let username = profile.username, !username.isEmpty else { return nil }
+
+        id = username
+        displayName = profile.name ?? username
+        imageURL = profile.avatar?.largestURL.flatMap(URL.init(string:))
+        externalUrl = "https://open.spotify.com/user/\(username)"
+        uri = profile.uri ?? "spotify:user:\(username)"
+    }
+}
+
+// MARK: - The start page
+
+/// What one `home` response resolves to: the entities to store, and the shelves that index them.
+///
+/// Pure, and separate from `HomeService`, so the rules below can be tested against a recorded
+/// response rather than against a network. Main-actor isolated because the store entities it
+/// builds are — the decoded response it reads is not, and crosses on its own.
+struct HomePage {
+    var greeting: String?
+    var sections: [HomeSection] = []
+    var albums: [Album] = []
+    var playlists: [Playlist] = []
+    var artists: [Artist] = []
+
+    /// Three rules, each of which was a decision rather than a default:
+    ///
+    /// - **An entry the app cannot open is dropped, and an empty shelf with it.** Podcasts,
+    ///   audiobooks and Spotify's `NotFound` tombstones all arrive on this page, and a title
+    ///   over an empty row reads as a bug.
+    /// - **Duplicates within a shelf are collapsed**, because `ForEach` keys on the item and
+    ///   Spotify does repeat an entity inside one section.
+    /// - **A section with no uri is dropped**, since the uri is its identity across refreshes.
+    init(pathfinder home: PathfinderHome) {
+        greeting = home.greeting?.transformedLabel
+
+        for section in home.sections {
+            guard let uri = section.uri else { continue }
+
+            var items: [HomeItem] = []
+            var seen: Set<HomeItem> = []
+
+            for entry in section.items {
+                for item in resolve(entry.content) where !seen.contains(item) {
+                    seen.insert(item)
+                    items.append(item)
+                }
+            }
+
+            guard !items.isEmpty else { continue }
+
+            sections.append(HomeSection(id: uri, title: section.title, items: items))
+        }
+    }
+
+    /// One shelf entry, which is usually one item and occasionally a whole list of them.
+    private mutating func resolve(_ content: PathfinderHomeContent?) -> [HomeItem] {
+        switch content {
+        case let .album(album):
+            guard let album = Album(pathfinder: album) else { return [] }
+            albums.append(album)
+            return [.album(album.id)]
+
+        case let .playlist(playlist):
+            guard let playlist = Playlist(pathfinder: playlist) else { return [] }
+            playlists.append(playlist)
+            return [.playlist(playlist.id)]
+
+        case let .artist(artist):
+            guard let artist = Artist(pathfinder: artist) else { return [] }
+            artists.append(artist)
+            return [.artist(artist.id)]
+
+        case let .list(list):
+            return list.entities.flatMap { resolve(entity: $0) }
+
+        case .unsupported, .none:
+            return []
+        }
+    }
+
+    /// A "Recents" entry, which names its own kind — and can be wrong about it.
+    ///
+    /// **The uri decides, not `entityTypeTrait`.** Liked Songs arrives declared
+    /// `ENTITY_TYPE_PLAYLIST` with the uri `spotify:collection:tracks`, which is not a playlist
+    /// and has no playlist id; trusting the declared type would put a row on the start page that
+    /// opens an empty playlist screen. Kind-checking the uri drops it instead — the app already
+    /// has a Favorites section for it.
+    private mutating func resolve(entity: PathfinderHomeEntity) -> [HomeItem] {
+        guard let uri = entity.uri else { return [] }
+
+        let images = ImageSet(pathfinderSources: entity.imageSources)
+        let contributor = entity.firstContributor
+
+        if let id = SpotifyURI.id(from: uri, kind: "album") {
+            albums.append(Album(
+                id: id,
+                name: entity.name ?? "",
+                uri: uri,
+                images: images,
+                releaseDate: nil,
+                albumType: nil,
+                externalUrl: nil,
+                artistId: contributor?.uri.flatMap { SpotifyURI.id(from: $0, kind: "artist") },
+                artistName: contributor?.name ?? "Unknown",
+                detailsLoaded: false,
+            ))
+            return [.album(id)]
+        }
+
+        if let id = SpotifyURI.id(from: uri, kind: "playlist") {
+            playlists.append(Playlist(
+                id: id,
+                name: entity.name ?? "",
+                description: nil,
+                images: images,
+                uri: uri,
+                isPublic: true,
+                ownerId: "",
+                ownerName: contributor?.name ?? "",
+                externalUrl: nil,
+                items: [],
+                totalDurationMs: nil,
+                knownTrackCount: 0,
+            ))
+            return [.playlist(id)]
+        }
+
+        if let id = SpotifyURI.id(from: uri, kind: "artist") {
+            artists.append(Artist(
+                id: id,
+                name: entity.name ?? "",
+                uri: uri,
+                images: images,
+                externalUrl: nil,
+            ))
+            return [.artist(id)]
+        }
+
+        return []
+    }
+}
+
+extension Playlist {
+    init?(pathfinder playlist: PathfinderPlaylist) {
+        guard let id = playlist.id, let uri = playlist.uri else { return nil }
+
+        let owner = playlist.ownerV2?.data
+
+        self.init(
+            id: id,
+            name: playlist.name ?? "",
+            // Normalised here as it was on the Web API path: an empty or literally "null"
+            // description is no description. Which API produced it makes no difference to the
+            // header that renders it.
+            description: playlist.description.normalizedPlaylistDescription,
+            images: ImageSet(pathfinderSources: (playlist.images?.items ?? []).first?.sources),
+            uri: uri,
+            isPublic: true,
+            // Pathfinder identifies the owner by name, not by id. Used for display only here;
+            // the playlist detail load supplies the id when it is needed.
+            ownerId: owner?.username ?? "",
+            ownerName: playlist.ownerName ?? "",
+            externalUrl: nil,
+            items: [],
+            totalDurationMs: nil,
+            knownTrackCount: 0,
+        )
+    }
+}

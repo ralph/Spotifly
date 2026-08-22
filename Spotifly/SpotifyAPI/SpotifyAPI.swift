@@ -2,58 +2,27 @@
 //  SpotifyAPI.swift
 //  Spotifly
 //
-//  Spotify Web API client - base definitions and utilities.
+//  Spotify URI parsing. No longer a client of anything.
 //
 
 import Foundation
 
-/// Spotify item types for generating external URLs
-enum SpotifyItemType: String {
-    case track
-    case album
-    case artist
-    case playlist
-    case user
-}
-
-/// Generates a Spotify external URL from item type and ID
-func spotifyExternalUrl(type: SpotifyItemType, id: String) -> String {
-    "https://open.spotify.com/\(type.rawValue)/\(id)"
-}
-
-/// Spotify Web API client
+/// What is left of the Web API client: no base url, no requests, no errors — the last four
+/// calls moved to the playlist service on 2026-08-14. The name is kept for now because its one
+/// remaining member is spelled `SpotifyAPI.parseTrackURI` at every call site; retiring it belongs
+/// with the rest of the dashboard-app cleanup.
 enum SpotifyAPI {
-    static let baseURL = "https://api.spotify.com/v1"
-
-    /// Helper to throw appropriate error from API error response data
-    static func throwAPIError(data: Data, statusCode: Int) throws -> Never {
-        if let errorResponse = try? JSONDecoder().decode(SpotifyErrorResponse.self, from: data) {
-            throw SpotifyAPIError.apiError(errorResponse.error.message)
-        }
-        throw SpotifyAPIError.apiError("HTTP \(statusCode)")
-    }
-
-    /// Parses a Spotify URI (spotify:track:xxx) and returns the track ID
+    /// The track id in a `spotify:track:…` uri or an `open.spotify.com/track/…` link.
     static func parseTrackURI(_ uri: String) -> String? {
         let trimmed = uri.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Handle spotify:track:ID format
         if trimmed.hasPrefix("spotify:track:") {
             return String(trimmed.dropFirst("spotify:track:".count))
         }
 
-        // Handle open.spotify.com/track/ID format
-        if trimmed.contains("open.spotify.com/track/") {
-            if let range = trimmed.range(of: "open.spotify.com/track/") {
-                var trackId = String(trimmed[range.upperBound...])
-                // Remove query parameters if present
-                if let queryIndex = trackId.firstIndex(of: "?") {
-                    trackId = String(trackId[..<queryIndex])
-                }
-                return trackId.isEmpty ? nil : trackId
-            }
-        }
-
-        return nil
+        guard let range = trimmed.range(of: "open.spotify.com/track/") else { return nil }
+        // Everything up to the query string, which carries `?si=` share tokens.
+        let id = trimmed[range.upperBound...].prefix { $0 != "?" }
+        return id.isEmpty ? nil : String(id)
     }
 }

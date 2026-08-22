@@ -8,10 +8,9 @@
 import SwiftUI
 
 struct FavoritesListView: View {
-    @Environment(SpotifySession.self) private var session
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
-    @Bindable var playbackViewModel: PlaybackViewModel
+    let playbackViewModel: PlaybackViewModel
 
     @State private var errorMessage: String?
 
@@ -56,13 +55,19 @@ struct FavoritesListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(store.favoriteTracks.enumerated()), id: \.element.id) { index, track in
+                        ForEach(store.favoriteTracks.enumerated(), id: \.element.id) { index, track in
                             TrackRow(
                                 track: track,
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                                 playbackViewModel: playbackViewModel,
                                 currentSection: .favorites,
+                                onDoubleTap: {
+                                    await playbackViewModel.play(
+                                        uriOrUrl: "spotify:collection:tracks",
+                                        trackIndex: index,
+                                    )
+                                },
                             )
 
                             if index < store.favoriteTracks.count - 1 {
@@ -100,11 +105,7 @@ struct FavoritesListView: View {
         errorMessage = nil
 
         do {
-            let token = await session.validAccessToken()
-            try await trackService.loadFavorites(
-                accessToken: token,
-                forceRefresh: forceRefresh,
-            )
+            try await trackService.loadFavorites(forceRefresh: forceRefresh)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -112,8 +113,7 @@ struct FavoritesListView: View {
 
     private func loadMoreFavorites() async {
         do {
-            let token = await session.validAccessToken()
-            try await trackService.loadMoreFavorites(accessToken: token)
+            try await trackService.loadMoreFavorites()
         } catch {
             errorMessage = error.localizedDescription
         }
