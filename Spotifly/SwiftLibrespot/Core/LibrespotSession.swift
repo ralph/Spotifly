@@ -269,10 +269,6 @@ public actor LibrespotSession {
         updateState(.disconnected)
     }
 
-    func publishClusterHeartbeat() {
-        Task { await spircController?.publishState(reason: nil) }
-    }
-
     /// Forwards locally-produced playback state to Spirc so other devices see it.
     func reportLocalPlayerState(_ state: SpircController.SpircPlayerState?, active: Bool) async {
         await spircController?.updateLocalPlayerState(state, active: active)

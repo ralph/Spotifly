@@ -116,7 +116,7 @@ public final class DiffieHellman: @unchecked Sendable {
 
 /// Minimal big integer implementation for DH calculations
 /// Only supports operations needed for DH key exchange
-public struct BigUInt: Sendable, Comparable, Equatable {
+public nonisolated struct BigUInt: Sendable, Comparable, Equatable {
     /// Store as array of UInt64 words, little-endian order
     private var words: [UInt64]
 

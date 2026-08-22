@@ -609,8 +609,14 @@
 				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 89S4HZY343;
-				GENERATE_INFOPLIST_FILE = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/config",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyTests;
@@ -636,8 +642,14 @@
 				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 89S4HZY343;
-				GENERATE_INFOPLIST_FILE = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/config",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyTests;
@@ -662,8 +674,14 @@
 				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 89S4HZY343;
-				GENERATE_INFOPLIST_FILE = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/config",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyUITests;
@@ -688,8 +706,14 @@
 				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 89S4HZY343;
-				GENERATE_INFOPLIST_FILE = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/config",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.SpotiflyUITests;

@@ -34,10 +34,6 @@ public actor Accesspoint {
     /// Ping interval in seconds
     private static let pingInterval: TimeInterval = 120
 
-    /// Pending Mercury requests awaiting response
-    private var pendingRequests: [UInt64: CheckedContinuation<MercuryResponse, Error>] = [:]
-    private var nextSequenceId: UInt64 = 1
-
     /// Pending audio key requests awaiting response
     private var pendingAudioKeyRequests: [UInt32: CheckedContinuation<Data, Error>] = [:]
     private var nextAudioKeySeq: UInt32 = 1
@@ -216,11 +212,11 @@ public actor Accesspoint {
         connection = nil
         cipherPair = nil
 
-        // Cancel all pending requests
-        for (_, continuation) in pendingRequests {
+        // Cancel all pending audio key requests
+        for (_, continuation) in pendingAudioKeyRequests {
             continuation.resume(throwing: LibrespotError.connectionFailed("Disconnected"))
         }
-        pendingRequests.removeAll()
+        pendingAudioKeyRequests.removeAll()
     }
 
     // MARK: - Key Exchange
@@ -665,24 +661,6 @@ public actor Accesspoint {
         recvNonce += 1
 
         return SpotifyPacket(rawCommand: command, payload: payloadDecrypted)
-    }
-
-    // MARK: - Mercury RPC
-
-    /// Send a Mercury request and wait for response
-    public func mercury(uri: String, method: String = "GET", payload: [Data] = []) async throws -> MercuryResponse {
-        let seqId = nextSequenceId
-        nextSequenceId += 1
-
-        let header = MercuryHeader(uri: uri, method: method)
-        let request = MercuryRequest(sequenceId: seqId, header: header, payload: payload)
-
-        // TODO: Serialize Mercury request to protobuf and send
-
-        // Wait for response
-        return try await withCheckedThrowingContinuation { continuation in
-            pendingRequests[seqId] = continuation
-        }
     }
 
     /// Request an audio key for a track
