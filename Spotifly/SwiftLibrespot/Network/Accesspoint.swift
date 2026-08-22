@@ -480,33 +480,40 @@ public actor Accesspoint {
             if bytes[0] & 0x80 != 0 {
                 bytes.insert(0, at: 0)
             }
-
-            var out = Data([0x02]) // INTEGER tag
-            if bytes.count < 128 {
-                out.append(UInt8(bytes.count))
-            } else {
-                out.append(0x82)
-                out.append(UInt8(bytes.count >> 8))
-                out.append(UInt8(bytes.count & 0xFF))
-            }
-            out.append(contentsOf: bytes)
-            return out
+            return derTLV(tag: 0x02, payload: bytes)
         }
 
-        let modulus = derInteger(serverPublicKeyN)
-        let exponent = derInteger([0x01, 0x00, 0x01])
-
-        var sequence = Data([0x30]) // SEQUENCE tag
-        let contents = modulus + exponent
-        sequence.append(UInt8(contents.count))
-        sequence.append(contents)
+        let contents = derInteger(serverPublicKeyN) + derInteger([0x01, 0x00, 0x01])
+        let der = derTLV(tag: 0x30, payload: Array(contents))
 
         var error: Unmanaged<CFError>?
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
             kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
         ]
-        return SecKeyCreateWithData(sequence as CFData, attributes as CFDictionary, &error)
+        return SecKeyCreateWithData(der as CFData, attributes as CFDictionary, &error)
+    }
+
+    /// One DER TLV record: tag, length, payload. Lengths under 128 use the
+    /// short form; anything larger uses the long form — `0x80 | byteCount`
+    /// followed by the length itself in big-endian bytes. (A 2048-bit modulus
+    /// makes both the INTEGER and its enclosing SEQUENCE long-form.)
+    private nonisolated static func derTLV(tag: UInt8, payload: [UInt8]) -> Data {
+        var out = Data([tag])
+        if payload.count < 128 {
+            out.append(UInt8(payload.count))
+        } else {
+            var lengthBytes: [UInt8] = []
+            var remaining = payload.count
+            while remaining > 0 {
+                lengthBytes.insert(UInt8(remaining & 0xFF), at: 0)
+                remaining >>= 8
+            }
+            out.append(UInt8(0x80 | lengthBytes.count))
+            out.append(contentsOf: lengthBytes)
+        }
+        out.append(contentsOf: payload)
+        return out
     }
 
     // MARK: - Authentication
