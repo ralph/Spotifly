@@ -16,6 +16,7 @@ public actor DealerConnection {
 
     private let endpoint: String
     private let accessToken: String
+    private var clientTokenProvider: (@Sendable () async throws -> String)?
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
     private var connectionId: String?
@@ -49,6 +50,10 @@ public actor DealerConnection {
         self.endpoint = endpoint
         self.accessToken = accessToken
         debugLog("DealerConnection", "Created for endpoint: \(endpoint)")
+    }
+
+    func setClientTokenProvider(_ provider: @escaping @Sendable () async throws -> String) {
+        clientTokenProvider = provider
     }
 
     // MARK: - Connection
@@ -124,26 +129,37 @@ public actor DealerConnection {
 
     // MARK: - PutState
 
-    /// Publish device state to Spotify Connect
+    /// Publish device state to Spotify Connect.
+    ///
+    /// The body goes out gzipped — every reference client compresses it — and
+    /// the connection id is percent-encoded into the path, since it is base64
+    /// whose `+`/`/`/`=` would otherwise corrupt the URL.
     public func putState(_ request: PutStateRequestProto) async throws {
         guard let connId = connectionId else {
             throw LibrespotError.spircNotReady
         }
 
-        // Build PUT request to connect-state endpoint
+        let encodedId = connId.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? connId
+
         // Format: https://gew1-dealer.spotify.com/connect-state/v1/devices/hobs_{connectionId}
-        let url = URL(string: "https://\(endpoint)/connect-state/v1/devices/hobs_\(connId)")!
+        let url = URL(string: "https://\(endpoint)/connect-state/v1/devices/hobs_\(encodedId)")!
+
+        let payload = Self.gzip(request.serialize())
+        debugLog("DealerConnection", "[PUT] connect-state hobs_\(encodedId.prefix(24))… (\(payload.count) bytes gzipped)")
 
         var httpRequest = URLRequest(url: url)
         httpRequest.httpMethod = "PUT"
+        httpRequest.timeoutInterval = 15
         httpRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        if let clientTokenProvider {
+            try await httpRequest.setValue(clientTokenProvider(), forHTTPHeaderField: "Client-Token")
+        }
+        httpRequest.setValue("OSX_ARM64", forHTTPHeaderField: "App-Platform")
+        httpRequest.setValue("https://xpui.app.spotify.com", forHTTPHeaderField: "Origin")
         httpRequest.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
-        httpRequest.setValue("gzip", forHTTPHeaderField: "Accept-Encoding")
+        httpRequest.setValue("gzip", forHTTPHeaderField: "Content-Encoding")
 
-        // Serialize PutStateRequest to protobuf
-        httpRequest.httpBody = request.serialize()
-
-        debugLog("DealerConnection", "Sending PutState (\(httpRequest.httpBody?.count ?? 0) bytes) to \(url)")
+        httpRequest.httpBody = payload
 
         let (_, response) = try await URLSession.shared.data(for: httpRequest)
 
@@ -151,11 +167,56 @@ public actor DealerConnection {
             throw LibrespotError.commandFailed("PutState failed: no response")
         }
 
-        guard httpResponse.statusCode == 200 else {
+        guard (200 ..< 300).contains(httpResponse.statusCode) else {
             throw LibrespotError.commandFailed("PutState failed: HTTP \(httpResponse.statusCode)")
         }
 
-        debugLog("DealerConnection", "PutState successful")
+        debugLog("DealerConnection", "PutState accepted (HTTP \(httpResponse.statusCode))")
+    }
+
+    /// Minimal gzip wrapper: RFC 1952 header + raw-deflate body + CRC32 tail,
+    /// via the Compression framework's zlibRaw codec.
+    nonisolated static func gzip(_ data: Data) -> Data {
+        var compressed = Data([0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF])
+
+        // NSData's .zlib emits a 2-byte header and 4-byte Adler-32 tail;
+        // gzip wants the raw deflate stream between them.
+        if let zlibbed = try? (data as NSData).compressed(using: .zlib) as Data,
+           zlibbed.count > 6
+        {
+            compressed.append(zlibbed.dropFirst(2).dropLast(4))
+        } else {
+            debugLog("DealerConnection", "gzip: deflate failed; storing uncompressed blocks")
+            // Stored (uncompressed) deflate blocks so the stream stays valid.
+            var offset = 0
+            while offset < data.count {
+                let chunk = data.subdata(in: offset ..< min(offset + 65535, data.count))
+                offset += chunk.count
+                let isLast: UInt8 = offset >= data.count ? 0x01 : 0x00
+                compressed.append(isLast)
+                let n = UInt16(chunk.count)
+                compressed.append(contentsOf: withUnsafeBytes(of: n) { Data($0) })
+                compressed.append(contentsOf: withUnsafeBytes(of: ~n) { Data($0) })
+                compressed.append(chunk)
+            }
+        }
+
+        var crc: UInt32 = 0xFFFF_FFFF
+        for byte in data {
+            crc = Self.crc32Table[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
+        }
+        crc ^= 0xFFFF_FFFF
+        withUnsafeBytes(of: crc.littleEndian) { compressed.append(contentsOf: $0) }
+        withUnsafeBytes(of: UInt32(truncatingIfNeeded: data.count).littleEndian) { compressed.append(contentsOf: $0) }
+        return compressed
+    }
+
+    private nonisolated static let crc32Table: [UInt32] = (0 ..< 256).map { i -> UInt32 in
+        var c = UInt32(i)
+        for _ in 0 ..< 8 {
+            c = (c & 1) != 0 ? (0xEDB8_8320 ^ (c >> 1)) : (c >> 1)
+        }
+        return c
     }
 
     /// Get next message ID
@@ -512,24 +573,12 @@ public actor DealerConnection {
     // MARK: - Ping Loop
 
     private func pingLoop() async {
-        while isConnected {
+        // SUSPENDED during dealer debugging: the websocket died within seconds
+        // of the first application-level ping, so the ping itself is a prime
+        // suspect. URLSessionWebSocketTask answers protocol-level pings from
+        // the server automatically, which may be all this endpoint needs.
+        while false {
             try? await Task.sleep(nanoseconds: UInt64(Self.pingInterval * 1_000_000_000))
-
-            guard webSocketTask != nil, isConnected else { break }
-
-            // Send JSON ping message (Spotify dealer protocol)
-            struct PingMessage: Encodable {
-                let type: String
-            }
-
-            let ping = PingMessage(type: "ping")
-
-            do {
-                let data = try JSONEncoder().encode(ping)
-                try await send(data)
-            } catch {
-                debugLog("DealerConnection", "Ping failed: \(error)")
-            }
         }
     }
 

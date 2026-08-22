@@ -110,8 +110,13 @@ public actor SpircController {
         // Subscribe to dealer messages
         await setupDealerSubscriptions()
 
-        // Register device with Spotify Connect
-        try await registerDevice()
+        // Register device with Spotify Connect. Non-fatal: a rejected or
+        // stalled registration costs Connect visibility, not playback.
+        do {
+            try await registerDevice()
+        } catch {
+            debugLog("SpircController", "Registration failed (continuing): \(error)")
+        }
 
         startHeartbeat()
 

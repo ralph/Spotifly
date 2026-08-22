@@ -222,6 +222,7 @@ enum SpotifyPlayer {
 
         try await LibrespotClient.shared.initialize(
             tokenProvider: { try await KeymasterSession.shared.accessToken() },
+            clientTokenProvider: { try await ClientTokenProvider.shared.token() },
             usernameProvider: { await KeymasterSession.shared.username },
         )
     }

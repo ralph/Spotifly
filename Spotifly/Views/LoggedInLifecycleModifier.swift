@@ -52,6 +52,19 @@ struct LoggedInLifecycleModifier: ViewModifier {
 
                 await playbackViewModel.initializeIfNeeded()
                 await queueService.fetchInitialPlaybackState()
+
+                #if DEBUG
+                    // Headless test scaffolding: SPOTIFLY_DEBUG_AUTOPLAY=1 starts
+                    // a fixed album shortly after launch so the Swift playback
+                    // stack can be exercised without touching the UI.
+                    if ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_AUTOPLAY"] != nil {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(5))
+                            debugLog("DebugAutoplay", "Starting album 1LVj9ljlwsn2DOsXkRDOeI")
+                            await playbackViewModel.play(uriOrUrl: "spotify:album:1LVj9ljlwsn2DOsXkRDOeI")
+                        }
+                    }
+                #endif
             }
             // Connection handling is driven by the connection snapshot, not by the Connect
             // activation callbacks. Activation and connection are different facts: another

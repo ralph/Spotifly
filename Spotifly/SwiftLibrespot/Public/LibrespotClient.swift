@@ -35,6 +35,7 @@ public actor LibrespotClient {
     /// Web API fallbacks). Injected by the facade, which binds it to the
     /// app's keymaster grant.
     private var tokenProvider: (@Sendable () async throws -> String)?
+    private var clientTokenProvider: (@Sendable () async throws -> String)?
 
     /// The account the session plays as.
     private var usernameProvider: (@Sendable () async -> String?)?
@@ -148,9 +149,11 @@ public actor LibrespotClient {
     /// successful token login stores its reusable credentials for next time.
     public func initialize(
         tokenProvider provider: @escaping @Sendable () async throws -> String,
+        clientTokenProvider: (@Sendable () async throws -> String)? = nil,
         usernameProvider: @escaping @Sendable () async -> String?,
     ) async throws {
         tokenProvider = provider
+        self.clientTokenProvider = clientTokenProvider
         self.usernameProvider = usernameProvider
         shuttingDown = false
         let generation = lifecycleGeneration
@@ -172,6 +175,9 @@ public actor LibrespotClient {
 
         let welcome = try await newSession.connect(credentials: credentials) {
             try await provider()
+        } clientTokenProvider: { [clientTokenProvider] in
+            guard let clientTokenProvider else { throw LibrespotError.notInitialized }
+            return try await clientTokenProvider()
         }
 
         // A logout or shutdown landed while we were connecting; everything
@@ -293,6 +299,9 @@ public actor LibrespotClient {
         do {
             _ = try await session.connect(credentials: credentials) { [tokenProvider] in
                 try await tokenProvider()
+            } clientTokenProvider: { [clientTokenProvider] in
+                guard let clientTokenProvider else { throw LibrespotError.notInitialized }
+                return try await clientTokenProvider()
             }
 
             // A rebuilt session carries a fresh accesspoint socket; the old
@@ -314,11 +323,17 @@ public actor LibrespotClient {
 
         spclient = SPClient(
             tokenProvider: { [tokenProvider] in try await tokenProvider() },
+            clientTokenProvider: { [clientTokenProvider] in
+                guard let clientTokenProvider else { throw LibrespotError.notInitialized }
+                return try await clientTokenProvider()
+            },
             spclientHost: host,
             deviceId: deviceInfo.deviceId,
         )
 
         guard let accesspoint = await session?.accesspoint else { return }
+
+        await spclient?.setCountryCode(accesspoint.lastCountryCode)
 
         await audioPipeline?.stop()
         pipelineSubscriptions.removeAll()

@@ -55,6 +55,7 @@ public actor LibrespotSession {
     /// logged in with stored credentials, which carry no OAuth token; a token
     /// login can serve its own from `credentials`.
     private var tokenProvider: (@Sendable () async throws -> String)?
+    private var clientTokenProvider: (@Sendable () async throws -> String)?
 
     private var apResolver: APResolver?
     private var resolvedEndpoints: ResolvedEndpoints?
@@ -85,9 +86,11 @@ public actor LibrespotSession {
     public func connect(
         credentials: APCredentials,
         tokenProvider: @escaping @Sendable () async throws -> String,
+        clientTokenProvider: (@Sendable () async throws -> String)? = nil,
     ) async throws -> APWelcome {
         self.credentials = credentials
         self.tokenProvider = tokenProvider
+        self.clientTokenProvider = clientTokenProvider
 
         updateState(.connecting)
 
@@ -108,7 +111,26 @@ public actor LibrespotSession {
             }
 
             updateState(.authenticating)
-            accesspoint = Accesspoint(endpoint: apEndpoint, preGeneratedDH: dh)
+
+            // Rotate through the resolved accesspoints: servers drop
+            // handshakes they dislike (rate limits, transient resets), and
+            // the next one usually answers.
+            var welcome: APWelcome?
+            var lastError: Error = LibrespotError.connectionFailed("No accesspoints available")
+            for apEndpoint in resolvedEndpoints?.accesspoints.prefix(4) ?? [] {
+                let candidate = Accesspoint(endpoint: apEndpoint, preGeneratedDH: dh)
+                do {
+                    welcome = try await candidate.connect(credentials: credentials, deviceId: deviceInfo.deviceId)
+                    accesspoint = candidate
+                    break
+                } catch {
+                    debugLog("LibrespotSession", "AP \(apEndpoint) failed: \(error.localizedDescription)")
+                    lastError = error
+                    await candidate.disconnect()
+                }
+            }
+            guard let welcome else { throw lastError }
+
             // A dead socket must surface as a failed session, which is what
             // arms the client's auto-recovery; without this the receive loop
             // would exit silently and the UI would keep routing commands into
@@ -117,12 +139,14 @@ public actor LibrespotSession {
                 guard let self else { return }
                 Task { await self.handleTransportLost() }
             }
-            let welcome = try await accesspoint!.connect(credentials: credentials, deviceId: deviceInfo.deviceId)
 
             dealerConnection = await DealerConnection(
                 endpoint: dealerHost,
                 accessToken: bearerToken(),
             )
+            if let clientTokenProvider {
+                await dealerConnection!.setClientTokenProvider(clientTokenProvider)
+            }
             try await dealerConnection!.connect()
 
             spircController = SpircController(

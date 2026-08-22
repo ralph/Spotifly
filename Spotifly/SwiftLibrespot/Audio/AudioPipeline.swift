@@ -132,7 +132,14 @@ actor AudioPipeline {
 
         let trackId = try Self.trackGid(fromUri: uri)
 
-        let metadata = try await spclient.getTrackMetadata(trackId: trackId)
+        var metadata = try await spclient.getTrackMetadata(trackId: trackId)
+
+        // /metadata/4 answers a stub without files; the playable list comes
+        // from extended-metadata.
+        if metadata.files.isEmpty {
+            metadata.files = try await spclient.getAudioFiles(entityUri: uri)
+        }
+
         debugLog("AudioPipeline", "Track '\(metadata.name)': \(metadata.files.count) file(s), \(metadata.durationMs)ms")
 
         guard let file = Self.selectVorbisFile(metadata.files, preferring: quality) else {
@@ -155,7 +162,11 @@ actor AudioPipeline {
             debugLog("AudioPipeline", "Decrypted \(decrypted.count) bytes, head: \(head)")
         #endif
 
-        let vorbis = try VorbisDecoder(data: decrypted)
+        debugLog("AudioPipeline", "Opening decoder…")
+        let vorbisStream = Self.vorbisStreamOffset(decrypted)
+        debugLog("AudioPipeline", "Vorbis stream begins at byte \(vorbisStream.offset), skipped \(vorbisStream.skippedPages) Spotify page(s)")
+        let vorbis = try VorbisDecoder(data: decrypted.subdata(in: vorbisStream.offset ..< decrypted.count))
+        debugLog("AudioPipeline", "Decoder open: \(vorbis.format.sampleRate)Hz x\(vorbis.format.channels), \(vorbis.totalFrames) frames")
 
         currentTrackUri = uri
         durationMs = Int64(metadata.durationMs)
@@ -335,6 +346,7 @@ actor AudioPipeline {
 
             sink.write(samples: buffer, count: frames * channels)
             totalWritten += Int64(frames)
+
             await noteProgress(totalWritten)
         }
 
@@ -437,6 +449,44 @@ actor AudioPipeline {
             let d1 = abs($1.format.kbps - quality.rawValue)
             return d0 == d1 ? $0.format.kbps > $1.format.kbps : d0 < d1
         }
+    }
+
+    /// Finds where the actual Ogg Vorbis stream begins inside a decrypted
+    /// Spotify file.
+    ///
+    /// Spotify prepends its own container page (header flags `0x06`) ahead of
+    /// the codec stream — a leftover metadata page libvorbis rejects as a bad
+    /// header. Real vorbis pages carry clean flags (`0x02` for BOS), so we
+    /// walk pages by their segment tables until one qualifies.
+    private nonisolated static func vorbisStreamOffset(_ data: Data) -> (offset: Int, skippedPages: Int) {
+        var offset = 0
+        var skipped = 0
+
+        while offset + 27 <= data.count,
+              data[offset ..< offset + 4] == Data("OggS".utf8)
+        {
+            let flags = data[data.startIndex + offset + 5]
+            let segmentCount = Int(data[data.startIndex + offset + 26])
+            guard offset + 27 + segmentCount <= data.count else { break }
+
+            var bodyLength = 0
+            for i in 0 ..< segmentCount {
+                bodyLength += Int(data[data.startIndex + offset + 27 + i])
+            }
+            let pageLength = 27 + segmentCount + bodyLength
+
+            // A lone BOS flag marks the codec's own first page.
+            if flags == 0x02 {
+                return (offset, skipped)
+            }
+
+            offset += pageLength
+            skipped += 1
+        }
+
+        // No recognizable BOS page: hand over everything unchanged so the
+        // decoder surfaces the failure.
+        return (0, 0)
     }
 
     /// Downloads a complete CDN file. Tracks are a few MB; streaming them

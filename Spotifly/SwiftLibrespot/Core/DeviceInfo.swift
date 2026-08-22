@@ -106,6 +106,14 @@ public nonisolated struct DeviceInfo: Sendable {
 
     /// Gets or creates a persistent device ID
     private static func getOrCreateDeviceId() -> String {
+        // Debug scaffolding: SPOTIFLY_DEBUG_DEVICE_ID overrides the stored
+        // identity so headless runs can present as a fresh device.
+        #if DEBUG
+            if let overridden = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_DEVICE_ID"] {
+                return overridden
+            }
+        #endif
+
         let key = "SpotifyDeviceId"
         if let existing = UserDefaults.standard.string(forKey: key) {
             return existing

@@ -43,6 +43,9 @@ public actor Accesspoint {
     /// which is what arms auto-recovery.
     private var closeHandler: (@Sendable () -> Void)?
 
+    /// Market the session is playing in, as announced by the server after login.
+    public private(set) var lastCountryCode: String?
+
     /// Sets the unexpected-disconnect hook.
     public func setCloseHandler(_ handler: (@Sendable () -> Void)?) {
         closeHandler = handler
@@ -174,22 +177,50 @@ public actor Accesspoint {
         let resumeState = ResumeState()
         let conn = connection
 
+        // Bounded: NWConnection's state handler is not guaranteed to fire
+        // promptly (observed multi-minute stalls), and a silent hang here
+        // wedges the whole session start. Exactly one of the state handler
+        // and the deadline resumes the continuation — the claim flag makes
+        // the loser a no-op.
+        final class DeadlineClaim: @unchecked Sendable {
+            private let lock = NSLock()
+            private var claimed = false
+
+            func tryResume(
+                _ continuation: CheckedContinuation<Void, Error>,
+                with result: Result<Void, Error>,
+            ) -> Bool {
+                lock.lock()
+                defer { lock.unlock() }
+                guard !claimed else { return false }
+                claimed = true
+                continuation.resume(with: result)
+                return true
+            }
+        }
+
+        let deadlineClaim = DeadlineClaim()
+
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            conn?.stateUpdateHandler = { state in
+            conn?.stateUpdateHandler = { [deadlineClaim] state in
                 switch state {
                 case .ready:
-                    // Clear handler and resume
                     conn?.stateUpdateHandler = nil
-                    _ = resumeState.tryResume(continuation, with: .success(()))
+                    _ = deadlineClaim.tryResume(continuation, with: .success(()))
                 case let .failed(error):
-                    _ = resumeState.tryResume(continuation, with: .failure(LibrespotError.connectionFailed(error.localizedDescription)))
+                    _ = deadlineClaim.tryResume(continuation, with: .failure(LibrespotError.connectionFailed(error.localizedDescription)))
                 case .cancelled:
-                    _ = resumeState.tryResume(continuation, with: .failure(LibrespotError.connectionFailed("Connection cancelled")))
+                    _ = deadlineClaim.tryResume(continuation, with: .failure(LibrespotError.connectionFailed("Connection cancelled")))
                 default:
                     break
                 }
             }
             conn?.start(queue: .global())
+
+            DispatchQueue.global().asyncAfter(deadline: .now() + 30) { [deadlineClaim] in
+                guard deadlineClaim.tryResume(continuation, with: .failure(LibrespotError.timeout("TCP connect timed out"))) else { return }
+                conn?.cancel()
+            }
         }
 
         debugLog("Accesspoint", "TCP connected, performing handshake...")
@@ -232,6 +263,8 @@ public actor Accesspoint {
         }
         pendingAudioKeyRequests.removeAll()
     }
+
+    // MARK: - Timeout Helper
 
     // MARK: - Key Exchange
 
@@ -923,6 +956,7 @@ public actor Accesspoint {
 
         case .countryCode:
             let country = String(data: packet.payload, encoding: .utf8) ?? "??"
+            lastCountryCode = country
             debugLog("Accesspoint", "Country code: \(country)")
 
         case .mercuryEvent:

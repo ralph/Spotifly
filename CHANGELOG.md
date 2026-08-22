@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Headless test scaffolding: `SPOTIFLY_DEBUG_AUTOPLAY=1` starts a fixed album shortly after launch, `SPOTIFLY_DEBUG_DEVICE_ID` overrides the stored Connect device id — both env-gated, inert by default.
+
+### Fixed
+
+- Live playback works end to end on the Swift stack. Verified against a real account: album context resolves, tracks decrypt (`OggS` head confirmed), decode in real time, auto-advance across tracks. The chain needed:
+  - RSA public-key DER long-form length encoding (2048-bit modulus overflowed the single-byte form — crash at handshake).
+  - Accesspoint rotation with a bounded TCP connect; per-device AP throttling after aborted handshakes otherwise wedged startup silently.
+  - spclient requests signed like the desktop client (`Client-Token`, `App-Platform`, `Origin`) and routed through `/context-resolve/v1/` (not v2), with audio files fetched from `/extended-metadata` `TRACK_V4` — `/metadata/4` returns a stub without file lists, and relinked tracks keep their files under `alternative`.
+  - The dealer websocket session retained (a deallocated URLSession killed the socket), PutState gzipped + percent-encoded connection ids.
+  - Spotify's container quirk: one leading non-vorbis page (flags `0x06`, typically 167 bytes) before the real BOS page — skipped by parsing segment tables rather than hardcoding.
+
+
+
 ### Changed
 - A simplification pass over the week's partner-API migration, removing about 820 lines without changing behaviour. The migration's leftovers were the bulk of it: `APITypes.swift` is gone entirely, since only two of its types still had a caller once entities stopped being built from Web API responses, and the survivors moved to the files that use them. The duplication that mattered was in the two partner clients, which held byte-identical copies of four stored closures, the same five signing headers, and the 401-invalidate-retry dance **three times** — with the rule about naming the token that was actually refused restated in three separate comment blocks, which is exactly how three copies drift apart. That is one `SpotifyCredentials` now, and the rule is written once. The Pathfinder wrappers had accumulated three private `Duration` structs and two `ArtistList` types structurally identical to the one already at the top level. On the Rust side the finds were contract bugs rather than style: a `queue_changed` callback registered but never fired anywhere, whose entire Swift chain ended at a publisher with no subscribers; two header declarations with no implementation at all, which would have failed to link had anything called them; and `spotifly_get_queue_snapshot` declared non-null inside `assume_nonnull` while returning NULL before the first cluster update, which Swift was papering over at the call site
 - A second simplification pass, this one over the whole codebase rather than the week's diff, removing about 1,480 further lines. The largest single item: `AlbumsListView`, `ArtistsListView` and `PlaylistsListView` were 815 lines that differ, once the entity noun is normalised away, in **two lines** between albums and playlists and four between albums and artists — everything else, including the ephemeral section, the back button, the divider rules and the pagination trigger, was byte-identical. They had already begun to drift, one having lost a comment the others carry and another writing the same shape two ways. They share `LibraryListView` now, with a style value that is literally the table of differences: two glyphs and an artwork shape. `FavoritesListView` deliberately stays separate — no coordinator, no selection, a different divider inset, and rows needing four more parameters. The same story in miniature for the four cards, whose artwork block was byte-identical and is now `CardArtwork`; the cards themselves are *not* unified, because only the artwork was actually shared. Twelve toolbar actions each spelled their localization key twice, once in the `Label` and once in the `.help`, with nothing keeping the two in step
