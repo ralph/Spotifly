@@ -84,4 +84,3 @@ public struct SpotifyPacket: Sendable {
         return data
     }
 }
-

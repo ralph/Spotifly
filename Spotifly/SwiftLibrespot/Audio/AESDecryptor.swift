@@ -115,20 +115,30 @@ public final class AESDecryptor: @unchecked Sendable {
 
     // MARK: - Keystream Generation using CommonCrypto
 
+    /// Builds the counter block for `counter`: the fixed IV interpreted as a
+    /// 128-bit big-endian integer, plus the block index — standard CTR
+    /// semantics (`Ctr128BE` in librespot), where carries ripple upward across
+    /// the whole block. XORing instead would corrupt everything past the first
+    /// 16 bytes.
     private nonisolated func generateKeystreamBlock(counter: UInt64) -> [UInt8] {
         guard let key = keyBytes else {
             return [UInt8](repeating: 0, count: 16)
         }
 
-        // Build counter block: IV with counter XORed into last 8 bytes
         var counterBlock = Self.fixedIV
 
-        // XOR counter (big-endian) into last 8 bytes of IV
-        var counterBE = counter.bigEndian
-        withUnsafeBytes(of: &counterBE) { bytes in
-            for i in 0 ..< 8 {
-                counterBlock[8 + i] ^= bytes[i]
+        // Add `counter` into the big-endian 128-bit value, from the least
+        // significant byte (index 15) upward, propagating the carry.
+        var carry = counter
+        var index = 15
+        while carry > 0 {
+            let total = UInt64(counterBlock[index]) + (carry & 0xFF)
+            counterBlock[index] = UInt8(truncatingIfNeeded: total)
+            carry = (carry >> 8) + (total >> 8)
+            if index == 0 {
+                break // wraps modulo 2^128, as CTR requires
             }
+            index -= 1
         }
 
         // AES-ECB encrypt the counter block to get keystream

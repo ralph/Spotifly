@@ -109,6 +109,14 @@ public actor LibrespotSession {
 
             updateState(.authenticating)
             accesspoint = Accesspoint(endpoint: apEndpoint, preGeneratedDH: dh)
+            // A dead socket must surface as a failed session, which is what
+            // arms the client's auto-recovery; without this the receive loop
+            // would exit silently and the UI would keep routing commands into
+            // a corpse.
+            await accesspoint!.setCloseHandler { [weak self] in
+                guard let self else { return }
+                Task { await self.handleTransportLost() }
+            }
             let welcome = try await accesspoint!.connect(credentials: credentials, deviceId: deviceInfo.deviceId)
 
             dealerConnection = await DealerConnection(
@@ -153,6 +161,15 @@ public actor LibrespotSession {
     /// rather than resurrecting a signed-out account.
     public func forgetCredentials() {
         credentials = nil
+    }
+
+    /// The accesspoint socket died on its own. Only a *connected* session
+    /// reacts: a disconnect already in flight owns the transition.
+    func handleTransportLost() {
+        guard state == .connected else { return }
+        debugLog("LibrespotSession", "Transport lost")
+        updateState(.failed("Connection lost"))
+        Task { [weak self] in await self?.disconnect() }
     }
 
     /// Rebuilds the session from remembered credentials with backoff.
@@ -227,13 +244,13 @@ public actor LibrespotSession {
         spircClusterStateSubject.eraseToAnyPublisher()
     }
 
-    public nonisolated var commandsPublisher: AnyPublisher<SpircCommand, Never> {
+    public nonisolated var commandsPublisher: AnyPublisher<SpircRemoteCommand, Never> {
         spircCommandSubject.eraseToAnyPublisher()
     }
 
     private nonisolated(unsafe) let spircPlayerStateSubject = CurrentValueSubject<SpircController.SpircPlayerState?, Never>(nil)
     private nonisolated(unsafe) let spircClusterStateSubject = CurrentValueSubject<SpircController.ClusterState?, Never>(nil)
-    private nonisolated(unsafe) let spircCommandSubject = PassthroughSubject<SpircCommand, Never>()
+    private nonisolated(unsafe) let spircCommandSubject = PassthroughSubject<SpircRemoteCommand, Never>()
 
     private var spircSubscriptions: Set<AnyCancellable> = []
 

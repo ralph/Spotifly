@@ -42,7 +42,7 @@ public actor SpircController {
 
     private nonisolated(unsafe) let playerStateSubject = CurrentValueSubject<SpircPlayerState?, Never>(nil)
     private nonisolated(unsafe) let clusterStateSubject = CurrentValueSubject<ClusterState?, Never>(nil)
-    private nonisolated(unsafe) let commandSubject = PassthroughSubject<SpircCommand, Never>()
+    private nonisolated(unsafe) let commandSubject = PassthroughSubject<SpircRemoteCommand, Never>()
 
     public nonisolated var playerStatePublisher: AnyPublisher<SpircPlayerState?, Never> {
         playerStateSubject.eraseToAnyPublisher()
@@ -52,7 +52,7 @@ public actor SpircController {
         clusterStateSubject.eraseToAnyPublisher()
     }
 
-    public nonisolated var commands: AnyPublisher<SpircCommand, Never> {
+    public nonisolated var commands: AnyPublisher<SpircRemoteCommand, Never> {
         commandSubject.eraseToAnyPublisher()
     }
 
@@ -348,12 +348,16 @@ public actor SpircController {
         }
     }
 
-    private func handleCommand(_ command: SpircCommand) async {
-        debugLog("SpircController", "Command received: \(command)")
-        commandSubject.send(command)
+    private func handleCommand(_ envelope: SpircRemoteCommand) async {
+        debugLog("SpircController", "Command received: \(envelope.command)")
+        if let messageId = envelope.messageId {
+            // Acknowledged in the next PutState via last_command_message_id.
+            lastCommandMessageId = UInt64(messageId)
+        }
+        commandSubject.send(envelope)
 
         // Handle command locally
-        switch command {
+        switch envelope.command {
         case let .play(playCmd):
             await handlePlayCommand(playCmd)
         case .pause:

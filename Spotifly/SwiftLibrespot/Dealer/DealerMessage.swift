@@ -15,6 +15,9 @@ public struct DealerMessage: Sendable {
     public let uri: String?
     public let headers: [String: String]?
     public let payloads: [DealerPayload]?
+    /// The single compressed payload of a *request*-shaped message:
+    /// `{"payload": {"compressed": "<base64 gzip json>"}}`.
+    public let payloadCompressed: String?
     public let method: String?
     public let key: String?
 
@@ -30,6 +33,7 @@ public struct DealerMessage: Sendable {
 extension DealerMessage: Decodable {
     private enum CodingKeys: String, CodingKey {
         case type, uri, headers, payloads, method, key
+        case payload
     }
 
     public nonisolated init(from decoder: Decoder) throws {
@@ -38,8 +42,19 @@ extension DealerMessage: Decodable {
         uri = try container.decodeIfPresent(String.self, forKey: .uri)
         headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
         payloads = try container.decodeIfPresent([DealerPayload].self, forKey: .payloads)
+
+        if let nested = try? container.nestedContainer(keyedBy: PayloadKeys.self, forKey: .payload) {
+            payloadCompressed = try nested.decodeIfPresent(String.self, forKey: .compressed)
+        } else {
+            payloadCompressed = nil
+        }
+
         method = try container.decodeIfPresent(String.self, forKey: .method)
         key = try container.decodeIfPresent(String.self, forKey: .key)
+    }
+
+    private enum PayloadKeys: String, CodingKey {
+        case compressed
     }
 }
 
@@ -132,6 +147,14 @@ public struct ClusterUpdate: Sendable {
 }
 
 // MARK: - SPIRC Commands
+
+/// A command received from another Spotify client, with the identifiers
+/// needed to acknowledge it through the next PutState.
+public struct SpircRemoteCommand: Sendable {
+    public let command: SpircCommand
+    public let messageId: UInt32?
+    public let sentByDeviceId: String?
+}
 
 /// Commands that can be received from other Spotify clients
 public enum SpircCommand: Sendable {

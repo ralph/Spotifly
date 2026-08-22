@@ -22,10 +22,10 @@ public struct APResolver: Sendable {
 
     /// Resolve all endpoint types
     public func resolve() async throws -> ResolvedEndpoints {
-        let url = URL(string: "\(baseURL)?type=accesspoint&type=dealer&type=spclient")!
+        let urlString = "\(baseURL)?type=accesspoint&type=dealer&type=spclient"
+        debugLog("APResolver", "[GET] \(urlString)")
 
-        debugLog("APResolver", "Resolving endpoints from \(url)")
-
+        let url = URL(string: urlString)!
         let (data, response) = try await URLSession.shared.data(from: url)
 
         guard let httpResponse = response as? HTTPURLResponse,
@@ -53,7 +53,10 @@ public struct APResolver: Sendable {
 
     /// Resolve only accesspoint endpoints
     public func resolveAccesspoints() async throws -> [String] {
-        let url = URL(string: "\(baseURL)?type=accesspoint")!
+        let urlString = "\(baseURL)?type=accesspoint"
+        debugLog("APResolver", "[GET] \(urlString)")
+
+        let url = URL(string: urlString)!
         let (data, _) = try await URLSession.shared.data(from: url)
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -67,7 +70,10 @@ public struct APResolver: Sendable {
 
     /// Resolve only dealer endpoints
     public func resolveDealers() async throws -> [String] {
-        let url = URL(string: "\(baseURL)?type=dealer")!
+        let urlString = "\(baseURL)?type=dealer"
+        debugLog("APResolver", "[GET] \(urlString)")
+
+        let url = URL(string: urlString)!
         let (data, _) = try await URLSession.shared.data(from: url)
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

@@ -12,7 +12,7 @@ carry their own `main()` (`barkmel.c`, `psytune.c`, `tone.c`).
 - `config/ogg/config_types.h` — hand-written replacement for the header
   autoconf normally generates, fixed to Apple LP64 targets.
 
-Both libraries are BSD-style licensed; see the `COPYING` file in each folder.
+Both libraries are BSD-style licensed; see the `COPYING-*.txt` file in each folder.
 The Xcode target compiles everything under this directory through its synced
 folder membership; the include paths are set in `HEADER_SEARCH_PATHS`.
 

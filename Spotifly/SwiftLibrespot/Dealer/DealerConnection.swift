@@ -26,7 +26,7 @@ public actor DealerConnection {
 
     /// Message publishers
     private nonisolated(unsafe) let clusterUpdateSubject = PassthroughSubject<ClusterUpdateProto, Never>()
-    private nonisolated(unsafe) let commandSubject = PassthroughSubject<SpircCommand, Never>()
+    private nonisolated(unsafe) let commandSubject = PassthroughSubject<SpircRemoteCommand, Never>()
     private nonisolated(unsafe) let connectionIdSubject = PassthroughSubject<String, Never>()
 
     // MARK: - Publishers
@@ -35,7 +35,7 @@ public actor DealerConnection {
         clusterUpdateSubject.eraseToAnyPublisher()
     }
 
-    public nonisolated var commands: AnyPublisher<SpircCommand, Never> {
+    public nonisolated var commands: AnyPublisher<SpircRemoteCommand, Never> {
         commandSubject.eraseToAnyPublisher()
     }
 
@@ -66,12 +66,28 @@ public actor DealerConnection {
         webSocketTask?.resume()
 
         isConnected = true
-        debugLog("DealerConnection", "WebSocket connected")
 
-        // Start receive loop
+        // Start receive loop before waiting on anything: it is what delivers
+        // the connection-id announcement we are about to wait for.
         Task {
             await receiveLoop()
         }
+
+        // Registration (PutState) needs the connection id, which arrives as
+        // the first message over the socket. Wait for it rather than racing
+        // Spirc's hello against it.
+        let deadline = Date().addingTimeInterval(15)
+        while connectionId == nil, isConnected, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        guard let identifier = connectionId else {
+            isConnected = false
+            webSocketTask?.cancel(with: .goingAway, reason: nil)
+            webSocketTask = nil
+            throw LibrespotError.connectionFailed("Dealer never announced a connection id")
+        }
+        _ = identifier
+        debugLog("DealerConnection", "WebSocket connected with connection id")
 
         // Start ping loop
         Task {
@@ -240,28 +256,83 @@ public actor DealerConnection {
         }
     }
 
-    /// Handle a request from the server and send a reply
+    /// Handle a request from the server and send a reply.
+    ///
+    /// Requests carry their payload as base64(gzip(JSON)) in `payload.compressed`
+    /// — for commands that is `{message_id, sent_by_device_id, command:{endpoint,…}}`.
     private func handleRequest(_ message: DealerMessage) async {
         guard let key = message.key else {
             debugLog("DealerConnection", "Request has no key")
             return
         }
 
-        // Process the request based on URI
+        defer {
+            Task { await self.sendReply(key: key, success: true) }
+        }
+
+        guard let decoded = Self.decodeCompressedPayload(message.payloadCompressed),
+              let json = try? JSONSerialization.jsonObject(with: decoded) as? [String: Any]
+        else {
+            debugLog("DealerConnection", "Request payload could not be decompressed or parsed")
+            return
+        }
+
+        let messageId = (json["message_id"] as? NSNumber)?.uint32Value
+        let sentBy = json["sent_by_device_id"] as? String
+
         if let uri = message.uri {
-            if uri.starts(with: "hm://connect-state/v1/player/command") {
-                await handleCommand(message)
-            } else if uri.starts(with: "hm://connect-state/v1/connect/volume") {
-                await handleVolumeCommand(message)
+            if uri.starts(with: "hm://connect-state/v1/player/command"),
+               let commandJson = json["command"] as? [String: Any]
+            {
+                let command = Self.parseCommand(endpoint: commandJson["endpoint"] as? String ?? "", json: commandJson)
+                debugLog("DealerConnection", "Command received: \(commandJson["endpoint"] ?? "?")")
+                commandSubject.send(SpircRemoteCommand(command: command, messageId: messageId, sentByDeviceId: sentBy))
+            } else if uri.starts(with: "hm://connect-state/v1/connect/volume"),
+                      let volume = json["volume"] as? NSNumber
+            {
+                debugLog("DealerConnection", "Volume command: \(volume)")
+                commandSubject.send(SpircRemoteCommand(
+                    command: .setVolume(volume.uint32Value),
+                    messageId: messageId,
+                    sentByDeviceId: sentBy,
+                ))
             } else if uri.starts(with: "hm://connect-state/v1/cluster") {
                 await handleClusterUpdate(message)
-            } else {
-                debugLog("DealerConnection", "Unhandled request URI: \(uri)")
+            }
+        }
+    }
+
+    /// Base64-decodes and gunzips a request payload.
+    static func decodeCompressedPayload(_ compressed: String?) -> Data? {
+        guard let compressed, let raw = Data(base64Encoded: compressed) else { return nil }
+        return decompressGzipData(raw)
+    }
+
+    /// Gunzip helper shared by request payloads and cluster pushes.
+    private nonisolated static func decompressGzipData(_ data: Data) -> Data? {
+        guard data.count > 18, data[0] == 0x1F, data[1] == 0x8B else {
+            return data.isEmpty ? nil : data
+        }
+
+        // Stream through the Compression framework in chunks; a fixed output
+        // estimate breaks on larger cluster states.
+        let destinationCapacity = 256 * 1024
+        var destination = Data(count: destinationCapacity)
+        let result = destination.withUnsafeMutableBytes { dstPtr -> Int in
+            data.withUnsafeBytes { srcPtr -> Int in
+                compression_decode_buffer(
+                    dstPtr.bindMemory(to: UInt8.self).baseAddress!,
+                    destinationCapacity,
+                    srcPtr.bindMemory(to: UInt8.self).baseAddress!.advanced(by: 10),
+                    data.count - 18,
+                    nil,
+                    COMPRESSION_ZLIB,
+                )
             }
         }
 
-        // Send success reply
-        await sendReply(key: key, success: true)
+        guard result > 0 else { return nil }
+        return destination.prefix(result)
     }
 
     /// Send a reply to a server request
@@ -324,36 +395,27 @@ public actor DealerConnection {
     }
 
     private func handleCommand(_ message: DealerMessage) async {
-        guard let payloadData = getPayloadData(from: message, headers: message.headers) else {
-            debugLog("DealerConnection", "No payload data in command")
+        guard let payloadData = getPayloadData(from: message, headers: message.headers),
+              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]
+        else {
+            debugLog("DealerConnection", "No parsable payload in command message")
             return
         }
 
-        // Commands come as JSON with a "command" object
-        do {
-            // The payload contains a PlayerCommand JSON object
-            if let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
-               let endpoint = json["endpoint"] as? String
-            {
-                let command = parseCommand(endpoint: endpoint, json: json)
-                debugLog("DealerConnection", "Received command: \(endpoint)")
-                commandSubject.send(command)
-            }
-        }
+        let command = Self.parseCommand(endpoint: json["endpoint"] as? String ?? "", json: json)
+        commandSubject.send(SpircRemoteCommand(command: command, messageId: nil, sentByDeviceId: nil))
     }
 
     private func handleVolumeCommand(_ message: DealerMessage) async {
-        guard let payloadData = getPayloadData(from: message, headers: message.headers) else {
-            debugLog("DealerConnection", "No payload data in volume command")
+        guard let payloadData = getPayloadData(from: message, headers: message.headers),
+              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]
+        else {
+            debugLog("DealerConnection", "No parsable payload in volume message")
             return
         }
 
-        do {
-            let volumeCmd = try SetVolumeCommandProto.parse(from: payloadData)
-            debugLog("DealerConnection", "Received volume command: \(volumeCmd.volume)")
-            commandSubject.send(.setVolume(UInt32(volumeCmd.volume)))
-        } catch {
-            debugLog("DealerConnection", "Failed to parse volume command: \(error)")
+        if let volume = (json["volume"] as? NSNumber)?.uint32Value {
+            commandSubject.send(SpircRemoteCommand(command: .setVolume(volume), messageId: nil, sentByDeviceId: nil))
         }
     }
 
@@ -369,57 +431,35 @@ public actor DealerConnection {
         // Check if data is gzip compressed
         let transferEncoding = headers?["Transfer-Encoding"] ?? headers?["transfer-encoding"]
         if transferEncoding == "gzip" {
-            if let decompressed = decompressGzip(data) {
-                data = decompressed
-            }
+            return Self.decompressGzipData(data)
         }
 
         return data
     }
 
-    /// Decompress gzip data
-    private nonisolated func decompressGzip(_ data: Data) -> Data? {
-        // Check gzip magic number
-        guard data.count >= 2, data[0] == 0x1F, data[1] == 0x8B else {
-            return data // Not gzip, return as-is
-        }
+    /// Parses a player command in the shape librespot's `dealer::protocol::request`
+    /// describes: `{endpoint: "…", …}` with endpoint-specific fields nested
+    /// underneath (`options.seek_to`, `options.skip_to.track_uri`,
+    /// `track.uri`, plain `value` for the toggles).
+    private nonisolated static func parseCommand(endpoint: String, json: [String: Any]) -> SpircCommand {
+        let options = json["options"] as? [String: Any]
 
-        // Use Compression framework
-        let bufferSize = data.count * 10 // Estimate decompressed size
-        var decompressed = Data(count: bufferSize)
-
-        let result = data.withUnsafeBytes { srcPtr in
-            decompressed.withUnsafeMutableBytes { dstPtr in
-                compression_decode_buffer(
-                    dstPtr.bindMemory(to: UInt8.self).baseAddress!,
-                    bufferSize,
-                    srcPtr.bindMemory(to: UInt8.self).baseAddress!.advanced(by: 10), // Skip gzip header
-                    data.count - 18, // Skip header (10) and trailer (8)
-                    nil,
-                    COMPRESSION_ZLIB,
-                )
-            }
-        }
-
-        if result > 0 {
-            return decompressed.prefix(result)
-        }
-
-        return nil
-    }
-
-    /// Parse a command from JSON endpoint
-    private nonisolated func parseCommand(endpoint: String, json: [String: Any]) -> SpircCommand {
         switch endpoint {
         case "play":
-            let contextUri = json["context_uri"] as? String
-            let trackUri = (json["uris"] as? [String])?.first
+            let context = json["context"] as? [String: Any]
+            let skipTo = options?["skip_to"] as? [String: Any]
+            let trackUri = (skipTo?["track_uri"] as? String)
+                ?? (json["uris"] as? [String])?.first
+                ?? (context?["uri"] as? String).flatMap(Self.trackUriIfTrack)
+
+            let index = (skipTo?["track_index"] as? NSNumber)?.intValue
+
             return .play(SpircCommand.PlayCommand(
-                contextUri: contextUri,
+                contextUri: context?["uri"] as? String,
                 trackUri: trackUri,
                 trackUris: json["uris"] as? [String],
-                index: json["offset_position"] as? Int,
-                positionMs: (json["position_ms"] as? Int).map { UInt64($0) },
+                index: index,
+                positionMs: (options?["seek_to"] as? NSNumber)?.uint64Value,
             ))
 
         case "pause":
@@ -429,8 +469,8 @@ public actor DealerConnection {
             return .resume
 
         case "seek_to":
-            let position = (json["position"] as? Int) ?? (json["position_ms"] as? Int) ?? 0
-            return .seekTo(positionMs: UInt64(position))
+            let position = (json["value"] as? NSNumber) ?? (json["position"] as? NSNumber) ?? 0
+            return .seekTo(positionMs: position.uint64Value)
 
         case "skip_next":
             return .next
@@ -439,21 +479,34 @@ public actor DealerConnection {
             return .prev
 
         case "set_shuffling_context":
-            let shuffle = (json["value"] as? Bool) ?? false
-            return .setShuffle(shuffle)
+            return .setShuffle((json["value"] as? Bool) ?? false)
 
-        case "set_repeating_context", "set_repeating_track":
-            let repeating = (json["value"] as? Bool) ?? false
-            let mode: ClusterUpdate.RepeatMode = endpoint == "set_repeating_track" ? .track : (repeating ? .context : .off)
-            return .setRepeat(mode)
+        case "set_repeating_track":
+            return .setRepeat(((json["value"] as? Bool) ?? false) ? .track : .off)
+
+        case "set_repeating_context":
+            return .setRepeat(((json["value"] as? Bool) ?? false) ? .context : .off)
 
         case "add_to_queue":
-            let uri = json["track_uri"] as? String ?? ""
-            return .addToQueue(uri: uri)
+            let track = json["track"] as? [String: Any]
+            return .addToQueue(uri: track?["uri"] as? String ?? "")
+
+        case "transfer":
+            // We only receive this when we are the transfer target; the
+            // embedded state blob is protobuf we do not consume yet.
+            return .transfer(SpircCommand.TransferCommand(
+                targetDeviceId: json["from_device_identifier"] as? String ?? "",
+                transferData: nil,
+            ))
 
         default:
             return .unknown(endpoint)
         }
+    }
+
+    /// A context uri that is actually a single-track context, or nil.
+    private nonisolated static func trackUriIfTrack(_ uri: String) -> String? {
+        uri.starts(with: "spotify:track:") ? uri : nil
     }
 
     // MARK: - Ping Loop

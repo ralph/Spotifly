@@ -54,7 +54,14 @@ public actor LibrespotClient {
     // MARK: - Connection Bookkeeping
 
     private var shuttingDown = false
+    /// Bumped whenever an account-level event (logout, shutdown) invalidates
+    /// work in flight. An initialization that awaited a network call while
+    /// such an event landed must abandon rather than write its results.
+    private var lifecycleGeneration = 0
     private var reconnectTask: Task<Void, Never>?
+    /// Subscriptions to the current audio pipeline's publishers; cleared
+    /// whenever a new pipeline replaces the old one.
+    private var pipelineSubscriptions: Set<AnyCancellable> = []
 
     /// Monotonic counter stamped onto every published connection snapshot so
     /// out-of-order deliveries cannot regress one.
@@ -146,6 +153,7 @@ public actor LibrespotClient {
         tokenProvider = provider
         self.usernameProvider = usernameProvider
         shuttingDown = false
+        let generation = lifecycleGeneration
 
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -154,12 +162,24 @@ public actor LibrespotClient {
 
         let credentials = try await credentialsForLogin()
 
+        if lifecycleGeneration != generation {
+            throw LibrespotError.invalidState("Initialization superseded")
+        }
+
         let newSession = LibrespotSession(deviceInfo: deviceInfo)
         session = newSession
         subscribeToSession(newSession)
 
         let welcome = try await newSession.connect(credentials: credentials) {
             try await provider()
+        }
+
+        // A logout or shutdown landed while we were connecting; everything
+        // below would sign a signed-out account back in. Abandon instead.
+        guard lifecycleGeneration == generation else {
+            await newSession.disconnect()
+            session = nil
+            throw LibrespotError.invalidState("Initialization superseded")
         }
 
         // First successful login (or a refresh of it): capture the reusable
@@ -172,19 +192,7 @@ public actor LibrespotClient {
             ))
         }
 
-        let host = await newSession.spclientHost
-        spclient = SPClient(
-            tokenProvider: { try await provider() },
-            spclientHost: host,
-            deviceId: deviceInfo.deviceId,
-        )
-
-        if let accesspoint = await newSession.accesspoint {
-            let pipeline = AudioPipeline(accesspoint: accesspoint, spclient: spclient, sink: SpotifyPlayer.audioRenderer)
-            audioPipeline = pipeline
-            subscribeToPipeline(pipeline)
-            await pipeline.setQuality(Self.qualityFromUserDefaults())
-        }
+        await attachTransport()
 
         flags.markConnected()
 
@@ -215,6 +223,7 @@ public actor LibrespotClient {
     public func shutdown() async {
         debugLog("LibrespotClient", "Shutting down")
         shuttingDown = true
+        lifecycleGeneration += 1
         reconnectTask?.cancel()
         reconnectTask = nil
         await teardown()
@@ -249,7 +258,14 @@ public actor LibrespotClient {
     /// Disconnects without forgetting anything; `forceReconnect` revives it.
     public func disconnect() {
         debugLog("LibrespotClient", "Disconnect requested")
-        Task { await session?.disconnect() }
+
+        // Playback goes down with the socket: buffered PCM must not outlive
+        // the device going to sleep, and a running decode loop cannot fetch
+        // audio keys from a dead accesspoint anyway.
+        Task {
+            await audioPipeline?.stop()
+            await session?.disconnect()
+        }
     }
 
     /// Outcome of a reconnect request.
@@ -278,6 +294,11 @@ public actor LibrespotClient {
             _ = try await session.connect(credentials: credentials) { [tokenProvider] in
                 try await tokenProvider()
             }
+
+            // A rebuilt session carries a fresh accesspoint socket; the old
+            // pipeline would keep asking the corpse for audio keys.
+            await attachTransport()
+
             publishConnectionState(connected: true)
             debugLog("LibrespotClient", "Recovery succeeded")
         } catch {
@@ -286,11 +307,34 @@ public actor LibrespotClient {
         }
     }
 
+    /// Creates SPClient and the audio pipeline against the current session.
+    private func attachTransport() async {
+        guard let tokenProvider else { return }
+        let host = await session?.spclientHost
+
+        spclient = SPClient(
+            tokenProvider: { [tokenProvider] in try await tokenProvider() },
+            spclientHost: host,
+            deviceId: deviceInfo.deviceId,
+        )
+
+        guard let accesspoint = await session?.accesspoint else { return }
+
+        await audioPipeline?.stop()
+        pipelineSubscriptions.removeAll()
+
+        let pipeline = AudioPipeline(accesspoint: accesspoint, spclient: spclient, sink: SpotifyPlayer.audioRenderer)
+        audioPipeline = pipeline
+        subscribeToPipeline(pipeline)
+        await pipeline.setQuality(Self.qualityFromUserDefaults())
+    }
+
     // MARK: - Credential Management
 
     /// Removes the stored reusable login so nothing can sign back in.
     public func clearStreamingCredentials() async {
         storedCredentials.clear()
+        lifecycleGeneration += 1
         await session?.forgetCredentials()
     }
 
@@ -369,6 +413,8 @@ public actor LibrespotClient {
     }
 
     public func previous() async throws {
+        defer { publishQueueNotifications() }
+
         if let previous = playbackQueue.backward() {
             try await loadAndPlay(previous)
         } else {
@@ -542,6 +588,9 @@ public actor LibrespotClient {
             throw LibrespotError.notInitialized
         }
 
+        // The optimistic state below must not carry the previous track's
+        // length; until metadata lands, zero is the honest answer.
+        knownDurationMs = 0
         loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: 0))
         publishPlaybackState(for: uri, playing: true, paused: false, positionMs: 0)
         try await audioPipeline.playTrack(uri: uri)
@@ -561,19 +610,22 @@ public actor LibrespotClient {
                 await audioPipeline?.stop()
                 playbackStateSubject.send(nil)
             }
+            // The advance moved current/history/next; queue views need it.
+            publishQueueNotifications()
         }
     }
 
     /// Manual skip: always moves somewhere, wrapping past the end when repeat
     /// allows and stopping otherwise.
     private func advanceUserInitiated() async throws {
-        if let upcoming = playbackQueue.advance() {
+        defer { publishQueueNotifications() }
+
+        // A manual skip moves even under repeat-one; only auto-advance honors it.
+        if let upcoming = playbackQueue.advance(respectingRepeat: false) {
             try await loadAndPlay(upcoming)
-        } else if repeatMode == .off {
+        } else {
             await audioPipeline?.stop()
             playbackStateSubject.send(nil)
-        } else if let first = playbackQueue.contextTracks.first {
-            try await loadAndPlay(first)
         }
     }
 
@@ -607,20 +659,20 @@ public actor LibrespotClient {
                 guard let self else { return }
                 Task { await self.handlePipelineState(state) }
             }
-            .store(in: &subscriptions)
+            .store(in: &pipelineSubscriptions)
 
         pipeline.position
             .sink { [weak self] positionMs in
                 self?.positionCache = positionMs
             }
-            .store(in: &subscriptions)
+            .store(in: &pipelineSubscriptions)
 
         pipeline.endOfTrack
             .sink { [weak self] uri in
                 guard let self else { return }
                 Task { await self.handleEndOfTrack(uri) }
             }
-            .store(in: &subscriptions)
+            .store(in: &pipelineSubscriptions)
 
         pipeline.errors
             .sink { [weak self] error in
@@ -628,7 +680,7 @@ public actor LibrespotClient {
                 guard let self else { return }
                 Task { await self.clearPlaybackState() }
             }
-            .store(in: &subscriptions)
+            .store(in: &pipelineSubscriptions)
     }
 
     private func clearPlaybackState() {
@@ -759,7 +811,9 @@ public actor LibrespotClient {
 
     // MARK: - Remote Commands
 
-    private func executeRemoteCommand(_ command: SpircCommand) async {
+    private func executeRemoteCommand(_ envelope: SpircRemoteCommand) async {
+        let command = envelope.command
+
         debugLog("LibrespotClient", "Remote command: \(command)")
 
         switch command {

@@ -33,6 +33,10 @@ final nonisolated class PlaybackQueue {
     /// Tracks already played, most recent last, for skip-backwards.
     private(set) var history: [String] = []
 
+    /// A user-queue track that is playing now. It sits outside the context,
+    /// so `currentUri` reports it until playback returns to the context.
+    private var userQueueCurrent: String?
+
     private(set) var shuffleEnabled = false
     private(set) var repeatMode: RepeatMode = .off
 
@@ -49,6 +53,7 @@ final nonisolated class PlaybackQueue {
         contextTracks = tracks
         currentIndex = max(0, min(startIndex, tracks.count - 1))
         history = []
+        userQueueCurrent = nil
         reshuffleIfNeeded()
         if shuffleEnabled {
             shufflePosition = shuffleOrder.firstIndex(of: currentIndex) ?? 0
@@ -95,27 +100,27 @@ final nonisolated class PlaybackQueue {
 
     /// The current track uri, or nil when nothing is loaded.
     var currentUri: String? {
-        if currentIndex < contextTracks.count {
-            return contextTracks[currentIndex]
-        }
-        return nil
+        userQueueCurrent ?? (currentIndex < contextTracks.count ? contextTracks[currentIndex] : nil)
     }
 
     /// Advances and returns the next uri to play, or nil when the queue ended.
     ///
-    /// Track-repeat returns the same track forever; the caller distinguishes
-    /// auto-advance from manual next by not consulting this for repeats.
-    func advance() -> String? {
+    /// - Parameter respectingRepeat: auto-advance under repeat-one replays the
+    ///   current track; a manual skip must move regardless, so callers pass
+    ///   false there.
+    func advance(respectingRepeat: Bool = true) -> String? {
         // User queue entries always play next, once.
         if !userQueue.isEmpty {
             let next = userQueue.removeFirst()
             pushHistory()
+            userQueueCurrent = next
             return next
         }
+        userQueueCurrent = nil
 
         guard !contextTracks.isEmpty else { return nil }
 
-        if repeatMode == .track {
+        if respectingRepeat, repeatMode == .track {
             return contextTracks[currentIndex]
         }
 
@@ -152,6 +157,10 @@ final nonisolated class PlaybackQueue {
     /// Steps backwards through history. Returns nil when there is nowhere to
     /// go — callers then decide whether restarting the track counts as previous.
     func backward() -> String? {
+        // Leaving an explicitly-queued track first: the history entry pushed
+        // when the override started names the context track to return to.
+        userQueueCurrent = nil
+
         guard let previous = history.popLast() else { return nil }
 
         if !userQueue.isEmpty || shuffleEnabled {

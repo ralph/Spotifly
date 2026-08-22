@@ -128,9 +128,11 @@ final nonisolated class VorbisDecoder: @unchecked Sendable {
             let channelCount = format.channels
             let frameCount = Int(frames)
 
+            // `written` counts frames; the destination is sample-indexed.
             for frame in 0 ..< frameCount {
+                let base = (written + frame) * channelCount
                 for channel in 0 ..< channelCount {
-                    output[written + frame * channelCount + channel] = channels[channel]![frame]
+                    output[base + channel] = channels[channel]![frame]
                 }
             }
 

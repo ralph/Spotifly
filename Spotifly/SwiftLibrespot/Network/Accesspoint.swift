@@ -38,6 +38,20 @@ public actor Accesspoint {
     private var pendingAudioKeyRequests: [UInt32: CheckedContinuation<Data, Error>] = [:]
     private var nextAudioKeySeq: UInt32 = 1
 
+    /// Invoked when the socket dies unexpectedly — never on an intentional
+    /// `disconnect()`. The owning session uses it to fail its state machine,
+    /// which is what arms auto-recovery.
+    private var closeHandler: (@Sendable () -> Void)?
+
+    /// Sets the unexpected-disconnect hook.
+    public func setCloseHandler(_ handler: (@Sendable () -> Void)?) {
+        closeHandler = handler
+    }
+
+    private func notifyClosedUnexpectedly() {
+        closeHandler?()
+    }
+
     /// Spotify version code (matching librespot-rs)
     private static let spotifyVersionCode: UInt64 = 124_200_290
 
@@ -297,11 +311,11 @@ public actor Accesspoint {
 
         // Read APResponseMessage
         debugLog("Accesspoint", "Waiting for server response...")
-        let responseLengthBytes = try await readRawBytes(count: 4)
+        let responseLengthBytes = try await readRawBytes(count: 4, timeout: 10)
         let responseLength = Int(responseLengthBytes[0]) << 24 | Int(responseLengthBytes[1]) << 16 |
             Int(responseLengthBytes[2]) << 8 | Int(responseLengthBytes[3])
         debugLog("Accesspoint", "Got response length: \(responseLength)")
-        let responseData = try await readRawBytes(count: responseLength - 4) // Length includes itself
+        let responseData = try await readRawBytes(count: responseLength - 4, timeout: 10) // Length includes itself
 
         // Track for challenge - include the 4-byte length prefix AND protobuf data (per librespot)
         handshakeAccumulator.append(responseLengthBytes)
@@ -429,21 +443,70 @@ public actor Accesspoint {
         cipherPair = CipherPair(sendKey: keys.sendKey, recvKey: keys.recvKey)
     }
 
-    private func verifySignature(data: Data, signature _: Data) -> Bool {
-        // Compute SHA1 hash of data
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
-        data.withUnsafeBytes { ptr in
-            _ = CC_SHA1(ptr.baseAddress, CC_LONG(data.count), &hash)
+    /// Verifies the AP's signature over `gs` with Spotify's well-known RSA
+    /// key (PKCS#1 v1.5, SHA-1). Without this, anyone on the path could
+    /// substitute their own Diffie-Hellman share and read everything we send
+    /// — including the login credentials.
+    private func verifySignature(data: Data, signature: Data) -> Bool {
+        guard let publicKey = Self.serverRSAPublicKey() else {
+            debugLog("Accesspoint", "Could not build the server public key")
+            return false
         }
 
-        // RSA verification with PKCS1v15 padding
-        // For now, we'll trust the signature (proper implementation would need RSA verify)
-        // The go-librespot also verifies this, so we should too eventually
+        var error: Unmanaged<CFError>?
+        let ok = SecKeyVerifySignature(
+            publicKey,
+            .rsaSignatureMessagePKCS1v15SHA1,
+            data as CFData,
+            signature as CFData,
+            &error,
+        )
+        if !ok, let error {
+            debugLog("Accesspoint", "Signature check failed: \(error.takeRetainedValue())")
+        }
+        return ok
+    }
 
-        // TODO: Implement proper RSA PKCS1v15 signature verification
-        // For development, skip verification
-        debugLog("Accesspoint", "Warning: Skipping signature verification (not yet implemented)")
-        return true
+    /// Builds the server's RSA public SecKey from the known modulus and the
+    /// standard exponent 65537. The key must be DER-encoded as an
+    /// `RSAPublicKey` SEQUENCE for `SecKeyCreateWithData`.
+    private nonisolated static func serverRSAPublicKey() -> SecKey? {
+        func derInteger(_ value: [UInt8]) -> Data {
+            // Strip leading zeros, keep one so the sign bit reads positive.
+            var bytes = value
+            while bytes.count > 1, bytes[0] == 0 {
+                bytes.removeFirst()
+            }
+            if bytes[0] & 0x80 != 0 {
+                bytes.insert(0, at: 0)
+            }
+
+            var out = Data([0x02]) // INTEGER tag
+            if bytes.count < 128 {
+                out.append(UInt8(bytes.count))
+            } else {
+                out.append(0x82)
+                out.append(UInt8(bytes.count >> 8))
+                out.append(UInt8(bytes.count & 0xFF))
+            }
+            out.append(contentsOf: bytes)
+            return out
+        }
+
+        let modulus = derInteger(serverPublicKeyN)
+        let exponent = derInteger([0x01, 0x00, 0x01])
+
+        var sequence = Data([0x30]) // SEQUENCE tag
+        let contents = modulus + exponent
+        sequence.append(UInt8(contents.count))
+        sequence.append(contents)
+
+        var error: Unmanaged<CFError>?
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPublic,
+        ]
+        return SecKeyCreateWithData(sequence as CFData, attributes as CFDictionary, &error)
     }
 
     // MARK: - Authentication
@@ -516,14 +579,14 @@ public actor Accesspoint {
         // Check if server sent unencrypted error response. The server uses a 4-byte
         // big-endian length prefix for unencrypted messages vs 3-byte encrypted
         // header for Shannon packets; three zero bytes never occur in ciphertext by accident.
-        let firstFourBytes = try await readRawBytes(count: 4)
+        let firstFourBytes = try await readRawBytes(count: 4, timeout: 10)
         let potentialLength = Int(firstFourBytes[0]) << 24 | Int(firstFourBytes[1]) << 16 |
             Int(firstFourBytes[2]) << 8 | Int(firstFourBytes[3])
 
         if firstFourBytes[0] == 0, firstFourBytes[1] == 0, firstFourBytes[2] == 0, potentialLength < 1000 {
             // The length INCLUDES the 4-byte prefix itself.
             let dataLength = potentialLength - 4
-            let errorData = try await readRawBytes(count: dataLength)
+            let errorData = try await readRawBytes(count: dataLength, timeout: 10)
 
             if let errorResponse = try? APResponseMessage.parse(from: errorData),
                let loginFailed = errorResponse.loginFailed
@@ -579,7 +642,7 @@ public actor Accesspoint {
         await cipher.beginDecrypt(nonce: recvNonce)
 
         // Read and decrypt header (3 bytes: command + 2-byte length)
-        let headerEncrypted = try await readRawBytes(count: 3)
+        let headerEncrypted = try await readRawBytes(count: 3, timeout: nil)
         debugLog("Accesspoint", "Header encrypted: \(headerEncrypted.map { String(format: "%02X", $0) }.joined(separator: " ")), nonce=\(recvNonce)")
         let headerDecrypted = await cipher.decryptPart(headerEncrypted)
         debugLog("Accesspoint", "Header decrypted: \(headerDecrypted.map { String(format: "%02X", $0) }.joined(separator: " "))")
@@ -591,7 +654,7 @@ public actor Accesspoint {
         // Read and decrypt payload (continues cipher stream from header)
         let payloadDecrypted: Data
         if length > 0 {
-            let payloadEncrypted = try await readRawBytes(count: length)
+            let payloadEncrypted = try await readRawBytes(count: length, timeout: nil)
             payloadDecrypted = await cipher.decryptPart(payloadEncrypted)
         } else {
             payloadDecrypted = Data()
@@ -601,7 +664,7 @@ public actor Accesspoint {
         let expectedMac = await cipher.finishDecrypt()
 
         // Read and verify MAC
-        let receivedMac = try await readRawBytes(count: 4)
+        let receivedMac = try await readRawBytes(count: 4, timeout: nil)
         if expectedMac != receivedMac {
             debugLog("Accesspoint", "MAC mismatch! expected=\(expectedMac.hexString) received=\(receivedMac.hexString)")
             throw LibrespotError.macMismatch
@@ -641,7 +704,7 @@ public actor Accesspoint {
         // Read remaining payload bytes if needed
         let remainingPayloadBytes = length - payloadParts.count
         if remainingPayloadBytes > 0 {
-            let morePayload = try await readRawBytes(count: remainingPayloadBytes)
+            let morePayload = try await readRawBytes(count: remainingPayloadBytes, timeout: 10)
             payloadParts.append(morePayload)
         }
 
@@ -652,7 +715,7 @@ public actor Accesspoint {
         let expectedMac = await cipher.finishDecrypt()
 
         // Read and verify MAC
-        let receivedMac = try await readRawBytes(count: 4)
+        let receivedMac = try await readRawBytes(count: 4, timeout: 10)
         if expectedMac != receivedMac {
             debugLog("Accesspoint", "MAC mismatch! expected=\(expectedMac.hexString) received=\(receivedMac.hexString)")
             throw LibrespotError.macMismatch
@@ -705,18 +768,31 @@ public actor Accesspoint {
         debugLog("Accesspoint", "Requesting audio key, seq=\(seqId), fileId=\(fileId.prefix(8).hexString)")
 
         let packet = SpotifyPacket(command: .requestKey, payload: payload)
-        try await sendPacket(packet)
 
-        // Wait for response
+        // Register the waiter before the request goes out: the receive loop
+        // shares this actor, so a response can only be dispatched after this
+        // function suspends — by then the entry is in place either way. The
+        // send itself runs in a sibling task; if it fails, the waiter is
+        // resumed with that error instead of waiting out the timeout.
         return try await withCheckedThrowingContinuation { continuation in
             pendingAudioKeyRequests[seqId] = continuation
 
-            // Add timeout
             Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+                try? await Task.sleep(for: .seconds(10))
                 guard let self else { return }
-                if let cont = await removePendingAudioKeyRequest(seqId) {
-                    cont.resume(throwing: LibrespotError.timeout("Audio key request timed out"))
+                if let pending = await removePendingAudioKeyRequest(seqId) {
+                    pending.resume(throwing: LibrespotError.timeout("Audio key request timed out"))
+                }
+            }
+
+            Task { [weak self] in
+                do {
+                    try await self?.sendPacket(packet)
+                } catch {
+                    guard let self else { return }
+                    if let pending = await removePendingAudioKeyRequest(seqId) {
+                        pending.resume(throwing: error)
+                    }
                 }
             }
         }
@@ -746,141 +822,69 @@ public actor Accesspoint {
     }
 
     private func readRawLength() async throws -> Int {
-        let data = try await readRawBytes(count: 4)
+        let data = try await readRawBytes(count: 4, timeout: 10)
         return Int(data[0]) << 24 | Int(data[1]) << 16 | Int(data[2]) << 8 | Int(data[3])
     }
 
-    private func readRawBytes(count: Int, timeout: TimeInterval = 10.0) async throws -> Data {
-        guard let conn = connection else {
+    /// Reads exactly `count` bytes.
+    ///
+    /// `timeout` is nil for the long-lived receive loop — an accesspoint that
+    /// goes quiet for minutes is healthy, and cutting its reads off kills the
+    /// session silently. Handshake and authentication passes hand in explicit
+    /// deadlines so a hung login fails instead of blocking forever.
+    ///
+    /// Exactly one of the receive callback and the deadline timer resumes the
+    /// continuation; the claim flag makes the loser a no-op.
+    private func readRawBytes(count: Int, timeout: TimeInterval?) async throws -> Data {
+        guard let connection else {
             throw LibrespotError.notInitialized
         }
 
-        // Use actor-based result holder
-        actor ReadResult {
-            var data: Data?
-            var error: Error?
-            var completed = false
+        final class Claim: @unchecked Sendable {
+            private let lock = NSLock()
+            private var claimed = false
 
-            func setResult(_ data: Data) {
-                if !completed {
-                    self.data = data
-                    completed = true
+            func tryClaim() -> Bool {
+                lock.lock()
+                defer { lock.unlock() }
+                if claimed {
+                    return false
                 }
-            }
-
-            func setError(_ error: Error) {
-                if !completed {
-                    self.error = error
-                    completed = true
-                }
-            }
-
-            func getState() -> (completed: Bool, data: Data?, error: Error?) {
-                (completed, data, error)
+                claimed = true
+                return true
             }
         }
 
-        let result = ReadResult()
+        let claim = Claim()
 
-        // Start the read on the connection
-        debugLog("Accesspoint", "Starting receive for \(count) bytes, conn state: \(conn.state)")
-        conn.receive(minimumIncompleteLength: count, maximumLength: count) { [result] content, _, isComplete, error in
-            debugLog("Accesspoint", "Receive callback fired! content=\(content?.count ?? 0) isComplete=\(isComplete) error=\(String(describing: error))")
-            Task {
+        return try await withCheckedThrowingContinuation { continuation in
+            connection.receive(minimumIncompleteLength: count, maximumLength: count) { content, _, isComplete, error in
+                guard claim.tryClaim() else { return }
+
                 if let error {
-                    debugLog("Accesspoint", "readRawBytes(\(count)) error: \(error)")
-                    await result.setError(LibrespotError.connectionFailed(error.localizedDescription))
-                } else if let data = content, data.count >= count {
-                    await result.setResult(data)
-                } else {
-                    let receivedCount = content?.count ?? 0
-                    debugLog("Accesspoint", "readRawBytes(\(count)) incomplete: got \(receivedCount) bytes, isComplete=\(isComplete)")
-                    await result.setError(LibrespotError.connectionFailed("Incomplete data received (expected \(count), got \(receivedCount))"))
+                    debugLog("Accesspoint", "read of \(count) failed: \(error)")
+                    continuation.resume(throwing: LibrespotError.connectionFailed(error.localizedDescription))
+                    return
+                }
+
+                if let data = content, data.count >= count {
+                    continuation.resume(returning: data)
+                    return
+                }
+
+                debugLog("Accesspoint", "read of \(count) got \(content?.count ?? 0) bytes, complete=\(isComplete)")
+                continuation.resume(throwing: LibrespotError.connectionFailed(
+                    isComplete ? "Connection closed mid-read" : "Incomplete read",
+                ))
+            }
+
+            if let timeout {
+                DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                    guard claim.tryClaim() else { return }
+                    continuation.resume(throwing: LibrespotError.timeout("Read timed out after \(timeout)s"))
                 }
             }
         }
-
-        // Poll for result with timeout
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let state = await result.getState()
-            if state.completed {
-                if let data = state.data {
-                    return data
-                } else if let error = state.error {
-                    throw error
-                }
-            }
-            try await Task.sleep(nanoseconds: 10_000_000) // 10ms
-        }
-
-        throw LibrespotError.connectionFailed("Read timeout after \(timeout) seconds")
-    }
-
-    /// Peek raw bytes without consuming them (for error detection)
-    private func peekRawBytes(count: Int) async throws -> Data {
-        // NWConnection doesn't support peek natively, so we read the bytes
-        // and the caller must pass them to receivePacketWithPeeked
-        try await readRawBytes(count: count)
-    }
-
-    /// Receive and decrypt a packet, using already-peeked data for the start
-    private func receivePacketWithPeeked(_ peekedData: Data) async throws -> SpotifyPacket {
-        debugLog("Accesspoint", "receivePacketWithPeeked called with \(peekedData.count) bytes")
-        guard let cipher = cipherPair else {
-            debugLog("Accesspoint", "ERROR: cipher not initialized")
-            throw LibrespotError.notInitialized
-        }
-
-        debugLog("Accesspoint", "About to beginDecrypt with nonce=\(recvNonce)")
-        // Begin decryption session with current nonce
-        await cipher.beginDecrypt(nonce: recvNonce)
-        debugLog("Accesspoint", "beginDecrypt complete")
-
-        // Use the first 3 bytes from peeked data as header
-        let headerEncrypted = peekedData.prefix(3)
-        debugLog("Accesspoint", "Header encrypted (from peek): \(headerEncrypted.map { String(format: "%02X", $0) }.joined(separator: " ")), nonce=\(recvNonce)")
-        let headerDecrypted = await cipher.decryptPart(Data(headerEncrypted))
-        debugLog("Accesspoint", "Header decrypted: \(headerDecrypted.map { String(format: "%02X", $0) }.joined(separator: " "))")
-
-        let command = headerDecrypted[0]
-        let length = Int(headerDecrypted[1]) << 8 | Int(headerDecrypted[2])
-        debugLog("Accesspoint", "Packet header: cmd=0x\(String(format: "%02X", command)), length=\(length)")
-
-        // Calculate how many more bytes we need for the payload
-        // We already have (peekedData.count - 3) bytes that are part of the payload
-        let peekedPayloadBytes = peekedData.count - 3
-        var payloadParts = Data()
-
-        // Use any payload bytes we already have from peeked data
-        if peekedPayloadBytes > 0 {
-            let availablePayload = peekedData.dropFirst(3)
-            payloadParts.append(contentsOf: availablePayload)
-        }
-
-        // Read remaining payload bytes if needed
-        let remainingPayloadBytes = length - peekedPayloadBytes
-        if remainingPayloadBytes > 0 {
-            let morePayload = try await readRawBytes(count: remainingPayloadBytes)
-            payloadParts.append(morePayload)
-        }
-
-        // Decrypt the payload
-        let payloadDecrypted = payloadParts.isEmpty ? Data() : await cipher.decryptPart(payloadParts)
-
-        // Finish decryption and get expected MAC
-        let expectedMac = await cipher.finishDecrypt()
-
-        // Read and verify MAC
-        let receivedMac = try await readRawBytes(count: 4)
-        if expectedMac != receivedMac {
-            debugLog("Accesspoint", "MAC mismatch! expected=\(expectedMac.hexString) received=\(receivedMac.hexString)")
-            throw LibrespotError.macMismatch
-        }
-
-        recvNonce += 1
-
-        return SpotifyPacket(rawCommand: command, payload: payloadDecrypted)
     }
 
     // MARK: - Background Tasks
@@ -893,6 +897,10 @@ public actor Accesspoint {
             } catch {
                 if isConnected {
                     debugLog("Accesspoint", "Receive error: \(error)")
+                    // A dead receiver must not look like a healthy session:
+                    // mark the transport down and tell the owner.
+                    isConnected = false
+                    notifyClosedUnexpectedly()
                 }
                 break
             }

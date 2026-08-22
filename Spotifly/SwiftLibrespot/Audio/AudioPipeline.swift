@@ -87,8 +87,6 @@ actor AudioPipeline {
 
     private var isPlaying = false
     private var isPaused = false
-    /// Continuations of decode-loop passes parked while paused.
-    private var resumeWakers: [CheckedContinuation<Void, Never>] = []
 
     /// Track frames pushed into the sink for the current load.
     private var writtenFrames: Int64 = 0
@@ -185,7 +183,6 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Resuming")
         isPaused = false
-        wakeDecoders()
         sink.resume()
         startPositionTimer()
         playbackStateSubject.send(.playing(trackUri: uri))
@@ -214,13 +211,25 @@ actor AudioPipeline {
         debugLog("AudioPipeline", "Seeking to \(positionMs)ms")
         let frame = Int64((Double(positionMs) / 1000.0) * Double(decoder.format.sampleRate))
 
-        // Cancel the running loop and wake it so cancellation is observed even
-        // though it is parked on pause.
-        decodeTask?.cancel()
-        wakeDecoders()
-        decodeTask = nil
+        // Retire the running loop and wait for it to actually finish before
+        // the decoder below is touched again: two tasks reading one
+        // OggVorbis_File concurrently is undefined behavior, not a glitch.
+        await retireDecodeTask()
 
         startDecoding(from: frame, keepPaused: isPaused)
+    }
+
+    /// Cancels the decode loop and awaits its exit.
+    ///
+    /// Termination is prompt by construction: the writer returns from a full
+    /// buffer once the sink has been stopped (backpressure checks rendering),
+    /// and the pause park polls a flag instead of suspending on a continuation
+    /// nobody may ever fire.
+    private func retireDecodeTask() async {
+        decodeTask?.cancel()
+        let task = decodeTask
+        decodeTask = nil
+        await task?.value
     }
 
     /// Sets output volume (0…1). Gain is applied at the sink, which takes
@@ -310,11 +319,13 @@ actor AudioPipeline {
         var totalWritten: Int64 = 0
 
         while !Task.isCancelled {
-            if await shouldPark() {
-                await waitForResume()
-                if Task.isCancelled {
-                    break
-                }
+            // A pause parks here. Polling rather than suspending keeps
+            // cancellation honored without needing a second party to wake us.
+            while !Task.isCancelled, isPaused {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            if Task.isCancelled {
+                break
             }
 
             let frames = decoder.read(into: buffer, maxFrames: chunkFrames)
@@ -333,23 +344,6 @@ actor AudioPipeline {
         await markDecodingComplete(totalWritten)
     }
 
-    private func shouldPark() -> Bool {
-        isPaused
-    }
-
-    /// Parks the caller until `resume()` wakes it.
-    private func waitForResume() async {
-        await withCheckedContinuation { continuation in
-            resumeWakers.append(continuation)
-        }
-    }
-
-    private func wakeDecoders() {
-        let wakers = resumeWakers
-        resumeWakers = []
-        wakers.forEach { $0.resume() }
-    }
-
     private func noteProgress(_ frames: Int64) {
         writtenFrames = frames
         positionSubject.send(UInt64(frameToMs(currentTrackFrame())))
@@ -365,9 +359,7 @@ actor AudioPipeline {
 
     /// Cancels whatever is running and releases the loaded track.
     private func teardownTrack() async {
-        decodeTask?.cancel()
-        wakeDecoders()
-        decodeTask = nil
+        await retireDecodeTask()
         positionTimer?.cancel()
         positionTimer = nil
 
@@ -409,8 +401,12 @@ actor AudioPipeline {
         positionSubject.send(UInt64(frameToMs(currentTrackFrame())))
 
         if decodingComplete, !endOfTrackFired, writtenFrames > 0 {
-            let played = currentTrackFrame()
-            if played >= writtenFrames - Self.endOfTrackSlackFrames {
+            // Both sides of this comparison count frames decoded *this load*:
+            // the playhead relative to the sink clock origin, against frames
+            // written since that same origin. Mixing in absolute frames would
+            // fire the moment a seek finished decoding, cutting the tail off.
+            let playedThisLoad = sink.playedFramesSinceStart
+            if playedThisLoad >= writtenFrames - Self.endOfTrackSlackFrames {
                 endOfTrackFired = true
                 debugLog("AudioPipeline", "End of track")
                 endOfTrackSubject.send(currentTrackUri ?? "")
