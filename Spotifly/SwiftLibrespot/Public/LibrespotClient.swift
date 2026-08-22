@@ -2,742 +2,954 @@
 //  LibrespotClient.swift
 //  SwiftLibrespot
 //
-//  Public API for Swift librespot - replaces SpotifyPlayer stubs
+//  The playback engine behind the app's SpotifyPlayer facade.
+//
+//  Everything user-facing reads static publishers off SpotifyPlayer; this
+//  class owns the machinery that feeds them: one session (AP socket, dealer,
+//  Spirc), one audio pipeline, and the client-side queue that orders tracks.
 //
 
+import AVFoundation
 import Combine
 import Foundation
 
-/// Main client for Swift librespot
-/// This class provides the same API contract as SpotifyPlayer
-/// and will eventually replace the stub implementations
-public final class LibrespotClient: @unchecked Sendable {
+/// Main client for Swift librespot.
+///
+/// An actor: every control call serializes here. Publishers are thread-safe
+/// Combine subjects, readable synchronously by the facade without awaiting.
+public actor LibrespotClient {
     // MARK: - Singleton
 
     public static let shared = LibrespotClient()
 
-    // MARK: - Properties
+    // MARK: - Dependencies
+
+    private let deviceInfo: DeviceInfo
+    private let storedCredentials = StoredCredentialsStore()
 
     private var session: LibrespotSession?
-    private var audioPipeline: AudioPipeline?
     private var spclient: SPClient?
+    private var audioPipeline: AudioPipeline?
+
+    /// Produces valid bearer tokens for HTTP endpoints (dealer, spclient,
+    /// Web API fallbacks). Injected by the facade, which binds it to the
+    /// app's keymaster grant.
+    private var tokenProvider: (@Sendable () async throws -> String)?
+
+    /// The account the session plays as.
+    private var usernameProvider: (@Sendable () async -> String?)?
+
     private var subscriptions: Set<AnyCancellable> = []
 
-    /// Device information
-    private let deviceInfo: DeviceInfo
+    // MARK: - Queue & Playback Bookkeeping
 
-    /// Current connection state
-    private var connectionState: LibrespotConnectionState?
+    private var playbackQueue = PlaybackQueue()
 
-    /// Cached position from audio pipeline
-    private var cachedPositionMs: UInt32 = 0
+    /// Logical Connect volume (0…65535), mirrored into player state.
+    private var logicalVolume: UInt32 = 32767
 
-    // MARK: - Publishers (matching SpotifyPlayer API)
+    private var shuffleEnabled = false
+    private var repeatMode = PlaybackQueue.RepeatMode.off
 
-    private let queueSubject = CurrentValueSubject<QueueState?, Never>(nil)
-    private let playbackStateSubject = CurrentValueSubject<PlaybackState?, Never>(nil)
-    private let volumeSubject = PassthroughSubject<UInt16, Never>()
-    private let loadingSubject = PassthroughSubject<LoadingNotification, Never>()
-    private let queueChangedSubject = PassthroughSubject<QueueChangedNotification, Never>()
-    private let connectionStateSubject = CurrentValueSubject<LibrespotConnectionState?, Never>(nil)
-    private let contextLoadedSubject = PassthroughSubject<ContextLoadedNotification, Never>()
-    private let sessionDisconnectedSubject = PassthroughSubject<Void, Never>()
-    private let sessionConnectedSubject = PassthroughSubject<Void, Never>()
-    private let sessionClientChangedSubject = PassthroughSubject<SessionClientChangedNotification, Never>()
+    // MARK: - Connection Bookkeeping
+
+    private var shuttingDown = false
+    private var reconnectTask: Task<Void, Never>?
+
+    /// Monotonic counter stamped onto every published connection snapshot so
+    /// out-of-order deliveries cannot regress one.
+    private var connectionRevision: UInt64 = 0
+
+    /// Whether this device is the cluster's active one. Kept beside the
+    /// subject so the synchronous facade getter never awaits the actor.
+    private nonisolated(unsafe) var isActiveDeviceFlag = false
+
+    // MARK: - Publishers (the facade's data sources)
+
+    private nonisolated(unsafe) let queueSubject = CurrentValueSubject<QueueState?, Never>(nil)
+    private nonisolated(unsafe) let playbackStateSubject = CurrentValueSubject<PlaybackState?, Never>(nil)
+    private nonisolated(unsafe) let volumeSubject = PassthroughSubject<UInt16, Never>()
+    private nonisolated(unsafe) let loadingSubject = PassthroughSubject<LoadingNotification, Never>()
+    private nonisolated(unsafe) let setQueueSubject = PassthroughSubject<SetQueueNotification, Never>()
+    private nonisolated(unsafe) let becameInactiveSubject = PassthroughSubject<Void, Never>()
+    private nonisolated(unsafe) let becameActiveSubject = PassthroughSubject<Void, Never>()
+    private nonisolated(unsafe) let activeDeviceSubject = PassthroughSubject<String, Never>()
+    private nonisolated(unsafe) let devicesSubject = CurrentValueSubject<[Device]?, Never>(nil)
+    private nonisolated(unsafe) let sessionClientChangedSubject = PassthroughSubject<SessionClientChangedNotification, Never>()
+    private nonisolated(unsafe) let connectionStateSubject = CurrentValueSubject<LibrespotConnectionState?, Never>(nil)
 
     // MARK: - Public Publishers
 
-    var queue: AnyPublisher<QueueState?, Never> {
+    nonisolated var queue: AnyPublisher<QueueState?, Never> {
         queueSubject.eraseToAnyPublisher()
     }
 
-    var playbackState: AnyPublisher<PlaybackState?, Never> {
+    nonisolated var playbackState: AnyPublisher<PlaybackState?, Never> {
         playbackStateSubject.eraseToAnyPublisher()
     }
 
-    public var volumeChanged: AnyPublisher<UInt16, Never> {
+    nonisolated var volumeChanged: AnyPublisher<UInt16, Never> {
         volumeSubject.eraseToAnyPublisher()
     }
 
-    var loading: AnyPublisher<LoadingNotification, Never> {
+    nonisolated var loading: AnyPublisher<LoadingNotification, Never> {
         loadingSubject.eraseToAnyPublisher()
     }
 
-    var queueChanged: AnyPublisher<QueueChangedNotification, Never> {
-        queueChangedSubject.eraseToAnyPublisher()
+    nonisolated var setQueue: AnyPublisher<SetQueueNotification, Never> {
+        setQueueSubject.eraseToAnyPublisher()
     }
 
-    var connectionStatePublisher: AnyPublisher<LibrespotConnectionState?, Never> {
-        connectionStateSubject.eraseToAnyPublisher()
+    nonisolated var becameInactive: AnyPublisher<Void, Never> {
+        becameInactiveSubject.eraseToAnyPublisher()
     }
 
-    var contextLoaded: AnyPublisher<ContextLoadedNotification, Never> {
-        contextLoadedSubject.eraseToAnyPublisher()
+    nonisolated var becameActive: AnyPublisher<Void, Never> {
+        becameActiveSubject.eraseToAnyPublisher()
     }
 
-    public var sessionDisconnected: AnyPublisher<Void, Never> {
-        sessionDisconnectedSubject.eraseToAnyPublisher()
+    nonisolated var activeDeviceChanged: AnyPublisher<String, Never> {
+        activeDeviceSubject.eraseToAnyPublisher()
     }
 
-    public var sessionConnected: AnyPublisher<Void, Never> {
-        sessionConnectedSubject.eraseToAnyPublisher()
+    nonisolated var devices: AnyPublisher<[Device]?, Never> {
+        devicesSubject.eraseToAnyPublisher()
     }
 
-    var sessionClientChanged: AnyPublisher<SessionClientChangedNotification, Never> {
+    nonisolated var sessionClientChanged: AnyPublisher<SessionClientChangedNotification, Never> {
         sessionClientChangedSubject.eraseToAnyPublisher()
+    }
+
+    nonisolated var connectionState: AnyPublisher<LibrespotConnectionState?, Never> {
+        connectionStateSubject.eraseToAnyPublisher()
     }
 
     // MARK: - Initialization
 
     private init() {
         deviceInfo = DeviceInfo.create(name: "Spotifly")
-        debugLog("LibrespotClient", "Initialized with device: \(deviceInfo.deviceName) (\(deviceInfo.deviceId.prefix(8))...)")
+        debugLog("LibrespotClient", "Created for device \(deviceInfo.deviceName) (\(deviceInfo.deviceId))")
     }
 
-    // MARK: - Session Management
+    // MARK: - Lifecycle
 
-    /// Initialize with an access token and username
-    /// - Parameters:
-    ///   - accessToken: The OAuth access token
-    ///   - username: The Spotify username (required for AP authentication)
-    public func initialize(accessToken: String, username: String) async throws {
-        debugLog("LibrespotClient", "Initializing with access token for user: \(username)...")
+    /// Builds a full session: accesspoint login, dealer socket, Spirc
+    /// registration, and the audio pipeline.
+    ///
+    /// Credentials are resolved inside: a previously captured reusable login
+    /// comes first, falling back to a fresh token from the provider. A
+    /// successful token login stores its reusable credentials for next time.
+    public func initialize(
+        tokenProvider provider: @escaping @Sendable () async throws -> String,
+        usernameProvider: @escaping @Sendable () async -> String?,
+    ) async throws {
+        tokenProvider = provider
+        self.usernameProvider = usernameProvider
+        shuttingDown = false
 
-        // Store token and username for reconnection
-        lastAccessToken = accessToken
-        lastUsername = username
-
-        // Cancel any pending reconnect
         reconnectTask?.cancel()
         reconnectTask = nil
 
-        // Create session
-        session = LibrespotSession(deviceInfo: deviceInfo)
+        await teardown()
 
-        // Subscribe to session state
-        await subscribeToSessionEvents()
+        let credentials = try await credentialsForLogin()
 
-        // Connect with username (required for AP auth)
-        try await session?.connect(accessToken: accessToken, username: username)
+        let newSession = LibrespotSession(deviceInfo: deviceInfo)
+        session = newSession
+        subscribeToSession(newSession)
 
-        // Get spclient host from session
-        let spclientHost = await session?.spclientHost
-
-        // Create SPClient for track metadata and CDN resolution
-        spclient = SPClient(accessToken: accessToken, spclientHost: spclientHost)
-
-        // Create audio pipeline with accesspoint and SPClient
-        if let accesspoint = await session?.accesspoint {
-            audioPipeline = AudioPipeline(
-                accesspoint: accesspoint,
-                accessToken: accessToken,
-                spclientHost: spclientHost
-            )
-
-            // Start the audio engine
-            await audioPipeline?.start()
-
-            // Subscribe to audio pipeline events
-            subscribeToAudioPipelineEvents()
+        let welcome = try await newSession.connect(credentials: credentials) {
+            try await provider()
         }
 
-        // Update connection state
-        updateConnectionState(connected: true)
+        // First successful login (or a refresh of it): capture the reusable
+        // blob so future launches skip the browser entirely.
+        if credentials.accessToken != nil {
+            storedCredentials.save(StoredLogin(
+                username: welcome.canonicalUsername,
+                authData: welcome.reusableAuthCredentials,
+                authType: welcome.reusableAuthCredentialsType.rawValue,
+            ))
+        }
 
-        // Signal connected
-        sessionConnectedSubject.send()
+        let host = await newSession.spclientHost
+        spclient = SPClient(
+            tokenProvider: { try await provider() },
+            spclientHost: host,
+            deviceId: deviceInfo.deviceId,
+        )
+
+        if let accesspoint = await newSession.accesspoint {
+            let pipeline = AudioPipeline(accesspoint: accesspoint, spclient: spclient, sink: SpotifyPlayer.audioRenderer)
+            audioPipeline = pipeline
+            subscribeToPipeline(pipeline)
+            await pipeline.setQuality(Self.qualityFromUserDefaults())
+        }
+
+        flags.markConnected()
+
+        publishConnectionState(connected: true)
 
         debugLog("LibrespotClient", "Initialization complete")
     }
 
-    /// Disconnect and cleanup
-    public func cleanup() async {
-        debugLog("LibrespotClient", "Cleaning up...")
-
-        // Cancel any pending reconnect
-        reconnectTask?.cancel()
-        reconnectTask = nil
-
-        await audioPipeline?.stop()
-        await session?.disconnect()
-
-        audioPipeline = nil
-        spclient = nil
-        session = nil
-        subscriptions.removeAll()
-        cachedPositionMs = 0
-        hasEverConnected = false
-
-        updateConnectionState(connected: false)
-    }
-
-    /// Soft cleanup (preserves playback)
-    public func softCleanup() async {
-        debugLog("LibrespotClient", "Soft cleanup...")
-        // Keep audio playing, just disconnect control
-        await session?.disconnect()
-    }
-
-    /// Shutdown and send goodbye
-    public func shutdown() async {
-        debugLog("LibrespotClient", "Shutting down...")
-        await cleanup()
-    }
-
-    // MARK: - Reconnection
-
-    /// Auto-reconnect state
-    private var autoReconnectEnabled = true
-    private var reconnectTask: Task<Void, Never>?
-    private var lastAccessToken: String?
-    private var lastUsername: String?
-    /// Track if we've ever successfully connected (to avoid reconnect loops on initial connect)
-    private var hasEverConnected = false
-
-    /// Enable or disable auto-reconnection
-    public func setAutoReconnect(_ enabled: Bool) {
-        autoReconnectEnabled = enabled
-        if !enabled {
-            reconnectTask?.cancel()
-            reconnectTask = nil
+    /// Chooses what to log in with: the stored reusable login if present,
+    /// otherwise a fresh token plus username.
+    private func credentialsForLogin() async throws -> APCredentials {
+        if let stored = storedCredentials.load() {
+            return .stored(username: stored.username, authData: stored.authData)
         }
-    }
 
-    /// Attempt to reconnect with exponential backoff
-    /// Uses the session's built-in reconnection logic
-    public func reconnect() async throws {
-        guard let session else {
+        guard let tokenProvider else {
             throw LibrespotError.notInitialized
         }
-
-        debugLog("LibrespotClient", "Initiating reconnection...")
-        try await session.reconnect()
+        let token = try await tokenProvider()
+        guard let username = await usernameProvider?(), !username.isEmpty else {
+            throw LibrespotError.authenticationFailed("No account name available for streaming login")
+        }
+        return .accessToken(token, username: username)
     }
 
-    /// Start auto-reconnect loop with the last used token and username
-    private func startAutoReconnect() {
-        guard autoReconnectEnabled, let token = lastAccessToken, let username = lastUsername else {
-            debugLog("LibrespotClient", "Auto-reconnect disabled or no token/username available")
+    /// Says goodbye and tears everything down. Blocks auto-reconnect until
+    /// the next `initialize`.
+    public func shutdown() async {
+        debugLog("LibrespotClient", "Shutting down")
+        shuttingDown = true
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        await teardown()
+        publishConnectionState(connected: false)
+    }
+
+    /// Shuts down and clears every replaying publisher, so a later login does
+    /// not inherit the previous account's devices, queue, or playback state.
+    public func shutdownAndCleanup() async {
+        await shutdown()
+        devicesSubject.send(nil)
+        queueSubject.send(nil)
+        playbackStateSubject.send(nil)
+        isActiveDeviceFlag = false
+    }
+
+    /// Drops all connections and subscriptions. Credentials survive — sleep
+    /// uses this shape, and wake rebuilds from them.
+    private func teardown() async {
+        subscriptions.removeAll()
+        await audioPipeline?.stop()
+        await session?.disconnect()
+        audioPipeline = nil
+        session = nil
+        spclient = nil
+
+        flags.sessionGone()
+    }
+
+    // MARK: - Sleep / Wake / Recovery
+
+    /// Disconnects without forgetting anything; `forceReconnect` revives it.
+    public func disconnect() {
+        debugLog("LibrespotClient", "Disconnect requested")
+        Task { await session?.disconnect() }
+    }
+
+    /// Outcome of a reconnect request.
+    enum ForceReconnectOutcome {
+        case started
+        case alreadyRecovering
+        case noSession
+    }
+
+    /// Starts rebuilding the session if it is down. Non-blocking: the outcome
+    /// says whether recovery began, was already under way, or is pointless.
+    ///
+    /// The synchronous facade goes through `forceReconnectSync`; this actor
+    /// path exists for internal callers.
+    @discardableResult
+    func forceReconnect() -> ForceReconnectOutcome {
+        forceReconnectSync()
+    }
+
+    private func runRecovery() async {
+        defer { flags.endRecovery() }
+        guard !shuttingDown else { return }
+        guard let session, let credentials = await session.currentCredentials, let tokenProvider else { return }
+
+        do {
+            _ = try await session.connect(credentials: credentials) { [tokenProvider] in
+                try await tokenProvider()
+            }
+            publishConnectionState(connected: true)
+            debugLog("LibrespotClient", "Recovery succeeded")
+        } catch {
+            debugLog("LibrespotClient", "Recovery failed: \(error)")
+            publishConnectionState(connected: false, error: error.localizedDescription)
+        }
+    }
+
+    // MARK: - Credential Management
+
+    /// Removes the stored reusable login so nothing can sign back in.
+    public func clearStreamingCredentials() async {
+        storedCredentials.clear()
+        await session?.forgetCredentials()
+    }
+
+    // MARK: - Playback: Starting Content
+
+    /// Plays a track, album, playlist, artist, or station URI/URL.
+    /// - Parameter trackIndex: index within the context to start at (-1 = first).
+    public func play(uriOrUrl: String, trackIndex: Int) async throws {
+        let uri = Self.normalizedUri(uriOrUrl)
+
+        if uri.contains("spotify:track:") {
+            setQueue(contextUri: uri, tracks: [uri], startIndex: 0)
+            try await loadCurrentTrack()
             return
         }
 
-        // Cancel any existing reconnect task
-        reconnectTask?.cancel()
-
-        reconnectTask = Task { [weak self] in
-            guard let self else { return }
-
-            // Small delay before first attempt to avoid tight loops
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-
-            do {
-                // Try to reinitialize with the stored token and username
-                try await initialize(accessToken: token, username: username)
-                debugLog("LibrespotClient", "Auto-reconnect successful")
-            } catch {
-                debugLog("LibrespotClient", "Auto-reconnect failed: \(error)")
-                // Session's reconnect already handles exponential backoff
-            }
-        }
-    }
-
-    // MARK: - Playback Control
-
-    /// Play a URI (track, album, playlist)
-    public func play(uri: String, positionMs: UInt32 = 0) async throws {
-        debugLog("LibrespotClient", "Playing: \(uri)")
-
-        guard session != nil else {
+        // Anything else is a context that needs resolving to a track list.
+        guard let spclient else {
             throw LibrespotError.notInitialized
         }
 
-        guard let audioPipeline else {
-            throw LibrespotError.notInitialized
+        debugLog("LibrespotClient", "Resolving context \(uri)")
+        let context = try await spclient.resolveContext(uri)
+        guard !context.tracks.isEmpty else {
+            throw LibrespotError.trackNotFound("Context has no tracks")
         }
 
-        // Emit loading notification for fast UI update
-        loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: positionMs))
-
-        // Start playback via audio pipeline
-        do {
-            try await audioPipeline.playTrack(uri: uri, positionMs: UInt64(positionMs))
-        } catch {
-            debugLog("LibrespotClient", "Playback error: \(error)")
-            throw error
-        }
+        let start = trackIndex >= 0 ? min(trackIndex, context.tracks.count - 1) : max(0, context.startIndex)
+        setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: context.tracks, startIndex: start)
+        try await loadCurrentTrack()
     }
 
-    /// Play multiple tracks
     public func playTracks(_ uris: [String]) async throws {
-        guard let first = uris.first else { return }
-        try await play(uri: first)
-        // TODO: Queue remaining tracks via SPIRC
+        let normalized = uris.map(Self.normalizedUri)
+        guard let first = normalized.first else {
+            throw LibrespotError.invalidState("No tracks to play")
+        }
+
+        if normalized.count == 1, first.contains("spotify:track:") {
+            try await play(uriOrUrl: first, trackIndex: 0)
+            return
+        }
+
+        setQueue(contextUri: "", tracks: normalized, startIndex: 0)
+        try await loadCurrentTrack()
     }
 
-    /// Pause playback
+    /// Song radio for a seed track, resolved through its station context.
+    public func playRadio(trackUri: String) async throws {
+        guard let id = SpotifyAPI.parseTrackURI(trackUri) ?? Self.trackIdOnly(from: trackUri) else {
+            throw LibrespotError.trackNotFound("Not a track uri")
+        }
+        try await play(uriOrUrl: "spotify:station:track:\(id)", trackIndex: 0)
+    }
+
+    // MARK: - Playback: Transport
+
     public func pause() async {
-        debugLog("LibrespotClient", "Pausing")
         await audioPipeline?.pause()
-        updatePlaybackState(isPlaying: false, isPaused: true)
     }
 
-    /// Resume playback
     public func resume() async {
-        debugLog("LibrespotClient", "Resuming")
         await audioPipeline?.resume()
-        updatePlaybackState(isPlaying: true, isPaused: false)
     }
 
-    /// Stop playback
     public func stop() async {
-        debugLog("LibrespotClient", "Stopping")
         await audioPipeline?.stop()
-        updatePlaybackState(isPlaying: false, isPaused: false)
     }
 
-    /// Seek to position
     public func seek(positionMs: UInt32) async throws {
-        debugLog("LibrespotClient", "Seeking to \(positionMs)ms")
         try await audioPipeline?.seek(positionMs: UInt64(positionMs))
     }
 
-    /// Skip to next track
     public func next() async throws {
-        debugLog("LibrespotClient", "Next track")
-        // TODO: Implement queue management
+        try await advanceUserInitiated()
     }
 
-    /// Skip to previous track
     public func previous() async throws {
-        debugLog("LibrespotClient", "Previous track")
-        // TODO: Implement queue management
+        if let previous = playbackQueue.backward() {
+            try await loadAndPlay(previous)
+        } else {
+            // Nowhere back: restart the current track, like every other client.
+            try await audioPipeline?.seek(positionMs: 0)
+        }
     }
 
-    /// Set volume (0.0 - 1.0)
+    public func addToQueue(uri: String) async {
+        playbackQueue.enqueue(Self.normalizedUri(uri))
+        publishQueueNotifications()
+    }
+
+    public func setShuffle(_ enabled: Bool) {
+        shuffleEnabled = enabled
+        playbackQueue.setShuffle(enabled)
+        publishQueueNotifications()
+        publishPlaybackStateRefresh()
+    }
+
+    func setRepeat(_ mode: PlaybackQueue.RepeatMode) {
+        repeatMode = mode
+        playbackQueue.setRepeat(mode)
+    }
+
+    // MARK: - Volume
+
+    /// Sets the logical Connect volume (0…1). Reported to other devices; also
+    /// applied audibly, since there is no separate mixer stage anymore.
     public func setVolume(_ volume: Double) async {
-        let volumeFloat = Float(max(0, min(1, volume)))
-        await audioPipeline?.setVolume(volumeFloat)
-        volumeSubject.send(UInt16(volume * 65535))
-    }
-
-    /// Add to queue
-    public func addToQueue(uri: String) async throws {
-        debugLog("LibrespotClient", "Adding to queue: \(uri)")
-        // TODO: Implement queue management
-        queueChangedSubject.send(QueueChangedNotification(trackUri: uri))
-    }
-
-    /// Play radio
-    public func playRadio(trackUri: String) async throws {
-        debugLog("LibrespotClient", "Playing radio for: \(trackUri)")
-        // TODO: Implement radio
+        let clamped = Float(max(0, min(1, volume)))
+        logicalVolume = UInt32(clamped * 65535)
+        await audioPipeline?.setVolume(clamped)
+        volumeSubject.send(UInt16(logicalVolume))
     }
 
     // MARK: - Transfer
 
-    /// Transfer playback to local (this device becomes active)
-    public func transferToLocal() async throws {
-        debugLog("LibrespotClient", "Transferring to local")
-
-        guard let token = lastAccessToken else {
-            throw LibrespotError.invalidState("Not authenticated")
-        }
-
-        guard let deviceId = connectionState?.deviceId else {
-            throw LibrespotError.invalidState("Device ID not available")
-        }
-
-        // Use Web API to transfer playback to this device
-        try await SpotifyAPI.transferPlayback(toDeviceId: deviceId, accessToken: token, play: true)
-        debugLog("LibrespotClient", "Transfer to local complete")
-    }
-
-    /// Transfer playback to another device
+    /// Hands playback over to another Connect device via the Web API.
     public func transferPlayback(toDeviceId deviceId: String) async throws {
-        debugLog("LibrespotClient", "Transferring to device: \(deviceId)")
+        guard let tokenProvider else {
+            throw LibrespotError.notInitialized
+        }
+        let token = try await tokenProvider()
+        try await ConnectWebAPI.transferPlayback(toDeviceId: deviceId, accessToken: token, play: true)
+    }
 
-        guard let token = lastAccessToken else {
-            throw LibrespotError.invalidState("Not authenticated")
+    /// Takes over playback that is currently running elsewhere.
+    public func transferToLocal() async throws {
+        try await transferPlayback(toDeviceId: deviceInfo.deviceId)
+    }
+
+    // MARK: - Synchronous State (read by the facade without awaiting)
+
+    /// Connection bookkeeping the synchronous facade reads. The actor updates
+    /// it; the methods keep check-and-set honest for reconnect dedup.
+    private final nonisolated class Flags: @unchecked Sendable {
+        private let lock = NSLock()
+        var hasEverConnected = false
+        var hasSession = false
+        var recovering = false
+
+        func markConnected() {
+            lock.lock()
+            defer { lock.unlock() }
+            hasEverConnected = true
+            hasSession = true
         }
 
-        // Use Web API to transfer playback to target device
-        try await SpotifyAPI.transferPlayback(toDeviceId: deviceId, accessToken: token, play: true)
-        debugLog("LibrespotClient", "Transfer complete")
+        func sessionGone() {
+            lock.lock()
+            defer { lock.unlock() }
+            hasSession = false
+            recovering = false
+        }
+
+        func tryBeginRecovery() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard hasEverConnected, hasSession, !recovering else { return false }
+            recovering = true
+            return true
+        }
+
+        func endRecovery() {
+            lock.lock()
+            defer { lock.unlock() }
+            recovering = false
+        }
     }
 
-    // MARK: - State
+    private nonisolated let flags = Flags()
 
-    /// Whether session is connected
-    public var isSessionConnected: Bool {
-        session != nil && connectionState?.sessionConnected == true
+    nonisolated var currentConnectionState: LibrespotConnectionState? {
+        connectionStateSubject.value
     }
 
-    /// Whether SPIRC is ready
-    public var isSpircReady: Bool {
-        connectionState?.spircReady == true
-    }
-
-    /// Whether currently playing
-    public var isPlaying: Bool {
+    nonisolated var isPlayingFlagValue: Bool {
         playbackStateSubject.value?.isPlaying == true
     }
 
-    /// Current position in milliseconds
-    /// Note: This is a sync property, can't call actor method. Returns cached value.
-    public var positionMs: UInt32 {
-        cachedPositionMs
+    nonisolated var positionMsCached: UInt64 {
+        positionCache
     }
 
-    /// Get current connection state
-    func getConnectionState() -> LibrespotConnectionState? {
-        connectionState
+    nonisolated var isActiveDeviceFlagValue: Bool {
+        isActiveDeviceFlag
+    }
+
+    nonisolated var queueSnapshotValue: QueueState? {
+        queueSubject.value
+    }
+
+    /// Position cache, fed by the pipeline's position ticks. Written from the
+    /// actor and read anywhere; a torn read costs one stale slider sample.
+    private nonisolated(unsafe) var positionCache: UInt64 = 0
+
+    /// Non-blocking reconnect request for the synchronous facade. Returns the
+    /// outcome immediately; the work continues in a task.
+    nonisolated func forceReconnectSync() -> ForceReconnectOutcome {
+        if flags.tryBeginRecovery() {
+            Task { await self.runRecovery() }
+            return .started
+        }
+        if !flags.hasEverConnected || !flags.hasSession {
+            return .noSession
+        }
+        return .alreadyRecovering
     }
 
     // MARK: - Settings
 
-    /// Set streaming bitrate
-    func setBitrate(_: SpotifyPlayer.Bitrate) {
-        // TODO: Store and apply on next track
+    public func setBitrateKbps(_ kbps: Int) {
+        let quality: AudioPipeline.Quality = switch kbps {
+        case ..<120: .low
+        case ..<240: .normal
+        default: .high
+        }
+        Task { await audioPipeline?.setQuality(quality) }
     }
 
-    /// Set gapless playback
-    public func setGapless(_: Bool) {
-        // TODO: Configure audio pipeline
+    private nonisolated static func qualityFromUserDefaults() -> AudioPipeline.Quality {
+        let raw = UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1
+        return switch raw {
+        case 0: .low
+        case 2: .high
+        default: .normal
+        }
     }
 
-    // MARK: - Private
+    // MARK: - Queue Plumbing
 
-    private func subscribeToSessionEvents() async {
-        guard let session else { return }
-
-        // Clear any existing subscriptions before adding new ones
-        subscriptions.removeAll()
-
-        // Subscribe to session state changes
-        // Use dropFirst to skip the initial .disconnected state that CurrentValueSubject emits
-        session.statePublisher
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                Task { @MainActor [weak self] in
-                    await self?.handleSessionStateChange(state)
-                }
-            }
-            .store(in: &subscriptions)
-
-        // Subscribe to SPIRC player state updates
-        session.playerStatePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                self?.handleSpircPlayerState(state)
-            }
-            .store(in: &subscriptions)
-
-        // Subscribe to SPIRC cluster state updates
-        session.clusterStatePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                self?.handleSpircClusterState(state)
-            }
-            .store(in: &subscriptions)
-
-        // Subscribe to SPIRC commands
-        session.commandsPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] command in
-                self?.handleSpircCommand(command)
-            }
-            .store(in: &subscriptions)
+    private func setQueue(contextUri: String, tracks: [String], startIndex: Int) {
+        playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex)
+        publishQueueNotifications()
     }
 
-    /// Subscribe to audio pipeline events
-    private func subscribeToAudioPipelineEvents() {
-        guard let audioPipeline else { return }
+    private func loadCurrentTrack() async throws {
+        guard let uri = playbackQueue.currentUri ?? playbackQueue.advance() else {
+            throw LibrespotError.invalidState("Nothing to play")
+        }
+        try await loadAndPlay(uri)
+    }
 
-        // Subscribe to playback state changes
-        audioPipeline.playbackState
-            .receive(on: DispatchQueue.main)
+    /// Starts audio for a uri that is already the queue's current track.
+    ///
+    /// Deliberately separate from `play`: advancing through an existing queue
+    /// must not rebuild it.
+    private func loadAndPlay(_ uri: String) async throws {
+        guard let audioPipeline else {
+            throw LibrespotError.notInitialized
+        }
+
+        loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: 0))
+        publishPlaybackState(for: uri, playing: true, paused: false, positionMs: 0)
+        try await audioPipeline.playTrack(uri: uri)
+        knownDurationMs = await audioPipeline.currentDurationMs
+    }
+
+    /// Auto-advance at end of track.
+    private func handleEndOfTrack(_ uri: String) {
+        Task {
+            if repeatMode == .track {
+                try? await loadAndPlay(uri)
+                return
+            }
+            if let upcoming = playbackQueue.advance() {
+                try? await loadAndPlay(upcoming)
+            } else {
+                await audioPipeline?.stop()
+                playbackStateSubject.send(nil)
+            }
+        }
+    }
+
+    /// Manual skip: always moves somewhere, wrapping past the end when repeat
+    /// allows and stopping otherwise.
+    private func advanceUserInitiated() async throws {
+        if let upcoming = playbackQueue.advance() {
+            try await loadAndPlay(upcoming)
+        } else if repeatMode == .off {
+            await audioPipeline?.stop()
+            playbackStateSubject.send(nil)
+        } else if let first = playbackQueue.contextTracks.first {
+            try await loadAndPlay(first)
+        }
+    }
+
+    /// Publishes both queue shapes the app listens to.
+    private func publishQueueNotifications() {
+        let recent = playbackQueue.recent()
+        let current = playbackQueue.currentUri
+        let upcoming = playbackQueue.upcoming()
+
+        let currentItem = current.map { QueueItem(uri: $0, provider: "context") }
+
+        queueSubject.send(QueueState(
+            currentTrack: currentItem,
+            nextTracks: upcoming.map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            previousTracks: recent.map { QueueItem(uri: $0.uri, provider: $0.provider) },
+        ))
+
+        setQueueSubject.send(SetQueueNotification(
+            contextUri: playbackQueue.contextUri,
+            currentTrack: current.map { SetQueueTrackInfo(uri: $0, provider: "context") },
+            nextTracks: upcoming.map { SetQueueTrackInfo(uri: $0.uri, provider: $0.provider) },
+            prevTracks: recent.map { SetQueueTrackInfo(uri: $0.uri, provider: $0.provider) },
+        ))
+    }
+
+    // MARK: - Pipeline Wiring
+
+    private func subscribeToPipeline(_ pipeline: AudioPipeline) {
+        pipeline.playbackState
             .sink { [weak self] state in
-                self?.handleAudioPipelineState(state)
+                guard let self else { return }
+                Task { await self.handlePipelineState(state) }
             }
             .store(in: &subscriptions)
 
-        // Subscribe to position updates
-        audioPipeline.position
-            .receive(on: DispatchQueue.main)
+        pipeline.position
             .sink { [weak self] positionMs in
-                self?.cachedPositionMs = UInt32(positionMs)
+                self?.positionCache = positionMs
             }
             .store(in: &subscriptions)
 
-        // Subscribe to errors
-        audioPipeline.errors
-            .receive(on: DispatchQueue.main)
+        pipeline.endOfTrack
+            .sink { [weak self] uri in
+                guard let self else { return }
+                Task { await self.handleEndOfTrack(uri) }
+            }
+            .store(in: &subscriptions)
+
+        pipeline.errors
             .sink { [weak self] error in
-                debugLog("LibrespotClient", "Audio pipeline error: \(error)")
-                self?.playbackStateSubject.send(PlaybackState(
-                    isPlaying: false,
-                    isPaused: false,
-                    trackUri: self?.playbackStateSubject.value?.trackUri ?? "",
-                    positionMs: 0,
-                    durationMs: 0,
-                    shuffle: false,
-                    repeatTrack: false,
-                    repeatContext: false
-                ))
+                debugLog("LibrespotClient", "Audio pipeline error: \(error.localizedDescription)")
+                guard let self else { return }
+                Task { await self.clearPlaybackState() }
             }
             .store(in: &subscriptions)
     }
 
-    /// Handle audio pipeline state changes
-    private func handleAudioPipelineState(_ state: AudioPipeline.AudioPlaybackState) {
+    private func clearPlaybackState() {
+        playbackStateSubject.send(nil)
+    }
+
+    private func handlePipelineState(_ state: AudioPipeline.AudioPlaybackState) async {
         switch state {
         case .idle:
-            playbackStateSubject.send(nil)
+            break // end-of-track and stop own the nil transition
 
         case let .loading(trackUri):
             loadingSubject.send(LoadingNotification(trackUri: trackUri, positionMs: 0))
 
         case let .playing(trackUri):
-            let current = playbackStateSubject.value
-            playbackStateSubject.send(PlaybackState(
-                isPlaying: true,
-                isPaused: false,
-                trackUri: trackUri,
-                positionMs: Int64(cachedPositionMs),
-                durationMs: current?.durationMs ?? 0,
-                shuffle: current?.shuffle ?? false,
-                repeatTrack: current?.repeatTrack ?? false,
-                repeatContext: current?.repeatContext ?? false
-            ))
+            let position = await audioPipeline?.currentPositionMs() ?? 0
+            publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: position)
 
         case let .paused(trackUri):
-            let current = playbackStateSubject.value
-            playbackStateSubject.send(PlaybackState(
-                isPlaying: false,
-                isPaused: true,
-                trackUri: trackUri,
-                positionMs: Int64(cachedPositionMs),
-                durationMs: current?.durationMs ?? 0,
-                shuffle: current?.shuffle ?? false,
-                repeatTrack: current?.repeatTrack ?? false,
-                repeatContext: current?.repeatContext ?? false
-            ))
-
-        case let .buffering(trackUri):
-            loadingSubject.send(LoadingNotification(trackUri: trackUri, positionMs: cachedPositionMs))
-
-        case let .error(message):
-            debugLog("LibrespotClient", "Playback error: \(message)")
+            let position = await audioPipeline?.currentPositionMs() ?? 0
+            publishPlaybackState(for: trackUri, playing: false, paused: true, positionMs: position)
         }
+
+        await reportPlaybackToCluster()
     }
 
-    // MARK: - SPIRC Event Handlers
-
-    private func handleSpircPlayerState(_ state: SpircController.SpircPlayerState?) {
-        guard let state else {
-            playbackStateSubject.send(nil)
+    /// Mirrors current playback into Spirc's connect state so other Spotify
+    /// clients see this device playing (and can command it).
+    private func reportPlaybackToCluster() async {
+        guard let session else { return }
+        guard let current = playbackStateSubject.value else {
+            Task { await session.reportLocalPlayerState(nil, active: false) }
             return
         }
 
-        // Convert SpircPlayerState to PlaybackState
-        let playbackState = PlaybackState(
-            isPlaying: state.isPlaying,
-            isPaused: state.isPaused,
-            trackUri: state.trackUri ?? "",
-            positionMs: Int64(state.positionMs),
-            durationMs: Int64(state.durationMs),
-            shuffle: state.shuffle,
-            repeatTrack: state.repeatMode == .track,
-            repeatContext: state.repeatMode == .context,
+        let spircState = await SpircController.SpircPlayerState(
+            isPlaying: current.isPlaying,
+            isPaused: current.isPaused,
+            trackUri: current.trackUri.isEmpty ? nil : current.trackUri,
+            positionMs: UInt64(max(0, current.positionMs)),
+            durationMs: UInt64(max(0, (audioPipeline?.currentDurationMs) ?? current.durationMs)),
+            shuffle: current.shuffle,
+            repeatMode: current.repeatTrack ? .track : (current.repeatContext ? .context : .off),
+            timestamp: UInt64(Date().timeIntervalSince1970 * 1000),
         )
-
-        debugLog("LibrespotClient", "SPIRC player state: playing=\(playbackState.isPlaying), uri=\(playbackState.trackUri.prefix(50))")
-        playbackStateSubject.send(playbackState)
+        let becameActive = current.isPlaying
+        Task { await session.reportLocalPlayerState(spircState, active: becameActive) }
     }
 
-    private func handleSpircClusterState(_ state: SpircController.ClusterState?) {
-        guard let state else { return }
+    // MARK: - Session Wiring
 
-        debugLog("LibrespotClient", "SPIRC cluster: \(state.devices.count) devices, active=\(state.activeDeviceId ?? "none")")
+    private func subscribeToSession(_ session: LibrespotSession) {
+        session.statePublisher
+            .sink { [weak self] state in
+                guard let self else { return }
+                Task { await self.handleSessionState(state) }
+            }
+            .store(in: &subscriptions)
 
-        // TODO: Emit device list updates if we add a devices publisher
+        session.clusterStatePublisher
+            .sink { [weak self] cluster in
+                guard let self else { return }
+                Task { await self.handleClusterUpdate(cluster) }
+            }
+            .store(in: &subscriptions)
+
+        session.commandsPublisher
+            .sink { [weak self] command in
+                guard let self else { return }
+                Task { await self.executeRemoteCommand(command) }
+            }
+            .store(in: &subscriptions)
     }
 
-    private func handleSpircCommand(_ command: SpircCommand) {
-        debugLog("LibrespotClient", "SPIRC command: \(command)")
-
-        // Execute commands on audio pipeline via a Task
-        Task { [weak self] in
-            await self?.executeSpircCommand(command)
+    private func handleSessionState(_ state: SessionState) {
+        switch state {
+        case .connected:
+            publishConnectionState(connected: true)
+        case .disconnected, .failed:
+            publishConnectionState(connected: false)
+            startAutoRecoveryIfNeeded()
+        case .connecting, .authenticating:
+            break
+        case let .reconnecting(attempt):
+            publishConnectionState(connected: false, reconnectAttempt: UInt32(attempt))
         }
     }
 
-    /// Execute SPIRC command on audio pipeline
-    private func executeSpircCommand(_ command: SpircCommand) async {
-        switch command {
-        case let .play(cmd):
-            // Emit loading notification for fast UI update
-            if let uri = cmd.trackUri ?? cmd.trackUris?.first {
-                loadingSubject.send(LoadingNotification(
-                    trackUri: uri,
-                    positionMs: UInt32(cmd.positionMs ?? 0)
-                ))
+    private func startAutoRecoveryIfNeeded() {
+        guard !shuttingDown, flags.tryBeginRecovery() else { return }
 
-                // Start playback via audio pipeline
-                do {
-                    try await audioPipeline?.playTrack(uri: uri, positionMs: UInt64(cmd.positionMs ?? 0))
-                } catch {
-                    debugLog("LibrespotClient", "SPIRC play error: \(error)")
-                }
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else {
+                self?.flags.endRecovery()
+                return
             }
+            await self?.runRecovery()
+        }
+    }
 
-            // Also emit context loaded if we have a context
-            if let contextUri = cmd.contextUri {
-                let notification = ContextLoadedNotification(
-                    contextUri: contextUri,
-                    currentTrackUri: cmd.trackUri ?? cmd.trackUris?.first,
-                    currentTrackProvider: "context",
-                    nextTrackUris: [],
-                    nextTrackProviders: [],
-                    prevTrackUris: [],
-                    prevTrackProviders: []
-                )
-                contextLoadedSubject.send(notification)
+    // MARK: - Cluster Handling
+
+    private func handleClusterUpdate(_ cluster: SpircController.ClusterState?) async {
+        guard let cluster else { return }
+
+        let devices = cluster.devices.map(\.asEntity)
+        devicesSubject.send(devices)
+
+        if let activeId = cluster.activeDeviceId, !activeId.isEmpty {
+            let changed = activeDeviceSubject
+            let wasActive = isActiveDeviceFlag
+            let nowActive = activeId == deviceInfo.deviceId
+            isActiveDeviceFlag = nowActive
+
+            changed.send(activeId)
+
+            if nowActive, !wasActive {
+                becameActiveSubject.send()
+            } else if !nowActive, wasActive {
+                becameInactiveSubject.send()
+            }
+        }
+
+        await publishConnectionState(connected: session?.isConnected == true)
+    }
+
+    // MARK: - Remote Commands
+
+    private func executeRemoteCommand(_ command: SpircCommand) async {
+        debugLog("LibrespotClient", "Remote command: \(command)")
+
+        switch command {
+        case let .play(playCommand):
+            let target = playCommand.trackUri
+                ?? playCommand.trackUris?.first
+                ?? playCommand.contextUri
+            guard let target else { return }
+            try? await play(uriOrUrl: target, trackIndex: playCommand.index ?? -1)
+            if let positionMs = playCommand.positionMs, positionMs > 0 {
+                try? await audioPipeline?.seek(positionMs: positionMs)
             }
 
         case .pause:
-            await audioPipeline?.pause()
+            await pause()
 
         case .resume:
-            await audioPipeline?.resume()
+            await resume()
 
         case let .seekTo(positionMs):
-            try? await audioPipeline?.seek(positionMs: UInt64(positionMs))
+            try? await audioPipeline?.seek(positionMs: positionMs)
 
         case .next:
-            // TODO: Implement queue-based next track
-            debugLog("LibrespotClient", "SPIRC next not yet implemented")
+            try? await advanceUserInitiated()
 
         case .prev:
-            // TODO: Implement queue-based previous track
-            debugLog("LibrespotClient", "SPIRC prev not yet implemented")
+            try? await previous()
 
         case let .setVolume(volume):
-            // Volume is 0-65535, convert to 0.0-1.0
-            let normalizedVolume = Float(volume) / 65535.0
-            await audioPipeline?.setVolume(normalizedVolume)
-            volumeSubject.send(UInt16(volume))
-
-        case let .addToQueue(uri):
-            // TODO: Implement queue management
-            queueChangedSubject.send(QueueChangedNotification(trackUri: uri))
+            await setVolume(Double(volume) / 65535.0)
 
         case let .setShuffle(enabled):
-            // Update playback state with new shuffle value
-            if let current = playbackStateSubject.value {
-                let updated = PlaybackState(
-                    isPlaying: current.isPlaying,
-                    isPaused: current.isPaused,
-                    trackUri: current.trackUri,
-                    positionMs: current.positionMs,
-                    durationMs: current.durationMs,
-                    shuffle: enabled,
-                    repeatTrack: current.repeatTrack,
-                    repeatContext: current.repeatContext
-                )
-                playbackStateSubject.send(updated)
-            }
+            setShuffle(enabled)
 
         case let .setRepeat(mode):
-            // Update playback state with new repeat value
-            if let current = playbackStateSubject.value {
-                let updated = PlaybackState(
-                    isPlaying: current.isPlaying,
-                    isPaused: current.isPaused,
-                    trackUri: current.trackUri,
-                    positionMs: current.positionMs,
-                    durationMs: current.durationMs,
-                    shuffle: current.shuffle,
-                    repeatTrack: mode == .track,
-                    repeatContext: mode == .context
-                )
-                playbackStateSubject.send(updated)
+            let repeatMode: PlaybackQueue.RepeatMode = switch mode {
+            case .off: .off
+            case .context: .context
+            case .track: .track
             }
+            setRepeat(repeatMode)
 
-        case .transfer:
-            // Transfer command - session connected/disconnected events handle this
-            break
+        case let .addToQueue(uri):
+            await addToQueue(uri: uri)
 
-        case .unknown:
+        case .transfer, .unknown:
             break
         }
     }
 
-    private func handleSessionStateChange(_ state: SessionState) async {
-        switch state {
-        case .connected:
-            hasEverConnected = true
-            updateConnectionState(connected: true)
-            sessionConnectedSubject.send()
-        case .disconnected:
-            updateConnectionState(connected: false)
-            // Only emit disconnect and auto-reconnect if we were previously connected
-            // This prevents spurious disconnect events during initial connection failures
-            if hasEverConnected {
-                sessionDisconnectedSubject.send()
-                startAutoReconnect()
-            }
-        case let .failed(message):
-            updateConnectionState(connected: false, error: message)
-            // Only emit disconnect and auto-reconnect if we were previously connected
-            if hasEverConnected {
-                sessionDisconnectedSubject.send()
-                startAutoReconnect()
-            }
-        case let .reconnecting(attempt):
-            connectionState = LibrespotConnectionState(
-                sessionConnected: false,
-                sessionConnectionId: connectionState?.sessionConnectionId,
-                spircReady: false,
-                deviceId: deviceInfo.deviceId,
-                deviceName: deviceInfo.deviceName,
-                reconnectAttempt: UInt32(attempt),
-                lastError: nil,
-                connectedSinceMs: nil,
-            )
-            connectionStateSubject.send(connectionState)
-        default:
-            break
-        }
+    // MARK: - State Publishing
+
+    private func publishPlaybackState(
+        for trackUri: String,
+        playing: Bool,
+        paused: Bool,
+        positionMs: UInt64,
+    ) {
+        playbackStateSubject.send(PlaybackState(
+            isPlaying: playing && !paused,
+            isPaused: paused,
+            trackUri: trackUri,
+            positionMs: Int64(positionMs),
+            durationMs: durationMsForCurrentTrack(),
+            shuffle: shuffleEnabled,
+            repeatTrack: repeatMode == .track,
+            repeatContext: repeatMode == .context,
+            timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
+        ))
     }
 
-    private func updateConnectionState(connected: Bool, error: String? = nil) {
-        connectionState = LibrespotConnectionState(
+    /// Re-emits the last playback state — used after option changes (shuffle,
+    /// repeat) where only the flags moved.
+    private func publishPlaybackStateRefresh() {
+        guard let current = playbackStateSubject.value else { return }
+        playbackStateSubject.send(PlaybackState(
+            isPlaying: current.isPlaying,
+            isPaused: current.isPaused,
+            trackUri: current.trackUri,
+            positionMs: current.positionMs,
+            durationMs: current.durationMs,
+            shuffle: shuffleEnabled,
+            repeatTrack: repeatMode == .track,
+            repeatContext: repeatMode == .context,
+            timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
+        ))
+    }
+
+    /// Duration of the currently loaded track, captured when it starts. The
+    /// facade's playback states carry it so the seek bar knows the length.
+    private var knownDurationMs: Int64 = 0
+
+    private func durationMsForCurrentTrack() -> Int64 {
+        knownDurationMs
+    }
+
+    private func publishConnectionState(
+        connected: Bool,
+        error: String? = nil,
+        reconnectAttempt: UInt32 = 0,
+    ) {
+        connectionRevision += 1
+        let state = LibrespotConnectionState(
+            revision: connectionRevision,
             sessionConnected: connected,
             sessionConnectionId: nil,
             spircReady: connected,
             deviceId: deviceInfo.deviceId,
             deviceName: deviceInfo.deviceName,
-            reconnectAttempt: 0,
+            reconnectAttempt: reconnectAttempt,
             lastError: error,
             connectedSinceMs: connected ? UInt64(Date().timeIntervalSince1970 * 1000) : nil,
+            isActiveDevice: isActiveDeviceFlag,
         )
-        connectionStateSubject.send(connectionState)
+        connectionStateSubject.send(state)
     }
 
-    private func updatePlaybackState(isPlaying: Bool, isPaused: Bool) {
-        let current = playbackStateSubject.value
-        let newState = PlaybackState(
-            isPlaying: isPlaying,
-            isPaused: isPaused,
-            trackUri: current?.trackUri ?? "",
-            positionMs: current?.positionMs ?? 0,
-            durationMs: current?.durationMs ?? 0,
-            shuffle: current?.shuffle ?? false,
-            repeatTrack: current?.repeatTrack ?? false,
-            repeatContext: current?.repeatContext ?? false,
+    // MARK: - Helpers
+
+    private static func normalizedUri(_ uriOrUrl: String) -> String {
+        let trimmed = uriOrUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let id = SpotifyAPI.parseTrackURI(trimmed) {
+            return "spotify:track:\(id)"
+        }
+        return trimmed
+    }
+
+    private static func trackIdOnly(from uri: String) -> String? {
+        guard let range = uri.range(of: "spotify:track:") else { return nil }
+        return String(uri[range.upperBound...])
+    }
+}
+
+// MARK: - QueueItem Convenience
+
+extension QueueItem {
+    /// A metadata-less placeholder; names hydrate through the store.
+    nonisolated init(uri: String, provider: String) {
+        self.init(
+            id: uri,
+            uri: uri,
+            name: "",
+            artistName: "",
+            imageURLString: "",
+            durationMs: 0,
+            albumId: nil,
+            artistId: nil,
+            externalUrl: nil,
+            provider: provider,
         )
-        playbackStateSubject.send(newState)
+    }
+}
+
+// MARK: - Device Mapping
+
+extension SpircController.ClusterState.ConnectedDevice {
+    /// The entity the rest of the app speaks.
+    nonisolated var asEntity: Device {
+        Device(
+            id: id,
+            name: name,
+            type: deviceType.apiName,
+            isActive: isActive,
+            isPrivateSession: false,
+            isRestricted: false,
+            volumePercent: volume > 0 ? Int((Double(volume) / 65535.0 * 100).rounded()) : nil,
+            disableVolume: false,
+        )
+    }
+}
+
+extension SpotifyDeviceType {
+    /// The lowercased type names `/me/player/devices` style payloads use.
+    nonisolated var apiName: String {
+        switch self {
+        case .computer: "computer"
+        case .tablet: "tablet"
+        case .smartphone: "smartphone"
+        case .speaker: "speaker"
+        case .tv: "tv"
+        case .avr: "avr"
+        case .stb: "stb"
+        case .audiodongle: "audiodongle"
+        case .gameconsole: "gameconsole"
+        case .castvideo: "castvideo"
+        case .castaudio: "castaudio"
+        case .automobile: "automobile"
+        case .smartwatch: "smartwatch"
+        case .chromebook: "chromebook"
+        default: "unknown"
+        }
     }
 }

@@ -2,160 +2,209 @@
 //  VorbisDecoder.swift
 //  SwiftLibrespot
 //
-//  OGG Vorbis to PCM decoding
+//  Swift wrapper over the vendored libvorbisfile for decoding Spotify's
+//  Ogg Vorbis audio streams held in memory.
 //
 
-import AVFoundation
+import CVorbis
 import Foundation
 
-/// Decodes OGG Vorbis audio to PCM
-/// Note: This is a placeholder - actual implementation would use a Vorbis library
-public actor VorbisDecoder {
-    // MARK: - Properties
+/// Decodes a decrypted Ogg Vorbis stream into interleaved Float32 PCM.
+///
+/// The decrypted file is held in memory for the lifetime of the decoder (a
+/// typical track is a few megabytes), which makes seeking a cheap
+/// `ov_pcm_seek` against the buffered stream rather than a re-download.
+///
+/// Not thread-safe by design: ownership transfers to exactly one decode task
+/// at a time (see AudioPipeline). Declared `@unchecked Sendable` so that
+/// hand-off can cross an actor boundary without copying.
+final nonisolated class VorbisDecoder: @unchecked Sendable {
+    /// Stream format as it came off the wire. Spotify serves stereo 44.1 kHz,
+    /// but nothing here assumes that — callers configure their renderers from
+    /// these values.
+    struct Format: Equatable {
+        let sampleRate: Int
+        let channels: Int
 
-    /// Output format (44.1kHz stereo Float32)
-    public let outputFormat: AVAudioFormat
-
-    /// Decoded samples buffer
-    private var decodedSamples: [Float] = []
-
-    /// Current position in decoded samples
-    private var samplePosition: Int = 0
-
-    // MARK: - Initialization
-
-    public init() {
-        // Standard Spotify output format
-        outputFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 44100,
-            channels: 2,
-            interleaved: false,
-        )!
-
-        debugLog("VorbisDecoder", "Initialized with format: \(outputFormat)")
+        var frameSampleCount: Int {
+            channels
+        }
     }
 
-    // MARK: - Decoding
+    /// Total decoded frames in the stream, or -1 when unknown (unseekable).
+    private(set) var totalFrames: Int64
 
-    /// Decode OGG Vorbis data to PCM
-    public func decode(_ oggData: Data) async throws -> AVAudioPCMBuffer {
-        debugLog("VorbisDecoder", "Decoding \(oggData.count) bytes of OGG data")
+    let format: Format
 
-        // TODO: Implement actual Vorbis decoding
-        // Options:
-        // 1. Use a Swift Vorbis wrapper (e.g., swift-vorbis)
-        // 2. Bridge to libvorbis via C
-        // 3. Use AudioToolbox with AudioFileStream
+    private var file = OggVorbis_File()
+    private(set) var isOpen = false
 
-        // For now, return silence as a placeholder
-        let frameCount = AVAudioFrameCount(1024)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: frameCount) else {
-            throw LibrespotError.decodingFailed("Failed to create PCM buffer")
+    /// Heap context shared with the C read callbacks.
+    private final nonisolated class Source {
+        let bytes: [UInt8]
+        /// Read position within `bytes`. Only touched from the callbacks, and
+        /// libvorbisfile serializes its calls into a single stream.
+        var offset: Int = 0
+
+        init(_ data: Data) {
+            bytes = [UInt8](data)
         }
+    }
 
-        buffer.frameLength = frameCount
+    private let source: Source
 
-        // Fill with silence (placeholder)
-        if let channelData = buffer.floatChannelData {
-            for channel in 0 ..< Int(outputFormat.channelCount) {
-                for frame in 0 ..< Int(frameCount) {
-                    channelData[channel][frame] = 0.0
-                }
+    // MARK: - Lifecycle
+
+    /// Opens a decrypted Ogg Vorbis stream. Throws when the data does not parse,
+    /// which after decryption almost always means wrong key or wrong byte offset —
+    /// garbage where the first Ogg page should be, not a corrupt tail.
+    init(data: Data) throws {
+        source = Source(data)
+
+        var error: Int32 = OV_EBADHEADER
+        var openedFormat: Format?
+        var openedTotal: Int64 = -1
+
+        source.offset = 0
+        let result = ov_open_callbacks(Unmanaged.passUnretained(source).toOpaque(), &file, nil, 0, Self.callbacks)
+        if result == 0 {
+            isOpen = true
+            if let info = ov_info(&file, -1) {
+                openedFormat = Format(sampleRate: Int(info.pointee.rate), channels: Int(info.pointee.channels))
             }
+            openedTotal = ov_pcm_total(&file, -1)
+        } else {
+            error = result
         }
 
-        return buffer
-    }
-
-    /// Decode a chunk of OGG data and append to internal buffer
-    public func decodeChunk(_ oggData: Data) async throws {
-        // TODO: Implement streaming decode
-        debugLog("VorbisDecoder", "Decoding chunk: \(oggData.count) bytes")
-    }
-
-    /// Get decoded samples for playback
-    public func getSamples(count: Int) -> [Float] {
-        let available = min(count, decodedSamples.count - samplePosition)
-        let samples = Array(decodedSamples[samplePosition ..< (samplePosition + available)])
-        samplePosition += available
-        return samples
-    }
-
-    /// Reset decoder state
-    public func reset() {
-        decodedSamples.removeAll()
-        samplePosition = 0
-        debugLog("VorbisDecoder", "Reset")
-    }
-
-    /// Seek to a sample position
-    public func seek(toSample sample: Int) {
-        samplePosition = min(sample, decodedSamples.count)
-    }
-
-    // MARK: - OGG Parsing
-
-    /// Parse OGG page header
-    private func parseOGGPage(_ data: Data) -> OGGPage? {
-        guard data.count >= 27 else { return nil }
-
-        // Check magic "OggS"
-        guard data[0] == 0x4F,
-              data[1] == 0x67,
-              data[2] == 0x67,
-              data[3] == 0x53
-        else { return nil }
-
-        let version = data[4]
-        let headerType = data[5]
-        let granulePosition = data.subdata(in: 6 ..< 14).withUnsafeBytes { $0.load(as: UInt64.self) }
-        let serialNumber = data.subdata(in: 14 ..< 18).withUnsafeBytes { $0.load(as: UInt32.self) }
-        let pageNumber = data.subdata(in: 18 ..< 22).withUnsafeBytes { $0.load(as: UInt32.self) }
-        let segmentCount = Int(data[26])
-
-        return OGGPage(
-            version: version,
-            headerType: headerType,
-            granulePosition: granulePosition,
-            serialNumber: serialNumber,
-            pageNumber: pageNumber,
-            segmentCount: segmentCount,
-        )
-    }
-
-    struct OGGPage {
-        let version: UInt8
-        let headerType: UInt8
-        let granulePosition: UInt64
-        let serialNumber: UInt32
-        let pageNumber: UInt32
-        let segmentCount: Int
-    }
-}
-
-/// AudioToolbox-based decoder as fallback
-public actor AudioToolboxDecoder {
-    // MARK: - Properties
-
-    private nonisolated(unsafe) var converter: AudioConverterRef?
-
-    // MARK: - Initialization
-
-    public init() {}
-
-    // MARK: - Decoding
-
-    /// Attempt to decode using AudioToolbox
-    public func decode(_: Data, inputFormat _: AudioStreamBasicDescription) async throws -> AVAudioPCMBuffer {
-        // TODO: Implement using AudioConverterFillComplexBuffer
-
-        throw LibrespotError.decodingFailed("AudioToolbox decoder not implemented")
+        guard let format = openedFormat else {
+            // On open failure the stream was never successfully opened, so there
+            // is nothing to ov_clear — the docs are explicit about that.
+            throw LibrespotError.decodingFailed("not an Ogg Vorbis stream (libvorbisfile error \(error))")
+        }
+        self.format = format
+        totalFrames = openedTotal
     }
 
     deinit {
-        if let conv = converter {
-            AudioConverterDispose(conv)
-        }
+        close()
     }
+
+    func close() {
+        guard isOpen else { return }
+        ov_clear(&file)
+        isOpen = false
+    }
+
+    // MARK: - Reading
+
+    /// Reads up to `maxFrames` decoded frames into `output`, interleaved,
+    /// returning the number of frames written. Returns 0 at end of stream.
+    ///
+    /// `output` must hold at least `maxFrames * format.channels` floats.
+    func read(into output: UnsafeMutablePointer<Float>, maxFrames: Int) -> Int {
+        guard isOpen, maxFrames > 0 else { return 0 }
+
+        var bitstream: Int32 = 0
+        var channelsBuffer: UnsafeMutablePointer<UnsafeMutablePointer<Float>?>?
+        var written = 0
+
+        while written < maxFrames {
+            let frames = ov_read_float(&file, &channelsBuffer, Int32(maxFrames - written), &bitstream)
+            if frames == 0 {
+                break // end of stream
+            }
+            if frames == -3 /* OV_HOLE */ || frames == -137 /* OV_EBADLINK */ {
+                // Recoverable: the decoder resynced or we seeked across a
+                // logical bitstream boundary. Keep reading.
+                continue
+            }
+            if frames < 0 {
+                debugLog("VorbisDecoder", "read error \(frames)")
+                break
+            }
+
+            guard let channels = channelsBuffer else { break }
+            let channelCount = format.channels
+            let frameCount = Int(frames)
+
+            for frame in 0 ..< frameCount {
+                for channel in 0 ..< channelCount {
+                    output[written + frame * channelCount + channel] = channels[channel]![frame]
+                }
+            }
+
+            written += frameCount
+        }
+
+        return written
+    }
+
+    /// Reads up to `maxFrames` frames, allocating the destination array.
+    func read(maxFrames: Int) -> ([Float], framesRead: Int)? {
+        var output = [Float](repeating: 0, count: maxFrames * max(1, format.channels))
+        let frames = read(into: &output, maxFrames: maxFrames)
+        guard frames > 0 else { return nil }
+        return (output, frames)
+    }
+
+    // MARK: - Positioning
+
+    /// Current decode position in frames.
+    var currentFrame: Int64 {
+        isOpen ? ov_pcm_tell(&file) : 0
+    }
+
+    /// Seeks to an absolute frame offset. Cheap because the whole stream is in
+    /// memory. Returns false when the stream cannot be seeked.
+    @discardableResult
+    func seek(toFrame frame: Int64) -> Bool {
+        guard isOpen else { return false }
+        return ov_pcm_seek(&file, frame) == 0
+    }
+
+    // MARK: - C callbacks
+
+    private static let callbacks = ov_callbacks(
+        read_func: { buffer, size, count, datasource in
+            guard let datasource, let buffer else { return 0 }
+            let source = Unmanaged<Source>.fromOpaque(datasource).takeUnretainedValue()
+            let request = size * count
+            let available = source.bytes.count - source.offset
+            let copied = min(request, available)
+
+            if copied > 0 {
+                source.bytes.withUnsafeBytes { raw in
+                    buffer.copyMemory(
+                        from: raw.baseAddress!.advanced(by: source.offset),
+                        byteCount: copied,
+                    )
+                }
+                source.offset += copied
+            }
+            return copied / size
+        },
+        seek_func: { datasource, offset, whence in
+            guard let datasource else { return -1 }
+            let source = Unmanaged<Source>.fromOpaque(datasource).takeUnretainedValue()
+
+            let target: Int
+            switch whence {
+            case 0: target = Int(offset) // SEEK_SET
+            case 1: target = source.offset + Int(offset) // SEEK_CUR
+            case 2: target = source.bytes.count + Int(offset) // SEEK_END
+            default: return -1
+            }
+
+            guard target >= 0, target <= source.bytes.count else { return -1 }
+            source.offset = target
+            return 0
+        },
+        close_func: { _ in 0 }, // Swift owns the lifetime
+        tell_func: { datasource in
+            guard let datasource else { return -1 }
+            let source = Unmanaged<Source>.fromOpaque(datasource).takeUnretainedValue()
+            return source.offset // long → Swift Int on LP64
+        },
+    )
 }

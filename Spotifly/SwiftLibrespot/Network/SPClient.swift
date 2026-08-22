@@ -12,30 +12,32 @@ import Foundation
 public actor SPClient {
     // MARK: - Properties
 
-    private let accessToken: String
+    /// Produces a current bearer token on demand, so long-lived sessions
+    /// survive the hour-long lifetime of any single token.
+    private let tokenProvider: @Sendable () async throws -> String
     private var spclientHost: String?
-    private let session: URLSession
+    private let deviceId: String
 
     // MARK: - Initialization
 
-    public init(accessToken: String, spclientHost: String? = nil) {
-        self.accessToken = accessToken
+    public init(
+        tokenProvider: @escaping @Sendable () async throws -> String,
+        spclientHost: String? = nil,
+        deviceId: String,
+    ) {
+        self.tokenProvider = tokenProvider
         self.spclientHost = spclientHost
-
-        let config = URLSessionConfiguration.default
-        config.httpAdditionalHeaders = [
-            "Authorization": "Bearer \(accessToken)",
-            "Accept": "application/json",
-        ]
-        session = URLSession(configuration: config)
+        self.deviceId = deviceId
 
         debugLog("SPClient", "Initialized")
     }
 
-    /// Set the spclient host from AP resolution
-    public func setSpclientHost(_ host: String) {
-        spclientHost = host
-        debugLog("SPClient", "Using spclient host: \(host)")
+    private func authorizedRequest(url: URL, accept: String) async throws -> URLRequest {
+        var request = URLRequest(url: url)
+        let token = try await tokenProvider()
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(accept, forHTTPHeaderField: "Accept")
+        return request
     }
 
     // MARK: - Track Metadata
@@ -66,42 +68,40 @@ public actor SPClient {
             case flac = 10
             case unknown = -1
 
-            /// Preferred quality order (higher is better)
-            public var qualityRank: Int {
+            /// Nominal bitrate in kbps, for matching a quality preference.
+            var kbps: Int {
                 switch self {
-                case .flac: 100
-                case .oggVorbis320: 90
-                case .mp3320: 85
-                case .mp3256: 80
-                case .oggVorbis160: 70
-                case .mp3160: 65
-                case .mp3160Enc: 60
-                case .oggVorbis96: 50
-                case .mp3096: 45
-                case .aac48: 40
-                case .aac24: 30
+                case .oggVorbis96, .mp3096: 96
+                case .oggVorbis160, .mp3160, .mp3160Enc: 160
+                case .oggVorbis320, .mp3320: 320
+                case .mp3256: 256
+                case .aac24: 24
+                case .aac48: 48
+                case .flac: 1411
                 case .unknown: 0
                 }
+            }
+
+            /// Whether this app can decode the format (Ogg Vorbis only).
+            var isDecodable: Bool {
+                isVorbis
             }
         }
     }
 
-    /// Get track metadata from Mercury/spclient
+    /// Get track metadata from spclient
     /// This fetches file IDs needed for audio key requests
     public func getTrackMetadata(trackId: Data) async throws -> TrackMetadata {
         let host = spclientHost ?? "spclient.wg.spotify.com"
         let gidHex = trackId.hexString
 
-        // Mercury-style endpoint via HTTP
         let url = URL(string: "https://\(host)/metadata/4/track/\(gidHex)")!
 
-        debugLog("SPClient", "Fetching track metadata: \(gidHex)")
+        debugLog("SPClient", "[GET] \(url)")
 
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
+        let request = try await authorizedRequest(url: url, accept: "application/x-protobuf")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LibrespotError.cdnError("Invalid response")
@@ -114,6 +114,130 @@ public actor SPClient {
 
         // Parse protobuf response
         return try parseTrackMetadata(data, gid: trackId)
+    }
+
+    // MARK: - Context Resolution
+
+    /// An ordered track list resolved from a context uri.
+    public struct ResolvedContext: Sendable {
+        public let uri: String
+        public let tracks: [String]
+        /// Index the context says to start at, when it carries one.
+        public let startIndex: Int
+    }
+
+    /// Resolves an album, playlist, artist, or station uri into its tracks,
+    /// via spclient's context resolver — the same source Spotify's own
+    /// clients use, and one that handles every context shape uniformly.
+    public func resolveContext(_ contextUri: String) async throws -> ResolvedContext {
+        let host = spclientHost ?? "spclient.wg.spotify.com"
+        let encodedUri = contextUri.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? contextUri
+
+        debugLog("SPClient", "Resolving context: \(contextUri)")
+
+        var allTracks: [String] = []
+        var startIndex = 0
+        var nextPage: String? = "/context/resolve/v2/\(encodedUri)?device_id=\(deviceId)"
+        var pageLimit = 10
+
+        while let path = nextPage, pageLimit > 0 {
+            pageLimit -= 1
+
+            let url = URL(string: "https://\(host)\(path)")!
+            let request = try await authorizedRequest(url: url, accept: "application/x-protobuf")
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                throw LibrespotError.cdnError("Context resolve failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+            }
+
+            let report = Self.parseContextReport(data)
+            allTracks.append(contentsOf: report.tracks)
+            if allTracks.isEmpty, !report.startUri.isEmpty {
+                startIndex = max(0, allTracks.firstIndex(of: report.startUri) ?? 0)
+            }
+            nextPage = report.nextPageUrl.map { "/context/resolve/v2/\($0)" }
+        }
+
+        debugLog("SPClient", "Context resolved: \(allTracks.count) track(s)")
+
+        return ResolvedContext(uri: contextUri, tracks: allTracks, startIndex: startIndex)
+    }
+
+    private static func parseContextReport(_ data: Data) -> (tracks: [String], nextPageUrl: String?, startUri: String) {
+        var tracks: [String] = []
+        var nextPageUrl: String?
+        var startUri = ""
+
+        var offset = 0
+        while offset < data.count, offset >= 0 {
+            let (fieldNumber, wireType, nextOffset) = readTagStatic(data, offset: offset)
+            offset = nextOffset
+
+            switch (fieldNumber, wireType) {
+            case (2, 2): // next_page_url
+                let (bytes, next) = readLengthDelimitedStatic(data, offset: offset)
+                nextPageUrl = String(data: bytes, encoding: .utf8)
+                offset = next
+
+            case (3, 2): // pages
+                let (pageData, next) = readLengthDelimitedStatic(data, offset: offset)
+                tracks.append(contentsOf: parseContextPage(pageData))
+                offset = next
+
+            default:
+                offset = skipFieldStatic(data, offset: offset, wireType: wireType)
+            }
+        }
+
+        _ = startUri
+        return (tracks, nextPageUrl, startUri)
+    }
+
+    private static func parseContextPage(_ data: Data) -> [String] {
+        var uris: [String] = []
+
+        var offset = 0
+        while offset < data.count, offset >= 0 {
+            let (fieldNumber, wireType, nextOffset) = readTagStatic(data, offset: offset)
+            offset = nextOffset
+
+            switch (fieldNumber, wireType) {
+            case (3, 2): // items
+                let (itemData, next) = readLengthDelimitedStatic(data, offset: offset)
+                if let uri = parseContextItem(itemData) {
+                    uris.append(uri)
+                }
+                offset = next
+
+            default:
+                offset = skipFieldStatic(data, offset: offset, wireType: wireType)
+            }
+        }
+
+        return uris
+    }
+
+    private static func parseContextItem(_ data: Data) -> String? {
+        var uri: String?
+
+        var offset = 0
+        while offset < data.count, offset >= 0 {
+            let (fieldNumber, wireType, nextOffset) = readTagStatic(data, offset: offset)
+            offset = nextOffset
+
+            switch (fieldNumber, wireType) {
+            case (1, 2): // uri
+                let (bytes, next) = readLengthDelimitedStatic(data, offset: offset)
+                uri = String(data: bytes, encoding: .utf8)
+                offset = next
+
+            default:
+                offset = skipFieldStatic(data, offset: offset, wireType: wireType)
+            }
+        }
+
+        return uri
     }
 
     /// Parse track metadata protobuf
@@ -130,22 +254,22 @@ public actor SPClient {
 
         var offset = 0
         while offset < data.count {
-            let (fieldNumber, wireType, newOffset) = readTag(data, offset: offset)
+            let (fieldNumber, wireType, newOffset) = Self.readTag(data, offset: offset)
             offset = newOffset
 
             switch fieldNumber {
             case 2: // name
-                let (str, nextOffset) = readString(data, offset: offset)
+                let (str, nextOffset) = Self.readString(data, offset: offset)
                 name = str
                 offset = nextOffset
 
             case 7: // duration
-                let (value, nextOffset) = readVarint(data, offset: offset)
+                let (value, nextOffset) = Self.readVarint(data, offset: offset)
                 duration = Int(value)
                 offset = nextOffset
 
             case 12: // file
-                let (fileData, nextOffset) = readLengthDelimited(data, offset: offset)
+                let (fileData, nextOffset) = Self.readLengthDelimited(data, offset: offset)
                 if let audioFile = parseAudioFile(fileData) {
                     files.append(audioFile)
                 }
@@ -153,10 +277,12 @@ public actor SPClient {
 
             default:
                 // Skip unknown fields
-                offset = skipField(data, offset: offset, wireType: wireType)
+                offset = Self.skipField(data, offset: offset, wireType: wireType)
             }
 
-            if offset < 0 { break }
+            if offset < 0 {
+                break
+            }
         }
 
         debugLog("SPClient", "Parsed track: \(name), duration=\(duration)ms, files=\(files.count)")
@@ -176,25 +302,27 @@ public actor SPClient {
 
         var offset = 0
         while offset < data.count {
-            let (fieldNumber, wireType, newOffset) = readTag(data, offset: offset)
+            let (fieldNumber, wireType, newOffset) = Self.readTag(data, offset: offset)
             offset = newOffset
 
             switch fieldNumber {
             case 1: // file_id
-                let (bytes, nextOffset) = readLengthDelimited(data, offset: offset)
+                let (bytes, nextOffset) = Self.readLengthDelimited(data, offset: offset)
                 fileId = bytes
                 offset = nextOffset
 
             case 2: // format
-                let (value, nextOffset) = readVarint(data, offset: offset)
+                let (value, nextOffset) = Self.readVarint(data, offset: offset)
                 format = TrackMetadata.AudioFormat(rawValue: Int(value)) ?? .unknown
                 offset = nextOffset
 
             default:
-                offset = skipField(data, offset: offset, wireType: wireType)
+                offset = Self.skipField(data, offset: offset, wireType: wireType)
             }
 
-            if offset < 0 { break }
+            if offset < 0 {
+                break
+            }
         }
 
         guard let fid = fileId else { return nil }
@@ -217,12 +345,11 @@ public actor SPClient {
         // Storage resolve endpoint
         let url = URL(string: "https://\(host)/storage-resolve/files/audio/interactive/\(fileIdHex)?alt=json")!
 
-        debugLog("SPClient", "Resolving CDN URL for file: \(fileIdHex.prefix(16))...")
+        debugLog("SPClient", "[GET] storage-resolve for \(fileIdHex.prefix(16))…")
 
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let request = try await authorizedRequest(url: url, accept: "application/json")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200
@@ -246,17 +373,17 @@ public actor SPClient {
 
     // MARK: - Protobuf Helpers
 
-    private func readTag(_ data: Data, offset: Int) -> (fieldNumber: Int, wireType: Int, newOffset: Int) {
+    private nonisolated static func readTag(_ data: Data, offset: Int) -> (fieldNumber: Int, wireType: Int, newOffset: Int) {
         guard offset < data.count else { return (0, 0, -1) }
 
-        let (tag, newOffset) = readVarint(data, offset: offset)
+        let (tag, newOffset) = Self.readVarint(data, offset: offset)
         let fieldNumber = Int(tag >> 3)
         let wireType = Int(tag & 0x7)
 
         return (fieldNumber, wireType, newOffset)
     }
 
-    private func readVarint(_ data: Data, offset: Int) -> (value: UInt64, newOffset: Int) {
+    private nonisolated static func readVarint(_ data: Data, offset: Int) -> (value: UInt64, newOffset: Int) {
         var result: UInt64 = 0
         var shift = 0
         var currentOffset = offset
@@ -275,8 +402,8 @@ public actor SPClient {
         return (result, currentOffset)
     }
 
-    private func readLengthDelimited(_ data: Data, offset: Int) -> (data: Data, newOffset: Int) {
-        let (length, newOffset) = readVarint(data, offset: offset)
+    private nonisolated static func readLengthDelimited(_ data: Data, offset: Int) -> (data: Data, newOffset: Int) {
+        let (length, newOffset) = Self.readVarint(data, offset: offset)
         let endOffset = newOffset + Int(length)
 
         guard endOffset <= data.count else {
@@ -286,21 +413,21 @@ public actor SPClient {
         return (data.subdata(in: newOffset ..< endOffset), endOffset)
     }
 
-    private func readString(_ data: Data, offset: Int) -> (string: String, newOffset: Int) {
-        let (bytes, newOffset) = readLengthDelimited(data, offset: offset)
+    private nonisolated static func readString(_ data: Data, offset: Int) -> (string: String, newOffset: Int) {
+        let (bytes, newOffset) = Self.readLengthDelimited(data, offset: offset)
         let string = String(data: bytes, encoding: .utf8) ?? ""
         return (string, newOffset)
     }
 
-    private func skipField(_ data: Data, offset: Int, wireType: Int) -> Int {
+    private nonisolated static func skipField(_ data: Data, offset: Int, wireType: Int) -> Int {
         switch wireType {
         case 0: // Varint
-            let (_, newOffset) = readVarint(data, offset: offset)
+            let (_, newOffset) = Self.readVarint(data, offset: offset)
             return newOffset
         case 1: // 64-bit
             return offset + 8
         case 2: // Length-delimited
-            let (_, newOffset) = readLengthDelimited(data, offset: offset)
+            let (_, newOffset) = Self.readLengthDelimited(data, offset: offset)
             return newOffset
         case 5: // 32-bit
             return offset + 4
@@ -308,69 +435,28 @@ public actor SPClient {
             return -1 // Unknown wire type
         }
     }
+
+    private nonisolated static func readTagStatic(_ data: Data, offset: Int) -> (fieldNumber: Int, wireType: Int, newOffset: Int) {
+        readTag(data, offset: offset)
+    }
+
+    private nonisolated static func readLengthDelimitedStatic(_ data: Data, offset: Int) -> (data: Data, newOffset: Int) {
+        readLengthDelimited(data, offset: offset)
+    }
+
+    private nonisolated static func skipFieldStatic(_ data: Data, offset: Int, wireType: Int) -> Int {
+        skipField(data, offset: offset, wireType: wireType)
+    }
 }
 
-// MARK: - Bitrate Selection
+// MARK: - Format Helpers
 
-public extension SPClient.TrackMetadata {
-    /// Select best available file for given quality preference
-    /// Prefers OGG Vorbis, but falls back to MP3 if needed
-    nonisolated func selectFile(preferredQuality: AudioFormat = .oggVorbis320, allowMP3: Bool = true) -> AudioFile? {
-        // Filter to OGG Vorbis formats (preferred)
-        let vorbisFiles = files.filter {
-            switch $0.format {
-            case .oggVorbis96, .oggVorbis160, .oggVorbis320:
-                true
-            default:
-                false
-            }
-        }
-
-        // Sort by quality (descending)
-        let sortedVorbis = vorbisFiles.sorted { $0.format.qualityRank > $1.format.qualityRank }
-
-        // Find preferred or next best Vorbis
-        if let preferred = sortedVorbis.first(where: { $0.format.qualityRank <= preferredQuality.qualityRank }) {
-            return preferred
-        }
-        if let best = sortedVorbis.first {
-            return best
-        }
-
-        // Fall back to MP3 if allowed (AudioToolbox can decode MP3)
-        if allowMP3 {
-            let mp3Files = files.filter {
-                switch $0.format {
-                case .mp3320, .mp3256, .mp3160, .mp3160Enc, .mp3096:
-                    true
-                default:
-                    false
-                }
-            }
-            let sortedMP3 = mp3Files.sorted { $0.format.qualityRank > $1.format.qualityRank }
-            return sortedMP3.first
-        }
-
-        return nil
-    }
-
-    /// Check if the file format is MP3
-    nonisolated static func isMP3Format(_ format: AudioFormat) -> Bool {
-        switch format {
-        case .mp3320, .mp3256, .mp3160, .mp3160Enc, .mp3096:
-            true
-        default:
-            false
-        }
-    }
-
-    /// Check if the file format is OGG Vorbis
-    nonisolated static func isVorbisFormat(_ format: AudioFormat) -> Bool {
-        switch format {
-        case .oggVorbis96, .oggVorbis160, .oggVorbis320:
-            true
-        default:
-            false
+extension SPClient.TrackMetadata.AudioFormat {
+    /// Whether the format is Ogg Vorbis — the only family this app decodes.
+    nonisolated var isVorbis: Bool {
+        switch self {
+        case .oggVorbis96, .oggVorbis160, .oggVorbis320: true
+        default: false
         }
     }
 }

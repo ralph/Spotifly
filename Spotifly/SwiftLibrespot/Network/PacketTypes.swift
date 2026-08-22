@@ -42,10 +42,10 @@ public enum PacketType: UInt8, Sendable {
 
     // Note: audioKey is same as aesKey (0x0d), audioKeyError is same as aesKeyError (0x0e)
 
-    // Pong response
+    /// Pong response
     case pong = 0x49
 
-    // Unknown/reserved (use 0x00 as we have no real unknown packet type)
+    /// Unknown/reserved (use 0x00 as we have no real unknown packet type)
     case unknown = 0x00
 }
 

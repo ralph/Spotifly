@@ -1,5 +1,5 @@
 //
-//  ConnectState.swift
+//  ConnectStateBuilder.swift
 //  SwiftLibrespot
 //
 //  Connect state builder and serialization
@@ -143,14 +143,4 @@ struct SpircQueueState: Sendable {
     let currentTrack: QueueItem?
     let nextTracks: [QueueItem]
     let previousTracks: [QueueItem]?
-
-    init(
-        currentTrack: QueueItem?,
-        nextTracks: [QueueItem],
-        previousTracks: [QueueItem]?,
-    ) {
-        self.currentTrack = currentTrack
-        self.nextTracks = nextTracks
-        self.previousTracks = previousTracks
-    }
 }

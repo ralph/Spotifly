@@ -27,6 +27,17 @@ public actor SpircController {
     /// Last command message ID (for acknowledgment)
     private var lastCommandMessageId: UInt64?
 
+    /// Whether this device believes it is the active one. Reflected into
+    /// every PutState.
+    private var isActive = false
+
+    /// Heartbeat task; Spotify expects periodic PutState even without
+    /// changes, and other clients drop devices that go quiet.
+    private var heartbeatTask: Task<Void, Never>?
+
+    /// How often state is republished while nothing happens.
+    private static let heartbeatInterval: Duration = .seconds(30)
+
     // MARK: - Publishers
 
     private nonisolated(unsafe) let playerStateSubject = CurrentValueSubject<SpircPlayerState?, Never>(nil)
@@ -102,6 +113,8 @@ public actor SpircController {
         // Register device with Spotify Connect
         try await registerDevice()
 
+        startHeartbeat()
+
         isReady = true
         debugLog("SpircController", "SPIRC ready")
     }
@@ -110,11 +123,67 @@ public actor SpircController {
     public func shutdown() async {
         debugLog("SpircController", "Shutting down...")
 
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
         isReady = false
         subscriptions.removeAll()
 
-        // Send goodbye to other devices
-        // TODO: Implement goodbye message
+        // Tell the cluster this device is going away. Best effort: a dead
+        // socket must not block shutdown.
+        var goodbye = PutStateRequestProto()
+        goodbye.memberType = .connectState
+        goodbye.putStateReason = .becameInactive
+        goodbye.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
+        goodbye.device = Self.buildDevice(deviceInfo: deviceInfo, isActive: false, playerState: nil)
+        try? await dealerConnection.putState(goodbye)
+    }
+
+    // MARK: - State Publishing
+
+    /// Republishes our device/player state to the cluster.
+    ///
+    /// - Parameter reason: why the state moved; nil means routine heartbeat.
+    func publishState(reason: PutStateReason?) async {
+        guard isReady else { return }
+
+        var request = buildPutStateRequest(isActive: isActive)
+        if let reason {
+            request.putStateReason = reason
+        }
+        do {
+            try await dealerConnection.putState(request)
+        } catch {
+            debugLog("SpircController", "PutState failed: \(error)")
+        }
+    }
+
+    private func startHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.heartbeatInterval)
+                await self?.publishState(reason: nil)
+            }
+        }
+    }
+
+    /// Adopts locally-produced playback state and republishes it, so other
+    /// devices see what this one plays.
+    ///
+    /// - Parameters:
+    ///   - state: the current player state, or nil once nothing is playing.
+    ///   - active: true when local playback just started, which marks this
+    ///     device active in the cluster.
+    public func updateLocalPlayerState(_ state: SpircPlayerState?, active: Bool) async {
+        let becameActive = active && !isActive
+        playerState = state
+        isActive = isActive || active
+
+        guard isReady else { return }
+
+        var request = buildPutStateRequest(isActive: isActive)
+        request.putStateReason = becameActive ? .newDevice : (state != nil ? .playerStateChanged : .spircNotify)
+        try? await dealerConnection.putState(request)
     }
 
     // MARK: - Device Registration
@@ -129,7 +198,31 @@ public actor SpircController {
     }
 
     private func buildPutStateRequest(isActive: Bool) -> PutStateRequestProto {
-        // Build device info
+        var request = PutStateRequestProto()
+        request.device = Self.buildDevice(deviceInfo: deviceInfo, isActive: isActive, playerState: playerState)
+        request.memberType = .connectState
+        request.isActive = isActive
+        request.putStateReason = isActive ? .newDevice : .spircHello
+        request.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
+
+        if isActive {
+            request.startedPlayingAt = UInt64(Date().timeIntervalSince1970 * 1000)
+        }
+
+        if let msgId = lastCommandMessageId {
+            request.lastCommandMessageId = UInt32(msgId)
+        }
+
+        return request
+    }
+
+    /// The device half of a PutState: our identity, capabilities, and current
+    /// player state if we have one.
+    private static func buildDevice(
+        deviceInfo: DeviceInfo,
+        isActive: Bool,
+        playerState: SpircPlayerState?,
+    ) -> ConnectDevice {
         var deviceInfoProto = ConnectDeviceInfo()
         deviceInfoProto.canPlay = deviceInfo.supportsPlayback
         deviceInfoProto.volume = 65535 / 2 // 50%
@@ -137,11 +230,10 @@ public actor SpircController {
         deviceInfoProto.deviceId = deviceInfo.deviceId
         deviceInfoProto.deviceType = .computer
         deviceInfoProto.deviceSoftwareVersion = deviceInfo.softwareVersion
-        deviceInfoProto.clientId = "spotifly"
+        deviceInfoProto.clientId = "65b708073fc0480ea92a077233ca87bd" // Spotify desktop client id
         deviceInfoProto.brand = deviceInfo.brandName
         deviceInfoProto.model = deviceInfo.modelName
 
-        // Build capabilities
         var caps = ConnectCapabilities()
         caps.canBePlayer = deviceInfo.supportsPlayback
         caps.isObservable = true
@@ -153,15 +245,14 @@ public actor SpircController {
         caps.supportsCommandRequest = true
         deviceInfoProto.capabilities = caps
 
-        // Build device
         var device = ConnectDevice()
         device.deviceInfo = deviceInfoProto
 
-        // Build player state if we have one
         if let ps = playerState {
             var playerStateProto = PlayerState()
             playerStateProto.timestamp = Int64(ps.timestamp)
             playerStateProto.positionAsOfTimestamp = Int64(ps.positionMs)
+            playerStateProto.duration = Int64(ps.durationMs)
             playerStateProto.isPaused = ps.isPaused
             playerStateProto.isPlaying = ps.isPlaying
 
@@ -181,23 +272,8 @@ public actor SpircController {
             device.playerState = playerStateProto
         }
 
-        // Build request
-        var request = PutStateRequestProto()
-        request.device = device
-        request.memberType = .connectState
-        request.isActive = isActive
-        request.putStateReason = isActive ? .newDevice : .spircHello
-        request.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
-
-        if isActive {
-            request.startedPlayingAt = UInt64(Date().timeIntervalSince1970 * 1000)
-        }
-
-        if let msgId = lastCommandMessageId {
-            request.lastCommandMessageId = UInt32(msgId)
-        }
-
-        return request
+        _ = isActive
+        return device
     }
 
     // MARK: - Dealer Subscriptions

@@ -31,7 +31,7 @@ public enum SpotifyDeviceType: Int, Sendable {
 }
 
 /// Information about this device for Spotify Connect registration
-public struct DeviceInfo: Sendable {
+public nonisolated struct DeviceInfo: Sendable {
     /// Unique device identifier (persisted across sessions)
     public let deviceId: String
 
@@ -112,7 +112,7 @@ public struct DeviceInfo: Sendable {
         }
         // Use format matching the working Rust FFI: "spotifly_{pid}"
         // But since PID changes, use a random number instead
-        let randomNum = UInt32.random(in: 10000...99999)
+        let randomNum = UInt32.random(in: 10000 ... 99999)
         let deviceId = "spotifly_\(randomNum)"
         UserDefaults.standard.set(deviceId, forKey: key)
         return deviceId

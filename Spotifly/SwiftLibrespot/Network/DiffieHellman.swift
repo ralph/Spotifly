@@ -117,7 +117,7 @@ public final class DiffieHellman: @unchecked Sendable {
 /// Minimal big integer implementation for DH calculations
 /// Only supports operations needed for DH key exchange
 public struct BigUInt: Sendable, Comparable, Equatable {
-    // Store as array of UInt64 words, little-endian order
+    /// Store as array of UInt64 words, little-endian order
     private var words: [UInt64]
 
     /// Initialize from integer
@@ -242,10 +242,6 @@ public struct BigUInt: Sendable, Comparable, Equatable {
             }
         }
         return false
-    }
-
-    public nonisolated static func == (lhs: BigUInt, rhs: BigUInt) -> Bool {
-        lhs.words == rhs.words
     }
 
     public nonisolated static func > (lhs: BigUInt, rhs: BigUInt) -> Bool {

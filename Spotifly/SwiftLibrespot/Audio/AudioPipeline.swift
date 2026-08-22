@@ -2,441 +2,397 @@
 //  AudioPipeline.swift
 //  SwiftLibrespot
 //
-//  Orchestrates audio decryption, decoding, and playback
+//  Orchestrates fetching, decryption, decoding, and output of Spotify audio.
+//
+//  A track moves through five stages, all coordinated here:
+//  metadata (spclient) → audio key (AP socket) → CDN download → AES-CTR
+//  decrypt → Ogg Vorbis decode → PCM push into the sink.
+//
+//  The decrypted file is held in memory for the life of the track, so a seek
+//  is a cheap in-memory `ov_pcm_seek` rather than a re-download.
 //
 
-import AudioToolbox
 import AVFoundation
 import Combine
 import Foundation
 
-/// Wrapper to allow AVAudioPCMBuffer to cross actor boundaries
-/// Safe because the buffer is only accessed from one context at a time
-struct SendableBuffer: @unchecked Sendable {
-    nonisolated(unsafe) let buffer: AVAudioPCMBuffer
-
-    nonisolated init(buffer: AVAudioPCMBuffer) {
-        self.buffer = buffer
-    }
-}
-
-/// Main audio pipeline for Spotify playback
-/// Coordinates downloading, decryption, decoding, and playback
-public actor AudioPipeline {
-    // MARK: - Properties
+/// Coordinates downloading, decryption, decoding, and playback of a track.
+///
+/// Concurrency: the actor owns all playback state; the decode loop itself runs
+/// detached because pushing PCM blocks on the sink's backpressure — parking it
+/// on the actor would freeze every control call behind the audio.
+actor AudioPipeline {
+    // MARK: - Dependencies
 
     private let accesspoint: Accesspoint
     private let audioKeyProvider: AudioKeyProvider
-    private let decryptor: AESDecryptor
-    private let downloader: ChunkedDownloader
-    private var player: AVFoundationPlayer?
-    private let simpleDecoder: SimpleAudioDecoder
-
-    /// SPClient for track metadata and CDN resolution
-    private var spclient: SPClient?
-
-    /// Current track being played
-    private var currentTrack: TrackInfo?
-
-    /// Current audio format
-    private var currentFormat: SPClient.TrackMetadata.AudioFormat?
-
-    /// Playback state
-    private var isPlaying = false
-    private var isPaused = false
-    private var positionMs: UInt64 = 0
-
-    /// Streaming task
-    private var streamingTask: Task<Void, Never>?
-
-    /// Position update timer
-    private var positionTimer: Task<Void, Never>?
-
-    /// Decoded buffers ready for playback
-    private var decodedBuffers: [AVAudioPCMBuffer] = []
-    private var bufferScheduleIndex = 0
+    private let spclient: SPClient?
+    private let sink: any AudioSink
 
     // MARK: - Publishers
 
     private nonisolated(unsafe) let playbackStateSubject = CurrentValueSubject<AudioPlaybackState, Never>(.idle)
     private nonisolated(unsafe) let positionSubject = CurrentValueSubject<UInt64, Never>(0)
     private nonisolated(unsafe) let errorSubject = PassthroughSubject<LibrespotError, Never>()
+    private nonisolated(unsafe) let endOfTrackSubject = PassthroughSubject<String, Never>()
 
-    public nonisolated var playbackState: AnyPublisher<AudioPlaybackState, Never> {
+    nonisolated var playbackState: AnyPublisher<AudioPlaybackState, Never> {
         playbackStateSubject.eraseToAnyPublisher()
     }
 
-    public nonisolated var position: AnyPublisher<UInt64, Never> {
+    nonisolated var position: AnyPublisher<UInt64, Never> {
         positionSubject.eraseToAnyPublisher()
     }
 
-    public nonisolated var errors: AnyPublisher<LibrespotError, Never> {
+    nonisolated var errors: AnyPublisher<LibrespotError, Never> {
         errorSubject.eraseToAnyPublisher()
+    }
+
+    /// Fires once when a track has fully played out — the hook auto-advance
+    /// uses. Not fired for stop, skip, or replacement.
+    nonisolated var endOfTrack: AnyPublisher<String, Never> {
+        endOfTrackSubject.eraseToAnyPublisher()
     }
 
     // MARK: - Types
 
-    public enum AudioPlaybackState: Sendable, Equatable {
+    enum AudioPlaybackState: Sendable, Equatable {
         case idle
         case loading(trackUri: String)
         case playing(trackUri: String)
         case paused(trackUri: String)
-        case buffering(trackUri: String)
-        case error(String)
     }
 
-    public struct TrackInfo: Sendable {
-        public let uri: String
-        public let fileId: Data
-        public let durationMs: UInt64
-        public let cdnUrl: URL?
+    /// Streaming quality, expressed as kbps to compare against file formats.
+    enum Quality: Int, Sendable {
+        case low = 96
+        case normal = 160
+        case high = 320
     }
+
+    // MARK: - Playback State
+
+    private var quality: Quality = .normal
+
+    private(set) var currentTrackUri: String?
+    private var durationMs: Int64 = 0
+    private var sampleRate: Int = 44100
+
+    /// Decoders hold their source data alive, so `decryptedData` is only kept
+    /// separately for logging/diagnostics.
+    private var decoder: VorbisDecoder?
+
+    private var decodeTask: Task<Void, Never>?
+    private var positionTimer: Task<Void, Never>?
+
+    private var isPlaying = false
+    private var isPaused = false
+    /// Continuations of decode-loop passes parked while paused.
+    private var resumeWakers: [CheckedContinuation<Void, Never>] = []
+
+    /// Track frames pushed into the sink for the current load.
+    private var writtenFrames: Int64 = 0
+    /// Track frame the sink's playhead clock origin corresponds to — nonzero
+    /// after a seek or a start-at-position.
+    private var sinkClockOriginFrame: Int64 = 0
+    private var decodingComplete = false
+    private var endOfTrackFired = false
+
+    /// How close the playhead must be to the last written frame before the
+    /// track counts as finished. One feed chunk of slack covers the samples
+    /// still queued inside the renderer when the final frame is read.
+    private static let endOfTrackSlackFrames: Int64 = 4096
 
     // MARK: - Initialization
 
-    public init(accesspoint: Accesspoint, accessToken: String? = nil, spclientHost: String? = nil) {
+    init(accesspoint: Accesspoint, spclient: SPClient?, sink: any AudioSink) {
         self.accesspoint = accesspoint
+        self.spclient = spclient
+        self.sink = sink
         audioKeyProvider = AudioKeyProvider(accesspoint: accesspoint)
-        decryptor = AESDecryptor()
-        downloader = ChunkedDownloader()
-        simpleDecoder = SimpleAudioDecoder()
-
-        if let token = accessToken {
-            spclient = SPClient(accessToken: token, spclientHost: spclientHost)
-        }
-
         debugLog("AudioPipeline", "Initialized")
     }
 
-    /// Set SPClient for track resolution
-    public func setSPClient(_ client: SPClient) {
-        spclient = client
-    }
+    // MARK: - Settings
 
-    /// Start the audio engine (must be called before playback)
-    public func start() async {
-        // Create player on MainActor
-        let newPlayer = await AVFoundationPlayer()
-        player = newPlayer
-        await newPlayer.start()
+    func setQuality(_ quality: Quality) {
+        self.quality = quality
     }
 
     // MARK: - Playback Control
 
-    /// Play a track by URI (resolves metadata and CDN automatically)
-    public func playTrack(uri: String, positionMs: UInt64 = 0) async throws {
+    /// Plays a track by URI, resolving everything needed along the way.
+    func playTrack(uri: String, positionMs: UInt64 = 0) async throws {
         guard let spclient else {
             throw LibrespotError.invalidState("SPClient not configured")
         }
 
-        debugLog("AudioPipeline", "Playing track: \(uri)")
+        debugLog("AudioPipeline", "Playing \(uri) at \(positionMs)ms")
         playbackStateSubject.send(.loading(trackUri: uri))
 
-        // Get track ID from URI
-        let trackId = extractTrackId(from: uri)
+        await teardownTrack()
 
-        // Fetch track metadata
+        let trackId = try Self.trackGid(fromUri: uri)
+
         let metadata = try await spclient.getTrackMetadata(trackId: trackId)
-        debugLog("AudioPipeline", "Track: \(metadata.name), duration: \(metadata.durationMs)ms, files: \(metadata.files.count)")
+        debugLog("AudioPipeline", "Track '\(metadata.name)': \(metadata.files.count) file(s), \(metadata.durationMs)ms")
 
-        // Select best audio file (prefer MP3 for native decoding support)
-        guard let audioFile = metadata.selectFile(allowMP3: true) else {
-            throw LibrespotError.trackNotFound("No compatible audio format")
+        guard let file = Self.selectVorbisFile(metadata.files, preferring: quality) else {
+            throw LibrespotError.trackNotFound("No Ogg Vorbis file available")
         }
 
-        let isMP3 = SPClient.TrackMetadata.isMP3Format(audioFile.format)
-        debugLog("AudioPipeline", "Selected format: \(audioFile.format), isMP3: \(isMP3)")
+        let key = try await audioKeyProvider.getKey(fileId: file.fileId, trackId: trackId)
+        let cdnUrl = try await spclient.resolveCDNUrl(fileId: file.fileId)
 
-        currentFormat = audioFile.format
+        let encrypted = try await Self.downloadWholeFile(cdnUrl.url)
 
-        // Start playback with file ID
-        try await play(
-            trackUri: uri,
-            fileId: audioFile.fileId,
-            durationMs: UInt64(metadata.durationMs),
-            positionMs: positionMs,
-        )
+        // The whole file is ciphertext, keystream from block 0. Nothing is
+        // skipped: the stream opens with the Ogg capture pattern once decrypted.
+        let decryptor = AESDecryptor()
+        decryptor.setKey(key)
+        let decrypted = decryptor.decrypt(encrypted)
+
+        #if DEBUG
+            let head = decrypted.prefix(8).map { String(format: "%02X", $0) }.joined()
+            debugLog("AudioPipeline", "Decrypted \(decrypted.count) bytes, head: \(head)")
+        #endif
+
+        let vorbis = try VorbisDecoder(data: decrypted)
+
+        currentTrackUri = uri
+        durationMs = Int64(metadata.durationMs)
+        sampleRate = vorbis.format.sampleRate
+        decoder = vorbis
+
+        let startFrame = positionMs > 0
+            ? Int64((Double(positionMs) / 1000.0) * Double(vorbis.format.sampleRate))
+            : 0
+        startDecoding(from: startFrame)
     }
 
-    /// Start playing a track with known file ID
-    public func play(trackUri: String, fileId: Data, durationMs: UInt64 = 0, positionMs: UInt64 = 0) async throws {
-        debugLog("AudioPipeline", "Playing: \(trackUri) from \(positionMs)ms")
-
-        // Stop any existing playback
-        await stopInternal()
-
-        playbackStateSubject.send(.loading(trackUri: trackUri))
-
-        // Get track ID from URI
-        let trackId = extractTrackId(from: trackUri)
-
-        // Get audio key from accesspoint
-        let audioKey = try await audioKeyProvider.getKey(fileId: fileId, trackId: trackId)
-        debugLog("AudioPipeline", "Got audio key (\(audioKey.count) bytes)")
-
-        // Initialize decryptor with key
-        decryptor.setKey(audioKey)
-
-        // Resolve CDN URL
-        guard let spclient else {
-            throw LibrespotError.invalidState("SPClient not configured")
-        }
-
-        let cdnInfo = try await spclient.resolveCDNUrl(fileId: fileId)
-        debugLog("AudioPipeline", "CDN URL resolved: \(cdnInfo.url.host ?? "?")")
-
-        // Store track info
-        currentTrack = TrackInfo(uri: trackUri, fileId: fileId, durationMs: durationMs, cdnUrl: cdnInfo.url)
-        self.positionMs = positionMs
-        isPlaying = true
-        isPaused = false
-
-        // Start streaming and decoding
-        streamingTask = Task {
-            await streamAndDecode(cdnUrl: cdnInfo.url, startPositionMs: positionMs)
-        }
-
-        // Start position tracking
-        startPositionTimer()
-
-        playbackStateSubject.send(.buffering(trackUri: trackUri))
-    }
-
-    /// Pause playback
-    public func pause() async {
-        guard let track = currentTrack, isPlaying else { return }
+    func pause() {
+        guard let uri = currentTrackUri, isPlaying, !isPaused else { return }
 
         debugLog("AudioPipeline", "Pausing")
-        isPlaying = false
         isPaused = true
-        await player?.pause()
+        sink.stop()
         stopPositionTimer()
-        playbackStateSubject.send(.paused(trackUri: track.uri))
+        playbackStateSubject.send(.paused(trackUri: uri))
     }
 
-    /// Resume playback
-    public func resume() async {
-        guard let track = currentTrack, isPaused else { return }
+    func resume() {
+        guard let uri = currentTrackUri, isPlaying, isPaused else { return }
 
         debugLog("AudioPipeline", "Resuming")
-        isPlaying = true
         isPaused = false
-        await player?.resume()
+        wakeDecoders()
+        sink.resume()
         startPositionTimer()
-        playbackStateSubject.send(.playing(trackUri: track.uri))
+        playbackStateSubject.send(.playing(trackUri: uri))
     }
 
-    /// Stop playback
-    public func stop() async {
+    func stop() async {
         debugLog("AudioPipeline", "Stopping")
-        await stopInternal()
+        await teardownAndGoIdle()
+    }
+
+    /// Stops the current track and tears down its resources, publishing idle.
+    private func teardownAndGoIdle() async {
+        await teardownTrack()
+        isPlaying = false
         playbackStateSubject.send(.idle)
         positionSubject.send(0)
     }
 
-    /// Internal stop (doesn't send state updates)
-    private func stopInternal() async {
-        streamingTask?.cancel()
-        streamingTask = nil
-        stopPositionTimer()
-
-        isPlaying = false
-        isPaused = false
-        currentTrack = nil
-        currentFormat = nil
-        decodedBuffers.removeAll()
-        bufferScheduleIndex = 0
-
-        await downloader.cancelDownload()
-        await player?.stop()
-    }
-
-    /// Seek to position
-    public func seek(positionMs: UInt64) async throws {
-        guard let track = currentTrack else {
-            throw LibrespotError.invalidState("No track playing")
+    /// Seeks within the current track. Works while playing or paused; either
+    /// way the decode restarts from the new offset and holds there if paused.
+    func seek(positionMs: UInt64) async throws {
+        guard currentTrackUri != nil, let decoder else {
+            throw LibrespotError.invalidState("No track loaded")
         }
 
         debugLog("AudioPipeline", "Seeking to \(positionMs)ms")
-        self.positionMs = positionMs
+        let frame = Int64((Double(positionMs) / 1000.0) * Double(decoder.format.sampleRate))
 
-        // For now, seeking requires restarting the stream
-        // A proper implementation would support seeking within the encrypted file
-        await player?.seek(to: positionMs)
-        positionSubject.send(positionMs)
+        // Cancel the running loop and wake it so cancellation is observed even
+        // though it is parked on pause.
+        decodeTask?.cancel()
+        wakeDecoders()
+        decodeTask = nil
 
-        if isPaused {
-            playbackStateSubject.send(.paused(trackUri: track.uri))
+        startDecoding(from: frame, keepPaused: isPaused)
+    }
+
+    /// Sets output volume (0…1). Gain is applied at the sink, which takes
+    /// effect immediately rather than after buffered audio drains.
+    func setVolume(_ volume: Float) {
+        sink.setVolume(volume)
+    }
+
+    /// Duration of the loaded track, from its metadata.
+    var currentDurationMs: Int64 {
+        durationMs
+    }
+
+    /// Current position in milliseconds, derived from the sink playhead.
+    func currentPositionMs() -> UInt64 {
+        guard currentTrackUri != nil, isPlaying else {
+            return UInt64(max(0, min(durationMs, Int64(frameToMs(sinkClockOriginFrame)))))
+        }
+        return UInt64(max(0, min(durationMs, Int64(frameToMs(currentTrackFrame())))))
+    }
+
+    // MARK: - Decode Orchestration
+
+    /// Starts (or restarts) the decode loop at `frame`. Synchronous on the
+    /// actor: the work itself happens on a detached task.
+    ///
+    /// `keepPaused` preserves a paused state across a seek: the decoder is in
+    /// place and position is published, but nothing is written or played until
+    /// `resume()`.
+    private func startDecoding(from frame: Int64, keepPaused: Bool = false) {
+        guard let decoder else { return }
+        guard decoder.isOpen else {
+            errorSubject.send(.decodingFailed("decoder closed"))
+            return
+        }
+
+        if frame > 0, !decoder.seek(toFrame: frame) {
+            debugLog("AudioPipeline", "Seek to frame \(frame) failed; continuing at current position")
+            sinkClockOriginFrame = decoder.currentFrame
         } else {
-            playbackStateSubject.send(.playing(trackUri: track.uri))
+            sinkClockOriginFrame = frame
         }
-    }
 
-    /// Set playback volume (0.0 - 1.0)
-    public func setVolume(_ volume: Float) async {
-        await player?.setVolume(volume)
-    }
+        writtenFrames = 0
+        decodingComplete = false
+        endOfTrackFired = false
+        isPlaying = true
+        isPaused = keepPaused
 
-    /// Get current position in milliseconds
-    public func getCurrentPosition() -> UInt64 {
-        positionMs
-    }
-
-    // MARK: - Streaming & Decoding
-
-    /// Main streaming and decoding loop
-    private func streamAndDecode(cdnUrl: URL, startPositionMs _: UInt64) async {
-        do {
-            // Start downloading from CDN
-            try await downloader.startDownload(cdnUrl: cdnUrl, fileId: currentTrack?.fileId ?? Data())
-
-            debugLog("AudioPipeline", "Download started, waiting for data...")
-
-            // Wait for initial data to be ready
-            var waitCount = 0
-            while await !downloader.isReadyForPlayback() {
-                try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                waitCount += 1
-                if waitCount > 50 { // 5 seconds timeout
-                    throw LibrespotError.timeout("Timed out waiting for initial data")
-                }
-                if Task.isCancelled { return }
-            }
-
-            debugLog("AudioPipeline", "Initial data ready, starting decode")
-
-            // Download and decrypt all data (simplified approach for MP3)
-            // A more sophisticated implementation would stream chunks
-            let encryptedData = try await downloadAllData()
-
-            if Task.isCancelled { return }
-
-            debugLog("AudioPipeline", "Downloaded \(encryptedData.count) bytes")
-
-            // Decrypt the data
-            // Spotify files have a 167-byte header that should not be decrypted
-            let headerSize = 167
-            // Header contains OGG/MP3 metadata - skip it for decryption
-            let encryptedAudio = encryptedData.dropFirst(headerSize)
-
-            decryptor.reset()
-            let decryptedAudio = decryptor.decrypt(Data(encryptedAudio))
-
-            debugLog("AudioPipeline", "Decrypted \(decryptedAudio.count) bytes")
-
-            if Task.isCancelled { return }
-
-            // Determine file type and decode
-            let fileType: AudioFileType = if let format = currentFormat, SPClient.TrackMetadata.isMP3Format(format) {
-                .mp3
-            } else {
-                .oggVorbis
-            }
-
-            // Decode to PCM
-            let buffers = try simpleDecoder.decode(data: decryptedAudio, fileType: fileType)
-
-            if Task.isCancelled { return }
-
-            debugLog("AudioPipeline", "Decoded \(buffers.count) buffers")
-
-            // Store decoded buffers
-            decodedBuffers = buffers
-
-            // Schedule initial buffers for playback
-            await scheduleBuffers()
-
-            // Start playback
-            await player?.play()
-
-            if let track = currentTrack {
-                playbackStateSubject.send(.playing(trackUri: track.uri))
-            }
-
-            debugLog("AudioPipeline", "Playback started")
-
-        } catch {
-            if !Task.isCancelled {
-                debugLog("AudioPipeline", "Streaming error: \(error)")
-                playbackStateSubject.send(.error(error.localizedDescription))
-                errorSubject.send(LibrespotError.unknown(error.localizedDescription))
-            }
+        sink.flush()
+        if !keepPaused {
+            sink.start()
         }
+
+        let uri = currentTrackUri ?? ""
+        let channels = decoder.format.channels
+        let sinkRef = sink
+
+        decodeTask = Task.detached(priority: .userInitiated) { [weak self] in
+            await self?.runDecodeLoop(decoder: decoder, channels: channels, sink: sinkRef)
+        }
+
+        if keepPaused {
+            stopPositionTimer()
+        } else {
+            startPositionTimer()
+        }
+        playbackStateSubject.send(keepPaused ? .paused(trackUri: uri) : .playing(trackUri: uri))
     }
 
-    /// Download all audio data
-    private func downloadAllData() async throws -> Data {
-        var allData = Data()
-        var chunkIndex = 0
+    /// The decode loop. Runs off the actor because `sink.write` blocks on
+    /// backpressure; every state touch hops back through `await`.
+    ///
+    /// The decoder is owned solely by this task from the moment it is passed
+    /// in until the task is cancelled or completes — the actor never touches
+    /// it concurrently (a seek cancels and replaces the task before opening a
+    /// new one).
+    private func runDecodeLoop(
+        decoder: VorbisDecoder,
+        channels: Int,
+        sink: any AudioSink,
+    ) async {
+        let chunkFrames = 2048
+        let buffer = UnsafeMutablePointer<Float>.allocate(capacity: chunkFrames * channels)
+        defer { buffer.deallocate() }
 
-        while true {
-            do {
-                let chunkData = try await downloader.downloadChunk(index: chunkIndex)
-                if chunkData.isEmpty {
+        var totalWritten: Int64 = 0
+
+        while !Task.isCancelled {
+            if await shouldPark() {
+                await waitForResume()
+                if Task.isCancelled {
                     break
                 }
-                allData.append(chunkData)
-                chunkIndex += 1
+            }
 
-                // Check if we've downloaded everything
-                let progress = await downloader.downloadProgress()
-                if progress >= 1.0 {
-                    break
-                }
-
-                if Task.isCancelled { break }
-            } catch {
-                // Reached end of file or error
+            let frames = decoder.read(into: buffer, maxFrames: chunkFrames)
+            if frames <= 0 {
                 break
             }
+
+            sink.write(samples: buffer, count: frames * channels)
+            totalWritten += Int64(frames)
+            await noteProgress(totalWritten)
         }
 
-        return allData
+        if Task.isCancelled {
+            return
+        }
+        await markDecodingComplete(totalWritten)
     }
 
-    /// Schedule decoded buffers to player
-    private func scheduleBuffers() async {
-        let buffersToSchedule = min(10, decodedBuffers.count - bufferScheduleIndex)
+    private func shouldPark() -> Bool {
+        isPaused
+    }
 
-        for _ in 0 ..< buffersToSchedule {
-            guard bufferScheduleIndex < decodedBuffers.count else { break }
-            let buffer = decodedBuffers[bufferScheduleIndex]
-            // Wrap in SendableBuffer to safely cross actor boundary
-            let sendable = SendableBuffer(buffer: buffer)
-            await player?.scheduleBuffer(sendable.buffer)
-            bufferScheduleIndex += 1
+    /// Parks the caller until `resume()` wakes it.
+    private func waitForResume() async {
+        await withCheckedContinuation { continuation in
+            resumeWakers.append(continuation)
         }
+    }
+
+    private func wakeDecoders() {
+        let wakers = resumeWakers
+        resumeWakers = []
+        wakers.forEach { $0.resume() }
+    }
+
+    private func noteProgress(_ frames: Int64) {
+        writtenFrames = frames
+        positionSubject.send(UInt64(frameToMs(currentTrackFrame())))
+    }
+
+    private func markDecodingComplete(_ frames: Int64) {
+        writtenFrames = frames
+        decodingComplete = true
+        debugLog("AudioPipeline", "Decode complete: \(frames) frames")
+    }
+
+    // MARK: - Teardown
+
+    /// Cancels whatever is running and releases the loaded track.
+    private func teardownTrack() async {
+        decodeTask?.cancel()
+        wakeDecoders()
+        decodeTask = nil
+        positionTimer?.cancel()
+        positionTimer = nil
+
+        isPlaying = false
+        isPaused = false
+        decodingComplete = false
+        endOfTrackFired = false
+        writtenFrames = 0
+        sinkClockOriginFrame = 0
+
+        decoder?.close()
+        decoder = nil
+
+        sink.stop()
+        sink.flush()
     }
 
     // MARK: - Position Tracking
 
     private func startPositionTimer() {
-        stopPositionTimer()
-
-        positionTimer = Task {
+        positionTimer?.cancel()
+        positionTimer = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
-
-                if isPlaying, !isPaused {
-                    if let playerPosition = await player?.currentPositionMs() {
-                        positionMs = playerPosition
-                    }
-                    positionSubject.send(positionMs)
-
-                    // Check if playback finished
-                    if let track = currentTrack,
-                       track.durationMs > 0,
-                       positionMs >= track.durationMs
-                    {
-                        debugLog("AudioPipeline", "Track finished")
-                        await stop()
-                    }
-
-                    // Schedule more buffers if needed
-                    if bufferScheduleIndex < decodedBuffers.count {
-                        await scheduleBuffers()
-                    }
-                }
+                try? await Task.sleep(for: .milliseconds(250))
+                await self?.tick()
             }
         }
     }
@@ -446,90 +402,89 @@ public actor AudioPipeline {
         positionTimer = nil
     }
 
+    /// Periodic tick: publish position, detect end of track.
+    private func tick() {
+        guard currentTrackUri != nil, isPlaying, !isPaused else { return }
+
+        positionSubject.send(UInt64(frameToMs(currentTrackFrame())))
+
+        if decodingComplete, !endOfTrackFired, writtenFrames > 0 {
+            let played = currentTrackFrame()
+            if played >= writtenFrames - Self.endOfTrackSlackFrames {
+                endOfTrackFired = true
+                debugLog("AudioPipeline", "End of track")
+                endOfTrackSubject.send(currentTrackUri ?? "")
+            }
+        }
+    }
+
+    /// The track frame currently audible: the sink's own playhead plus the
+    /// track offset its clock origin stands for.
+    private func currentTrackFrame() -> Int64 {
+        sinkClockOriginFrame + sink.playedFramesSinceStart
+    }
+
+    private func frameToMs(_ frame: Int64) -> Double {
+        Double(frame) / Double(sampleRate) * 1000.0
+    }
+
     // MARK: - Helpers
 
-    private func extractTrackId(from uri: String) -> Data {
-        // URI format: spotify:track:XXXX
-        // Track ID is base62 encoded
-        let components = uri.split(separator: ":")
-        guard components.count == 3,
-              let trackIdString = components.last
-        else {
-            return Data()
+    /// Picks the best Ogg Vorbis file for the quality preference: nearest
+    /// match wins, ties go to the higher quality.
+    private static func selectVorbisFile(_ files: [SPClient.TrackMetadata.AudioFile], preferring quality: Quality) -> SPClient.TrackMetadata.AudioFile? {
+        let vorbisFiles = files.filter(\.format.isVorbis)
+        guard !vorbisFiles.isEmpty else { return nil }
+
+        return vorbisFiles.min {
+            let d0 = abs($0.format.kbps - quality.rawValue)
+            let d1 = abs($1.format.kbps - quality.rawValue)
+            return d0 == d1 ? $0.format.kbps > $1.format.kbps : d0 < d1
+        }
+    }
+
+    /// Downloads a complete CDN file. Tracks are a few MB; streaming them
+    /// chunk-by-chunk bought nothing over one request and complicated seeking.
+    private static func downloadWholeFile(_ url: URL) async throws -> Data {
+        debugLog("AudioPipeline", "Downloading from \(url.host ?? "?")")
+
+        let (location, response) = try await URLSession.shared.download(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw LibrespotError.cdnError("HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
         }
 
-        // Convert base62 to bytes
-        return base62Decode(String(trackIdString))
+        return try Data(contentsOf: location)
     }
 
-    private func base62Decode(_ string: String) -> Data {
-        // Base62 alphabet: 0-9, a-z, A-Z
-        let alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    /// Extracts the base62 track id from a URI or open.spotify.com link and
+    /// decodes it to the 16-byte gid the protocol speaks.
+    private static func trackGid(fromUri uri: String) throws -> Data {
+        let trimmed = uri.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        var value = UInt128(0)
-        for char in string {
-            guard let index = alphabet.firstIndex(of: char) else { continue }
-            let digit = alphabet.distance(from: alphabet.startIndex, to: index)
-            value = value * UInt128(62) + UInt128(digit)
-        }
-
-        // Convert to 16 bytes (track IDs are 128-bit)
-        var bytes = [UInt8](repeating: 0, count: 16)
-        var v = value
-        for i in (0 ..< 16).reversed() {
-            bytes[i] = UInt8(v & 0xFF)
-            v >>= 8
-        }
-
-        return Data(bytes)
-    }
-}
-
-/// 128-bit unsigned integer for base62 decoding
-private struct UInt128: Sendable {
-    var high: UInt64
-    var low: UInt64
-
-    nonisolated init(_ value: Int) {
-        high = 0
-        low = UInt64(value)
-    }
-
-    nonisolated init(high: UInt64, low: UInt64) {
-        self.high = high
-        self.low = low
-    }
-
-    nonisolated static func * (lhs: UInt128, rhs: UInt128) -> UInt128 {
-        // Simplified multiplication for our use case (small multiplier)
-        let (low, overflow) = lhs.low.multipliedReportingOverflow(by: rhs.low)
-        var high = lhs.high * rhs.low + lhs.low * rhs.high
-        if overflow {
-            high += 1
-        }
-        return UInt128(high: high, low: low)
-    }
-
-    nonisolated static func + (lhs: UInt128, rhs: UInt128) -> UInt128 {
-        let (low, overflow) = lhs.low.addingReportingOverflow(rhs.low)
-        var high = lhs.high + rhs.high
-        if overflow {
-            high += 1
-        }
-        return UInt128(high: high, low: low)
-    }
-
-    nonisolated static func >>= (lhs: inout UInt128, rhs: Int) {
-        if rhs >= 64 {
-            lhs.low = lhs.high >> (rhs - 64)
-            lhs.high = 0
+        let base62: Substring
+        if let range = trimmed.range(of: "spotify:track:") {
+            base62 = trimmed[range.upperBound...].prefix { $0 != ":" }
+        } else if let range = trimmed.range(of: "open.spotify.com/track/") {
+            base62 = trimmed[range.upperBound...].prefix { $0 != "?" && $0 != "/" }
         } else {
-            lhs.low = (lhs.low >> rhs) | (lhs.high << (64 - rhs))
-            lhs.high >>= rhs
+            throw LibrespotError.trackNotFound("not a track uri: \(trimmed.prefix(60))")
         }
-    }
 
-    nonisolated static func & (lhs: UInt128, rhs: Int) -> UInt64 {
-        lhs.low & UInt64(rhs)
+        let alphabet = Array("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        var value: UInt128 = 0
+        for char in base62 {
+            guard let index = alphabet.firstIndex(of: char) else {
+                throw LibrespotError.trackNotFound("bad track id: \(base62)")
+            }
+            value = value &* UInt128(62) &+ UInt128(index)
+        }
+
+        var bytes = [UInt8](repeating: 0, count: 16)
+        for i in stride(from: 15, through: 0, by: -1) {
+            bytes[i] = UInt8(truncatingIfNeeded: value)
+            value >>= 8
+        }
+        return Data(bytes)
     }
 }

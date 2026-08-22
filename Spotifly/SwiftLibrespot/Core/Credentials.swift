@@ -2,72 +2,37 @@
 //  Credentials.swift
 //  SwiftLibrespot
 //
-//  Token and credential management
+//  Credential types for authenticating with Spotify
 //
 
 import Foundation
 
-/// Credentials for authenticating with Spotify
-public struct SpotifyCredentials: Sendable {
-    /// OAuth access token
-    public let accessToken: String
-
-    /// Token expiration timestamp (Unix milliseconds)
-    public let expiresAt: UInt64?
-
-    /// Token type (usually "Bearer")
-    public let tokenType: String
-
-    /// Scopes granted by this token
-    public let scopes: [String]
-
-    /// Username (required for access token auth per go-librespot)
-    public let username: String?
-
-    public nonisolated init(
-        accessToken: String,
-        expiresAt: UInt64? = nil,
-        tokenType: String = "Bearer",
-        scopes: [String] = [],
-        username: String? = nil,
-    ) {
-        self.accessToken = accessToken
-        self.expiresAt = expiresAt
-        self.tokenType = tokenType
-        self.scopes = scopes
-        self.username = username
-    }
-
-    /// Returns true if the token has expired
-    public var isExpired: Bool {
-        guard let expiresAt else { return false }
-        let now = UInt64(Date().timeIntervalSince1970 * 1000)
-        return now >= expiresAt
-    }
-
-    /// Returns true if the token will expire within the given seconds
-    public func willExpireSoon(withinSeconds: Int = 300) -> Bool {
-        guard let expiresAt else { return false }
-        let now = UInt64(Date().timeIntervalSince1970 * 1000)
-        let buffer = UInt64(withinSeconds * 1000)
-        return now + buffer >= expiresAt
-    }
-}
-
-/// Stored authentication data from a previous session
-public struct StoredCredentials: Codable, Sendable {
-    /// Username (email or Spotify username)
+/// What an accesspoint login authenticates with.
+///
+/// Exactly one of the two fields is set, mirroring the two auth types the
+/// protocol supports: a fresh OAuth token (the first login on a machine) or
+/// the reusable blob captured from an earlier `APWelcome`.
+public nonisolated struct APCredentials: Sendable {
+    /// Account name sent alongside the credentials.
     public let username: String
 
-    /// Reusable authentication blob (encrypted)
-    public let authData: Data
+    /// OAuth access token, for `.spotifyToken` logins.
+    public let accessToken: String?
 
-    /// Authentication type
-    public let authType: Int
+    /// Reusable credential blob, for `.storedAPCredentials` logins.
+    public let storedAuthData: Data?
 
-    public init(username: String, authData: Data, authType: Int) {
+    public static func accessToken(_ token: String, username: String) -> APCredentials {
+        APCredentials(username: username, accessToken: token, storedAuthData: nil)
+    }
+
+    public static func stored(username: String, authData: Data) -> APCredentials {
+        APCredentials(username: username, accessToken: nil, storedAuthData: authData)
+    }
+
+    private init(username: String, accessToken: String?, storedAuthData: Data?) {
         self.username = username
-        self.authData = authData
-        self.authType = authType
+        self.accessToken = accessToken
+        self.storedAuthData = storedAuthData
     }
 }

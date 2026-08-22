@@ -494,6 +494,12 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/config",
+				);
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TVOS_DEPLOYMENT_TARGET = 26.0;
 				WATCHOS_DEPLOYMENT_TARGET = 26.0;
@@ -582,6 +588,12 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
+					"$(PROJECT_DIR)/Spotifly/Vendor/config",
+				);
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TVOS_DEPLOYMENT_TARGET = 26.0;
 				WATCHOS_DEPLOYMENT_TARGET = 26.0;

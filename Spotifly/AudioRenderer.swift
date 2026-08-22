@@ -2,20 +2,20 @@
 //  AudioRenderer.swift
 //  Spotifly
 //
-//  Bridges librespot PCM output to AVSampleBufferAudioRenderer for AirPlay-compatible playback.
-//  Audio data flows: Rust FFI callback -> ring buffer -> AVSampleBufferAudioRenderer -> AirPlay/speakers
+//  Bridges decoded PCM output to AVSampleBufferAudioRenderer for AirPlay-compatible playback.
+//  Audio data flows: decoder -> ring buffer -> AVSampleBufferAudioRenderer -> AirPlay/speakers
 //
 
 import AVFoundation
 import CoreMedia
 
-/// Audio renderer that bridges librespot's push model (Sink::write) to
+/// Audio renderer that bridges the decoder's push model to
 /// AVSampleBufferAudioRenderer's pull model (requestMediaDataWhenReady).
 ///
-/// Thread safety: `writeAudioData` is called from librespot's Rust player thread.
+/// Thread safety: `write(samples:count:)` is called from the decode task.
 /// `feedRenderer` runs on a dedicated serial dispatch queue.
 /// A ring buffer with lock-based synchronization bridges the two.
-final nonisolated class AudioRenderer: @unchecked Sendable {
+final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
     // MARK: - Constants
 
     private static let sampleRate: Float64 = 44100
@@ -160,8 +160,8 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
     // MARK: - Push Side (called from Rust player thread)
 
     /// Write PCM samples into the ring buffer.
-    /// Blocks if buffer is full (backpressure to librespot's player thread).
-    func writeAudioData(_ samples: UnsafePointer<Float>, count: Int) {
+    /// Blocks if buffer is full (backpressure to the decoder).
+    func write(samples: UnsafePointer<Float>, count: Int) {
         var remaining = count
         var offset = 0
 
@@ -336,6 +336,21 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
 
     // MARK: - Playback Control
 
+    /// Frames actually played out since the most recent `start()`, read off the
+    /// render synchronizer's clock. This is the *audible* position — samples that
+    /// have left the speakers, not samples the decoder has produced. The old Rust
+    /// path reported the decoder clock here, which ran up to two seconds ahead of
+    /// what was audible and forced asymmetric drift compensation downstream.
+    ///
+    /// Synchronous dispatch is safe: callers are the player state machine and its
+    /// timers, never the render queue itself.
+    var playedFramesSinceStart: Int64 {
+        renderQueue.sync {
+            let seconds = synchronizer.currentTime().seconds
+            return seconds.isFinite && seconds > 0 ? Int64(seconds * Self.sampleRate) : 0
+        }
+    }
+
     /// Called from Rust player thread via FFI callback. Synchronous dispatch
     /// ensures the caller can rely on state being fully updated on return
     /// (e.g. spotifly_disconnect expects flush to complete before proceeding).
@@ -393,6 +408,27 @@ final nonisolated class AudioRenderer: @unchecked Sendable {
             synchronizer.setRate(0.0, time: synchronizer.currentTime())
             renderer.stopRequestingMediaData()
             debugLog("AudioRenderer", "Stopped playback")
+        }
+    }
+
+    /// Unfreezes playback after `stop()`, continuing from the same point with
+    /// whatever was still buffered. Unlike `start()`, deliberately does *not*
+    /// flush or reset anything: a pause/resume cycle is seamless by design.
+    /// The playhead clock holds its position while stopped, so positions read
+    /// across the pause stay continuous.
+    func resume() {
+        renderQueue.sync { [self] in
+            bufferLock.lock()
+            guard !isRendering else {
+                bufferLock.unlock()
+                return
+            }
+            isRendering = true
+            bufferLock.unlock()
+
+            synchronizer.setRate(1.0, time: synchronizer.currentTime())
+            startRequestingData()
+            debugLog("AudioRenderer", "Resumed playback")
         }
     }
 
