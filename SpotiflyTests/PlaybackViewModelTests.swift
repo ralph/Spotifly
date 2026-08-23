@@ -2,7 +2,7 @@
 //  PlaybackViewModelTests.swift
 //  SpotiflyTests
 //
-//  Validation of playback measurements received across the Rust FFI boundary.
+//  Validation of the playback measurements that arrive in Connect snapshots.
 //
 
 @testable import Spotifly

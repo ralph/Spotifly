@@ -1228,8 +1228,8 @@ final class PlaybackViewModel {
 
         let hadStreamDuration = trackDurationMs > 0
 
-        // Update duration. Values cross an FFI boundary as signed 64-bit integers, so do
-        // not let malformed Connect state turn a narrowing conversion into a process trap.
+        // Update duration. Connect snapshots carry these as signed 64-bit integers, so do
+        // not let a malformed one turn a narrowing conversion into a process trap.
         if let durationMs = Self.playbackMilliseconds(state.durationMs), durationMs > 0 {
             trackDurationMs = durationMs
         }
