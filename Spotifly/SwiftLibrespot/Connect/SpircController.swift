@@ -45,13 +45,8 @@ public actor SpircController {
 
     // MARK: - Publishers
 
-    private nonisolated(unsafe) let playerStateSubject = CurrentValueSubject<SpircPlayerState?, Never>(nil)
     private nonisolated(unsafe) let clusterStateSubject = CurrentValueSubject<ClusterState?, Never>(nil)
     private nonisolated(unsafe) let commandSubject = PassthroughSubject<SpircRemoteCommand, Never>()
-
-    public nonisolated var playerStatePublisher: AnyPublisher<SpircPlayerState?, Never> {
-        playerStateSubject.eraseToAnyPublisher()
-    }
 
     public nonisolated var clusterStatePublisher: AnyPublisher<ClusterState?, Never> {
         clusterStateSubject.eraseToAnyPublisher()
@@ -349,7 +344,6 @@ public actor SpircController {
                 repeatMode: convertFromProtoOptions(ps.options),
                 timestamp: UInt64(bitPattern: ps.timestamp),
             )
-            playerStateSubject.send(playerState)
         }
     }
 
@@ -369,146 +363,11 @@ public actor SpircController {
             // Acknowledged in the next PutState via last_command_message_id.
             lastCommandMessageId = UInt64(messageId)
         }
+
+        // Forwarding is the whole job. LibrespotClient executes the command
+        // and reports the result back through updateLocalPlayerState, which
+        // is the state this device publishes. A second, optimistic copy used
+        // to be maintained here and overwritten moments later by the real one.
         commandSubject.send(envelope)
-
-        // Handle command locally
-        switch envelope.command {
-        case let .play(playCmd):
-            await handlePlayCommand(playCmd)
-        case .pause:
-            await handlePauseCommand()
-        case .resume:
-            await handleResumeCommand()
-        case let .seekTo(position):
-            await handleSeekCommand(positionMs: position)
-        case .next:
-            await handleNextCommand()
-        case .prev:
-            await handlePreviousCommand()
-        case let .setVolume(volume):
-            await handleVolumeCommand(volume)
-        case let .setShuffle(enabled):
-            await handleShuffleCommand(enabled)
-        case let .setRepeat(mode):
-            await handleRepeatCommand(mode)
-        case let .transfer(transferCmd):
-            await handleTransferCommand(transferCmd)
-        case let .addToQueue(uri):
-            await handleAddToQueueCommand(uri)
-        case .unknown:
-            break
-        }
-    }
-
-    // MARK: - Command Handlers
-
-    private func handlePlayCommand(_ cmd: SpircCommand.PlayCommand) async {
-        debugLog("SpircController", "Play: \(cmd.contextUri ?? cmd.trackUri ?? "?")")
-        playerState?.isPlaying = true
-        playerState?.isPaused = false
-        playerState?.trackUri = cmd.trackUri ?? cmd.trackUris?.first
-        playerState?.positionMs = cmd.positionMs ?? 0
-        playerStateSubject.send(playerState)
-    }
-
-    private func handlePauseCommand() async {
-        debugLog("SpircController", "Pause")
-        playerState?.isPlaying = false
-        playerState?.isPaused = true
-        playerStateSubject.send(playerState)
-    }
-
-    private func handleResumeCommand() async {
-        debugLog("SpircController", "Resume")
-        playerState?.isPlaying = true
-        playerState?.isPaused = false
-        playerStateSubject.send(playerState)
-    }
-
-    private func handleSeekCommand(positionMs: UInt64) async {
-        debugLog("SpircController", "Seek to \(positionMs)ms")
-        playerState?.positionMs = positionMs
-        playerStateSubject.send(playerState)
-    }
-
-    private func handleNextCommand() async {
-        debugLog("SpircController", "Next track")
-        // TODO: Implement queue management
-    }
-
-    private func handlePreviousCommand() async {
-        debugLog("SpircController", "Previous track")
-        // TODO: Implement queue management
-    }
-
-    private func handleVolumeCommand(_ volume: UInt32) async {
-        debugLog("SpircController", "Volume: \(volume)")
-        // TODO: Update volume state
-    }
-
-    private func handleShuffleCommand(_ enabled: Bool) async {
-        debugLog("SpircController", "Shuffle: \(enabled)")
-        playerState?.shuffle = enabled
-        playerStateSubject.send(playerState)
-    }
-
-    private func handleRepeatCommand(_ mode: ClusterUpdate.RepeatMode) async {
-        debugLog("SpircController", "Repeat: \(mode)")
-        // Convert from ClusterUpdate.RepeatMode to SpircPlayerState.SpircRepeatMode
-        let spircMode: SpircPlayerState.SpircRepeatMode = switch mode {
-        case .off: .off
-        case .context: .context
-        case .track: .track
-        }
-        playerState?.repeatMode = spircMode
-        playerStateSubject.send(playerState)
-    }
-
-    private func handleTransferCommand(_ cmd: SpircCommand.TransferCommand) async {
-        debugLog("SpircController", "Transfer to: \(cmd.targetDeviceId)")
-        // TODO: Implement playback transfer
-    }
-
-    private func handleAddToQueueCommand(_ uri: String) async {
-        debugLog("SpircController", "Add to queue: \(uri)")
-        // TODO: Implement queue management
-    }
-
-    // MARK: - Outgoing Commands
-
-    /// Play a track or context
-    public func play(uri: String, positionMs _: UInt64 = 0) async throws {
-        debugLog("SpircController", "Playing: \(uri)")
-        // TODO: Send play command via accesspoint
-    }
-
-    /// Pause playback
-    public func pause() async throws {
-        debugLog("SpircController", "Pausing")
-        // TODO: Send pause command
-    }
-
-    /// Resume playback
-    public func resume() async throws {
-        debugLog("SpircController", "Resuming")
-        // TODO: Send resume command
-    }
-
-    /// Seek to position
-    public func seek(positionMs: UInt64) async throws {
-        debugLog("SpircController", "Seeking to \(positionMs)ms")
-        // TODO: Send seek command
-    }
-
-    /// Transfer playback to this device
-    public func transferToLocal() async throws {
-        debugLog("SpircController", "Transferring to local")
-        // TODO: Implement transfer
-    }
-
-    /// Transfer playback to another device
-    public func transferPlayback(toDeviceId deviceId: String) async throws {
-        debugLog("SpircController", "Transferring to \(deviceId)")
-        // TODO: Implement transfer
     }
 }

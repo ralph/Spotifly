@@ -265,10 +265,6 @@ public actor LibrespotSession {
 
     // MARK: - SPIRC Publishers (forwarded from SpircController)
 
-    public nonisolated var playerStatePublisher: AnyPublisher<SpircController.SpircPlayerState?, Never> {
-        spircPlayerStateSubject.eraseToAnyPublisher()
-    }
-
     public nonisolated var clusterStatePublisher: AnyPublisher<SpircController.ClusterState?, Never> {
         spircClusterStateSubject.eraseToAnyPublisher()
     }
@@ -277,7 +273,6 @@ public actor LibrespotSession {
         spircCommandSubject.eraseToAnyPublisher()
     }
 
-    private nonisolated(unsafe) let spircPlayerStateSubject = CurrentValueSubject<SpircController.SpircPlayerState?, Never>(nil)
     private nonisolated(unsafe) let spircClusterStateSubject = CurrentValueSubject<SpircController.ClusterState?, Never>(nil)
     private nonisolated(unsafe) let spircCommandSubject = PassthroughSubject<SpircRemoteCommand, Never>()
 
@@ -286,12 +281,6 @@ public actor LibrespotSession {
     private func setupSpircSubscriptions() {
         spircSubscriptions.removeAll()
         guard let spirc = spircController else { return }
-
-        spirc.playerStatePublisher
-            .sink { [weak self] state in
-                self?.spircPlayerStateSubject.send(state)
-            }
-            .store(in: &spircSubscriptions)
 
         spirc.clusterStatePublisher
             .sink { [weak self] state in
