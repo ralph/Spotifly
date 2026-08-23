@@ -346,12 +346,6 @@ enum SpotifyPlayer {
         Task { await LibrespotClient.shared.pause() }
     }
 
-    /// Clears any buffered audio samples.
-    /// Call this before sleep to prevent stale audio playing on wake.
-    static func clearAudioBuffer() {
-        audioRenderer.flush()
-    }
-
     /// Resumes playback.
     static func resume() {
         Task { await LibrespotClient.shared.resume() }
