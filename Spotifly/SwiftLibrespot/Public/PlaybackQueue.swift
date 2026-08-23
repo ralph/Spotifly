@@ -84,6 +84,14 @@ final nonisolated class PlaybackQueue {
         }
     }
 
+    /// A fresh permutation with nothing pinned, for a context that wrapped.
+    /// `reshuffleKeepingCurrent` would put the track that just finished at the
+    /// head of the new cycle, so it played twice in a row across the wrap.
+    private func reshuffle() {
+        shuffleOrder = contextTracks.indices.shuffled()
+        shufflePosition = 0
+    }
+
     /// Builds a fresh random visit order that still starts at the current track.
     private func reshuffleKeepingCurrent() {
         guard !contextTracks.isEmpty else {
@@ -127,18 +135,20 @@ final nonisolated class PlaybackQueue {
         pushHistory()
 
         if shuffleEnabled {
-            shufflePosition += 1
-            if shufflePosition < shuffleOrder.count {
+            let next = shufflePosition + 1
+            if next < shuffleOrder.count {
+                shufflePosition = next
                 currentIndex = shuffleOrder[shufflePosition]
                 return contextTracks[currentIndex]
             }
-            // Context exhausted under shuffle: repeat restarts a fresh shuffle.
-            if repeatMode == .context {
-                reshuffleKeepingCurrent()
-                currentIndex = shuffleOrder[0]
-                return contextTracks[currentIndex]
-            }
-            return nil
+
+            // Exhausted. The position stays on the last track rather than
+            // stepping past the end — `upcoming()` slices the order from
+            // `shufflePosition + 1`, and walking off it trapped the process.
+            guard repeatMode == .context else { return nil }
+            reshuffle()
+            currentIndex = shuffleOrder[0]
+            return contextTracks[currentIndex]
         }
 
         if currentIndex + 1 < contextTracks.count {
@@ -195,8 +205,11 @@ final nonisolated class PlaybackQueue {
     /// The upcoming tracks: user queue first, then remaining context.
     func upcoming(limit: Int = 50) -> [(uri: String, provider: String)] {
         var result = userQueue.map { ($0, "queue") }
+        // `dropFirst` rather than a range slice: it clamps, where
+        // `shuffleOrder[(shufflePosition + 1)...]` traps the moment the
+        // position sits on the last entry.
         let afterCurrent: [String] = if shuffleEnabled {
-            shuffleOrder[(shufflePosition + 1)...]
+            shuffleOrder.dropFirst(shufflePosition + 1)
                 .prefix(limit)
                 .compactMap { contextTracks.indices.contains($0) ? contextTracks[$0] : nil }
         } else {
