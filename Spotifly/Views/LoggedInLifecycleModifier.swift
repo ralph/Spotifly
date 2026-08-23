@@ -75,6 +75,21 @@ struct LoggedInLifecycleModifier: ViewModifier {
                                 debugLog("DebugAutoplay", "Resume")
                                 playbackViewModel.resume()
                             }
+
+                            // SPOTIFLY_DEBUG_NEXT_AFTER=<seconds>: skip twice, a
+                            // few seconds apart. This is the transition worth
+                            // driving headlessly — a track change tears the decode
+                            // thread down and closes the decoder out from under it,
+                            // and a full track is too long to wait for.
+                            if let nextAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_NEXT_AFTER"],
+                               let seconds = Double(nextAfter)
+                            {
+                                for skip in 1 ... 2 {
+                                    try? await Task.sleep(for: .seconds(seconds))
+                                    debugLog("DebugAutoplay", "Next (\(skip))")
+                                    playbackViewModel.next()
+                                }
+                            }
                         }
                     }
                 #endif
