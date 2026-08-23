@@ -173,13 +173,16 @@ final nonisolated class PlaybackQueue {
 
         guard let previous = history.popLast() else { return nil }
 
-        if !userQueue.isEmpty || shuffleEnabled {
-            // Position bookkeeping is best-effort outside plain list order.
-            if let idx = contextTracks.firstIndex(of: previous) {
-                currentIndex = idx
-            }
-        } else if let idx = contextTracks.firstIndex(of: previous) {
+        if let idx = contextTracks.firstIndex(of: previous) {
             currentIndex = idx
+
+            // The shuffle cursor has to come back too. Moving `currentIndex`
+            // alone left `shufflePosition` on the track we just stepped away
+            // from, so the next advance carried on from there — skipping
+            // forward again, or ending the context early.
+            if shuffleEnabled, let position = shuffleOrder.firstIndex(of: idx) {
+                shufflePosition = position
+            }
         }
 
         return previous
