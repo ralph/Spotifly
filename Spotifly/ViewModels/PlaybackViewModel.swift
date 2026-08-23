@@ -1228,9 +1228,10 @@ final class PlaybackViewModel {
 
         let hadStreamDuration = trackDurationMs > 0
 
-        // Update duration
-        if state.durationMs > 0 {
-            trackDurationMs = UInt32(state.durationMs)
+        // Update duration. Values cross an FFI boundary as signed 64-bit integers, so do
+        // not let malformed Connect state turn a narrowing conversion into a process trap.
+        if let durationMs = Self.playbackMilliseconds(state.durationMs), durationMs > 0 {
+            trackDurationMs = durationMs
         }
         let receivedFirstStreamDuration = !hadStreamDuration && trackDurationMs > 0
 
@@ -1238,11 +1239,12 @@ final class PlaybackViewModel {
 
         // Sync position anchor on state changes. When monitoring a remote device,
         // position_ms is the position at timestamp_ms, which can be minutes old.
-        if state.positionMs >= 0 {
-            let posMs = UInt32(state.positionMs)
+        if let posMs = Self.playbackMilliseconds(state.positionMs) {
             let anchor = positionAnchor(forPosition: state.positionMs, takenAt: state.timestampMs)
             debugLog("PlaybackViewModel", "Position anchor: \(positionAnchorMs) -> \(posMs)\(anchor.logSuffix)")
             anchorPosition(posMs, at: anchor.time)
+        } else {
+            debugLog("PlaybackViewModel", "Ignoring out-of-range playback position: \(state.positionMs)ms")
         }
 
         // Update Now Playing position if playback rate changed, or if track changed
@@ -1254,6 +1256,17 @@ final class PlaybackViewModel {
     }
 
     // MARK: - Position Tracking
+
+    /// Narrows milliseconds from a Connect snapshot without trapping on malformed state.
+    ///
+    /// Positions and durations enter Swift as `Int64`, while the player and UI use
+    /// `UInt32`. Spotify has produced a remote snapshot whose position was the current Unix
+    /// time in milliseconds; a direct `UInt32` conversion traps on that value. Keeping the
+    /// conversion exact lets the caller ignore a bad measurement and preserve its last
+    /// usable anchor.
+    nonisolated static func playbackMilliseconds(_ milliseconds: Int64) -> UInt32? {
+        UInt32(exactly: milliseconds)
+    }
 
     // Anchor-based position tracking using CACurrentMediaTime for precision
     // UI reads interpolatedPositionMs (computed), not currentPositionMs directly
