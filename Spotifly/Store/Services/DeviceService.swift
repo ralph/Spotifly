@@ -44,13 +44,20 @@ final class DeviceService {
     func activate() {
         guard devicesCancellable == nil else { return }
         recordActivation(self)
+        // Both of these are fed from inside the LibrespotClient actor, and a
+        // Combine subject delivers to its subscribers *synchronously* on
+        // whatever thread sent. These closures touch the main-actor store, so
+        // without the hop the isolation check traps — which is exactly what
+        // happened the first time a real cluster arrived.
         devicesCancellable = SpotifyPlayer.devices
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] devices in
                 guard let self, let devices else { return }
                 store.upsertDevices(devices)
                 store.devicesIsLoading = false
             }
         activeDeviceCancellable = SpotifyPlayer.activeDeviceChanged
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] deviceId in
                 self?.activeDeviceUpdates += 1
                 self?.store.setActiveDevice(deviceId)
