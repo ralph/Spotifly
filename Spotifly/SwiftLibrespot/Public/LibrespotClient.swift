@@ -607,7 +607,18 @@ public actor LibrespotClient {
         knownDurationMs = 0
         loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: 0))
         publishPlaybackState(for: uri, playing: true, paused: false, positionMs: 0)
-        try await audioPipeline.playTrack(uri: uri)
+
+        do {
+            try await audioPipeline.playTrack(uri: uri)
+        } catch {
+            // The optimistic state above claimed this track was playing. If
+            // metadata, the key, the CDN or the decoder said otherwise, leaving
+            // it there shows a running track over silence — and auto-advance,
+            // which swallows the error, would sit on it forever.
+            playbackStateSubject.send(nil)
+            throw error
+        }
+
         knownDurationMs = await audioPipeline.currentDurationMs
     }
 
