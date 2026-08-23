@@ -443,16 +443,20 @@ public actor LibrespotClient {
         publishQueueNotifications()
     }
 
-    public func setShuffle(_ enabled: Bool) {
+    public func setShuffle(_ enabled: Bool) async {
         shuffleEnabled = enabled
         playbackQueue.setShuffle(enabled)
+        // Shuffle reorders what comes next, so the queue views move with it.
         publishQueueNotifications()
-        publishPlaybackStateRefresh()
+        await publishPlaybackStateRefresh()
     }
 
-    func setRepeat(_ mode: PlaybackQueue.RepeatMode) {
+    /// Repeat leaves the queue's order alone — only the flags move, so this
+    /// refreshes the playback state and nothing else.
+    func setRepeat(_ mode: PlaybackQueue.RepeatMode) async {
         repeatMode = mode
         playbackQueue.setRepeat(mode)
+        await publishPlaybackStateRefresh()
     }
 
     // MARK: - Volume
@@ -861,7 +865,7 @@ public actor LibrespotClient {
             await setVolume(Double(volume) / 65535.0)
 
         case let .setShuffle(enabled):
-            setShuffle(enabled)
+            await setShuffle(enabled)
 
         case let .setRepeat(mode):
             let repeatMode: PlaybackQueue.RepeatMode = switch mode {
@@ -869,7 +873,7 @@ public actor LibrespotClient {
             case .context: .context
             case .track: .track
             }
-            setRepeat(repeatMode)
+            await setRepeat(repeatMode)
 
         case let .addToQueue(uri):
             await addToQueue(uri: uri)
@@ -902,7 +906,11 @@ public actor LibrespotClient {
 
     /// Re-emits the last playback state — used after option changes (shuffle,
     /// repeat) where only the flags moved.
-    private func publishPlaybackStateRefresh() {
+    ///
+    /// Reports to the cluster as well: an option is part of the player state
+    /// other devices render, so a shuffle toggled here has to show up on the
+    /// phone that is watching.
+    private func publishPlaybackStateRefresh() async {
         guard let current = playbackStateSubject.value else { return }
         playbackStateSubject.send(PlaybackState(
             isPlaying: current.isPlaying,
@@ -915,6 +923,7 @@ public actor LibrespotClient {
             repeatContext: repeatMode == .context,
             timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
         ))
+        await reportPlaybackToCluster()
     }
 
     /// Duration of the currently loaded track, captured when it starts. The
