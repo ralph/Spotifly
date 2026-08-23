@@ -69,6 +69,9 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
     private var isRendering = false
     private var currentPTS: CMTime = .zero
     private var isRequestingData = false
+    /// Scheduled feeder; see `startRequestingData` for why this replaced the
+    /// framework's pull callback.
+    private var feedTimer: DispatchSourceTimer?
 
     // MARK: - Route Change Observation
 
@@ -123,6 +126,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
         if let observer = routeChangeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        feedTimer?.cancel()
         renderer.stopRequestingMediaData()
         synchronizer.removeRenderer(renderer, at: .invalid)
         ringBuffer.deallocate()
@@ -231,6 +235,13 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
 
     // MARK: - Pull Side (called on renderQueue by AVSampleBufferAudioRenderer)
 
+    /// Drains the ring buffer into the renderer on a schedule rather than via
+    /// `requestMediaDataWhenReady`. The framework's pull callback re-invokes
+    /// itself back-to-back while data is available, which keeps this serial
+    /// queue permanently busy — and every `renderQueue.sync` from the player
+    /// (pause, seek, position reads) starves behind it. A 25 ms timer leaves
+    /// gaps: one feed pass drains whatever the renderer will take, then the
+    /// queue idles until the next tick.
     private func startRequestingData() {
         bufferLock.lock()
         guard isRendering, !isRequestingData else {
@@ -240,12 +251,42 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
         isRequestingData = true
         bufferLock.unlock()
 
-        renderer.requestMediaDataWhenReady(on: renderQueue) { [weak self] in
-            self?.feedRenderer()
+        // Repeating interval is mandatory: the default is a one-shot, which
+        // left the renderer starved and every control path hung behind it.
+        feedTimer?.cancel()
+        feedTimer = DispatchSource.makeTimerSource(queue: renderQueue)
+        feedTimer?.schedule(
+            deadline: .now(),
+            repeating: .milliseconds(25),
+            leeway: .milliseconds(5),
+        )
+        feedTimer?.setEventHandler { [weak self] in
+            guard let self else { return }
+            var fedSamples = 0
+            repeat {
+                let fed = feedRendererOnce()
+                fedSamples += fed
+                if fed == 0 {
+                    break
+                }
+            } while fedSamples < 32768 // ~0.37 s of stereo per pass
         }
+        feedTimer?.resume()
     }
 
-    private func feedRenderer() {
+    private func stopRequestingData() {
+        bufferLock.lock()
+        isRequestingData = false
+        bufferLock.unlock()
+        feedTimer?.cancel()
+        feedTimer = nil
+    }
+
+    /// One drain pass over the ring buffer. Returns samples consumed; 0 when
+    /// the ring is empty or the renderer is full.
+    private func feedRendererOnce() -> Int {
+        var totalFed = 0
+
         while renderer.isReadyForMoreMediaData {
             // Read a chunk from ring buffer
             bufferLock.lock()
@@ -253,11 +294,9 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
             let toRead = min(Self.feedChunkSamples, available)
 
             if toRead == 0 {
-                // Buffer empty — stop requesting until more data arrives
-                isRequestingData = false
+                // Buffer empty — the timer stops itself once it notices
                 bufferLock.unlock()
-                renderer.stopRequestingMediaData()
-                return
+                return totalFed
             }
 
             // Allocate temporary buffer for this chunk
@@ -302,7 +341,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
             guard status == kCMBlockBufferNoErr, let block = blockBuffer else {
                 chunk.deallocate()
                 debugLog("AudioRenderer", "Failed to create CMBlockBuffer: \(status)")
-                return
+                return totalFed
             }
 
             // Create CMSampleBuffer
@@ -320,7 +359,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
 
             guard status == noErr, let sample = sampleBuffer else {
                 debugLog("AudioRenderer", "Failed to create CMSampleBuffer: \(status)")
-                return
+                return totalFed
             }
 
             // Advance presentation time
@@ -331,7 +370,10 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
 
             // Enqueue
             renderer.enqueue(sample)
+            totalFed += toRead
         }
+
+        return totalFed
     }
 
     // MARK: - Playback Control
@@ -406,7 +448,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
             spaceAvailable.signal()
 
             synchronizer.setRate(0.0, time: synchronizer.currentTime())
-            renderer.stopRequestingMediaData()
+            stopRequestingData()
             debugLog("AudioRenderer", "Stopped playback")
         }
     }
@@ -487,7 +529,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
     /// where the renderer accepts data but doesn't pace it.
     /// Must be called on renderQueue.
     private func recreateRenderPipeline() {
-        renderer.stopRequestingMediaData()
+        stopRequestingData()
         renderer.flush()
         synchronizer.removeRenderer(renderer, at: .invalid)
 
@@ -532,7 +574,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
     /// Flushes the renderer and resets the ring buffer.
     /// Must be called on renderQueue.
     private func resetAudioPipeline() {
-        renderer.stopRequestingMediaData()
+        stopRequestingData()
         renderer.flush()
         resetRingBuffer()
     }

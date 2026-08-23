@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - spclient requests signed like the desktop client (`Client-Token`, `App-Platform`, `Origin`) and routed through `/context-resolve/v1/` (not v2), with audio files fetched from `/extended-metadata` `TRACK_V4` — `/metadata/4` returns a stub without file lists, and relinked tracks keep their files under `alternative`.
   - The dealer websocket session retained (a deallocated URLSession killed the socket), PutState gzipped + percent-encoded connection ids.
   - Spotify's container quirk: one leading non-vorbis page (flags `0x06`, typically 167 bytes) before the real BOS page — skipped by parsing segment tables rather than hardcoding.
+  - Transport controls (pause/resume) now respond instantly. The decode loop ran on a Swift-concurrency cooperative thread and blocked there in throttled writes for the length of a track, starving every pipeline-actor job — position ticks and pause included — until the track finished. Decoding moved to a dedicated thread that blocks freely and reports through shared state; the renderer also feeds on a timer instead of `requestMediaDataWhenReady`, whose back-to-back pulls starved control paths on its queue.
 
 
 

@@ -62,6 +62,19 @@ struct LoggedInLifecycleModifier: ViewModifier {
                             try? await Task.sleep(for: .seconds(5))
                             debugLog("DebugAutoplay", "Starting album 1LVj9ljlwsn2DOsXkRDOeI")
                             await playbackViewModel.play(uriOrUrl: "spotify:album:1LVj9ljlwsn2DOsXkRDOeI")
+
+                            // SPOTIFLY_DEBUG_PAUSE_AFTER=<seconds>: pause through the
+                            // same PlaybackViewModel path the buttons use, then resume.
+                            if let pauseAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_PAUSE_AFTER"],
+                               let seconds = Double(pauseAfter)
+                            {
+                                try? await Task.sleep(for: .seconds(seconds))
+                                debugLog("DebugAutoplay", "Pause")
+                                playbackViewModel.pause()
+                                try? await Task.sleep(for: .seconds(6))
+                                debugLog("DebugAutoplay", "Resume")
+                                playbackViewModel.resume()
+                            }
                         }
                     }
                 #endif

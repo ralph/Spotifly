@@ -82,7 +82,68 @@ actor AudioPipeline {
     /// separately for logging/diagnostics.
     private var decoder: VorbisDecoder?
 
-    private var decodeTask: Task<Void, Never>?
+    /// Shared state for the dedicated decode thread. The loop runs on a
+    /// plain pthread-style thread because it blocks for long stretches
+    /// (throttled writes); parking it on a Swift-concurrency cooperative
+    /// thread starved every actor job — ticks, pause — for the length of a
+    /// track.
+    private final class DecodeLoopState: @unchecked Sendable {
+        let lock = NSLock()
+        var cancelled = false
+        var finished = false
+        var playing = false
+        var paused = false
+        var writtenFrames: Int64 = 0
+
+        func reset() {
+            lock.lock(); defer { lock.unlock() }
+            cancelled = false
+            finished = false
+            writtenFrames = 0
+        }
+
+        func setCancelled() {
+            lock.lock(); defer { lock.unlock() }
+            cancelled = true
+        }
+
+        func setFinished(frames: Int64) {
+            lock.lock(); defer { lock.unlock() }
+            finished = true
+            writtenFrames = frames
+        }
+
+        func addWritten(_ frames: Int64) -> Int64 {
+            lock.lock(); defer { lock.unlock() }
+            writtenFrames += frames
+            return writtenFrames
+        }
+
+        func snapshot() -> (cancelled: Bool, finished: Bool, writtenFrames: Int64) {
+            lock.lock(); defer { lock.unlock() }
+            return (cancelled, finished, writtenFrames)
+        }
+
+        func setPlayback(playing: Bool? = nil, paused: Bool? = nil) {
+            lock.lock(); defer { lock.unlock() }
+            if let playing {
+                self.playing = playing
+            }
+            if let paused {
+                self.paused = paused
+            }
+        }
+
+        func isPaused() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            return paused
+        }
+    }
+
+    private let decodeState = DecodeLoopState()
+    private var decodeThread: Thread?
+    private nonisolated(unsafe) var decodeWakeSemaphore: DispatchSemaphore?
+
     private var positionTimer: Task<Void, Never>?
 
     private var isPlaying = false
@@ -184,6 +245,7 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Pausing")
         isPaused = true
+        decodeState.setPlayback(paused: true)
         sink.stop()
         stopPositionTimer()
         playbackStateSubject.send(.paused(trackUri: uri))
@@ -194,6 +256,7 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Resuming")
         isPaused = false
+        decodeState.setPlayback(paused: false)
         sink.resume()
         startPositionTimer()
         playbackStateSubject.send(.playing(trackUri: uri))
@@ -230,17 +293,31 @@ actor AudioPipeline {
         startDecoding(from: frame, keepPaused: isPaused)
     }
 
-    /// Cancels the decode loop and awaits its exit.
+    /// Cancels the decode loop and waits for its thread to exit.
     ///
     /// Termination is prompt by construction: the writer returns from a full
     /// buffer once the sink has been stopped (backpressure checks rendering),
-    /// and the pause park polls a flag instead of suspending on a continuation
-    /// nobody may ever fire.
+    /// and the pause park polls a flag. Bounded wait so a wedged thread can
+    /// never take playback control down with it.
     private func retireDecodeTask() async {
-        decodeTask?.cancel()
-        let task = decodeTask
-        decodeTask = nil
-        await task?.value
+        decodeState.setCancelled()
+
+        // Stop pulling so a writer parked on a full ring wakes up.
+        sink.stop()
+
+        // The semaphore wait must happen off an async context (Dispatch
+        // forbids it there); the join is bounded and the loop exits within
+        // a write timeout at worst, so a detached hop is safe.
+        if let semaphore = decodeWakeSemaphore {
+            decodeWakeSemaphore = nil
+            let joiner = Thread {
+                _ = semaphore.wait(timeout: .now() + 5)
+            }
+            joiner.name = "spotifly.decode-join"
+            joiner.stackSize = 1 << 18
+            joiner.start()
+        }
+        decodeThread = nil
     }
 
     /// Sets output volume (0…1). Gain is applied at the sink, which takes
@@ -284,8 +361,6 @@ actor AudioPipeline {
             sinkClockOriginFrame = frame
         }
 
-        writtenFrames = 0
-        decodingComplete = false
         endOfTrackFired = false
         isPlaying = true
         isPaused = keepPaused
@@ -295,20 +370,39 @@ actor AudioPipeline {
             sink.start()
         }
 
-        let uri = currentTrackUri ?? ""
+        decodeState.reset()
+        decodeState.setPlayback(playing: true, paused: keepPaused)
+
+        // One dedicated thread per track load. It blocks freely — throttled
+        // writes, pause polling — without occupying a Swift-concurrency
+        // cooperative thread, which would starve this actor's own jobs
+        // (position ticks, pause) for the length of the track.
+        let semaphore = DispatchSemaphore(value: 0)
+        decodeWakeSemaphore = semaphore
+        let state = decodeState
         let channels = decoder.format.channels
         let sinkRef = sink
 
-        decodeTask = Task.detached(priority: .userInitiated) { [weak self] in
-            await self?.runDecodeLoop(decoder: decoder, channels: channels, sink: sinkRef)
+        let thread = Thread {
+            defer { semaphore.signal() }
+            Self.runDecodeThread(
+                decoder: decoder,
+                channels: channels,
+                sink: sinkRef,
+                state: state,
+            )
         }
+        thread.name = "spotifly.decode"
+        thread.stackSize = 1 << 20
+        thread.start()
+        decodeThread = thread
 
         if keepPaused {
             stopPositionTimer()
         } else {
             startPositionTimer()
         }
-        playbackStateSubject.send(keepPaused ? .paused(trackUri: uri) : .playing(trackUri: uri))
+        playbackStateSubject.send(keepPaused ? .paused(trackUri: currentTrackUri ?? "") : .playing(trackUri: currentTrackUri ?? ""))
     }
 
     /// The decode loop. Runs off the actor because `sink.write` blocks on
@@ -318,25 +412,43 @@ actor AudioPipeline {
     /// in until the task is cancelled or completes — the actor never touches
     /// it concurrently (a seek cancels and replaces the task before opening a
     /// new one).
-    private func runDecodeLoop(
+    /// The decode loop, running on its own thread. Synchronous by design:
+    /// every long wait here (throttled writes, pause polling, cancellation
+    /// polling) would otherwise occupy a cooperative-concurrency thread and
+    /// starve the actor's jobs.
+    ///
+    /// `decoder` is owned solely by this thread until `state.cancelled`
+    /// observes true and the caller has joined the thread.
+    private nonisolated static func runDecodeThread(
         decoder: VorbisDecoder,
         channels: Int,
         sink: any AudioSink,
-    ) async {
+        state: DecodeLoopState,
+    ) {
+        // The actor publishes these on transitions; the loop only mirrors
+        // what it needs to be observed from ticks.
         let chunkFrames = 2048
         let buffer = UnsafeMutablePointer<Float>.allocate(capacity: chunkFrames * channels)
         defer { buffer.deallocate() }
 
         var totalWritten: Int64 = 0
 
-        while !Task.isCancelled {
+        while !state.snapshot().cancelled {
             // A pause parks here. Polling rather than suspending keeps
-            // cancellation honored without needing a second party to wake us.
-            while !Task.isCancelled, isPaused {
-                try? await Task.sleep(for: .milliseconds(50))
+            // cancellation honored without a second party waking us.
+            var parked = 0
+            while !state.snapshot().cancelled, state.isPaused() {
+                if parked == 0 {
+                    debugLog("AudioPipeline", "decode paused")
+                }
+                parked += 1
+                Thread.sleep(forTimeInterval: 0.05)
             }
-            if Task.isCancelled {
+            if state.snapshot().cancelled {
                 break
+            }
+            if parked > 0 {
+                debugLog("AudioPipeline", "decode resumed after pause")
             }
 
             let frames = decoder.read(into: buffer, maxFrames: chunkFrames)
@@ -346,25 +458,11 @@ actor AudioPipeline {
 
             sink.write(samples: buffer, count: frames * channels)
             totalWritten += Int64(frames)
-
-            await noteProgress(totalWritten)
+            _ = state.addWritten(totalWritten)
         }
 
-        if Task.isCancelled {
-            return
-        }
-        await markDecodingComplete(totalWritten)
-    }
-
-    private func noteProgress(_ frames: Int64) {
-        writtenFrames = frames
-        positionSubject.send(UInt64(frameToMs(currentTrackFrame())))
-    }
-
-    private func markDecodingComplete(_ frames: Int64) {
-        writtenFrames = frames
-        decodingComplete = true
-        debugLog("AudioPipeline", "Decode complete: \(frames) frames")
+        state.setFinished(frames: totalWritten)
+        debugLog("AudioPipeline", "Decode finished: \(totalWritten) frames")
     }
 
     // MARK: - Teardown
@@ -412,7 +510,11 @@ actor AudioPipeline {
 
         positionSubject.send(UInt64(frameToMs(currentTrackFrame())))
 
-        if decodingComplete, !endOfTrackFired, writtenFrames > 0 {
+        let snapshot = decodeState.snapshot()
+        writtenFrames = snapshot.writtenFrames
+        decodingComplete = snapshot.finished
+
+        if snapshot.finished, snapshot.writtenFrames > 0, !endOfTrackFired {
             // Both sides of this comparison count frames decoded *this load*:
             // the playhead relative to the sink clock origin, against frames
             // written since that same origin. Mixing in absolute frames would
