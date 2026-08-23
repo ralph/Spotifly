@@ -83,7 +83,6 @@ public actor LibrespotClient {
     private nonisolated(unsafe) let becameActiveSubject = PassthroughSubject<Void, Never>()
     private nonisolated(unsafe) let activeDeviceSubject = PassthroughSubject<String, Never>()
     private nonisolated(unsafe) let devicesSubject = CurrentValueSubject<[Device]?, Never>(nil)
-    private nonisolated(unsafe) let sessionClientChangedSubject = PassthroughSubject<SessionClientChangedNotification, Never>()
     private nonisolated(unsafe) let connectionStateSubject = CurrentValueSubject<LibrespotConnectionState?, Never>(nil)
 
     // MARK: - Public Publishers
@@ -122,10 +121,6 @@ public actor LibrespotClient {
 
     nonisolated var devices: AnyPublisher<[Device]?, Never> {
         devicesSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var sessionClientChanged: AnyPublisher<SessionClientChangedNotification, Never> {
-        sessionClientChangedSubject.eraseToAnyPublisher()
     }
 
     nonisolated var connectionState: AnyPublisher<LibrespotConnectionState?, Never> {

@@ -90,14 +90,6 @@ struct SetQueueNotification {
     let prevTracks: [SetQueueTrackInfo]
 }
 
-/// Session client changed notification containing info about the controlling Spotify client
-struct SessionClientChangedNotification {
-    let clientId: String
-    let clientName: String
-    let clientBrandName: String
-    let clientModelName: String
-}
-
 /// Connection state of the streaming session.
 ///
 /// `revision` orders snapshots on arrival: several sources publish
@@ -197,11 +189,6 @@ enum SpotifyPlayer {
 
     static var activeDeviceChanged: AnyPublisher<String, Never> {
         LibrespotClient.shared.activeDeviceChanged
-    }
-
-    /// Fires when the controlling Spotify client changes (e.g., which app initiated playback).
-    static var sessionClientChanged: AnyPublisher<SessionClientChangedNotification, Never> {
-        LibrespotClient.shared.sessionClientChanged
     }
 
     /// Connection state updates. Subscribe to this to update the connection status dashboard.
