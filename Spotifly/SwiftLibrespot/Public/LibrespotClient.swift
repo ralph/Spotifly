@@ -1046,8 +1046,10 @@ extension SpircController.ClusterState.ConnectedDevice {
             isActive: isActive,
             isPrivateSession: false,
             isRestricted: false,
-            volumePercent: volume > 0 ? Int((Double(volume) / 65535.0 * 100).rounded()) : nil,
-            disableVolume: false,
+            // Zero is a volume, not a missing one. Reporting nil for it made a
+            // muted device indistinguishable from one that never said.
+            volumePercent: Int((Double(volume) / 65535.0 * 100).rounded()),
+            disableVolume: disableVolume,
         )
     }
 }

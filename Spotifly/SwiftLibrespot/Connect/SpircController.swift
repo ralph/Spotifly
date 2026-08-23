@@ -86,6 +86,9 @@ public actor SpircController {
             public let deviceType: SpotifyDeviceType
             public let isActive: Bool
             public let volume: UInt32
+            /// The device says it takes no volume commands. Speakers hides its
+            /// slider on this, so dropping it drew a control that does nothing.
+            public let disableVolume: Bool
         }
     }
 
@@ -320,6 +323,7 @@ public actor SpircController {
                 deviceType: SpotifyDeviceType(rawValue: Int(deviceInfoProto.deviceType.rawValue)) ?? .unknown,
                 isActive: deviceId == cluster.activeDeviceId,
                 volume: deviceInfoProto.volume,
+                disableVolume: deviceInfoProto.capabilities.disableVolume,
             )
         }
 
