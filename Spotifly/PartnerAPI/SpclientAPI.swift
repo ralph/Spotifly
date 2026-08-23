@@ -238,6 +238,29 @@ nonisolated struct SpclientAPI: Sendable {
         )
     }
 
+    /// Hands playback to `to`.
+    ///
+    /// `POST /connect-state/v1/connect/transfer/from/{from}/to/{to}`, the call
+    /// librespot makes (`SpClient::transfer`). Its own path again, beside
+    /// volume rather than among the player commands, and no body in the plain
+    /// case — librespot passes `None` for the optional `TransferRequest`.
+    ///
+    /// **Naming the same device on both sides pulls playback here** from
+    /// whichever device holds it, which is how librespot takes over, and how
+    /// `transferToLocal` is expressed.
+    ///
+    /// This replaces a `PUT /me/player` on `api.spotify.com`, which could never
+    /// have worked: the only token this app holds comes from the desktop client
+    /// id, and that id is answered with 429 by every Web API endpoint — see
+    /// `KeymasterAuth.clientId`.
+    func transferPlayback(from: String, to: String) async throws {
+        try await send(
+            method: "POST",
+            path: "connect-state/v1/connect/transfer/from/\(from)/to/\(to)",
+            encoded: nil,
+        )
+    }
+
     /// Sets a remote device's volume. Its own path and its own verb, unlike every other command.
     func setVolume(percent: Int, from: String, to: String) async throws {
         try await send(
@@ -331,7 +354,17 @@ nonisolated struct SpclientAPI: Sendable {
         path: String,
         body: some Encodable & Sendable,
     ) async throws -> Data {
-        let encoded = try JSONEncoder().encode(body)
+        try await send(method: method, path: path, encoded: JSONEncoder().encode(body))
+    }
+
+    /// The bodyless form. `connect-state`'s transfer takes no payload in the
+    /// common case, and an empty JSON object is not the same request.
+    @discardableResult
+    private func send(
+        method: String,
+        path: String,
+        encoded: Data?,
+    ) async throws -> Data {
         let sent = try await credentials.retryingRefusedToken {
             try await sendOnce(method: method, path: path, body: encoded)
         }
@@ -353,13 +386,15 @@ nonisolated struct SpclientAPI: Sendable {
     private func sendOnce(
         method: String,
         path: String,
-        body: Data,
+        body: Data?,
     ) async throws -> SpotifyCredentials.Attempt {
         var request = URLRequest(url: Self.baseURL.appending(path: path))
         request.httpMethod = method
         request.httpBody = body
         try await credentials.sign(&request)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let urlString = request.url?.absoluteString ?? path

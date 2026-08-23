@@ -503,17 +503,43 @@ enum SpotifyPlayer {
 
     // MARK: - Transfer
 
-    /// Transfers playback from another Spotify Connect device to this local player.
+    /// Takes over playback that is running on another Connect device.
     /// - Returns: `true` if the transfer was accepted.
     static func transferToLocal() async -> Bool {
-        await (try? LibrespotClient.shared.transferToLocal()) != nil
+        // Naming this device on both sides is how librespot pulls playback to
+        // itself; the backend derives the source from the session anyway.
+        await transfer(to: localDeviceId())
     }
 
-    /// Transfers playback from this local player to another device.
+    /// Hands playback from this device to another one.
     /// - Parameter deviceId: The target device ID to transfer playback to
     /// - Returns: `true` if the transfer was accepted.
     static func transferPlayback(to deviceId: String) async -> Bool {
-        await (try? LibrespotClient.shared.transferPlayback(toDeviceId: deviceId)) != nil
+        await transfer(to: deviceId)
+    }
+
+    /// This device's Connect id, as the cluster knows it.
+    private static func localDeviceId() -> String? {
+        getConnectionState()?.deviceId.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// Both transfers go over connect-state, beside every other Connect command
+    /// this app sends. They used to go to `PUT /me/player` on `api.spotify.com`
+    /// with the keymaster token, which cannot work: that grant uses the desktop
+    /// client id, and Spotify answers it with 429 on every Web API endpoint.
+    private static func transfer(to deviceId: String?) async -> Bool {
+        guard let from = localDeviceId(), let deviceId, !deviceId.isEmpty else {
+            debugLog("SpotifyPlayer", "Transfer skipped: no local device id yet")
+            return false
+        }
+
+        do {
+            try await SpclientAPI().transferPlayback(from: from, to: deviceId)
+            return true
+        } catch {
+            debugLog("SpotifyPlayer", "Transfer to \(deviceId) failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     /// Adds an item to the queue.
