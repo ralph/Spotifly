@@ -121,9 +121,15 @@ public actor LibrespotSession {
                 Task { await self.handleTransportLost() }
             }
 
+            guard let spclientHost = resolvedEndpoints?.spclients.first else {
+                throw LibrespotError.connectionFailed("No spclient hosts available")
+            }
+
             dealerConnection = await DealerConnection(
                 endpoint: dealerHost,
                 accessToken: bearerToken(),
+                spclientHost: spclientHost,
+                deviceId: deviceInfo.deviceId,
             )
             if let clientTokenProvider {
                 await dealerConnection!.setClientTokenProvider(clientTokenProvider)

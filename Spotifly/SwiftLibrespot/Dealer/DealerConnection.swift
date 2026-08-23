@@ -16,6 +16,11 @@ public actor DealerConnection {
 
     private let endpoint: String
     private let accessToken: String
+    /// Where connect-state lives. It is *not* the dealer host, which is what
+    /// PutState was aimed at until every one of them came back 403.
+    private let spclientHost: String
+    /// The device's own id — the connect-state resource this session owns.
+    private let deviceId: String
     private var clientTokenProvider: (@Sendable () async throws -> String)?
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
@@ -50,9 +55,11 @@ public actor DealerConnection {
 
     // MARK: - Initialization
 
-    public init(endpoint: String, accessToken: String) {
+    public init(endpoint: String, accessToken: String, spclientHost: String, deviceId: String) {
         self.endpoint = endpoint
         self.accessToken = accessToken
+        self.spclientHost = spclientHost
+        self.deviceId = deviceId
         debugLog("DealerConnection", "Created for endpoint: \(endpoint)")
     }
 
@@ -172,17 +179,24 @@ public actor DealerConnection {
             throw LibrespotError.spircNotReady
         }
 
-        let encodedId = connId.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? connId
+        // `PUT https://{spclient}/connect-state/v1/devices/{device_id}`, with the
+        // connection id as a **header**. Every part of that was wrong before:
+        // the request went to the dealer host, named the resource
+        // `hobs_{percent-encoded connection id}`, and sent no connection-id
+        // header at all — so all of them, registration included, were answered
+        // 403 and this device never joined the cluster. librespot's
+        // `SpClient::put_connect_state_request` is the shape being matched.
+        let url = URL(string: "https://\(spclientHost)/connect-state/v1/devices/\(deviceId)")!
 
-        // Format: https://gew1-dealer.spotify.com/connect-state/v1/devices/hobs_{connectionId}
-        let url = URL(string: "https://\(endpoint)/connect-state/v1/devices/hobs_\(encodedId)")!
-
-        let payload = Self.gzip(request.serialize())
-        debugLog("DealerConnection", "[PUT] connect-state hobs_\(encodedId.prefix(24))… (\(payload.count) bytes gzipped)")
+        // Uncompressed. librespot sends this protobuf raw, and there is no
+        // gzip anywhere in its spclient; compressing it here was answered 503.
+        let payload = request.serialize()
+        debugLog("DealerConnection", "[PUT] connect-state devices/\(deviceId.prefix(12))… (\(payload.count) bytes)")
 
         var httpRequest = URLRequest(url: url)
         httpRequest.httpMethod = "PUT"
         httpRequest.timeoutInterval = 15
+        httpRequest.setValue(connId, forHTTPHeaderField: "X-Spotify-Connection-Id")
         httpRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         if let clientTokenProvider {
             try await httpRequest.setValue(clientTokenProvider(), forHTTPHeaderField: "Client-Token")
@@ -190,7 +204,6 @@ public actor DealerConnection {
         httpRequest.setValue("OSX_ARM64", forHTTPHeaderField: "App-Platform")
         httpRequest.setValue("https://xpui.app.spotify.com", forHTTPHeaderField: "Origin")
         httpRequest.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
-        httpRequest.setValue("gzip", forHTTPHeaderField: "Content-Encoding")
 
         httpRequest.httpBody = payload
 
