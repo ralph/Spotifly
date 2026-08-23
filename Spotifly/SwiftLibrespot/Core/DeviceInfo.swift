@@ -131,9 +131,11 @@ public nonisolated struct DeviceInfo: Sendable {
         #if os(macOS)
             var size = 0
             sysctlbyname("hw.model", nil, &size, nil, 0)
-            var model = [CChar](repeating: 0, count: size)
+            var model = [UInt8](repeating: 0, count: size)
             sysctlbyname("hw.model", &model, &size, nil, 0)
-            return String(cString: model)
+            // sysctl includes the terminator in `size`; drop it rather than
+            // decoding a trailing NUL into the model name.
+            return String(decoding: model.prefix { $0 != 0 }, as: UTF8.self)
         #else
             return "Apple Device"
         #endif
