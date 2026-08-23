@@ -805,19 +805,22 @@ public actor LibrespotClient {
         let devices = cluster.devices.map(\.asEntity)
         devicesSubject.send(devices)
 
-        if let activeId = cluster.activeDeviceId, !activeId.isEmpty {
-            let changed = activeDeviceSubject
-            let wasActive = isActiveDeviceFlag
-            let nowActive = activeId == deviceInfo.deviceId
-            isActiveDeviceFlag = nowActive
+        // An empty active id is Connect saying "nobody is playing", which is a
+        // state worth adopting rather than skipping: ignoring it left the flag
+        // and the store pointing at a device that has since stopped, and the
+        // app went on routing commands to it. `setActiveDevice("")` marks every
+        // device inactive, which is exactly the intended reading.
+        let activeId = cluster.activeDeviceId ?? ""
+        let wasActive = isActiveDeviceFlag
+        let nowActive = !activeId.isEmpty && activeId == deviceInfo.deviceId
+        isActiveDeviceFlag = nowActive
 
-            changed.send(activeId)
+        activeDeviceSubject.send(activeId)
 
-            if nowActive, !wasActive {
-                becameActiveSubject.send()
-            } else if !nowActive, wasActive {
-                becameInactiveSubject.send()
-            }
+        if nowActive, !wasActive {
+            becameActiveSubject.send()
+        } else if !nowActive, wasActive {
+            becameInactiveSubject.send()
         }
 
         await publishConnectionState(connected: session?.isConnected == true)
