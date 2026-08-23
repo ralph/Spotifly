@@ -31,6 +31,11 @@ public actor SpircController {
     /// every PutState.
     private var isActive = false
 
+    /// Logical Connect volume (0…65535) this device reports. Other clients
+    /// render their slider from it, so a hard-coded value pins every remote
+    /// view of this Mac at that number no matter what it is really playing at.
+    private var volume: UInt32 = 65535 / 2
+
     /// Heartbeat task; Spotify expects periodic PutState even without
     /// changes, and other clients drop devices that go quiet.
     private var heartbeatTask: Task<Void, Never>?
@@ -139,7 +144,7 @@ public actor SpircController {
         goodbye.memberType = .connectState
         goodbye.putStateReason = .becameInactive
         goodbye.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
-        goodbye.device = Self.buildDevice(deviceInfo: deviceInfo, isActive: false, playerState: nil)
+        goodbye.device = buildDevice(playerState: nil)
         try? await dealerConnection.putState(goodbye)
     }
 
@@ -170,6 +175,13 @@ public actor SpircController {
                 await self?.publishState(reason: nil)
             }
         }
+    }
+
+    /// Adopts the logical volume and tells the cluster about it.
+    func updateVolume(_ volume: UInt32) async {
+        guard self.volume != volume else { return }
+        self.volume = volume
+        await publishState(reason: .volumeChanged)
     }
 
     /// Adopts locally-produced playback state and republishes it, so other
@@ -204,7 +216,7 @@ public actor SpircController {
 
     private func buildPutStateRequest(isActive: Bool) -> PutStateRequestProto {
         var request = PutStateRequestProto()
-        request.device = Self.buildDevice(deviceInfo: deviceInfo, isActive: isActive, playerState: playerState)
+        request.device = buildDevice(playerState: playerState)
         request.memberType = .connectState
         request.isActive = isActive
         request.putStateReason = isActive ? .newDevice : .spircHello
@@ -223,14 +235,13 @@ public actor SpircController {
 
     /// The device half of a PutState: our identity, capabilities, and current
     /// player state if we have one.
-    private static func buildDevice(
-        deviceInfo: DeviceInfo,
-        isActive: Bool,
-        playerState: SpircPlayerState?,
-    ) -> ConnectDevice {
+    ///
+    /// Active-ness is *not* part of it — `ConnectDeviceInfo` has no such
+    /// field; `PutStateRequest.is_active` is where the cluster reads it.
+    private func buildDevice(playerState: SpircPlayerState?) -> ConnectDevice {
         var deviceInfoProto = ConnectDeviceInfo()
         deviceInfoProto.canPlay = deviceInfo.supportsPlayback
-        deviceInfoProto.volume = 65535 / 2 // 50%
+        deviceInfoProto.volume = volume
         deviceInfoProto.name = deviceInfo.deviceName
         deviceInfoProto.deviceId = deviceInfo.deviceId
         deviceInfoProto.deviceType = .computer
@@ -277,7 +288,6 @@ public actor SpircController {
             device.playerState = playerStateProto
         }
 
-        _ = isActive
         return device
     }
 

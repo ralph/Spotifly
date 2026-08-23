@@ -468,6 +468,8 @@ public actor LibrespotClient {
         logicalVolume = UInt32(clamped * 65535)
         await audioPipeline?.setVolume(clamped)
         volumeSubject.send(UInt16(logicalVolume))
+        // Other clients draw this device's slider from what Spirc reports.
+        await session?.reportLocalVolume(logicalVolume)
     }
 
     // MARK: - Transfer
