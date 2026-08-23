@@ -10,8 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Headless test scaffolding: `SPOTIFLY_DEBUG_AUTOPLAY=1` starts a fixed album shortly after launch, `SPOTIFLY_DEBUG_DEVICE_ID` overrides the stored Connect device id — both env-gated, inert by default.
+- First tests for the Swift playback stack, which shipped with none: the playback queue's ordering (nine cases, including the shuffle crash below, which took the test process down with it before the fix) and the Shannon cipher's known-answer vectors from the twonky4/shannon reference — recovered from a self-test method nothing called.
 
 ### Fixed
+
+- A review pass over the whole Rust-to-Swift migration, with a second opinion from codex. What it found, worst first:
+  - **Shuffle crashed the app at the end of a context.** With shuffle on and repeat off, reaching the last track walked the shuffle cursor past the end of its own order, and the next queue read sliced from there and trapped. Both auto-advance off the end of an album and pressing next reached it.
+  - **A decoder was freed while it was being read.** Retiring the decode loop started a joiner thread and never waited on it, so `ov_clear` and `ov_pcm_seek` ran against an `OggVorbis_File` the decode thread could still be inside — on every track change, stop and seek.
+  - **Transfer never worked in either direction.** It used `PUT /me/player` on the Web API, which this app's grant cannot reach: the desktop client id it must use is answered with 429 by every `api.spotify.com` endpoint, as `KeymasterAuth` already documented. Both directions now go over `connect-state`, the same host every other Connect command already uses, and the same endpoint librespot transfers with.
+  - **Volume was applied twice, linearly on top of the logarithmic taper** — about 24 dB louder than the slider asked for, re-applied at the start of every track.
+  - **The dealer socket had no keepalive and reported no death.** The ping loop was `while false`, left behind after an application-level ping killed the socket; the protocol-level frame librespot uses is what this endpoint wants. And when the socket did die, the receive loop exited silently while the session went on reporting a healthy Connect. Both halves of the session now fail into the same recovery path.
+  - **Registration threw away the cluster it was answered with**, which on a quiet account is the only time Spotify says who is active — so the Speakers list could stay empty indefinitely.
+  - **A remote play command lost its context**: asked to play a playlist from track 4, Spotifly played track 4 and stopped.
+  - Recovery came back connected and silent, because the rebuilt pipeline was never given anything to play. Volume reported to other devices was hardcoded to 50%. An empty active-device id — Connect for "nobody is playing" — was ignored, leaving a stopped device marked live. A failed track load left a phantom "playing" state that auto-advance then sat on forever. Stepping backward under shuffle stranded the cursor. Repeat changes reached neither the UI nor the cluster. A muted device reported unknown volume, and `disable_volume` was dropped, so devices that refuse volume were drawn a slider.
 
 - Live playback works end to end on the Swift stack. Verified against a real account: album context resolves, tracks decrypt (`OggS` head confirmed), decode in real time, auto-advance across tracks. The chain needed:
   - RSA public-key DER long-form length encoding (2048-bit modulus overflowed the single-byte form — crash at handshake).
