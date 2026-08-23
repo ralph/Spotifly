@@ -219,7 +219,17 @@ enum SpotifyPlayer {
     @SpotifyPlayerActor
     static func initialize() async throws {
         syncSettingsFromUserDefaults()
+        try await connectClient()
+    }
 
+    /// The one place the client is told where its credentials come from.
+    ///
+    /// Written once because the post-grant connect used to spell it out for
+    /// itself and left the client token out, which is not optional: spclient
+    /// signs like the desktop client, so that session could fetch no metadata,
+    /// no CDN url and no context at all. It survived only because the grant
+    /// path immediately rebuilds through `initialize`.
+    private static func connectClient() async throws {
         try await LibrespotClient.shared.initialize(
             tokenProvider: { try await KeymasterSession.shared.accessToken() },
             clientTokenProvider: { try await ClientTokenProvider.shared.token() },
@@ -460,10 +470,7 @@ enum SpotifyPlayer {
         // already persisted should finish registering this Mac.
         return await Task.detached(priority: .utility) {
             do {
-                try await LibrespotClient.shared.initialize(
-                    tokenProvider: { try await KeymasterSession.shared.accessToken() },
-                    usernameProvider: { await KeymasterSession.shared.username },
-                )
+                try await connectClient()
                 return .authorized
             } catch is CancellationError {
                 return .superseded
