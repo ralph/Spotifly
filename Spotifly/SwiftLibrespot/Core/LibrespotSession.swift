@@ -149,6 +149,14 @@ public actor LibrespotSession {
             }
             try await dealerConnection!.connect()
 
+            // The dealer is the other half of the session, and losing it is
+            // just as fatal: no cluster updates, no remote commands. Treated
+            // exactly like an accesspoint loss so one recovery path covers both.
+            await dealerConnection!.setCloseHandler { [weak self] in
+                guard let self else { return }
+                Task { await self.handleTransportLost() }
+            }
+
             spircController = SpircController(
                 deviceInfo: deviceInfo,
                 accesspoint: accesspoint!,
@@ -313,5 +321,10 @@ public actor LibrespotSession {
     /// Forwards locally-produced playback state to Spirc so other devices see it.
     func reportLocalPlayerState(_ state: SpircController.SpircPlayerState?, active: Bool) async {
         await spircController?.updateLocalPlayerState(state, active: active)
+    }
+
+    /// Forwards the logical volume to Spirc, which reports it on this device.
+    func reportLocalVolume(_ volume: UInt32) async {
+        await spircController?.updateVolume(volume)
     }
 }

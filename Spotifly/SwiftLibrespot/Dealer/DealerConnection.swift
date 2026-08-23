@@ -22,8 +22,18 @@ public actor DealerConnection {
     private var connectionId: String?
     private var messageId: UInt32 = 0
 
-    /// Ping interval in seconds
-    private static let pingInterval: TimeInterval = 30
+    /// Called when the socket dies on its own, so the session can fail and be
+    /// rebuilt. Cleared by `disconnect()`, which is a death we asked for.
+    private var closeHandler: (@Sendable () -> Void)?
+
+    /// Resumed by the pong handler or by the deadline, whichever lands first.
+    /// Actor-isolated, which is what keeps the resume single.
+    private var pongContinuation: CheckedContinuation<Bool, Never>?
+
+    /// Ping cadence and how long a pong may take, both matching librespot's
+    /// dealer client.
+    private static let pingInterval: Duration = .seconds(30)
+    private static let pongTimeout: Duration = .seconds(3)
 
     /// Message publishers
     private nonisolated(unsafe) let clusterUpdateSubject = PassthroughSubject<ClusterUpdateProto, Never>()
@@ -103,10 +113,38 @@ public actor DealerConnection {
     /// Disconnect from dealer
     public func disconnect() {
         debugLog("DealerConnection", "Disconnecting...")
+        closeHandler = nil
         isConnected = false
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
         connectionId = nil
+        resumePong(false)
+    }
+
+    /// Registers the callback for an *unasked-for* socket death.
+    func setCloseHandler(_ handler: (@Sendable () -> Void)?) {
+        closeHandler = handler
+    }
+
+    /// The socket died on its own: the receive loop failed, the peer closed,
+    /// or a ping went unanswered.
+    ///
+    /// Without this the loop simply exited and `isConnected` stayed true, so
+    /// the session went on reporting a healthy Connect while no cluster update
+    /// or remote command could ever arrive again.
+    private func handleSocketDied(_ reason: String) {
+        guard isConnected else { return }
+        debugLog("DealerConnection", "Socket died: \(reason)")
+
+        isConnected = false
+        webSocketTask?.cancel(with: .abnormalClosure, reason: nil)
+        webSocketTask = nil
+        connectionId = nil
+        resumePong(false)
+
+        let handler = closeHandler
+        closeHandler = nil
+        handler?()
     }
 
     // MARK: - Messaging
@@ -235,10 +273,8 @@ public actor DealerConnection {
                 let message = try await task.receive()
                 await handleMessage(message)
             } catch {
-                if isConnected {
-                    debugLog("DealerConnection", "Receive error: \(error)")
-                }
-                break
+                handleSocketDied(error.localizedDescription)
+                return
             }
         }
     }
@@ -572,14 +608,48 @@ public actor DealerConnection {
 
     // MARK: - Ping Loop
 
+    /// Keeps the socket alive and notices a peer that has stopped answering.
+    ///
+    /// The ping is a **protocol-level** frame, which is what killed the
+    /// earlier attempt: an application-level `{"type":"ping"}` is not a message
+    /// this endpoint knows, and the socket died within seconds of the first
+    /// one. librespot's dealer pings the same way, on the same cadence.
+    ///
+    /// Waiting for the pong is the point. A dropped network leaves a half-open
+    /// socket that accepts writes into nothing, so the receive loop alone would
+    /// not notice for as long as TCP keeps retransmitting.
     private func pingLoop() async {
-        // SUSPENDED during dealer debugging: the websocket died within seconds
-        // of the first application-level ping, so the ping itself is a prime
-        // suspect. URLSessionWebSocketTask answers protocol-level pings from
-        // the server automatically, which may be all this endpoint needs.
-        while false {
-            try? await Task.sleep(nanoseconds: UInt64(Self.pingInterval * 1_000_000_000))
+        while isConnected {
+            try? await Task.sleep(for: Self.pingInterval)
+            guard isConnected, let task = webSocketTask else { return }
+
+            guard await awaitPong(on: task) else {
+                handleSocketDied("no pong within \(Self.pongTimeout)")
+                return
+            }
         }
+    }
+
+    /// Sends one ping and reports whether the pong came back in time.
+    private func awaitPong(on task: URLSessionWebSocketTask) async -> Bool {
+        let deadline = Task { [weak self] in
+            try? await Task.sleep(for: Self.pongTimeout)
+            await self?.resumePong(false)
+        }
+        defer { deadline.cancel() }
+
+        return await withCheckedContinuation { continuation in
+            pongContinuation = continuation
+            task.sendPing { [weak self] error in
+                Task { await self?.resumePong(error == nil) }
+            }
+        }
+    }
+
+    private func resumePong(_ received: Bool) {
+        guard let continuation = pongContinuation else { return }
+        pongContinuation = nil
+        continuation.resume(returning: received)
     }
 
     // MARK: - Helpers
