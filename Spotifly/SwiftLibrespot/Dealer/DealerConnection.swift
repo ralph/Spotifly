@@ -520,7 +520,7 @@ public actor DealerConnection {
     private nonisolated func getPayloadData(from message: DealerMessage, headers: [String: String]?) -> Data? {
         guard let payloads = message.payloads,
               let firstPayload = payloads.first,
-              var data = firstPayload.decodedData
+              let data = firstPayload.decodedData
         else {
             return nil
         }

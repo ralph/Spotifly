@@ -153,28 +153,6 @@ public actor Accesspoint {
         // Create TCP connection
         connection = NWConnection(host: nwHost, port: nwPort, using: .tcp)
 
-        // Wait for connection to be ready
-        // Use a class wrapper to safely track if continuation was resumed (thread-safe)
-        final class ResumeState: @unchecked Sendable {
-            private var hasResumed = false
-            private let lock = NSLock()
-
-            func tryResume(_ continuation: CheckedContinuation<Void, Error>, with result: Result<Void, Error>) -> Bool {
-                lock.lock()
-                defer { lock.unlock() }
-                guard !hasResumed else { return false }
-                hasResumed = true
-                switch result {
-                case .success:
-                    continuation.resume()
-                case let .failure(error):
-                    continuation.resume(throwing: error)
-                }
-                return true
-            }
-        }
-
-        let resumeState = ResumeState()
         let conn = connection
 
         // Bounded: NWConnection's state handler is not guaranteed to fire
@@ -559,7 +537,9 @@ public actor Accesspoint {
     /// welcome's own reusable credentials are what every later session logs in
     /// from, so a browser grant happens once per machine.
     private func authenticate(credentials: APCredentials, deviceId: String) async throws -> APWelcome {
-        guard let cipher = cipherPair else {
+        // The handshake must have produced a cipher pair; sendPacket below
+        // reaches for it itself.
+        guard cipherPair != nil else {
             throw LibrespotError.notInitialized
         }
 

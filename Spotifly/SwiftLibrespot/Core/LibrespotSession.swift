@@ -103,9 +103,6 @@ public actor LibrespotSession {
             let dh = try? DiffieHellman()
             resolvedEndpoints = try await resolveTask
 
-            guard let apEndpoint = resolvedEndpoints?.accesspoints.first else {
-                throw LibrespotError.connectionFailed("No accesspoints available")
-            }
             guard let dealerHost = resolvedEndpoints?.dealers.first else {
                 throw LibrespotError.connectionFailed("No dealers available")
             }

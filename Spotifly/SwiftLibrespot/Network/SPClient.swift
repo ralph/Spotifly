@@ -228,7 +228,6 @@ public actor SPClient {
             arrayCount += 1
 
             // EntityExtensionDataArray { 2: kind varint, 3: datas[] }
-            var kind = -1
             forEachField(payload) { arrayField, arrayChild in
                 // EntityExtensionData { 1: header{1 status}, 3: Any{2 value} }
                 guard arrayField == 3 else { return }
