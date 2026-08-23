@@ -10,10 +10,11 @@ import AVFoundation
 import CoreMedia
 
 /// Audio renderer that bridges the decoder's push model to
-/// AVSampleBufferAudioRenderer's pull model (requestMediaDataWhenReady).
+/// AVSampleBufferAudioRenderer's pull model.
 ///
-/// Thread safety: `write(samples:count:)` is called from the decode task.
-/// `feedRenderer` runs on a dedicated serial dispatch queue.
+/// Thread safety: `write(samples:count:)` is called from the pipeline's
+/// dedicated decode thread, which blocks freely here — that is the point of
+/// it having its own thread. The feed side runs on a serial dispatch queue.
 /// A ring buffer with lock-based synchronization bridges the two.
 final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
     // MARK: - Constants
@@ -33,9 +34,9 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
     private var renderer = AVSampleBufferAudioRenderer()
     private var synchronizer = AVSampleBufferRenderSynchronizer()
 
-    /// Output gain (0...1) applied at the renderer. librespot's soft mixer is
-    /// bypassed (NoOpVolume), so this is where playback volume is actually applied —
-    /// at the output, which takes effect immediately instead of after the buffered
+    /// Output gain (0...1) applied at the renderer. There is no mixer stage
+    /// anywhere else, so this is where playback volume is actually applied — at
+    /// the output, which takes effect immediately instead of after the buffered
     /// PCM drains. Accessed only on `renderQueue` so it stays serialized with
     /// feeding and pipeline recreation.
     private var outputVolume: Float = 1.0
@@ -47,7 +48,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
     private var readIndex = 0
     private let bufferLock = NSLock()
 
-    /// Semaphore for backpressure: blocks Rust thread when buffer is full
+    /// Semaphore for backpressure: parks the decode thread when the buffer is full
     private let spaceAvailable = DispatchSemaphore(value: 0)
     private var writerIsWaiting = false
 
@@ -60,7 +61,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
     private var totalSamplesWritten: Int64 = 0
 
     /// Maximum seconds the writer can be ahead of real-time before sleeping.
-    /// This replaces the backpressure that CoreAudio callbacks provided in the old rodio/cpal path.
+    /// It replaces the backpressure CoreAudio callbacks used to provide.
     private static let maxBufferAheadSeconds: Double = 2.0
 
     // MARK: - State
@@ -161,7 +162,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
         Self.ringBufferCapacity - 1 - availableSamples
     }
 
-    // MARK: - Push Side (called from Rust player thread)
+    // MARK: - Push Side (called from the decode thread)
 
     /// Write PCM samples into the ring buffer.
     /// Blocks if buffer is full (backpressure to the decoder).
@@ -176,9 +177,9 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
             if space == 0 {
                 // Once the consumer has stopped, nothing will ever drain the buffer, so
                 // waiting is waiting forever — the 500ms timeout only makes us loop. The
-                // caller here is librespot's player thread, and blocking it hangs the whole
-                // teardown at "Shutting down player thread". Drop the rest instead: it is
-                // audio for a renderer that is no longer playing.
+                // caller here is the decode thread, and blocking it stalls the join that
+                // teardown waits on. Drop the rest instead: it is audio for a renderer
+                // that is no longer playing.
                 guard isRendering else {
                     bufferLock.unlock()
                     return
@@ -220,7 +221,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
 
             // Time-based throttle: AVSampleBufferAudioRenderer eagerly accepts data
             // for buffering, providing no real-time backpressure. Without this check,
-            // librespot decodes at full CPU speed (~7x), racing through tracks.
+            // the decode loop runs at full CPU speed (~7x), racing through tracks.
             let audioDuration = Double(samplesWritten) / (Self.sampleRate * Double(Self.channelCount))
             let elapsed = ProcessInfo.processInfo.systemUptime - startTime
             let ahead = audioDuration - elapsed
@@ -380,9 +381,10 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
 
     /// Frames actually played out since the most recent `start()`, read off the
     /// render synchronizer's clock. This is the *audible* position — samples that
-    /// have left the speakers, not samples the decoder has produced. The old Rust
-    /// path reported the decoder clock here, which ran up to two seconds ahead of
-    /// what was audible and forced asymmetric drift compensation downstream.
+    /// have left the speakers, not samples the decoder has produced. The Rust path
+    /// this replaced reported the decoder clock here, which ran up to two seconds
+    /// ahead of what was audible and forced asymmetric drift compensation
+    /// downstream.
     ///
     /// Synchronous dispatch is safe: callers are the player state machine and its
     /// timers, never the render queue itself.
@@ -393,9 +395,9 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
         }
     }
 
-    /// Called from Rust player thread via FFI callback. Synchronous dispatch
-    /// ensures the caller can rely on state being fully updated on return
-    /// (e.g. spotifly_disconnect expects flush to complete before proceeding).
+    /// Synchronous dispatch, so the caller can rely on the state being fully
+    /// updated on return — `AudioPipeline.startDecoding` starts writing the moment
+    /// this returns, and a teardown expects the flush to have happened.
     func start() {
         renderQueue.sync { [self] in
             bufferLock.lock()
@@ -422,8 +424,8 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
             isRendering = true
             bufferLock.unlock()
 
-            // Clear stale data from previous playback to prevent timestamp conflicts
-            // and loss of real-time pacing (28x speed bug).
+            // Clear stale data from previous playback: it would otherwise conflict
+            // on timestamps and lose real-time pacing entirely.
             resetAudioPipeline()
             synchronizer.setRate(1.0, time: .zero)
             startRequestingData()
@@ -444,7 +446,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
 
             // Wake a writer parked on a full buffer. It re-checks isRendering and returns
             // rather than waiting for space that will never come now that the pull side is
-            // stopping.
+            // stopping — which is also what lets a retiring decode thread be joined.
             spaceAvailable.signal()
 
             synchronizer.setRate(0.0, time: synchronizer.currentTime())
