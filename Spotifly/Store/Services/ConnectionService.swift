@@ -3,7 +3,7 @@
 //  Spotifly
 //
 //  Service to sync librespot connection state with AppStore.
-//  Converts LibrespotConnectionState (FFI) to SpotifyConnection (app) at the boundary.
+//  Converts the client's LibrespotConnectionState to SpotifyConnection (app) at the boundary.
 //
 
 import Combine
@@ -36,12 +36,12 @@ final class ConnectionService {
                 self?.store.setConnection(Self.convert(state))
             }
 
-        // The subscription delivers on a later main-actor hop; this reads the FFI directly,
-        // so the store holds the current state before activation returns.
+        // The subscription delivers on a later main-actor hop; this reads the client's
+        // current state directly, so the store holds it before activation returns.
         store.setConnection(Self.convert(SpotifyPlayer.getConnectionState()))
     }
 
-    /// Convert FFI state to app-level connection model
+    /// Convert the client's state to the app-level connection model
     private static func convert(_ state: LibrespotConnectionState?) -> SpotifyConnection? {
         guard let state else { return nil }
 

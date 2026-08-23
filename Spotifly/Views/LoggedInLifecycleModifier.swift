@@ -116,7 +116,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 debugLog("LoggedInLifecycle", "System will sleep, disconnecting from Spotify")
                 SpotifyPlayer.disconnect()
             }
-            // Ask Rust to reconnect rather than rebuilding from Swift. A rebuild starts with
+            // Ask the client to reconnect rather than rebuilding it. A rebuild starts with
             // a destructive cleanup that invalidates whatever reconnect loop is already
             // working the problem, and if the single rebuild attempt then fails there is
             // nothing left retrying.

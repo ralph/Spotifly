@@ -2,7 +2,7 @@
 //  QueueListView.swift
 //  Spotifly
 //
-//  Displays current playback queue (real-time updates via Spirc/Mercury)
+//  Displays current playback queue (updated live from the client's queue publisher)
 //
 
 import SwiftUI

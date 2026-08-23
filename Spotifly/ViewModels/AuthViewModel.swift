@@ -100,10 +100,11 @@ final class AuthViewModel {
 
             guard startedAt == authLifecycle else {
                 // Logged out while this was deciding, and this run has to undo its own
-                // writes rather than just walk away. Rust used to notice a logout itself,
-                // because it held the browser wait and snapshotted the generation before it;
-                // now Swift runs the browser half, so Rust's snapshot is taken *after* the
-                // logout and its own supersession check passes. Whatever this grant wrote —
+                // writes rather than just walk away. The Rust path this replaced noticed a
+                // logout itself, because it held the browser wait and snapshotted its
+                // generation before it; Swift runs the browser half now, so the client's
+                // snapshot is taken *after* the logout and its own supersession check
+                // passes. Whatever this grant wrote —
                 // the AP credentials and the keymaster tokens — belongs to an account that
                 // is gone, and logout cleared the cache before either was written.
                 debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
@@ -224,8 +225,9 @@ final class AuthViewModel {
     /// outage worth fixing and re-announced the device. The flag is raised before Spirc is
     /// touched, so recovery stops even when the goodbye itself cannot go out — logging out
     /// mid-outage is exactly when that matters — and is cleared again by
-    /// `spotifly_init_player`. It goes through the playback lifecycle rather than straight to
-    /// Rust: tearing the session down behind `PlaybackViewModel` leaves `isInitialized` true,
+    /// `LibrespotClient.initialize`. It goes through the playback lifecycle rather than
+    /// straight to the client: tearing the session down behind `PlaybackViewModel` leaves
+    /// `isInitialized` true,
     /// since the connection subscription deliberately does not clear it on a disconnect, so
     /// the app would hide the re-authorization affordance and keep aiming plays at a player
     /// that no longer exists.

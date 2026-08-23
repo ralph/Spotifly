@@ -118,8 +118,8 @@ public nonisolated struct DeviceInfo: Sendable {
         if let existing = UserDefaults.standard.string(forKey: key) {
             return existing
         }
-        // Use format matching the working Rust FFI: "spotifly_{pid}"
-        // But since PID changes, use a random number instead
+        // Keeps the shape the Rust bridge used, `spotifly_{pid}` — but the id is stored and
+        // has to survive relaunches, which a pid does not, so it is a random number.
         let randomNum = UInt32.random(in: 10000 ... 99999)
         let deviceId = "spotifly_\(randomNum)"
         UserDefaults.standard.set(deviceId, forKey: key)
