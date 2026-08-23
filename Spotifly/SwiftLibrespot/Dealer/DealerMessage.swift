@@ -81,71 +81,6 @@ extension DealerPayload: Decodable {
     }
 }
 
-// MARK: - Cluster Update
-
-/// ClusterUpdate message from dealer (contains device list and player state)
-public struct ClusterUpdate: Sendable {
-    public let cluster: Cluster
-
-    public struct Cluster: Sendable {
-        public let activeDeviceId: String?
-        public let playerState: PlayerStateProto?
-        public let devices: [DeviceProto]
-        public let transferDataTimestamp: UInt64?
-    }
-
-    public struct PlayerStateProto: Sendable {
-        public let timestamp: UInt64
-        public let positionAsOfTimestamp: UInt64
-        public let isPaused: Bool
-        public let isPlaying: Bool
-        public let isSystemInitiated: Bool
-        public let track: TrackProto?
-        public let contextUri: String?
-        public let shuffle: Bool
-        public let repeatMode: RepeatMode
-    }
-
-    public struct TrackProto: Sendable {
-        public let uri: String
-        public let uid: String?
-        public let metadata: TrackMetadata?
-        public let provider: String?
-    }
-
-    public struct TrackMetadata: Sendable {
-        public let title: String?
-        public let artist: String?
-        public let album: String?
-        public let imageUri: String?
-        public let durationMs: UInt64?
-    }
-
-    public struct DeviceProto: Sendable {
-        public let deviceId: String
-        public let deviceName: String
-        public let deviceType: String
-        public let isActive: Bool
-        public let volume: UInt32
-        public let capabilities: DeviceCapabilities?
-    }
-
-    public struct DeviceCapabilities: Sendable {
-        public let canBePlayer: Bool
-        public let gaplessTrack: Bool
-        public let supportsLogout: Bool
-        public let isObservable: Bool
-        public let volumeSteps: Int
-        public let supportedTypes: [String]
-    }
-
-    public enum RepeatMode: Int, Sendable {
-        case off = 0
-        case context = 1
-        case track = 2
-    }
-}
-
 // MARK: - SPIRC Commands
 
 /// A command received from another Spotify client, with the identifiers
@@ -166,7 +101,7 @@ public enum SpircCommand: Sendable {
     case prev
     case setVolume(UInt32)
     case setShuffle(Bool)
-    case setRepeat(ClusterUpdate.RepeatMode)
+    case setRepeat(RepeatMode)
     case transfer(TransferCommand)
     case addToQueue(uri: String)
     case unknown(String)
@@ -183,57 +118,11 @@ public enum SpircCommand: Sendable {
         public let targetDeviceId: String
         public let transferData: Data?
     }
-}
 
-// MARK: - Outgoing Messages
-
-/// PutStateRequest for publishing device state
-public struct PutStateRequest: Sendable {
-    public let memberType: String // "CONNECT_STATE"
-    public let device: PutStateDevice
-    public let isActive: Bool
-    public let startedPlayingAt: UInt64?
-    public let lastCommandMessageId: UInt64?
-    public let lastCommandSentByDeviceId: String?
-
-    public struct PutStateDevice: Sendable {
-        public let deviceInfo: PutStateDeviceInfo
-        public let playerState: PutStatePlayerState?
-    }
-
-    public struct PutStateDeviceInfo: Sendable {
-        public let canPlay: Bool
-        public let volume: UInt32
-        public let name: String
-        public let deviceId: String
-        public let deviceType: String
-        public let deviceSoftwareVersion: String
-        public let clientId: String
-        public let brand: String
-        public let model: String
-        public let capabilities: PutStateCapabilities
-    }
-
-    public struct PutStateCapabilities: Sendable {
-        public let canBePlayer: Bool
-        public let gaplessTrack: Bool
-        public let supportsLogout: Bool
-        public let isObservable: Bool
-        public let volumeSteps: Int
-        public let supportedTypes: [String]
-        public let commandAcks: Bool
-    }
-
-    public struct PutStatePlayerState: Sendable {
-        public let timestamp: UInt64
-        public let positionAsOfTimestamp: UInt64
-        public let isPaused: Bool
-        public let isPlaying: Bool
-        public let track: ClusterUpdate.TrackProto?
-        public let contextUri: String?
-        public let shuffle: Bool
-        public let repeatMode: ClusterUpdate.RepeatMode
-        public let nextTracks: [ClusterUpdate.TrackProto]
-        public let prevTracks: [ClusterUpdate.TrackProto]
+    /// Repeat mode as the wire numbers it.
+    public enum RepeatMode: Int, Sendable {
+        case off = 0
+        case context = 1
+        case track = 2
     }
 }
