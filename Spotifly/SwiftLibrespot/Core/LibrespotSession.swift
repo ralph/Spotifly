@@ -9,29 +9,13 @@ import Combine
 import Foundation
 
 /// Connection state for the Spotify session
-public nonisolated enum SessionState: Sendable {
+public nonisolated enum SessionState: Sendable, Equatable {
     case disconnected
     case connecting
     case authenticating
     case connected
     case reconnecting(attempt: Int)
     case failed(String)
-
-    public static func == (lhs: SessionState, rhs: SessionState) -> Bool {
-        switch (lhs, rhs) {
-        case (.disconnected, .disconnected),
-             (.connecting, .connecting),
-             (.authenticating, .authenticating),
-             (.connected, .connected):
-            true
-        case let (.reconnecting(a), .reconnecting(b)):
-            a == b
-        case let (.failed(a), .failed(b)):
-            a == b
-        default:
-            false
-        }
-    }
 }
 
 /// Coordinator for one Spotify login.
