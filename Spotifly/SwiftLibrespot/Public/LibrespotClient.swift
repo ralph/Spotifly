@@ -727,11 +727,11 @@ public actor LibrespotClient {
 
         case let .playing(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
-            publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: position)
+            publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position))
 
         case let .paused(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
-            publishPlaybackState(for: trackUri, playing: false, paused: true, positionMs: position)
+            publishPlaybackState(for: trackUri, playing: false, paused: true, positionMs: Int64(position))
         }
 
         await reportPlaybackToCluster()
@@ -912,18 +912,23 @@ public actor LibrespotClient {
 
     // MARK: - State Publishing
 
+    /// Publishes where playback is, stamped with the options and the loaded
+    /// track's length as they stand now.
+    ///
+    /// Every state the facade sees is built here, so the options and the
+    /// duration cannot be carried by one emission and dropped by the next.
     private func publishPlaybackState(
         for trackUri: String,
         playing: Bool,
         paused: Bool,
-        positionMs: UInt64,
+        positionMs: Int64,
     ) {
         playbackStateSubject.send(PlaybackState(
             isPlaying: playing && !paused,
             isPaused: paused,
             trackUri: trackUri,
-            positionMs: Int64(positionMs),
-            durationMs: durationMsForCurrentTrack(),
+            positionMs: positionMs,
+            durationMs: knownDurationMs,
             shuffle: shuffleEnabled,
             repeatTrack: repeatMode == .track,
             repeatContext: repeatMode == .context,
@@ -939,27 +944,18 @@ public actor LibrespotClient {
     /// phone that is watching.
     private func publishPlaybackStateRefresh() async {
         guard let current = playbackStateSubject.value else { return }
-        playbackStateSubject.send(PlaybackState(
-            isPlaying: current.isPlaying,
-            isPaused: current.isPaused,
-            trackUri: current.trackUri,
+        publishPlaybackState(
+            for: current.trackUri,
+            playing: current.isPlaying,
+            paused: current.isPaused,
             positionMs: current.positionMs,
-            durationMs: current.durationMs,
-            shuffle: shuffleEnabled,
-            repeatTrack: repeatMode == .track,
-            repeatContext: repeatMode == .context,
-            timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
-        ))
+        )
         await reportPlaybackToCluster()
     }
 
     /// Duration of the currently loaded track, captured when it starts. The
     /// facade's playback states carry it so the seek bar knows the length.
     private var knownDurationMs: Int64 = 0
-
-    private func durationMsForCurrentTrack() -> Int64 {
-        knownDurationMs
-    }
 
     private func publishConnectionState(
         connected: Bool,
