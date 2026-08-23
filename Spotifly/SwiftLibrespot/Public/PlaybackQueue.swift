@@ -84,11 +84,18 @@ final nonisolated class PlaybackQueue {
         }
     }
 
-    /// A fresh permutation with nothing pinned, for a context that wrapped.
-    /// `reshuffleKeepingCurrent` would put the track that just finished at the
-    /// head of the new cycle, so it played twice in a row across the wrap.
-    private func reshuffle() {
+    /// A fresh permutation for a context that wrapped, not opening on the
+    /// track that just finished.
+    ///
+    /// `reshuffleKeepingCurrent` pinned that track to the head, so it always
+    /// played twice in a row across the wrap. An unpinned shuffle only does it
+    /// sometimes, which is worse to reason about and just as audible — so the
+    /// one ordering a listener actually notices is excluded outright.
+    private func reshuffle(avoiding lastIndex: Int) {
         shuffleOrder = contextTracks.indices.shuffled()
+        if shuffleOrder.count > 1, shuffleOrder[0] == lastIndex {
+            shuffleOrder.swapAt(0, Int.random(in: 1 ..< shuffleOrder.count))
+        }
         shufflePosition = 0
     }
 
@@ -146,7 +153,7 @@ final nonisolated class PlaybackQueue {
             // stepping past the end — `upcoming()` slices the order from
             // `shufflePosition + 1`, and walking off it trapped the process.
             guard repeatMode == .context else { return nil }
-            reshuffle()
+            reshuffle(avoiding: currentIndex)
             currentIndex = shuffleOrder[0]
             return contextTracks[currentIndex]
         }

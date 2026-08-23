@@ -104,18 +104,23 @@ struct PlaybackQueueTests {
         #expect(queue.upcoming().isEmpty)
     }
 
-    @Test func `a shuffled context that repeats does not replay the track it just finished`() {
-        let queue = PlaybackQueue()
-        queue.setContext(uri: "spotify:album:a", tracks: album(6), startIndex: 0)
-        queue.setShuffle(true)
-        queue.setRepeat(.context)
+    /// Shuffle is random, so this asserts the one ordering that is excluded
+    /// rather than any particular result — and repeats, because a permutation
+    /// that happens to avoid it once proves nothing.
+    @Test func `a shuffled context that repeats never opens on the track it just finished`() {
+        for _ in 0 ..< 50 {
+            let queue = PlaybackQueue()
+            queue.setContext(uri: "spotify:album:a", tracks: album(3), startIndex: 0)
+            queue.setShuffle(true)
+            queue.setRepeat(.context)
 
-        var lastOfCycle = queue.currentUri!
-        for _ in 1 ..< 6 {
-            lastOfCycle = queue.advance()!
+            var lastOfCycle = queue.currentUri!
+            for _ in 1 ..< 3 {
+                lastOfCycle = queue.advance()!
+            }
+
+            #expect(queue.advance() != lastOfCycle)
         }
-
-        #expect(queue.advance() != lastOfCycle)
     }
 
     @Test func `upcoming lists the queue first, then what is left of the context`() {
