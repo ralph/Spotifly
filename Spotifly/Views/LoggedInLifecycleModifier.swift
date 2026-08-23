@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 struct LoggedInLifecycleModifier: ViewModifier {
@@ -100,7 +101,15 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // activation, neither of which says anything about whether the session is
             // healthy. Keying off readiness means a device handoff no longer arms the
             // recovery path or triggers a Web API refetch.
-            .onReceive(SpotifyPlayer.connectionState) { state in
+            //
+            // `.receive(on:)` is not optional here. The client publishes this from
+            // inside its actor, and a Combine subject delivers synchronously on
+            // whichever thread called `send` — so this closure, which writes the
+            // `@State` below it, ran off the main thread and SwiftUI said so.
+            // Every other subscriber to these publishers already hops; `.onReceive`
+            // is easy to miss because it looks like a view modifier rather than a
+            // subscription.
+            .onReceive(SpotifyPlayer.connectionState.receive(on: DispatchQueue.main)) { state in
                 let isReady = state?.sessionConnected == true && state?.spircReady == true
                 defer { wasConnectionReady = isReady }
 
