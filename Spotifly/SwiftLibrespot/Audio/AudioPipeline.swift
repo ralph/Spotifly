@@ -113,12 +113,6 @@ actor AudioPipeline {
             writtenFrames = frames
         }
 
-        func addWritten(_ frames: Int64) -> Int64 {
-            lock.lock(); defer { lock.unlock() }
-            writtenFrames += frames
-            return writtenFrames
-        }
-
         func snapshot() -> (cancelled: Bool, finished: Bool, writtenFrames: Int64) {
             lock.lock(); defer { lock.unlock() }
             return (cancelled, finished, writtenFrames)
@@ -148,12 +142,9 @@ actor AudioPipeline {
     private var isPlaying = false
     private var isPaused = false
 
-    /// Track frames pushed into the sink for the current load.
-    private var writtenFrames: Int64 = 0
     /// Track frame the sink's playhead clock origin corresponds to — nonzero
     /// after a seek or a start-at-position.
     private var sinkClockOriginFrame: Int64 = 0
-    private var decodingComplete = false
     private var endOfTrackFired = false
 
     /// How close the playhead must be to the last written frame before the
@@ -464,7 +455,6 @@ actor AudioPipeline {
 
             sink.write(samples: buffer, count: frames * channels)
             totalWritten += Int64(frames)
-            _ = state.addWritten(totalWritten)
         }
 
         state.setFinished(frames: totalWritten)
@@ -481,9 +471,7 @@ actor AudioPipeline {
 
         isPlaying = false
         isPaused = false
-        decodingComplete = false
         endOfTrackFired = false
-        writtenFrames = 0
         sinkClockOriginFrame = 0
 
         decoder?.close()
@@ -516,9 +504,11 @@ actor AudioPipeline {
 
         positionSubject.send(UInt64(frameToMs(currentTrackFrame())))
 
+        // `writtenFrames` is only meaningful once the loop has finished, which
+        // is the only moment it is read: the loop writes its running total once,
+        // on the way out. An in-flight count was being accumulated on top of an
+        // already-cumulative value — quadratic nonsense that nothing consumed.
         let snapshot = decodeState.snapshot()
-        writtenFrames = snapshot.writtenFrames
-        decodingComplete = snapshot.finished
 
         if snapshot.finished, snapshot.writtenFrames > 0, !endOfTrackFired {
             // Both sides of this comparison count frames decoded *this load*:
@@ -526,7 +516,7 @@ actor AudioPipeline {
             // written since that same origin. Mixing in absolute frames would
             // fire the moment a seek finished decoding, cutting the tail off.
             let playedThisLoad = sink.playedFramesSinceStart
-            if playedThisLoad >= writtenFrames - Self.endOfTrackSlackFrames {
+            if playedThisLoad >= snapshot.writtenFrames - Self.endOfTrackSlackFrames {
                 endOfTrackFired = true
                 debugLog("AudioPipeline", "End of track")
                 endOfTrackSubject.send(currentTrackUri ?? "")
