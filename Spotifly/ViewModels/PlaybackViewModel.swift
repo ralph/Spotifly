@@ -22,7 +22,7 @@ final class PlaybackViewModel {
     private weak var store: AppStore?
 
     /// Reference to QueueService, used to resync after a remote start (set by LoggedInView).
-    /// Remote playback produces no Rust callbacks, so nothing else would update the UI.
+    /// Remote playback produces no local player events, so nothing else would update the UI.
     private weak var queueService: QueueService?
 
     /// Set when a play request arrived with nowhere to serve it: no local player and no
@@ -78,8 +78,9 @@ final class PlaybackViewModel {
 
     var isShuffleEnabled = false
 
-    /// Whether Swift knows that Rust has completed at least one usable initialization.
-    /// This stays true through transient disconnects because Rust owns their recovery.
+    /// Whether the client has completed at least one usable initialization.
+    /// This stays true through transient disconnects, because `LibrespotClient`
+    /// recovers from those itself.
     private var isInitialized = false
 
     /// Whether this Mac can currently play audio itself.
@@ -113,13 +114,13 @@ final class PlaybackViewModel {
     private var initializationTask: Task<Void, Never>?
 
     /// Bumped when a logout invalidates whatever the player lifecycle is doing. Mirrors
-    /// Rust's session generation: cancellation is cooperative and the FFI calls do not
-    /// observe it, so an initialization already inside `spotifly_init_player` has to be
-    /// caught on the way out instead.
+    /// the client's own lifecycle generation: an initialization already inside
+    /// `SpotifyPlayer.initialize` is not cancelled, so it has to be caught on the way out
+    /// instead.
     private var lifecycleGeneration: UInt64 = 0
 
     /// True while a logout teardown is running. Suppresses the readiness adoption below: a
-    /// snapshot published before Rust's flags catch up would otherwise mark the player
+    /// snapshot published before the client's connection state catches up would mark the player
     /// initialized again, and the disconnected snapshots that follow deliberately do not
     /// clear that flag — so the next account would skip initialization entirely.
     private var isLoggingOut = false
@@ -156,7 +157,7 @@ final class PlaybackViewModel {
     }
 
     /// Tears down and rebuilds the player even if it is already initialized.
-    /// Used by the manual connection retry and by the wake fallback when Rust has no
+    /// Used by the manual connection retry and by the wake fallback when the client has no
     /// session to reconnect.
     func forceReinitialize() async {
         await runInitialization(force: true)
@@ -167,7 +168,7 @@ final class PlaybackViewModel {
         await runInitialization(force: false)
     }
 
-    /// Tears the Rust session down on logout.
+    /// Tears the streaming session down on logout.
     ///
     /// Deliberately does not wait for an initialization that may be in flight. Waiting would
     /// hang the logout behind a stalled network setup, and it is not needed: `shutdown()`
@@ -205,9 +206,9 @@ final class PlaybackViewModel {
     ///
     /// `@MainActor` stops two of these running *simultaneously*, but not from
     /// *overlapping*: every `await` is a suspension point where another caller can enter,
-    /// and `SpotifyPlayer.initialize` performs a Rust cleanup followed by a rebuild. Two
-    /// overlapping calls can therefore interleave one call's cleanup with the other's
-    /// rebuild, which is how Swift ends up holding state belonging to a Rust generation
+    /// and `SpotifyPlayer.initialize` tears the session down before rebuilding it. Two
+    /// overlapping calls can therefore interleave one call's teardown with the other's
+    /// rebuild, which is how this view model ends up holding state belonging to a session
     /// that has already been replaced.
     ///
     /// Late callers await the in-flight run instead of starting a competing one. That also
@@ -217,8 +218,8 @@ final class PlaybackViewModel {
         // Nothing may build a player while one is being torn down. The view is still mounted
         // during a logout, so a playback action or a startup task can land here — and it
         // would capture the already-bumped lifecycle generation, so the stale-run check
-        // would wave it through while `spotifly_init_player` clears the teardown flag,
-        // re-announcing the account that just logged out.
+        // would wave it through while `LibrespotClient.initialize` clears its own shutdown
+        // flag on the way in, re-announcing the account that just logged out.
         guard !isLoggingOut else { return }
 
         // Wait out whatever is in flight, then decide again. Coalescing onto it and
@@ -262,7 +263,7 @@ final class PlaybackViewModel {
     }
 
     private func performInitialization() async {
-        // We are about to tear down the Rust side, so nothing is initialized until the
+        // We are about to tear the session down, so nothing is initialized until the
         // rebuild proves otherwise. Matters when initialize() throws on a restart.
         isInitialized = false
         isLoading = true
@@ -271,7 +272,7 @@ final class PlaybackViewModel {
             try await SpotifyPlayer.initialize()
 
             // Readiness is the authoritative condition, not "initialize() returned". The
-            // old code set isInitialized as soon as the FFI call came back and then polled
+            // old code set isInitialized as soon as `initialize()` returned and then polled
             // Spirc while ignoring the timeout, so Swift could permanently believe the
             // player was up while every Connect command failed — and initializeIfNeeded
             // would then refuse to try again. Leaving the flag false on timeout means the
@@ -287,12 +288,12 @@ final class PlaybackViewModel {
             errorMessage = error.localizedDescription
         }
 
-        // Checked on both paths on purpose. `spotifly_init_player` clears the teardown flags
-        // on its way in, so an initialization that overlapped a logout can bring a session up
-        // for an account that is gone — and it reports failure while doing so, because the
-        // logout's cleanup superseded it. Rust cannot always clear that itself: it only knows
-        // the attempt was superseded, not whether something newer legitimately owns the
-        // globals. Swift does know, so it takes them down here.
+        // Checked on both paths on purpose. `LibrespotClient.initialize` clears its own
+        // shutdown flag on the way in, so an initialization that overlapped a logout can
+        // bring a session up for an account that is gone. The client notices that itself
+        // only when its generation moved before it finished — and then it throws, which is
+        // why the failure path has to be checked too. A logout landing after its last check
+        // leaves a live session behind, and only this view model knows one happened.
         if generation != lifecycleGeneration {
             debugLog("PlaybackViewModel", "Initialization outlived a logout — tearing it back down")
             await SpotifyPlayer.shutdownAndCleanup()
@@ -300,7 +301,7 @@ final class PlaybackViewModel {
             errorMessage = nil
         }
 
-        // Reset stale playback state — after (re)init Rust has no track/context loaded.
+        // Reset stale playback state — after (re)init the pipeline has no track loaded.
         // Publish the stopped rate before clearing the URI, then remove the old track's
         // metadata. Harmless on a first init, where these are already at their defaults.
         isPlaying = false
@@ -315,7 +316,7 @@ final class PlaybackViewModel {
     /// How long to wait for the player to become usable after initialization.
     private static let readinessTimeout: Duration = .seconds(5)
 
-    /// Polls until Rust reports a usable player, or the timeout expires.
+    /// Polls until the client reports a usable player, or the timeout expires.
     ///
     /// Both halves are required: every Spotifly control goes through Spirc, so a connected
     /// session without a ready Spirc is not a player we can drive.
@@ -411,8 +412,8 @@ final class PlaybackViewModel {
     ///
     /// Radio is a Spirc feature with no Web API equivalent, so unlike `play` it cannot fall
     /// back to a remote device. Without a local player the command was previously issued
-    /// anyway and its FFI error discarded, so track cards and context menus silently did
-    /// nothing; asking for authorization is the honest answer.
+    /// anyway and its failure discarded with it, so track cards and context menus silently
+    /// did nothing; asking for authorization is the honest answer.
     func playRadio(trackUri: String) async {
         if !isInitialized {
             await initializeIfNeeded()
@@ -540,9 +541,9 @@ final class PlaybackViewModel {
 
         errorMessage = nil
 
-        // Use Spirc to add to queue directly via librespot
+        // The client appends to its own queue and republishes it, which is what updates the
+        // queue views.
         SpotifyPlayer.addToQueue(uri: uri)
-        // Queue update will come via Mercury callback
     }
 
     // MARK: - Playback State Helpers
@@ -561,9 +562,10 @@ final class PlaybackViewModel {
 
     func togglePlayPause(trackId: String) async {
         if isPlaying, currentTrackUri == trackId {
-            // Route through pause() rather than calling the FFI directly: it carries the
-            // connectivity guard and the Web API fallback for remote devices, and it
-            // leaves isPlaying to the Mercury callback instead of asserting it here
+            // Route through pause() rather than calling SpotifyPlayer directly: it carries
+            // the connectivity guard and the connect-state fallback for remote devices, and
+            // it leaves isPlaying to the playback state the client publishes instead of
+            // asserting it here
             pause()
         } else if !isPlaying, currentTrackUri == trackId {
             resume()
@@ -576,11 +578,11 @@ final class PlaybackViewModel {
     /// Stops playback and clears the view model's playback state. Called on logout.
     ///
     /// Deliberately not gated on the session being connected, unlike the transport commands.
-    /// Those go through Spirc, which rejects them without a session, so acting on them
-    /// locally would desync the UI. `spotifly_stop` instead stops the Player directly — a
-    /// local teardown, not a Connect command — and works while disconnected. Guarding it
-    /// meant logging out during an outage left buffered audio playing and the previous track
-    /// showing.
+    /// Those are Connect commands that go nowhere without a session, so acting on them
+    /// locally would desync the UI. `SpotifyPlayer.stop()` instead stops the audio pipeline
+    /// directly — a local teardown, not a Connect command — and works while disconnected.
+    /// Guarding it meant logging out during an outage left buffered audio playing and the
+    /// previous track showing.
     func stop() {
         SpotifyPlayer.stop()
         isPlaying = false
@@ -616,16 +618,16 @@ final class PlaybackViewModel {
     /// Issues a transport command locally when Spotifly is the active device, and through
     /// connect-state otherwise. Returns whether the command was issued at all.
     ///
-    /// The local branch is gated on the session being connected: during a reconnect Rust
-    /// rejects commands, and the callers that move the UI optimistically must not do so for
-    /// a command that never happened — hence the `Bool` rather than a plain dispatch.
+    /// The local branch is gated on the session being connected: during a reconnect there is
+    /// no pipeline to command, and the callers that move the UI optimistically must not do
+    /// so for a command that never happened — hence the `Bool` rather than a plain dispatch.
     /// The remote branch reports failures through `errorMessage`; the local branch leaves
-    /// the resulting playback state to the Mercury callback.
+    /// the resulting playback state to the client's playback publisher.
     ///
     /// `isActiveDevice` is two-valued and the cluster is not: Spotifly is active, another
     /// device is, or **nobody** is. The third state is reached routinely — waking from sleep
-    /// gets there, because the sleep teardown shuts Spirc down and librespot's
-    /// `SessionDisconnected` handler clears the active flag.
+    /// gets there, because the session that comes back registers itself as inactive and the
+    /// cluster update that answers then names nobody at all.
     ///
     /// **That state used to be found out by asking**: the Web API answered 404 and the 404 was
     /// caught. connect-state addresses the target in the *url*, so with nobody active there is
@@ -633,13 +635,15 @@ final class PlaybackViewModel {
     /// one fewer request on a path the user is waiting on.
     ///
     /// What the local fallback recovers is **resume**, which is also the only one that needs
-    /// recovering. `spotifly_resume` activates and reloads the saved context, so playback
-    /// comes back where it stopped. The others reach an inactive Spirc, which drops them —
-    /// and that is the right outcome rather than a gap to close: with nobody active there is
-    /// no context loaded and no track playing, so there is nothing to pause, skip or seek.
-    /// Activating for them would take the Connect role away from the user's other clients in
-    /// order to accomplish nothing, and making them work would mean silently starting
-    /// playback in response to "next" or "seek" — a different feature, not this fix.
+    /// recovering. A paused pipeline still holds its track, so resuming plays on from where
+    /// it stopped — and the playing state that follows is reported to Spirc as this device
+    /// being active, which takes the Connect role back with it. The others reach a pipeline
+    /// that is stopped or empty and do nothing — and that is the right outcome rather than a
+    /// gap to close: with nobody active there is no track playing, so there is nothing to
+    /// pause, skip or seek. Activating for them would take the Connect role away from the
+    /// user's other clients in order to accomplish nothing, and making them work would mean
+    /// silently starting playback in response to "next" or "seek" — a different feature, not
+    /// this fix.
     @discardableResult
     private func sendTransportCommand(
         _ name: String,
@@ -649,10 +653,10 @@ final class PlaybackViewModel {
     ) -> Bool {
         guard SpotifyPlayer.isActiveDevice else {
             guard let route = connectRoute() else {
-                // Nothing out there to command, so command ourselves. Rust takes the
-                // Connect role on the way through — `spotifly_resume` reloads the saved
-                // context and activates — which is what pressing a transport control
-                // with no device active asks for.
+                // Nothing out there to command, so command ourselves. The playback state
+                // that follows is reported to Spirc as this device being active, so the
+                // Connect role comes back with it — which is what pressing a transport
+                // control with no device active asks for.
                 guard SpotifyPlayer.isSessionConnected else {
                     debugLog("PlaybackViewModel", "\(name) dropped - no active device and session not connected")
                     return false
@@ -750,7 +754,7 @@ final class PlaybackViewModel {
     }
 
     func pause() {
-        // State update will come from Mercury callback
+        // The client publishes the paused state; nothing is asserted here.
         sendTransportCommand(
             "pause()",
             local: { SpotifyPlayer.pause() },
@@ -767,9 +771,10 @@ final class PlaybackViewModel {
             return
         }
 
-        // Don't call syncPositionAnchor() - Rust returns 0 immediately after resume.
-        // The position we already hold is correct from the paused state: only the clock
-        // restarts.
+        // Deliberately no syncPositionAnchor() here: the position we already hold is correct
+        // from the paused state, since only the clock restarts. On the Rust path it was
+        // worse than redundant — that player reported 0 for a moment after a resume, so
+        // syncing would have thrown the position away.
         restartPositionClock()
         updateNowPlayingPosition()
     }
@@ -1015,11 +1020,13 @@ final class PlaybackViewModel {
 
     // MARK: - Player State Subscriptions
 
-    /// Adopts a successful Rust-owned recovery after an explicit Swift initialization failed.
+    /// Adopts a recovery the client completed on its own after an explicit initialization
+    /// failed.
     ///
-    /// Do not clear `isInitialized` on a not-ready snapshot: a transient disconnect is owned
-    /// by Rust, and doing so would make the next user command start a destructive Swift
-    /// rebuild. An explicit initialization clears it itself before rebuilding.
+    /// Do not clear `isInitialized` on a not-ready snapshot: a transient disconnect belongs
+    /// to `LibrespotClient`'s auto-recovery, and clearing it would make the next user
+    /// command start a destructive rebuild from here. An explicit initialization clears it
+    /// itself before rebuilding.
     private func setupConnectionStateSubscription() {
         connectionStateSubscription = SpotifyPlayer.connectionState
             .receive(on: DispatchQueue.main)
@@ -1038,13 +1045,13 @@ final class PlaybackViewModel {
                     return
                 }
 
-                debugLog("PlaybackViewModel", "Adopting successful Rust-owned recovery")
+                debugLog("PlaybackViewModel", "Adopting recovery the client completed on its own")
                 isInitialized = true
                 errorMessage = nil
             }
     }
 
-    /// Brings `isConnectionReady` in line with Rust, freezing the position when it drops.
+    /// Brings `isConnectionReady` in line with the client, freezing the position when it drops.
     ///
     /// Reads the live flags rather than trusting the delivered snapshot, which may already
     /// be stale by the time it arrives.
@@ -1069,26 +1076,25 @@ final class PlaybackViewModel {
     ///
     /// Which value is truthful depends on who was playing:
     ///
-    /// - **Local playback**: Rust's last Player event. It stopped advancing when the Player
-    ///   did, so it is exactly where the audio ended.
-    /// - **Remote playback**: the displayed position. Rust's Player position belongs to a
-    ///   local Player that was not the one playing, so it is unrelated.
+    /// - **Local playback**: the last position the pipeline reported. It stopped advancing
+    ///   when the audio did, so it is exactly where playback ended.
+    /// - **Remote playback**: the displayed position. The pipeline's position belongs to a
+    ///   local player that was not the one playing, so it is unrelated.
     ///
-    /// The `rustPosition > 0` clause guards the gap between the two: Rust reports 0 both for
-    /// "at the start" and for "nothing loaded". Snapping a running progress bar to zero
+    /// The `playerPosition > 0` clause guards the gap between the two: zero is reported both
+    /// for "at the start" and for "nothing loaded". Snapping a running progress bar to zero
     /// because the position was cleared out from under it would be worse than holding the
     /// last shown value — so a zero is only adopted when we have no anchor of our own either.
     ///
-    /// A teardown no longer produces such a zero: `PlayerEvent::Stopped` keeps the position
-    /// now, because the resume path seeks to it. The clause still earns its place for the
-    /// zeroes that remain — `EndOfTrack`, and the reset on logout.
+    /// Such zeroes do arrive: `AudioPipeline` publishes one whenever it goes idle, which is
+    /// every stop and every teardown, and logout resets it too.
     private func freezePositionForDisconnect() {
         let displayedPosition = interpolatedPositionMs
-        let rustPosition = SpotifyPlayer.positionMs
+        let playerPosition = SpotifyPlayer.positionMs
         let frozenPosition = if SpotifyPlayer.isActiveDevice,
-                                rustPosition > 0 || positionAnchorMs == 0
+                                playerPosition > 0 || positionAnchorMs == 0
         {
-            rustPosition
+            playerPosition
         } else {
             displayedPosition
         }
@@ -1097,8 +1103,11 @@ final class PlaybackViewModel {
         debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(frozenPosition)ms")
     }
 
-    /// Subscribe to playback state updates from Mercury/Spirc
-    /// This allows external control (e.g., pause from phone) to be reflected in the app
+    /// Subscribe to the playback state the client publishes.
+    ///
+    /// This is how external control shows up: a phone pausing *this* device sends a Connect
+    /// command over the dealer, which pauses the pipeline, whose state arrives here exactly
+    /// as a local pause would.
     private func setupPlaybackStateSubscription() {
         playbackStateSubscription = SpotifyPlayer.playbackState
             .receive(on: DispatchQueue.main)
@@ -1173,15 +1182,15 @@ final class PlaybackViewModel {
             remote: { try await SpclientAPI().sendCommand(.seek(toMs: Int(positionMs)), from: $0, to: $1) },
         )
 
-        // seek(to:) already moved the anchor so scrubbing feels immediate. If Rust rejected
-        // the command, re-sync from the real position instead of leaving the UI parked at a
-        // position playback never reached.
+        // seek(to:) already moved the anchor so scrubbing feels immediate. If the command
+        // could not be issued at all, re-sync from the real position instead of leaving the
+        // UI parked at a position playback never reached.
         if !issued {
             syncPositionAnchor()
         }
     }
 
-    /// Handle playback state update from Spirc callback
+    /// Handle a playback state published by the client.
     private func handlePlaybackStateUpdate(_ state: PlaybackState?) {
         guard let state else { return }
 
@@ -1190,8 +1199,8 @@ final class PlaybackViewModel {
             "Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
 
-        // Authoritative state from Rust — let any in-flight Web API bootstrap know it is
-        // now stale (see AppStore.liveStateRevision)
+        // Authoritative state from the player — let any in-flight Web API bootstrap know it
+        // is now stale (see AppStore.liveStateRevision)
         store?.noteLiveStateReceived()
 
         // Update playing state
@@ -1252,14 +1261,14 @@ final class PlaybackViewModel {
     private var positionAnchorTime: Double = CACurrentMediaTime()
     private var driftCorrectionTask: Task<Void, Never>?
 
-    /// How far the display may disagree with Rust before the disagreement means something.
+    /// How far the display may disagree with the player before the disagreement means something.
     private static let positionDisagreementMs: Int64 = 500
 
     /// How long an optimistic anchor is given to be confirmed before it is treated as a
     /// command that never happened. Long enough to cover the 150 ms seek debounce and the
-    /// round trip after it — measured at ~25 ms from `spotifly_seek` to the state callback
-    /// — and it restarts on each drag update, so a long scrub extends it rather than
-    /// outliving it.
+    /// round trip after it — measured at ~25 ms from the seek to the state that answered it,
+    /// on the Rust path — and it restarts on each drag update, so a long scrub extends it
+    /// rather than outliving it.
     private static let optimisticAnchorGrace: Double = 1.0
 
     /// When the anchor was last written by a transport command rather than by a
@@ -1275,7 +1284,7 @@ final class PlaybackViewModel {
     /// position was capped at the track length.
     ///
     /// `time` defaults to now. A caller holding a snapshot that was true *earlier* — a
-    /// Mercury or Web API state carrying a timestamp — passes that moment instead, so
+    /// cluster or Web API state carrying a timestamp — passes that moment instead, so
     /// interpolation accounts for the delay rather than restarting the clock.
     ///
     /// `optimistic` marks the anchors that transport commands write ahead of playback, to
@@ -1387,7 +1396,7 @@ final class PlaybackViewModel {
     /// Runs the drift check once a second for the lifetime of the view model.
     ///
     /// Once a second, not every frame: the UI interpolates its own position through
-    /// `TimelineView`, so this exists only to pull that clock back to Rust's reality.
+    /// `TimelineView`, so this exists only to pull that clock back to the player's reality.
     private func startPositionTimer() {
         driftCorrectionTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -1398,16 +1407,16 @@ final class PlaybackViewModel {
         }
     }
 
-    /// Sync position anchor with Rust - call after seek, play, resume, track change
+    /// Sync the position anchor with the player - call after seek, play, resume, track change
     private func syncPositionAnchor() {
-        let rustPosition = SpotifyPlayer.positionMs
-        // Don't overwrite valid position with 0 - Rust may not have position ready yet
-        if rustPosition == 0, positionAnchorMs > 0 {
-            debugLog("PlaybackViewModel", "syncPositionAnchor: skipping - rustPosition=0 but have valid anchor=\(positionAnchorMs)")
+        let playerPosition = SpotifyPlayer.positionMs
+        // Don't overwrite a valid position with 0 - the pipeline may not have ticked yet
+        if playerPosition == 0, positionAnchorMs > 0 {
+            debugLog("PlaybackViewModel", "syncPositionAnchor: skipping - playerPosition=0 but have valid anchor=\(positionAnchorMs)")
             return
         }
-        debugLog("PlaybackViewModel", "syncPositionAnchor: rustPosition=\(rustPosition), was positionAnchorMs=\(positionAnchorMs)")
-        anchorPosition(rustPosition)
+        debugLog("PlaybackViewModel", "syncPositionAnchor: playerPosition=\(playerPosition), was positionAnchorMs=\(positionAnchorMs)")
+        anchorPosition(playerPosition)
     }
 
     /// Called every second to check for drift and sync state
@@ -1424,52 +1433,54 @@ final class PlaybackViewModel {
         // rather than leaving the progress bar stopped until the next one does.
         syncConnectionReadiness()
 
-        // Sync playing state with Rust - only when we're the active device
+        // Sync playing state with the player - only when we're the active device
         // When monitoring remote playback, state comes from cluster updates
         if SpotifyPlayer.isActiveDevice {
-            let rustIsPlaying = SpotifyPlayer.isPlaying
-            if rustIsPlaying != isPlaying {
-                isPlaying = rustIsPlaying
+            let playerIsPlaying = SpotifyPlayer.isPlaying
+            if playerIsPlaying != isPlaying {
+                isPlaying = playerIsPlaying
                 syncPositionAnchor()
                 didCorrectDrift = true
             }
         }
 
-        // A held position is honest while disconnected: Rust has no advancing Player state
-        // to anchor interpolation to, and will rehydrate from its last raw position.
+        // A held position is honest while disconnected: nothing is advancing for
+        // interpolation to be anchored to, and a recovery reloads the track at the last
+        // position the pipeline reported (`LibrespotClient.runRecovery`).
         guard isPlaying, isConnectionReady else { return }
 
-        // Check for significant drift from Rust position - only when active device
+        // Check for significant drift from the player's position - only when active device
         // Remote playback position is interpolated from cluster timestamp, not real-time.
-        // Compare even when the Rust value did not change: a frozen value is precisely the
-        // signal that must pull a still-running Swift clock back to reality.
+        // Compare even when the reported value did not change: a frozen value is precisely
+        // the signal that must pull a still-running Swift clock back to reality.
         //
         // The two directions are not the same measurement, so they do not share a
-        // threshold. Rust reports where the *decoder* is, and the decoder runs ahead of
-        // what is audible by whatever `AudioRenderer` still holds buffered — normally
-        // around `maxBufferAheadSeconds`, though that is a pacing target enforced by
-        // sleeping after a write rather than a ceiling, and re-arming the throttle on a
-        // route change can bank more.
+        // threshold:
         //
-        // - **Display ahead of Rust** cannot come from buffering, since the decoder is
-        //   always in front. It means the Player stopped producing while our clock kept
-        //   running, which is the stall this check exists for. Half a second is plenty.
-        // - **Display behind Rust** is normally just that buffer, and correcting to it
-        //   would jump the bar forward into audio nobody has heard yet — the fight with
-        //   the Spirc position that made the bar jitter through a context's first track.
+        // - **Display ahead of the player** means our clock kept running while playback
+        //   stopped producing, which is the stall this check exists for. Half a second is
+        //   plenty.
+        // - **Display behind the player** is left alone. That gap used to be the render
+        //   buffer: the Rust path reported where the *decoder* was, always in front of what
+        //   was audible, and correcting to it jumped the bar forward into audio nobody had
+        //   heard yet — the fight with the Spirc position that made the bar jitter through a
+        //   context's first track. `AudioPipeline` reports the audible position now
+        //   (`AudioRenderer.playedFramesSinceStart`), so that buffer no longer sits between
+        //   the two. The direction is still not corrected, which has not been re-measured
+        //   against the new clock.
         //
         // The exception in both directions is an anchor a transport command wrote ahead of
         // playback. That is a promise, not a measurement, and the two disagree by design
         // until the command lands — so nothing can be judged inside the grace window. Past
-        // it, an optimistic anchor that no measurement has confirmed is one Rust never
+        // it, an optimistic anchor that no measurement has confirmed is one playback never
         // carried out: `performSeek` rolls back a command it could not *issue*, but one
-        // that was issued and then rejected reports nothing back, since
-        // `SpotifyPlayer.seek` discards the FFI result. Then either direction is evidence,
+        // that was issued and then failed reports nothing back, since `SpotifyPlayer.seek`
+        // fires it into a task and discards the error. Then either direction is evidence,
         // because the display is somewhere playback never went.
         if SpotifyPlayer.isActiveDevice {
-            let rustPosition = SpotifyPlayer.positionMs
+            let playerPosition = SpotifyPlayer.positionMs
             let displayedPosition = interpolatedPositionMs
-            let displayedLead = Int64(displayedPosition) - Int64(rustPosition)
+            let displayedLead = Int64(displayedPosition) - Int64(playerPosition)
 
             let unconfirmedFor = optimisticAnchorTime.map { CACurrentMediaTime() - $0 }
             let correct = switch unconfirmedFor {
@@ -1489,8 +1500,8 @@ final class PlaybackViewModel {
             }
 
             if correct {
-                debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(rustPosition)")
-                anchorPosition(rustPosition)
+                debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(playerPosition)")
+                anchorPosition(playerPosition)
                 didCorrectDrift = true
             }
         }
