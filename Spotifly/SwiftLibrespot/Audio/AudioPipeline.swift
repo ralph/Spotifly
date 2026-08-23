@@ -19,8 +19,8 @@ import Foundation
 /// Coordinates downloading, decryption, decoding, and playback of a track.
 ///
 /// Concurrency: the actor owns all playback state; the decode loop itself runs
-/// detached because pushing PCM blocks on the sink's backpressure — parking it
-/// on the actor would freeze every control call behind the audio.
+/// on its own thread because pushing PCM blocks on the sink's backpressure —
+/// parking it on the actor would freeze every control call behind the audio.
 actor AudioPipeline {
     // MARK: - Dependencies
 
@@ -78,8 +78,9 @@ actor AudioPipeline {
     private var durationMs: Int64 = 0
     private var sampleRate: Int = 44100
 
-    /// Decoders hold their source data alive, so `decryptedData` is only kept
-    /// separately for logging/diagnostics.
+    /// Decoder for the loaded track. It holds the decrypted Ogg bytes alive
+    /// for as long as it exists, which is what makes a seek a cheap in-memory
+    /// `ov_pcm_seek` — nothing else keeps a copy of them.
     private var decoder: VorbisDecoder?
 
     /// Shared state for the dedicated decode thread. The loop runs on a
@@ -278,7 +279,7 @@ actor AudioPipeline {
         // Retire the running loop and wait for it to actually finish before
         // the decoder below is touched again: two tasks reading one
         // OggVorbis_File concurrently is undefined behavior, not a glitch.
-        await retireDecodeTask()
+        await retireDecodeThread()
 
         startDecoding(from: frame, keepPaused: isPaused)
     }
@@ -294,7 +295,7 @@ actor AudioPipeline {
     /// buffer once the sink has been stopped (backpressure checks rendering),
     /// and the pause park polls a flag. Bounded anyway, so a wedged thread can
     /// never take playback control down with it.
-    private func retireDecodeTask() async {
+    private func retireDecodeThread() async {
         decodeState.setCancelled()
 
         // Stop pulling so a writer parked on a full ring wakes up.
@@ -334,7 +335,7 @@ actor AudioPipeline {
     // MARK: - Decode Orchestration
 
     /// Starts (or restarts) the decode loop at `frame`. Synchronous on the
-    /// actor: the work itself happens on a detached task.
+    /// actor: the work itself happens on the decode thread started below.
     ///
     /// `keepPaused` preserves a paused state across a seek: the decoder is in
     /// place and position is published, but nothing is written or played until
@@ -396,13 +397,6 @@ actor AudioPipeline {
         playbackStateSubject.send(keepPaused ? .paused(trackUri: currentTrackUri ?? "") : .playing(trackUri: currentTrackUri ?? ""))
     }
 
-    /// The decode loop. Runs off the actor because `sink.write` blocks on
-    /// backpressure; every state touch hops back through `await`.
-    ///
-    /// The decoder is owned solely by this task from the moment it is passed
-    /// in until the task is cancelled or completes — the actor never touches
-    /// it concurrently (a seek cancels and replaces the task before opening a
-    /// new one).
     /// The decode loop, running on its own thread. Synchronous by design:
     /// every long wait here (throttled writes, pause polling, cancellation
     /// polling) would otherwise occupy a cooperative-concurrency thread and
@@ -459,7 +453,7 @@ actor AudioPipeline {
 
     /// Cancels whatever is running and releases the loaded track.
     private func teardownTrack() async {
-        await retireDecodeTask()
+        await retireDecodeThread()
         positionTimer?.cancel()
         positionTimer = nil
 

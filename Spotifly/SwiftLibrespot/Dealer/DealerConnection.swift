@@ -94,13 +94,12 @@ public actor DealerConnection {
         while connectionId == nil, isConnected, Date() < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }
-        guard let identifier = connectionId else {
+        guard connectionId != nil else {
             isConnected = false
             webSocketTask?.cancel(with: .goingAway, reason: nil)
             webSocketTask = nil
             throw LibrespotError.connectionFailed("Dealer never announced a connection id")
         }
-        _ = identifier
         debugLog("DealerConnection", "WebSocket connected with connection id")
 
         // Start ping loop
