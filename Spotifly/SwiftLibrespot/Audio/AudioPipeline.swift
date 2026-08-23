@@ -141,7 +141,6 @@ actor AudioPipeline {
     }
 
     private let decodeState = DecodeLoopState()
-    private var decodeThread: Thread?
     private nonisolated(unsafe) var decodeWakeSemaphore: DispatchSemaphore?
 
     private var positionTimer: Task<Void, Never>?
@@ -295,9 +294,14 @@ actor AudioPipeline {
 
     /// Cancels the decode loop and waits for its thread to exit.
     ///
+    /// The wait is not optional: callers touch the decoder the moment this
+    /// returns — `seek` re-enters `ov_pcm_seek`, `teardownTrack` calls
+    /// `ov_clear` — and a second party inside `ov_read` on the same
+    /// `OggVorbis_File` is undefined behavior, not a glitch.
+    ///
     /// Termination is prompt by construction: the writer returns from a full
     /// buffer once the sink has been stopped (backpressure checks rendering),
-    /// and the pause park polls a flag. Bounded wait so a wedged thread can
+    /// and the pause park polls a flag. Bounded anyway, so a wedged thread can
     /// never take playback control down with it.
     private func retireDecodeTask() async {
         decodeState.setCancelled()
@@ -305,19 +309,22 @@ actor AudioPipeline {
         // Stop pulling so a writer parked on a full ring wakes up.
         sink.stop()
 
-        // The semaphore wait must happen off an async context (Dispatch
-        // forbids it there); the join is bounded and the loop exits within
-        // a write timeout at worst, so a detached hop is safe.
-        if let semaphore = decodeWakeSemaphore {
-            decodeWakeSemaphore = nil
+        guard let semaphore = decodeWakeSemaphore else { return }
+        decodeWakeSemaphore = nil
+
+        // The semaphore wait itself must not happen on a cooperative thread —
+        // Dispatch forbids blocking there — so it runs on a throwaway thread
+        // that resumes us when the decode loop has signalled or the bound
+        // expires.
+        await withCheckedContinuation { continuation in
             let joiner = Thread {
                 _ = semaphore.wait(timeout: .now() + 5)
+                continuation.resume()
             }
             joiner.name = "spotifly.decode-join"
             joiner.stackSize = 1 << 18
             joiner.start()
         }
-        decodeThread = nil
     }
 
     /// Sets output volume (0…1). Gain is applied at the sink, which takes
@@ -395,7 +402,6 @@ actor AudioPipeline {
         thread.name = "spotifly.decode"
         thread.stackSize = 1 << 20
         thread.start()
-        decodeThread = thread
 
         if keepPaused {
             stopPositionTimer()
