@@ -377,7 +377,7 @@ public actor LibrespotClient {
             throw LibrespotError.trackNotFound("Context has no tracks")
         }
 
-        let start = trackIndex >= 0 ? min(trackIndex, context.tracks.count - 1) : max(0, context.startIndex)
+        let start = trackIndex >= 0 ? min(trackIndex, context.tracks.count - 1) : 0
         setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: context.tracks, startIndex: start)
         try await loadCurrentTrack()
     }

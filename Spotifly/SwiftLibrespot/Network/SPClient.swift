@@ -571,8 +571,6 @@ public actor SPClient {
     public struct ResolvedContext: Sendable {
         public let uri: String
         public let tracks: [String]
-        /// Index the context says to start at, when it carries one.
-        public let startIndex: Int
     }
 
     /// Resolves an album, playlist, artist, or station uri into its tracks,
@@ -585,7 +583,6 @@ public actor SPClient {
         debugLog("SPClient", "Resolving context: \(contextUri)")
 
         var allTracks: [String] = []
-        var startIndex = 0
         var nextPage: String? = "/context-resolve/v1/\(encodedUri)?device_id=\(deviceId)"
         var pageLimit = 10
 
@@ -614,23 +611,26 @@ public actor SPClient {
             #endif
             let report = Self.parseContextReport(data)
             allTracks.append(contentsOf: report.tracks)
-            if allTracks.isEmpty, !report.startUri.isEmpty {
-                startIndex = max(0, allTracks.firstIndex(of: report.startUri) ?? 0)
-            }
             nextPage = report.nextPageUrl.map { "/context-resolve/v1/\($0)" }
         }
 
         debugLog("SPClient", "Context resolved: \(allTracks.count) track(s)")
 
-        return ResolvedContext(uri: contextUri, tracks: allTracks, startIndex: startIndex)
+        return ResolvedContext(uri: contextUri, tracks: allTracks)
     }
 
     /// Parses the context resolver's answer. Despite the protobuf `Accept`
     /// header the endpoint replies **JSON**: `{metadata, pages: [{tracks:
     /// [{uri}], next_page_url}], uri}`.
-    private nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], nextPageUrl: String?, startUri: String) {
+    ///
+    /// The top-level `uri` is the context's own, not a track's, so nothing
+    /// here can say which track to start at. A start index was computed from
+    /// it and was always 0 — the guard ran after the append, and a context uri
+    /// never matches a track uri anyway. Removed rather than guessed at: which
+    /// field, if any, carries a resume point has to come off a real response.
+    private nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], nextPageUrl: String?) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return ([], nil, "")
+            return ([], nil)
         }
 
         var tracks: [String] = []
@@ -645,8 +645,7 @@ public actor SPClient {
             }
         }
 
-        let startUri = json["uri"] as? String ?? ""
-        return (tracks, nextPageUrl, startUri)
+        return (tracks, nextPageUrl)
     }
 
     // MARK: - Protobuf Helpers
