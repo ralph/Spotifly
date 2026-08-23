@@ -336,7 +336,7 @@ public actor LibrespotClient {
         let pipeline = AudioPipeline(accesspoint: accesspoint, spclient: spclient, sink: SpotifyPlayer.audioRenderer)
         audioPipeline = pipeline
         subscribeToPipeline(pipeline)
-        await pipeline.setQuality(Self.qualityFromUserDefaults())
+        await applyStreamingQuality()
     }
 
     // MARK: - Credential Management
@@ -568,22 +568,20 @@ public actor LibrespotClient {
 
     // MARK: - Settings
 
-    public func setBitrateKbps(_ kbps: Int) {
-        let quality: AudioPipeline.Quality = switch kbps {
-        case ..<120: .low
-        case ..<240: .normal
-        default: .high
+    /// Applies the persisted streaming bitrate to the pipeline. Called when
+    /// the setting changes and again for every pipeline a new session builds,
+    /// so a rebuilt session does not silently fall back to the default.
+    ///
+    /// The bitrate lives in `SpotifyPlayer.Bitrate`, which owns both the
+    /// stored value and the names the user sees; this is the only place it is
+    /// turned into a quality the pipeline can select files by.
+    public func applyStreamingQuality() async {
+        let quality: AudioPipeline.Quality = switch SpotifyPlayer.bitrate {
+        case .low: .low
+        case .normal: .normal
+        case .high: .high
         }
-        Task { await audioPipeline?.setQuality(quality) }
-    }
-
-    private nonisolated static func qualityFromUserDefaults() -> AudioPipeline.Quality {
-        let raw = UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1
-        return switch raw {
-        case 0: .low
-        case 2: .high
-        default: .normal
-        }
+        await audioPipeline?.setQuality(quality)
     }
 
     // MARK: - Queue Plumbing

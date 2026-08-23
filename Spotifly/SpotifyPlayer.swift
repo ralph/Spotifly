@@ -563,16 +563,12 @@ enum SpotifyPlayer {
     /// Sets the streaming bitrate. Takes effect on the next track load.
     static func setBitrate(_ bitrate: Bitrate) {
         UserDefaults.standard.set(bitrate.rawValue, forKey: "streamingBitrate")
-        let kbps = switch bitrate {
-        case .low: 96
-        case .normal: 160
-        case .high: 320
-        }
-        Task { await LibrespotClient.shared.setBitrateKbps(kbps) }
+        Task { await LibrespotClient.shared.applyStreamingQuality() }
     }
 
-    /// Gets the current bitrate setting.
-    static var bitrate: Bitrate {
+    /// The stored bitrate setting, defaulting to normal. `nonisolated` so the
+    /// client can read it while applying the setting to a new pipeline.
+    nonisolated static var bitrate: Bitrate {
         Bitrate(rawValue: UInt8(UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1)) ?? .normal
     }
 
