@@ -16,13 +16,11 @@ public struct ResolvedEndpoints: Sendable {
 
 /// Resolves Spotify backend endpoints
 public struct APResolver: Sendable {
-    private let baseURL = "https://apresolve.spotify.com"
-
     public nonisolated init() {}
 
     /// Resolve all endpoint types
     public func resolve() async throws -> ResolvedEndpoints {
-        let urlString = "\(baseURL)?type=accesspoint&type=dealer&type=spclient"
+        let urlString = "https://apresolve.spotify.com?type=accesspoint&type=dealer&type=spclient"
         debugLog("APResolver", "[GET] \(urlString)")
 
         let url = URL(string: urlString)!
@@ -49,39 +47,5 @@ public struct APResolver: Sendable {
             dealers: dealers,
             spclients: spclients,
         )
-    }
-
-    /// Resolve only accesspoint endpoints
-    public func resolveAccesspoints() async throws -> [String] {
-        let urlString = "\(baseURL)?type=accesspoint"
-        debugLog("APResolver", "[GET] \(urlString)")
-
-        let url = URL(string: urlString)!
-        let (data, _) = try await URLSession.shared.data(from: url)
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let accesspoints = json["accesspoint"] as? [String]
-        else {
-            throw LibrespotError.connectionFailed("Failed to resolve accesspoints")
-        }
-
-        return accesspoints
-    }
-
-    /// Resolve only dealer endpoints
-    public func resolveDealers() async throws -> [String] {
-        let urlString = "\(baseURL)?type=dealer"
-        debugLog("APResolver", "[GET] \(urlString)")
-
-        let url = URL(string: urlString)!
-        let (data, _) = try await URLSession.shared.data(from: url)
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dealers = json["dealer"] as? [String]
-        else {
-            throw LibrespotError.connectionFailed("Failed to resolve dealers")
-        }
-
-        return dealers
     }
 }

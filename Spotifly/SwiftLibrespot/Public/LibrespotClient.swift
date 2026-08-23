@@ -281,16 +281,6 @@ public actor LibrespotClient {
         case noSession
     }
 
-    /// Starts rebuilding the session if it is down. Non-blocking: the outcome
-    /// says whether recovery began, was already under way, or is pointless.
-    ///
-    /// The synchronous facade goes through `forceReconnectSync`; this actor
-    /// path exists for internal callers.
-    @discardableResult
-    func forceReconnect() -> ForceReconnectOutcome {
-        forceReconnectSync()
-    }
-
     private func runRecovery() async {
         defer { flags.endRecovery() }
         guard !shuttingDown else { return }
@@ -567,8 +557,9 @@ public actor LibrespotClient {
     /// actor and read anywhere; a torn read costs one stale slider sample.
     private nonisolated(unsafe) var positionCache: UInt64 = 0
 
-    /// Non-blocking reconnect request for the synchronous facade. Returns the
-    /// outcome immediately; the work continues in a task.
+    /// Starts rebuilding the session if it is down, without blocking: the
+    /// outcome says whether recovery began, was already under way, or is
+    /// pointless, and the work itself continues in a task.
     nonisolated func forceReconnectSync() -> ForceReconnectOutcome {
         if flags.tryBeginRecovery() {
             Task { await self.runRecovery() }

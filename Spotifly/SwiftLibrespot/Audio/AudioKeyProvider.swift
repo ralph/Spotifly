@@ -16,9 +16,6 @@ public actor AudioKeyProvider {
     /// Cache of file ID -> audio key
     private var keyCache: [Data: Data] = [:]
 
-    /// Pending key requests
-    private var pendingRequests: [Data: CheckedContinuation<Data, Error>] = [:]
-
     // MARK: - Initialization
 
     public init(accesspoint: Accesspoint) {
@@ -45,17 +42,6 @@ public actor AudioKeyProvider {
 
         debugLog("AudioKeyProvider", "Got key (\(key.count) bytes)")
         return key
-    }
-
-    /// Clear the key cache
-    public func clearCache() {
-        keyCache.removeAll()
-        debugLog("AudioKeyProvider", "Cache cleared")
-    }
-
-    /// Remove a specific key from cache
-    public func invalidateKey(fileId: Data) {
-        keyCache.removeValue(forKey: fileId)
     }
 }
 

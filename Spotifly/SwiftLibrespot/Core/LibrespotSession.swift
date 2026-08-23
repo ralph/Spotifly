@@ -170,8 +170,9 @@ public actor LibrespotSession {
         }
     }
 
-    /// Disconnects everything but remembers the credentials, so
-    /// `reconnect()` can bring the session back — used around system sleep.
+    /// Disconnects everything but remembers the credentials, so the client's
+    /// recovery can `connect` again without them being handed in a second
+    /// time — used around system sleep.
     public func disconnect() async {
         await spircController?.shutdown()
         await dealerConnection?.disconnect()
@@ -186,8 +187,8 @@ public actor LibrespotSession {
         updateState(.disconnected)
     }
 
-    /// Forgets credentials entirely — logout. A subsequent `reconnect` fails
-    /// rather than resurrecting a signed-out account.
+    /// Forgets credentials entirely — logout. A later recovery finds nothing
+    /// to reconnect with rather than resurrecting a signed-out account.
     public func forgetCredentials() {
         credentials = nil
     }
@@ -199,37 +200,6 @@ public actor LibrespotSession {
         debugLog("LibrespotSession", "Transport lost")
         updateState(.failed("Connection lost"))
         Task { [weak self] in await self?.disconnect() }
-    }
-
-    /// Rebuilds the session from remembered credentials with backoff.
-    public func reconnect() async throws {
-        guard let credentials else {
-            throw LibrespotError.notInitialized
-        }
-        guard let tokenProvider else {
-            throw LibrespotError.notInitialized
-        }
-
-        var attempt = 1
-        let maxAttempts = 10
-        var delay: Duration = .seconds(1)
-
-        while attempt <= maxAttempts {
-            updateState(.reconnecting(attempt: attempt))
-            debugLog("LibrespotSession", "Reconnection attempt \(attempt)/\(maxAttempts)")
-
-            do {
-                try await connect(credentials: credentials, tokenProvider: tokenProvider)
-                return
-            } catch {
-                debugLog("LibrespotSession", "Reconnection attempt \(attempt) failed: \(error)")
-                attempt += 1
-                try await Task.sleep(for: delay)
-                delay = min(delay * 2, .seconds(30))
-            }
-        }
-
-        throw LibrespotError.connectionFailed("Max reconnection attempts exceeded")
     }
 
     // MARK: - State Management
@@ -296,13 +266,6 @@ public actor LibrespotSession {
     }
 
     // MARK: - Direct Access
-
-    func performShutdown() async {
-        await spircController?.shutdown()
-        await dealerConnection?.disconnect()
-        await accesspoint?.disconnect()
-        updateState(.disconnected)
-    }
 
     /// Forwards locally-produced playback state to Spirc so other devices see it.
     func reportLocalPlayerState(_ state: SpircController.SpircPlayerState?, active: Bool) async {

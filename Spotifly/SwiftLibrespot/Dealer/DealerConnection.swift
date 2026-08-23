@@ -20,7 +20,6 @@ public actor DealerConnection {
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
     private var connectionId: String?
-    private var messageId: UInt32 = 0
 
     /// Called when the socket dies on its own, so the session can fail and be
     /// rebuilt. Cleared by `disconnect()`, which is a death we asked for.
@@ -159,12 +158,6 @@ public actor DealerConnection {
         try await task.send(wsMessage)
     }
 
-    /// Send a JSON message
-    public func sendJSON(_ object: some Encodable) async throws {
-        let data = try JSONEncoder().encode(object)
-        try await send(data)
-    }
-
     // MARK: - PutState
 
     /// Publish device state to Spotify Connect, and answer the cluster it
@@ -264,12 +257,6 @@ public actor DealerConnection {
             c = (c & 1) != 0 ? (0xEDB8_8320 ^ (c >> 1)) : (c >> 1)
         }
         return c
-    }
-
-    /// Get next message ID
-    public func nextMessageId() -> UInt32 {
-        messageId += 1
-        return messageId
     }
 
     // MARK: - Receive Loop

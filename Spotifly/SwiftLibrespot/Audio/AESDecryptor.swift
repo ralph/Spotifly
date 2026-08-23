@@ -43,17 +43,6 @@ public final class AESDecryptor: @unchecked Sendable {
         debugLog("AESDecryptor", "Key set")
     }
 
-    /// Reset the block counter (for seeking)
-    public nonisolated func reset() {
-        blockCounter = 0
-    }
-
-    /// Seek to a specific byte position (adjusts block counter)
-    public nonisolated func seek(toByteOffset offset: UInt64) {
-        // Each AES block is 16 bytes
-        blockCounter = offset / 16
-    }
-
     // MARK: - Decryption
 
     /// Decrypt a chunk of data in place
@@ -86,31 +75,6 @@ public final class AESDecryptor: @unchecked Sendable {
         var mutableData = data
         decrypt(&mutableData)
         return mutableData
-    }
-
-    /// Decrypt using AES-CTR mode with the fixed Spotify IV
-    public nonisolated func decryptCTR(_ ciphertext: Data, startingBlock: UInt64 = 0) -> Data {
-        guard keyBytes != nil else { return ciphertext }
-
-        var result = Data(capacity: ciphertext.count)
-        var counter = startingBlock
-
-        var offset = 0
-        while offset < ciphertext.count {
-            let keystream = generateKeystreamBlock(counter: counter)
-
-            let remaining = ciphertext.count - offset
-            let blockSize = min(16, remaining)
-
-            for i in 0 ..< blockSize {
-                result.append(ciphertext[offset + i] ^ keystream[i])
-            }
-
-            offset += blockSize
-            counter += 1
-        }
-
-        return result
     }
 
     // MARK: - Keystream Generation using CommonCrypto

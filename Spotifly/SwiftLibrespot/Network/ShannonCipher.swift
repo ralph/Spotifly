@@ -147,15 +147,6 @@ public final class ShannonCipher: @unchecked Sendable {
         return mac
     }
 
-    /// Check if MAC matches expected value
-    public nonisolated func checkMac(_ expected: Data) -> Error? {
-        let computed = finish(expected.count)
-        if computed != expected {
-            return LibrespotError.encryptionError("MAC mismatch")
-        }
-        return nil
-    }
-
     // MARK: - Internal State Management
 
     private nonisolated func saveState() {

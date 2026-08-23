@@ -61,38 +61,6 @@ public actor Accesspoint {
     /// Version string (matching librespot-rs format)
     private static let versionString = "librespot 0.8.0"
 
-    // MARK: - Shannon Cipher Test
-
-    /// Test Shannon cipher with known test vectors
-    /// Call this to verify the cipher implementation is correct
-    public static func testShannonCipher() -> Bool {
-        // Test vectors from https://github.com/twonky4/shannon
-        let key = Data([0x65, 0x87, 0xD8, 0x8F, 0x6C, 0x32, 0x9D, 0x8A, 0xE4, 0x6B])
-        let plaintext = "My secret message".data(using: .utf8)!
-        let expectedCiphertext = Data([0x91, 0x9D, 0xA9, 0xB6, 0x29, 0xFC, 0x9C, 0xDD, 0x17, 0x8C, 0x15, 0x31, 0x9A, 0xAE, 0xCC, 0x6E, 0xD4])
-        let expectedMac = Data([0xBE, 0x7B, 0xEF, 0x39, 0xEE, 0xFE, 0x54, 0xFD, 0x8D, 0xB0, 0xBC, 0x6F, 0xD5, 0x30, 0x35, 0x19])
-
-        // Test WITHOUT nonce (raw encryption)
-        let cipher = ShannonCipher(key: key)
-        var data = plaintext
-        cipher.encrypt(&data)
-        let mac = cipher.finish(16)
-
-        debugLog("Accesspoint", "=== SHANNON CIPHER TEST ===")
-        debugLog("Accesspoint", "Key: \(key.hexString)")
-        debugLog("Accesspoint", "Plaintext: \(String(data: plaintext, encoding: .utf8) ?? "?")")
-        debugLog("Accesspoint", "Plaintext hex: \(plaintext.hexString)")
-        debugLog("Accesspoint", "Expected ciphertext: \(expectedCiphertext.hexString)")
-        debugLog("Accesspoint", "Actual ciphertext:   \(data.hexString)")
-        debugLog("Accesspoint", "Expected MAC: \(expectedMac.hexString)")
-        debugLog("Accesspoint", "Actual MAC:   \(mac.hexString)")
-        debugLog("Accesspoint", "Ciphertext match: \(data == expectedCiphertext)")
-        debugLog("Accesspoint", "MAC match: \(mac == expectedMac)")
-        debugLog("Accesspoint", "=== END TEST ===")
-
-        return data == expectedCiphertext && mac == expectedMac
-    }
-
     // MARK: - RSA Public Key for Signature Verification
 
     /// Server's RSA public key for verifying GS signature
@@ -839,11 +807,6 @@ public actor Accesspoint {
                 }
             })
         }
-    }
-
-    private func readRawLength() async throws -> Int {
-        let data = try await readRawBytes(count: 4, timeout: 10)
-        return Int(data[0]) << 24 | Int(data[1]) << 16 | Int(data[2]) << 8 | Int(data[3])
     }
 
     /// Reads exactly `count` bytes.
