@@ -167,12 +167,20 @@ public actor DealerConnection {
 
     // MARK: - PutState
 
-    /// Publish device state to Spotify Connect.
+    /// Publish device state to Spotify Connect, and answer the cluster it
+    /// replies with.
+    ///
+    /// **The response body is the current cluster**, and on registration it is
+    /// the only place the answer appears: dealer pushes carry *changes*, so a
+    /// device joining an otherwise quiet account learns who is active here or
+    /// not at all. librespot reads it the same way, at the same moment
+    /// (`Spirc::handle_connection_id_update`).
     ///
     /// The body goes out gzipped — every reference client compresses it — and
     /// the connection id is percent-encoded into the path, since it is base64
     /// whose `+`/`/`/`=` would otherwise corrupt the URL.
-    public func putState(_ request: PutStateRequestProto) async throws {
+    @discardableResult
+    public func putState(_ request: PutStateRequestProto) async throws -> Cluster? {
         guard let connId = connectionId else {
             throw LibrespotError.spircNotReady
         }
@@ -199,7 +207,7 @@ public actor DealerConnection {
 
         httpRequest.httpBody = payload
 
-        let (_, response) = try await URLSession.shared.data(for: httpRequest)
+        let (data, response) = try await URLSession.shared.data(for: httpRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LibrespotError.commandFailed("PutState failed: no response")
@@ -209,7 +217,8 @@ public actor DealerConnection {
             throw LibrespotError.commandFailed("PutState failed: HTTP \(httpResponse.statusCode)")
         }
 
-        debugLog("DealerConnection", "PutState accepted (HTTP \(httpResponse.statusCode))")
+        debugLog("DealerConnection", "PutState accepted (HTTP \(httpResponse.statusCode), \(data.count) bytes back)")
+        return try? Cluster.parse(from: data)
     }
 
     /// Minimal gzip wrapper: RFC 1952 header + raw-deflate body + CRC32 tail,

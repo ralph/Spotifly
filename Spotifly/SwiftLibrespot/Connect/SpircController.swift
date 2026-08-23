@@ -143,7 +143,7 @@ public actor SpircController {
         goodbye.putStateReason = .becameInactive
         goodbye.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
         goodbye.device = buildDevice(playerState: nil)
-        try? await dealerConnection.putState(goodbye)
+        _ = try? await dealerConnection.putState(goodbye)
     }
 
     // MARK: - State Publishing
@@ -198,7 +198,7 @@ public actor SpircController {
 
         var request = buildPutStateRequest(isActive: isActive)
         request.putStateReason = becameActive ? .newDevice : (state != nil ? .playerStateChanged : .spircNotify)
-        try? await dealerConnection.putState(request)
+        _ = try? await dealerConnection.putState(request)
     }
 
     // MARK: - Device Registration
@@ -207,9 +207,17 @@ public actor SpircController {
         debugLog("SpircController", "Registering device...")
 
         let request = buildPutStateRequest(isActive: false)
-        try await dealerConnection.putState(request)
+        let cluster = try await dealerConnection.putState(request)
 
         debugLog("SpircController", "Device registered")
+
+        // Registration answers with the current cluster, and on a quiet account
+        // it is the only time we are told: dealer pushes carry changes, so
+        // without this the device list and the active device stayed empty until
+        // somebody happened to press something elsewhere.
+        if let cluster {
+            adopt(cluster)
+        }
     }
 
     private func buildPutStateRequest(isActive: Bool) -> PutStateRequestProto {
@@ -313,9 +321,12 @@ public actor SpircController {
 
     private func handleClusterUpdate(_ update: ClusterUpdateProto) async {
         debugLog("SpircController", "Cluster update received")
+        adopt(update.cluster)
+    }
 
-        // Update cluster state from parsed proto
-        let cluster = update.cluster
+    /// Takes a cluster — pushed by the dealer or returned by PutState — as the
+    /// current truth and publishes it.
+    private func adopt(_ cluster: Cluster) {
         let devices = cluster.devices.map { deviceId, deviceInfoProto in
             ClusterState.ConnectedDevice(
                 id: deviceId,
