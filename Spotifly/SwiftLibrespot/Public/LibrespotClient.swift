@@ -306,7 +306,17 @@ public actor LibrespotClient {
 
             // A rebuilt session carries a fresh accesspoint socket; the old
             // pipeline would keep asking the corpse for audio keys.
+            let wasPlaying = playbackStateSubject.value?.isPlaying == true
+            let resumeAt = positionCache
             await attachTransport()
+
+            // attachTransport hands back an empty pipeline, so without this the
+            // session comes back reporting connected while nothing plays and
+            // resume() resumes silence. Reload where we were.
+            if wasPlaying, let uri = playbackQueue.currentUri {
+                debugLog("LibrespotClient", "Recovery reloading \(uri) at \(resumeAt)ms")
+                try? await audioPipeline?.playTrack(uri: uri, positionMs: resumeAt)
+            }
 
             publishConnectionState(connected: true)
             debugLog("LibrespotClient", "Recovery succeeded")
@@ -857,11 +867,24 @@ public actor LibrespotClient {
 
         switch command {
         case let .play(playCommand):
-            let target = playCommand.trackUri
-                ?? playCommand.trackUris?.first
-                ?? playCommand.contextUri
-            guard let target else { return }
-            try? await play(uriOrUrl: target, trackIndex: playCommand.index ?? -1)
+            // The context is the queue; a track named beside it only says where
+            // to start in it. Preferring the track built a one-track queue and
+            // threw the rest of the playlist away, so a remote "play this album
+            // from track 4" stopped after track 4.
+            if let contextUri = playCommand.contextUri, !contextUri.isEmpty {
+                try? await play(
+                    uriOrUrl: contextUri,
+                    trackIndex: playCommand.index ?? -1,
+                    startingAtUri: playCommand.trackUri,
+                )
+            } else if let uris = playCommand.trackUris, uris.count > 1 {
+                try? await playTracks(uris)
+            } else if let single = playCommand.trackUri ?? playCommand.trackUris?.first {
+                try? await play(uriOrUrl: single, trackIndex: 0)
+            } else {
+                return
+            }
+
             if let positionMs = playCommand.positionMs, positionMs > 0 {
                 try? await audioPipeline?.seek(positionMs: positionMs)
             }
