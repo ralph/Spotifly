@@ -318,12 +318,6 @@ actor AudioPipeline {
         }
     }
 
-    /// Sets output volume (0…1). Gain is applied at the sink, which takes
-    /// effect immediately rather than after buffered audio drains.
-    func setVolume(_ volume: Float) {
-        sink.setVolume(volume)
-    }
-
     /// Duration of the loaded track, from its metadata.
     var currentDurationMs: Int64 {
         durationMs

@@ -461,31 +461,24 @@ public actor LibrespotClient {
 
     // MARK: - Volume
 
-    /// Sets the logical Connect volume (0…1). Reported to other devices; also
-    /// applied audibly, since there is no separate mixer stage anymore.
+    /// Sets the **logical** Connect volume (0…1) — the number reported to the
+    /// cluster and mirrored into player state.
+    ///
+    /// Deliberately does not touch the audio gain. That is
+    /// `SpotifyPlayer.setOutputVolume`, which runs the value through
+    /// librespot's logarithmic taper first; applying the raw linear value here
+    /// as well overwrote it, turning an intended 0.032 at half-slider into 0.5
+    /// — about 24 dB louder than asked for, on every track start.
+    ///
+    /// Both directions still reach the gain: a local change applies it in
+    /// `PlaybackViewModel.volume.didSet` before it ever gets here, and a remote
+    /// one comes back out through `volumeSubject` into that same setter.
     public func setVolume(_ volume: Double) async {
-        let clamped = Float(max(0, min(1, volume)))
+        let clamped = max(0, min(1, volume))
         logicalVolume = UInt32(clamped * 65535)
-        await audioPipeline?.setVolume(clamped)
         volumeSubject.send(UInt16(logicalVolume))
         // Other clients draw this device's slider from what Spirc reports.
         await session?.reportLocalVolume(logicalVolume)
-    }
-
-    // MARK: - Transfer
-
-    /// Hands playback over to another Connect device via the Web API.
-    public func transferPlayback(toDeviceId deviceId: String) async throws {
-        guard let tokenProvider else {
-            throw LibrespotError.notInitialized
-        }
-        let token = try await tokenProvider()
-        try await ConnectWebAPI.transferPlayback(toDeviceId: deviceId, accessToken: token, play: true)
-    }
-
-    /// Takes over playback that is currently running elsewhere.
-    public func transferToLocal() async throws {
-        try await transferPlayback(toDeviceId: deviceInfo.deviceId)
     }
 
     // MARK: - Synchronous State (read by the facade without awaiting)
