@@ -25,10 +25,6 @@ final nonisolated class VorbisDecoder: @unchecked Sendable {
     struct Format: Equatable {
         let sampleRate: Int
         let channels: Int
-
-        var frameSampleCount: Int {
-            channels
-        }
     }
 
     /// Total decoded frames in the stream, or -1 when unknown (unseekable).

@@ -204,10 +204,6 @@ public final class ShannonCipher: @unchecked Sendable {
         }
     }
 
-    private nonisolated func addKey(_ k: UInt32) {
-        r[Self.keyP] ^= k
-    }
-
     // MARK: - Core Cycle
 
     private nonisolated func cycle() {

@@ -102,11 +102,6 @@ public actor SPClient {
                 case .unknown: 0
                 }
             }
-
-            /// Whether this app can decode the format (Ogg Vorbis only).
-            var isDecodable: Bool {
-                isVorbis
-            }
         }
     }
 

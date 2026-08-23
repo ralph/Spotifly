@@ -37,7 +37,6 @@ public actor DealerConnection {
     /// Message publishers
     private nonisolated(unsafe) let clusterUpdateSubject = PassthroughSubject<ClusterUpdateProto, Never>()
     private nonisolated(unsafe) let commandSubject = PassthroughSubject<SpircRemoteCommand, Never>()
-    private nonisolated(unsafe) let connectionIdSubject = PassthroughSubject<String, Never>()
 
     // MARK: - Publishers
 
@@ -47,10 +46,6 @@ public actor DealerConnection {
 
     public nonisolated var commands: AnyPublisher<SpircRemoteCommand, Never> {
         commandSubject.eraseToAnyPublisher()
-    }
-
-    public nonisolated var connectionIds: AnyPublisher<String, Never> {
-        connectionIdSubject.eraseToAnyPublisher()
     }
 
     // MARK: - Initialization
@@ -320,7 +315,6 @@ public actor DealerConnection {
         // Check for connection ID
         if let connId = dealerMsg.connectionId {
             connectionId = connId
-            connectionIdSubject.send(connId)
             debugLog("DealerConnection", "Connection ID: \(connId)")
             return
         }
@@ -334,7 +328,6 @@ public actor DealerConnection {
             let encoded = String(uri.dropFirst(prefix.count))
             if let decoded = encoded.removingPercentEncoding {
                 connectionId = decoded
-                connectionIdSubject.send(decoded)
                 debugLog("DealerConnection", "Connection ID from pusher: \(decoded.prefix(50))...")
             }
         } else if uri.starts(with: "hm://connect-state/v1/cluster") {
