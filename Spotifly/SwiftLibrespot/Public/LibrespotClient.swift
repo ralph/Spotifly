@@ -356,8 +356,13 @@ public actor LibrespotClient {
     // MARK: - Playback: Starting Content
 
     /// Plays a track, album, playlist, artist, or station URI/URL.
-    /// - Parameter trackIndex: index within the context to start at (-1 = first).
-    public func play(uriOrUrl: String, trackIndex: Int) async throws {
+    /// - Parameters:
+    ///   - trackIndex: index within the context to start at (-1 = first).
+    ///   - startingAtUri: track to start on when the caller knows the uri but
+    ///     not its index — a Connect `play` names both a context and a
+    ///     `skip_to.track_uri`, and only the resolved list can turn one into
+    ///     the other.
+    public func play(uriOrUrl: String, trackIndex: Int, startingAtUri: String? = nil) async throws {
         let uri = Self.normalizedUri(uriOrUrl)
 
         if uri.contains("spotify:track:") {
@@ -377,7 +382,13 @@ public actor LibrespotClient {
             throw LibrespotError.trackNotFound("Context has no tracks")
         }
 
-        let start = trackIndex >= 0 ? min(trackIndex, context.tracks.count - 1) : 0
+        let start = if trackIndex >= 0 {
+            min(trackIndex, context.tracks.count - 1)
+        } else if let startingAtUri, let found = context.tracks.firstIndex(of: startingAtUri) {
+            found
+        } else {
+            0
+        }
         setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: context.tracks, startIndex: start)
         try await loadCurrentTrack()
     }
