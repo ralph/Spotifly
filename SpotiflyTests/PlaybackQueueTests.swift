@@ -69,12 +69,12 @@ struct PlaybackQueueTests {
 
     // MARK: - Shuffle
 
-    @Test func `shuffle visits every track exactly once`() {
+    @Test func `shuffle visits every track exactly once`() throws {
         let queue = PlaybackQueue()
         queue.setContext(uri: "spotify:album:a", tracks: album(8), startIndex: 0)
         queue.setShuffle(true)
 
-        var visited = [queue.currentUri!]
+        var visited = try [#require(queue.currentUri)]
         while let next = queue.advance() {
             visited.append(next)
         }
@@ -107,16 +107,16 @@ struct PlaybackQueueTests {
     /// Shuffle is random, so this asserts the one ordering that is excluded
     /// rather than any particular result — and repeats, because a permutation
     /// that happens to avoid it once proves nothing.
-    @Test func `a shuffled context that repeats never opens on the track it just finished`() {
+    @Test func `a shuffled context that repeats never opens on the track it just finished`() throws {
         for _ in 0 ..< 50 {
             let queue = PlaybackQueue()
             queue.setContext(uri: "spotify:album:a", tracks: album(3), startIndex: 0)
             queue.setShuffle(true)
             queue.setRepeat(.context)
 
-            var lastOfCycle = queue.currentUri!
+            var lastOfCycle = try #require(queue.currentUri)
             for _ in 1 ..< 3 {
-                lastOfCycle = queue.advance()!
+                lastOfCycle = try #require(queue.advance())
             }
 
             #expect(queue.advance() != lastOfCycle)
