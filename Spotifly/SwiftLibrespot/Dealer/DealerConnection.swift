@@ -169,10 +169,6 @@ public actor DealerConnection {
     /// device joining an otherwise quiet account learns who is active here or
     /// not at all. librespot reads it the same way, at the same moment
     /// (`Spirc::handle_connection_id_update`).
-    ///
-    /// The body goes out gzipped — every reference client compresses it — and
-    /// the connection id is percent-encoded into the path, since it is base64
-    /// whose `+`/`/`/`=` would otherwise corrupt the URL.
     @discardableResult
     public func putState(_ request: PutStateRequestProto) async throws -> Cluster? {
         guard let connId = connectionId else {
@@ -219,51 +215,6 @@ public actor DealerConnection {
 
         debugLog("DealerConnection", "PutState accepted (HTTP \(httpResponse.statusCode), \(data.count) bytes back)")
         return try? Cluster.parse(from: data)
-    }
-
-    /// Minimal gzip wrapper: RFC 1952 header + raw-deflate body + CRC32 tail,
-    /// via the Compression framework's zlibRaw codec.
-    nonisolated static func gzip(_ data: Data) -> Data {
-        var compressed = Data([0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF])
-
-        // NSData's .zlib emits a 2-byte header and 4-byte Adler-32 tail;
-        // gzip wants the raw deflate stream between them.
-        if let zlibbed = try? (data as NSData).compressed(using: .zlib) as Data,
-           zlibbed.count > 6
-        {
-            compressed.append(zlibbed.dropFirst(2).dropLast(4))
-        } else {
-            debugLog("DealerConnection", "gzip: deflate failed; storing uncompressed blocks")
-            // Stored (uncompressed) deflate blocks so the stream stays valid.
-            var offset = 0
-            while offset < data.count {
-                let chunk = data.subdata(in: offset ..< min(offset + 65535, data.count))
-                offset += chunk.count
-                let isLast: UInt8 = offset >= data.count ? 0x01 : 0x00
-                compressed.append(isLast)
-                let n = UInt16(chunk.count)
-                compressed.append(contentsOf: withUnsafeBytes(of: n) { Data($0) })
-                compressed.append(contentsOf: withUnsafeBytes(of: ~n) { Data($0) })
-                compressed.append(chunk)
-            }
-        }
-
-        var crc: UInt32 = 0xFFFF_FFFF
-        for byte in data {
-            crc = Self.crc32Table[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8)
-        }
-        crc ^= 0xFFFF_FFFF
-        withUnsafeBytes(of: crc.littleEndian) { compressed.append(contentsOf: $0) }
-        withUnsafeBytes(of: UInt32(truncatingIfNeeded: data.count).littleEndian) { compressed.append(contentsOf: $0) }
-        return compressed
-    }
-
-    private nonisolated static let crc32Table: [UInt32] = (0 ..< 256).map { i -> UInt32 in
-        var c = UInt32(i)
-        for _ in 0 ..< 8 {
-            c = (c & 1) != 0 ? (0xEDB8_8320 ^ (c >> 1)) : (c >> 1)
-        }
-        return c
     }
 
     // MARK: - Receive Loop
