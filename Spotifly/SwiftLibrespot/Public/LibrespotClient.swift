@@ -837,6 +837,9 @@ public actor LibrespotClient {
             becameActiveSubject.send()
         } else if !nowActive, wasActive {
             becameInactiveSubject.send()
+            // Another device holds playback now. Spirc has to stop asserting
+            // `is_active`, or the next heartbeat pulls playback back here.
+            await session?.reportLocalActive(false)
         }
 
         await publishConnectionState(connected: session?.isConnected == true)

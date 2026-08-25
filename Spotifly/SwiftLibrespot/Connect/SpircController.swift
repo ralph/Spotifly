@@ -27,9 +27,17 @@ public actor SpircController {
     /// Last command message ID (for acknowledgment)
     private var lastCommandMessageId: UInt64?
 
-    /// Whether this device believes it is the active one. Reflected into
-    /// every PutState.
+    /// Whether this device believes it is the active one, and the moment it
+    /// became so. Both are reflected into every PutState.
+    ///
+    /// `activeSince` is stamped **once**, when the device becomes active, and
+    /// re-sent unchanged afterwards — that is what `started_playing_at` means
+    /// (librespot's `ConnectState::set_active` / `set_now`). Re-stamping it to
+    /// `now` on every heartbeat told the backend this device had only just
+    /// started playing, which is where a device transferring playback away
+    /// resumed from: the beginning of the track.
     private var isActive = false
+    private var activeSince: UInt64?
 
     /// Logical Connect volume (0…65535) this device reports. Other clients
     /// render their slider from it, so a hard-coded value pins every remote
@@ -192,13 +200,30 @@ public actor SpircController {
     public func updateLocalPlayerState(_ state: SpircPlayerState?, active: Bool) async {
         let becameActive = active && !isActive
         playerState = state
-        isActive = isActive || active
+        if active {
+            setActive(true)
+        }
 
         guard isReady else { return }
 
         var request = buildPutStateRequest(isActive: isActive)
         request.putStateReason = becameActive ? .newDevice : (state != nil ? .playerStateChanged : .spircNotify)
         _ = try? await dealerConnection.putState(request)
+    }
+
+    /// Takes or gives up the active role, mirroring librespot's
+    /// `ConnectState::set_active`.
+    ///
+    /// Standing down matters as much as standing up: this used to be
+    /// `isActive = isActive || active`, which could only ever latch on. Once
+    /// another device took playback, every heartbeat went on asserting
+    /// `is_active` for this one — and a few seconds later the cluster handed
+    /// playback straight back to it.
+    func setActive(_ active: Bool) {
+        guard active != isActive else { return }
+
+        isActive = active
+        activeSince = active ? UInt64(Date().timeIntervalSince1970 * 1000) : nil
     }
 
     // MARK: - Device Registration
@@ -228,8 +253,8 @@ public actor SpircController {
         request.putStateReason = isActive ? .newDevice : .spircHello
         request.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
 
-        if isActive {
-            request.startedPlayingAt = UInt64(Date().timeIntervalSince1970 * 1000)
+        if let activeSince {
+            request.startedPlayingAt = activeSince
         }
 
         if let msgId = lastCommandMessageId {

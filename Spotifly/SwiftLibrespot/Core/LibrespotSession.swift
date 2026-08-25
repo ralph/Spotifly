@@ -266,4 +266,9 @@ public actor LibrespotSession {
     func reportLocalVolume(_ volume: UInt32) async {
         await spircController?.updateVolume(volume)
     }
+
+    /// Tells Spirc whether this device still holds playback.
+    func reportLocalActive(_ active: Bool) async {
+        await spircController?.setActive(active)
+    }
 }
