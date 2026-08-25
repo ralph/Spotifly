@@ -10,7 +10,7 @@
 // MARK: - Incoming Messages
 
 /// Wrapper for dealer messages
-public struct DealerMessage: Sendable {
+public nonisolated struct DealerMessage: Sendable, Decodable {
     public let type: String?
     public let uri: String?
     public let headers: [String: String]?
@@ -30,7 +30,7 @@ public struct DealerMessage: Sendable {
     }
 }
 
-extension DealerMessage: Decodable {
+extension DealerMessage {
     private enum CodingKeys: String, CodingKey {
         case type, uri, headers, payloads, method, key
         case payload
@@ -58,26 +58,35 @@ extension DealerMessage: Decodable {
     }
 }
 
-/// Payload wrapper in dealer messages
-public struct DealerPayload: Sendable {
-    /// Base64-encoded protobuf or JSON payload
-    public let payload: String?
-
-    /// Decoded payload data
-    public nonisolated var decodedData: Data? {
-        guard let payload else { return nil }
-        return Data(base64Encoded: payload)
-    }
+/// One element of a message's `payloads` array.
+///
+/// **It is a bare value, not an object.** librespot's `MessagePayloadValue`
+/// (`core/src/dealer/protocol.rs`) is an untagged enum of `String` — base64,
+/// the form everything here actually arrives in — or a raw byte array, or
+/// arbitrary JSON. Modelling it as `{"payload": "…"}` made every
+/// payload-carrying message throw on decode, which silently took *all* cluster
+/// pushes, remote commands and volume commands with it: the device list never
+/// updated, and this device never learned it had stopped being the active one.
+public nonisolated struct DealerPayload: Sendable, Decodable {
+    /// The payload's bytes, however the message spelled them, still base64- and
+    /// gzip-undone by the caller (`DealerConnection.payloadData`).
+    public let decodedData: Data?
 }
 
-extension DealerPayload: Decodable {
-    private enum CodingKeys: String, CodingKey {
-        case payload
-    }
+public extension DealerPayload {
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
 
-    public nonisolated init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        payload = try container.decodeIfPresent(String.self, forKey: .payload)
+        if let base64 = try? container.decode(String.self) {
+            decodedData = Data(base64Encoded: base64)
+        } else if let bytes = try? container.decode([UInt8].self) {
+            decodedData = Data(bytes)
+        } else {
+            // librespot's third variant is arbitrary JSON, which none of the
+            // URIs routed here send. Decoding to nil rather than throwing keeps
+            // the surrounding message intact so it still reaches its handler.
+            decodedData = nil
+        }
     }
 }
 

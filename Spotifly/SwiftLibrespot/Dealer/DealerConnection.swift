@@ -478,7 +478,7 @@ public actor DealerConnection {
     }
 
     private func handleClusterUpdate(_ message: DealerMessage) async {
-        guard let payloadData = getPayloadData(from: message, headers: message.headers) else {
+        guard let payloadData = Self.payloadData(from: message, headers: message.headers) else {
             debugLog("DealerConnection", "No payload data in cluster update")
             return
         }
@@ -493,7 +493,7 @@ public actor DealerConnection {
     }
 
     private func handleCommand(_ message: DealerMessage) async {
-        guard let payloadData = getPayloadData(from: message, headers: message.headers),
+        guard let payloadData = Self.payloadData(from: message, headers: message.headers),
               let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]
         else {
             debugLog("DealerConnection", "No parsable payload in command message")
@@ -505,7 +505,7 @@ public actor DealerConnection {
     }
 
     private func handleVolumeCommand(_ message: DealerMessage) async {
-        guard let payloadData = getPayloadData(from: message, headers: message.headers),
+        guard let payloadData = Self.payloadData(from: message, headers: message.headers),
               let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]
         else {
             debugLog("DealerConnection", "No parsable payload in volume message")
@@ -518,7 +518,7 @@ public actor DealerConnection {
     }
 
     /// Extract and decompress payload data from a message
-    private nonisolated func getPayloadData(from message: DealerMessage, headers: [String: String]?) -> Data? {
+    nonisolated static func payloadData(from message: DealerMessage, headers: [String: String]?) -> Data? {
         guard let payloads = message.payloads,
               let firstPayload = payloads.first,
               let data = firstPayload.decodedData
@@ -529,7 +529,7 @@ public actor DealerConnection {
         // Check if data is gzip compressed
         let transferEncoding = headers?["Transfer-Encoding"] ?? headers?["transfer-encoding"]
         if transferEncoding == "gzip" {
-            return Self.decompressGzipData(data)
+            return decompressGzipData(data)
         }
 
         return data
