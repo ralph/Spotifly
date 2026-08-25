@@ -87,8 +87,8 @@ nonisolated enum KeymasterAuth {
     /// — and conversely it gets 429 from every `api.spotify.com` endpoint.
     static let clientId = "65b708073fc0480ea92a077233ca87bd"
 
-    /// Matches the scope list the Rust grant requested, which is what the desktop client asks
-    /// for. Narrowing it is a separate change with its own testing.
+    /// Copied from the scope list the Rust grant requested, which is what the desktop client
+    /// asks for. Narrowing it is a separate change with its own testing.
     static let scopes: [String] = [
         "app-remote-control",
         "playlist-modify",

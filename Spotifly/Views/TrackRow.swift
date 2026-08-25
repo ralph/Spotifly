@@ -365,7 +365,7 @@ extension View {
 
 extension QueueItem {
     /// Convert QueueItem to Track for use with TrackRow and store operations.
-    /// Wraps the single FFI image URL as a ~300px variant; full metadata
+    /// Wraps the queue item's single image URL as a ~300px variant; full metadata
     /// arrives later via QueueService and replaces this in the store.
     func toTrack() -> Track {
         let images = imageURL.map { ImageSet(variants: [ImageVariant(url: $0, size: 300)]) } ?? .empty

@@ -2,67 +2,41 @@
 //  SpotifyPlayer.swift
 //  Spotifly
 //
-//  Swift wrapper for the Rust librespot playback functionality
+//  The playback facade the app speaks to.
+//
+//  A static namespace over `LibrespotClient.shared` — the pure-Swift
+//  replacement for the Rust librespot bridge this file used to wrap. Every
+//  type here is the same shape it was across the FFI, so services and views
+//  needed no changes; only where the data comes from did.
 //
 
 import Combine
 import Foundation
-import SpotiflyRust
 
-/// Queue item metadata (nonisolated for C callback compatibility)
-/// Field names aligned with Track for consistency
-struct QueueItem: Identifiable, Equatable, Encodable {
-    nonisolated let id: String // uri
-    nonisolated let uri: String
-    nonisolated let name: String // Aligned with Track.name (was: trackName)
-    nonisolated let artistName: String
-    nonisolated let imageURLString: String // Aligned with Track (was: albumArtURL)
-    nonisolated let durationMs: UInt32
-    nonisolated let albumId: String?
-    nonisolated let artistId: String?
-    nonisolated let externalUrl: String?
+/// Queue item metadata. Field names aligned with Track for consistency.
+nonisolated struct QueueItem: Identifiable, Equatable, Encodable {
+    let id: String // uri
+    let uri: String
+    let name: String // Aligned with Track.name
+    let artistName: String
+    let imageURLString: String // Aligned with Track
+    let durationMs: UInt32
+    let albumId: String?
+    let artistId: String?
+    let externalUrl: String?
     /// Track provider: "context", "queue", "autoplay", or "unavailable"
-    nonisolated let provider: String
+    let provider: String
 
-    nonisolated var durationFormatted: String {
+    var durationFormatted: String {
         formatTrackTime(milliseconds: Int(durationMs))
     }
 
-    /// Computed property for URL conversion
     var imageURL: URL? {
         URL(string: imageURLString)
-    }
-
-    /// Memberwise initializer
-    nonisolated init(
-        id: String,
-        uri: String,
-        name: String,
-        artistName: String,
-        imageURLString: String,
-        durationMs: UInt32,
-        albumId: String?,
-        artistId: String?,
-        externalUrl: String?,
-        provider: String,
-    ) {
-        self.id = id
-        self.uri = uri
-        self.name = name
-        self.artistName = artistName
-        self.imageURLString = imageURLString
-        self.durationMs = durationMs
-        self.albumId = albumId
-        self.artistId = artistId
-        self.externalUrl = externalUrl
-        self.provider = provider
     }
 }
 
 /// Outcome of the one-time streaming authorization.
-///
-/// `nonisolated` because the grant runs detached — it blocks on a human — so the exit code is
-/// mapped off the main actor.
 nonisolated enum StreamingAuthResult: Equatable {
     case authorized
     case failed
@@ -72,108 +46,56 @@ nonisolated enum StreamingAuthResult: Equatable {
     /// The user abandoned the flow — closed the browser tab, or pressed Cancel. Distinct from
     /// `failed` because there is nothing to report: they asked for this.
     case cancelled
-
-    init(code: Int32) {
-        switch code {
-        case 0: self = .authorized
-        case -2: self = .superseded
-        default: self = .failed
-        }
-    }
 }
 
-/// Queue state containing current, next, and previous tracks (nonisolated for C callback compatibility)
+/// Queue state containing current, next, and previous tracks.
 struct QueueState {
-    nonisolated let currentTrack: QueueItem?
-    nonisolated let nextTracks: [QueueItem]
-    /// Previous tracks from Mercury/Spirc
-    nonisolated let previousTracks: [QueueItem]?
+    let currentTrack: QueueItem?
+    let nextTracks: [QueueItem]
+    /// Previous tracks from the queue history
+    let previousTracks: [QueueItem]?
 }
 
-/// Playback state from Mercury/Spirc (nonisolated for C callback compatibility)
+/// Playback state as reported by the local player or a remote command.
 struct PlaybackState: Equatable {
-    nonisolated let isPlaying: Bool
-    nonisolated let isPaused: Bool
-    nonisolated let trackUri: String
-    nonisolated let positionMs: Int64
-    nonisolated let durationMs: Int64
-    nonisolated let shuffle: Bool
-    nonisolated let repeatTrack: Bool
-    nonisolated let repeatContext: Bool
+    let isPlaying: Bool
+    let isPaused: Bool
+    let trackUri: String
+    let positionMs: Int64
+    let durationMs: Int64
+    let shuffle: Bool
+    let repeatTrack: Bool
+    let repeatContext: Bool
     /// Timestamp (ms since epoch) when positionMs was recorded - for computing current position
-    nonisolated let timestampMs: Int64
+    let timestampMs: Int64
 }
-
-// MARK: - Bridge Subjects
-
-//
-// These are `nonisolated(unsafe)` globals reached from Rust's own threads, so there is
-// one rule for all of them: **every non-audio callback hops to the main actor before
-// sending**. Two reasons, and the first is the one that bites:
-//
-//  1. Several Rust tasks publish independently — the player event listener, the cluster
-//     listener, and the reconnect loop can all call into Swift at the same time. Combine
-//     subjects are not safe against concurrent `send`, and a subscriber-side
-//     `.receive(on:)` cannot help, because it hops *after* the subject has already
-//     delivered. Hopping first serializes every send onto one executor.
-//  2. Not every subscriber hops. SwiftUI's `.onReceive` delivers on whatever thread the
-//     publisher emits on, so a view observing these directly would mutate `@State` off
-//     the main thread — which is exactly the "Publishing changes from background threads"
-//     runtime warning.
-//
-// Audio data does not go through here; it has its own real-time-safe path and must never
-// be routed onto the main actor.
-
-/// Global subject for queue updates (nonisolated for C callback access)
-private nonisolated(unsafe) let queueSubject = CurrentValueSubject<QueueState?, Never>(nil)
-
-/// Global subject for playback state updates (nonisolated for C callback access)
-private nonisolated(unsafe) let playbackStateSubject = CurrentValueSubject<PlaybackState?, Never>(nil)
-
-/// Global subject for volume updates (nonisolated for C callback access)
-private nonisolated(unsafe) let volumeSubject = PassthroughSubject<UInt16, Never>()
 
 /// Loading notification containing track URI and position (fires early, before metadata is fetched)
 struct LoadingNotification {
-    nonisolated let trackUri: String
-    nonisolated let positionMs: UInt32
+    let trackUri: String
+    let positionMs: UInt32
 }
-
-/// Global subject for loading notifications (nonisolated for C callback access)
-private nonisolated(unsafe) let loadingSubject = PassthroughSubject<LoadingNotification, Never>()
 
 /// Track info in a set queue notification
 struct SetQueueTrackInfo {
-    nonisolated let uri: String
-    nonisolated let provider: String
+    let uri: String
+    let provider: String
 }
 
 /// Set queue notification containing the full queue state with context info
 struct SetQueueNotification {
-    nonisolated let contextUri: String
-    nonisolated let currentTrack: SetQueueTrackInfo?
-    nonisolated let nextTracks: [SetQueueTrackInfo]
-    nonisolated let prevTracks: [SetQueueTrackInfo]
+    let contextUri: String
+    let currentTrack: SetQueueTrackInfo?
+    let nextTracks: [SetQueueTrackInfo]
+    let prevTracks: [SetQueueTrackInfo]
 }
 
-/// Session client changed notification containing info about the controlling Spotify client
-struct SessionClientChangedNotification {
-    nonisolated let clientId: String
-    nonisolated let clientName: String
-    nonisolated let clientBrandName: String
-    nonisolated let clientModelName: String
-}
-
-/// Connection state from librespot.
+/// Connection state of the streaming session.
 ///
-/// The whole type is `nonisolated` rather than each stored property: the project builds
-/// with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so a plain declaration would get a
-/// main-actor-isolated `Decodable` conformance that the C callbacks (which run on Rust
-/// threads) cannot use. Annotating the properties alone is not enough — the *conformance*
-/// has to be nonisolated too.
+/// `revision` orders snapshots on arrival: several sources publish
+/// independently (session events, cluster updates, recovery), and a delayed
+/// older snapshot must not overwrite a newer one. See `deliverConnectionState`.
 nonisolated struct LibrespotConnectionState: Equatable, Codable {
-    /// Monotonic counter assigned by Rust while the snapshot was built. Only used to order
-    /// snapshots on arrival; carries no state of its own.
     let revision: UInt64
     let sessionConnected: Bool
     let sessionConnectionId: String?
@@ -183,8 +105,9 @@ nonisolated struct LibrespotConnectionState: Equatable, Codable {
     let reconnectAttempt: UInt32
     let lastError: String?
     let connectedSinceMs: UInt64?
-    /// Whether Spotifly is the active Connect device, derived in Rust from the cluster's
-    /// active device ID. The single fact that playback routing and the UI both read.
+    /// Whether Spotifly is the active Connect device — derived from the
+    /// cluster's active device id. The single fact that playback routing and
+    /// the UI both read.
     let isActiveDevice: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -201,530 +124,47 @@ nonisolated struct LibrespotConnectionState: Equatable, Codable {
     }
 }
 
-/// Decodes a connection-state payload emitted by Rust.
-///
-/// Shared by the push callback and the synchronous `getConnectionState()` pull so the
-/// two cannot drift apart. Required fields are non-optional on purpose: if the Rust
-/// payload ever renames or drops one, decoding fails loudly here instead of silently
-/// producing `false`/`0`/`""`, which would be indistinguishable from a genuinely
-/// disconnected session. Only the fields Rust models as `Option` are optional.
-private nonisolated func decodeConnectionState(
-    _ jsonPtr: UnsafePointer<CChar>?,
-    context: String,
-) -> LibrespotConnectionState? {
-    guard let jsonPtr else {
-        debugLog("SpotifyPlayer", "\(context): jsonPtr is nil")
-        return nil
-    }
+// MARK: - Bridge Subjects
 
-    let jsonString = String(cString: jsonPtr)
-    guard let data = jsonString.data(using: .utf8) else {
-        debugLog("SpotifyPlayer", "\(context): payload is not valid UTF-8")
-        return nil
-    }
+//
+// The client's publishers are re-exposed here so subscribers keep reading the
+// exact same static API as before the Rust removal.
 
-    do {
-        return try JSONDecoder().decode(LibrespotConnectionState.self, from: data)
-    } catch {
-        debugLog(
-            "SpotifyPlayer",
-            "\(context): failed to decode connection state: \(error) — payload: \(jsonString)",
-        )
-        return nil
-    }
-}
+private nonisolated(unsafe) let connectionStateSubjectBridge = LibrespotClient.shared.connectionState
 
-/// Decodes a JSON-object payload delivered by a Rust callback.
-///
-/// Every JSON callback arrives with the same three failure modes — a nil pointer, bytes
-/// that are not UTF-8, or a payload that is not a JSON object — and none of them is
-/// recoverable, so they are logged against the caller's `context` and reported as nil.
-/// `JSONSerialization` rather than `Decodable`, because a `Decodable` conformance would be
-/// main-actor-isolated under `SWIFT_DEFAULT_ACTOR_ISOLATION` and these run on Rust threads.
-private nonisolated func decodeJSONObject(
-    _ jsonPtr: UnsafePointer<CChar>?,
-    context: String,
-) -> [String: Any]? {
-    guard let jsonPtr else {
-        debugLog("SpotifyPlayer", "\(context): jsonPtr is nil")
-        return nil
-    }
+/// The one audio output. Fed by the decode loop inside the pipeline; volume,
+/// routing recovery and pacing all live in it.
+private nonisolated let audioRendererInstance = AudioRenderer()
 
-    let jsonString = String(cString: jsonPtr)
-    debugLog("SpotifyPlayer", "\(context): \(jsonString.prefix(500))")
-
-    guard let data = jsonString.data(using: .utf8) else {
-        debugLog("SpotifyPlayer", "\(context): payload is not valid UTF-8")
-        return nil
-    }
-
-    do {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            debugLog("SpotifyPlayer", "\(context): payload is not a JSON object")
-            return nil
-        }
-        return json
-    } catch {
-        debugLog("SpotifyPlayer", "\(context): failed to parse JSON: \(error)")
-        return nil
-    }
-}
-
-/// Global subject for set queue notifications (nonisolated for C callback access)
-private nonisolated(unsafe) let setQueueSubject = PassthroughSubject<SetQueueNotification, Never>()
-
-/// Global subject for connection state updates (nonisolated for C callback access)
-private nonisolated(unsafe) let connectionStateSubject = CurrentValueSubject<LibrespotConnectionState?, Never>(nil)
-
-/// Global subject for session client changed notifications (nonisolated for C callback access)
-private nonisolated(unsafe) let sessionClientChangedSubject = PassthroughSubject<SessionClientChangedNotification, Never>()
-
-/// Audio renderer for AirPlay-compatible playback via AVSampleBufferAudioRenderer
-private nonisolated let audioRenderer = AudioRenderer()
-
-/// Registers the audio data callback with Rust
-private nonisolated func registerAudioDataCallback() {
-    spotifly_register_audio_data_callback { samples, count in
-        guard let samples else { return }
-        audioRenderer.writeAudioData(samples, count: count)
-    }
-}
-
-/// Registers the audio control callback with Rust
-private nonisolated func registerAudioControlCallback() {
-    spotifly_register_audio_control_callback { event in
-        switch event {
-        case .stop: audioRenderer.stop()
-        case .start: audioRenderer.start()
-        case .clear: audioRenderer.flush()
-        @unknown default: break
-        }
-    }
-}
-
-/// Registers the queue callback with Rust (must be called from nonisolated context)
-private nonisolated func registerQueueCallback() {
-    spotifly_register_queue_callback { jsonPtr in
-        handleQueueCallback(jsonPtr)
-    }
-}
-
-/// Registers the playback state callback with Rust (must be called from nonisolated context)
-private nonisolated func registerPlaybackStateCallback() {
-    spotifly_register_playback_state_callback { jsonPtr in
-        handlePlaybackStateCallback(jsonPtr)
-    }
-}
-
-/// Registers the volume callback with Rust (fires on remote volume changes)
-private nonisolated func registerVolumeCallback() {
-    spotifly_register_volume_callback { volume in
-        handleVolumeCallback(volume)
-    }
-}
-
-/// C callback for volume change notifications from Rust
-private nonisolated func handleVolumeCallback(_ volume: UInt16) {
-    debugLog("SpotifyPlayer", "Volume callback: \(volume)")
-    Task { @MainActor in volumeSubject.send(volume) }
-}
-
-/// Registers the loading callback with Rust (fires when a track starts loading)
-private nonisolated func registerLoadingCallback() {
-    spotifly_register_loading_callback { jsonPtr in
-        handleLoadingCallback(jsonPtr)
-    }
-}
-
-/// C callback for loading notifications from Rust
-/// Fires earlier than TrackChanged (~180ms vs ~620ms after remote command)
-private nonisolated func handleLoadingCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let json = decodeJSONObject(jsonPtr, context: "handleLoadingCallback") else { return }
-
-    let notification = LoadingNotification(
-        trackUri: json["track_uri"] as? String ?? "",
-        positionMs: (json["position_ms"] as? NSNumber)?.uint32Value ?? 0,
-    )
-    Task { @MainActor in loadingSubject.send(notification) }
-}
-
-/// Registers the connection state callback with Rust (fires on state changes)
-private nonisolated func registerConnectionStateCallback() {
-    spotifly_register_connection_state_callback { jsonPtr in
-        handleConnectionStateCallback(jsonPtr)
-    }
-}
-
-/// Revision of the snapshot `connectionStateSubject` currently holds.
-private var lastConnectionStateRevision: UInt64 = 0
-
-/// Publishes a snapshot unless a newer one already reached the subject.
-///
-/// Every snapshot Rust produces — pushed through the callback or pulled by
-/// `getConnectionState()` — enters here, so the watermark always describes what the subject
-/// holds. Several Rust tasks publish independently (the event listener, the cluster
-/// listener, the reconnect loop) and the hop to the main actor gives no ordering guarantee
-/// between them, so a delayed callback could otherwise deliver an older snapshot last and
-/// leave subscribers acting on a readiness that is no longer true.
-///
-/// Snapshots that survive are forwarded exactly as Rust produced them. Re-reading current
-/// state on arrival would also fix the ordering, but it erases readiness *edges*: a
-/// ready → not ready → ready sequence would read as "ready" twice, and the
-/// transition-based subscriber in `LoggedInLifecycleModifier` would never see the dip — so
-/// it would never re-sync queue and playback state after that recovery.
-///
-/// Dropping rather than resequencing is a deliberate trade. A late snapshot could in
-/// principle *be* the dip, and then that edge is lost too — but that needs the main actor
-/// stalled across a whole disconnect-and-rebuild, which takes seconds, and the missed
-/// re-sync is caught by the health check. The opposite trade, forwarding everything in
-/// arrival order, leaves a stale snapshot terminal, and subscribers then act on a readiness
-/// that is simply false with nothing to correct it.
-private func deliverConnectionState(_ state: LibrespotConnectionState) {
-    guard state.revision > lastConnectionStateRevision else { return }
-    lastConnectionStateRevision = state.revision
-    connectionStateSubject.send(state)
-}
-
-/// C callback for connection state updates from Rust.
-private nonisolated func handleConnectionStateCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let state = decodeConnectionState(jsonPtr, context: "handleConnectionStateCallback")
-    else {
-        return
-    }
-
-    Task { @MainActor in deliverConnectionState(state) }
-}
-
-/// Registers the set queue callback with Rust (fires when queue is modified)
-private nonisolated func registerSetQueueCallback() {
-    spotifly_register_set_queue_callback { jsonPtr in
-        handleSetQueueCallback(jsonPtr)
-    }
-}
-
-/// C callback for set queue notifications from Rust
-/// Fires when the queue is set/modified or a context is loaded
-private nonisolated func handleSetQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let json = decodeJSONObject(jsonPtr, context: "handleSetQueueCallback") else { return }
-
-    func toTrackInfo(_ track: [String: Any]) -> SetQueueTrackInfo {
-        SetQueueTrackInfo(
-            uri: track["uri"] as? String ?? "",
-            provider: track["provider"] as? String ?? "",
-        )
-    }
-
-    let notification = SetQueueNotification(
-        contextUri: json["context_uri"] as? String ?? "",
-        currentTrack: (json["current_track"] as? [String: Any]).map(toTrackInfo),
-        nextTracks: (json["next_tracks"] as? [[String: Any]] ?? []).map(toTrackInfo),
-        prevTracks: (json["prev_tracks"] as? [[String: Any]] ?? []).map(toTrackInfo),
-    )
-    Task { @MainActor in setQueueSubject.send(notification) }
-}
-
-/// Registers the became-inactive callback with Rust
-private nonisolated func registerBecameInactiveCallback() {
-    spotifly_register_became_inactive_callback {
-        handleBecameInactiveCallback()
-    }
-}
-
-/// C callback for Connect deactivation from Rust.
-/// Reports that another device took over playback — not that the connection failed.
-private nonisolated func handleBecameInactiveCallback() {
-    debugLog("SpotifyPlayer", "Became inactive - another device is now active")
-    Task { @MainActor in
-        becameInactiveSubject.send()
-    }
-}
-
-/// Registers the became-active callback with Rust
-private nonisolated func registerBecameActiveCallback() {
-    spotifly_register_became_active_callback {
-        handleBecameActiveCallback()
-    }
-}
-
-/// C callback for Connect activation from Rust.
-/// Reports that this device is now the active one — readiness comes from the
-/// connection snapshot, since the session was already connected before activation.
-private nonisolated func handleBecameActiveCallback() {
-    debugLog("SpotifyPlayer", "Became active - this device is now the active one")
-    Task { @MainActor in
-        becameActiveSubject.send()
-    }
-}
-
-/// Registers the active device callback with Rust (fires on every cluster update)
-private nonisolated func registerActiveDeviceCallback() {
-    spotifly_register_active_device_callback { deviceIdPtr in
-        handleActiveDeviceCallback(deviceIdPtr)
-    }
-}
-
-/// C callback for active device ID changes from cluster updates
-private nonisolated func handleActiveDeviceCallback(_ deviceIdPtr: UnsafePointer<CChar>?) {
-    guard let deviceIdPtr else { return }
-    let deviceId = String(cString: deviceIdPtr)
-    Task { @MainActor in
-        activeDeviceSubject.send(deviceId)
-    }
-}
-
-/// Registers the Connect device-list callback with Rust (fires when the list changes)
-private nonisolated func registerDevicesCallback() {
-    spotifly_register_devices_callback { jsonPtr in
-        handleDevicesCallback(jsonPtr)
-    }
-}
-
-/// C callback for the Connect device list from cluster updates.
-///
-/// Decoded here rather than in the service because the payload is JSON on the C boundary and
-/// this is where every other JSON callback is turned into a Swift value.
-private nonisolated func handleDevicesCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let jsonPtr else { return }
-    let json = String(cString: jsonPtr)
-
-    guard let data = json.data(using: .utf8),
-          let codables = try? JSONDecoder().decode([DeviceCodable].self, from: data)
-    else {
-        debugLog("SpotifyPlayer", "could not decode device list: \(json.prefix(200))")
-        return
-    }
-
-    debugLog("SpotifyPlayer", "handleDevicesCallback: \(codables.count) device(s)")
-
-    // `toDevice()` is main-actor isolated, like every entity conversion here, so the mapping
-    // happens on the hop rather than on the C callback's thread.
-    Task { @MainActor in
-        devicesSubject.send(codables.compactMap { $0.toDevice() })
-    }
-}
-
-/// Registers the session client changed callback with Rust
-private nonisolated func registerSessionClientChangedCallback() {
-    spotifly_register_session_client_changed_callback { jsonPtr in
-        handleSessionClientChangedCallback(jsonPtr)
-    }
-}
-
-/// C callback for session client changed notifications from Rust
-/// Fires when the controlling Spotify client changes
-private nonisolated func handleSessionClientChangedCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let json = decodeJSONObject(jsonPtr, context: "handleSessionClientChangedCallback")
-    else {
-        return
-    }
-
-    let notification = SessionClientChangedNotification(
-        clientId: json["client_id"] as? String ?? "",
-        clientName: json["client_name"] as? String ?? "",
-        clientBrandName: json["client_brand_name"] as? String ?? "",
-        clientModelName: json["client_model_name"] as? String ?? "",
-    )
-
-    debugLog(
-        "SpotifyPlayer",
-        "Session client: \(notification.clientName) (\(notification.clientBrandName) \(notification.clientModelName))",
-    )
-
-    Task { @MainActor in sessionClientChangedSubject.send(notification) }
-}
-
-/// C callback for playback state updates from Rust
-/// Uses manual JSON parsing to avoid Decodable actor isolation issues
-private nonisolated func handlePlaybackStateCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let json = decodeJSONObject(jsonPtr, context: "handlePlaybackStateCallback") else {
-        return
-    }
-
-    let state = PlaybackState(
-        isPlaying: json["is_playing"] as? Bool ?? false,
-        isPaused: json["is_paused"] as? Bool ?? false,
-        trackUri: json["track_uri"] as? String ?? "",
-        positionMs: (json["position_ms"] as? NSNumber)?.int64Value ?? 0,
-        durationMs: (json["duration_ms"] as? NSNumber)?.int64Value ?? 0,
-        shuffle: json["shuffle"] as? Bool ?? false,
-        repeatTrack: json["repeat_track"] as? Bool ?? false,
-        repeatContext: json["repeat_context"] as? Bool ?? false,
-        timestampMs: (json["timestamp_ms"] as? NSNumber)?.int64Value ?? 0,
-    )
-
-    debugLog("SpotifyPlayer", "PlaybackState: playing=\(state.isPlaying), paused=\(state.isPaused), pos=\(state.positionMs)ms, dur=\(state.durationMs)ms, shuffle=\(state.shuffle), repeatTrack=\(state.repeatTrack), repeatContext=\(state.repeatContext)")
-
-    Task { @MainActor in playbackStateSubject.send(state) }
-}
-
-/// Parses a queue item from a JSON dictionary (manual parsing to avoid Decodable actor isolation issues)
-private nonisolated func parseQueueItem(from dict: [String: Any]) -> QueueItem? {
-    guard let uri = dict["uri"] as? String else { return nil }
-    return QueueItem(
-        id: uri,
-        uri: uri,
-        name: dict["name"] as? String ?? "",
-        artistName: dict["artist"] as? String ?? "",
-        imageURLString: dict["image_url"] as? String ?? "",
-        durationMs: (dict["duration_ms"] as? NSNumber)?.uint32Value ?? 0,
-        albumId: nil,
-        artistId: nil,
-        externalUrl: nil,
-        provider: dict["provider"] as? String ?? "unavailable",
-    )
-}
-
-/// Builds a queue state from a decoded Rust payload.
-///
-/// Shared by the push callback and the `currentQueueSnapshot()` pull, which read the same
-/// three fields off the same `QueueState` serialization in Rust.
-private nonisolated func parseQueueState(from json: [String: Any]) -> QueueState {
-    QueueState(
-        currentTrack: (json["track"] as? [String: Any]).flatMap { parseQueueItem(from: $0) },
-        nextTracks: (json["next_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
-        previousTracks: (json["prev_tracks"] as? [[String: Any]] ?? []).compactMap { parseQueueItem(from: $0) },
-    )
-}
-
-/// C callback for queue updates from Rust
-/// Uses manual JSON parsing to avoid Decodable actor isolation issues
-private nonisolated func handleQueueCallback(_ jsonPtr: UnsafePointer<CChar>?) {
-    guard let json = decodeJSONObject(jsonPtr, context: "handleQueueCallback") else { return }
-
-    let state = parseQueueState(from: json)
-
-    let currentName = state.currentTrack?.name ?? "none"
-    let nextCount = state.nextTracks.count
-    let prevCount = state.previousTracks?.count ?? 0
-    debugLog("SpotifyPlayer", "handleQueueCallback: current='\(currentName)', next=\(nextCount), prev=\(prevCount)")
-
-    Task { @MainActor in queueSubject.send(state) }
-}
-
-/// The last queue the Connect cluster described, or nil if no cluster update has arrived.
-///
-/// The push equivalent of `/me/player/queue`, for the recovery paths that need to ask rather
-/// than wait — chiefly a *provisional* `SetQueue`, which librespot emits before `fill_up` with
-/// no queue in it at all. Nil is meaningful and distinct from an empty queue: it means nothing
-/// has been heard yet, so a caller should try again rather than conclude nothing is playing.
-nonisolated func currentQueueSnapshot() -> QueueState? {
-    guard let pointer = spotifly_get_queue_snapshot() else { return nil }
-    defer { spotifly_free_string(pointer) }
-
-    guard let json = decodeJSONObject(pointer, context: "currentQueueSnapshot") else { return nil }
-
-    return parseQueueState(from: json)
-}
-
-/// Errors that can occur during playback
-enum SpotifyPlayerError: Error, LocalizedError {
-    case initializationFailed
-    case playbackFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .initializationFailed:
-            "Failed to initialize player"
-        case .playbackFailed:
-            "Failed to play track"
-        }
-    }
-}
-
-/// Global subject for Connect deactivation (another device took over)
-private nonisolated(unsafe) let becameInactiveSubject = PassthroughSubject<Void, Never>()
-
-/// Global subject for Connect activation (this device took over)
-private nonisolated(unsafe) let becameActiveSubject = PassthroughSubject<Void, Never>()
-
-/// Global subject for active device ID changes (from cluster updates)
-private nonisolated(unsafe) let activeDeviceSubject = PassthroughSubject<String, Never>()
-
-/// The Connect device list, which arrives on cluster updates rather than being asked for.
-/// `CurrentValueSubject` so a Speakers view opened after the last update still gets one.
-private nonisolated(unsafe) let devicesSubject = CurrentValueSubject<[Device]?, Never>(nil)
-
-/// Serializes the player operations that must not overlap: building the session, and the
-/// three that load content into it.
-///
-/// It was declared in `SpotifyAuth.swift` as `SpotifyAuthActor` and used only here, which was
-/// never what it isolated — it kept these calls off the main actor and off each other's toes.
-/// Renamed rather than kept when the dashboard OAuth it was named after was deleted.
-@globalActor
-actor SpotifyPlayerActor {
-    static let shared = SpotifyPlayerActor()
-}
-
-/// Swift wrapper for the Rust librespot playback functionality
 enum SpotifyPlayer {
-    /// Initializes the player with the given access token.
-    /// Must be called before any playback operations.
-    @SpotifyPlayerActor
-    static func initialize() async throws {
-        // Register callbacks (via nonisolated helpers to avoid actor isolation issues)
-        registerAudioDataCallback()
-        registerAudioControlCallback()
-        registerQueueCallback()
-        registerPlaybackStateCallback()
-        registerVolumeCallback()
-        registerLoadingCallback()
-        registerSetQueueCallback()
-        registerBecameInactiveCallback()
-        registerBecameActiveCallback()
-        registerSessionClientChangedCallback()
-        registerConnectionStateCallback()
-        registerActiveDeviceCallback()
-        registerDevicesCallback()
-
-        // Sync playback settings from UserDefaults before initializing
-        syncSettingsFromUserDefaults()
-
-        // Clean up any previous session state before initializing
-        // Full cleanup is necessary because Session instances cannot be reused after disconnection
-        await Task.detached {
-            spotifly_cleanup()
-        }.value
-
-        // No token: the session connects from the credentials the streaming grant cached.
-        // Passing the Web API token here is what login5 rejects — it is minted with the
-        // user's dashboard client id, and Spotify no longer accepts stored credentials
-        // derived from one. See plans/streaming-auth-needs-a-first-party-client-id.md.
-        let result = await Task.detached {
-            spotifly_init_player(nil)
-        }.value
-
-        guard result == .ok else {
-            throw SpotifyPlayerError.initializationFailed
-        }
+    /// The shared audio sink the client's pipeline renders into.
+    nonisolated static var audioRenderer: AudioRenderer {
+        audioRendererInstance
     }
 
-    /// Returns a publisher for queue updates.
+    // MARK: Publishers
+
     static var queue: AnyPublisher<QueueState?, Never> {
-        queueSubject.eraseToAnyPublisher()
+        LibrespotClient.shared.queue
     }
 
-    /// Returns a publisher for playback state updates.
     static var playbackState: AnyPublisher<PlaybackState?, Never> {
-        playbackStateSubject.eraseToAnyPublisher()
+        LibrespotClient.shared.playbackState
     }
 
-    /// Returns a publisher for remote volume changes (0-65535).
-    /// Subscribe to this to update the UI when volume is changed from another device.
+    /// Remote volume changes (0-65535), including changes made from another device.
     static var volumeChanged: AnyPublisher<UInt16, Never> {
-        volumeSubject.eraseToAnyPublisher()
+        LibrespotClient.shared.volumeChanged
     }
 
-    /// Returns a publisher for loading notifications.
-    /// Fires early (~180ms) when a track starts loading, before metadata is fetched.
-    /// Use this for faster Now Playing updates when playing from remote devices.
+    /// Fires early when a track starts loading, before metadata is fetched.
     static var loading: AnyPublisher<LoadingNotification, Never> {
-        loadingSubject.eraseToAnyPublisher()
+        LibrespotClient.shared.loading
     }
 
-    /// Returns a publisher for set queue notifications.
-    /// Fires when the queue is set/modified (e.g., from mobile app set_queue command).
+    /// Fires when the queue is set/modified (e.g., from a mobile app set_queue command).
     static var setQueue: AnyPublisher<SetQueueNotification, Never> {
-        setQueueSubject.eraseToAnyPublisher()
+        LibrespotClient.shared.setQueue
     }
 
     /// Emits when this device stops being the active Connect device.
@@ -732,36 +172,87 @@ enum SpotifyPlayer {
     /// Activity, not health. Do not drive reconnection from this — use `connectionState`,
     /// which is the authoritative source for whether commands can be sent.
     static var becameInactive: AnyPublisher<Void, Never> {
-        becameInactiveSubject.eraseToAnyPublisher()
+        LibrespotClient.shared.becameInactive
     }
 
     /// Emits when this device becomes the active Connect device.
     ///
     /// Also activity, not readiness: the session was already connected beforehand.
     static var becameActive: AnyPublisher<Void, Never> {
-        becameActiveSubject.eraseToAnyPublisher()
+        LibrespotClient.shared.becameActive
     }
 
-    /// Returns a publisher that emits the active device ID on every cluster update.
-    /// Use this to track which Spotify Connect device is active without polling the Web API.
     /// The Connect device list, pushed on cluster updates. Replaces `/me/player/devices`.
     static var devices: AnyPublisher<[Device]?, Never> {
-        devicesSubject.eraseToAnyPublisher()
+        LibrespotClient.shared.devices
     }
 
     static var activeDeviceChanged: AnyPublisher<String, Never> {
-        activeDeviceSubject.eraseToAnyPublisher()
+        LibrespotClient.shared.activeDeviceChanged
     }
 
-    /// Returns a publisher for session client changed notifications.
-    /// Fires when the controlling Spotify client changes (e.g., which app initiated playback).
-    static var sessionClientChanged: AnyPublisher<SessionClientChangedNotification, Never> {
-        sessionClientChangedSubject.eraseToAnyPublisher()
+    /// Connection state updates. Subscribe to this to update the connection status dashboard.
+    static var connectionState: AnyPublisher<LibrespotConnectionState?, Never> {
+        LibrespotClient.shared.connectionState
     }
 
-    /// Returns whether the session is currently connected and ready for playback commands.
-    static var isSessionConnected: Bool {
-        spotifly_is_session_connected() == 1
+    // MARK: - Lifecycle
+
+    /// Initializes the player: accesspoint login, dealer socket, Spirc
+    /// registration, audio pipeline.
+    ///
+    /// Credentials resolve inside the client — the stored reusable login from
+    /// an earlier grant if there is one, else a fresh keymaster token.
+    @SpotifyPlayerActor
+    static func initialize() async throws {
+        syncSettingsFromUserDefaults()
+        try await connectClient()
+    }
+
+    /// The one place the client is told where its credentials come from.
+    ///
+    /// Written once because the post-grant connect used to spell it out for
+    /// itself and left the client token out, which is not optional: spclient
+    /// signs like the desktop client, so that session could fetch no metadata,
+    /// no CDN url and no context at all. It survived only because the grant
+    /// path immediately rebuilds through `initialize`.
+    private static func connectClient() async throws {
+        try await LibrespotClient.shared.initialize(
+            tokenProvider: { try await KeymasterSession.shared.accessToken() },
+            clientTokenProvider: { try await ClientTokenProvider.shared.token() },
+            usernameProvider: { await KeymasterSession.shared.username },
+        )
+    }
+
+    /// Shuts down and sends goodbye to other devices.
+    /// Call this when the app is quitting to properly disconnect from Spotify Connect.
+    ///
+    /// Awaitable so callers can order it against a rebuild of the same global player.
+    ///
+    /// `nonisolated` matters at app termination: the project builds with
+    /// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so a main-actor-isolated version could
+    /// not start until `applicationWillTerminate` returned — by which point AppKit may
+    /// already have torn the process down.
+    nonisolated static func shutdown() async {
+        await LibrespotClient.shared.shutdown()
+    }
+
+    /// Says goodbye to other Connect devices, then releases everything and
+    /// clears every replaying publisher.
+    ///
+    /// The replay subjects are right within a session and wrong across a
+    /// logout: the next account's services must not be handed the previous
+    /// account's devices, queue or playback state. Subscribers treat nil as
+    /// "nothing to say".
+    nonisolated static func shutdownAndCleanup() async {
+        await LibrespotClient.shared.shutdownAndCleanup()
+    }
+
+    /// Disconnects without preventing future reconnection.
+    /// Use this before system sleep - the device disappears from Spotify immediately,
+    /// but forceReconnect() can still bring it back on wake.
+    static func disconnect() {
+        Task { await LibrespotClient.shared.disconnect() }
     }
 
     /// Outcome of a force-reconnect request.
@@ -777,268 +268,118 @@ enum SpotifyPlayer {
         case noSession
     }
 
-    /// Asks Rust to reconnect, without tearing down what it already has.
+    /// Asks the client to reconnect, without tearing down what it already has.
     ///
     /// Preferred over `PlaybackViewModel.forceReinitialize` wherever a session may exist:
     /// reinitialize runs a destructive cleanup first, which invalidates any reconnect loop
     /// currently working the problem.
     @discardableResult
     static func forceReconnect() -> ForceReconnectOutcome {
-        switch spotifly_force_reconnect() {
-        case 0: .started
-        case 1: .alreadyRecovering
-        default: .noSession
+        switch LibrespotClient.shared.forceReconnectSync() {
+        case .started: .started
+        case .alreadyRecovering: .alreadyRecovering
+        case .noSession: .noSession
         }
     }
 
-    /// Returns a publisher for connection state updates.
-    /// Subscribe to this to update the connection status dashboard.
-    static var connectionState: AnyPublisher<LibrespotConnectionState?, Never> {
-        connectionStateSubject.eraseToAnyPublisher()
+    // MARK: - Synchronous State
+
+    /// Whether the session is currently connected and ready for playback commands.
+    static var isSessionConnected: Bool {
+        LibrespotClient.shared.currentConnectionState?.sessionConnected == true
     }
 
-    /// Returns the current connection state synchronously.
-    /// Use this for initial UI display or one-time queries.
-    ///
-    /// Rust stamps a pull with a revision just as it does a push, so the result is published
-    /// like any other snapshot. Without that, a callback already queued behind this call
-    /// would still look newer than the last delivered snapshot and overwrite what was just
-    /// read — and suppressing it instead would leave the subject holding the older value.
+    /// Whether Spirc is initialized and connected to Spotify Connect.
+    static var isSpircReady: Bool {
+        LibrespotClient.shared.currentConnectionState?.spircReady == true
+    }
+
+    /// Whether this device is the active Spotify Connect device.
+    /// When false, playback controls should use Web API instead of Spirc.
+    static var isActiveDevice: Bool {
+        LibrespotClient.shared.isActiveDeviceFlagValue
+    }
+
+    /// Whether the player is currently playing.
+    static var isPlaying: Bool {
+        LibrespotClient.shared.isPlayingFlagValue
+    }
+
+    /// The current playback position in milliseconds.
+    /// This is the actual audible position, not an estimate.
+    static var positionMs: UInt32 {
+        UInt32(min(UInt64(UInt32.max), LibrespotClient.shared.positionMsCached))
+    }
+
+    /// The current connection state synchronously, published like any push.
     static func getConnectionState() -> LibrespotConnectionState? {
-        let ptr = spotifly_get_connection_state()
-        guard let ptr else { return nil }
-        defer { spotifly_free_string(ptr) }
-
-        guard let state = decodeConnectionState(ptr, context: "getConnectionState") else {
-            return nil
-        }
-        deliverConnectionState(state)
-        return state
+        LibrespotClient.shared.currentConnectionState
     }
 
-    /// Syncs playback settings from UserDefaults to the Rust player
-    private nonisolated static func syncSettingsFromUserDefaults() {
-        let bitrateRawValue = UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1
-        let gaplessEnabled = UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
-        let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
-        // Convert 0.0-1.0 to 0-65535, default to 50% if not set
-        let volumeU16 = savedVolume > 0 ? UInt16(savedVolume * 65535.0) : 65535 / 2
-
-        // Call FFI directly to avoid actor isolation issues
-        spotifly_set_bitrate(UInt8(min(max(bitrateRawValue, 0), 2)))
-        spotifly_set_gapless(gaplessEnabled)
-        spotifly_set_initial_volume(volumeU16)
-
-        // Apply the saved volume at the output up front. With NoOpVolume the Rust
-        // mixer no longer attenuates samples, so the renderer gain must be set
-        // before audio starts flowing or the first moments would play at full volume.
-        setOutputVolume(savedVolume > 0 ? savedVolume : 0.5)
-    }
+    // MARK: - Playback Commands
 
     /// Plays content by its Spotify URI or URL.
-    /// Supports albums, playlists, and artists (context URIs).
+    /// Supports tracks, albums, playlists, artists, and station contexts.
     /// - Parameters:
     ///   - uriOrUrl: Spotify URI or URL (e.g., "spotify:album:xxx")
     ///   - trackIndex: Track index to start at (-1 = from beginning, 0+ = specific track)
     @SpotifyPlayerActor
     static func play(uriOrUrl: String, trackIndex: Int = -1) async throws {
-        let result = await Task.detached {
-            uriOrUrl.withCString { ptr in
-                spotifly_play_uri(ptr, Int32(trackIndex))
-            }
-        }.value
-
-        guard result == .ok else {
-            throw SpotifyPlayerError.playbackFailed
-        }
+        try await LibrespotClient.shared.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex)
     }
 
     /// Plays a track by its Spotify track ID.
     @SpotifyPlayerActor
     static func playTrack(trackId: String) async throws {
-        let trackUri = "spotify:track:\(trackId)"
-        try await play(uriOrUrl: trackUri)
+        try await play(uriOrUrl: "spotify:track:\(trackId)")
     }
 
     /// Plays multiple tracks in sequence.
     /// - Parameter trackUris: Array of Spotify track URIs
     @SpotifyPlayerActor
     static func playTracks(_ trackUris: [String]) async throws {
-        guard !trackUris.isEmpty else {
-            throw SpotifyPlayerError.playbackFailed
-        }
-
-        // Convert array to JSON
-        let encoder = JSONEncoder()
-        guard let jsonData = try? encoder.encode(trackUris),
-              let jsonString = String(data: jsonData, encoding: .utf8)
-        else {
-            throw SpotifyPlayerError.playbackFailed
-        }
-
-        let result = await Task.detached {
-            jsonString.withCString { ptr in
-                spotifly_play_tracks(ptr)
-            }
-        }.value
-
-        guard result == .ok else {
-            throw SpotifyPlayerError.playbackFailed
-        }
+        try await LibrespotClient.shared.playTracks(trackUris)
     }
 
     /// Pauses playback.
-    /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
     static func pause() {
-        Task.detached(priority: .userInitiated) {
-            spotifly_pause()
-        }
-    }
-
-    /// Clears any buffered audio samples.
-    /// Call this before sleep to prevent stale audio playing on wake.
-    /// Dispatched to background thread as this explicitly blocks until buffer is flushed.
-    static func clearAudioBuffer() {
-        Task.detached(priority: .userInitiated) {
-            spotifly_clear_audio_buffer()
-        }
+        Task { await LibrespotClient.shared.pause() }
     }
 
     /// Resumes playback.
-    /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
     static func resume() {
-        Task.detached(priority: .userInitiated) {
-            spotifly_resume()
-        }
+        Task { await LibrespotClient.shared.resume() }
     }
 
     /// Stops playback.
-    /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
     static func stop() {
-        Task.detached(priority: .userInitiated) {
-            spotifly_stop()
-        }
-    }
-
-    /// Shuts down the Spirc connection and sends goodbye to other devices.
-    /// Call this when the app is quitting to properly disconnect from Spotify Connect.
-    /// Dispatched to background thread to avoid blocking the main thread.
-    ///
-    /// Awaitable so callers can order it against a rebuild of the same global player. The
-    /// Rust side only hands Spirc a shutdown command, so awaiting costs nothing.
-    ///
-    /// `nonisolated` matters at app termination: the project builds with
-    /// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so a main-actor-isolated version could
-    /// not start until `applicationWillTerminate` returned — by which point AppKit may
-    /// already have torn the process down.
-    nonisolated static func shutdown() async {
-        await Task.detached(priority: .userInitiated) {
-            _ = spotifly_shutdown()
-        }.value
-    }
-
-    /// Says goodbye to other Connect devices, then releases the whole Rust session.
-    ///
-    /// `shutdown()` alone only disconnects Spirc — Session, Player and Mixer keep running
-    /// with the credentials of the account that just logged out, and would only be released
-    /// by the cleanup at the *next* login. The cleanup also invalidates the session
-    /// generation, so an initialization still in flight abandons instead of rebuilding for
-    /// an account that is gone.
-    nonisolated static func shutdownAndCleanup() async {
-        await Task.detached(priority: .userInitiated) {
-            _ = spotifly_shutdown()
-            spotifly_cleanup()
-        }.value
-
-        // These three replay: they are `CurrentValueSubject`s so that a Speakers view opened
-        // after the last update still gets one. That is right within a session and wrong
-        // across a logout — the next account's services subscribe and are handed the previous
-        // account's devices, queue and playback state before anything of their own has
-        // arrived, which shows other people's device names and aims transfers at device ids
-        // that are not theirs.
-        //
-        // Emptied rather than left to be overwritten, because the overwrite is not guaranteed:
-        // if the new session never connects, the old values are all the new subscriber ever
-        // sees. Subscribers already treat nil as "nothing to say".
-        devicesSubject.send(nil)
-        queueSubject.send(nil)
-        playbackStateSubject.send(nil)
-    }
-
-    /// Disconnects from Spotify Connect without preventing future reconnection.
-    /// Use this before system sleep - the device disappears from Spotify immediately,
-    /// but forceReconnect() can still bring it back on wake.
-    /// Dispatched to background thread to avoid blocking the main thread.
-    static func disconnect() {
-        Task.detached(priority: .userInitiated) {
-            spotifly_disconnect()
-        }
-    }
-
-    /// Returns whether the player is currently playing.
-    static var isPlaying: Bool {
-        spotifly_is_playing() == 1
-    }
-
-    /// Returns whether Spirc is initialized and connected to Spotify Connect.
-    static var isSpircReady: Bool {
-        spotifly_is_spirc_ready() == 1
-    }
-
-    /// Returns whether this device is the active Spotify Connect device.
-    /// When false, playback controls should use Web API instead of Spirc.
-    static var isActiveDevice: Bool {
-        spotifly_is_active_device() == 1
-    }
-
-    /// Returns the current playback position in milliseconds.
-    /// This is the actual position from the player, not an estimate.
-    static var positionMs: UInt32 {
-        spotifly_get_position_ms()
+        Task { await LibrespotClient.shared.stop() }
     }
 
     /// Skips to the next track in the queue.
-    /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
-    /// State updates come back via Mercury callback.
     static func next() {
-        Task.detached(priority: .userInitiated) {
-            spotifly_next()
-        }
+        Task { try? await LibrespotClient.shared.next() }
     }
 
     /// Skips to the previous track in the queue.
-    /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
-    /// State updates come back via Mercury callback.
     static func previous() {
-        Task.detached(priority: .userInitiated) {
-            spotifly_previous()
-        }
+        Task { try? await LibrespotClient.shared.previous() }
     }
 
     /// Seeks to the given position in milliseconds.
-    /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
-    /// State updates come back via Mercury callback.
     static func seek(positionMs: UInt32) {
-        Task.detached(priority: .userInitiated) {
-            spotifly_seek(positionMs)
-        }
+        Task { try? await LibrespotClient.shared.seek(positionMs: positionMs) }
     }
 
     /// Sets the playback volume (0.0 - 1.0).
-    /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
+    /// Reports the logical Connect volume; see `setOutputVolume` for the gain path.
     static func setVolume(_ volume: Double) {
-        let volumeU16 = UInt16(max(0, min(1, volume)) * 65535.0)
-        Task.detached(priority: .userInitiated) {
-            spotifly_set_volume(volumeU16)
-        }
+        Task { await LibrespotClient.shared.setVolume(volume) }
     }
 
-    /// Applies playback volume at the audio output (AVSampleBufferAudioRenderer.volume)
-    /// for an immediate, buffer-independent response. librespot's soft mixer is
-    /// bypassed (NoOpVolume in Rust), so this is where volume is actually applied;
-    /// `setVolume` above still reports the logical volume to Spirc for Spotify
-    /// Connect. The slider value is passed through librespot's default logarithmic
-    /// taper so the perceived loudness curve is unchanged.
+    /// Applies playback volume at the audio output for an immediate,
+    /// buffer-independent response. The slider value is passed through a
+    /// logarithmic taper so the perceived loudness curve matches librespot's.
     nonisolated static func setOutputVolume(_ volume: Double) {
         audioRenderer.setVolume(Float(librespotLogAttenuation(volume)))
     }
@@ -1059,43 +400,26 @@ enum SpotifyPlayer {
         return exp(log(dbRatio) * v) / dbRatio
     }
 
-    /// Enables or disables shuffle on the local Spirc device.
-    /// Dispatched to background thread to avoid blocking the main thread on Spirc mutex.
+    /// Enables or disables shuffle on the local player.
     static func setShuffle(_ enabled: Bool) {
-        Task.detached(priority: .userInitiated) {
-            spotifly_set_shuffle(enabled)
-        }
+        Task { await LibrespotClient.shared.setShuffle(enabled) }
     }
 
     /// Plays radio for a seed track.
-    /// Dispatched to background thread as this blocks on a network request.
     /// - Parameter trackUri: The Spotify track URI to use as seed
     static func playRadio(trackUri: String) {
-        Task.detached(priority: .userInitiated) {
-            _ = trackUri.withCString { ptr in
-                spotifly_play_radio(ptr)
-            }
-        }
+        Task { try? await LibrespotClient.shared.playRadio(trackUri: trackUri) }
     }
 
-    /// Runs an FFI command off the main thread and reports whether Rust accepted it.
-    ///
-    /// Only used by the paths that change presentation state on the strength of a
-    /// command succeeding. Commands whose rejection has no visible consequence stay
-    /// fire-and-forget rather than growing a result-handling path for nothing.
-    private static func runCommand(
-        _ body: @escaping @Sendable () -> SpotiflyResult,
-    ) async -> Bool {
-        await Task.detached(priority: .userInitiated) { body() == .ok }.value
-    }
+    // MARK: - Streaming Authorization
 
     /// Runs the one-time streaming authorization.
     ///
-    /// Swift mints the token now — see `KeymasterAuth` — and hands it to librespot, which
-    /// connects once and persists the credentials every later init connects from. The token
-    /// is kept rather than discarded: the same one authorizes pathfinder and spclient, so it
-    /// is adopted into `KeymasterSession` before the connect rather than after, and survives
-    /// even if librespot's half fails.
+    /// Swift mints the token now — see `KeymasterAuth` — and hands it to the
+    /// client, which logs the AP in once and stores the reusable credentials
+    /// every later init connects from. The token is adopted into
+    /// `KeymasterSession` before the connect rather than after, so it survives
+    /// even if the connect fails.
     ///
     /// Blocks on a human, so it runs off the main actor, and it is cancellable for the same
     /// reason: the browser wait unwinds on cancellation, and so does the token exchange behind
@@ -1122,63 +446,87 @@ enum SpotifyPlayer {
             return .failed
         }
 
-        // `.utility`, not `.userInitiated`: the connect that follows runs on librespot's
-        // runtime, and a user-initiated caller parked on a lower-QoS worker is a priority
-        // inversion, which the runtime reports.
-        let accessToken = tokens.accessToken
+        // The connect runs detached: `.utility`, because a user-initiated caller parked on a
+        // lower-QoS worker is a priority inversion, and non-cancellable, because a grant
+        // already persisted should finish registering this Mac.
         return await Task.detached(priority: .utility) {
-            accessToken.withCString { StreamingAuthResult(code: spotifly_authorize_streaming($0)) }
+            do {
+                try await connectClient()
+                return .authorized
+            } catch is CancellationError {
+                return .superseded
+            } catch {
+                debugLog("SpotifyPlayer", "Post-grant connect failed: \(error)")
+                return .failed
+            }
         }.value
     }
 
     /// The Spotify account id the last successful grant authenticated as.
     ///
     /// The browser runs the grant with whatever account it is signed into, which need not be
-    /// the one already signed in here.
+    /// the one already signed in here. Read straight from the keychain so the answer stays
+    /// synchronous and does not depend on a live session object.
     static func lastGrantAccountId() -> String? {
-        guard let ptr = spotifly_last_grant_account() else { return nil }
-        defer { spotifly_free_string(ptr) }
-        return String(cString: ptr)
+        KeymasterKeychainStore().load()?.username
     }
 
     /// Removes the cached streaming credentials so the next launch cannot connect the
     /// account that just logged out.
     ///
-    /// Clears both halves of the grant. librespot's AP credentials are a file in the app
+    /// Clears both halves of the grant. The reusable AP credentials live in the app
     /// container; the keymaster tokens are a keychain item Swift owns. Forgetting only the
-    /// first would leave a long-lived refresh token for the signed-out account behind, and it
-    /// is the half the partner API clients read.
+    /// first would leave a long-lived refresh token for the signed-out account behind.
     static func clearStreamingCredentials() async {
+        await LibrespotClient.shared.clearStreamingCredentials()
         await KeymasterSession.shared.clear()
-        await Task.detached(priority: .userInitiated) {
-            spotifly_clear_streaming_credentials()
-        }.value
     }
 
-    /// Transfers playback from another Spotify Connect device to this local player.
-    /// Uses the native Spotify Connect protocol via Spirc for seamless handoff.
-    /// - Returns: `true` if Rust accepted the transfer.
+    // MARK: - Transfer
+
+    /// Takes over playback that is running on another Connect device.
+    /// - Returns: `true` if the transfer was accepted.
     static func transferToLocal() async -> Bool {
-        await runCommand { spotifly_transfer_to_local() }
+        // Naming this device on both sides is how librespot pulls playback to
+        // itself; the backend derives the source from the session anyway.
+        await transfer(to: localDeviceId())
     }
 
-    /// Transfers playback from this local player to another device.
-    /// Uses the native Spotify Connect protocol via SpClient for seamless handoff.
+    /// Hands playback from this device to another one.
     /// - Parameter deviceId: The target device ID to transfer playback to
-    /// - Returns: `true` if Rust accepted the transfer.
+    /// - Returns: `true` if the transfer was accepted.
     static func transferPlayback(to deviceId: String) async -> Bool {
-        await runCommand { deviceId.withCString { spotifly_transfer_playback($0) } }
+        await transfer(to: deviceId)
     }
 
-    /// Adds an item to the queue via Spirc.
-    /// Dispatched to background thread to avoid blocking the main thread.
+    /// This device's Connect id, as the cluster knows it.
+    private static func localDeviceId() -> String? {
+        getConnectionState()?.deviceId.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// Both transfers go over connect-state, beside every other Connect command
+    /// this app sends. They used to go to `PUT /me/player` on `api.spotify.com`
+    /// with the keymaster token, which cannot work: that grant uses the desktop
+    /// client id, and Spotify answers it with 429 on every Web API endpoint.
+    private static func transfer(to deviceId: String?) async -> Bool {
+        guard let from = localDeviceId(), let deviceId, !deviceId.isEmpty else {
+            debugLog("SpotifyPlayer", "Transfer skipped: no local device id yet")
+            return false
+        }
+
+        do {
+            try await SpclientAPI().transferPlayback(from: from, to: deviceId)
+            return true
+        } catch {
+            debugLog("SpotifyPlayer", "Transfer to \(deviceId) failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Adds an item to the queue.
     /// - Parameter uri: The Spotify URI to add to the queue (track, episode, etc.)
     static func addToQueue(uri: String) {
-        Task.detached(priority: .userInitiated) {
-            _ = uri.withCString { ptr in
-                spotifly_add_to_queue(ptr)
-            }
-        }
+        Task { await LibrespotClient.shared.addToQueue(uri: uri) }
     }
 
     // MARK: - Playback Settings
@@ -1206,23 +554,47 @@ enum SpotifyPlayer {
         }
     }
 
-    /// Sets the streaming bitrate. Takes effect on next player initialization.
+    /// Sets the streaming bitrate. Takes effect on the next track load.
     static func setBitrate(_ bitrate: Bitrate) {
-        spotifly_set_bitrate(bitrate.rawValue)
+        UserDefaults.standard.set(bitrate.rawValue, forKey: "streamingBitrate")
+        Task { await LibrespotClient.shared.applyStreamingQuality() }
     }
 
-    /// Gets the current bitrate setting.
-    static var bitrate: Bitrate {
-        Bitrate(rawValue: spotifly_get_bitrate()) ?? .normal
+    /// The stored bitrate setting, defaulting to normal. `nonisolated` so the
+    /// client can read it while applying the setting to a new pipeline.
+    nonisolated static var bitrate: Bitrate {
+        Bitrate(rawValue: UInt8(UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1)) ?? .normal
     }
 
-    /// Sets gapless playback. Takes effect on next player initialization.
+    /// Sets gapless playback. Reserved: auto-advance already keeps gaps small;
+    /// sample-accurate cross-track scheduling is not implemented yet.
     static func setGapless(_ enabled: Bool) {
-        spotifly_set_gapless(enabled)
+        UserDefaults.standard.set(enabled, forKey: "gaplessPlayback")
     }
 
-    /// Gets the current gapless playback setting.
+    /// Gets the gapless playback setting.
     static var gapless: Bool {
-        spotifly_get_gapless()
+        UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
     }
+
+    private nonisolated static func syncSettingsFromUserDefaults() {
+        let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
+        // Apply the saved volume at the output up front so the first moments
+        // of audio do not play at full volume.
+        setOutputVolume(savedVolume > 0 ? savedVolume : 0.5)
+    }
+}
+
+@globalActor
+actor SpotifyPlayerActor {
+    static let shared = SpotifyPlayerActor()
+}
+
+/// The last queue state the client published, or nil if none has arrived.
+///
+/// The push equivalent of `/me/player/queue`, for the recovery paths that need to ask
+/// rather than wait. Nil is meaningful and distinct from an empty queue: it means nothing
+/// has been heard yet, so a caller should try again rather than conclude nothing is playing.
+nonisolated func currentQueueSnapshot() -> QueueState? {
+    LibrespotClient.shared.queueSnapshotValue
 }

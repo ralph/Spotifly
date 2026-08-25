@@ -13,7 +13,7 @@ import Foundation
 /// with the rest of the dashboard-app cleanup.
 enum SpotifyAPI {
     /// The track id in a `spotify:track:…` uri or an `open.spotify.com/track/…` link.
-    static func parseTrackURI(_ uri: String) -> String? {
+    nonisolated static func parseTrackURI(_ uri: String) -> String? {
         let trimmed = uri.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if trimmed.hasPrefix("spotify:track:") {

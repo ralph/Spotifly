@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 struct LoggedInLifecycleModifier: ViewModifier {
@@ -52,6 +53,47 @@ struct LoggedInLifecycleModifier: ViewModifier {
 
                 await playbackViewModel.initializeIfNeeded()
                 await queueService.fetchInitialPlaybackState()
+
+                #if DEBUG
+                    // Headless test scaffolding: SPOTIFLY_DEBUG_AUTOPLAY=1 starts
+                    // a fixed album shortly after launch so the Swift playback
+                    // stack can be exercised without touching the UI.
+                    if ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_AUTOPLAY"] != nil {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(5))
+                            debugLog("DebugAutoplay", "Starting album 1LVj9ljlwsn2DOsXkRDOeI")
+                            await playbackViewModel.play(uriOrUrl: "spotify:album:1LVj9ljlwsn2DOsXkRDOeI")
+
+                            // SPOTIFLY_DEBUG_PAUSE_AFTER=<seconds>: pause through the
+                            // same PlaybackViewModel path the buttons use, then resume.
+                            if let pauseAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_PAUSE_AFTER"],
+                               let seconds = Double(pauseAfter)
+                            {
+                                try? await Task.sleep(for: .seconds(seconds))
+                                debugLog("DebugAutoplay", "Pause")
+                                playbackViewModel.pause()
+                                try? await Task.sleep(for: .seconds(6))
+                                debugLog("DebugAutoplay", "Resume")
+                                playbackViewModel.resume()
+                            }
+
+                            // SPOTIFLY_DEBUG_NEXT_AFTER=<seconds>: skip twice, a
+                            // few seconds apart. This is the transition worth
+                            // driving headlessly — a track change tears the decode
+                            // thread down and closes the decoder out from under it,
+                            // and a full track is too long to wait for.
+                            if let nextAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_NEXT_AFTER"],
+                               let seconds = Double(nextAfter)
+                            {
+                                for skip in 1 ... 2 {
+                                    try? await Task.sleep(for: .seconds(seconds))
+                                    debugLog("DebugAutoplay", "Next (\(skip))")
+                                    playbackViewModel.next()
+                                }
+                            }
+                        }
+                    }
+                #endif
             }
             // Connection handling is driven by the connection snapshot, not by the Connect
             // activation callbacks. Activation and connection are different facts: another
@@ -59,7 +101,15 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // activation, neither of which says anything about whether the session is
             // healthy. Keying off readiness means a device handoff no longer arms the
             // recovery path or triggers a Web API refetch.
-            .onReceive(SpotifyPlayer.connectionState) { state in
+            //
+            // `.receive(on:)` is not optional here. The client publishes this from
+            // inside its actor, and a Combine subject delivers synchronously on
+            // whichever thread called `send` — so this closure, which writes the
+            // `@State` below it, ran off the main thread and SwiftUI said so.
+            // Every other subscriber to these publishers already hops; `.onReceive`
+            // is easy to miss because it looks like a view modifier rather than a
+            // subscription.
+            .onReceive(SpotifyPlayer.connectionState.receive(on: DispatchQueue.main)) { state in
                 let isReady = state?.sessionConnected == true && state?.spircReady == true
                 defer { wasConnectionReady = isReady }
 
@@ -90,7 +140,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 debugLog("LoggedInLifecycle", "System will sleep, disconnecting from Spotify")
                 SpotifyPlayer.disconnect()
             }
-            // Ask Rust to reconnect rather than rebuilding from Swift. A rebuild starts with
+            // Ask the client to reconnect rather than rebuilding it. A rebuild starts with
             // a destructive cleanup that invalidates whatever reconnect loop is already
             // working the problem, and if the single rebuild attempt then fails there is
             // nothing left retrying.

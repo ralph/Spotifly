@@ -188,24 +188,3 @@ struct AccountMismatchTests {
         #expect(AuthViewModel.accountMismatch(expected: "userA", granted: nil) == nil)
     }
 }
-
-/// How the grant's exit codes reach the UI.
-struct StreamingAuthResultTests {
-    @Test func `zero is success`() {
-        #expect(StreamingAuthResult(code: 0) == .authorized)
-    }
-
-    @Test func `minus one is a failure worth reporting`() {
-        #expect(StreamingAuthResult(code: -1) == .failed)
-    }
-
-    @Test func `minus two is a supersession, which is not an error`() {
-        // A logout landed mid-grant and the credentials it wrote were removed again.
-        // Nothing went wrong, so the UI must report neither success nor failure.
-        #expect(StreamingAuthResult(code: -2) == .superseded)
-    }
-
-    @Test func `an unknown code is treated as a failure`() {
-        #expect(StreamingAuthResult(code: 99) == .failed)
-    }
-}

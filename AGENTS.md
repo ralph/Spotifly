@@ -180,19 +180,25 @@ recreation. `plans/section-request-pattern.md` has the full reasoning.
 
 ## Debug Logging
 
+Everything logs through `debugLog(module, message)` in `DebugLog.swift`. It writes to
+**stderr** in Debug builds and compiles away to nothing in Release, so there is no log level
+to set and no environment variable to pass — building Debug is the switch. (There used to be
+`RUST_LOG`, which librespot's `env_logger` read. Nothing reads it now.)
+
 ### Spirc/Connect Trace Logging
 
-To see raw Spirc state transitions during development, set the `RUST_LOG` environment variable:
+Connect state transitions come from the modules that own them, so narrowing a run down means
+filtering on the module prefix:
 
 ```bash
-RUST_LOG=librespot_connect::spirc=trace ./path/to/Spotifly.app/Contents/MacOS/Spotifly
+./path/to/Spotifly.app/Contents/MacOS/Spotifly 2>&1 \
+  | grep -E 'SpircController|DealerConnection|LibrespotSession'
 ```
 
-Or in Xcode scheme (Edit Scheme → Run → Arguments → Environment Variables):
-- Name: `RUST_LOG`
-- Value: `librespot_connect::spirc=trace`
-
-This shows Mercury frames, Connect state changes, and device updates.
+- `SpircController` — registration, PutState reasons, the cluster it is answered with
+- `DealerConnection` — the WebSocket: connection id, cluster pushes, remote commands, pings
+- `LibrespotSession`, `LibrespotClient` — session lifecycle, recovery, command dispatch
+- `AudioPipeline`, `AudioRenderer` — track loads, decoding, position, end of track
 
 ## Changelog & Releases
 

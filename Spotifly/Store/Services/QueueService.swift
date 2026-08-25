@@ -3,7 +3,7 @@
 //  Spotifly
 //
 //  Service for queue-related operations.
-//  Queue structure (track URIs) is received from Spirc via Mercury protocol.
+//  Queue structure (track URIs) is published by LibrespotClient, which owns the queue.
 //  Track metadata is loaded through TrackService and cached in the store.
 //
 
@@ -55,16 +55,16 @@ final class QueueService {
         guard setQueueSubscription == nil else { return }
         recordActivation(self)
 
-        // Queue updates from Spirc (via Mercury protocol), which arrive after a round-trip
-        // to Spotify's servers.
+        // The client publishes both shapes together whenever its queue moves. This one
+        // carries the resolved entries the store renders.
         queueSubscription = SpotifyPlayer.queue
             .receive(on: DispatchQueue.main)
             .sink { [weak self] queueState in
                 self?.handleQueueUpdate(queueState)
             }
 
-        // Set queue events from Spirc, which arrive immediately when the queue is set or
-        // modified (e.g. from the mobile app).
+        // And this one carries the context uri beside them, which is what a queue *set*
+        // — locally or by a remote command — has to record.
         setQueueSubscription = SpotifyPlayer.setQueue
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
@@ -90,9 +90,11 @@ final class QueueService {
         let contextInfo = notification.contextUri.isEmpty ? "" : " context=\(notification.contextUri),"
         log("Set queue:\(contextInfo) prev=\(notification.prevTracks.count), current=\(notification.currentTrack != nil ? 1 : 0), next=\(notification.nextTracks.count)")
 
-        // A SetQueue with a context URI but no tracks is provisional: librespot emits it during
-        // context setup before fill_up_next_tracks completes. Keep the existing queue and schedule
-        // a Web API refresh to recover the real state once Spotify's servers have it.
+        // A SetQueue with a context URI but no tracks is provisional: the Rust path emitted
+        // one during context setup, before `fill_up_next_tracks` had filled the queue in.
+        // `LibrespotClient` resolves a context to its full track list before publishing, so
+        // this should not fire any more; it stays because the alternative to keeping the
+        // existing queue and refreshing is blanking it.
         let isProvisional = !notification.contextUri.isEmpty
             && notification.currentTrack == nil
             && notification.nextTracks.isEmpty
@@ -165,10 +167,10 @@ final class QueueService {
         log("Reconciled queue current pointer to \(trackId) at index \(store.currentIndex)")
     }
 
-    /// Handle queue update from Spirc callback (Mercury protocol)
+    /// Handle a queue update published by the client.
     private func handleQueueUpdate(_ queueState: QueueState?) {
         guard let state = queueState else {
-            log("Queue callback was nil; keeping existing queue state")
+            log("Queue update was nil; keeping existing queue state")
             return
         }
 
@@ -178,7 +180,7 @@ final class QueueService {
         let previousEntries = state.previousTracks?.compactMap(Self.queueEntry(from:))
 
         if let prevCount = previousEntries?.count {
-            log("Queue updated from Mercury: prev=\(prevCount), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
+            log("Queue updated from the player: prev=\(prevCount), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
         } else {
             log("Queue updated from Web API: current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count) (preserving previous)")
         }
@@ -249,13 +251,13 @@ final class QueueService {
     /// Adopts whatever the Connect cluster last said is playing.
     ///
     /// **This used to be two Web API requests**, `/me/player` and `/me/player/queue`, asked
-    /// because Mercury only pushes and a client that just started had never been pushed to.
-    /// The cluster answers both, and librespot already receives it — so this reads a snapshot
-    /// of the last update rather than going to the network.
+    /// because the push channel only pushes and a client that just started had never been
+    /// pushed to. The cluster answers both, and the dealer already receives it — so this
+    /// reads a snapshot of the last update rather than going to the network.
     ///
     /// Two consequences of having one source instead of two. The **freshness barrier is gone**:
-    /// it existed because an HTTP snapshot could be older than a Rust callback that landed
-    /// while it was in flight, and a snapshot that *is* the last callback cannot be. And the
+    /// it existed because an HTTP snapshot could be older than live state that landed while
+    /// it was in flight, and a snapshot that *is* the last live update cannot be. And the
     /// **previous tracks survive** — `/me/player/queue` returned none at all, so the old code
     /// had to pass `previous: nil` and hope something else filled it in.
     ///

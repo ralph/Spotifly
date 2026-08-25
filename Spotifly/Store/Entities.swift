@@ -319,8 +319,8 @@ struct Device: Identifiable, Hashable, Encodable {
     /// Whether the device refuses remote volume changes, as the cluster declares.
     ///
     /// Named after the wire field rather than flipped to `canSetVolume`, so one term can be
-    /// followed from the protobuf through Rust, the FFI JSON and the codable to here without
-    /// a reader having to notice where the sense inverts.
+    /// followed from the protobuf through the cluster's device list to here without a reader
+    /// having to notice where the sense inverts.
     ///
     /// An iPhone sets it — iOS will not let an app change system volume for another app — and
     /// the app used to find out only by sending the command and getting
@@ -331,7 +331,7 @@ struct Device: Identifiable, Hashable, Encodable {
 // MARK: - Spotify Connection
 
 /// Our app's connection state to Spotify (single source of truth for connection info).
-/// Converted from LibrespotConnectionState at the FFI boundary.
+/// Converted from LibrespotConnectionState in `ConnectionService`.
 struct SpotifyConnection: Equatable, Encodable {
     let deviceId: String?
     let deviceName: String

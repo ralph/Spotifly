@@ -19,7 +19,7 @@ final class DeviceService {
     private var lastTransferTime: ContinuousClock.Instant?
 
     /// Counts authoritative active-device updates from the cluster, so a transfer can tell
-    /// whether one landed while it was awaiting Rust.
+    /// whether one landed while it was awaiting the transfer request.
     private var activeDeviceUpdates = 0
 
     /// The transfer currently in flight, if any. Transfers are chained onto it so no two
@@ -44,13 +44,20 @@ final class DeviceService {
     func activate() {
         guard devicesCancellable == nil else { return }
         recordActivation(self)
+        // Both of these are fed from inside the LibrespotClient actor, and a
+        // Combine subject delivers to its subscribers *synchronously* on
+        // whatever thread sent. These closures touch the main-actor store, so
+        // without the hop the isolation check traps — which is exactly what
+        // happened the first time a real cluster arrived.
         devicesCancellable = SpotifyPlayer.devices
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] devices in
                 guard let self, let devices else { return }
                 store.upsertDevices(devices)
                 store.devicesIsLoading = false
             }
         activeDeviceCancellable = SpotifyPlayer.activeDeviceChanged
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] deviceId in
                 self?.activeDeviceUpdates += 1
                 self?.store.setActiveDevice(deviceId)
@@ -68,10 +75,11 @@ final class DeviceService {
     // without anyone asking.
     //
     // **A push alone is not enough to start with**, which was measured the hard way: the
-    // dealer only carries *changes*, and librespot's own registration is answered over HTTP
+    // dealer only carries *changes*, and the device's own registration is answered over HTTP
     // rather than pushed — so on a quiet account nothing arrived at all and Speakers stayed
-    // empty while a Connect stereo sat there reachable. Rust now asks for the cluster once as
-    // well as subscribing to it, and both arrive here by the same route.
+    // empty while a Connect stereo sat there reachable. `SpircController.registerDevice`
+    // adopts the cluster that answers its PutState as well as subscribing to the pushes, and
+    // both arrive here by the same route.
     //
     // `devicesIsLoading` stays true until the first list lands, and the publisher replays it
     // to a Speakers view opened later.
@@ -83,8 +91,8 @@ final class DeviceService {
     /// Returns true if transfer succeeded (caller should activate Connect mode)
     ///
     /// Every speaker row launches its own task, so two taps can call this concurrently.
-    /// Each attempt optimistically marks its target active and undoes that if Rust rejects
-    /// the transfer, which is only sound while no other attempt is in flight: overlapping
+    /// Each attempt optimistically marks its target active and undoes that if the transfer
+    /// is refused, which is only sound while no other attempt is in flight: overlapping
     /// ones capture each other's optimistic values as the state to restore. Chaining onto
     /// the previous transfer keeps that from arising at all, and the later tap — the user's
     /// actual intent — still wins, because it runs last.
@@ -124,11 +132,11 @@ final class DeviceService {
             await SpotifyPlayer.transferPlayback(to: device.id)
         }
 
-        // Rust can reject the transfer (no session, invalid session, SpClient failure).
-        // Roll the optimistic update back rather than leaving the UI showing a device
-        // that never became active, and report the failure to the caller.
+        // The transfer can fail: no local device id yet, or connect-state refusing the
+        // command. Roll the optimistic update back rather than leaving the UI showing a
+        // device that never became active, and report the failure to the caller.
         guard accepted else {
-            debugLog("DeviceService", "Transfer to \(device.name) was rejected by Rust")
+            debugLog("DeviceService", "Transfer to \(device.name) was rejected")
             // Only undo the guess this call made. Serializing transfers rules out a
             // competing tap, but not the cluster: another client can activate a device
             // while this transfer is awaited, and that fact outranks restoring what was
