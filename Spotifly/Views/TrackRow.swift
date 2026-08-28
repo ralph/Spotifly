@@ -148,7 +148,7 @@ struct TrackRow: View {
                         Image(systemName: "music.note")
                             .font(.caption)
                             .frame(width: 40, height: 40)
-                            .background(Color.gray.opacity(0.2))
+                            .background(.quaternary)
                             .clipShape(.rect(cornerRadius: 4))
                     @unknown default:
                         EmptyView()

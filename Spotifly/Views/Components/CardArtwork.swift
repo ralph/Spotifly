@@ -65,7 +65,7 @@ struct CardArtwork: View {
 
     private var placeholder: some View {
         shape
-            .fill(Color.gray.opacity(0.2))
+            .fill(.quaternary)
             .frame(width: Self.size, height: Self.size)
             .overlay(
                 Image(systemName: symbol)

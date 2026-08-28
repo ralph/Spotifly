@@ -183,6 +183,11 @@
 "playlist.edit.saving" = "Saving...";
 
 /* Preferences */
+"preferences.general" = "General";
+"preferences.appearance" = "Appearance";
+"preferences.appearance.system" = "System";
+"preferences.appearance.light" = "Light";
+"preferences.appearance.dark" = "Dark";
 "preferences.playback" = "Playback";
 "preferences.info" = "Info";
 "preferences.streaming_quality" = "Streaming Quality";
