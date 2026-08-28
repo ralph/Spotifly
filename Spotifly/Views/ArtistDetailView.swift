@@ -150,7 +150,7 @@ struct ArtistDetailView: View {
         Image(systemName: "person.circle.fill")
             .resizable()
             .frame(width: 200, height: 200)
-            .foregroundStyle(.gray.opacity(0.3))
+            .foregroundStyle(.tertiary)
     }
 
     /// A card view for displaying an album in the grid
@@ -202,9 +202,9 @@ struct ArtistDetailView: View {
         private var albumPlaceholder: some View {
             Image(systemName: "music.note")
                 .font(.system(size: 40))
-                .foregroundStyle(.gray)
+                .foregroundStyle(.secondary)
                 .frame(width: 150, height: 150)
-                .background(Color.gray.opacity(0.2))
+                .background(.quaternary)
                 .clipShape(.rect(cornerRadius: 8))
         }
 

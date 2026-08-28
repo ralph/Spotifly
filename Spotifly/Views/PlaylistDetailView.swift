@@ -178,7 +178,7 @@ struct PlaylistDetailView: View {
         Image(systemName: "music.note.list")
             .font(.system(size: 60))
             .frame(width: 200, height: 200)
-            .background(Color.gray.opacity(0.2))
+            .background(.quaternary)
             .clipShape(.rect(cornerRadius: 8))
     }
 

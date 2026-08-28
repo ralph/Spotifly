@@ -10,6 +10,10 @@ import SwiftUI
 struct PreferencesView: View {
     var body: some View {
         TabView {
+            Tab("preferences.general", systemImage: "gearshape") {
+                GeneralSettingsView()
+            }
+
             Tab("preferences.playback", systemImage: "speaker.wave.3") {
                 PlaybackSettingsView()
             }
@@ -23,6 +27,29 @@ struct PreferencesView: View {
             }
         }
         .frame(width: 450)
+    }
+}
+
+// MARK: - General Settings Tab
+
+struct GeneralSettingsView: View {
+    @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
+
+    var body: some View {
+        Form {
+            Picker("preferences.appearance", selection: Binding(
+                get: { appearanceMode },
+                set: { newValue in
+                    appearanceMode = newValue
+                    newValue.apply()
+                },
+            )) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Text(mode.titleKey).tag(mode)
+                }
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 
