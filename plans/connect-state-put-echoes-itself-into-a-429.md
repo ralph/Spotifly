@@ -1,6 +1,11 @@
 # The connect-state PUT echoes back to itself and runs into a 429
 
-Status: **diagnosed, not fixed.** Noticed while diagnosing
+Status: **fixed and verified at runtime 2026-08-16**, on `break-connect-state-echo-loop` in
+the sibling librespot checkout — 75 PUTs → 1 in the comparable window, no 429s, and a second
+device's pause/resume/volume still handled without a position de-sync. Not yet offered
+upstream. Detail in
+[`connect-state-echo-implementation-plan.md`](connect-state-echo-implementation-plan.md).
+Noticed while diagnosing
 `plans/seek-bar-jumps-between-two-position-clocks.md`, where this loop is what made that
 bug visible; it is not the cause of it.
 Components: `librespot/connect/src/spirc.rs` — an upstream `fixme`, so a fix is a patch to
@@ -19,8 +24,14 @@ twenty-odd seconds — around 80 requests in `../seek.log` — and then stops. I
 10:23:22.537  ERROR librespot_connect::spirc] state update: Resource has been exhausted { Response status code: 429 Too Many Requests }
 ```
 
-Three 429s in that run, 84 PUTs. In `../seek.log` the burst ends after 80 PUTs with no 429
-at all, so being rate-limited is one way the loop stops rather than the only one.
+Three 429s in that run against 83 device-state PUTs; `../seek.log` has two against 79. (Both
+files carry one further `hobs_`-prefixed registration PUT, which is where the "80 / 84" counts
+in the first write-up came from.)
+
+**Rate-limiting is the only thing observed to stop the loop.** Re-checked 2026-08-16: all five
+bursts across the two logs end in a 429, and the only PUT gaps not preceded by one are the idle
+stretch before playback starts. An earlier version of this note read `../seek.log` as having no
+429s and concluded the opposite; that was a miscount. The loop does not run down on its own.
 
 ## Mechanism
 
@@ -71,5 +82,9 @@ track metadata were all tried for the underlying de-sync and none of them helped
 narrower change — leave the workaround, exclude our own echo — is the one worth testing
 first.
 
-Worth confirming before writing any of it: that the echoed update really does carry only
-our device id. One run with the cluster update's `devices_that_changed` logged answers it.
+**Confirmed 2026-08-16, from logs already on disk** — librespot logs `devices_that_changed`
+already (`spirc.rs:990`), so no new run was needed. 449 cluster updates across five logs, none
+naming more than one device. Foreign device ids do turn up while Spotifly is active
+(`85a8659955…`, `c077d34a96…`), so the case the workaround exists for is reproducible and the
+filter has something to distinguish. Detail in
+[`connect-state-echo-implementation-plan.md`](connect-state-echo-implementation-plan.md).
