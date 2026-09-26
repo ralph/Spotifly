@@ -78,6 +78,15 @@ struct TransferStateTests {
         #expect(paused.position(atMs: 1_790_000_002_500) == 61000)
     }
 
+    /// A sender reports its position when something changes, so a track played from its
+    /// start arrives as 0 at the moment it started. It has still been playing since.
+    @Test func `a position reported as zero is carried forward too`() {
+        var state = TransferState(parsing: Self.transfer())
+        state.positionAsOfTimestamp = 0
+
+        #expect(state.position(atMs: 1_790_000_048_000) == 48000)
+    }
+
     @Test func `a track sent only by gid gets its uri back`() {
         // spotify:track:6rqhFgbbKwnb9MLmUQDhG6 is gid d3aca7e43e3b452cbfa9ddd2eab9497e,
         // by base-62 decoding in Python.

@@ -109,8 +109,14 @@ public nonisolated struct TransferState: Sendable {
 
     /// Where the track is now: it kept playing on the sender since `timestamp`
     /// unless it was paused.
+    ///
+    /// librespot only carries a position forward when it is above zero. That
+    /// misses the common case: a sender reports its position when something
+    /// changes, and a track played from its start is reported once, as 0 at
+    /// the moment it started — which the backend passes on as it is. Measured
+    /// with two instances: a track 48 s in was handed over at 0.
     func position(atMs now: Int64) -> Int64 {
-        guard !isPaused, positionAsOfTimestamp > 0, timestamp > 0 else {
+        guard !isPaused, timestamp > 0 else {
             return max(0, positionAsOfTimestamp)
         }
         return max(0, positionAsOfTimestamp + now - timestamp)

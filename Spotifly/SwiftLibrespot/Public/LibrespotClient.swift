@@ -951,7 +951,10 @@ public actor LibrespotClient {
             return
         }
         let positionMs = UInt64(transfer.position(atMs: Int64(Date().timeIntervalSince1970 * 1000)))
-        debugLog("LibrespotClient", "Taking over \(track) in \(transfer.contextUri) at \(positionMs)ms\(transfer.isPaused ? ", paused" : "")")
+        debugLog(
+            "LibrespotClient",
+            "Taking over \(track) in \(transfer.contextUri) at \(positionMs)ms (reported \(transfer.positionAsOfTimestamp)ms at \(transfer.timestamp))\(transfer.isPaused ? ", paused" : "")",
+        )
 
         // Active even when the handover arrives paused: the sender has already
         // let go, and a paused player is still the one that holds playback.
