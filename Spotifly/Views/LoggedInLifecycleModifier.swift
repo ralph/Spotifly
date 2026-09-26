@@ -93,6 +93,20 @@ struct LoggedInLifecycleModifier: ViewModifier {
                             }
                         }
                     }
+
+                    // SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER=<seconds>: pull playback
+                    // to this device, as picking it in Speakers does. With a second
+                    // instance under another SPOTIFLY_DEBUG_DEVICE_ID, a handover
+                    // runs both ways on one Mac.
+                    if let transferAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER"],
+                       let seconds = Double(transferAfter)
+                    {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(seconds))
+                            debugLog("DebugAutoplay", "Pulling playback here")
+                            _ = await SpotifyPlayer.transferToLocal()
+                        }
+                    }
                 #endif
             }
             // Connection handling is driven by the connection snapshot, not by the Connect
