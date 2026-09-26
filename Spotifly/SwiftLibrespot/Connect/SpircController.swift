@@ -311,13 +311,26 @@ public actor SpircController {
             playerStateProto.timestamp = Int64(ps.timestamp)
             playerStateProto.positionAsOfTimestamp = Int64(ps.positionMs)
             playerStateProto.duration = Int64(ps.durationMs)
+            // The rate the position advances at. Without it the backend treats
+            // the position as frozen where it was reported, so a transfer away
+            // handed the next device the start of the track.
+            playerStateProto.playbackSpeed = ps.isPaused ? 0 : 1
             playerStateProto.isPaused = ps.isPaused
-            playerStateProto.isPlaying = ps.isPlaying
+            // librespot's `set_status`: desktop and mobile clients grey out
+            // their play button for a paused device unless all three are set.
+            playerStateProto.isPlaying = ps.isPlaying || ps.isPaused
+            playerStateProto.isBuffering = ps.isPaused
 
             if let uri = ps.trackUri {
                 playerStateProto.track = ProvidedTrack(uri: uri, provider: ps.trackProvider)
             }
             playerStateProto.contextUri = ps.contextUri
+            if !ps.contextUri.isEmpty {
+                playerStateProto.contextUrl = "context://\(ps.contextUri)"
+            }
+            if let index = ps.contextIndex {
+                playerStateProto.index = ContextIndex(page: 0, track: UInt32(index))
+            }
             playerStateProto.nextTracks = ps.nextTracks.map { ProvidedTrack(uri: $0.uri, provider: $0.provider) }
             playerStateProto.prevTracks = ps.previousTracks.map { ProvidedTrack(uri: $0.uri, provider: $0.provider) }
 
