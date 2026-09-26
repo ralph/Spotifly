@@ -489,7 +489,16 @@ public actor LibrespotClient {
     func setRepeat(_ mode: PlaybackQueue.RepeatMode) async {
         repeatMode = mode
         playbackQueue.setRepeat(mode)
+        announceNextTrack()
         await publishPlaybackStateRefresh()
+    }
+
+    /// Tells the pipeline what auto-advance will play, so it can fetch it
+    /// before the current track ends. Under repeat-one that is the same track,
+    /// which the pipeline already holds.
+    private func announceNextTrack() {
+        let next = repeatMode == .track ? playbackQueue.currentUri : playbackQueue.upcoming(limit: 1).first?.uri
+        Task { [audioPipeline] in await audioPipeline?.setNextTrack(next) }
     }
 
     // MARK: - Volume
@@ -696,6 +705,7 @@ public actor LibrespotClient {
         let recent = playbackQueue.recent()
         let current = playbackQueue.currentUri
         let upcoming = playbackQueue.upcoming()
+        announceNextTrack()
 
         let currentItem = current.map { QueueItem(uri: $0, provider: "context") }
 

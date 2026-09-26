@@ -42,8 +42,8 @@ final nonisolated class VorbisDecoder: @unchecked Sendable {
         /// libvorbisfile serializes its calls into a single stream.
         var offset: Int = 0
 
-        init(_ data: Data) {
-            bytes = [UInt8](data)
+        init(_ bytes: [UInt8]) {
+            self.bytes = bytes
         }
     }
 
@@ -54,8 +54,11 @@ final nonisolated class VorbisDecoder: @unchecked Sendable {
     /// Opens a decrypted Ogg Vorbis stream. Throws when the data does not parse,
     /// which after decryption almost always means wrong key or wrong byte offset —
     /// garbage where the first Ogg page should be, not a corrupt tail.
-    init(data: Data) throws {
-        source = Source(data)
+    ///
+    /// Takes the bytes as an array so a caller that keeps the file too shares
+    /// this storage instead of holding a second copy of it.
+    init(bytes: [UInt8]) throws {
+        source = Source(bytes)
 
         var error: Int32 = OV_EBADHEADER
         var openedFormat: Format?

@@ -181,10 +181,6 @@ actor AudioPipeline {
     /// - Parameter paused: load and position the track but hold playout until
     ///   `resume()`, as a handover of paused playback needs.
     func playTrack(uri: String, positionMs: UInt64 = 0, paused: Bool = false) async throws {
-        guard let spclient else {
-            throw LibrespotError.invalidState("SPClient not configured")
-        }
-
         debugLog("AudioPipeline", "Playing \(uri) at \(positionMs)ms")
         playbackStateSubject.send(.loading(trackUri: uri))
 
@@ -192,8 +188,92 @@ actor AudioPipeline {
         let generation = loadGeneration
         await teardownTrack()
 
-        let trackId = try Self.trackGid(fromUri: uri)
+        let track = try await preparedTrack(for: uri)
+        let vorbis = try VorbisDecoder(bytes: track.ogg)
+        debugLog("AudioPipeline", "Decoder open: \(vorbis.format.sampleRate)Hz x\(vorbis.format.channels), \(vorbis.totalFrames) frames")
 
+        guard generation == loadGeneration else {
+            debugLog("AudioPipeline", "Superseded while loading \(uri)")
+            vorbis.close()
+            throw CancellationError()
+        }
+
+        current = track
+        currentTrackUri = uri
+        durationMs = Int64(track.durationMs)
+        sampleRate = vorbis.format.sampleRate
+        decoder = vorbis
+
+        let startFrame = positionMs > 0
+            ? Int64((Double(positionMs) / 1000.0) * Double(vorbis.format.sampleRate))
+            : 0
+        startDecoding(from: startFrame, keepPaused: paused)
+    }
+
+    // MARK: - Prepared Tracks
+
+    /// A track ready to decode: everything the network had to supply.
+    private struct PreparedTrack {
+        let uri: String
+        let quality: Quality
+        let durationMs: Int
+        /// Decrypted Ogg Vorbis from the codec's first page on. Shared with the
+        /// decoder, not copied.
+        let ogg: [UInt8]
+    }
+
+    /// The loaded track, kept so playing it again — repeat-one, or previous
+    /// near its start — does not download it again.
+    private var current: PreparedTrack?
+
+    /// The track expected next, fetched before this one ends so the change
+    /// does not wait on the network: the download is most of a track start.
+    private var upcoming: (uri: String, fetch: Task<PreparedTrack, Error>)?
+
+    /// What plays after the current track, as the queue has it.
+    private var nextUri: String?
+
+    /// The next track is fetched once this one has played a while, so a
+    /// press of Next is immediate too, or near its end at the latest —
+    /// librespot's `PRELOAD_NEXT_TRACK_BEFORE_END_DURATION_MS`. Skipping
+    /// through the first seconds of tracks fetches nothing extra.
+    private static let prefetchAfterMs: Int64 = 10000
+    private static let prefetchLeadMs: Int64 = 30000
+
+    /// Tells the pipeline what the queue will play next. A fetch already made
+    /// for a track that is no longer next is dropped.
+    func setNextTrack(_ uri: String?) {
+        nextUri = uri
+        if let upcoming, upcoming.uri != uri {
+            upcoming.fetch.cancel()
+            self.upcoming = nil
+        }
+    }
+
+    /// The loaded track when it is played again, the fetched-ahead one when it
+    /// is the one expected, and otherwise a fresh fetch.
+    private func preparedTrack(for uri: String) async throws -> PreparedTrack {
+        if let current, current.uri == uri, current.quality == quality {
+            return current
+        }
+        if let upcoming, upcoming.uri == uri {
+            self.upcoming = nil
+            if let track = try? await upcoming.fetch.value, track.quality == quality {
+                debugLog("AudioPipeline", "Using \(uri) fetched ahead")
+                return track
+            }
+        }
+        return try await prepare(uri)
+    }
+
+    /// Metadata, then the audio key and the CDN url side by side, then the
+    /// download and decryption.
+    private func prepare(_ uri: String) async throws -> PreparedTrack {
+        guard let spclient else {
+            throw LibrespotError.invalidState("SPClient not configured")
+        }
+
+        let trackId = try Self.trackGid(fromUri: uri)
         var metadata = try await spclient.getTrackMetadata(trackId: trackId)
 
         // /metadata/4 answers a stub without files; the playable list comes
@@ -204,45 +284,43 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Track '\(metadata.name)': \(metadata.files.count) file(s), \(metadata.durationMs)ms")
 
+        let quality = quality
         guard let file = Self.selectVorbisFile(metadata.files, preferring: quality) else {
             throw LibrespotError.trackNotFound("No Ogg Vorbis file available")
         }
 
-        let key = try await audioKeyProvider.getKey(fileId: file.fileId, trackId: trackId)
-        let cdnUrl = try await spclient.resolveCDNUrl(fileId: file.fileId)
+        // Independent requests on different transports — the key over the
+        // accesspoint socket, the url over HTTP — so neither waits for the other.
+        async let key = audioKeyProvider.getKey(fileId: file.fileId, trackId: trackId)
+        async let cdnUrl = spclient.resolveCDNUrl(fileId: file.fileId)
 
         let encrypted = try await Self.downloadWholeFile(cdnUrl.url)
 
         // The whole file is ciphertext, keystream from block 0. Nothing is
         // skipped: the stream opens with the Ogg capture pattern once decrypted.
-        let decrypted = try AESDecryptor(key: key).decrypt(encrypted)
-
-        #if DEBUG
-            let head = decrypted.prefix(8).map { String(format: "%02X", $0) }.joined()
-            debugLog("AudioPipeline", "Decrypted \(decrypted.count) bytes, head: \(head)")
-        #endif
-
-        debugLog("AudioPipeline", "Opening decoder…")
+        let decrypted = try await AESDecryptor(key: key).decrypt(encrypted)
         let vorbisStream = Self.vorbisStreamOffset(decrypted)
-        debugLog("AudioPipeline", "Vorbis stream begins at byte \(vorbisStream.offset), skipped \(vorbisStream.skippedPages) Spotify page(s)")
-        let vorbis = try VorbisDecoder(data: decrypted.subdata(in: vorbisStream.offset ..< decrypted.count))
-        debugLog("AudioPipeline", "Decoder open: \(vorbis.format.sampleRate)Hz x\(vorbis.format.channels), \(vorbis.totalFrames) frames")
+        debugLog("AudioPipeline", "Decrypted \(decrypted.count) bytes; Vorbis begins at \(vorbisStream.offset) after \(vorbisStream.skippedPages) Spotify page(s)")
 
-        guard generation == loadGeneration else {
-            debugLog("AudioPipeline", "Superseded while loading \(uri)")
-            vorbis.close()
-            throw CancellationError()
-        }
+        return PreparedTrack(
+            uri: uri,
+            quality: quality,
+            durationMs: metadata.durationMs,
+            ogg: [UInt8](decrypted[(decrypted.startIndex + vorbisStream.offset)...]),
+        )
+    }
 
-        currentTrackUri = uri
-        durationMs = Int64(metadata.durationMs)
-        sampleRate = vorbis.format.sampleRate
-        decoder = vorbis
+    /// Starts fetching the next track once the current one is due for it.
+    private func fetchNextIfDue(positionMs: Int64) {
+        guard upcoming == nil, let next = nextUri, next != current?.uri,
+              positionMs >= Self.prefetchAfterMs || durationMs - positionMs < Self.prefetchLeadMs
+        else { return }
 
-        let startFrame = positionMs > 0
-            ? Int64((Double(positionMs) / 1000.0) * Double(vorbis.format.sampleRate))
-            : 0
-        startDecoding(from: startFrame, keepPaused: paused)
+        debugLog("AudioPipeline", "Fetching \(next) ahead")
+        upcoming = (next, Task { [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await prepare(next)
+        })
     }
 
     func pause() {
@@ -275,6 +353,11 @@ actor AudioPipeline {
     /// Stops the current track and tears down its resources, publishing idle.
     private func teardownAndGoIdle() async {
         await teardownTrack()
+        // Nothing is going to play, so neither the loaded file nor the next one
+        // is worth the memory.
+        current = nil
+        upcoming?.fetch.cancel()
+        upcoming = nil
         isPlaying = false
         playbackStateSubject.send(.idle)
         positionSubject.send(0)
@@ -504,7 +587,9 @@ actor AudioPipeline {
     private func tick() {
         guard currentTrackUri != nil, isPlaying, !isPaused else { return }
 
-        positionSubject.send(UInt64(frameToMs(currentTrackFrame())))
+        let positionMs = frameToMs(currentTrackFrame())
+        positionSubject.send(UInt64(positionMs))
+        fetchNextIfDue(positionMs: Int64(positionMs))
 
         // `writtenFrames` is only meaningful once the loop has finished, which
         // is the only moment it is read: the loop writes its running total once,
