@@ -477,6 +477,12 @@ public actor LibrespotClient {
     public func addToQueue(uri: String) async {
         playbackQueue.enqueue(Self.normalizedUri(uri))
         publishQueueNotifications()
+        // The queue is part of the reported player state, and heartbeats only
+        // repeat the last report: without this, other devices did not see the
+        // track, and a transfer before the next state change dropped it.
+        if localState != nil {
+            await reportPlaybackToCluster()
+        }
     }
 
     public func setShuffle(_ enabled: Bool) async {
