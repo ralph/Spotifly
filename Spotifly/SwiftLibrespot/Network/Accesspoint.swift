@@ -99,6 +99,13 @@ public actor Accesspoint {
 
     // MARK: - Connection
 
+    /// How long a TCP connect may take before the session moves on to the
+    /// next resolved accesspoint. A healthy one connects in well under 100 ms;
+    /// one that swallows the SYN leaves the connection waiting, and at 30 s
+    /// that was half a minute of startup spent on a single host
+    /// (2026-09-26, ap-gew4:4070) before the next was even tried.
+    private static let connectTimeout: TimeInterval = 5
+
     /// Connect and authenticate with credentials
     /// Returns the server's welcome message, whose reusable credentials are
     /// what later sessions log in from.
@@ -163,7 +170,7 @@ public actor Accesspoint {
             }
             conn?.start(queue: .global())
 
-            DispatchQueue.global().asyncAfter(deadline: .now() + 30) { [deadlineClaim] in
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.connectTimeout) { [deadlineClaim] in
                 guard deadlineClaim.tryResume(continuation, with: .failure(LibrespotError.timeout("TCP connect timed out"))) else { return }
                 conn?.cancel()
             }
