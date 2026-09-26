@@ -205,9 +205,7 @@ actor AudioPipeline {
 
         // The whole file is ciphertext, keystream from block 0. Nothing is
         // skipped: the stream opens with the Ogg capture pattern once decrypted.
-        let decryptor = AESDecryptor()
-        decryptor.setKey(key)
-        let decrypted = decryptor.decrypt(encrypted)
+        let decrypted = try AESDecryptor(key: key).decrypt(encrypted)
 
         #if DEBUG
             let head = decrypted.prefix(8).map { String(format: "%02X", $0) }.joined()
