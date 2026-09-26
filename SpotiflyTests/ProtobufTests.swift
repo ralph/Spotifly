@@ -28,6 +28,16 @@ struct ProtobufTests {
         #expect(ProtobufWriter.message { $0.bool(field: 16, true) }.hexString == "800101")
     }
 
+    @Test func `a map is written in key order, one entry message per key`() {
+        let data = ProtobufWriter.message { $0.map(field: 3, ["b": "2", "a": "1"]) }
+
+        // 1a 06 { 0a 01 "a", 12 01 "1" }, then the same for "b".
+        #expect(data.hexString == "1a060a0161120131" + "1a060a0162120132")
+        let entries = ProtobufReader.fields(in: data).map(\.mapEntry)
+        #expect(entries.map(\.key) == ["a", "b"])
+        #expect(entries.map(\.value) == ["1", "2"])
+    }
+
     @Test func `reading gives back what was written`() {
         let data = ProtobufWriter.message {
             $0.varint(field: 1, Int64(-5))

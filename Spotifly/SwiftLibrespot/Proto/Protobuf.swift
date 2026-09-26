@@ -52,6 +52,18 @@ nonisolated struct ProtobufWriter {
         bytes(field: field, Self.message(body))
     }
 
+    /// A `map<string, string>`: one entry message per key, key in field 1 and value in
+    /// field 2. Entries go out in key order, so the bytes do not depend on how the
+    /// dictionary happens to iterate.
+    mutating func map(field: Int, _ map: [String: String]) {
+        for (key, value) in map.sorted(by: { $0.key < $1.key }) {
+            message(field: field) {
+                $0.string(field: 1, key)
+                $0.string(field: 2, value)
+            }
+        }
+    }
+
     mutating func double(field: Int, _ value: Double) {
         appendTag(field: field, wire: 1)
         withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
