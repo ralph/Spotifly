@@ -219,3 +219,100 @@ struct ConnectMessageParsingTests {
         #expect(fields.filter { $0.number == 3 }.map(\.mapEntry.key) == ["a", "b", "c"])
     }
 }
+
+/// `metadata.proto`, and `extended_metadata.proto` with `entity_extension_data.proto`.
+@MainActor
+struct SPClientParsingTests {
+    /// `Track.file (12)`: `AudioFile { 1: file_id, 2: format }`, the id twenty bytes of `id`.
+    private static func file(_ track: inout ProtobufWriter, id: UInt8, format: Int) {
+        track.message(field: 12) {
+            $0.bytes(field: 1, Data(repeating: id, count: 20))
+            $0.varint(field: 2, format)
+        }
+    }
+
+    /// A `Track` wrapped the way the extended-metadata endpoint answers with one.
+    private static func extendedMetadataResponse(track: Data) -> Data {
+        ProtobufWriter.message {
+            $0.message(field: 2) { array in // extended_metadata
+                array.varint(field: 2, 10) // extension_kind: TRACK_V4
+                array.message(field: 3) { entry in // extension_data
+                    entry.message(field: 1) { $0.varint(field: 1, 200) } // header.status_code
+                    entry.string(field: 2, "spotify:track:abc") // entity_uri
+                    entry.message(field: 3) { any in // google.protobuf.Any
+                        any.string(field: 1, "type.googleapis.com/spotify.metadata.Track")
+                        any.bytes(field: 2, track)
+                    }
+                }
+            }
+        }
+    }
+
+    private static func ids(_ files: [SPClient.TrackMetadata.AudioFile]) -> [UInt8] {
+        files.map { $0.fileId.first ?? 0 }
+    }
+
+    @Test func `the extended-metadata answer yields the wrapped track's files`() {
+        let track = ProtobufWriter.message {
+            $0.string(field: 2, "Song") // name
+            Self.file(&$0, id: 1, format: 1) // OGG_VORBIS_160
+            Self.file(&$0, id: 2, format: 2) // OGG_VORBIS_320
+        }
+
+        let files = SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))
+
+        #expect(Self.ids(files) == [1, 2])
+        #expect(files.map(\.format) == [.oggVorbis160, .oggVorbis320])
+    }
+
+    @Test func `a relinked track's files come from its alternative`() {
+        let track = ProtobufWriter.message {
+            $0.string(field: 2, "Song")
+            $0.message(field: 13) { alternative in
+                Self.file(&alternative, id: 3, format: 0) // OGG_VORBIS_96
+            }
+        }
+
+        let extended = SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))
+        let metadata = SPClient.parseTrackMetadata(track, gid: Data())
+
+        #expect(Self.ids(extended) == [3])
+        #expect(Self.ids(metadata.files) == [3])
+        #expect(metadata.files.map(\.format) == [.oggVorbis96])
+        #expect(metadata.name == "Song")
+    }
+
+    @Test func `own files win over the alternative's`() {
+        let track = ProtobufWriter.message {
+            Self.file(&$0, id: 1, format: 1)
+            $0.message(field: 13) { Self.file(&$0, id: 3, format: 0) }
+        }
+
+        #expect(Self.ids(SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))) == [1])
+        #expect(Self.ids(SPClient.parseTrackMetadata(track, gid: Data()).files) == [1])
+    }
+
+    /// The two paths have always treated a format `AudioFormat` does not name differently,
+    /// and the codec change keeps it that way.
+    @Test func `extended metadata drops unnamed formats before falling back, metadata 4 keeps them`() {
+        let track = ProtobufWriter.message {
+            Self.file(&$0, id: 1, format: 16) // FLAC_FLAC, which AudioFormat does not name
+            $0.message(field: 13) { Self.file(&$0, id: 3, format: 0) }
+        }
+
+        let extended = SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))
+        let metadata = SPClient.parseTrackMetadata(track, gid: Data())
+
+        #expect(Self.ids(extended) == [3])
+        #expect(Self.ids(metadata.files) == [1])
+        #expect(metadata.files.map(\.format) == [.unknown])
+    }
+
+    @Test func `a file without an id is skipped`() {
+        let track = ProtobufWriter.message {
+            $0.message(field: 12) { $0.varint(field: 2, 1) }
+        }
+
+        #expect(SPClient.parseTrackMetadata(track, gid: Data()).files.isEmpty)
+    }
+}

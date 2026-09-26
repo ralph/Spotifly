@@ -128,8 +128,7 @@ public actor SPClient {
             throw LibrespotError.trackNotFound(gidHex)
         }
 
-        // Parse protobuf response
-        return try parseTrackMetadata(data, gid: trackId)
+        return Self.parseTrackMetadata(data, gid: trackId)
     }
 
     // MARK: - Extended Metadata (audio files)
@@ -138,9 +137,9 @@ public actor SPClient {
     /// endpoint. `/metadata/4` answers with a stub (title, duration, no
     /// files) these days — the files only come from here.
     ///
-    /// Request: `BatchedEntityRequest { 2: { 1: uri, 2: { 1: AUDIO_FILES(5) } } }`
+    /// Request: `BatchedEntityRequest { 1: header, 2: { 1: uri, 2: { 1: TRACK_V4(10) } } }`
     /// Response: nested arrays whose leaf is a `google.protobuf.Any` wrapping
-    /// `AudioFilesExtensionResponse { 1: files[] { 1: file, 4: bitrate } }`.
+    /// the full `Track`.
     public func getAudioFiles(entityUri: String) async throws -> [TrackMetadata.AudioFile] {
         let host = spclientHost ?? "spclient.wg.spotify.com"
         let url = URL(string: "https://\(host)/extended-metadata/v0/extended-metadata")!
@@ -170,71 +169,46 @@ public actor SPClient {
         return Self.parseAudioFilesResponse(data)
     }
 
-    /// Encodes the BatchedEntityRequest asking for AUDIO_FILES on one entity.
+    /// Encodes the BatchedEntityRequest asking for one entity's `Track`.
     nonisolated static func buildAudioFilesRequest(entityUri: String, country: String?, catalogue: String) -> Data {
-        // One EntityRequest may carry several ExtensionQuery entries; some
-        // tracks only expose files under one of the two kinds.
-        // Single TRACK_V4 query: batching a second kind alongside it made
-        // the service answer with one 410 array instead of either payload.
-        var queries = Data()
-        queries.append(tag(field: 1, wireType: 0))
-        queries.append(varint(10))
-
-        // EntityRequest { 1: uri, 2: query }
-        var entityRequest = Data()
-        entityRequest.append(tag(field: 1, wireType: 2))
-        entityRequest.append(varint(entityUri.utf8.count))
-        entityRequest.append(contentsOf: entityUri.utf8)
-        entityRequest.append(tag(field: 2, wireType: 2))
-        entityRequest.append(varint(queries.count))
-        entityRequest.append(queries)
-
-        // Optional header naming market + catalogue; without it the service
-        // answers each entity with 410 Gone.
-        var header = Data()
-        if let country {
-            header.append(tag(field: 1, wireType: 2))
-            header.append(varint(country.utf8.count))
-            header.append(contentsOf: country.utf8)
+        ProtobufWriter.message {
+            // Header naming market + catalogue; without it the service
+            // answers each entity with 410 Gone.
+            $0.message(field: 1) { header in
+                if let country {
+                    header.string(field: 1, country)
+                }
+                header.string(field: 2, catalogue)
+            }
+            // EntityRequest { 1: uri, 2: query }. One EntityRequest may carry
+            // several ExtensionQuery entries; some tracks only expose files
+            // under one of the two kinds. Single TRACK_V4 query: batching a
+            // second kind alongside it made the service answer with one 410
+            // array instead of either payload.
+            $0.message(field: 2) { entityRequest in
+                entityRequest.string(field: 1, entityUri)
+                entityRequest.message(field: 2) { $0.varint(field: 1, 10) } // TRACK_V4
+            }
         }
-        header.append(tag(field: 2, wireType: 2))
-        header.append(varint(catalogue.utf8.count))
-        header.append(contentsOf: catalogue.utf8)
-
-        var out = Data()
-        out.append(tag(field: 1, wireType: 2))
-        out.append(varint(header.count))
-        out.append(header)
-        out.append(tag(field: 2, wireType: 2))
-        out.append(varint(entityRequest.count))
-        out.append(entityRequest)
-        return out
     }
 
-    /// Walks the response nesting down to the wrapped `AudioFile`s.
+    /// Walks the response nesting down to the wrapped `Track`s.
     nonisolated static func parseAudioFilesResponse(_ data: Data) -> [TrackMetadata.AudioFile] {
         var result: [TrackMetadata.AudioFile] = []
         var arrayCount = 0
         var dataCount = 0
 
         // BatchedExtensionResponse { 2: arrays[] }
-        forEachField(data) { field, payload in
-            guard field == 2 else { return }
+        for array in ProtobufReader.fields(in: data) where array.number == 2 {
             arrayCount += 1
-
             // EntityExtensionDataArray { 2: kind varint, 3: datas[] }
-            forEachField(payload) { arrayField, arrayChild in
-                // EntityExtensionData { 1: header{1 status}, 3: Any{2 value} }
-                guard arrayField == 3 else { return }
+            for entry in array.fields where entry.number == 3 {
                 dataCount += 1
-                forEachField(arrayChild) { entryField, entryPayload in
-                    // EntityExtensionData { 3: extension_data = Any }
-                    guard entryField == 3 else { return }
-                    dataCount += 1
-                    forEachField(entryPayload) { anyField, anyPayload in
-                        // google.protobuf.Any { 2: value }
-                        guard anyField == 2 else { return }
-                        result += parseAudioFilesExtension(anyPayload)
+                // EntityExtensionData { 1: header{1 status}, 3: extension_data = Any }
+                for any in entry.fields where any.number == 3 {
+                    // google.protobuf.Any { 2: value }, the value a full `Track`
+                    for value in any.fields where value.number == 2 {
+                        result += playableFiles(inTrack: value.fields, knownFormatsOnly: true)
                     }
                 }
             }
@@ -242,138 +216,6 @@ public actor SPClient {
 
         debugLog("SPClient", "Extended metadata: \(arrayCount) array(s), \(dataCount) data(s), yielded \(result.count) file(s)")
         return result
-    }
-
-    /// The Any payload is a full `Track`. Playable files sit at
-    /// `Track.file` (12); a relinked recording answers with an empty list
-    /// plus its playable copy under `Track.alternative` (13) — which is the
-    /// normal case for market-substituted tracks.
-    private nonisolated static func parseAudioFilesExtension(_ data: Data) -> [TrackMetadata.AudioFile] {
-        var ownFiles: [TrackMetadata.AudioFile] = []
-        var alternativeFiles: [TrackMetadata.AudioFile] = []
-
-        forEachField(data) { field, payload in
-            switch field {
-            case 12:
-                if let file = parseAudioFileMessage(payload) {
-                    ownFiles.append(file)
-                }
-            case 13:
-                alternativeFiles += filesInsideTrack(payload)
-            default:
-                break
-            }
-        }
-
-        return ownFiles.isEmpty ? alternativeFiles : ownFiles
-    }
-
-    /// Walks a nested `Track`, returning every `file` entry.
-    private nonisolated static func filesInsideTrack(_ data: Data) -> [TrackMetadata.AudioFile] {
-        var files: [TrackMetadata.AudioFile] = []
-
-        forEachField(data) { field, payload in
-            guard field == 12 else { return }
-            if let file = parseAudioFileMessage(payload) {
-                files.append(file)
-            }
-        }
-
-        return files
-    }
-
-    /// `AudioFile { 1: file_id bytes, 2: format }`.
-    ///
-    /// Walked by hand rather than through `forEachField`, which only delivers
-    /// length-delimited fields — the format arrives as a varint and would be
-    /// silently dropped, failing every file on the enum guard.
-    private nonisolated static func parseAudioFileMessage(_ data: Data) -> TrackMetadata.AudioFile? {
-        var fileId: Data?
-        var formatInt: UInt64 = 99
-
-        var offset = 0
-        while offset < data.count, offset >= 0 {
-            // readTag already decodes the tag; shifting again turned every
-            // AudioFile field into "unknown field 0".
-            let (fieldNumber, wireType, newOffset) = readTagStatic(data, offset: offset)
-            offset = newOffset
-
-            switch (fieldNumber, wireType) {
-            case (1, 2):
-                let (bytes, next) = readLengthDelimitedStatic(data, offset: offset)
-                fileId = bytes
-                offset = next
-            case (2, 0):
-                let (value, next) = readVarintStatic(data, offset: offset)
-                formatInt = value
-                offset = next
-            default:
-                offset = skipFieldStatic(data, offset: offset, wireType: wireType)
-            }
-
-            if offset < 0 {
-                break
-            }
-        }
-
-        guard let fid = fileId,
-              let format = TrackMetadata.AudioFormat(rawValue: Int(formatInt))
-        else { return nil }
-
-        return TrackMetadata.AudioFile(fileId: fid, format: format)
-    }
-
-    /// Tiny protobuf walker: calls `visit(fieldNumber, payload)` per
-    /// length-delimited field. Non-length fields are skipped.
-    private nonisolated static func forEachField(
-        _ data: Data,
-        _ visit: (Int, Data) -> Void,
-    ) {
-        var offset = 0
-        while offset < data.count {
-            let (tagValue, nextOffset) = readVarintStatic(data, offset: offset)
-            offset = nextOffset
-            let fieldNumber = Int(tagValue >> 3)
-            let wireType = Int(tagValue & 0x7)
-
-            switch wireType {
-            case 2:
-                let (length, lenOffset) = readVarintStatic(data, offset: offset)
-                let start = lenOffset
-                let end = start + Int(length)
-                guard end <= data.count else { return }
-                visit(fieldNumber, data.subdata(in: start ..< end))
-                offset = end
-            case 0:
-                let (_, newOffset) = readVarintStatic(data, offset: offset)
-                offset = newOffset
-            case 1:
-                offset += 8
-            case 5:
-                offset += 4
-            default:
-                return
-            }
-        }
-    }
-
-    private nonisolated static func varint(_ value: Int) -> Data {
-        varint(UInt64(value))
-    }
-
-    private nonisolated static func tag(field: Int, wireType: Int) -> Data {
-        varint(UInt64((field << 3) | wireType))
-    }
-
-    private nonisolated static func varint(_ value: UInt64) -> Data {
-        var v = value
-        var out = Data()
-        while v > 127 {
-            out.append(UInt8(v & 0x7F) | 0x80)
-            v >>= 7
-        }
-        out.append(UInt8(v))
-        return out
     }
 
     // MARK: - CDN URL Resolution
@@ -416,147 +258,48 @@ public actor SPClient {
         return CDNUrl(url: cdnUrl, expiresAt: nil)
     }
 
-    /// Parses the `Track` message: `{2 name, 7 duration, 12 files[]}`.
-    private func parseTrackMetadata(_ data: Data, gid: Data) throws -> TrackMetadata {
-        var name = ""
-        var duration = 0
-        var files: [TrackMetadata.AudioFile] = []
-        var alternativeFiles: [TrackMetadata.AudioFile] = []
-
-        var offset = 0
-        while offset < data.count {
-            let (fieldNumber, wireType, newOffset) = Self.readTag(data, offset: offset)
-            offset = newOffset
-
-            switch fieldNumber {
-            case 2:
-                let (str, nextOffset) = Self.readString(data, offset: offset)
-                name = str
-                offset = nextOffset
-            case 7:
-                let (value, nextOffset) = Self.readVarint(data, offset: offset)
-                duration = Int(value)
-                offset = nextOffset
-            case 12:
-                let (fileData, nextOffset) = Self.readLengthDelimited(data, offset: offset)
-                if let audioFile = parseAudioFile(fileData) {
-                    files.append(audioFile)
-                }
-                offset = nextOffset
-            case 13:
-                // Relinked recordings keep their playable files under `alternative`.
-                let (altData, nextOffset) = Self.readLengthDelimited(data, offset: offset)
-                alternativeFiles += Self.parseAlternativeFiles(altData)
-                offset = nextOffset
-            default:
-                offset = Self.skipField(data, offset: offset, wireType: wireType)
-            }
-
-            if offset < 0 {
-                break
-            }
-        }
-
-        // A relinked gid answers with an empty file list plus the playable
-        // copy under `alternative`.
-        if files.isEmpty {
-            files = alternativeFiles
-        }
+    /// Parses the `Track` message: `{2 name, 7 duration, 12 files[], 13 alternative[]}`.
+    nonisolated static func parseTrackMetadata(_ data: Data, gid: Data) -> TrackMetadata {
+        let fields = ProtobufReader.fields(in: data)
+        let name = fields.last(2)?.string ?? ""
+        let duration = fields.last(7).map { Int(truncatingIfNeeded: $0.value) } ?? 0
+        let files = playableFiles(inTrack: fields, knownFormatsOnly: false)
 
         debugLog("SPClient", "Parsed track: \(name), duration=\(duration)ms, files=\(files.count)")
 
         return TrackMetadata(gid: gid, name: name, durationMs: duration, files: files)
     }
 
-    /// Collects just the audio files out of a nested `Track` message.
-    private nonisolated static func parseAlternativeFiles(_ data: Data) -> [TrackMetadata.AudioFile] {
-        var files: [TrackMetadata.AudioFile] = []
-
-        var offset = 0
-        while offset < data.count, offset >= 0 {
-            let (fieldNumber, wireType, newOffset) = readTagStatic(data, offset: offset)
-            offset = newOffset
-
-            switch (fieldNumber, wireType) {
-            case (12, 2):
-                let (fileData, next) = readLengthDelimitedStatic(data, offset: offset)
-                if let audioFile = parseAudioFileStatic(fileData) {
-                    files.append(audioFile)
-                }
-                offset = next
-            default:
-                offset = skipFieldStatic(data, offset: offset, wireType: wireType)
-            }
-
-            if offset < 0 {
-                break
-            }
+    /// A `Track`'s playable files. They sit at `Track.file` (12); a relinked
+    /// recording answers with an empty list plus its playable copy under
+    /// `Track.alternative` (13) — which is the normal case for
+    /// market-substituted tracks — so the alternatives' files stand in when
+    /// the track has none of its own.
+    ///
+    /// `knownFormatsOnly` drops the formats `AudioFormat` does not name before
+    /// that choice is made, as the extended-metadata path always has; the
+    /// `/metadata/4` path keeps them, as `.unknown`.
+    private nonisolated static func playableFiles(
+        inTrack fields: [ProtobufField],
+        knownFormatsOnly: Bool,
+    ) -> [TrackMetadata.AudioFile] {
+        func files(of track: [ProtobufField]) -> [TrackMetadata.AudioFile] {
+            track.filter { $0.number == 12 }
+                .compactMap { audioFile($0.fields) }
+                .filter { !knownFormatsOnly || $0.format != .unknown }
         }
 
-        return files
+        let own = files(of: fields)
+        guard own.isEmpty else { return own }
+        return fields.filter { $0.number == 13 }.flatMap { files(of: $0.fields) }
     }
 
-    private nonisolated static func parseAudioFileStatic(_ data: Data) -> TrackMetadata.AudioFile? {
-        var fileId: Data?
-        var format: TrackMetadata.AudioFormat = .unknown
-
-        var offset = 0
-        while offset < data.count, offset >= 0 {
-            let (fieldNumber, wireType, newOffset) = readTagStatic(data, offset: offset)
-            offset = newOffset
-
-            switch (fieldNumber, wireType) {
-            case (1, 2):
-                let (bytes, next) = readLengthDelimitedStatic(data, offset: offset)
-                fileId = bytes
-                offset = next
-            case (2, 0):
-                let (value, next) = readVarintStatic(data, offset: offset)
-                format = TrackMetadata.AudioFormat(rawValue: Int(value)) ?? .unknown
-                offset = next
-            default:
-                offset = skipFieldStatic(data, offset: offset, wireType: wireType)
-            }
-
-            if offset < 0 {
-                break
-            }
-        }
-
-        guard let fid = fileId else { return nil }
-        return TrackMetadata.AudioFile(fileId: fid, format: format)
-    }
-
-    /// Parses an `AudioFile`: `{1 file_id, 2 format}`.
-    private func parseAudioFile(_ data: Data) -> TrackMetadata.AudioFile? {
-        var fileId: Data?
-        var format: TrackMetadata.AudioFormat = .unknown
-
-        var offset = 0
-        while offset < data.count {
-            let (fieldNumber, wireType, newOffset) = Self.readTag(data, offset: offset)
-            offset = newOffset
-
-            switch fieldNumber {
-            case 1:
-                let (bytes, nextOffset) = Self.readLengthDelimited(data, offset: offset)
-                fileId = bytes
-                offset = nextOffset
-            case 2:
-                let (value, nextOffset) = Self.readVarint(data, offset: offset)
-                format = TrackMetadata.AudioFormat(rawValue: Int(value)) ?? .unknown
-                offset = nextOffset
-            default:
-                offset = Self.skipField(data, offset: offset, wireType: wireType)
-            }
-
-            if offset < 0 {
-                break
-            }
-        }
-
-        guard let fid = fileId else { return nil }
-        return TrackMetadata.AudioFile(fileId: fid, format: format)
+    /// `AudioFile { 1: file_id, 2: format }`, or nil without a file id. A
+    /// missing format, or one `AudioFormat` does not name, reads as `.unknown`.
+    private nonisolated static func audioFile(_ fields: [ProtobufField]) -> TrackMetadata.AudioFile? {
+        guard let fileId = fields.last(1)?.bytes else { return nil }
+        let format = fields.last(2).flatMap { TrackMetadata.AudioFormat(rawValue: Int(truncatingIfNeeded: $0.value)) }
+        return TrackMetadata.AudioFile(fileId: fileId, format: format ?? .unknown)
     }
 
     // MARK: - Context Resolution
@@ -642,86 +385,7 @@ public actor SPClient {
         return (tracks, nextPageUrl)
     }
 
-    // MARK: - Protobuf Helpers
-
-    private nonisolated static func readTag(_ data: Data, offset: Int) -> (fieldNumber: Int, wireType: Int, newOffset: Int) {
-        guard offset < data.count else { return (0, 0, -1) }
-
-        let (tag, newOffset) = Self.readVarint(data, offset: offset)
-        let fieldNumber = Int(tag >> 3)
-        let wireType = Int(tag & 0x7)
-
-        return (fieldNumber, wireType, newOffset)
-    }
-
-    private nonisolated static func readVarint(_ data: Data, offset: Int) -> (value: UInt64, newOffset: Int) {
-        var result: UInt64 = 0
-        var shift = 0
-        var currentOffset = offset
-
-        while currentOffset < data.count {
-            let byte = data[currentOffset]
-            result |= UInt64(byte & 0x7F) << shift
-            currentOffset += 1
-
-            if byte & 0x80 == 0 {
-                break
-            }
-            shift += 7
-        }
-
-        return (result, currentOffset)
-    }
-
-    private nonisolated static func readLengthDelimited(_ data: Data, offset: Int) -> (data: Data, newOffset: Int) {
-        let (length, newOffset) = Self.readVarint(data, offset: offset)
-        let endOffset = newOffset + Int(length)
-
-        guard endOffset <= data.count else {
-            return (Data(), -1)
-        }
-
-        return (data.subdata(in: newOffset ..< endOffset), endOffset)
-    }
-
-    private nonisolated static func readString(_ data: Data, offset: Int) -> (string: String, newOffset: Int) {
-        let (bytes, newOffset) = Self.readLengthDelimited(data, offset: offset)
-        let string = String(data: bytes, encoding: .utf8) ?? ""
-        return (string, newOffset)
-    }
-
-    private nonisolated static func skipField(_ data: Data, offset: Int, wireType: Int) -> Int {
-        switch wireType {
-        case 0: // Varint
-            let (_, newOffset) = Self.readVarint(data, offset: offset)
-            return newOffset
-        case 1: // 64-bit
-            return offset + 8
-        case 2: // Length-delimited
-            let (_, newOffset) = Self.readLengthDelimited(data, offset: offset)
-            return newOffset
-        case 5: // 32-bit
-            return offset + 4
-        default:
-            return -1 // Unknown wire type
-        }
-    }
-
-    private nonisolated static func readVarintStatic(_ data: Data, offset: Int) -> (value: UInt64, newOffset: Int) {
-        readVarint(data, offset: offset)
-    }
-
-    private nonisolated static func readTagStatic(_ data: Data, offset: Int) -> (fieldNumber: Int, wireType: Int, newOffset: Int) {
-        readTag(data, offset: offset)
-    }
-
-    private nonisolated static func readLengthDelimitedStatic(_ data: Data, offset: Int) -> (data: Data, newOffset: Int) {
-        readLengthDelimited(data, offset: offset)
-    }
-
-    private nonisolated static func skipFieldStatic(_ data: Data, offset: Int, wireType: Int) -> Int {
-        skipField(data, offset: offset, wireType: wireType)
-    }
+    // MARK: - Timeout
 
     private nonisolated static func withTimeout<T: Sendable>(
         seconds: Double,
