@@ -12,6 +12,7 @@
 /// Wrapper for dealer messages
 public nonisolated struct DealerMessage: Sendable, Decodable {
     public let type: String?
+    /// The topic: a message's `uri`, or a request's `message_ident`.
     public let uri: String?
     public let headers: [String: String]?
     public let payloads: [DealerPayload]?
@@ -34,12 +35,18 @@ extension DealerMessage {
     private enum CodingKeys: String, CodingKey {
         case type, uri, headers, payloads, method, key
         case payload
+        case messageIdent = "message_ident"
     }
 
     public nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = try container.decodeIfPresent(String.self, forKey: .type)
+        // A request names its topic in `message_ident` (librespot's
+        // `WebsocketRequest`), not `uri`. Reading only `uri` routed no request
+        // anywhere: every remote command and every transfer was acknowledged
+        // as handled and then dropped.
         uri = try container.decodeIfPresent(String.self, forKey: .uri)
+            ?? container.decodeIfPresent(String.self, forKey: .messageIdent)
         headers = try container.decodeIfPresent([String: String].self, forKey: .headers)
         payloads = try container.decodeIfPresent([DealerPayload].self, forKey: .payloads)
 

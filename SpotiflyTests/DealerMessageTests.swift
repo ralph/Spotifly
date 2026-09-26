@@ -106,6 +106,8 @@ struct DealerMessageTests {
         let message = try decode(json)
 
         #expect(message.type == "request")
+        // Routed by `message_ident`: requests have no `uri`.
+        #expect(message.uri == "hm://connect-state/v1/player/command")
         #expect(
             DealerConnection.decodeCompressedPayload(message.payloadCompressed)
                 == Data(#"{"message_id":7}"#.utf8),
