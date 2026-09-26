@@ -245,28 +245,12 @@ public actor Accesspoint {
             let platform = SpotifyPlatform.linuxX86
         #endif
 
-        let buildInfo = BuildInfo(
-            product: .client,
-            productFlags: [.none],
+        let clientHelloData = KeyExchange.clientHello(
+            publicKey: dh!.publicKeyBytes,
+            nonce: nonce,
             platform: platform,
             version: Self.spotifyVersionCode,
         )
-
-        let clientHello = ClientHello(
-            buildInfo: buildInfo,
-            cryptosuitesSupported: [.shannon],
-            loginCryptoHello: LoginCryptoHelloUnion(
-                diffieHellman: LoginCryptoDiffieHellmanHello(
-                    gc: dh!.publicKeyBytes,
-                    serverKeysKnown: 1,
-                ),
-            ),
-            clientNonce: nonce,
-            padding: Data([0x1E]),
-        )
-
-        // Serialize and send ClientHello
-        let clientHelloData = clientHello.serialize()
 
         debugLog("Accesspoint", "ClientHello protobuf: \(clientHelloData.count) bytes, first 32: \(clientHelloData.prefix(32).hexString)")
         debugLog("Accesspoint", "DH public key: \(dh!.publicKeyBytes.count) bytes, first 16: \(dh!.publicKeyBytes.prefix(16).hexString)")
@@ -303,11 +287,9 @@ public actor Accesspoint {
         debugLog("Accesspoint", "Received APResponseMessage (\(responseData.count) bytes)")
 
         // Parse response
-        let apResponse = try APResponseMessage.parse(from: responseData)
+        let apResponse = APResponseMessage.parse(from: responseData)
 
-        guard let challenge = apResponse.challenge,
-              let dhChallenge = challenge.loginCryptoChallenge.diffieHellman
-        else {
+        guard let challenge = apResponse.challenge else {
             if let failed = apResponse.loginFailed {
                 throw LibrespotError.authenticationFailed("\(failed.errorCode): \(failed.errorDescription ?? "Unknown error")")
             }
@@ -315,15 +297,15 @@ public actor Accesspoint {
         }
 
         // Verify signature
-        guard verifySignature(data: dhChallenge.gs, signature: dhChallenge.gsSignature) else {
+        guard verifySignature(data: challenge.gs, signature: challenge.gsSignature) else {
             throw LibrespotError.handshakeFailed("Invalid server signature")
         }
 
         debugLog("Accesspoint", "Server signature verified")
 
         // Exchange keys
-        debugLog("Accesspoint", "Server DH public key: \(dhChallenge.gs.count) bytes, first 16: \(dhChallenge.gs.prefix(16).hexString)")
-        let sharedSecret = dh!.exchange(remotePublicKeyBytes: dhChallenge.gs)
+        debugLog("Accesspoint", "Server DH public key: \(challenge.gs.count) bytes, first 16: \(challenge.gs.prefix(16).hexString)")
+        let sharedSecret = dh!.exchange(remotePublicKeyBytes: challenge.gs)
 
         // Derive keys using HMAC-SHA1
         let keys = deriveKeys(sharedSecret: sharedSecret, exchangeData: handshakeAccumulator)
@@ -398,14 +380,7 @@ public actor Accesspoint {
     }
 
     private func solveChallenge(keys: (challenge: Data, sendKey: Data, recvKey: Data)) async throws {
-        // Build ClientResponsePlaintext
-        let response = ClientResponsePlaintext(
-            loginCryptoResponse: LoginCryptoResponseUnion(
-                diffieHellman: LoginCryptoDiffieHellmanResponse(hmac: keys.challenge),
-            ),
-        )
-
-        let responseData = response.serialize()
+        let responseData = KeyExchange.clientResponsePlaintext(hmac: keys.challenge)
         debugLog("Accesspoint", "ClientResponsePlaintext protobuf: \(responseData.count) bytes, hex: \(responseData.hexString)")
 
         // Send without hello prefix, just length + data
@@ -528,39 +503,27 @@ public actor Accesspoint {
             let os = SpotifyOS.linux
         #endif
 
-        let loginCredentials: LoginCredentials
-        if let authData = credentials.storedAuthData {
+        // APCredentials carries exactly one of the two.
+        let authType: AuthenticationType
+        let authData: Data
+        if let storedAuthData = credentials.storedAuthData {
             debugLog("Accesspoint", "Authenticating with reusable credentials as \(credentials.username)")
-            loginCredentials = LoginCredentials(
-                username: credentials.username,
-                typ: .storedSpotifyCredentials,
-                authData: authData,
-            )
+            (authType, authData) = (.storedSpotifyCredentials, storedAuthData)
         } else {
             debugLog("Accesspoint", "Authenticating with OAuth token as \(credentials.username)")
-            loginCredentials = LoginCredentials(
-                username: credentials.username,
-                typ: .spotifyToken,
-                authData: credentials.accessToken?.data(using: .utf8),
-            )
+            (authType, authData) = (.spotifyToken, Data((credentials.accessToken ?? "").utf8))
         }
 
-        let systemInfo = SystemInfo(
+        let login = Authentication.clientResponseEncrypted(
+            username: credentials.username,
+            authType: authType,
+            authData: authData,
             cpuFamily: cpuFamily,
             os: os,
-            systemInformationString: Self.versionString,
             deviceId: deviceId,
+            version: Self.versionString,
         )
-
-        let loginRequest = ClientResponseEncrypted(
-            loginCredentials: loginCredentials,
-            systemInfo: systemInfo,
-            versionString: Self.versionString,
-        )
-
-        // Send as encrypted Login packet
-        let packet = SpotifyPacket(command: .login, payload: loginRequest.serialize())
-        try await sendPacket(packet)
+        try await sendPacket(SpotifyPacket(command: .login, payload: login))
 
         debugLog("Accesspoint", "Login packet sent; waiting for response...")
 
@@ -576,9 +539,7 @@ public actor Accesspoint {
             let dataLength = potentialLength - 4
             let errorData = try await readRawBytes(count: dataLength, timeout: 10)
 
-            if let errorResponse = try? APResponseMessage.parse(from: errorData),
-               let loginFailed = errorResponse.loginFailed
-            {
+            if let loginFailed = APResponseMessage.parse(from: errorData).loginFailed {
                 debugLog("Accesspoint", "Login failed: \(loginFailed.errorCode), desc: \(loginFailed.errorDescription ?? "none")")
                 throw LibrespotError.authenticationFailed("Server rejected: \(loginFailed.errorCode)")
             }

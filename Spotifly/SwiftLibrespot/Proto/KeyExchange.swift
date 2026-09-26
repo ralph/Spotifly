@@ -2,47 +2,23 @@
 //  KeyExchange.swift
 //  SwiftLibrespot
 //
-//  Spotify key exchange protocol messages (manual protobuf implementation)
+//  The accesspoint handshake, from librespot's keyexchange.proto: the
+//  ClientHello we send, the APResponseMessage it is answered with, and the
+//  ClientResponsePlaintext that completes it.
 //
 
 import Foundation
 
-// MARK: - Enums
-
-/// Product type for client identification
-public enum SpotifyProduct: UInt32, Sendable {
-    case client = 0
-    case libspotify = 1
-    case mobile = 2
-    case partner = 3
-    case libspotifyEmbedded = 5
-}
-
-/// Product flags
-public enum SpotifyProductFlags: UInt32, Sendable {
-    case none = 0
-    case devBuild = 1
-}
-
-/// Platform identification
-public enum SpotifyPlatform: UInt32, Sendable {
-    case win32X86 = 0
+/// The platform a ClientHello names.
+public nonisolated enum SpotifyPlatform: UInt32, Sendable {
     case osxX86 = 1
     case linuxX86 = 2
-    case iphoneArm = 3
     case osxX8664 = 9
     case iphoneArm64 = 36
-    case win32X8664 = 39
 }
 
-/// Cryptosuite type
-public enum Cryptosuite: UInt32, Sendable {
-    case shannon = 0
-    case rc4Sha1Hmac = 1
-}
-
-/// Authentication error codes
-public enum SpotifyErrorCode: UInt32, Sendable {
+/// Why the accesspoint refused a handshake or a login.
+public nonisolated enum SpotifyErrorCode: UInt32, Sendable {
     case protocolError = 0
     case tryAnotherAP = 2
     case badConnectionId = 5
@@ -56,499 +32,87 @@ public enum SpotifyErrorCode: UInt32, Sendable {
     case applicationBanned = 17
 }
 
-// MARK: - Build Info
-
-/// Build information for client identification
-public struct BuildInfo: Sendable {
-    public let product: SpotifyProduct
-    public let productFlags: [SpotifyProductFlags]
-    public let platform: SpotifyPlatform
-    public let version: UInt64
-
-    public nonisolated init(
-        product: SpotifyProduct = .client,
-        productFlags: [SpotifyProductFlags] = [.none],
-        platform: SpotifyPlatform,
-        version: UInt64,
-    ) {
-        self.product = product
-        self.productFlags = productFlags
-        self.platform = platform
-        self.version = version
-    }
-
-    /// Serialize to protobuf binary format
-    public nonisolated func serialize() -> Data {
-        var data = Data()
-
-        // Field 10 (0xa): product (varint)
-        data.append(contentsOf: [0x50]) // wire type 0, field 10
-        data.append(contentsOf: encodeVarint(UInt64(product.rawValue)))
-
-        // Field 20 (0x14): product_flags (repeated varint)
-        for flag in productFlags {
-            data.append(contentsOf: [0xA0, 0x01]) // wire type 0, field 20
-            data.append(contentsOf: encodeVarint(UInt64(flag.rawValue)))
-        }
-
-        // Field 30 (0x1e): platform (varint)
-        data.append(contentsOf: [0xF0, 0x01]) // wire type 0, field 30
-        data.append(contentsOf: encodeVarint(UInt64(platform.rawValue)))
-
-        // Field 40 (0x28): version (varint)
-        data.append(contentsOf: [0xC0, 0x02]) // wire type 0, field 40
-        data.append(contentsOf: encodeVarint(version))
-
-        return data
-    }
-}
-
-// MARK: - Login Crypto Hello
-
-/// DH hello message
-public struct LoginCryptoDiffieHellmanHello: Sendable {
-    /// Our public key (gc)
-    public let gc: Data
-    /// Server keys known (always 1)
-    public let serverKeysKnown: UInt32
-
-    public nonisolated init(gc: Data, serverKeysKnown: UInt32 = 1) {
-        self.gc = gc
-        self.serverKeysKnown = serverKeysKnown
-    }
-
-    public nonisolated func serialize() -> Data {
-        var data = Data()
-
-        // Field 10 (0xa): gc (bytes)
-        data.append(contentsOf: [0x52]) // wire type 2, field 10
-        data.append(contentsOf: encodeVarint(UInt64(gc.count)))
-        data.append(gc)
-
-        // Field 20 (0x14): server_keys_known (varint)
-        data.append(contentsOf: [0xA0, 0x01]) // wire type 0, field 20
-        data.append(contentsOf: encodeVarint(UInt64(serverKeysKnown)))
-
-        return data
-    }
-}
-
-/// Login crypto hello union
-public struct LoginCryptoHelloUnion: Sendable {
-    public let diffieHellman: LoginCryptoDiffieHellmanHello?
-
-    public nonisolated init(diffieHellman: LoginCryptoDiffieHellmanHello?) {
-        self.diffieHellman = diffieHellman
-    }
-
-    public nonisolated func serialize() -> Data {
-        var data = Data()
-        if let dh = diffieHellman {
-            let dhData = dh.serialize()
-            // Field 10 (0xa): diffie_hellman (message)
-            data.append(contentsOf: [0x52]) // wire type 2, field 10
-            data.append(contentsOf: encodeVarint(UInt64(dhData.count)))
-            data.append(dhData)
-        }
-        return data
-    }
-}
-
-// MARK: - Client Hello
-
-/// ClientHello message sent to initiate connection
-public struct ClientHello: Sendable {
-    public let buildInfo: BuildInfo
-    public let cryptosuitesSupported: [Cryptosuite]
-    public let loginCryptoHello: LoginCryptoHelloUnion
-    public let clientNonce: Data
-    public let padding: Data?
-
-    public nonisolated init(
-        buildInfo: BuildInfo,
-        cryptosuitesSupported: [Cryptosuite] = [.shannon],
-        loginCryptoHello: LoginCryptoHelloUnion,
-        clientNonce: Data,
-        padding: Data? = Data([0x1E]),
-    ) {
-        self.buildInfo = buildInfo
-        self.cryptosuitesSupported = cryptosuitesSupported
-        self.loginCryptoHello = loginCryptoHello
-        self.clientNonce = clientNonce
-        self.padding = padding
-    }
-
-    /// Serialize to protobuf binary format
-    public nonisolated func serialize() -> Data {
-        var data = Data()
-
-        // Field 10 (0xa): build_info (message)
-        let buildInfoData = buildInfo.serialize()
-        data.append(contentsOf: [0x52]) // wire type 2, field 10
-        data.append(contentsOf: encodeVarint(UInt64(buildInfoData.count)))
-        data.append(buildInfoData)
-
-        // Field 30 (0x1e): cryptosuites_supported (repeated varint)
-        for suite in cryptosuitesSupported {
-            data.append(contentsOf: [0xF0, 0x01]) // wire type 0, field 30
-            data.append(contentsOf: encodeVarint(UInt64(suite.rawValue)))
-        }
-
-        // Field 50 (0x32): login_crypto_hello (message)
-        let helloData = loginCryptoHello.serialize()
-        data.append(contentsOf: [0x92, 0x03]) // wire type 2, field 50
-        data.append(contentsOf: encodeVarint(UInt64(helloData.count)))
-        data.append(helloData)
-
-        // Field 60 (0x3c): client_nonce (bytes)
-        data.append(contentsOf: [0xE2, 0x03]) // wire type 2, field 60
-        data.append(contentsOf: encodeVarint(UInt64(clientNonce.count)))
-        data.append(clientNonce)
-
-        // Field 70 (0x46): padding (bytes, optional)
-        if let padding {
-            data.append(contentsOf: [0xB2, 0x04]) // wire type 2, field 70
-            data.append(contentsOf: encodeVarint(UInt64(padding.count)))
-            data.append(padding)
-        }
-
-        return data
-    }
-}
-
-// MARK: - AP Response Message
-
-/// DH challenge from server
-public struct LoginCryptoDiffieHellmanChallenge: Sendable {
-    /// Server's public key
-    public let gs: Data
-    /// Server signature key index
-    public let serverSignatureKey: Int32
-    /// Signature of gs
-    public let gsSignature: Data
-
-    public nonisolated init(gs: Data, serverSignatureKey: Int32, gsSignature: Data) {
-        self.gs = gs
-        self.serverSignatureKey = serverSignatureKey
-        self.gsSignature = gsSignature
-    }
-}
-
-/// Login crypto challenge union
-public struct LoginCryptoChallengeUnion: Sendable {
-    public let diffieHellman: LoginCryptoDiffieHellmanChallenge?
-
-    public nonisolated init(diffieHellman: LoginCryptoDiffieHellmanChallenge?) {
-        self.diffieHellman = diffieHellman
-    }
-}
-
-/// AP challenge message
-public struct APChallenge: Sendable {
-    public let loginCryptoChallenge: LoginCryptoChallengeUnion
-    public let serverNonce: Data
-
-    public nonisolated init(loginCryptoChallenge: LoginCryptoChallengeUnion, serverNonce: Data) {
-        self.loginCryptoChallenge = loginCryptoChallenge
-        self.serverNonce = serverNonce
-    }
-}
-
-/// Login failed message
-public struct APLoginFailed: Sendable {
-    public let errorCode: SpotifyErrorCode
-    public let retryDelay: Int32?
-    public let expiry: Int32?
-    public let errorDescription: String?
-
-    public nonisolated init(
-        errorCode: SpotifyErrorCode,
-        retryDelay: Int32? = nil,
-        expiry: Int32? = nil,
-        errorDescription: String? = nil,
-    ) {
-        self.errorCode = errorCode
-        self.retryDelay = retryDelay
-        self.expiry = expiry
-        self.errorDescription = errorDescription
-    }
-}
-
-/// AP response message (contains challenge or error)
-public struct APResponseMessage: Sendable {
-    public let challenge: APChallenge?
-    public let loginFailed: APLoginFailed?
-
-    public nonisolated init(challenge: APChallenge?, loginFailed: APLoginFailed?) {
-        self.challenge = challenge
-        self.loginFailed = loginFailed
-    }
-
-    /// Parse from protobuf binary data
-    public nonisolated static func parse(from data: Data) throws -> APResponseMessage {
-        var challenge: APChallenge?
-        var loginFailed: APLoginFailed?
-
-        var offset = 0
-        while offset < data.count {
-            let (fieldNumber, wireType, newOffset) = try parseTag(data: data, offset: offset)
-            offset = newOffset
-
-            switch (fieldNumber, wireType) {
-            case (10, 2): // challenge message
-                let (msgData, nextOffset) = try parseBytes(data: data, offset: offset)
-                offset = nextOffset
-                challenge = try parseAPChallenge(from: msgData)
-
-            case (30, 2): // login_failed message
-                let (msgData, nextOffset) = try parseBytes(data: data, offset: offset)
-                offset = nextOffset
-                loginFailed = try parseAPLoginFailed(from: msgData)
-
-            default:
-                // Skip unknown field
-                offset = try skipField(data: data, offset: offset, wireType: wireType)
+/// The two handshake messages the client sends.
+///
+/// The handshake HMAC covers the ClientHello byte for byte, so its fields — the one-byte
+/// padding included — have to be exactly what librespot sends.
+nonisolated enum KeyExchange {
+    /// `ClientHello`: our build, our Diffie-Hellman public key and a nonce.
+    static func clientHello(publicKey: Data, nonce: Data, platform: SpotifyPlatform, version: UInt64) -> Data {
+        ProtobufWriter.message {
+            $0.message(field: 10) { buildInfo in
+                buildInfo.varint(field: 10, 0) // product: PRODUCT_CLIENT
+                buildInfo.varint(field: 20, 0) // product_flags: PRODUCT_FLAG_NONE
+                buildInfo.varint(field: 30, platform.rawValue)
+                buildInfo.varint(field: 40, version)
             }
+            $0.varint(field: 30, 0) // cryptosuites_supported: CRYPTO_SUITE_SHANNON
+            $0.message(field: 50) { loginCryptoHello in
+                loginCryptoHello.message(field: 10) { diffieHellman in
+                    diffieHellman.bytes(field: 10, publicKey) // gc
+                    diffieHellman.varint(field: 20, 1) // server_keys_known
+                }
+            }
+            $0.bytes(field: 60, nonce) // client_nonce
+            $0.bytes(field: 70, Data([0x1E])) // padding
         }
-
-        return APResponseMessage(challenge: challenge, loginFailed: loginFailed)
     }
 
-    private nonisolated static func parseAPChallenge(from data: Data) throws -> APChallenge {
-        var loginCryptoChallenge: LoginCryptoChallengeUnion?
-        var serverNonce = Data()
-
-        var offset = 0
-        while offset < data.count {
-            let (fieldNumber, wireType, newOffset) = try parseTag(data: data, offset: offset)
-            offset = newOffset
-
-            switch (fieldNumber, wireType) {
-            case (10, 2): // login_crypto_challenge
-                let (msgData, nextOffset) = try parseBytes(data: data, offset: offset)
-                offset = nextOffset
-                loginCryptoChallenge = try parseLoginCryptoChallengeUnion(from: msgData)
-
-            case (50, 2): // server_nonce
-                let (bytes, nextOffset) = try parseBytes(data: data, offset: offset)
-                offset = nextOffset
-                serverNonce = bytes
-
-            default:
-                offset = try skipField(data: data, offset: offset, wireType: wireType)
+    /// `ClientResponsePlaintext`: the HMAC proving we derived the same keys as the server.
+    ///
+    /// `pow_response` and `crypto_response` are required fields with nothing to say for
+    /// Shannon, so they go out empty rather than not at all.
+    static func clientResponsePlaintext(hmac: Data) -> Data {
+        ProtobufWriter.message {
+            $0.message(field: 10) { loginCryptoResponse in
+                loginCryptoResponse.message(field: 10) { $0.bytes(field: 10, hmac) } // diffie_hellman.hmac
             }
+            $0.message(field: 20) { _ in } // pow_response
+            $0.message(field: 30) { _ in } // crypto_response
         }
+    }
+}
 
-        guard let crypto = loginCryptoChallenge else {
-            throw LibrespotError.handshakeFailed("Missing login crypto challenge")
-        }
-
-        return APChallenge(loginCryptoChallenge: crypto, serverNonce: serverNonce)
+/// The accesspoint's answer to a ClientHello: a challenge to continue with, or a refusal.
+public nonisolated struct APResponseMessage: Sendable {
+    /// The server's Diffie-Hellman public key and its signature by Spotify's well-known key.
+    public nonisolated struct Challenge: Sendable {
+        public let gs: Data
+        public let gsSignature: Data
     }
 
-    private nonisolated static func parseLoginCryptoChallengeUnion(from data: Data) throws -> LoginCryptoChallengeUnion {
-        var diffieHellman: LoginCryptoDiffieHellmanChallenge?
-
-        var offset = 0
-        while offset < data.count {
-            let (fieldNumber, wireType, newOffset) = try parseTag(data: data, offset: offset)
-            offset = newOffset
-
-            switch (fieldNumber, wireType) {
-            case (10, 2): // diffie_hellman
-                let (msgData, nextOffset) = try parseBytes(data: data, offset: offset)
-                offset = nextOffset
-                diffieHellman = try parseDHChallenge(from: msgData)
-
-            default:
-                offset = try skipField(data: data, offset: offset, wireType: wireType)
-            }
-        }
-
-        return LoginCryptoChallengeUnion(diffieHellman: diffieHellman)
+    public nonisolated struct LoginFailed: Sendable {
+        public let errorCode: SpotifyErrorCode
+        public let errorDescription: String?
     }
 
-    private nonisolated static func parseDHChallenge(from data: Data) throws -> LoginCryptoDiffieHellmanChallenge {
-        var gs = Data()
-        var serverSignatureKey: Int32 = 0
-        var gsSignature = Data()
+    /// Nil unless the answer carries a Diffie-Hellman challenge.
+    public let challenge: Challenge?
+    public let loginFailed: LoginFailed?
 
-        var offset = 0
-        while offset < data.count {
-            let (fieldNumber, wireType, newOffset) = try parseTag(data: data, offset: offset)
-            offset = newOffset
+    /// `APResponseMessage { 10: challenge, 30: login_failed }`, where the challenge nests as
+    /// `login_crypto_challenge (10) → diffie_hellman (10) → { 10: gs, 30: gs_signature }` and
+    /// the refusal is `{ 10: error_code, 40: error_description }`.
+    static func parse(from data: Data) -> APResponseMessage {
+        let fields = ProtobufReader.fields(in: data)
+        let diffieHellman = fields.last(10)?.fields.last(10)?.fields.last(10)?.fields
+        let refusal = fields.last(30)?.fields
 
-            switch (fieldNumber, wireType) {
-            case (10, 2): // gs
-                let (bytes, nextOffset) = try parseBytes(data: data, offset: offset)
-                offset = nextOffset
-                gs = bytes
-
-            case (20, 0): // server_signature_key
-                let (value, nextOffset) = try parseVarint(data: data, offset: offset)
-                offset = nextOffset
-                serverSignatureKey = Int32(bitPattern: UInt32(truncatingIfNeeded: value))
-
-            case (30, 2): // gs_signature
-                let (bytes, nextOffset) = try parseBytes(data: data, offset: offset)
-                offset = nextOffset
-                gsSignature = bytes
-
-            default:
-                offset = try skipField(data: data, offset: offset, wireType: wireType)
-            }
-        }
-
-        return LoginCryptoDiffieHellmanChallenge(
-            gs: gs,
-            serverSignatureKey: serverSignatureKey,
-            gsSignature: gsSignature,
+        return APResponseMessage(
+            challenge: diffieHellman.map { diffieHellman in
+                Challenge(
+                    gs: diffieHellman.last(10)?.bytes ?? Data(),
+                    gsSignature: diffieHellman.last(30)?.bytes ?? Data(),
+                )
+            },
+            loginFailed: refusal.map { refusal in
+                let code = refusal.last(10).map { UInt32(truncatingIfNeeded: $0.value) }
+                return LoginFailed(
+                    errorCode: code.flatMap(SpotifyErrorCode.init(rawValue:)) ?? .protocolError,
+                    errorDescription: refusal.last(40)?.string,
+                )
+            },
         )
-    }
-
-    private nonisolated static func parseAPLoginFailed(from data: Data) throws -> APLoginFailed {
-        var errorCode: SpotifyErrorCode = .protocolError
-        var retryDelay: Int32?
-        var expiry: Int32?
-        var errorDescription: String?
-
-        var offset = 0
-        while offset < data.count {
-            let (fieldNumber, wireType, newOffset) = try parseTag(data: data, offset: offset)
-            offset = newOffset
-
-            switch (fieldNumber, wireType) {
-            case (10, 0): // error_code
-                let (value, nextOffset) = try parseVarint(data: data, offset: offset)
-                offset = nextOffset
-                errorCode = SpotifyErrorCode(rawValue: UInt32(value)) ?? .protocolError
-
-            case (20, 0): // retry_delay
-                let (value, nextOffset) = try parseVarint(data: data, offset: offset)
-                offset = nextOffset
-                retryDelay = Int32(value)
-
-            case (30, 0): // expiry
-                let (value, nextOffset) = try parseVarint(data: data, offset: offset)
-                offset = nextOffset
-                expiry = Int32(value)
-
-            case (40, 2): // error_description
-                let (bytes, nextOffset) = try parseBytes(data: data, offset: offset)
-                offset = nextOffset
-                errorDescription = String(data: bytes, encoding: .utf8)
-
-            default:
-                offset = try skipField(data: data, offset: offset, wireType: wireType)
-            }
-        }
-
-        return APLoginFailed(
-            errorCode: errorCode,
-            retryDelay: retryDelay,
-            expiry: expiry,
-            errorDescription: errorDescription,
-        )
-    }
-}
-
-// MARK: - Client Response Plaintext
-
-/// DH response with HMAC
-public struct LoginCryptoDiffieHellmanResponse: Sendable {
-    public let hmac: Data
-
-    public nonisolated init(hmac: Data) {
-        self.hmac = hmac
-    }
-
-    public nonisolated func serialize() -> Data {
-        var data = Data()
-        // Field 10 (0xa): hmac (bytes)
-        data.append(contentsOf: [0x52]) // wire type 2, field 10
-        data.append(contentsOf: encodeVarint(UInt64(hmac.count)))
-        data.append(hmac)
-        return data
-    }
-}
-
-/// Login crypto response union
-public struct LoginCryptoResponseUnion: Sendable {
-    public let diffieHellman: LoginCryptoDiffieHellmanResponse?
-
-    public nonisolated init(diffieHellman: LoginCryptoDiffieHellmanResponse?) {
-        self.diffieHellman = diffieHellman
-    }
-
-    public nonisolated func serialize() -> Data {
-        var data = Data()
-        if let dh = diffieHellman {
-            let dhData = dh.serialize()
-            // Field 10 (0xa): diffie_hellman (message)
-            data.append(contentsOf: [0x52]) // wire type 2, field 10
-            data.append(contentsOf: encodeVarint(UInt64(dhData.count)))
-            data.append(dhData)
-        }
-        return data
-    }
-}
-
-/// PoW response union (empty for now)
-public struct PoWResponseUnion: Sendable {
-    public nonisolated init() {}
-
-    public nonisolated func serialize() -> Data {
-        Data()
-    }
-}
-
-/// Crypto response union (empty for Shannon)
-public struct CryptoResponseUnion: Sendable {
-    public nonisolated init() {}
-
-    public nonisolated func serialize() -> Data {
-        Data()
-    }
-}
-
-/// Client response after challenge
-public struct ClientResponsePlaintext: Sendable {
-    public let loginCryptoResponse: LoginCryptoResponseUnion
-    public let powResponse: PoWResponseUnion
-    public let cryptoResponse: CryptoResponseUnion
-
-    public nonisolated init(
-        loginCryptoResponse: LoginCryptoResponseUnion,
-        powResponse: PoWResponseUnion = PoWResponseUnion(),
-        cryptoResponse: CryptoResponseUnion = CryptoResponseUnion(),
-    ) {
-        self.loginCryptoResponse = loginCryptoResponse
-        self.powResponse = powResponse
-        self.cryptoResponse = cryptoResponse
-    }
-
-    public nonisolated func serialize() -> Data {
-        var data = Data()
-
-        // Field 10 (0xa): login_crypto_response (message)
-        let cryptoData = loginCryptoResponse.serialize()
-        data.append(contentsOf: [0x52]) // wire type 2, field 10
-        data.append(contentsOf: encodeVarint(UInt64(cryptoData.count)))
-        data.append(cryptoData)
-
-        // Field 20 (0x14): pow_response (message) - MUST include even when empty (required field)
-        let powData = powResponse.serialize()
-        data.append(contentsOf: [0xA2, 0x01]) // wire type 2, field 20
-        data.append(contentsOf: encodeVarint(UInt64(powData.count)))
-        data.append(powData)
-
-        // Field 30 (0x1e): crypto_response (message) - MUST include even when empty (required field)
-        let cryptoRespData = cryptoResponse.serialize()
-        data.append(contentsOf: [0xF2, 0x01]) // wire type 2, field 30
-        data.append(contentsOf: encodeVarint(UInt64(cryptoRespData.count)))
-        data.append(cryptoRespData)
-
-        return data
     }
 }
 

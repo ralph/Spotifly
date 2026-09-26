@@ -32,34 +32,30 @@ struct WireFormatPinTests {
     }
 
     @Test func `every outgoing message serializes to its recorded bytes`() {
-        let clientHello = ClientHello(
-            buildInfo: BuildInfo(product: .client, productFlags: [.none], platform: .osxX86, version: 124_200_290),
-            cryptosuitesSupported: [.shannon],
-            loginCryptoHello: LoginCryptoHelloUnion(
-                diffieHellman: LoginCryptoDiffieHellmanHello(gc: Data(repeating: 0x11, count: 96), serverKeysKnown: 1),
-            ),
-            clientNonce: Data(repeating: 0x22, count: 16),
-            padding: Data([0x1E]),
+        let clientHello = KeyExchange.clientHello(
+            publicKey: Data(repeating: 0x11, count: 96),
+            nonce: Data(repeating: 0x22, count: 16),
+            platform: .osxX86,
+            version: 124_200_290,
         )
-        Self.check("clientHello", clientHello.serialize())
+        Self.check("clientHello", clientHello)
 
-        let plaintext = ClientResponsePlaintext(
-            loginCryptoResponse: LoginCryptoResponseUnion(
-                diffieHellman: LoginCryptoDiffieHellmanResponse(hmac: Data(repeating: 0x33, count: 20)),
-            ),
-        )
-        Self.check("clientResponsePlaintext", plaintext.serialize())
+        Self.check("clientResponsePlaintext", KeyExchange.clientResponsePlaintext(hmac: Data(repeating: 0x33, count: 20)))
 
-        for (name, credentials) in [
-            ("stored", LoginCredentials(username: "someone", typ: .storedSpotifyCredentials, authData: Data([1, 2, 3]))),
-            ("token", LoginCredentials(username: "someone", typ: .spotifyToken, authData: Data("token".utf8))),
+        for (name, authType, authData) in [
+            ("stored", AuthenticationType.storedSpotifyCredentials, Data([1, 2, 3])),
+            ("token", .spotifyToken, Data("token".utf8)),
         ] {
-            let login = ClientResponseEncrypted(
-                loginCredentials: credentials,
-                systemInfo: SystemInfo(cpuFamily: .arm, os: .osx, systemInformationString: "librespot 0.8.0", deviceId: "device-1"),
-                versionString: "librespot 0.8.0",
+            let login = Authentication.clientResponseEncrypted(
+                username: "someone",
+                authType: authType,
+                authData: authData,
+                cpuFamily: .arm,
+                os: .osx,
+                deviceId: "device-1",
+                version: "librespot 0.8.0",
             )
-            Self.check("login-\(name)", login.serialize())
+            Self.check("login-\(name)", login)
         }
 
         var device = ConnectDevice()

@@ -119,6 +119,14 @@ nonisolated struct ProtobufField {
     }
 }
 
+extension [ProtobufField] {
+    /// The field with this number, or the last of them if it repeats — which is how protobuf
+    /// reads a singular field that arrives twice.
+    nonisolated func last(_ number: Int) -> ProtobufField? {
+        last { $0.number == number }
+    }
+}
+
 /// Reads protobuf wire format.
 ///
 /// Unknown fields are skipped rather than rejected — Spotify adds fields to these messages
