@@ -490,7 +490,7 @@ public actor DealerConnection {
     /// describes: `{endpoint: "…", …}` with endpoint-specific fields nested
     /// underneath (`options.seek_to`, `options.skip_to.track_uri`,
     /// `track.uri`, plain `value` for the toggles).
-    private nonisolated static func parseCommand(endpoint: String, json: [String: Any]) -> SpircCommand {
+    nonisolated static func parseCommand(endpoint: String, json: [String: Any]) -> SpircCommand {
         let options = json["options"] as? [String: Any]
 
         switch endpoint {
@@ -541,12 +541,12 @@ public actor DealerConnection {
             return .addToQueue(uri: track?["uri"] as? String ?? "")
 
         case "transfer":
-            // We only receive this when we are the transfer target; the
-            // embedded state blob is protobuf we do not consume yet.
-            return .transfer(SpircCommand.TransferCommand(
-                targetDeviceId: json["from_device_identifier"] as? String ?? "",
-                transferData: nil,
-            ))
+            // Sent to the device taking over. `data` is the base64 TransferState:
+            // the context, the track, where it was and whether it was paused.
+            guard let base64 = json["data"] as? String, let data = Data(base64Encoded: base64) else {
+                return .unknown("transfer without data")
+            }
+            return .transfer(TransferState(parsing: data))
 
         default:
             return .unknown(endpoint)

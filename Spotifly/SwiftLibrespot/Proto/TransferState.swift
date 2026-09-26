@@ -1,0 +1,129 @@
+//
+//  TransferState.swift
+//  SwiftLibrespot
+//
+//  What another device hands over along with playback.
+//
+
+import Foundation
+
+/// The `data` of a Connect `transfer` command: librespot's `TransferState`
+/// (`protocol/proto/transfer_state.proto` and the messages it nests), reduced
+/// to what this player can act on.
+///
+/// ```
+/// TransferState {
+///   1 options         { 1 shuffling_context, 2 repeating_context, 3 repeating_track }
+///   2 playback        { 1 timestamp, 2 position_as_of_timestamp, 4 is_paused, 5 current_track }
+///   3 current_session { 2 context { 1 uri, 5 pages { 4 tracks } }, 3 current_uid }
+///   4 queue           { 1 tracks, 2 is_playing_queue }
+/// }
+/// ContextTrack { 1 uri, 2 uid, 3 gid }
+/// ```
+public nonisolated struct TransferState: Sendable {
+    var contextUri = ""
+    /// The context's tracks as the sender had them, when it sent any. Often
+    /// only a window of the context, so the uri is the better source.
+    var contextTrackUris: [String] = []
+    /// The track that was playing.
+    var currentTrackUri: String?
+    /// Tracks the user queued on the sending device, which play before the
+    /// context continues.
+    var queuedTrackUris: [String] = []
+
+    var positionAsOfTimestamp: Int64 = 0
+    var timestamp: Int64 = 0
+    var isPaused = false
+
+    var shuffle = false
+    var repeatContext = false
+    var repeatTrack = false
+
+    init(parsing data: Data) {
+        var playingQueue = false
+
+        for field in ProtobufReader.fields(in: data) {
+            switch field.number {
+            case 1:
+                for option in field.fields {
+                    switch option.number {
+                    case 1: shuffle = option.bool
+                    case 2: repeatContext = option.bool
+                    case 3: repeatTrack = option.bool
+                    default: break
+                    }
+                }
+            case 2:
+                for playback in field.fields {
+                    switch playback.number {
+                    case 1: timestamp = playback.int64
+                    case 2: positionAsOfTimestamp = Int64(Int32(truncatingIfNeeded: playback.value))
+                    case 4: isPaused = playback.bool
+                    case 5: currentTrackUri = Self.trackUri(playback.fields)
+                    default: break
+                    }
+                }
+            case 3:
+                for context in field.fields where context.number == 2 {
+                    for part in context.fields {
+                        switch part.number {
+                        case 1:
+                            contextUri = part.string
+                        case 5:
+                            let tracks = part.fields.filter { $0.number == 4 }
+                            contextTrackUris += tracks.compactMap { Self.trackUri($0.fields) }
+                        default:
+                            break
+                        }
+                    }
+                }
+            case 4:
+                for queue in field.fields {
+                    switch queue.number {
+                    case 1:
+                        if let uri = Self.trackUri(queue.fields) {
+                            queuedTrackUris.append(uri)
+                        }
+                    case 2:
+                        playingQueue = queue.bool
+                    default:
+                        break
+                    }
+                }
+            default:
+                break
+            }
+        }
+
+        // Playing from the queue means the queue's head *is* the current track
+        // (librespot's `current_track_from_transfer`).
+        if playingQueue, !queuedTrackUris.isEmpty {
+            currentTrackUri = queuedTrackUris.removeFirst()
+        }
+
+        // A context started from a bare list of uris is sent as "-" or nothing.
+        if contextUri == "-" {
+            contextUri = ""
+        }
+    }
+
+    /// Where the track is now: it kept playing on the sender since `timestamp`
+    /// unless it was paused.
+    func position(atMs now: Int64) -> Int64 {
+        guard !isPaused, positionAsOfTimestamp > 0, timestamp > 0 else {
+            return max(0, positionAsOfTimestamp)
+        }
+        return max(0, positionAsOfTimestamp + now - timestamp)
+    }
+
+    /// A `ContextTrack`'s uri, rebuilt from its gid when only that was sent.
+    private static func trackUri(_ fields: [ProtobufField]) -> String? {
+        if let uri = fields.first(where: { $0.number == 1 })?.string, !uri.isEmpty {
+            return uri
+        }
+        guard let gid = fields.first(where: { $0.number == 3 })?.bytes, gid.count == 16,
+              let id = SpotifyGID.base62(fromGID: gid.hexString)
+        else { return nil }
+        return "spotify:track:\(id)"
+    }
+}

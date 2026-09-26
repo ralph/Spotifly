@@ -172,7 +172,10 @@ actor AudioPipeline {
     // MARK: - Playback Control
 
     /// Plays a track by URI, resolving everything needed along the way.
-    func playTrack(uri: String, positionMs: UInt64 = 0) async throws {
+    ///
+    /// - Parameter paused: load and position the track but hold playout until
+    ///   `resume()`, as a handover of paused playback needs.
+    func playTrack(uri: String, positionMs: UInt64 = 0, paused: Bool = false) async throws {
         guard let spclient else {
             throw LibrespotError.invalidState("SPClient not configured")
         }
@@ -226,7 +229,7 @@ actor AudioPipeline {
         let startFrame = positionMs > 0
             ? Int64((Double(positionMs) / 1000.0) * Double(vorbis.format.sampleRate))
             : 0
-        startDecoding(from: startFrame)
+        startDecoding(from: startFrame, keepPaused: paused)
     }
 
     func pause() {

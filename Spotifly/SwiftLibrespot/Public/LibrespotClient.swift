@@ -357,12 +357,20 @@ public actor LibrespotClient {
     ///     not its index — a Connect `play` names both a context and a
     ///     `skip_to.track_uri`, and only the resolved list can turn one into
     ///     the other.
-    public func play(uriOrUrl: String, trackIndex: Int, startingAtUri: String? = nil) async throws {
+    ///   - positionMs: where in that track to start.
+    ///   - paused: load it without starting playout, as a paused handover does.
+    public func play(
+        uriOrUrl: String,
+        trackIndex: Int,
+        startingAtUri: String? = nil,
+        positionMs: UInt64 = 0,
+        paused: Bool = false,
+    ) async throws {
         let uri = Self.normalizedUri(uriOrUrl)
 
         if uri.contains("spotify:track:") {
             setQueue(contextUri: uri, tracks: [uri], startIndex: 0)
-            try await loadCurrentTrack()
+            try await loadCurrentTrack(positionMs: positionMs, paused: paused)
             return
         }
 
@@ -377,15 +385,25 @@ public actor LibrespotClient {
             throw LibrespotError.trackNotFound("Context has no tracks")
         }
 
-        let start = if trackIndex >= 0 {
-            min(trackIndex, context.tracks.count - 1)
-        } else if let startingAtUri, let found = context.tracks.firstIndex(of: startingAtUri) {
-            found
+        var tracks = context.tracks
+        let start: Int
+        if trackIndex >= 0 {
+            start = min(trackIndex, tracks.count - 1)
+        } else if let startingAtUri {
+            // A track the resolved list does not name — a relinked id, a
+            // window that moved — still has to be the one that plays, so it
+            // goes in front of the context rather than starting it over.
+            if let found = tracks.firstIndex(of: startingAtUri) {
+                start = found
+            } else {
+                tracks.insert(startingAtUri, at: 0)
+                start = 0
+            }
         } else {
-            0
+            start = 0
         }
-        setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: context.tracks, startIndex: start)
-        try await loadCurrentTrack()
+        setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: tracks, startIndex: start)
+        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
     public func playTracks(_ uris: [String]) async throws {
@@ -591,18 +609,18 @@ public actor LibrespotClient {
         publishQueueNotifications()
     }
 
-    private func loadCurrentTrack() async throws {
+    private func loadCurrentTrack(positionMs: UInt64 = 0, paused: Bool = false) async throws {
         guard let uri = playbackQueue.currentUri ?? playbackQueue.advance() else {
             throw LibrespotError.invalidState("Nothing to play")
         }
-        try await loadAndPlay(uri)
+        try await loadAndPlay(uri, positionMs: positionMs, paused: paused)
     }
 
     /// Starts audio for a uri that is already the queue's current track.
     ///
     /// Deliberately separate from `play`: advancing through an existing queue
     /// must not rebuild it.
-    private func loadAndPlay(_ uri: String) async throws {
+    private func loadAndPlay(_ uri: String, positionMs: UInt64 = 0, paused: Bool = false) async throws {
         guard let audioPipeline else {
             throw LibrespotError.notInitialized
         }
@@ -610,11 +628,12 @@ public actor LibrespotClient {
         // The optimistic state below must not carry the previous track's
         // length; until metadata lands, zero is the honest answer.
         knownDurationMs = 0
-        loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: 0))
-        publishPlaybackState(for: uri, playing: true, paused: false, positionMs: 0)
+        let position = UInt32(clamping: positionMs)
+        loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: position))
+        publishPlaybackState(for: uri, playing: !paused, paused: paused, positionMs: Int64(position))
 
         do {
-            try await audioPipeline.playTrack(uri: uri)
+            try await audioPipeline.playTrack(uri: uri, positionMs: positionMs, paused: paused)
         } catch {
             // The optimistic state above claimed this track was playing. If
             // metadata, the key, the CDN or the decoder said otherwise, leaving
@@ -845,6 +864,52 @@ public actor LibrespotClient {
         await publishConnectionState(connected: session?.isConnected == true)
     }
 
+    /// Picks up playback another device handed over — librespot's
+    /// `handle_transfer`: the same context, the same track, the same place in
+    /// it, the same options, and paused if it was paused.
+    private func takeOver(_ transfer: TransferState) async {
+        guard let track = transfer.currentTrackUri else {
+            debugLog("LibrespotClient", "Transfer named no track; ignoring it")
+            return
+        }
+        let positionMs = UInt64(transfer.position(atMs: Int64(Date().timeIntervalSince1970 * 1000)))
+        debugLog("LibrespotClient", "Taking over \(track) in \(transfer.contextUri) at \(positionMs)ms\(transfer.isPaused ? ", paused" : "")")
+
+        // Active even when the handover arrives paused: the sender has already
+        // let go, and a paused player is still the one that holds playback.
+        await session?.reportLocalActive(true)
+
+        shuffleEnabled = transfer.shuffle
+        playbackQueue.setShuffle(transfer.shuffle)
+        repeatMode = transfer.repeatTrack ? .track : (transfer.repeatContext ? .context : .off)
+        playbackQueue.setRepeat(repeatMode)
+
+        do {
+            if !transfer.contextUri.isEmpty {
+                try await play(
+                    uriOrUrl: transfer.contextUri,
+                    trackIndex: -1,
+                    startingAtUri: track,
+                    positionMs: positionMs,
+                    paused: transfer.isPaused,
+                )
+            } else {
+                // Started from a bare list of uris, so the list is all there is.
+                let tracks = transfer.contextTrackUris.contains(track) ? transfer.contextTrackUris : [track]
+                setQueue(contextUri: "", tracks: tracks, startIndex: tracks.firstIndex(of: track) ?? 0)
+                try await loadCurrentTrack(positionMs: positionMs, paused: transfer.isPaused)
+            }
+        } catch {
+            debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
+            return
+        }
+
+        for uri in transfer.queuedTrackUris {
+            playbackQueue.enqueue(uri)
+        }
+        publishQueueNotifications()
+    }
+
     // MARK: - Remote Commands
 
     private func executeRemoteCommand(_ envelope: SpircRemoteCommand) async {
@@ -858,22 +923,18 @@ public actor LibrespotClient {
             // to start in it. Preferring the track built a one-track queue and
             // threw the rest of the playlist away, so a remote "play this album
             // from track 4" stopped after track 4.
+            let positionMs = playCommand.positionMs ?? 0
             if let contextUri = playCommand.contextUri, !contextUri.isEmpty {
                 try? await play(
                     uriOrUrl: contextUri,
                     trackIndex: playCommand.index ?? -1,
                     startingAtUri: playCommand.trackUri,
+                    positionMs: positionMs,
                 )
             } else if let uris = playCommand.trackUris, uris.count > 1 {
                 try? await playTracks(uris)
             } else if let single = playCommand.trackUri ?? playCommand.trackUris?.first {
-                try? await play(uriOrUrl: single, trackIndex: 0)
-            } else {
-                return
-            }
-
-            if let positionMs = playCommand.positionMs, positionMs > 0 {
-                try? await audioPipeline?.seek(positionMs: positionMs)
+                try? await play(uriOrUrl: single, trackIndex: 0, positionMs: positionMs)
             }
 
         case .pause:
@@ -908,7 +969,10 @@ public actor LibrespotClient {
         case let .addToQueue(uri):
             await addToQueue(uri: uri)
 
-        case .transfer, .unknown:
+        case let .transfer(state):
+            await takeOver(state)
+
+        case .unknown:
             break
         }
     }

@@ -111,7 +111,7 @@ public enum SpircCommand: Sendable {
     case setVolume(UInt32)
     case setShuffle(Bool)
     case setRepeat(RepeatMode)
-    case transfer(TransferCommand)
+    case transfer(TransferState)
     case addToQueue(uri: String)
     case unknown(String)
 
@@ -121,11 +121,6 @@ public enum SpircCommand: Sendable {
         public let trackUris: [String]?
         public let index: Int?
         public let positionMs: UInt64?
-    }
-
-    public struct TransferCommand: Sendable {
-        public let targetDeviceId: String
-        public let transferData: Data?
     }
 
     /// Repeat mode as the wire numbers it.
