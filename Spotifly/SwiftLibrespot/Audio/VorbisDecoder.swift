@@ -135,7 +135,9 @@ final nonisolated class VorbisDecoder: @unchecked Sendable {
             let destination = output + written * channelCount
             for channel in 0 ..< channelCount {
                 guard let samples = channels[channel] else { continue }
-                cblas_scopy(Int32(frameCount), samples, 1, destination + channel, Int32(channelCount))
+                // One column, frameCount rows: source rows 1 apart, destination
+                // rows channelCount apart.
+                vDSP_mmov(samples, destination + channel, 1, vDSP_Length(frameCount), 1, vDSP_Length(channelCount))
             }
 
             written += frameCount
