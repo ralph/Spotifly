@@ -16,7 +16,7 @@ extension String? {
     /// description, and the detail header rendered it verbatim — the view's `?? ""` never saw a
     /// nil to fall back from. Normalised at the entity boundary rather than in the view, so
     /// every reader gets the same answer.
-    var normalizedPlaylistDescription: String? {
+    nonisolated var normalizedPlaylistDescription: String? {
         guard let self, self != "null", !self.isEmpty else { return nil }
         return self
     }
