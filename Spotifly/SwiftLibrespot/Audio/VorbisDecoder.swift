@@ -6,6 +6,7 @@
 //  Ogg Vorbis audio streams held in memory.
 //
 
+import Accelerate
 import CVorbis
 import Foundation
 
@@ -127,26 +128,20 @@ final nonisolated class VorbisDecoder: @unchecked Sendable {
             let channelCount = format.channels
             let frameCount = Int(frames)
 
-            // `written` counts frames; the destination is sample-indexed.
-            for frame in 0 ..< frameCount {
-                let base = (written + frame) * channelCount
-                for channel in 0 ..< channelCount {
-                    output[base + channel] = channels[channel]![frame]
-                }
+            // Interleave: each channel's samples go to every channelCount-th
+            // slot, starting at its own offset. One strided copy per channel
+            // instead of a scalar loop per sample, which was the decode
+            // thread's main cost in a Debug build.
+            let destination = output + written * channelCount
+            for channel in 0 ..< channelCount {
+                guard let samples = channels[channel] else { continue }
+                cblas_scopy(Int32(frameCount), samples, 1, destination + channel, Int32(channelCount))
             }
 
             written += frameCount
         }
 
         return written
-    }
-
-    /// Reads up to `maxFrames` frames, allocating the destination array.
-    func read(maxFrames: Int) -> ([Float], framesRead: Int)? {
-        var output = [Float](repeating: 0, count: maxFrames * max(1, format.channels))
-        let frames = read(into: &output, maxFrames: maxFrames)
-        guard frames > 0 else { return nil }
-        return (output, frames)
     }
 
     // MARK: - Positioning

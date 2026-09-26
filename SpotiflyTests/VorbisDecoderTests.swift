@@ -1,0 +1,119 @@
+//
+//  VorbisDecoderTests.swift
+//  SpotiflyTests
+//
+
+import Foundation
+@testable import Spotifly
+import Testing
+
+/// Decoding a real Ogg Vorbis stream through the vendored libvorbisfile.
+///
+/// The fixture is 0.1 s of stereo at 44.1 kHz — a 440 Hz sine on the left, silence on the
+/// right — encoded by ffmpeg's own Vorbis encoder:
+///
+///     ffmpeg -f lavfi -i "sine=frequency=440:sample_rate=44100:duration=0.1" \
+///            -f lavfi -i "anullsrc=r=44100:cl=mono:d=0.1" \
+///            -filter_complex "[0:a][1:a]join=inputs=2:channel_layout=stereo[a]" \
+///            -map "[a]" -c:a vorbis -strict -2 lr.ogg
+///
+/// Different content per channel is the point: a decoder that swaps or smears the channels
+/// while interleaving still produces plausible audio, and no log would show it.
+struct VorbisDecoderTests {
+    private static let leftOnly = Data(base64Encoded: """
+    T2dnUwACAAAAAAAAAAAsK2tTAAAAADbDQegBHgF2b3JiaXMAAAAAAkSsAAAAAAAAAAAAAAAAAAC7AU9nZ1MAAAAAAAAAAAAA
+    LCtrUwEAAABZK9q2Djv///////////////+7A3ZvcmJpcwwAAABMYXZmNjMuMS4xMDIBAAAAGwAAAGVuY29kZXI9TGF2YzYz
+    LjEuMTAyIHZvcmJpcwEFdm9yYmlzHEJDVgIAEAAAhHSaWaoBIsxAhoHQkJUAAAIAAGCEIgwxIDRkJQAAEAAAIIaSg2hCa843
+    5zholoOmUmxOBydSbZ7kpmJuzjnnnHOyOWeMc845pyhnFoNmQmvOOScxaJaCZkJrzjnnSWwetKZKa845Z5xzOhhnhHHOOadJ
+    ax6kZmNtzjlnQWuao+ZSbM45J1JuntTmUm3OOeecc84555xzzjmnenE6B+eEc845J2pvruUmdHHOOeeTcbo3J4RzzjnnnHPO
+    Oeecc845JwgNWQkAAAEAEIRhYxh3CoL0ORqIUYSYhkx60D06TILGIKeQejQ6GimlDkJJZZyU0glCQ1YCAIAAABBCSCGFFFJI
+    IYUUUkghhRhiiCGGnHLKKaigkkoqqiijzDLLLLPMMssssw4766zDDkMMMcTQSiux1FRbjTXWmnvOueYgrZXWWmutlFJKKaWU
+    gtCQlQAACAAAgZBBBhlkFFJIIYUYYsopp5yCCiogNGQlAAAGAMAhZ6CBBhpooIEGGmigccYZiCCCCCKopJJMOgoptdhqzDHX
+    XoMOOveee++5+ByEUkoppZRSSimllFJKKSUIDVkJAIAAAAAIIYQQUkghhRRSijHGHHMOOgklBEJDVgIAYAAADDHEGGSQQUgh
+    hRhiiinHHHMMOgghlFJSaKGFXGqIJZZWWomlpZhqi7HWWHPtMdbee++9995777333nvOgdCQlQBABAAAgwwiiCCCjDEGIQSE
+    hqwEAEAAABBiiDHGIIQQUoghp5yCTDLppKOQAqEhKwEAJwAAhBFHJHEEEmeggQgqqSCjzEIssbXWWmuttdZaa6211lprrbXW
+    WmuttdZaa6211lprLRAashIAiAAAYJBBBhlEEEEEGWSA0JCVAAAIAAAjjEAEGaUUY4455hh00EEnHYUWWiA0ZCUA4AQAQCCh
+    iDLMMAQRVVRRRhVVFFJHKaWUUkoppZRSSimllFJKKaWUUkoppZRSSimlVEoppQRCQ1YCAGQAAJCilFIpLUWCIqUYpBhLRhVz
+    UFqKqHIMUs2pUs4g5iSWiDGElJNUMuYUQgxC6hx1TCkGLZUYQsYYpNhyS6FzDggNWSEAhGYAOBwHkCwLkCwLAAAAAAAAACRN
+    AzTPAyzNAwAAAAAAAABJ0wDL0wDN8wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAkDQN0DwP0DwPAAAAAAAAADTPAzxPBDxRBAAAAAAAAADL8wBN9ABPFAEAAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAkDQN0DwP0DwPAAAAAAAAACzP
+    AzxRBDRPBAAAAAAAAADL8wBPFAFP9AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    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
+    KAAAAAAAAHjx3WffffbdZ999BgCwk0qlUgEAAAAAAAAAAAAAWF1ZWe33ev1+rxeCL+xz9tu/8tEBTN889G245dv/v3njvzf/
+    f+ONG7/8xS8+/eUnn3z66SOPPProxSOX///589evnz9//fr58+3X68+3//N73+d53+d53+d53+d53+d5337m7WcOr8Pr8Dq8
+    Dq/D6/A6vA6vw+vwOrwOr8Pr8Dq8Dq/D6/A6vA6vw8u+rLHGGmusscYaa6wB/kPCX1Cw/k9A/JeIsT/i78UhjEYEAAAAAAAA
+    sIRiAAAAAAAAAAAAAAAAAAAAAGC//Q+fNoBwcMuW/bWOCAAAPjRin1Cw/feFVP8lQXwoL78xRmhyCgAAAAAAAGAJAAAALIYB
+    AAAAAAAAAAAAAAAA4M/65k8FgOsHzkYP34wAAADAAMsCAP4zopsOBdv/CVL6l4jxV8R++9EYkYkCAAAAAAAACoMSAACAxTAA
+    AAAAAAAAAAAAAAAAznltHwBgjTXW1CJ72tJHNSAiJAIA3sACAN7HcqFGdIURpBB6ZByHEMoIEQAAAAAAAPz4/Nl6+uxp7efP
+    n/f67McAAKcnlUqlAgAAAAAAAAAAAIDt83uHk7//EM7mp/pKnIO9C29cz///RjX6/8yZG1z/9ttftEf/////5ebiF3/7yXrz
+    6C8/3bSLTx654PLRRy9ZP/LIxX779evX2T9//tzn7devN57f7+F9/y/9PE/P+77Tz/M0875DP08z7zv083TP+7325v1ee/N+
+    s9/ft93v79vu97zt2vN+r715v9mb+2Zv7tuuPW+79rzt2nMtvibyvIZQ5JSkEOIQUYtQRogAAAAAAADgx3r+7PO1Pv/s87U+
+    //Fvnp4AAO7PPvOdt7EzqVQqFQAAAAAAAAAAAIBfvLCfr7PPPjw9nvP4ZD9tZx8u8B/8r678lYePi7+y983Zh3bHN9XBhw5n
+    CtPe4JNffrLZfPLLTzb9kU8/uewXn35yycWjj1yyfvSRy9Yu//dr718/f+399vPXq7ef/4f393+Y5//MPP9n5nmf4Xmfod9n
+    6Pd56fd5u+d5m3neZp63meft+zKHg3291sG+XutgXy8Oh/syh8N9mXXgZdbBvl7rYO+Lg70vDof7MuvAy6wDLw==
+    """, options: .ignoreUnknownCharacters)!
+
+    @Test func `the stream opens as stereo at 44.1 kHz`() throws {
+        let decoder = try VorbisDecoder(bytes: [UInt8](Self.leftOnly))
+
+        #expect(decoder.format == VorbisDecoder.Format(sampleRate: 44100, channels: 2))
+    }
+
+    @Test func `each channel's samples land in its own interleaved slot`() throws {
+        let decoder = try VorbisDecoder(bytes: [UInt8](Self.leftOnly))
+        let capacity = 8192
+        let buffer = UnsafeMutablePointer<Float>.allocate(capacity: capacity * 2)
+        defer { buffer.deallocate() }
+
+        var left: [Float] = []
+        var right: [Float] = []
+        while true {
+            let frames = decoder.read(into: buffer, maxFrames: capacity)
+            guard frames > 0 else { break }
+            for frame in 0 ..< frames {
+                left.append(buffer[frame * 2])
+                right.append(buffer[frame * 2 + 1])
+            }
+        }
+
+        func rms(_ samples: [Float]) -> Float {
+            (samples.reduce(0) { $0 + $1 * $1 } / Float(max(1, samples.count))).squareRoot()
+        }
+
+        // 0.1 s, give or take the encoder's block padding.
+        #expect(abs(left.count - 4410) < 1100)
+        // ffmpeg's sine source is -18 dBFS: an RMS near 0.09. Silence decodes to almost nothing.
+        #expect(rms(left) > 0.05)
+        #expect(rms(right) < 0.005)
+    }
+}
