@@ -1009,8 +1009,14 @@ public actor LibrespotClient {
                 setQueue(contextUri: "", tracks: tracks, startIndex: tracks.firstIndex(of: track) ?? 0)
                 try await loadCurrentTrack(positionMs: positionMs, paused: transfer.isPaused)
             }
+        } catch is CancellationError {
+            // A newer load took over, and it reports for itself.
         } catch {
+            // Let the role go again, or the cluster goes on showing this device
+            // as the one playing — over silence, with every control sent here.
             debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
+            await session?.reportLocalActive(false)
+            await reportPlaybackToCluster()
         }
     }
 
