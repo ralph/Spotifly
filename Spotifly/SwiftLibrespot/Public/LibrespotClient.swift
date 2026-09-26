@@ -418,19 +418,19 @@ public actor LibrespotClient {
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
-    public func playTracks(_ uris: [String]) async throws {
+    public func playTracks(_ uris: [String], positionMs: UInt64 = 0) async throws {
         let normalized = uris.map(Self.normalizedUri)
         guard let first = normalized.first else {
             throw LibrespotError.invalidState("No tracks to play")
         }
 
         if normalized.count == 1, first.contains("spotify:track:") {
-            try await play(uriOrUrl: first, trackIndex: 0)
+            try await play(uriOrUrl: first, trackIndex: 0, positionMs: positionMs)
             return
         }
 
         setQueue(contextUri: "", tracks: normalized, startIndex: 0)
-        try await loadCurrentTrack()
+        try await loadCurrentTrack(positionMs: positionMs)
     }
 
     /// Song radio for a seed track, resolved through its station context.
@@ -1023,7 +1023,7 @@ public actor LibrespotClient {
                     positionMs: positionMs,
                 )
             } else if let uris = playCommand.trackUris, uris.count > 1 {
-                try? await playTracks(uris)
+                try? await playTracks(uris, positionMs: positionMs)
             } else if let single = playCommand.trackUri ?? playCommand.trackUris?.first {
                 try? await play(uriOrUrl: single, trackIndex: 0, positionMs: positionMs)
             }
