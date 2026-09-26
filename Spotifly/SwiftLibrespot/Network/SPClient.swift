@@ -262,7 +262,9 @@ public actor SPClient {
     nonisolated static func parseTrackMetadata(_ data: Data, gid: Data) -> TrackMetadata {
         let fields = ProtobufReader.fields(in: data)
         let name = fields.last(2)?.string ?? ""
-        let duration = fields.last(7).map { Int(truncatingIfNeeded: $0.value) } ?? 0
+        // `sint32` in metadata.proto. Read as a plain varint it was doubled:
+        // 403518 ms for a track the decoder counts 8897582 frames of, 201.8 s.
+        let duration = fields.last(7).map { Int(truncatingIfNeeded: $0.sint64) } ?? 0
         let files = playableFiles(inTrack: fields, knownFormatsOnly: false)
 
         debugLog("SPClient", "Parsed track: \(name), duration=\(duration)ms, files=\(files.count)")

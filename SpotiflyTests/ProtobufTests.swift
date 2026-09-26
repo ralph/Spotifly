@@ -62,6 +62,14 @@ struct ProtobufTests {
         #expect(fields[4].bool)
     }
 
+    /// The spec's zigzag table: 0 → 0, 1 → -1, 2 → 1, 3 → -2, 4294967294 → 2147483647.
+    @Test func `sint fields are zigzag-decoded`() {
+        let values: [UInt64] = [0, 1, 2, 3, 4_294_967_294]
+        let decoded = values.map { ProtobufField(number: 1, wireType: 0, value: $0, bytes: Data()).sint64 }
+
+        #expect(decoded == [0, -1, 1, -2, 2_147_483_647])
+    }
+
     @Test func `a fixed32 field is skipped cleanly`() {
         // Field 4, wire type 5, then field 1 = 1.
         let fields = ProtobufReader.fields(in: Data([0x25, 1, 2, 3, 4, 0x08, 0x01]))

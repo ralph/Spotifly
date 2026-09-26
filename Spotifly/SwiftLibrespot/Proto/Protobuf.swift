@@ -107,6 +107,12 @@ nonisolated struct ProtobufField {
         Int64(bitPattern: value)
     }
 
+    /// A `sint32`/`sint64`, which the wire format zigzag-encodes: read as a plain
+    /// varint it comes out doubled.
+    var sint64: Int64 {
+        Int64(bitPattern: value >> 1) ^ -Int64(bitPattern: value & 1)
+    }
+
     var string: String {
         String(decoding: bytes, as: UTF8.self)
     }

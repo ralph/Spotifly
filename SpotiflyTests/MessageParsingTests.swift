@@ -282,6 +282,15 @@ struct SPClientParsingTests {
         #expect(metadata.name == "Song")
     }
 
+    /// `Track.duration` is a `sint32`. The wire value here is the one a live `/metadata/4`
+    /// answer carried for "Pearls" on 2026-09-26, read raw as 403518 ms; the decoder counted
+    /// 8,897,582 frames of it at 44.1 kHz, which is 201.76 s.
+    @Test func `the duration is read as the zigzag sint32 it is`() {
+        let track = ProtobufWriter.message { $0.varint(field: 7, 403_518) }
+
+        #expect(SPClient.parseTrackMetadata(track, gid: Data()).durationMs == 201_759)
+    }
+
     @Test func `own files win over the alternative's`() {
         let track = ProtobufWriter.message {
             Self.file(&$0, id: 1, format: 1)
