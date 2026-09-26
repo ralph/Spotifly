@@ -210,6 +210,21 @@ struct ConnectMessageParsingTests {
         #expect(fields.map(\.number) == [1, 10, 11, 25])
     }
 
+    /// `Capabilities.disable_volume` is field 13 in connect.proto; `supported_types` is 9.
+    @Test func `a device that refuses volume says so, and lists only its own types`() {
+        let refusing = ConnectCapabilities.parse(from: ProtobufWriter.message {
+            $0.string(field: 9, "audio/track")
+            $0.bool(field: 13, true)
+        })
+        let accepting = ConnectCapabilities.parse(from: ProtobufWriter.message {
+            $0.string(field: 9, "audio/track")
+        })
+
+        #expect(refusing.disableVolume)
+        #expect(!accepting.disableVolume)
+        #expect(refusing.supportedTypes == ["audio/track"])
+    }
+
     @Test func `track metadata goes out in key order`() {
         var track = ProvidedTrack(uri: "spotify:track:abc")
         track.metadata = ["c": "3", "a": "1", "b": "2"]

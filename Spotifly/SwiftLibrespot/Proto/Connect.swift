@@ -151,14 +151,22 @@ public nonisolated struct ConnectCapabilities: Sendable {
 
     /// Reads another device's capabilities. Only these four fields are read; everything
     /// else keeps this device's defaults, and the supported types add to them.
+    /// Another device's capabilities, as the cluster lists them.
+    ///
+    /// `disable_volume` is the one the app acts on — Speakers hides the slider
+    /// of a device that refuses volume — and it was never read, so every
+    /// device got one. The defaults above are this device's own; a peer's
+    /// supported types replace them rather than add to them.
     public static func parse(from data: Data) -> ConnectCapabilities {
         var caps = ConnectCapabilities()
+        caps.supportedTypes = []
         for field in ProtobufReader.fields(in: data) {
             switch field.number {
             case 2: caps.canBePlayer = field.bool
             case 7: caps.isObservable = field.bool
             case 8: caps.volumeSteps = Int32(truncatingIfNeeded: field.value)
             case 9: caps.supportedTypes.append(field.string)
+            case 13: caps.disableVolume = field.bool
             default: break
             }
         }
