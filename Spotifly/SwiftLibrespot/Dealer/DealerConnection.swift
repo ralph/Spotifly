@@ -149,14 +149,19 @@ public actor DealerConnection {
 
     // MARK: - Messaging
 
-    /// Send a message to the dealer
+    /// Sends a JSON message to the dealer — as a **text** frame.
+    ///
+    /// The dealer closes the connection on a binary one. Every request reply
+    /// went out binary, so each remote command and each transfer took the
+    /// socket down with its own acknowledgement: the session rebuilt, the
+    /// command's sender never heard back, and a transfer failed with 410.
+    /// librespot sends these as `WsMessage::Text`.
     public func send(_ message: Data) async throws {
         guard let task = webSocketTask, isConnected else {
             throw LibrespotError.notInitialized
         }
 
-        let wsMessage = URLSessionWebSocketTask.Message.data(message)
-        try await task.send(wsMessage)
+        try await task.send(.string(String(decoding: message, as: UTF8.self)))
     }
 
     // MARK: - PutState
