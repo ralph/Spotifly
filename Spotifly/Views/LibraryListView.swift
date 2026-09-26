@@ -290,7 +290,7 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
             .font(.system(size: 16))
             .foregroundStyle(.secondary)
             .frame(width: imageSize, height: imageSize)
-            .background(Color.gray.opacity(0.15))
+            .background(.quaternary)
             .clipShape(style.artworkShape)
     }
 }

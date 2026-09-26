@@ -183,6 +183,11 @@
 "playlist.edit.saving" = "Enregistrement...";
 
 /* Preferences */
+"preferences.general" = "Général";
+"preferences.appearance" = "Apparence";
+"preferences.appearance.system" = "Système";
+"preferences.appearance.light" = "Clair";
+"preferences.appearance.dark" = "Sombre";
 "preferences.playback" = "Lecture";
 "preferences.info" = "Infos";
 "preferences.streaming_quality" = "Qualité audio";

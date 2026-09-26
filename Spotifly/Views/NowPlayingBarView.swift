@@ -201,7 +201,7 @@ struct NowPlayingBarView: View {
         Image(systemName: "music.note")
             .font(.title3)
             .frame(width: size, height: size)
-            .background(Color.gray.opacity(0.2))
+            .background(.quaternary)
             .clipShape(.rect(cornerRadius: 4))
     }
 

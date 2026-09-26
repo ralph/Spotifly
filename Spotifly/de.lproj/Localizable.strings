@@ -182,6 +182,11 @@
 "playlist.edit.saving" = "Speichere...";
 
 /* Preferences */
+"preferences.general" = "Allgemein";
+"preferences.appearance" = "Erscheinungsbild";
+"preferences.appearance.system" = "System";
+"preferences.appearance.light" = "Hell";
+"preferences.appearance.dark" = "Dunkel";
 "preferences.playback" = "Wiedergabe";
 "preferences.info" = "Info";
 "preferences.streaming_quality" = "Streaming-Qualität";

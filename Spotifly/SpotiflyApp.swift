@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct SpotiflyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var windowState = WindowState()
+    @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
 
     init() {
         // Set activation policy to regular to support media keys
@@ -69,6 +70,10 @@ struct SpotiflyApp: App {
                     windowState.exitMiniPlayerMode(window: notification.object as? NSWindow)
                 }
                 .environment(windowState)
+                .preferredColorScheme(appearanceMode.colorScheme)
+                .onChange(of: appearanceMode, initial: true) { _, mode in
+                    mode.apply()
+                }
         }
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
         .commands {
@@ -77,6 +82,7 @@ struct SpotiflyApp: App {
 
         Settings {
             PreferencesView()
+                .preferredColorScheme(appearanceMode.colorScheme)
         }
     }
 }

@@ -26,7 +26,7 @@ struct SearchAllTracksView: View {
                         .font(.system(size: 60))
                         .foregroundStyle(.secondary)
                         .frame(width: 120, height: 120)
-                        .background(Color.gray.opacity(0.2))
+                        .background(.quaternary)
                         .clipShape(.rect(cornerRadius: 8))
 
                     VStack(spacing: 8) {
