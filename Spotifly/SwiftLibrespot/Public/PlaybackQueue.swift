@@ -195,6 +195,18 @@ final nonisolated class PlaybackQueue {
         return previous
     }
 
+    /// Where the current track sits in the context, or nil while a queued
+    /// track plays — it is not part of the context at all.
+    var contextPosition: Int? {
+        guard userQueueCurrent == nil, currentIndex < contextTracks.count else { return nil }
+        return currentIndex
+    }
+
+    /// Where the current track came from, in the cluster's vocabulary.
+    var currentProvider: String {
+        userQueueCurrent == nil ? "context" : "queue"
+    }
+
     /// Whether going backwards has anywhere to go besides restarting the
     /// current track.
     var canGoBackward: Bool {

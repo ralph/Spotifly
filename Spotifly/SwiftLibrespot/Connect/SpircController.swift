@@ -18,7 +18,6 @@ public actor SpircController {
     private let dealerConnection: DealerConnection
 
     private var playerState: SpircPlayerState?
-    private var clusterState: ClusterState?
     private var subscriptions: Set<AnyCancellable> = []
 
     /// Whether the controller is ready for commands
@@ -66,7 +65,7 @@ public actor SpircController {
 
     // MARK: - State Types
 
-    public struct SpircPlayerState: Sendable, Equatable {
+    public struct SpircPlayerState: Sendable {
         public var isPlaying: Bool
         public var isPaused: Bool
         public var trackUri: String?
@@ -75,6 +74,16 @@ public actor SpircController {
         public var shuffle: Bool
         public var repeatMode: SpircRepeatMode
         public var timestamp: UInt64
+        /// The context playing, and where the track sits in it. Another device
+        /// taking over resolves the same context and continues from there.
+        public var contextUri: String
+        public var contextIndex: Int?
+        /// "context", or "queue" for a track the user queued.
+        public var trackProvider: String
+        /// What plays next — queued tracks first — and what played before,
+        /// oldest first. A transfer hands both to the receiving device.
+        public var nextTracks: [(uri: String, provider: String)]
+        public var previousTracks: [(uri: String, provider: String)]
 
         public enum SpircRepeatMode: Sendable, Equatable {
             case off
@@ -87,6 +96,8 @@ public actor SpircController {
         public let activeDeviceId: String?
         public let devices: [ConnectedDevice]
         public let timestamp: UInt64
+        /// What the active device is playing, as it last reported it.
+        public let playerState: PlayerState?
 
         public struct ConnectedDevice: Sendable, Identifiable {
             public let id: String
@@ -304,11 +315,11 @@ public actor SpircController {
             playerStateProto.isPlaying = ps.isPlaying
 
             if let uri = ps.trackUri {
-                var track = ProvidedTrack()
-                track.uri = uri
-                track.provider = "context"
-                playerStateProto.track = track
+                playerStateProto.track = ProvidedTrack(uri: uri, provider: ps.trackProvider)
             }
+            playerStateProto.contextUri = ps.contextUri
+            playerStateProto.nextTracks = ps.nextTracks.map { ProvidedTrack(uri: $0.uri, provider: $0.provider) }
+            playerStateProto.prevTracks = ps.previousTracks.map { ProvidedTrack(uri: $0.uri, provider: $0.provider) }
 
             var options = ContextPlayerOptions()
             options.shufflingContext = ps.shuffle
@@ -363,38 +374,15 @@ public actor SpircController {
             )
         }
 
-        clusterState = ClusterState(
+        // The cluster's player state is only ever *read* here. When this device
+        // is the active one it is our own report echoed back, already stale;
+        // adopting it as our state used to put that echo into the next heartbeat.
+        clusterStateSubject.send(ClusterState(
             activeDeviceId: cluster.activeDeviceId,
             devices: devices,
             timestamp: cluster.transferDataTimestamp,
-        )
-        clusterStateSubject.send(clusterState)
-
-        // Update player state if this device is active
-        if let ps = cluster.playerState,
-           cluster.activeDeviceId == deviceInfo.deviceId
-        {
-            playerState = SpircPlayerState(
-                isPlaying: ps.isPlaying,
-                isPaused: ps.isPaused,
-                trackUri: ps.track?.uri,
-                positionMs: UInt64(bitPattern: ps.positionAsOfTimestamp),
-                durationMs: UInt64(bitPattern: ps.duration),
-                shuffle: ps.options.shufflingContext,
-                repeatMode: convertFromProtoOptions(ps.options),
-                timestamp: UInt64(bitPattern: ps.timestamp),
-            )
-        }
-    }
-
-    private func convertFromProtoOptions(_ options: ContextPlayerOptions) -> SpircPlayerState.SpircRepeatMode {
-        if options.repeatingTrack {
-            .track
-        } else if options.repeatingContext {
-            .context
-        } else {
-            .off
-        }
+            playerState: cluster.playerState,
+        ))
     }
 
     private func handleCommand(_ envelope: SpircRemoteCommand) async {

@@ -133,3 +133,29 @@ struct PlaybackQueueTests {
         #expect(upcoming.map(\.provider) == ["queue", "context", "context"])
     }
 }
+
+/// Where the current track sits, which a transfer away hands to the next device.
+struct PlaybackQueuePositionTests {
+    @Test func `the context position follows the current track`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["t0", "t1", "t2"], startIndex: 1)
+
+        #expect(queue.contextPosition == 1)
+        #expect(queue.currentProvider == "context")
+
+        _ = queue.advance()
+        #expect(queue.contextPosition == 2)
+    }
+
+    @Test func `a queued track has no context position`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["t0", "t1"], startIndex: 0)
+        queue.enqueue("q")
+
+        _ = queue.advance()
+
+        #expect(queue.currentUri == "q")
+        #expect(queue.contextPosition == nil)
+        #expect(queue.currentProvider == "queue")
+    }
+}

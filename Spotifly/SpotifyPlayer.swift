@@ -57,7 +57,7 @@ struct QueueState {
 }
 
 /// Playback state as reported by the local player or a remote command.
-struct PlaybackState: Equatable {
+nonisolated struct PlaybackState: Equatable {
     let isPlaying: Bool
     let isPaused: Bool
     let trackUri: String

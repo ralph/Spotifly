@@ -72,6 +72,15 @@ public actor LibrespotClient {
     /// subject so the synchronous facade getter never awaits the actor.
     private nonisolated(unsafe) var isActiveDeviceFlag = false
 
+    /// What the local player is doing, or nil when it holds nothing.
+    ///
+    /// Kept apart from `playbackStateSubject`, which shows *whichever* device
+    /// is playing: while another one is, the subject mirrors the cluster.
+    /// Only this is ever reported to the cluster as this device's state —
+    /// reporting the mirror would claim another device's playback as ours,
+    /// and with it the active role.
+    private var localState: PlaybackState?
+
     // MARK: - Publishers (the facade's data sources)
 
     private nonisolated(unsafe) let queueSubject = CurrentValueSubject<QueueState?, Never>(nil)
@@ -237,7 +246,7 @@ public actor LibrespotClient {
         await shutdown()
         devicesSubject.send(nil)
         queueSubject.send(nil)
-        playbackStateSubject.send(nil)
+        clearLocalState()
         isActiveDeviceFlag = false
     }
 
@@ -291,7 +300,7 @@ public actor LibrespotClient {
 
             // A rebuilt session carries a fresh accesspoint socket; the old
             // pipeline would keep asking the corpse for audio keys.
-            let wasPlaying = playbackStateSubject.value?.isPlaying == true
+            let wasPlaying = localState?.isPlaying == true
             let resumeAt = positionCache
             await attachTransport()
 
@@ -639,7 +648,7 @@ public actor LibrespotClient {
             // metadata, the key, the CDN or the decoder said otherwise, leaving
             // it there shows a running track over silence — and auto-advance,
             // which swallows the error, would sit on it forever.
-            playbackStateSubject.send(nil)
+            clearLocalState()
             throw error
         }
 
@@ -657,7 +666,7 @@ public actor LibrespotClient {
                 try? await loadAndPlay(upcoming)
             } else {
                 await audioPipeline?.stop()
-                playbackStateSubject.send(nil)
+                clearLocalState()
             }
             // The advance moved current/history/next; queue views need it.
             publishQueueNotifications()
@@ -674,7 +683,7 @@ public actor LibrespotClient {
             try await loadAndPlay(upcoming)
         } else {
             await audioPipeline?.stop()
-            playbackStateSubject.send(nil)
+            clearLocalState()
         }
     }
 
@@ -727,12 +736,14 @@ public actor LibrespotClient {
             .sink { [weak self] error in
                 debugLog("LibrespotClient", "Audio pipeline error: \(error.localizedDescription)")
                 guard let self else { return }
-                Task { await self.clearPlaybackState() }
+                Task { await self.clearLocalState() }
             }
             .store(in: &pipelineSubscriptions)
     }
 
-    private func clearPlaybackState() {
+    /// The local player holds nothing any more.
+    private func clearLocalState() {
+        localState = nil
         playbackStateSubject.send(nil)
     }
 
@@ -756,11 +767,15 @@ public actor LibrespotClient {
         await reportPlaybackToCluster()
     }
 
-    /// Mirrors current playback into Spirc's connect state so other Spotify
-    /// clients see this device playing (and can command it).
+    /// Mirrors local playback into Spirc's connect state so other Spotify
+    /// clients see this device playing, can command it, and can take it over.
+    ///
+    /// The context and the queue around the track go with it: a transfer away
+    /// hands the receiving device exactly this, so without them it could only
+    /// continue the one track and stop.
     private func reportPlaybackToCluster() async {
         guard let session else { return }
-        guard let current = playbackStateSubject.value else {
+        guard let current = localState else {
             Task { await session.reportLocalPlayerState(nil, active: false) }
             return
         }
@@ -773,7 +788,15 @@ public actor LibrespotClient {
             durationMs: UInt64(max(0, (audioPipeline?.currentDurationMs) ?? current.durationMs)),
             shuffle: current.shuffle,
             repeatMode: current.repeatTrack ? .track : (current.repeatContext ? .context : .off),
-            timestamp: UInt64(Date().timeIntervalSince1970 * 1000),
+            // The moment the position was read, not now: a republish of an
+            // older state would otherwise tell other devices the track jumped
+            // back to where it was when that state was taken.
+            timestamp: UInt64(max(0, current.timestampMs)),
+            contextUri: playbackQueue.contextUri,
+            contextIndex: playbackQueue.contextPosition,
+            trackProvider: playbackQueue.currentProvider,
+            nextTracks: playbackQueue.upcoming(),
+            previousTracks: Array(playbackQueue.recent().reversed()),
         )
         let becameActive = current.isPlaying
         Task { await session.reportLocalPlayerState(spircState, active: becameActive) }
@@ -856,12 +879,53 @@ public actor LibrespotClient {
             becameActiveSubject.send()
         } else if !nowActive, wasActive {
             becameInactiveSubject.send()
-            // Another device holds playback now. Spirc has to stop asserting
-            // `is_active`, or the next heartbeat pulls playback back here.
-            await session?.reportLocalActive(false)
+            await standDown()
+        }
+
+        if !nowActive, localState == nil, let remote = cluster.playerState {
+            mirror(remote)
         }
 
         await publishConnectionState(connected: session?.isConnected == true)
+    }
+
+    /// Another device took playback: this one stops, as librespot's Spirc does
+    /// when a cluster update names someone else (`handle_cluster_update`).
+    ///
+    /// Without the stop, handing playback to a phone left it playing in two
+    /// places. Spirc also has to stop asserting `is_active`, or the next
+    /// heartbeat pulls playback straight back here.
+    private func standDown() async {
+        debugLog("LibrespotClient", "Another device took playback; stopping here")
+        await session?.reportLocalActive(false)
+        clearLocalState()
+        await audioPipeline?.stop()
+    }
+
+    /// Shows what the active device is playing while this one plays nothing,
+    /// so the now-playing bar and the queue follow playback that was handed
+    /// away — and the transport controls, which route to the active device,
+    /// act on what is on screen.
+    private func mirror(_ remote: PlayerState) {
+        guard let track = remote.track, !track.uri.isEmpty else { return }
+
+        let options = remote.options
+        playbackStateSubject.send(PlaybackState(
+            isPlaying: remote.isPlaying,
+            isPaused: remote.isPaused,
+            trackUri: track.uri,
+            positionMs: remote.positionAsOfTimestamp,
+            durationMs: remote.duration,
+            shuffle: options.shufflingContext,
+            repeatTrack: options.repeatingTrack,
+            repeatContext: options.repeatingContext,
+            timestampMs: remote.timestamp,
+        ))
+        queueSubject.send(QueueState(
+            currentTrack: QueueItem(uri: track.uri, provider: track.provider),
+            nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            previousTracks: remote.prevTracks.reversed().map { QueueItem(uri: $0.uri, provider: $0.provider) },
+        ))
     }
 
     /// Picks up playback another device handed over — librespot's
@@ -990,7 +1054,7 @@ public actor LibrespotClient {
         paused: Bool,
         positionMs: Int64,
     ) {
-        playbackStateSubject.send(PlaybackState(
+        let state = PlaybackState(
             isPlaying: playing && !paused,
             isPaused: paused,
             trackUri: trackUri,
@@ -1000,7 +1064,9 @@ public actor LibrespotClient {
             repeatTrack: repeatMode == .track,
             repeatContext: repeatMode == .context,
             timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
-        ))
+        )
+        localState = state
+        playbackStateSubject.send(state)
     }
 
     /// Re-emits the last playback state — used after option changes (shuffle,
@@ -1010,12 +1076,13 @@ public actor LibrespotClient {
     /// other devices render, so a shuffle toggled here has to show up on the
     /// phone that is watching.
     private func publishPlaybackStateRefresh() async {
-        guard let current = playbackStateSubject.value else { return }
+        guard let current = localState else { return }
+        let position = await audioPipeline?.currentPositionMs() ?? UInt64(max(0, current.positionMs))
         publishPlaybackState(
             for: current.trackUri,
             playing: current.isPlaying,
             paused: current.isPaused,
-            positionMs: current.positionMs,
+            positionMs: Int64(position),
         )
         await reportPlaybackToCluster()
     }
