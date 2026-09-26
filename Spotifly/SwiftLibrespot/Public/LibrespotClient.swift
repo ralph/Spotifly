@@ -290,6 +290,11 @@ public actor LibrespotClient {
         guard !shuttingDown else { return }
         guard let session, let credentials = await session.currentCredentials, let tokenProvider else { return }
 
+        // What to come back to, read before reconnecting: the new session's
+        // first cluster can arrive while it is still being set up.
+        let wasPlaying = localState?.isPlaying == true
+        let resumeAt = positionCache
+
         do {
             _ = try await session.connect(credentials: credentials) { [tokenProvider] in
                 try await tokenProvider()
@@ -300,8 +305,6 @@ public actor LibrespotClient {
 
             // A rebuilt session carries a fresh accesspoint socket; the old
             // pipeline would keep asking the corpse for audio keys.
-            let wasPlaying = localState?.isPlaying == true
-            let resumeAt = positionCache
             await attachTransport()
 
             // attachTransport hands back an empty pipeline, so without this the
@@ -893,7 +896,14 @@ public actor LibrespotClient {
             becameActiveSubject.send()
         } else if !nowActive, wasActive {
             becameInactiveSubject.send()
-            await standDown()
+            // Only a device that *took* playback is a reason to stop. An empty
+            // id is nobody: our own goodbye leaves one when the session drops,
+            // and the rebuilt session's registration is answered with it —
+            // stopping then turned a network blip into silence. Spirc keeps
+            // claiming the role, and the next report takes it back.
+            if !activeId.isEmpty {
+                await standDown()
+            }
         }
 
         if !nowActive, localState == nil, let remote = cluster.playerState {
