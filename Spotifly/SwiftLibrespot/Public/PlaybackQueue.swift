@@ -64,6 +64,13 @@ final nonisolated class PlaybackQueue {
         userQueue.append(uri)
     }
 
+    /// Replaces the explicitly queued tracks wholesale, as a handover does:
+    /// the sender's queue is the queue now, and whatever was left here from
+    /// before the playback went away has played elsewhere since.
+    func replaceUserQueue(with uris: [String]) {
+        userQueue = uris
+    }
+
     // MARK: - Options
 
     func setShuffle(_ enabled: Bool) {

@@ -159,3 +159,16 @@ struct PlaybackQueuePositionTests {
         #expect(queue.currentProvider == "queue")
     }
 }
+
+/// A handover brings the sender's queue, which replaces whatever was left here.
+struct PlaybackQueueHandoverTests {
+    @Test func `replacing the user queue drops what was queued before`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["t0", "t1"], startIndex: 0)
+        queue.enqueue("stale")
+
+        queue.replaceUserQueue(with: ["q1", "q2"])
+
+        #expect(queue.upcoming().map(\.uri) == ["q1", "q2", "t1"])
+    }
+}

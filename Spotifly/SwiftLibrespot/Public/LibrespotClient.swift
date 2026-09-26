@@ -974,6 +974,9 @@ public actor LibrespotClient {
         playbackQueue.setShuffle(transfer.shuffle)
         repeatMode = transfer.repeatTrack ? .track : (transfer.repeatContext ? .context : .off)
         playbackQueue.setRepeat(repeatMode)
+        // Before loading, so the first report and the next-track fetch already
+        // see the sender's queue.
+        playbackQueue.replaceUserQueue(with: transfer.queuedTrackUris)
 
         do {
             if !transfer.contextUri.isEmpty {
@@ -992,13 +995,7 @@ public actor LibrespotClient {
             }
         } catch {
             debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
-            return
         }
-
-        for uri in transfer.queuedTrackUris {
-            playbackQueue.enqueue(uri)
-        }
-        publishQueueNotifications()
     }
 
     // MARK: - Remote Commands
