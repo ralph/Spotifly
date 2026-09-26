@@ -951,10 +951,20 @@ public actor LibrespotClient {
             repeatContext: options.repeatingContext,
             timestampMs: remote.timestamp,
         ))
+        // Both queue shapes, as for local playback: the set-queue one carries
+        // the context, which the queue's heading and a double-click on one of
+        // its rows play from. Without it they named the last local context.
+        let previous = remote.prevTracks.reversed()
         queueSubject.send(QueueState(
             currentTrack: QueueItem(uri: track.uri, provider: track.provider),
             nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
-            previousTracks: remote.prevTracks.reversed().map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            previousTracks: previous.map { QueueItem(uri: $0.uri, provider: $0.provider) },
+        ))
+        setQueueSubject.send(SetQueueNotification(
+            contextUri: remote.contextUri,
+            currentTrack: SetQueueTrackInfo(uri: track.uri, provider: track.provider),
+            nextTracks: remote.nextTracks.map { SetQueueTrackInfo(uri: $0.uri, provider: $0.provider) },
+            prevTracks: previous.map { SetQueueTrackInfo(uri: $0.uri, provider: $0.provider) },
         ))
     }
 
