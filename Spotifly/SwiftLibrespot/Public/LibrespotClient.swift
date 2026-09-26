@@ -643,6 +643,10 @@ public actor LibrespotClient {
 
         do {
             try await audioPipeline.playTrack(uri: uri, positionMs: positionMs, paused: paused)
+        } catch is CancellationError {
+            // A newer load took over while this one waited, and has already
+            // published its own state; clearing it here would erase that.
+            throw CancellationError()
         } catch {
             // The optimistic state above claimed this track was playing. If
             // metadata, the key, the CDN or the decoder said otherwise, leaving

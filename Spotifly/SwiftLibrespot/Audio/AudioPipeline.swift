@@ -140,6 +140,11 @@ actor AudioPipeline {
 
     private var positionTimer: Task<Void, Never>?
 
+    /// Bumped by every `playTrack`. A load that awaited the network while a
+    /// newer one began must not start decoding: both would run a decode thread
+    /// into the one sink — two quick presses of Next did exactly that.
+    private var loadGeneration = 0
+
     private var isPlaying = false
     private var isPaused = false
 
@@ -183,6 +188,8 @@ actor AudioPipeline {
         debugLog("AudioPipeline", "Playing \(uri) at \(positionMs)ms")
         playbackStateSubject.send(.loading(trackUri: uri))
 
+        loadGeneration += 1
+        let generation = loadGeneration
         await teardownTrack()
 
         let trackId = try Self.trackGid(fromUri: uri)
@@ -220,6 +227,12 @@ actor AudioPipeline {
         debugLog("AudioPipeline", "Vorbis stream begins at byte \(vorbisStream.offset), skipped \(vorbisStream.skippedPages) Spotify page(s)")
         let vorbis = try VorbisDecoder(data: decrypted.subdata(in: vorbisStream.offset ..< decrypted.count))
         debugLog("AudioPipeline", "Decoder open: \(vorbis.format.sampleRate)Hz x\(vorbis.format.channels), \(vorbis.totalFrames) frames")
+
+        guard generation == loadGeneration else {
+            debugLog("AudioPipeline", "Superseded while loading \(uri)")
+            vorbis.close()
+            throw CancellationError()
+        }
 
         currentTrackUri = uri
         durationMs = Int64(metadata.durationMs)

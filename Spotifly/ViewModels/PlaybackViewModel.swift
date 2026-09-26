@@ -486,6 +486,8 @@ final class PlaybackViewModel {
         do {
             try await start()
             handlePlaybackStarted(trackId: startedUri)
+        } catch is CancellationError {
+            // Another start overtook this one; it reports for itself.
         } catch {
             errorMessage = error.localizedDescription
         }
