@@ -148,22 +148,14 @@ actor AudioPipeline {
 
     /// Moves over to a reconnected session. The loaded track is in memory and
     /// needs nothing from the socket, so it plays on; only what fetches the
-    /// next one changes. A fetch-ahead the old socket delivered is kept, and
-    /// one the reset cut off is made again over the new one.
+    /// next one changes. The fetch-ahead is dropped, since the reset may have
+    /// cut it off, and the next tick makes it again over the new socket.
     func reattach(accesspoint: Accesspoint, spclient: SPClient?) {
         debugLog("AudioPipeline", "Reattached to the reconnected session")
         audioKeyProvider = AudioKeyProvider(accesspoint: accesspoint)
         self.spclient = spclient
-
-        guard let upcoming else { return }
-        let (uri, fetch) = upcoming
-        self.upcoming = (uri, Task { [weak self] in
-            if let track = try? await fetch.value {
-                return track
-            }
-            guard let self else { throw CancellationError() }
-            return try await prepare(uri)
-        })
+        upcoming?.fetch.cancel()
+        upcoming = nil
     }
 
     /// Whether a track is loaded, playing or paused: not after a stop, and not
@@ -352,14 +344,17 @@ actor AudioPipeline {
 
         // Independent requests on different transports — the key over the
         // accesspoint socket, the url over HTTP — so neither waits for the other.
+        // Both are in before the download starts: a key refused by a dead
+        // socket would otherwise cost the whole file first.
         async let key = audioKeyProvider.getKey(fileId: file.fileId, trackId: trackId)
         async let cdnUrl = spclient.resolveCDNUrl(fileId: file.fileId)
+        let (fileKey, source) = try await (key, cdnUrl)
 
-        let encrypted = try await Self.downloadWholeFile(cdnUrl.url)
+        let encrypted = try await Self.downloadWholeFile(source.url)
 
         // The whole file is ciphertext, keystream from block 0. Nothing is
         // skipped: the stream opens with the Ogg capture pattern once decrypted.
-        let decrypted = try await AESDecryptor(key: key).decrypt(encrypted)
+        let decrypted = try await AESDecryptor(key: fileKey).decrypt(encrypted)
         let vorbisStream = Self.vorbisStreamOffset(decrypted)
         debugLog("AudioPipeline", "Decrypted \(decrypted.count) bytes; Vorbis begins at \(vorbisStream.offset) after \(vorbisStream.skippedPages) Spotify page(s)")
 

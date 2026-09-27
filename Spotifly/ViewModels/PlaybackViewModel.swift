@@ -566,8 +566,8 @@ final class PlaybackViewModel {
             },
         )
 
-        // Mid-reconnect there is no session to command, but the local queue does not need
-        // one: it is what playback continues from once the session is back.
+        // With nobody active and no session there is nothing to command, but the local queue
+        // does not need one: it is what playback continues from once the session is back.
         if !issued {
             SpotifyPlayer.addToQueue(uri: uri)
         }
@@ -641,12 +641,8 @@ final class PlaybackViewModel {
     /// Issues a transport command locally when Spotifly is the active device, and through
     /// connect-state otherwise. Returns whether the command was issued at all.
     ///
-    /// While this device is active, the command goes to the local player whether or not the
-    /// session is connected. The pipeline holds the track in memory and plays on through a
-    /// reconnect, and pausing, resuming or seeking it needs nothing from the session. Under
-    /// librespot a reconnect tore the player down, so this was gated on the session, and
-    /// after the port that gate ignored a pause pressed during a reset while the music
-    /// played on.
+    /// While this device is active the command goes to the local player even mid-reconnect:
+    /// the pipeline plays on from memory and needs no session to pause, resume or seek.
     ///
     /// With nobody active and no session, nothing is issued, and the callers that move the
     /// UI optimistically must not do so for a command that never happened, hence the
@@ -1092,24 +1088,14 @@ final class PlaybackViewModel {
         let isReady = SpotifyPlayer.isSessionConnected && SpotifyPlayer.isSpircReady
         guard isReady != isConnectionReady else { return }
 
+        // Pinned where last seen, or the display would fall back to the last anchor once it
+        // stops running; see `positionRuns`.
         if !isReady, !SpotifyPlayer.isActiveDevice {
-            freezePositionForDisconnect()
+            let frozenPosition = interpolatedPositionMs
+            anchorPosition(frozenPosition)
+            debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(frozenPosition)ms")
         }
         isConnectionReady = isReady
-    }
-
-    /// Pins the displayed position where another device's playback was last seen. Its
-    /// position arrives over the session, so there is nothing to advance by until the
-    /// session is back, and without the pin the display would fall back to the last anchor.
-    ///
-    /// Local playback is not frozen: the pipeline plays on through a reconnect. Under
-    /// librespot a reconnect tore the player down and this pinned local playback too, at the
-    /// pipeline's last position; after the port that froze the seek bar while the music
-    /// played on.
-    private func freezePositionForDisconnect() {
-        let frozenPosition = interpolatedPositionMs
-        anchorPosition(frozenPosition)
-        debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(frozenPosition)ms")
     }
 
     /// Subscribe to the playback state the client publishes.
@@ -1466,13 +1452,11 @@ final class PlaybackViewModel {
             }
         }
 
-        // Another device's position holds while disconnected, since nothing reports it. A
-        // local track runs on through a reconnect, and the pipeline's position is still
-        // there to check it against.
-        guard positionRuns else { return }
-
         // Check for significant drift from the player's position - only when active device
         // Remote playback position is interpolated from cluster timestamp, not real-time.
+        // A local track plays on through a reconnect, so this runs while disconnected too.
+        guard isPlaying, SpotifyPlayer.isActiveDevice else { return }
+
         // Compare even when the reported value did not change: a frozen value is precisely
         // the signal that must pull a still-running Swift clock back to reality.
         //
@@ -1499,33 +1483,31 @@ final class PlaybackViewModel {
         // that was issued and then failed reports nothing back, since `SpotifyPlayer.seek`
         // fires it into a task and discards the error. Then either direction is evidence,
         // because the display is somewhere playback never went.
-        if SpotifyPlayer.isActiveDevice {
-            let playerPosition = SpotifyPlayer.positionMs
-            let displayedPosition = interpolatedPositionMs
-            let displayedLead = Int64(displayedPosition) - Int64(playerPosition)
+        let playerPosition = SpotifyPlayer.positionMs
+        let displayedPosition = interpolatedPositionMs
+        let displayedLead = Int64(displayedPosition) - Int64(playerPosition)
 
-            let unconfirmedFor = optimisticAnchorTime.map { CACurrentMediaTime() - $0 }
-            let correct = switch unconfirmedFor {
-            case let .some(elapsed) where elapsed < Self.optimisticAnchorGrace: false
-            case .some: abs(displayedLead) > Self.positionDisagreementMs
-            case .none: displayedLead > Self.positionDisagreementMs
-            }
+        let unconfirmedFor = optimisticAnchorTime.map { CACurrentMediaTime() - $0 }
+        let correct = switch unconfirmedFor {
+        case let .some(elapsed) where elapsed < Self.optimisticAnchorGrace: false
+        case .some: abs(displayedLead) > Self.positionDisagreementMs
+        case .none: displayedLead > Self.positionDisagreementMs
+        }
 
-            // One grace window, one verdict. A measurement clears the mark by arriving,
-            // but nothing guarantees one does: a rejected command produces no callback,
-            // and a command issued while paused or while a remote device held the floor is
-            // not judged here at all. Expiring the mark on the tick that judges it is what
-            // stops it outliving its command — otherwise it sits set for the session, and
-            // the buffer lead that turns up later reads as evidence of a lost seek.
-            if let unconfirmedFor, unconfirmedFor >= Self.optimisticAnchorGrace {
-                optimisticAnchorTime = nil
-            }
+        // One grace window, one verdict. A measurement clears the mark by arriving,
+        // but nothing guarantees one does: a rejected command produces no callback,
+        // and a command issued while paused or while a remote device held the floor is
+        // not judged here at all. Expiring the mark on the tick that judges it is what
+        // stops it outliving its command — otherwise it sits set for the session, and
+        // the buffer lead that turns up later reads as evidence of a lost seek.
+        if let unconfirmedFor, unconfirmedFor >= Self.optimisticAnchorGrace {
+            optimisticAnchorTime = nil
+        }
 
-            if correct {
-                debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(playerPosition)")
-                anchorPosition(playerPosition)
-                didCorrectDrift = true
-            }
+        if correct {
+            debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(playerPosition)")
+            anchorPosition(playerPosition)
+            didCorrectDrift = true
         }
     }
 
