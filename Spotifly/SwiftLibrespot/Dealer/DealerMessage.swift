@@ -126,8 +126,12 @@ public enum SpircCommand: Sendable {
     /// `set_queue`, which another device sends when its user edits the queue:
     /// the whole list of next tracks as it should be now. This carries its
     /// queue section, everything before the first track the context provides.
-    /// A track moved within that section arrives without a provider, and the
-    /// context tracks after it are a window of ten, whose edits are not adopted.
+    /// A track moved within that section arrives without a provider. The
+    /// context tracks after it, ten or more of them, are not adopted, so an
+    /// edit there snaps back. Asking other clients not to offer such edits,
+    /// through the player state's `disallow_*_context_tracks` restrictions, was
+    /// tried: the iPhone app went on offering them, and stopped sending drags
+    /// within the queue instead.
     case setQueue(queuedUris: [String])
     case unknown(String)
 
