@@ -1,6 +1,9 @@
 # Plans
 
-What each plan is, and whether it is live. Reviewed 2026-08-15.
+What each plan is, and whether it is live. Reviewed 2026-08-15; updated 2026-09-27 for the
+Swift stack on `swift-librespot`, which removed librespot and the Rust layer. Plans from
+before that describe components that no longer exist — `rust/`, librespot's `spirc.rs` —
+and say so where it matters below.
 
 **A plan is not deleted when it is finished.** Most of these record a fix, its evidence, and
 the reasoning behind a rule the code still follows — several are cited from `CLAUDE.md`, and
@@ -18,10 +21,10 @@ PR; the rest are recorded but not planned.
 | # | Plan | Why here |
 | --- | --- | --- |
 | 1 | [unavailable-tracks-skip-the-rest-of-a-playlist.md](unavailable-tracks-skip-the-rest-of-a-playlist.md) | Playback silently drains a whole playlist in half a second. Observed, never investigated |
-| 2 | [free-account-exits-the-process.md](free-account-exits-the-process.md) | librespot calls `exit()` for a non-premium account, so the app vanishes. Cheap to fix, catastrophic when hit |
-| 3 | [the-reported-position-is-the-decoder-not-the-playhead.md](the-reported-position-is-the-decoder-not-the-playhead.md) | Every position the app reports is ~2 s ahead of the audio. Diagnosed, needs a design |
-| 4 | [connect-state-put-echoes-itself-into-a-429.md](connect-state-put-echoes-itself-into-a-429.md) | ~80 Connect PUTs in twenty seconds, answered with a 429. Upstream `fixme` in librespot |
-| 5 | [single-grant-partner-api.md](single-grant-partner-api.md) — **Track B only** | Swift-native playback. Gated on one decoder spike that decides whether `rust/` can ever go |
+| 2 | [free-account-exits-the-process.md](free-account-exits-the-process.md) | librespot called `exit()` for a non-premium account. That went with librespot; the Swift stack gets an accesspoint login error (`premiumAccountRequired`) instead, and what the app then shows is untested |
+| 3 | [the-reported-position-is-the-decoder-not-the-playhead.md](the-reported-position-is-the-decoder-not-the-playhead.md) | **Resolved by the Swift stack**: `AudioPipeline` reports the renderer's playhead (`AudioSink.playedFramesSinceStart`), not the decoder |
+| 4 | [connect-state-put-echoes-itself-into-a-429.md](connect-state-put-echoes-itself-into-a-429.md) | Written against librespot's spirc. `SpircController` has its own PutState path, and the September live runs saw no 429 |
+| 5 | [single-grant-partner-api.md](single-grant-partner-api.md) — **Track B only** | **Done on `swift-librespot`**: playback is Swift, with the vendored libvorbis as decoder, and `rust/` is gone |
 
 ### Recorded, not planned
 
@@ -32,8 +35,9 @@ PR; the rest are recorded but not planned.
 - **Two upstream librespot candidates**, both drafted and neither filed —
   [librespot/upstream-transient-load-failure.md](librespot/upstream-transient-load-failure.md)
   and [librespot/upstream-pr-play-status-is-playing.md](librespot/upstream-pr-play-status-is-playing.md).
-  The first is worth filing on its own merits and is a live suspect for item 1 above: it makes
-  *any* load failure delete a track from the queue permanently.
+  The first is worth filing on its own merits: it makes *any* load failure delete a track
+  from the queue permanently. Spotifly no longer runs librespot, so both are upstream
+  contributions only, and the first is no longer a suspect for item 1.
 - **The refresh button does nothing in the Queue section.**
   `NavigationCoordinator.canRefreshCurrentSection` returns `true` for `.queue`, so the button
   is drawn, but `LoggedInView.refreshCurrentSection` has no `.queue` case and falls through to
@@ -49,7 +53,8 @@ PR; the rest are recorded but not planned.
   between them. This is the surviving question from the old `plans.txt`, which asked it of
   four types — `TrackRowData`, `TrackMetadata`, `APIPlaylist` and `SpotifyDevice` have since
   been deleted, and `APITrack` goes with the Web API cleanup, so only this pair is left. Not
-  urgent: the conversion is small and the FFI boundary is a real reason for two types.
+  urgent: the conversion is small. The FFI boundary that justified two types went with the
+  Rust layer, though, so the case for keeping both is weaker than it was.
 
 ## Finished, kept as records
 
@@ -82,7 +87,7 @@ demand. The regression signal is a log line, not a reproduction.
 | Plan | What changed |
 | --- | --- |
 | [web-api-track-relinking-identity.md](web-api-track-relinking-identity.md) | Implemented normalise-to-the-original-id, **reversed 2026-08-13**. Pathfinder carries no `linked_from`, so reconstruction is impossible. `CLAUDE.md` has the rule in force |
-| [relinked-track-now-playing-identity.md](relinked-track-now-playing-identity.md) | Same reversal. Its Rust-side half — `Loading`/`Playing`/`Paused` own the logical URI — still stands |
+| [relinked-track-now-playing-identity.md](relinked-track-now-playing-identity.md) | Same reversal. Its Rust-side half — `Loading`/`Playing`/`Paused` own the logical URI — carried over: the Swift pipeline reports the URI it was asked to play |
 | [streaming-auth-implementation-plan.md](streaming-auth-implementation-plan.md) | Shipped as #49, then superseded the same day. It designs **two** grants; there is now one. Its checkboxes were never ticked, so it reads as open and is not |
 | [streaming-auth-needs-a-first-party-client-id.md](streaming-auth-needs-a-first-party-client-id.md) | The 2026-08-11 login5 break. Resolved — the shipped fix skips login5 entirely |
 

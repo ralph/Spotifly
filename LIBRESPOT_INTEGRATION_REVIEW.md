@@ -2,6 +2,10 @@
 
 > **This document is a record, not a plan. All of it has been acted on.**
 >
+> The integration it reviews is gone. Spotifly no longer embeds librespot or any Rust:
+> playback and Spotify Connect are Swift, in `Spotifly/SwiftLibrespot/`. The reasoning
+> about Spotify's servers still holds; the file paths, FFI and fork details do not.
+>
 > Everything below was written before the work; parts of it are now factually out of
 > date (it describes soft reconnect as current and the fork as required — neither is
 > true any more). It is kept because the analysis explains *why* the code looks the way

@@ -79,6 +79,13 @@ Earlier versions did ask for a Client ID, because they talked to the Spotify Web
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for build instructions and architecture documentation.
 
+## Acknowledgements
+
+Spotifly's playback and Spotify Connect are written in Swift, following the protocol work
+of [librespot](https://github.com/librespot-org/librespot), which earlier versions embedded.
+Ogg Vorbis decoding uses Xiph.Org's [libogg and libvorbis](https://xiph.org/vorbis/),
+included as source under their BSD licenses.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

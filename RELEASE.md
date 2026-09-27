@@ -167,12 +167,10 @@ The app is:
 
 This ensures users don't see Gatekeeper warnings when opening the app.
 
-### Rust Library Integration
+### Dependencies
 
-The app links against a Rust library (`libspotifly_rust.a`) that must be:
-- Compiled for arm64 architecture
-- Located at `build/rust/lib/libspotifly_rust.a`
-- Built before creating the Archive
+Nothing needs building before the Archive. The app is Swift throughout, plus the vendored
+libogg and libvorbis sources that Xcode compiles with the rest of the target.
 
 ## Notes
 

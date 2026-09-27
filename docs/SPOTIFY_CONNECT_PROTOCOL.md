@@ -1,6 +1,9 @@
 # Spotify Connect Protocol Reference
 
-A comprehensive reference for the Spotify Connect protocol used in librespot.
+A comprehensive reference for the Spotify Connect protocol, first written from librespot's
+implementation. Spotifly now speaks it itself, in `Spotifly/SwiftLibrespot/` — the dealer
+in `Dealer/`, the device state and remote commands in `Connect/SpircController.swift`.
+Where this document and a capture from a real client disagree, the capture wins.
 
 ## Table of Contents
 

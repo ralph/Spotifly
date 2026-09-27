@@ -1,6 +1,8 @@
 # Network + Session Stability Plan
 
-Status: Active
+Status: Superseded. Written for the librespot integration — `Spirc::handle_next`,
+`Player::set_session` — which the Swift stack in `Spotifly/SwiftLibrespot/` replaced
+entirely. Kept for the diagnosis; none of the steps below apply to current code.
 Review mode: Step-by-step (one numbered item at a time, user review before commit)
 
 ## Problem Summary

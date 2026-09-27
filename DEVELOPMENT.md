@@ -1,124 +1,106 @@
 # Development Guide
 
-This document covers building Spotifly from source and contributing to the project.
+How Spotifly is put together, and how to build, run and debug it.
 
 ## Architecture
 
-Spotifly is a Swift/SwiftUI app that integrates with Spotify using the [librespot](https://github.com/librespot-org/librespot) Rust library for OAuth authentication.
-
-This project demonstrates Swift 6.3's C interoperability to call Rust code:
+Spotifly is a SwiftUI app with no dependencies outside Apple's SDKs except two C
+libraries it vendors for Ogg Vorbis decoding. Everything else it needs from Spotify —
+signing in, the library, search, playback and Spotify Connect — it speaks itself, in
+Swift. There is no Rust, no package manager and no librespot.
 
 ```
-┌─────────────────────┐
-│     SwiftUI App     │
-│   (ContentView)     │
-└──────────┬──────────┘
-           │
-┌──────────▼──────────┐
-│   SpotifyAuth.swift │
-│  (Swift wrapper)    │
-└──────────┬──────────┘
-           │ C FFI
-┌──────────▼──────────┐
-│   SpotiflyRust      │
-│  (C module map)     │
-└──────────┬──────────┘
-           │
-┌──────────▼──────────┐
-│   libspotifly_rust  │
-│  (Rust static lib)  │
-│  + librespot-oauth  │
-└─────────────────────┘
+ SwiftUI views ── view models ── AppStore + services (Store/)
+                                      │
+        ┌─────────────────────────────┼──────────────────────────────┐
+        │                             │                              │
+  Auth/                        PartnerAPI/                    SpotifyPlayer (facade)
+  one OAuth grant,             pathfinder GraphQL and               │
+  loopback redirect            spclient REST                  SwiftLibrespot/
+                                                               LibrespotClient
+                                                               ├── LibrespotSession
+                                                               │   ├── Accesspoint (TCP, Shannon cipher)
+                                                               │   ├── DealerConnection (WebSocket)
+                                                               │   └── SpircController (Connect state)
+                                                               └── AudioPipeline ──▶ AudioRenderer
 ```
+
+| Where | What it does |
+|---|---|
+| `Spotifly/Auth/` | One OAuth grant (PKCE) against Spotify's own desktop client id, redirected to a one-shot listener on a loopback port. That single token signs in to the accesspoint, which hands back credentials for reconnecting, and is the bearer for every HTTP API; tokens live in the keychain. |
+| `Spotifly/PartnerAPI/` | The APIs Spotify's own clients use: pathfinder GraphQL at `api-partner.spotify.com` for the library, search and pages, and spclient REST. The public Web API is not used. |
+| `Spotifly/Store/` | The normalized `AppStore` and the services that fill it — see `AGENTS.md`. |
+| `Spotifly/SpotifyPlayer.swift` | The static facade the app talks to for playback, backed by `LibrespotClient.shared`. |
+| `Spotifly/SwiftLibrespot/` | Playback and Spotify Connect. A Swift port of the protocol handling that [librespot](https://github.com/librespot-org/librespot) implements in Rust — hence the names — which neither links nor builds librespot. |
+| `…/Network/` | Accesspoint resolution, the TCP connection with its Diffie-Hellman handshake and Shannon cipher, and the spclient HTTP client (metadata, `storage-resolve`, connect-state). |
+| `…/Dealer/`, `…/Connect/` | The dealer WebSocket, and `SpircController`, which publishes this device's state to the Connect cluster and turns remote commands into player calls. |
+| `…/Audio/` | `AudioPipeline`: metadata, then the audio key (over the accesspoint) and the CDN URL side by side, the download, AES-128-CTR through CommonCrypto, and Vorbis decoding into an `AudioSink`. The next track is fetched ahead and, with gapless playback on, decoded straight after the current one. |
+| `…/Proto/` | A small hand-written protobuf reader and writer, and the messages built with it. |
+| `Spotifly/AudioRenderer.swift` | The `AudioSink`: `AVSampleBufferAudioRenderer` with a render synchronizer, which keeps AirPlay 2 and Spatial Audio working. |
+| `Spotifly/Vendor/` | libogg 1.3.5 and libvorbis 1.3.7, unmodified, compiled by Xcode — see `Vendor/README.md`. |
 
 ## Prerequisites
 
-- Xcode 26.6+ (Swift 6.3)
-- Rust toolchain (install via [rustup](https://rustup.rs/))
-- macOS 26.2+ (or adjust deployment target)
+- Xcode 26.6 or later (Swift 6.3)
+- macOS 26.2 or later
+- A Spotify Premium account to play anything
 
 ## Building
 
-### 1. Build the Rust library first
-
-```bash
-cd rust
-./build.sh
-```
-
-This compiles the Rust code into a static library at `build/rust/lib/libspotifly_rust.a`.
-
-### 2. Build the Swift app
-
-Open `Spotifly.xcodeproj` in Xcode and build (⌘B), or:
+Open `Spotifly.xcodeproj` and build (⌘B), or:
 
 ```bash
 xcodebuild -scheme Spotifly -destination 'platform=macOS' build
 ```
 
-## Project Structure
+The unit tests:
 
-```
-Spotifly/
-├── Spotifly/                    # Swift source files
-│   ├── SpotiflyApp.swift        # App entry point
-│   ├── ContentView.swift        # Main UI with OAuth button
-│   └── SpotifyAuth.swift        # Swift wrapper for Rust FFI
-├── rust/                        # Rust library source
-│   ├── Cargo.toml               # Rust dependencies
-│   ├── src/lib.rs               # Rust FFI implementation
-│   ├── include/spotifly_rust.h  # C header for FFI
-│   └── build.sh                 # Build script
-├── build/rust/                  # Built Rust artifacts
-│   ├── lib/libspotifly_rust.a   # Static library
-│   └── include/                 # Headers + module map
-└── Spotifly.xcodeproj           # Xcode project
+```bash
+xcodebuild -scheme Spotifly -configuration Debug test -destination 'platform=macOS' -only-testing:SpotiflyTests GENERATE_INFOPLIST_FILE=YES
 ```
 
-## How it Works
+Format Swift before committing:
 
-1. **Rust Layer** (`rust/src/lib.rs`):
-   - Uses `librespot-oauth` crate for Spotify OAuth with PKCE
-   - Exposes C-compatible functions (`extern "C"`)
-   - Manages async Tokio runtime internally
+```bash
+swiftformat --swiftversion 6.3 .
+```
 
-2. **C Header** (`rust/include/spotifly_rust.h`):
-   - Declares the C function signatures
-   - Used by Swift via a module map
+## Running and debugging
 
-3. **Swift Wrapper** (`Spotifly/SpotifyAuth.swift`):
-   - Imports the `SpotiflyRust` C module
-   - Provides a Swift-native async API using `@globalActor`
-   - Follows Swift 6.3 concurrency best practices
+Debug builds log to stderr through `debugLog`, which compiles away in Release. Run the
+binary directly to read it, and filter by module — `AGENTS.md` lists the prefixes:
 
-4. **SwiftUI** (`Spotifly/ContentView.swift`):
-   - Uses `@Observable` for state management
-   - `@MainActor` isolated view model
-   - Initiates OAuth flow on button press
+```bash
+"$(xcodebuild -scheme Spotifly -showBuildSettings 2>/dev/null | awk '/ BUILT_PRODUCTS_DIR /{print $3}')/Spotifly.app/Contents/MacOS/Spotifly" 2>&1 | grep -E 'AudioPipeline|SpircController'
+```
 
-## OAuth Flow
+Debug builds also read a few environment variables that drive playback without the UI:
 
-When you click "Connect with Spotify":
+| Variable | Effect |
+|---|---|
+| `SPOTIFLY_DEBUG_AUTOPLAY=1` | Plays a fixed album about 5 s after launch |
+| `SPOTIFLY_DEBUG_PAUSE_AFTER=<s>` | With autoplay: pauses after that long, resumes 6 s later |
+| `SPOTIFLY_DEBUG_NEXT_AFTER=<s>` | With autoplay: skips twice, that far apart |
+| `SPOTIFLY_DEBUG_QUEUE_AFTER=<s>` | Queues a track, then an album |
+| `SPOTIFLY_DEBUG_DEVICE_ID=<id>` | Registers under another Connect device id, so a second instance is a second device |
+| `SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER=<s>` | Pulls playback to this instance |
+| `SPOTIFLY_DEBUG_TRANSFER_TO=<name>` with `SPOTIFLY_DEBUG_TRANSFER_TO_AFTER=<s>` | Hands playback to the named device |
 
-1. The Rust library starts a local HTTP server on `http://127.0.0.1:8888`
-2. Opens Spotify's OAuth page in your browser
-3. After authentication, Spotify redirects to the local server
-4. The library captures the authorization code and exchanges it for tokens
-5. Access token is returned to Swift and displayed in the UI
+Connect only shows its problems with a second device: another instance under
+`SPOTIFLY_DEBUG_DEVICE_ID`, or Spotify's web player.
 
-## Xcode Build Settings
+Two things to know about signing in:
 
-The following settings are configured in the Xcode project:
+- **One grant per account.** Spotify keeps a single live refresh token per account and
+  client id, and rotates it on every refresh. Anything else signed in with the same
+  client id — Spotifly on another Mac, a probe — revokes this one's when it refreshes, and
+  the app then signs out.
+- **Release and development builds share a data container.** A Developer ID build and a
+  locally signed one have different signatures, so whichever runs second makes macOS ask
+  whether it may use the other's data, and it sits waiting on that alert.
 
-- **Library Search Paths**: `$(PROJECT_DIR)/build/rust/lib`
-- **Swift Include Paths**: `$(PROJECT_DIR)/build/rust/include`
-- **Other Linker Flags**:
-  - `-lspotifly_rust`
-  - `-framework SystemConfiguration`
-  - `-framework Security`
-  - `-framework CoreFoundation`
+## Performance
 
-## Notes
-
-- The app sandbox is enabled, but you may need to disable it or add network entitlements for the OAuth flow to work properly
-- Currently builds for macOS only; iOS would require cross-compilation of the Rust library
+[`docs/cpu-benchmark.md`](docs/cpu-benchmark.md) records where the CPU goes while
+playing and while paused, against the last librespot release, with the scripts to
+repeat it.

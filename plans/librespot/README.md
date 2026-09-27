@@ -3,6 +3,10 @@
 Everything concerning the `librespot` dependency: the two upstream patch candidates, and the
 migration away from the fork, which is **done**.
 
+There is no librespot dependency any more: the Swift stack in `Spotifly/SwiftLibrespot/`
+replaced it and the Rust layer altogether. What follows is history, and the upstream
+candidates are contributions to librespot, not fixes Spotifly needs.
+
 ## Upstream candidates
 
 Two independent findings, unrelated to each other, both to be filed separately against

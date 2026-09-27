@@ -7,6 +7,10 @@ Spotify client for macOS (and maybe later iPad and iOS).
 - **Language**: Swift 6.3 with strict concurrency enabled
 - **Target Platforms**: Latest Apple OSes only (macOS, iOS, iPadOS)
 - **UI Framework**: SwiftUI
+- **Playback and Spotify Connect**: Swift, in `Spotifly/SwiftLibrespot/` — a port of what
+  librespot does, not a dependency on it. There is no Rust and no librespot checkout to
+  build; Ogg Vorbis decoding is the vendored C libvorbis in `Spotifly/Vendor/`.
+  `DEVELOPMENT.md` has the architecture.
 
 ## Development Guidelines
 

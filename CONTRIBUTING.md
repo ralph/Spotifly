@@ -1,45 +1,25 @@
 # Contributing to Spotifly
 
-## Librespot
-
-Spotifly builds against **official librespot**. A patched fork is no longer required — the
-queue APIs it once added (`PlayerEvent::SetQueue`, `QueueTrack`,
-`ConnectConfig::emit_set_queue_events`, `Spirc::add_to_queue`, `Player::set_session`) have
-all been upstreamed, and the two behavioral patches Spotifly carried turned out to be
-artifacts of a reconnect strategy that no longer exists.
-
 ## Setup
 
-Clone librespot as a sibling to this repository:
+Clone this repository and open `Spotifly.xcodeproj`. That is all: there is nothing to
+check out beside it and nothing to build first. Playback and Spotify Connect are
+implemented in Swift under `Spotifly/SwiftLibrespot/`, and the Ogg Vorbis decoder is
+vendored C under `Spotifly/Vendor/`. Earlier versions built against a sibling
+[librespot](https://github.com/librespot-org/librespot) checkout through a Rust bridge;
+neither is needed any more.
 
-```bash
-git clone https://github.com/librespot-org/librespot.git
-```
+[DEVELOPMENT.md](DEVELOPMENT.md) covers building, testing and debugging, and
+[AGENTS.md](AGENTS.md) the conventions the code follows.
 
-Expected directory structure:
-```
-YourProjects/
-├── spotifly-code/  # This repo
-└── librespot/      # Official librespot
-```
+## Before sending a change
 
-Then build Rust (`cd rust && ./build.sh`) and open Xcode.
-
-### Which revision
-
-`rust/Cargo.toml` uses **path** dependencies, so the build simply compiles whatever is
-checked out in `../librespot`. There is no pin, deliberately: it makes trying a local
-librespot patch a matter of checking it out and rebuilding.
-
-The flip side is that the build follows that checkout silently, so when something behaves
-oddly, check which revision is actually there:
-
-```bash
-git -C ../librespot log --oneline -1
-```
-
-Known-good: official `dev` @ `9c7d756`. When a new librespot release lands, move to that
-release rather than tracking a branch.
+- Build, and run the unit tests (`-only-testing:SpotiflyTests`; see DEVELOPMENT.md).
+- Format with `swiftformat --swiftversion 6.3 .`
+- Add a line to `CHANGELOG.md` under `[Unreleased]`.
+- For anything touching playback or Spotify Connect, run the app. Connect can be broken
+  while music still plays, and a second device (another instance, or Spotify's web
+  player) is what shows it.
 
 ## Contributors
 
