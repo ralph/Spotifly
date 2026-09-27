@@ -462,15 +462,27 @@ public actor DealerConnection {
 
     private func handleVolumeCommand(_ message: DealerMessage) async {
         guard let payloadData = Self.payloadData(from: message, headers: message.headers),
-              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]
+              let volume = Self.volume(inSetVolumeCommand: payloadData)
         else {
-            debugLog("DealerConnection", "No parsable payload in volume message")
+            debugLog("DealerConnection", "No volume in volume message")
             return
         }
 
-        if let volume = (json["volume"] as? NSNumber)?.uint32Value {
-            commandSubject.send(SpircRemoteCommand(command: .setVolume(volume), messageId: nil, sentByDeviceId: nil))
+        debugLog("DealerConnection", "Volume command: \(volume)")
+        commandSubject.send(SpircRemoteCommand(command: .setVolume(volume), messageId: nil, sentByDeviceId: nil))
+    }
+
+    /// The volume a `SetVolumeCommand` sets, 0…65535.
+    ///
+    /// **The push is protobuf, not JSON** — connect.proto's
+    /// `SetVolumeCommand { int32 volume = 1; … }`, which librespot reads raw.
+    /// It was parsed as JSON, which never succeeded, so a volume set on another
+    /// device never reached this one.
+    nonisolated static func volume(inSetVolumeCommand data: Data) -> UInt32? {
+        guard let field = ProtobufReader.fields(in: data).first(where: { $0.number == 1 && $0.wireType == 0 }) else {
+            return nil
         }
+        return UInt32(clamping: max(0, min(65535, Int64(Int32(truncatingIfNeeded: field.value)))))
     }
 
     /// Extract and decompress payload data from a message

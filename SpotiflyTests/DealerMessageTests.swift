@@ -114,3 +114,26 @@ struct DealerMessageTests {
         )
     }
 }
+
+/// Volume set on another device, which arrives as a `SetVolumeCommand` protobuf.
+struct VolumeCommandTests {
+    /// Logged by this app on 2026-09-27 as Spotify's web player set it to about 60%:
+    /// `1: volume` (38757), `2: command_options { 1: message_id }`, and the sending device's
+    /// id in field 5.
+    @Test func `the volume is read from a real SetVolumeCommand`() throws {
+        let hex = "08e5ae02120608d8e5bd8b062a2837393733306335626462313236323537313034643737316364653130363464323432313961396633"
+        var bytes: [UInt8] = []
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            try bytes.append(#require(UInt8(hex[index ..< next], radix: 16)))
+            index = next
+        }
+
+        #expect(DealerConnection.volume(inSetVolumeCommand: Data(bytes)) == 38757)
+    }
+
+    @Test func `a JSON body is not mistaken for a volume`() {
+        #expect(DealerConnection.volume(inSetVolumeCommand: Data(#"{"volume":19731}"#.utf8)) == nil)
+    }
+}
