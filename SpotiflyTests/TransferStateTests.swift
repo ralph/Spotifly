@@ -123,3 +123,18 @@ struct TransferStateTests {
         }
     }
 }
+
+/// The token other clients key their cached copy of this device's queue on.
+struct QueueRevisionTests {
+    @Test func `the revision is stable for the same queue and moves when it changes`() {
+        let queue = ["spotify:track:a", "spotify:track:b"]
+
+        #expect(SpircController.queueRevision(of: queue) == SpircController.queueRevision(of: queue))
+        #expect(SpircController.queueRevision(of: queue) != SpircController.queueRevision(of: queue.reversed()))
+        #expect(SpircController.queueRevision(of: queue) != SpircController.queueRevision(of: Array(queue.dropFirst())))
+    }
+
+    @Test func `track boundaries count, not just the characters`() {
+        #expect(SpircController.queueRevision(of: ["ab", "c"]) != SpircController.queueRevision(of: ["a", "bc"]))
+    }
+}

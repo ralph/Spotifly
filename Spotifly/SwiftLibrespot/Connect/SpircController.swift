@@ -350,6 +350,7 @@ public actor SpircController {
                 playerStateProto.index = ContextIndex(page: 0, track: UInt32(index))
             }
             playerStateProto.nextTracks = ps.nextTracks.map { ProvidedTrack(uri: $0.uri, provider: $0.provider) }
+            playerStateProto.queueRevision = Self.queueRevision(of: ps.nextTracks.map(\.uri))
             playerStateProto.prevTracks = ps.previousTracks.map { ProvidedTrack(uri: $0.uri, provider: $0.provider) }
 
             var options = ContextPlayerOptions()
@@ -362,6 +363,24 @@ public actor SpircController {
         }
 
         return device
+    }
+
+    /// A token that changes whenever what plays next does — librespot's
+    /// `update_queue_revision`, a hash of the next tracks' uris.
+    ///
+    /// Clients cache the queue they show by it. Never sent, it stayed empty,
+    /// and Spotify's web player kept showing the queue it first saw: after it
+    /// started another album here, its queue panel still listed the old one.
+    /// FNV-1a rather than `Hasher`, whose seed changes with every launch.
+    nonisolated static func queueRevision(of uris: [String]) -> String {
+        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
+        for uri in uris {
+            for byte in uri.utf8 {
+                hash = (hash ^ UInt64(byte)) &* 0x100_0000_01B3
+            }
+            hash = (hash ^ 0xFF) &* 0x100_0000_01B3 // keeps ["ab", "c"] apart from ["a", "bc"]
+        }
+        return String(hash)
     }
 
     // MARK: - Dealer Subscriptions
