@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cost of the app's AudioRenderer on its own, fed like the decode thread feeds it,
+# Cost of the app's AudioRenderer on its own, fed like the pipeline feeds it,
 # with no Spotify, UI or login involved. Prints the CPU and idle wakeups of the
 # 60 s after a 10 s settle.
 #
@@ -20,14 +20,20 @@ done
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
+# The renderer took `enqueue` with macOS 27; before that it was written to
+# through the AudioSink protocol, and legacy.swift drives it that way.
+DRIVER="$HERE/main.swift"
 for file in Spotifly/AudioRenderer.swift Spotifly/SwiftLibrespot/Audio/AudioSink.swift; do
     if [ -n "$REV" ]; then
-        git -C "$ROOT" show "$REV:$file" > "$WORK/$(basename "$file")"
-    else
+        git -C "$ROOT" show "$REV:$file" > "$WORK/$(basename "$file")" 2> /dev/null || rm "$WORK/$(basename "$file")"
+    elif [ -f "$ROOT/$file" ]; then
         cp "$ROOT/$file" "$WORK/"
     fi
 done
-swiftc -O -swift-version 6 "$HERE/shim.swift" "$WORK/AudioSink.swift" "$WORK/AudioRenderer.swift" "$HERE/main.swift" \
+[ -f "$WORK/AudioSink.swift" ] && DRIVER="$HERE/legacy.swift"
+# Top-level code has to be in main.swift.
+cp "$DRIVER" "$WORK/main.swift"
+swiftc -O -swift-version 6 "$HERE/shim.swift" "$WORK"/*.swift \
     -o "$WORK/renderer" 2> "$WORK/build.log" || { cat "$WORK/build.log" >&2; exit 1; }
 
 "$WORK/renderer" 75 $MODE > "$WORK/out.txt" &

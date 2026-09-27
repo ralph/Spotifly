@@ -1,8 +1,8 @@
 # The player's interface to the app is still shaped like the FFI it replaced
 
-Status: **proposed, 2026-09-27; not started.** The two places where the player waited on the
-main thread were fixed on the day (`5c00231`); everything else here is a refactor with no
-behaviour change intended.
+Status: **proposed, 2026-09-27; step 5 done the same day, steps 1–4 not started.** The two
+places where the player waited on the main thread were fixed on the day (`5c00231`);
+everything else here is a refactor with no behaviour change intended.
 
 Component: `Spotifly/SpotifyPlayer.swift`, `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`,
 and everything that subscribes to them — `PlaybackViewModel`, `QueueService`, `DeviceService`,
@@ -14,14 +14,13 @@ No, by construction. Where the audio lives:
 
 | Stage | Runs on | Holds |
 | --- | --- | --- |
-| Output | Core Audio's real-time I/O thread, pulling from `AVSampleBufferAudioRenderer` | 0.72–1.25 s |
-| Feed | `renderQueue`, a serial `.userInteractive` queue, woken by the renderer's callback | — |
-| Ring buffer | written by the `spotifly.decode` thread, a plain `Thread` | about 1 s |
+| Output | Core Audio's real-time I/O thread, pulling from `AVSampleBufferAudioRenderer` | 1–1.9 s |
+| Decoding | the `AudioPipeline` actor, suspended in `AudioRenderer.enqueue` until the renderer wants more | — |
 | Loads, position, end of track | the `AudioPipeline` actor, on the cooperative pool | the next track, once fetched ahead |
 | Connect, network | `LibrespotClient`, `LibrespotSession`, `SpircController`, `DealerConnection`, `Accesspoint`, `SPClient`, all actors | — |
 
-About two seconds of decoded audio sit outside the main thread at any time, and nothing on the
-audio path waits for it. The UI reads the player's state through cached values that never
+One to two seconds of decoded audio sit in the renderer at any time, and nothing on the audio
+path waits for the main thread. The UI reads the player's state through cached values that never
 block (`SpotifyPlayer.positionMs`, `isPlaying`, `isActiveDevice`), and its commands are
 fire-and-forget tasks. Auto-advance and gapless continuation are actor-driven, so a frozen UI
 does not stop the next track either.
@@ -36,9 +35,10 @@ Two places did wait for the main thread, and were fixed in `5c00231`:
 
 What is left is shared rather than coupled. The actors run on the same cooperative pool as the
 UI's own async work, so CPU-heavy work parked there (image decoding, large JSON) can delay the
-pipeline's 250 ms tick. The audio does not depend on the tick, but a gapless handover needs it
-within about 1.5 s of the decode finishing. The decode thread runs at the default QoS; with a
-second of ring buffer ahead of it, that has not mattered.
+pipeline's 250 ms tick, and decoding itself now runs on that pool too, a tenth of a
+millisecond per chunk. With a second or more queued in the renderer, a delay has to last that
+long to be heard, and a gapless handover needs the tick within about a second of the decode
+finishing.
 
 ## What the interface looks like now
 
@@ -112,9 +112,8 @@ Five steps, each shippable on its own, in order of value per risk.
    a fake player possible for tests. Migrate one consumer at a time: `ConnectionService`,
    `DeviceService`, `QueueService`, and `PlaybackViewModel` last. It is the largest (1,635
    lines), and only the inputs to its position anchoring would change.
-5. **The macOS 27 renderer API**, once the deployment target (26.2) allows it.
-   `AVSampleBufferAudioRenderer.Receiver.enqueue(_:) async` suspends until the renderer
-   wants more, so the decode loop becomes a task that awaits it, and the ring buffer, the
-   write throttle, the feed callback and the pause park all go — most of
-   `AudioRenderer.swift`. `renderingEventsAfterFinishedEnqueuing` replaces the auto-flush
-   notification. See `docs/cpu-benchmark.md`, "Feeding the renderer".
+5. **The macOS 27 renderer API** — done on 2026-09-27, with the deployment target raised to
+   27.0. `AVSampleBufferAudioRenderer.Receiver.enqueue(_:) async` suspends until the
+   renderer wants more; the decode loop is a task that awaits it, and the ring buffer, the
+   write throttle, the feed callback, the decode thread and the pause park are gone. See
+   `docs/cpu-benchmark.md`, "Feeding the renderer".

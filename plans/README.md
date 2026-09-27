@@ -22,7 +22,7 @@ PR; the rest are recorded but not planned.
 | --- | --- | --- |
 | 1 | [unavailable-tracks-skip-the-rest-of-a-playlist.md](unavailable-tracks-skip-the-rest-of-a-playlist.md) | Playback silently drains a whole playlist in half a second. Observed, never investigated |
 | 2 | [free-account-exits-the-process.md](free-account-exits-the-process.md) | librespot called `exit()` for a non-premium account. That went with librespot; the Swift stack gets an accesspoint login error (`premiumAccountRequired`) instead, and what the app then shows is untested |
-| 3 | [the-reported-position-is-the-decoder-not-the-playhead.md](the-reported-position-is-the-decoder-not-the-playhead.md) | **Resolved by the Swift stack**: `AudioPipeline` reports the renderer's playhead (`AudioSink.playedFramesSinceStart`), not the decoder |
+| 3 | [the-reported-position-is-the-decoder-not-the-playhead.md](the-reported-position-is-the-decoder-not-the-playhead.md) | **Resolved by the Swift stack**: `AudioPipeline` reports the renderer's playhead (`AudioRenderer.playedFrames`), not the decoder |
 | 4 | [connect-state-put-echoes-itself-into-a-429.md](connect-state-put-echoes-itself-into-a-429.md) | Written against librespot's spirc. `SpircController` has its own PutState path, and the September live runs saw no 429 |
 | 5 | [single-grant-partner-api.md](single-grant-partner-api.md) — **Track B only** | **Done on `swift-librespot`**: playback is Swift, with the vendored libvorbis as decoder, and `rust/` is gone |
 
@@ -30,8 +30,8 @@ PR; the rest are recorded but not planned.
 
 - **The player's interface is still FFI-shaped** — [player-interface-after-the-ffi.md](player-interface-after-the-ffi.md).
   Ten Combine subjects, types built for C, a static facade. A five-step move to ordered
-  streams and one `@Observable` model. Also answers whether a slow UI can interrupt
-  playback: no.
+  streams and one `@Observable` model; the last step, the macOS 27 renderer, is done. Also
+  answers whether a slow UI can interrupt playback: no.
 - **Playlist writes Spotifly cannot do** — [playlist-attributes-not-written.md](playlist-attributes-not-written.md).
   Reading is complete; only writing cover art and attributes is missing.
 - **Playlist folders** — [playlist-folder-hierarchy.md](playlist-folder-hierarchy.md). Deferred

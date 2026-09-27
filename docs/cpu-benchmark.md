@@ -17,7 +17,9 @@ the same output is still to be done — see [Open](#open).
 than 1.2.7 (19–26 a second against 17.7), are down to 2 a second, and energy impact
 from about 4 to 2.5 against 1.2.7's 3.5, by feeding the renderer from its own callback
 again and decoding in half-second bursts. The same work found that a pause dropped up
-to 46 ms of audio. See [Feeding the renderer](#feeding-the-renderer).
+to 46 ms of audio. Moving to macOS 27's renderer receiver then took the renderer's own
+cost down by another third, to no idle wakeups at all. See
+[Feeding the renderer](#feeding-the-renderer).
 
 ## Setup
 
@@ -75,6 +77,7 @@ Things that bit:
 | with fixes (10:41) | 3.22% | 5.00% | 12 | 196 MB | 19.3 | 4.3 |
 | with fixes, track 1 from 0:15 (10:54) | 2.08% | 3.33% | 12 | 212 MB | 25.5 | 4.0 |
 | renderer fed by its callback, track 1 from 0:47 (12:07) | 2.63% | 4.83% | 13 | 208 MB | **2.1** | **2.5** |
+| receiver, MacBook Air speakers, "Fading on Me" from 1:08 (13:20) | 2.27% | 7.83% | 11 | 203 MB | 1.0 | 2.3 |
 
 CPU is the percentage of one core over 60 s. The 1.2.7 wakeup and energy figures come
 from a separate 60 s `top` window during the same playback.
@@ -102,6 +105,7 @@ between runs, so no Spotifly code change is behind the spread in the first table
 | `ac4faaf`, idle, never played since launch | 0.78% | 3.67% | 7 | 203 MB | — | — |
 | with fixes, paused | **0.12%** | 3.33% | 6 | 207 MB | 0.2 | 0.1 |
 | renderer fed by its callback, paused mid-track (12:10) | 0.20% | 3.67% | 11 | 168 MB | 0.1 | 0.3 |
+| receiver, MacBook Air speakers, paused mid-track (13:24) | 0.18% | 6.83% | 8 | 175 MB | 0.2 | 0.1 |
 
 The `ac4faaf` idle run started 20 s after launch and probably still includes the home
 page loading; its trace (0.56%) is the better figure. Nearly all of it, as in 1.2.7,
@@ -137,8 +141,9 @@ software implementation manages a few hundred MB/s). A whole track decrypts in a
 
 [`renderer/run.sh`](cpu-benchmark/renderer/run.sh) `[<git revision>] [pause]` builds the
 app's `AudioRenderer.swift`, from the working tree or from a revision, into a small
-program that plays -120 dB noise through it. The noise is written the way the decode
-thread writes it, and the script reports the 60 s after a 10 s settle. With no Spotify,
+program that plays -120 dB noise through it, fed the way the pipeline feeds it
+(`legacy.swift` drives revisions from before the receiver), and reports the 60 s after a
+10 s settle. With no Spotify,
 UI or login involved, it separates the renderer's own cost from everything else.
 
 What `AVSampleBufferAudioRenderer` needs, measured through it on macOS 27: it holds
@@ -153,9 +158,9 @@ renderer still wanting data, and an empty ring has to stop it rather than return
 code before `a6b9e12` did that. The same commit moved decoding off the cooperative pool,
 and that is what freed the transport controls.
 
-Now the callback feeds the renderer, and the decode thread sleeps until half a second
-under its limit, then decodes half a second at once (`3bdc11e`). Its sleep is a semaphore
-wait that `stop()` cuts short, so a seek or a skip, which joins the thread, does not wait
+So the callback fed the renderer again, and the decode thread slept until half a second
+under its limit, then decoded half a second at once (`3bdc11e`). Its sleep was a semaphore
+wait that `stop()` cut short, so a seek or a skip, which joined the thread, did not wait
 it out. On the renderer alone, three runs each, alternating, same output:
 
 | Renderer | Idle wakeups/s | CPU | Energy impact |
@@ -176,12 +181,41 @@ track, held back only by the full ring. The throttle's clock now stands still wh
 playout is stopped, and the paused decode loop waits on a condition instead of polling
 every 50 ms (`7b83a26`). A 50 ms poll on its own measures 8 idle wakeups a second.
 
-**macOS 27 deprecates all of this.** `AVSampleBufferAudioRenderer.Receiver`, from
-`sampleBufferReceiver(adding:)` on the synchronizer, has an `enqueue(_:) async` that
-suspends until the renderer wants more. That is backpressure without the ring buffer,
-the throttle or the callback, and `renderingEventsAfterFinishedEnqueuing` replaces the
-auto-flush notification. The app targets macOS 26.2, so it stays on the callback until
-that changes.
+**Then the receiver.** macOS 27 deprecates every call above in favour of
+`AVSampleBufferAudioRenderer.Receiver`, from `sampleBufferReceiver(adding:)` on the
+synchronizer. Its `enqueue(_:) async` suspends until the renderer wants more, so the app
+now requires macOS 27 and decodes in a task that awaits each 4096-frame chunk: no ring
+buffer, throttle, callback or decode thread. Probed on the renderer alone, the receiver
+behaves like this:
+
+- It holds 1–1.9 s and resumes a waiting enqueue about every 0.55 s, taking six chunks.
+- While paused (rate 0) the waiting enqueue waits the whole pause, with no wakeups.
+  After a flush with the clock held, it still takes about a second, so a paused track
+  pre-rolls.
+- A flush returns a waiting enqueue at once as `cancelledDueToFlush`. So does cancelling
+  the task that waits, paused or not, and the next enqueue then throws
+  `CancellationError`.
+- Setting the renderer's own `audioOutputDeviceUniqueID` makes the waiting (or the next)
+  enqueue return `enqueuedWithSuggestedFlush(wasFlushedAutomatically)`, with an invalid
+  flush time. `renderingEventsAfterFinishedEnqueuing` delivered nothing in any test.
+- **Changing the system's default output reports nothing.** The deprecated
+  `WasFlushedAutomatically` notification still arrives, 130–160 ms after the switch, but
+  the waiting enqueue never returns, and the clock runs on over silence (−20 s of lead
+  and falling). Flushing and restarting the clock on the same receiver revives it; no
+  rebuild is needed. The app detects the stall from the enqueue's side (see the
+  changelog) and reloads from the playhead.
+
+Three runs each, alternating, same output (the LG display):
+
+| Renderer | Idle wakeups/s | CPU | Energy impact |
+|---|---|---|---|
+| callback (`1b169ba`) | 0.9–1.0 | 1.12–1.17% | 1.1 |
+| receiver | 0.0 | 0.72–0.73% | 0.7 |
+
+In the app it was measured on the MacBook Air's speakers, which is where the output
+happened to be; their Core Audio work is heavier (728 ms per 30 s on the in-process I/O
+thread, and `coreaudiod` at 6.8–7.8% even paused), so those rows do not compare with the
+LG ones above them. Decoding, now on the cooperative pool, came to 143 ms per 30 s.
 
 ## Findings
 
@@ -208,4 +242,4 @@ that changes.
 - The main thread is now the largest single consumer while playing: 187 ms per 30 s at
   12:07, nearly all of it SwiftUI's and AttributeGraph's own update work, with little
   of the app's code on the stack. What triggers those updates is not yet known.
-- Moving to the macOS 27 `Receiver` API, once the deployment target allows it.
+- An in-app run of the receiver on the LG display, to put beside the 12:07 one.

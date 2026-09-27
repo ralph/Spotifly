@@ -1,48 +1,42 @@
-// Plays -120 dB noise through the app's AudioRenderer for `seconds`, written the
-// way the decode thread writes it: 2048-frame chunks as fast as `write` allows,
-// parked while paused. With `pause`, playback pauses for 4 s after 3 s.
+// Plays -120 dB noise through the app's AudioRenderer for `seconds`, fed the way
+// AudioPipeline feeds it: 4096-frame chunks, each enqueue awaited. With `pause`,
+// playback pauses for 4 s after 3 s. For revisions before the renderer took
+// enqueue (macOS 27), run.sh builds legacy.swift instead.
 import Foundation
 
 let arguments = CommandLine.arguments.dropFirst()
 let seconds = Double(arguments.first ?? "75") ?? 75
 let pauses = arguments.contains("pause")
 
-nonisolated(unsafe) var paused = false
 let renderer = AudioRenderer()
-renderer.start()
+await renderer.restart(paused: false)
 
-let writer = Thread {
-    let frames = 2048
-    let buffer = UnsafeMutablePointer<Float>.allocate(capacity: frames * 2)
+_ = Task {
+    let frames = 4096
+    var samples = [Float](repeating: 0, count: frames * 2)
     var seed: UInt32 = 1
-    while true {
-        while paused {
-            Thread.sleep(forTimeInterval: 0.05)
-        }
-        for i in 0 ..< frames * 2 {
+    while !Task.isCancelled {
+        for i in samples.indices {
             seed = seed &* 1_664_525 &+ 1_013_904_223
-            buffer[i] = (Float(seed >> 8) / Float(1 << 24) - 0.5) * 2e-6
+            samples[i] = (Float(seed >> 8) / Float(1 << 24) - 0.5) * 2e-6
         }
-        renderer.write(samples: buffer, count: frames * 2)
+        let pcm = samples.withUnsafeBytes { Data($0) }
+        _ = await renderer.enqueue(pcm, frames: frames)
     }
 }
-
-writer.start()
 
 let start = ProcessInfo.processInfo.systemUptime
 var pausedFor = 0.0
 if pauses {
-    Thread.sleep(forTimeInterval: 3)
-    paused = true
-    renderer.stop()
-    Thread.sleep(forTimeInterval: 4)
-    paused = false
-    renderer.resume()
+    try await Task.sleep(for: .seconds(3))
+    await renderer.pause()
+    try await Task.sleep(for: .seconds(4))
+    await renderer.resume()
     pausedFor = 4
 }
 
-Thread.sleep(forTimeInterval: seconds - (ProcessInfo.processInfo.systemUptime - start))
-let played = Double(renderer.playedFramesSinceStart) / 44100
+try await Task.sleep(for: .seconds(seconds - (ProcessInfo.processInfo.systemUptime - start)))
+let played = Double(renderer.playedFrames) / 44100
 let playing = ProcessInfo.processInfo.systemUptime - start - pausedFor
 print(String(format: "played %.2f s of audio in %.2f s of playback", played, playing))
 exit(0)
