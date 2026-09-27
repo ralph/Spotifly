@@ -28,17 +28,6 @@ PR; the rest are recorded but not planned.
 
 ### Recorded, not planned
 
-- **The accesspoint connect can wait 5 s on port 4070.** In the logs of 2026-09-26 and 27, 12
-  of 87 connects to `ap-gew4.spotify.com:4070` ran into `Accesspoint.connectTimeout` (5 s),
-  and the same host's port 443 then connected within about 15 ms: at launch, on the reconnect
-  after a reset, and after wake. A reset is inaudible now, but the session stays down that
-  much longer, and remote control, the cluster and a track waiting for its audio key wait
-  with it. The likely cause is the connect's state handler: it acts on `.ready`, `.failed`
-  and `.cancelled` and ignores `.waiting(error)`, which is how Network.framework reports a
-  connect it cannot make yet and will retry. So nothing fails before the deadline. The
-  waiting error is not logged, so whether 4070 is refused or its SYN dropped is unknown. First
-  log it, then treat `.waiting` during the connect as a failure and move on to the next
-  accesspoint. Found 2026-09-27.
 - **The player's interface is still FFI-shaped** — [player-interface-after-the-ffi.md](player-interface-after-the-ffi.md).
   Ten Combine subjects, types built for C, a static facade. A five-step move to ordered
   streams and one `@Observable` model; the last step, the macOS 27 renderer, is done. Also

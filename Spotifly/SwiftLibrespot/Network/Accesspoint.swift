@@ -100,10 +100,11 @@ public actor Accesspoint {
     // MARK: - Connection
 
     /// How long a TCP connect may take before the session moves on to the
-    /// next resolved accesspoint. A healthy one connects in well under 100 ms;
-    /// one that swallows the SYN leaves the connection waiting, and at 30 s
-    /// that was half a minute of startup spent on a single host
-    /// (2026-09-26, ap-gew4:4070) before the next was even tried.
+    /// next resolved accesspoint. A healthy one connects in well under 100 ms,
+    /// and a refused one fails at once (see the state handler); this bounds
+    /// one that never answers. At 30 s, a connect left waiting on one host
+    /// cost half a minute of startup (2026-09-26, ap-gew4:4070) before the
+    /// next was even tried.
     private static let connectTimeout: TimeInterval = 5
 
     /// Connect and authenticate with credentials
@@ -160,7 +161,12 @@ public actor Accesspoint {
                 case .ready:
                     conn?.stateUpdateHandler = nil
                     _ = deadlineClaim.tryResume(continuation, with: .success(()))
-                case let .failed(error):
+                // A refused connect is `.waiting`, not `.failed`: Network.framework
+                // would try it again when the network changes, which on a steady
+                // one is never. Port 4070 of an accesspoint refuses about one
+                // connect in eight while 443 of the same host answers, so the
+                // session moves on at once rather than at the deadline.
+                case let .failed(error), let .waiting(error):
                     _ = deadlineClaim.tryResume(continuation, with: .failure(LibrespotError.connectionFailed(error.localizedDescription)))
                 case .cancelled:
                     _ = deadlineClaim.tryResume(continuation, with: .failure(LibrespotError.connectionFailed("Connection cancelled")))
