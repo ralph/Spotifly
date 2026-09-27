@@ -72,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  The latter is not only dedup: the seven hand-rolled lock-and-match blocks it replaced held the lock across a Swift callback that can call back into Rust, and handing out an `Arc` clone removes that re-entrancy hazard — which is what `spotifly_resume` had already been doing by hand
 
+### Removed
+
+- `rust/src/proxy_sink.rs`, the last tracked file of the Rust layer. The branch had removed the Rust FFI, but `main` created this file afterwards, so merging `main` in brought it back as a new file with nothing left to build it.
 
 ## [1.2.7] - 2026-08-14
 
