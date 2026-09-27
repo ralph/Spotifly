@@ -482,6 +482,11 @@ actor AudioPipeline {
     /// What played in the meantime was silence, and is skipped.
     private func refill(after run: Int) async {
         guard run == decodeRun, currentTrackUri != nil, isPlaying else { return }
+        // A stall is noticed a second or so after it starts, so near the end
+        // of a track the clock may have run into the next one before a tick
+        // made it the loaded track. Measured against this one, the playhead
+        // would sit at its end, and the refill would decode nothing more of it.
+        adoptContinuationIfReached()
         debugLog("AudioPipeline", "Refilling the output from the playhead")
         try? await seek(positionMs: currentPositionMs())
     }
@@ -518,6 +523,12 @@ actor AudioPipeline {
         continuation = (track, decoder, startFrame)
         debugLog("AudioPipeline", "Decoding \(uri) behind the current track, from sink frame \(startFrame)")
         startDecodeTask(decoder)
+    }
+
+    private func adoptContinuationIfReached() {
+        if let continuation, sink.playedFrames >= continuation.startFrame {
+            adoptContinuation()
+        }
     }
 
     /// The playhead has reached the continuation: it is now the loaded track,
@@ -603,15 +614,13 @@ actor AudioPipeline {
     private func tick() async {
         guard currentTrackUri != nil, isPlaying, !isPaused else { return }
 
+        adoptContinuationIfReached()
+
         if decodeTask != nil, await sink.isStalled {
             debugLog("AudioPipeline", "The output stopped taking audio")
             let run = decodeRun
             Task { await refill(after: run) }
             return
-        }
-
-        if let continuation, sink.playedFrames >= continuation.startFrame {
-            adoptContinuation()
         }
 
         let positionMs = frameToMs(currentTrackFrame())
