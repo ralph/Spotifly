@@ -474,8 +474,18 @@ public actor LibrespotClient {
         }
     }
 
+    /// Queues a track, or every track of an album or playlist in order.
     public func addToQueue(uri: String) async {
-        playbackQueue.enqueue(Self.normalizedUri(uri))
+        let tracks: [String]
+        do {
+            tracks = try await queueableTracks(for: uri)
+        } catch {
+            debugLog("LibrespotClient", "Could not queue \(uri): \(error.localizedDescription)")
+            return
+        }
+        for track in tracks {
+            playbackQueue.enqueue(track)
+        }
         publishQueueNotifications()
         // The queue is part of the reported player state, and heartbeats only
         // repeat the last report: without this, other devices did not see the
@@ -483,6 +493,23 @@ public actor LibrespotClient {
         if localState != nil {
             await reportPlaybackToCluster()
         }
+    }
+
+    /// The tracks queueing `uri` means: the track itself, or the tracks of the
+    /// album or playlist it names.
+    ///
+    /// "Play next" on an album or a playlist hands over the context's uri. It
+    /// used to be enqueued as it was, so the pipeline was later asked to load
+    /// an album as a track, failed, and auto-advance stopped playback there.
+    func queueableTracks(for uri: String) async throws -> [String] {
+        let normalized = Self.normalizedUri(uri)
+        if normalized.hasPrefix("spotify:track:") {
+            return [normalized]
+        }
+        guard let spclient else {
+            throw LibrespotError.notInitialized
+        }
+        return try await spclient.resolveContext(normalized).tracks
     }
 
     public func setShuffle(_ enabled: Bool) async {
