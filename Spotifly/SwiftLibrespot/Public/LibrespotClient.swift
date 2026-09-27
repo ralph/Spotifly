@@ -988,7 +988,8 @@ public actor LibrespotClient {
         }
 
         if !nowActive, localState == nil, let remote = cluster.playerState {
-            mirror(remote)
+            debugLog("LibrespotClient", "Mirroring \(remote.track?.uri ?? "no track") (playing=\(remote.isPlaying), paused=\(remote.isPaused)) from \(activeId.isEmpty ? "no active device" : activeId)")
+            mirror(remote, deviceActive: !activeId.isEmpty)
         }
 
         await publishConnectionState(connected: session?.isConnected == true)
@@ -1011,13 +1012,19 @@ public actor LibrespotClient {
     /// so the now-playing bar and the queue follow playback that was handed
     /// away — and the transport controls, which route to the active device,
     /// act on what is on screen.
-    private func mirror(_ remote: PlayerState) {
+    ///
+    /// With no device active, nothing plays, whatever the player state says.
+    /// Spotify keeps a device's last report after the device has gone,
+    /// "playing" included, and a launch after quitting mid-track showed that
+    /// as playback running on no device at all.
+    private func mirror(_ remote: PlayerState, deviceActive: Bool) {
         guard let track = remote.track, !track.uri.isEmpty else { return }
 
+        let playing = deviceActive && remote.isPlaying && !remote.isPaused
         let options = remote.options
         playbackStateSubject.send(PlaybackState(
-            isPlaying: remote.isPlaying,
-            isPaused: remote.isPaused,
+            isPlaying: playing,
+            isPaused: !playing,
             trackUri: track.uri,
             positionMs: remote.positionAsOfTimestamp,
             durationMs: remote.duration,
