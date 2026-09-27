@@ -642,7 +642,8 @@ final class PlaybackViewModel {
     /// connect-state otherwise. Returns whether the command was issued at all.
     ///
     /// While this device is active the command goes to the local player even mid-reconnect:
-    /// the pipeline plays on from memory and needs no session to pause, resume or seek.
+    /// the pipeline plays on from memory and needs no session to pause, resume or seek, and
+    /// a track it has to fetch for Next or Previous waits for the session to come back.
     ///
     /// With nobody active and no session, nothing is issued, and the callers that move the
     /// UI optimistically must not do so for a command that never happened, hence the

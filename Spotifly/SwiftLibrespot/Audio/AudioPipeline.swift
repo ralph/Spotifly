@@ -24,9 +24,10 @@ import Foundation
 actor AudioPipeline {
     // MARK: - Dependencies
 
-    /// Replaced when the session reconnects; see `reattach`.
-    private var audioKeyProvider: AudioKeyProvider
-    private var spclient: SPClient?
+    /// Asks the session for its socket each time, so a reconnect, which
+    /// replaces the socket, leaves the pipeline as it is.
+    private let audioKeyProvider: AudioKeyProvider
+    private let spclient: SPClient?
     private let sink: AudioRenderer
 
     // MARK: - Publishers
@@ -139,29 +140,17 @@ actor AudioPipeline {
 
     // MARK: - Initialization
 
-    init(accesspoint: Accesspoint, spclient: SPClient?, sink: AudioRenderer) {
+    init(audioKeyProvider: AudioKeyProvider, spclient: SPClient?, sink: AudioRenderer) {
+        self.audioKeyProvider = audioKeyProvider
         self.spclient = spclient
         self.sink = sink
-        audioKeyProvider = AudioKeyProvider(accesspoint: accesspoint)
         debugLog("AudioPipeline", "Initialized")
     }
 
-    /// Moves over to a reconnected session. The loaded track is in memory and
-    /// needs nothing from the socket, so it plays on; only what fetches the
-    /// next one changes. The fetch-ahead is dropped, since the reset may have
-    /// cut it off, and the next tick makes it again over the new socket.
-    func reattach(accesspoint: Accesspoint, spclient: SPClient?) {
-        debugLog("AudioPipeline", "Reattached to the reconnected session")
-        audioKeyProvider = AudioKeyProvider(accesspoint: accesspoint)
-        self.spclient = spclient
-        upcoming?.fetch.cancel()
-        upcoming = nil
-    }
-
-    /// Whether a track is loaded, playing or paused: not after a stop, and not
-    /// while a load waits for its file.
-    var holdsTrack: Bool {
-        isPlaying
+    /// Whether nothing is loaded or loading: after a stop, and before the
+    /// first track.
+    var isStopped: Bool {
+        playbackStateSubject.value == .idle
     }
 
     // MARK: - Settings

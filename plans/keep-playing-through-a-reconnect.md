@@ -93,5 +93,15 @@ After it, three runs:
   replaced it. Fixed alongside: commands for this device go to the local player whether or
   not the session is up, and only another device's position holds while it is down.
 
+- **A Next pressed during the outage left nothing playing** once the guard above was gone
+  (found by Codex, reproduced with the hook). The next track was not in memory yet, its key
+  request failed on the dead socket, the load cleared the local state, and the recovery,
+  starting a second later, had nothing to restore. So step 1 changed shape: instead of
+  `reattach` swapping the key source, `AudioKeyProvider` asks the session for its socket on
+  every request and waits out a reconnect, up to 15 s. The Next then played its track 150 ms
+  after the reconnect, and a fetch-ahead started during the outage completed with one
+  download instead of being fetched twice. The recovery keeps whatever the pipeline has
+  loaded or is loading, and reloads only when it was stopped, as after sleep.
+
 One run waited 5 s for `ap-gew4.spotify.com:4070` to time out before the next accesspoint
 answered, so an outage lasted 6.5 s where it is usually 1.3 s. Inaudible now.

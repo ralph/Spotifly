@@ -204,6 +204,11 @@ public actor LibrespotSession {
         credentials
     }
 
+    /// The accesspoint while the session is up; nil while it reconnects.
+    var connectedAccesspoint: Accesspoint? {
+        state == .connected ? accesspoint : nil
+    }
+
     /// SPClient host for track metadata and CDN resolution
     public var spclientHost: String? {
         resolvedEndpoints?.spclients.first
