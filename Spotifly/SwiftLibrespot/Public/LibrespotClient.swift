@@ -291,9 +291,11 @@ public actor LibrespotClient {
         guard let session, let credentials = await session.currentCredentials, let tokenProvider else { return }
 
         // What to come back to, read before reconnecting: the new session's
-        // first cluster can arrive while it is still being set up.
-        let wasPlaying = localState?.isPlaying == true
-        let resumeAt = positionCache
+        // first cluster can arrive while it is still being set up. A paused
+        // track's place is the one it was paused at; the pipeline's position
+        // is zero once it has been stopped, as before sleep.
+        let was = localState
+        let resumeAt = was?.isPlaying == true ? positionCache : UInt64(max(0, was?.positionMs ?? 0))
 
         do {
             _ = try await session.connect(credentials: credentials) { [tokenProvider] in
@@ -309,10 +311,12 @@ public actor LibrespotClient {
 
             // attachTransport hands back an empty pipeline, so without this the
             // session comes back reporting connected while nothing plays and
-            // resume() resumes silence. Reload where we were.
-            if wasPlaying, let uri = playbackQueue.currentUri {
-                debugLog("LibrespotClient", "Recovery reloading \(uri) at \(resumeAt)ms")
-                try? await audioPipeline?.playTrack(uri: uri, positionMs: resumeAt)
+            // resume() resumes silence. Reload where we were, paused if it was:
+            // only a playing track used to come back, so after a wake, or a
+            // dropped connection while paused, play did nothing at all.
+            if let was, let uri = playbackQueue.currentUri {
+                debugLog("LibrespotClient", "Recovery reloading \(uri) at \(resumeAt)ms\(was.isPlaying ? "" : ", paused")")
+                try? await audioPipeline?.playTrack(uri: uri, positionMs: resumeAt, paused: !was.isPlaying)
             }
 
             publishConnectionState(connected: true)
