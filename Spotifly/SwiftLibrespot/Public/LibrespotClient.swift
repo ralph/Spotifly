@@ -1085,6 +1085,12 @@ public actor LibrespotClient {
         case .unknown:
             break
         }
+
+        // Every command is acknowledged by a report once it has been handled,
+        // as librespot's notify after `handle_request` does — also the ones
+        // that change nothing a playback state would report, such as a track
+        // queued while paused, which otherwise went unanswered.
+        await reportPlaybackToCluster()
     }
 
     // MARK: - State Publishing

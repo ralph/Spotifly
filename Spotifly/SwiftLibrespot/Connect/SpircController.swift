@@ -23,8 +23,10 @@ public actor SpircController {
     /// Whether the controller is ready for commands
     public private(set) var isReady = false
 
-    /// Last command message ID (for acknowledgment)
-    private var lastCommandMessageId: UInt64?
+    /// The last command received, named the way its sender looks for its
+    /// acknowledgement: by message id *and* by the device that sent it,
+    /// both echoed in every PutState (librespot's `set_last_command`).
+    private var lastCommand: (messageId: UInt32, sentBy: String)?
 
     /// Whether this device believes it is the active one, and the moment it
     /// became so. Both are reflected into every PutState.
@@ -268,8 +270,9 @@ public actor SpircController {
             request.startedPlayingAt = activeSince
         }
 
-        if let msgId = lastCommandMessageId {
-            request.lastCommandMessageId = UInt32(msgId)
+        if let lastCommand {
+            request.lastCommandMessageId = lastCommand.messageId
+            request.lastCommandSentByDeviceId = lastCommand.sentBy
         }
 
         return request
@@ -399,10 +402,12 @@ public actor SpircController {
     }
 
     private func handleCommand(_ envelope: SpircRemoteCommand) async {
-        debugLog("SpircController", "Command received: \(envelope.command)")
+        debugLog("SpircController", "Command received: \(envelope.command) (message \(envelope.messageId.map(String.init) ?? "-") from \(envelope.sentByDeviceId ?? "-"))")
         if let messageId = envelope.messageId {
-            // Acknowledged in the next PutState via last_command_message_id.
-            lastCommandMessageId = UInt64(messageId)
+            // Acknowledged by the PutState that follows handling it. The id
+            // alone was not enough: a web player sending to this device logged
+            // every command as `ack_timeout`.
+            lastCommand = (messageId, envelope.sentByDeviceId ?? "")
         }
 
         // Forwarding is the whole job. LibrespotClient executes the command
