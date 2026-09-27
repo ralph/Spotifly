@@ -562,7 +562,7 @@ enum SpotifyPlayer {
     /// Sets the streaming bitrate. Takes effect on the next track load.
     static func setBitrate(_ bitrate: Bitrate) {
         UserDefaults.standard.set(bitrate.rawValue, forKey: "streamingBitrate")
-        Task { await LibrespotClient.shared.applyStreamingQuality() }
+        Task { await LibrespotClient.shared.applyPlaybackSettings() }
     }
 
     /// The stored bitrate setting, defaulting to normal. `nonisolated` so the
@@ -571,10 +571,11 @@ enum SpotifyPlayer {
         Bitrate(rawValue: UInt8(UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1)) ?? .normal
     }
 
-    /// Sets gapless playback. Reserved: auto-advance already keeps gaps small;
-    /// sample-accurate cross-track scheduling is not implemented yet.
+    /// Sets gapless playback: the next track decoded into the sink behind the
+    /// current one. Takes effect at the next track change.
     static func setGapless(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: "gaplessPlayback")
+        Task { await LibrespotClient.shared.applyPlaybackSettings() }
     }
 
     /// Gets the gapless playback setting.

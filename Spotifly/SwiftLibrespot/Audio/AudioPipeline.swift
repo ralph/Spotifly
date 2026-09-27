@@ -73,6 +73,7 @@ actor AudioPipeline {
     // MARK: - Playback State
 
     private var quality: Quality = .normal
+    private var gapless = true
 
     private(set) var currentTrackUri: String?
     private var durationMs: Int64 = 0
@@ -188,6 +189,12 @@ actor AudioPipeline {
 
     func setQuality(_ quality: Quality) {
         self.quality = quality
+    }
+
+    /// Whether the next track follows on without a gap; see `continuation`.
+    /// Off, every track change is a fresh load from a flushed sink.
+    func setGapless(_ enabled: Bool) {
+        gapless = enabled
     }
 
     // MARK: - Playback Control
@@ -712,7 +719,7 @@ actor AudioPipeline {
         let snapshot = decodeState.snapshot()
         guard continuation == nil, snapshot.finished, snapshot.writtenFrames > 0, !endOfTrackFired else { return }
 
-        if !isPreparingContinuation, let next = nextUri {
+        if gapless, !isPreparingContinuation, let next = nextUri {
             isPreparingContinuation = true
             Task { await prepareContinuation(of: next) }
         }

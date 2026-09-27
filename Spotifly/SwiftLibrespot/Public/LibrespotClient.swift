@@ -348,7 +348,7 @@ public actor LibrespotClient {
         let pipeline = AudioPipeline(accesspoint: accesspoint, spclient: spclient, sink: SpotifyPlayer.audioRenderer)
         audioPipeline = pipeline
         subscribeToPipeline(pipeline)
-        await applyStreamingQuality()
+        await applyPlaybackSettings()
     }
 
     // MARK: - Credential Management
@@ -640,20 +640,22 @@ public actor LibrespotClient {
 
     // MARK: - Settings
 
-    /// Applies the persisted streaming bitrate to the pipeline. Called when
-    /// the setting changes and again for every pipeline a new session builds,
-    /// so a rebuilt session does not silently fall back to the default.
+    /// Applies the persisted playback settings — bitrate and gapless — to the
+    /// pipeline. Called when either changes and again for every pipeline a
+    /// new session builds, so a rebuilt session does not silently fall back
+    /// to the defaults.
     ///
     /// The bitrate lives in `SpotifyPlayer.Bitrate`, which owns both the
     /// stored value and the names the user sees; this is the only place it is
     /// turned into a quality the pipeline can select files by.
-    public func applyStreamingQuality() async {
+    public func applyPlaybackSettings() async {
         let quality: AudioPipeline.Quality = switch SpotifyPlayer.bitrate {
         case .low: .low
         case .normal: .normal
         case .high: .high
         }
         await audioPipeline?.setQuality(quality)
+        await audioPipeline?.setGapless(SpotifyPlayer.gapless)
     }
 
     // MARK: - Queue Plumbing
