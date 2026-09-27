@@ -413,7 +413,11 @@ actor AudioPipeline {
             return
         }
 
-        if frame > 0, !decoder.seek(toFrame: frame) {
+        // Also for frame 0: a decoder that has already read on is not at the
+        // start, and a restart of the track — Previous past its first seconds,
+        // which other clients send as a seek to 0 — played on from where
+        // decoding had got to, or at the end skipped to the next track.
+        if !decoder.seek(toFrame: frame) {
             debugLog("AudioPipeline", "Seek to frame \(frame) failed; continuing at current position")
             sinkClockOriginFrame = decoder.currentFrame
         } else {
