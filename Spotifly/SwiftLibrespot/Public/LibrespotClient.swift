@@ -273,6 +273,13 @@ public actor LibrespotClient {
         // the device going to sleep, and a running decode loop cannot fetch
         // audio keys from a dead accesspoint anyway.
         Task {
+            // What was playing is kept as paused where it stopped, which is
+            // where the wake's reconnect loads it. The stop alone left it
+            // "playing" at position zero, and the wake played it from the top.
+            if let current = localState, current.isPlaying {
+                let position = await audioPipeline?.currentPositionMs() ?? positionCache
+                publishPlaybackState(for: current.trackUri, playing: false, paused: true, positionMs: Int64(position))
+            }
             await audioPipeline?.stop()
             await session?.disconnect()
         }
