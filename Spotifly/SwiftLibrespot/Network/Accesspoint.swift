@@ -754,6 +754,9 @@ public actor Accesspoint {
             let pong = SpotifyPacket(command: .pong, payload: packet.payload)
             try? await sendPacket(pong)
 
+        case .pongAck:
+            break
+
         case .countryCode:
             let country = String(data: packet.payload, encoding: .utf8) ?? "??"
             lastCountryCode = country
@@ -802,7 +805,7 @@ public actor Accesspoint {
             }
 
         default:
-            debugLog("Accesspoint", "Unhandled packet type: \(packet.command)")
+            debugLog("Accesspoint", "Unhandled packet type: \(packet.command) (0x\(String(packet.rawCommand, radix: 16)))")
         }
     }
 

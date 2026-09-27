@@ -44,6 +44,9 @@ public enum PacketType: UInt8, Sendable {
 
     /// Pong response
     case pong = 0x49
+    /// The server's acknowledgement of our pong, one every keep-alive cycle
+    /// (librespot's and go-librespot's `PongAck`).
+    case pongAck = 0x4A
 
     /// Unknown/reserved (use 0x00 as we have no real unknown packet type)
     case unknown = 0x00
