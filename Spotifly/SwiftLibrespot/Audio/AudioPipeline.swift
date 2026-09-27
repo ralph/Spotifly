@@ -18,16 +18,16 @@ import Foundation
 
 /// Coordinates downloading, decryption, decoding, and playback of a track.
 ///
-/// Concurrency: the actor owns all playback state; the decode loop itself runs
-/// on its own thread because pushing PCM blocks on the sink's backpressure —
-/// parking it on the actor would freeze every control call behind the audio.
+/// Concurrency: the actor owns all playback state, and the decode loop runs on
+/// it too. It spends nearly all its time suspended in `AudioRenderer.enqueue`,
+/// which lets every control call through meanwhile.
 actor AudioPipeline {
     // MARK: - Dependencies
 
     private let accesspoint: Accesspoint
     private let audioKeyProvider: AudioKeyProvider
     private let spclient: SPClient?
-    private let sink: any AudioSink
+    private let sink: AudioRenderer
 
     // MARK: - Publishers
 
@@ -84,67 +84,26 @@ actor AudioPipeline {
     /// `ov_pcm_seek` — nothing else keeps a copy of them.
     private var decoder: VorbisDecoder?
 
-    /// Shared state for the dedicated decode thread. The loop runs on a
-    /// plain pthread-style thread because it blocks for long stretches
-    /// (throttled writes); parking it on a Swift-concurrency cooperative
-    /// thread starved every actor job — ticks, pause — for the length of a
-    /// track.
-    private final class DecodeLoopState: @unchecked Sendable {
-        /// A condition, so a pause can park the loop until it is resumed or
-        /// cancelled; it used to poll every 50 ms, 20 wakeups a second.
-        let lock = NSCondition()
-        var cancelled = false
-        var finished = false
-        var paused = false
-        var writtenFrames: Int64 = 0
+    /// The running decode, feeding the sink chunk by chunk.
+    private var decodeTask: Task<Void, Never>?
 
-        func reset() {
-            lock.lock(); defer { lock.unlock() }
-            cancelled = false
-            finished = false
-            writtenFrames = 0
-        }
+    /// What the running decode has handed to the sink, and whether it has
+    /// reached the end of the track.
+    private var decoded: (frames: Int64, finished: Bool) = (0, false)
 
-        func setCancelled() {
-            lock.lock(); defer { lock.unlock() }
-            cancelled = true
-            lock.broadcast()
-        }
+    /// Numbers each decode. Only the current one writes `decoded` or asks for
+    /// a refill: one being replaced can still resume once after the next has
+    /// started, when a second seek did not wait for it.
+    private var decodeRun = 0
 
-        func setFinished(frames: Int64) {
-            lock.lock(); defer { lock.unlock() }
-            finished = true
-            writtenFrames = frames
-        }
-
-        func snapshot() -> (cancelled: Bool, finished: Bool, writtenFrames: Int64) {
-            lock.lock(); defer { lock.unlock() }
-            return (cancelled, finished, writtenFrames)
-        }
-
-        func setPaused(_ paused: Bool) {
-            lock.lock(); defer { lock.unlock() }
-            self.paused = paused
-            lock.broadcast()
-        }
-
-        /// Parks the calling thread while paused. False once cancelled.
-        func waitWhilePaused() -> Bool {
-            lock.lock(); defer { lock.unlock() }
-            while paused, !cancelled {
-                lock.wait()
-            }
-            return !cancelled
-        }
-    }
-
-    private let decodeState = DecodeLoopState()
-    private nonisolated(unsafe) var decodeWakeSemaphore: DispatchSemaphore?
+    /// Frames per chunk handed to the sink, 93 ms. The renderer takes about
+    /// six at a time.
+    private static let chunkFrames = 4096
 
     private var positionTimer: Task<Void, Never>?
 
     /// Bumped by every `playTrack`. A load that awaited the network while a
-    /// newer one began must not start decoding: both would run a decode thread
+    /// newer one began must not start decoding: both would run a decode
     /// into the one sink — two quick presses of Next did exactly that.
     private var loadGeneration = 0
 
@@ -179,7 +138,7 @@ actor AudioPipeline {
 
     // MARK: - Initialization
 
-    init(accesspoint: Accesspoint, spclient: SPClient?, sink: any AudioSink) {
+    init(accesspoint: Accesspoint, spclient: SPClient?, sink: AudioRenderer) {
         self.accesspoint = accesspoint
         self.spclient = spclient
         self.sink = sink
@@ -241,7 +200,7 @@ actor AudioPipeline {
         let startFrame = positionMs > 0
             ? Int64((Double(positionMs) / 1000.0) * Double(vorbis.format.sampleRate))
             : 0
-        startDecoding(from: startFrame, keepPaused: paused)
+        await startDecoding(from: startFrame, keepPaused: paused)
     }
 
     // MARK: - Prepared Tracks
@@ -357,24 +316,24 @@ actor AudioPipeline {
         })
     }
 
-    func pause() {
+    /// The decode, if still running, waits out the pause inside the sink: a
+    /// paused renderer takes nothing more once it is full.
+    func pause() async {
         guard let uri = currentTrackUri, isPlaying, !isPaused else { return }
 
         debugLog("AudioPipeline", "Pausing")
         isPaused = true
-        decodeState.setPaused(true)
-        sink.stop()
+        await sink.pause()
         stopPositionTimer()
         playbackStateSubject.send(.paused(trackUri: uri))
     }
 
-    func resume() {
+    func resume() async {
         guard let uri = currentTrackUri, isPlaying, isPaused else { return }
 
         debugLog("AudioPipeline", "Resuming")
         isPaused = false
-        decodeState.setPaused(false)
-        sink.resume()
+        await sink.resume()
         startPositionTimer()
         playbackStateSubject.send(.playing(trackUri: uri))
     }
@@ -407,48 +366,20 @@ actor AudioPipeline {
         debugLog("AudioPipeline", "Seeking to \(positionMs)ms")
         let frame = Int64((Double(positionMs) / 1000.0) * Double(decoder.format.sampleRate))
 
-        // Retire the running loop and wait for it to actually finish before
-        // the decoder below is touched again: two tasks reading one
-        // OggVorbis_File concurrently is undefined behavior, not a glitch.
-        await retireDecodeThread()
+        await retireDecoding()
         dropContinuation()
 
-        startDecoding(from: frame, keepPaused: isPaused)
+        await startDecoding(from: frame, keepPaused: isPaused)
     }
 
-    /// Cancels the decode loop and waits for its thread to exit.
-    ///
-    /// The wait is not optional: callers touch the decoder the moment this
-    /// returns — `seek` re-enters `ov_pcm_seek`, `teardownTrack` calls
-    /// `ov_clear` — and a second party inside `ov_read` on the same
-    /// `OggVorbis_File` is undefined behavior, not a glitch.
-    ///
-    /// Termination is prompt by construction: stopping the sink wakes a writer
-    /// held back by it (a full buffer, the throttle), and cancelling wakes the
-    /// pause park. Bounded anyway, so a wedged thread can never take playback
-    /// control down with it.
-    private func retireDecodeThread() async {
-        decodeState.setCancelled()
-
-        // Stop pulling so a writer parked on a full ring wakes up.
-        sink.stop()
-
-        guard let semaphore = decodeWakeSemaphore else { return }
-        decodeWakeSemaphore = nil
-
-        // The semaphore wait itself must not happen on a cooperative thread —
-        // Dispatch forbids blocking there — so it runs on a throwaway thread
-        // that resumes us when the decode loop has signalled or the bound
-        // expires.
-        await withCheckedContinuation { continuation in
-            let joiner = Thread {
-                _ = semaphore.wait(timeout: .now() + 5)
-                continuation.resume()
-            }
-            joiner.name = "spotifly.decode-join"
-            joiner.stackSize = 1 << 18
-            joiner.start()
-        }
+    /// Cancels the decode and waits for it to end. Once cancelled it neither
+    /// reads the decoder again nor gets a buffer into the sink: a waiting
+    /// `enqueue` returns at once, paused or not, and a new one is refused.
+    private func retireDecoding() async {
+        guard let task = decodeTask else { return }
+        decodeTask = nil
+        task.cancel()
+        await task.value
     }
 
     /// Duration of the loaded track, from its metadata.
@@ -466,13 +397,11 @@ actor AudioPipeline {
 
     // MARK: - Decode Orchestration
 
-    /// Starts (or restarts) the decode loop at `frame`. Synchronous on the
-    /// actor: the work itself happens on the decode thread started below.
+    /// Starts (or restarts) decoding at `frame`, from a flushed sink.
     ///
     /// `keepPaused` preserves a paused state across a seek: the decoder is in
-    /// place and position is published, but nothing is written or played until
-    /// `resume()`.
-    private func startDecoding(from frame: Int64, keepPaused: Bool = false) {
+    /// place and position is published, but nothing plays until `resume()`.
+    private func startDecoding(from frame: Int64, keepPaused: Bool = false) async {
         guard let decoder else { return }
         guard decoder.isOpen else {
             errorSubject.send(.decodingFailed("decoder closed"))
@@ -491,13 +420,8 @@ actor AudioPipeline {
         isPlaying = true
         isPaused = keepPaused
 
-        sink.flush()
-        if !keepPaused {
-            sink.start()
-        }
-
-        decodeState.setPaused(keepPaused)
-        startDecodeThread(decoder)
+        await sink.restart(paused: keepPaused)
+        startDecodeTask(decoder)
 
         if keepPaused {
             stopPositionTimer()
@@ -507,31 +431,59 @@ actor AudioPipeline {
         playbackStateSubject.send(keepPaused ? .paused(trackUri: currentTrackUri ?? "") : .playing(trackUri: currentTrackUri ?? ""))
     }
 
-    /// One dedicated thread per decoder. It blocks freely — throttled writes,
-    /// pause polling — without occupying a Swift-concurrency cooperative
-    /// thread, which would starve this actor's own jobs (position ticks,
-    /// pause) for the length of the track.
-    private func startDecodeThread(_ decoder: VorbisDecoder) {
-        decodeState.reset()
+    private func startDecodeTask(_ decoder: VorbisDecoder) {
+        decodeTask?.cancel()
+        decodeRun += 1
+        let run = decodeRun
+        decoded = (0, false)
+        decodeTask = Task { await self.decode(decoder, run: run) }
+    }
 
-        let semaphore = DispatchSemaphore(value: 0)
-        decodeWakeSemaphore = semaphore
-        let state = decodeState
+    /// Decodes into the sink until the track ends or the task is cancelled.
+    ///
+    /// Each `enqueue` suspends until the renderer wants the chunk, which paces
+    /// the loop, holds it through a pause and frees this actor meanwhile.
+    /// Decoding a chunk takes about a tenth of a millisecond.
+    private func decode(_ decoder: VorbisDecoder, run: Int) async {
         let channels = decoder.format.channels
-        let sinkRef = sink
+        let samples = UnsafeMutablePointer<Float>.allocate(capacity: Self.chunkFrames * channels)
+        defer { samples.deallocate() }
 
-        let thread = Thread {
-            defer { semaphore.signal() }
-            Self.runDecodeThread(
-                decoder: decoder,
-                channels: channels,
-                sink: sinkRef,
-                state: state,
-            )
+        while !Task.isCancelled {
+            let frames = decoder.read(into: samples, maxFrames: Self.chunkFrames)
+            guard frames > 0 else {
+                if run == decodeRun {
+                    decoded.finished = true
+                    debugLog("AudioPipeline", "Decode finished: \(decoded.frames) frames")
+                }
+                return
+            }
+
+            let pcm = Data(bytes: samples, count: frames * channels * MemoryLayout<Float>.size)
+            switch await sink.enqueue(pcm, frames: frames) {
+            case .accepted where run == decodeRun:
+                decoded.frames += Int64(frames)
+            case .accepted, .flushed:
+                return
+            case .outputChanged:
+                // Refilled from a task of its own: the refill retires this
+                // decode, and awaiting that from inside it would never end.
+                Task { await self.refill(after: run) }
+                return
+            case .failed:
+                errorSubject.send(.decodingFailed("the audio output refused a buffer"))
+                return
+            }
         }
-        thread.name = "spotifly.decode"
-        thread.stackSize = 1 << 20
-        thread.start()
+    }
+
+    /// The output changed or stalled and the renderer dropped what it had
+    /// queued: load again from the playhead, as a seek to the same place would.
+    /// What played in the meantime was silence, and is skipped.
+    private func refill(after run: Int) async {
+        guard run == decodeRun, currentTrackUri != nil, isPlaying else { return }
+        debugLog("AudioPipeline", "Refilling the output from the playhead")
+        try? await seek(positionMs: currentPositionMs())
     }
 
     // MARK: - Gapless Continuation
@@ -554,19 +506,18 @@ actor AudioPipeline {
         // The wait may have let anything happen: a load, a seek, a change of
         // queue, or the end of this track, which auto-advance then loads the
         // ordinary way from the same fetch.
-        let decoded = decodeState.snapshot()
         guard let track, track.quality == quality, nextUri == uri, continuation == nil,
-              isPlaying, !endOfTrackFired, decoded.finished, !decoded.cancelled,
+              isPlaying, !endOfTrackFired, decoded.finished,
               let decoder = try? VorbisDecoder(bytes: track.ogg)
         else { return }
 
         if upcoming?.uri == uri {
             upcoming = nil
         }
-        let startFrame = trackStartSinkFrame + decoded.writtenFrames
+        let startFrame = trackStartSinkFrame + decoded.frames
         continuation = (track, decoder, startFrame)
         debugLog("AudioPipeline", "Decoding \(uri) behind the current track, from sink frame \(startFrame)")
-        startDecodeThread(decoder)
+        startDecodeTask(decoder)
     }
 
     /// The playhead has reached the continuation: it is now the loaded track,
@@ -577,7 +528,7 @@ actor AudioPipeline {
         let ended = currentTrackUri ?? ""
         let uri = continuation.track.uri
 
-        // The previous decoder's thread finished before this one started.
+        // The previous decode finished before this one started.
         decoder?.close()
         decoder = continuation.decoder
         current = continuation.track
@@ -609,46 +560,11 @@ actor AudioPipeline {
         }
     }
 
-    /// The decode loop, running on its own thread. Synchronous by design:
-    /// every long wait here (throttled writes, the pause park) would otherwise
-    /// occupy a cooperative-concurrency thread and starve the actor's jobs.
-    ///
-    /// `decoder` is owned solely by this thread until `state.cancelled`
-    /// observes true and the caller has joined the thread.
-    private nonisolated static func runDecodeThread(
-        decoder: VorbisDecoder,
-        channels: Int,
-        sink: any AudioSink,
-        state: DecodeLoopState,
-    ) {
-        // The actor publishes these on transitions; the loop only mirrors
-        // what it needs to be observed from ticks.
-        let chunkFrames = 2048
-        let buffer = UnsafeMutablePointer<Float>.allocate(capacity: chunkFrames * channels)
-        defer { buffer.deallocate() }
-
-        var totalWritten: Int64 = 0
-
-        // A pause parks here until it is resumed or cancelled.
-        while state.waitWhilePaused() {
-            let frames = decoder.read(into: buffer, maxFrames: chunkFrames)
-            if frames <= 0 {
-                break
-            }
-
-            sink.write(samples: buffer, count: frames * channels)
-            totalWritten += Int64(frames)
-        }
-
-        state.setFinished(frames: totalWritten)
-        debugLog("AudioPipeline", "Decode finished: \(totalWritten) frames")
-    }
-
     // MARK: - Teardown
 
     /// Cancels whatever is running and releases the loaded track.
     private func teardownTrack() async {
-        await retireDecodeThread()
+        await retireDecoding()
         dropContinuation()
         positionTimer?.cancel()
         positionTimer = nil
@@ -663,8 +579,7 @@ actor AudioPipeline {
         decoder?.close()
         decoder = nil
 
-        sink.stop()
-        sink.flush()
+        await sink.stop()
     }
 
     // MARK: - Position Tracking
@@ -684,11 +599,18 @@ actor AudioPipeline {
         positionTimer = nil
     }
 
-    /// Periodic tick: publish position, detect end of track.
-    private func tick() {
+    /// Periodic tick: publish position, detect end of track and a stalled output.
+    private func tick() async {
         guard currentTrackUri != nil, isPlaying, !isPaused else { return }
 
-        if let continuation, sink.playedFramesSinceStart >= continuation.startFrame {
+        if decodeTask != nil, await sink.isStalled {
+            debugLog("AudioPipeline", "The output stopped taking audio")
+            let run = decodeRun
+            Task { await refill(after: run) }
+            return
+        }
+
+        if let continuation, sink.playedFrames >= continuation.startFrame {
             adoptContinuation()
         }
 
@@ -696,13 +618,8 @@ actor AudioPipeline {
         positionSubject.send(UInt64(positionMs))
         fetchNextIfDue(positionMs: Int64(positionMs))
 
-        // `writtenFrames` is only meaningful once the loop has finished, which
-        // is the only moment it is read: the loop writes its running total once,
-        // on the way out. An in-flight count was being accumulated on top of an
-        // already-cumulative value — quadratic nonsense that nothing consumed.
-        // While a continuation waits for the playhead, the loop is its.
-        let snapshot = decodeState.snapshot()
-        guard continuation == nil, snapshot.finished, snapshot.writtenFrames > 0, !endOfTrackFired else { return }
+        // While a continuation waits for the playhead, the decode is its.
+        guard continuation == nil, decoded.finished, decoded.frames > 0, !endOfTrackFired else { return }
 
         if gapless, !isPreparingContinuation, let next = nextUri {
             isPreparingContinuation = true
@@ -715,7 +632,7 @@ actor AudioPipeline {
         // moment a seek finished decoding, cutting the tail off. Without a
         // continuation the sink is flushed for whatever plays next, so this
         // waits for the very last frame.
-        if sink.playedFramesSinceStart - trackStartSinkFrame >= snapshot.writtenFrames {
+        if sink.playedFrames - trackStartSinkFrame >= decoded.frames {
             endOfTrackFired = true
             debugLog("AudioPipeline", "End of track")
             endOfTrackSubject.send(currentTrackUri ?? "")
@@ -725,7 +642,7 @@ actor AudioPipeline {
     /// The track frame currently audible: the sink's own playhead, from where
     /// the track started in it, plus the track offset that start stands for.
     private func currentTrackFrame() -> Int64 {
-        sinkClockOriginFrame + sink.playedFramesSinceStart - trackStartSinkFrame
+        sinkClockOriginFrame + sink.playedFrames - trackStartSinkFrame
     }
 
     private func frameToMs(_ frame: Int64) -> Double {

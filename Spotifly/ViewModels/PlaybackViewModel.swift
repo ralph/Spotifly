@@ -1496,7 +1496,7 @@ final class PlaybackViewModel {
         //   was audible, and correcting to it jumped the bar forward into audio nobody had
         //   heard yet — the fight with the Spirc position that made the bar jitter through a
         //   context's first track. `AudioPipeline` reports the audible position now
-        //   (`AudioRenderer.playedFramesSinceStart`), so that buffer no longer sits between
+        //   (`AudioRenderer.playedFrames`), so that buffer no longer sits between
         //   the two. The direction is still not corrected, which has not been re-measured
         //   against the new clock.
         //

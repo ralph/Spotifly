@@ -29,7 +29,7 @@ brew install ralph/spotifly/spotifly
 
 ## Requirements
 
-- macOS 26.2 or later
+- macOS 27 or later
 - Spotify Premium account
 
 ## Features

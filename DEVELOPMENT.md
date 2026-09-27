@@ -34,15 +34,15 @@ Swift. There is no Rust, no package manager and no librespot.
 | `Spotifly/SwiftLibrespot/` | Playback and Spotify Connect. A Swift port of the protocol handling that [librespot](https://github.com/librespot-org/librespot) implements in Rust — hence the names — which neither links nor builds librespot. |
 | `…/Network/` | Accesspoint resolution, the TCP connection with its Diffie-Hellman handshake and Shannon cipher, and the spclient HTTP client (metadata, `storage-resolve`, connect-state). |
 | `…/Dealer/`, `…/Connect/` | The dealer WebSocket, and `SpircController`, which publishes this device's state to the Connect cluster and turns remote commands into player calls. |
-| `…/Audio/` | `AudioPipeline`: metadata, then the audio key (over the accesspoint) and the CDN URL side by side, the download, AES-128-CTR through CommonCrypto, and Vorbis decoding into an `AudioSink`. The next track is fetched ahead and, with gapless playback on, decoded straight after the current one. |
+| `…/Audio/` | `AudioPipeline`: metadata, then the audio key (over the accesspoint) and the CDN URL side by side, the download, AES-128-CTR through CommonCrypto, and Vorbis decoding into the `AudioRenderer`, a chunk at a time, each one awaited. The next track is fetched ahead and, with gapless playback on, decoded straight after the current one. |
 | `…/Proto/` | A small hand-written protobuf reader and writer, and the messages built with it. |
-| `Spotifly/AudioRenderer.swift` | The `AudioSink`: `AVSampleBufferAudioRenderer` with a render synchronizer, which keeps AirPlay 2 and Spatial Audio working. |
+| `Spotifly/AudioRenderer.swift` | The output: `AVSampleBufferAudioRenderer` on a render synchronizer, fed through its macOS 27 receiver, whose `enqueue` suspends until it wants more audio — the only pacing there is. It keeps AirPlay 2 and Spatial Audio working. |
 | `Spotifly/Vendor/` | libogg 1.3.5 and libvorbis 1.3.7, unmodified, compiled by Xcode — see `Vendor/README.md`. |
 
 ## Prerequisites
 
-- Xcode 26.6 or later (Swift 6.3)
-- macOS 26.2 or later
+- Xcode 27 or later, for the macOS 27 SDK
+- macOS 27 or later
 - A Spotify Premium account to play anything
 
 ## Building

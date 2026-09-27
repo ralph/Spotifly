@@ -2,586 +2,220 @@
 //  AudioRenderer.swift
 //  Spotifly
 //
-//  Bridges decoded PCM output to AVSampleBufferAudioRenderer for AirPlay-compatible playback.
-//  Audio data flows: decoder -> ring buffer -> AVSampleBufferAudioRenderer -> AirPlay/speakers
+//  The audio output: decoded PCM into AVSampleBufferAudioRenderer, which plays
+//  it on the Mac, on headphones and over AirPlay.
 //
 
 import AVFoundation
 import CoreMedia
+import Synchronization
 
-/// Audio renderer that bridges the decoder's push model to
-/// AVSampleBufferAudioRenderer's pull model.
+/// Plays interleaved Float32 PCM through an `AVSampleBufferAudioRenderer` on
+/// its own render synchronizer, fed through the renderer's receiver.
 ///
-/// Thread safety: `write(samples:count:)` is called from the pipeline's
-/// dedicated decode thread, which blocks freely here — that is the point of
-/// it having its own thread. The feed side runs on a serial dispatch queue.
-/// A ring buffer with lock-based synchronization bridges the two.
-final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
-    // MARK: - Constants
+/// `enqueue` suspends until the renderer wants more, and that is all the
+/// pacing there is. The renderer keeps one to two seconds queued and takes
+/// half a second at a time, so a decoder awaiting it wakes about twice a
+/// second; a paused renderer wants nothing, so the decoder waits out a pause
+/// in the same call; and a flush, or cancelling the caller's task, returns it
+/// at once. The ring buffer, write throttle and feed callback this replaced
+/// are gone with the pre-macOS 27 API they worked around.
+///
+/// An actor because the renderer and its receiver are not `Sendable`. The
+/// synchronizer is, which is what lets the playhead be read without awaiting.
+actor AudioRenderer {
+    nonisolated static let sampleRate = 44100
+    nonisolated static let channelCount = 2
 
-    private static let sampleRate: Float64 = 44100
-    private static let channelCount: UInt32 = 2
-    private static let bytesPerSample = MemoryLayout<Float>.size // 4
+    /// The render clock: frames played since the last `restart`. Never
+    /// replaced, so `playedFrames` can read it from anywhere.
+    private nonisolated let synchronizer = AVSampleBufferRenderSynchronizer()
+    private let renderer: AVSampleBufferAudioRenderer
+    private let receiver: AVSampleBufferAudioRenderer.Receiver
+    private let format: CMAudioFormatDescription
 
-    /// Ring buffer capacity in f32 samples (~2 seconds of stereo audio)
-    private static let ringBufferCapacity = 176_400 // 44100 * 2ch * 2s
+    /// Presentation time of the next buffer: frames enqueued since the last flush.
+    private var nextPresentationTime = CMTime.zero
 
-    /// Chunk size for feeding renderer (~1024 frames = 2048 stereo samples)
-    private static let feedChunkSamples = 2048
+    /// Bumped by every flush, so an enqueue that was waiting across one does
+    /// not advance the presentation time the flush has just reset.
+    private var flushes = 0
 
-    // MARK: - AVFoundation Objects (recreated on output device change)
+    /// When the enqueue that is waiting now began to wait; see `isStalled`.
+    private var waitingSince: ContinuousClock.Instant?
 
-    private var renderer = AudioRenderer.makeRenderer()
-    private var synchronizer = AVSampleBufferRenderSynchronizer()
-
-    /// The renderer spatializes only multichannel audio unless told otherwise,
-    /// and Spotify's is stereo. Allowing stereo makes Spatial Audio on AirPods
-    /// and similar headphones available to it; whether it is used, and with or
-    /// without head tracking, is the listener's choice in Control Center.
-    private static func makeRenderer() -> AVSampleBufferAudioRenderer {
-        let renderer = AVSampleBufferAudioRenderer()
-        renderer.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
-        return renderer
-    }
-
-    /// Output gain (0...1) applied at the renderer. There is no mixer stage
-    /// anywhere else, so this is where playback volume is actually applied — at
-    /// the output, which takes effect immediately instead of after the buffered
-    /// PCM drains. Accessed only on `renderQueue` so it stays serialized with
-    /// feeding and pipeline recreation.
-    private var outputVolume: Float = 1.0
-
-    // MARK: - Ring Buffer
-
-    private let ringBuffer: UnsafeMutablePointer<Float>
-    private var writeIndex = 0
-    private var readIndex = 0
-    private let bufferLock = NSLock()
-
-    /// Parks the decode thread while the buffer is full or the throttle holds
-    /// it back; signalled when space frees up and by `stop()`.
-    private let spaceAvailable = DispatchSemaphore(value: 0)
-    private var writerIsWaiting = false
-
-    // MARK: - Write Throttle (provides real-time pacing)
-
-    /// Wall-clock time (monotonic) when writing started. Must be accessed with bufferLock held.
-    private var writeStartTime: TimeInterval = 0
-
-    /// When playout stopped; the throttle's clock stands still from here
-    /// until `resume()`. Counting a pause as elapsed let the writer fill the
-    /// ring while paused — where the rest of its chunk was dropped, a skip on
-    /// resume — and then run unthrottled for the rest of the track. Must be
-    /// accessed with bufferLock held.
-    private var stoppedAt: TimeInterval = 0
-
-    /// Total f32 samples written since start. Must be accessed with bufferLock held.
-    private var totalSamplesWritten: Int64 = 0
-
-    /// Maximum seconds the writer can be ahead of real-time before sleeping.
-    /// It replaces the backpressure CoreAudio callbacks used to provide.
-    private static let maxBufferAheadSeconds: Double = 2.0
-
-    /// How far under that limit the writer sleeps to, so it wakes to decode
-    /// half a second at a time rather than for every chunk — 2 wakeups a
-    /// second instead of about 20.
-    private static let writeBurstSeconds: Double = 0.5
-
-    // MARK: - State
-
-    private let renderQueue = DispatchQueue(label: "com.spotifly.audio-renderer", qos: .userInteractive)
-    private var isRendering = false
-    private var currentPTS: CMTime = .zero
-    private var isRequestingData = false
-
-    // MARK: - Route Change Observation
-
-    private var routeChangeObserver: (any NSObjectProtocol)?
-
-    // MARK: - Audio Format (cached)
-
-    private let formatDescription: CMAudioFormatDescription
-
-    // MARK: - Init
+    /// The gain last asked for; see `setVolume`.
+    private nonisolated let requestedVolume = Mutex<Float>(1)
 
     init() {
-        ringBuffer = .allocate(capacity: Self.ringBufferCapacity)
-        ringBuffer.initialize(repeating: 0, count: Self.ringBufferCapacity)
+        let renderer = AVSampleBufferAudioRenderer()
+        // The renderer spatializes only multichannel audio unless told
+        // otherwise, and Spotify's is stereo. Allowing stereo makes Spatial
+        // Audio on AirPods and similar headphones available to it; whether it
+        // is used, and with or without head tracking, is the listener's choice
+        // in Control Center.
+        renderer.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
+        self.renderer = renderer
+        receiver = synchronizer.sampleBufferReceiver(adding: renderer)
 
-        var asbd = AudioStreamBasicDescription(
-            mSampleRate: Self.sampleRate,
+        let bytesPerFrame = UInt32(MemoryLayout<Float>.size * Self.channelCount)
+        let description = AudioStreamBasicDescription(
+            mSampleRate: Float64(Self.sampleRate),
             mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: UInt32(Self.bytesPerSample) * Self.channelCount,
+            mBytesPerPacket: bytesPerFrame,
             mFramesPerPacket: 1,
-            mBytesPerFrame: UInt32(Self.bytesPerSample) * Self.channelCount,
-            mChannelsPerFrame: Self.channelCount,
-            mBitsPerChannel: UInt32(Self.bytesPerSample * 8),
+            mBytesPerFrame: bytesPerFrame,
+            mChannelsPerFrame: UInt32(Self.channelCount),
+            mBitsPerChannel: UInt32(MemoryLayout<Float>.size * 8),
             mReserved: 0,
         )
-
-        var desc: CMAudioFormatDescription?
-        let status = CMAudioFormatDescriptionCreate(
-            allocator: kCFAllocatorDefault,
-            asbd: &asbd,
-            layoutSize: 0,
-            layout: nil,
-            magicCookieSize: 0,
-            magicCookie: nil,
-            extensions: nil,
-            formatDescriptionOut: &desc,
-        )
-        guard status == noErr, let formatDesc = desc else {
-            fatalError("AudioRenderer: Failed to create audio format description: \(status)")
+        do {
+            format = try CMAudioFormatDescription(audioStreamBasicDescription: description)
+        } catch {
+            fatalError("AudioRenderer: no format description for 44.1 kHz stereo Float32: \(error)")
         }
-        formatDescription = formatDesc
-        synchronizer.addRenderer(renderer)
-
-        // Recover from output device changes (AirPlay ↔ local speaker)
-        observeRouteChanges()
-
         debugLog("AudioRenderer", "Initialized (44100Hz, 2ch, Float32)")
     }
 
-    deinit {
-        if let observer = routeChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
+    // MARK: - Feeding
+
+    /// What became of a buffer handed to `enqueue`.
+    enum Enqueued {
+        case accepted
+        /// Discarded by a flush, or the caller's task was cancelled.
+        case flushed
+        /// The output changed under the renderer — another device, AirPlay —
+        /// and it dropped what it had queued. The caller has to fill it again
+        /// from the playhead.
+        case outputChanged
+        case failed
+    }
+
+    /// Queues `frames` interleaved frames, suspending until the renderer wants
+    /// them. The first buffer after a flush plays at clock time zero, and each
+    /// one after it directly follows the one before.
+    func enqueue(_ samples: Data, frames: Int) async -> Enqueued {
+        guard !Task.isCancelled else { return .flushed }
+
+        let buffer = CMReadySampleBuffer(
+            audioDataBuffer: CMReadOnlyDataBlockBuffer(samples),
+            formatDescription: format,
+            sampleCount: frames,
+            presentationTimeStamp: nextPresentationTime,
+        )
+        let flushesBefore = flushes
+
+        let result: AVSampleBufferAudioRenderer.Receiver.EnqueueResult
+        waitingSince = .now
+        defer { waitingSince = nil }
+        do {
+            result = try await receiver.enqueue(CMReadySampleBuffer<CMSampleBuffer.DynamicContent>(buffer))
+        } catch {
+            return .flushed
         }
-        renderer.stopRequestingMediaData()
-        synchronizer.removeRenderer(renderer, at: .invalid)
-        ringBuffer.deallocate()
-    }
 
-    // MARK: - Volume
-
-    /// Sets the output gain (0...1) applied to playback. Takes effect immediately
-    /// — it scales audio as it is played out, not the already-buffered PCM — so
-    /// volume changes are not delayed by the render buffer. The caller is expected
-    /// to have applied any perceptual curve already (see SpotifyPlayer).
-    func setVolume(_ volume: Float) {
-        let clamped = max(0, min(1, volume))
-        renderQueue.async { [weak self] in
-            guard let self else { return }
-            outputVolume = clamped
-            renderer.volume = clamped
-        }
-    }
-
-    // MARK: - Ring Buffer Helpers
-
-    /// Number of samples available for reading. Must be called with bufferLock held.
-    private var availableSamples: Int {
-        writeIndex >= readIndex
-            ? writeIndex - readIndex
-            : Self.ringBufferCapacity - readIndex + writeIndex
-    }
-
-    /// Free space in the ring buffer (-1 to distinguish full from empty). Must be called with bufferLock held.
-    private var freeSpace: Int {
-        Self.ringBufferCapacity - 1 - availableSamples
-    }
-
-    // MARK: - Push Side (called from the decode thread)
-
-    /// Write PCM samples into the ring buffer.
-    /// Blocks if buffer is full (backpressure to the decoder).
-    func write(samples: UnsafePointer<Float>, count: Int) {
-        var remaining = count
-        var offset = 0
-
-        while remaining > 0 {
-            bufferLock.lock()
-            let space = freeSpace
-
-            if space == 0 {
-                // Once the consumer has stopped, nothing will ever drain the buffer, so
-                // waiting is waiting forever — the 500ms timeout only makes us loop. The
-                // caller here is the decode thread, and blocking it stalls the join that
-                // teardown waits on. Drop the rest instead: it is audio for a renderer
-                // that is no longer playing.
-                guard isRendering else {
-                    bufferLock.unlock()
-                    return
-                }
-
-                writerIsWaiting = true
-                bufferLock.unlock()
-                // Block until pull side consumes data (timeout bounds the wait so a stop
-                // that lands while we are parked here is noticed)
-                _ = spaceAvailable.wait(timeout: .now() + .milliseconds(500))
-                continue
+        switch result {
+        case .enqueued:
+            if flushes == flushesBefore {
+                nextPresentationTime = CMTimeAdd(
+                    nextPresentationTime,
+                    CMTime(value: CMTimeValue(frames), timescale: CMTimeScale(Self.sampleRate)),
+                )
             }
-
-            let toWrite = min(remaining, space)
-
-            // Write with wrap-around
-            let firstChunk = min(toWrite, Self.ringBufferCapacity - writeIndex)
-            ringBuffer.advanced(by: writeIndex)
-                .update(from: samples.advanced(by: offset), count: firstChunk)
-
-            if firstChunk < toWrite {
-                let secondChunk = toWrite - firstChunk
-                ringBuffer.update(from: samples.advanced(by: offset + firstChunk), count: secondChunk)
-            }
-
-            writeIndex = (writeIndex + toWrite) % Self.ringBufferCapacity
-            totalSamplesWritten += Int64(toWrite)
-            let samplesWritten = totalSamplesWritten
-            let elapsed = (isRendering ? ProcessInfo.processInfo.systemUptime : stoppedAt) - writeStartTime
-            let needsRestart = isRendering && !isRequestingData
-            bufferLock.unlock()
-
-            // If renderer stopped requesting data (buffer was empty), restart it
-            if needsRestart {
-                renderQueue.async { [weak self] in
-                    self?.startRequestingData()
-                }
-            }
-
-            // Time-based throttle: AVSampleBufferAudioRenderer eagerly accepts data
-            // for buffering, providing no real-time backpressure. Without this check,
-            // the decode loop runs at full CPU speed (~7x), racing through tracks.
-            let audioDuration = Double(samplesWritten) / (Self.sampleRate * Double(Self.channelCount))
-            let ahead = audioDuration - elapsed
-            // Waits on the semaphore rather than sleeping so that `stop()` cuts
-            // it short: a seek or a skip joins this thread before going on.
-            if ahead > Self.maxBufferAheadSeconds {
-                let pause = ahead - Self.maxBufferAheadSeconds + Self.writeBurstSeconds
-                _ = spaceAvailable.wait(timeout: .now() + pause)
-            }
-
-            remaining -= toWrite
-            offset += toWrite
-        }
-    }
-
-    // MARK: - Pull Side (called on renderQueue by AVSampleBufferAudioRenderer)
-
-    /// Feeds the renderer from its own pull callback. It asks when it is down
-    /// to about 0.7 s and takes about half a second until it is full again at
-    /// 1.25 s (measured on macOS 27), so the queue wakes about twice a second.
-    ///
-    /// The callback runs again at once for as long as it returns with the
-    /// renderer still wanting data, so an empty ring must stop it rather than
-    /// return — that loop is what once made this a 25 ms timer. The next
-    /// `write` starts it again.
-    private func startRequestingData() {
-        bufferLock.lock()
-        guard isRendering, !isRequestingData else {
-            bufferLock.unlock()
-            return
-        }
-        isRequestingData = true
-        bufferLock.unlock()
-
-        renderer.requestMediaDataWhenReady(on: renderQueue) { [weak self] in
-            self?.feedRenderer()
-        }
-    }
-
-    private func stopRequestingData() {
-        bufferLock.lock()
-        isRequestingData = false
-        bufferLock.unlock()
-        renderer.stopRequestingMediaData()
-    }
-
-    /// Moves what the ring holds into the renderer until either runs out.
-    private func feedRenderer() {
-        while renderer.isReadyForMoreMediaData {
-            // Read a chunk from ring buffer
-            bufferLock.lock()
-            let available = availableSamples
-            let toRead = min(Self.feedChunkSamples, available)
-
-            if toRead == 0 {
-                // Cleared under the same lock the writer checks it with, so a
-                // write landing now restarts the feed rather than being missed.
-                isRequestingData = false
-                bufferLock.unlock()
-                renderer.stopRequestingMediaData()
-                return
-            }
-
-            // Allocate temporary buffer for this chunk
-            let chunkSize = toRead * Self.bytesPerSample
-            let chunk = UnsafeMutableRawPointer.allocate(byteCount: chunkSize, alignment: Self.bytesPerSample)
-
-            // Copy with wrap-around
-            let firstChunk = min(toRead, Self.ringBufferCapacity - readIndex)
-            chunk.copyMemory(
-                from: ringBuffer.advanced(by: readIndex),
-                byteCount: firstChunk * Self.bytesPerSample,
-            )
-            if firstChunk < toRead {
-                let secondChunk = toRead - firstChunk
-                chunk.advanced(by: firstChunk * Self.bytesPerSample)
-                    .copyMemory(from: ringBuffer, byteCount: secondChunk * Self.bytesPerSample)
-            }
-
-            readIndex = (readIndex + toRead) % Self.ringBufferCapacity
-            let shouldSignal = writerIsWaiting
-            writerIsWaiting = false
-            bufferLock.unlock()
-
-            if shouldSignal {
-                spaceAvailable.signal()
-            }
-
-            // Create CMBlockBuffer from chunk data
-            var blockBuffer: CMBlockBuffer?
-            var status = CMBlockBufferCreateWithMemoryBlock(
-                allocator: kCFAllocatorDefault,
-                memoryBlock: chunk,
-                blockLength: chunkSize,
-                blockAllocator: kCFAllocatorDefault, // Core Media will free the block
-                customBlockSource: nil,
-                offsetToData: 0,
-                dataLength: chunkSize,
-                flags: 0,
-                blockBufferOut: &blockBuffer,
-            )
-
-            guard status == kCMBlockBufferNoErr, let block = blockBuffer else {
-                chunk.deallocate()
-                debugLog("AudioRenderer", "Failed to create CMBlockBuffer: \(status)")
-                return
-            }
-
-            // Create CMSampleBuffer
-            let frameCount = toRead / Int(Self.channelCount)
-            var sampleBuffer: CMSampleBuffer?
-            status = CMAudioSampleBufferCreateReadyWithPacketDescriptions(
-                allocator: kCFAllocatorDefault,
-                dataBuffer: block,
-                formatDescription: formatDescription,
-                sampleCount: frameCount,
-                presentationTimeStamp: currentPTS,
-                packetDescriptions: nil,
-                sampleBufferOut: &sampleBuffer,
-            )
-
-            guard status == noErr, let sample = sampleBuffer else {
-                debugLog("AudioRenderer", "Failed to create CMSampleBuffer: \(status)")
-                return
-            }
-
-            // Advance presentation time
-            currentPTS = CMTimeAdd(
-                currentPTS,
-                CMTime(value: CMTimeValue(frameCount), timescale: CMTimeScale(Self.sampleRate)),
-            )
-
-            // Enqueue
-            renderer.enqueue(sample)
+            return .accepted
+        case let .enqueuedWithSuggestedFlush(reasons):
+            // How the renderer reports a change of its own output device. A
+            // change of the system's default output, which is what picking
+            // speakers or AirPlay in Control Center is, does not come this way:
+            // see `isStalled`.
+            debugLog("AudioRenderer", "Output changed: \(reasons)")
+            return .outputChanged
+        case .cancelledDueToFlush:
+            return .flushed
+        case let .cancelledDueToError(error):
+            debugLog("AudioRenderer", "Enqueue failed: \(error)")
+            return .failed
+        @unknown default:
+            return .failed
         }
     }
 
     // MARK: - Playback Control
 
-    /// Frames actually played out since the most recent `start()`, read off the
-    /// render synchronizer's clock. This is the *audible* position — samples that
-    /// have left the speakers, not samples the decoder has produced. The Rust path
-    /// this replaced reported the decoder clock here, which ran up to two seconds
-    /// ahead of what was audible and forced asymmetric drift compensation
-    /// downstream.
-    ///
-    /// Synchronous dispatch is safe: callers are the player state machine and its
-    /// timers, never the render queue itself.
-    var playedFramesSinceStart: Int64 {
-        renderQueue.sync {
-            let seconds = synchronizer.currentTime().seconds
-            return seconds.isFinite && seconds > 0 ? Int64(seconds * Self.sampleRate) : 0
-        }
+    /// Discards everything queued and starts the clock again at zero, running
+    /// or held. Held, the renderer still takes its first second or so of audio,
+    /// so a paused track starts at once on `resume`.
+    func restart(paused: Bool) {
+        flush()
+        synchronizer.setRate(paused ? 0 : 1, time: .zero)
+        debugLog("AudioRenderer", paused ? "Restarted, held" : "Restarted")
     }
 
-    /// Synchronous dispatch, so the caller can rely on the state being fully
-    /// updated on return — `AudioPipeline.startDecoding` starts writing the moment
-    /// this returns, and a teardown expects the flush to have happened.
-    func start() {
-        renderQueue.sync { [self] in
-            bufferLock.lock()
-            guard !isRendering else {
-                // Already rendering, so the full pipeline reset below is skipped — a
-                // deliberate no-op, since flushing mid-playback would glitch the audio.
-                //
-                // But the throttle anchor must still be re-armed. It measures written
-                // audio against wall clock *since the anchor*, so any period where the
-                // writer was idle — an outage, a rebuild — banks credit against it. On the
-                // next write the throttle sees a large deficit, never sleeps, and lets the
-                // decoder run flat out until it catches up: playback races, EndOfTrack
-                // fires early, and Spirc advances the track while the renderer still has
-                // tens of seconds buffered.
-                //
-                // Re-anchoring is safe here: it only rebases the pacing budget and does
-                // not touch the ring buffer or its contents.
-                writeStartTime = ProcessInfo.processInfo.systemUptime
-                totalSamplesWritten = 0
-                bufferLock.unlock()
-                debugLog("AudioRenderer", "Start while already rendering — re-anchored throttle")
-                return
-            }
-            isRendering = true
-            bufferLock.unlock()
-
-            // Clear stale data from previous playback: it would otherwise conflict
-            // on timestamps and lose real-time pacing entirely.
-            resetAudioPipeline()
-            synchronizer.setRate(1.0, time: .zero)
-            startRequestingData()
-            debugLog("AudioRenderer", "Started playback")
-        }
+    /// Freezes playout, keeping what is queued; the clock holds its position.
+    func pause() {
+        synchronizer.setRate(0, time: synchronizer.currentTime())
     }
 
-    func stop() {
-        renderQueue.sync { [self] in
-            // Wake a writer parked on a full buffer or in the throttle, also when
-            // already stopped: a retiring decode thread is joined after this. On a
-            // full buffer it re-checks isRendering and returns rather than waiting
-            // for space that will never come now that the pull side is stopping.
-            spaceAvailable.signal()
-
-            bufferLock.lock()
-            guard isRendering else {
-                bufferLock.unlock()
-                return
-            }
-            isRendering = false
-            isRequestingData = false
-            stoppedAt = ProcessInfo.processInfo.systemUptime
-            bufferLock.unlock()
-
-            synchronizer.setRate(0.0, time: synchronizer.currentTime())
-            stopRequestingData()
-            debugLog("AudioRenderer", "Stopped playback")
-        }
-    }
-
-    /// Unfreezes playback after `stop()`, continuing from the same point with
-    /// whatever was still buffered. Unlike `start()`, deliberately does *not*
-    /// flush or reset anything: a pause/resume cycle is seamless by design.
-    /// The playhead clock holds its position while stopped, so positions read
-    /// across the pause stay continuous.
+    /// Continues from where `pause` left off.
     func resume() {
-        renderQueue.sync { [self] in
-            bufferLock.lock()
-            guard !isRendering else {
-                bufferLock.unlock()
-                return
-            }
-            isRendering = true
-            writeStartTime += ProcessInfo.processInfo.systemUptime - stoppedAt
-            bufferLock.unlock()
-
-            synchronizer.setRate(1.0, time: synchronizer.currentTime())
-            startRequestingData()
-            debugLog("AudioRenderer", "Resumed playback")
-        }
+        synchronizer.setRate(1, time: synchronizer.currentTime())
     }
 
-    func flush() {
-        renderQueue.sync { [self] in
-            debugLog("AudioRenderer", "Flushing audio buffer")
-            resetAudioPipeline()
-
-            bufferLock.lock()
-            let rendering = isRendering
-            bufferLock.unlock()
-
-            if rendering {
-                synchronizer.setRate(1.0, time: .zero)
-                startRequestingData()
-            }
-        }
+    /// Stops playout and discards what is queued.
+    func stop() {
+        synchronizer.setRate(0, time: synchronizer.currentTime())
+        flush()
     }
 
-    // MARK: - Route Change Recovery
-
-    /// Observe the renderer's auto-flush notification, which fires when the
-    /// output device changes (e.g. AirPlay ↔ local speaker). After an auto-flush
-    /// the renderer's internal CoreAudio context is broken (FigSync/timebase errors),
-    /// so we must recreate the renderer and synchronizer entirely.
-    private func observeRouteChanges() {
-        routeChangeObserver = NotificationCenter.default.addObserver(
-            forName: .AVSampleBufferAudioRendererWasFlushedAutomatically,
-            object: renderer,
-            queue: nil,
-        ) { [weak self] notification in
-            guard let self else { return }
-
-            let flushTime = (notification.userInfo?[AVSampleBufferAudioRendererFlushTimeKey] as? NSValue)?
-                .timeValue ?? .zero
-            debugLog("AudioRenderer", "Renderer auto-flushed (output device changed, time: \(flushTime))")
-
-            // Recreate pipeline on renderQueue (async since this fires on an arbitrary thread)
-            renderQueue.async { [self] in
-                bufferLock.lock()
-                let rendering = isRendering
-                bufferLock.unlock()
-
-                guard rendering else { return }
-
-                debugLog("AudioRenderer", "Recreating pipeline after output device change")
-                recreateRenderPipeline()
-                synchronizer.setRate(1.0, time: .zero)
-                startRequestingData()
-            }
-        }
+    private func flush() {
+        receiver.flush()
+        nextPresentationTime = .zero
+        flushes += 1
     }
 
-    /// Tear down the old renderer/synchronizer and create fresh ones.
-    /// An output device change leaves the CoreAudio context in a broken state
-    /// where the renderer accepts data but doesn't pace it.
-    /// Must be called on renderQueue.
-    private func recreateRenderPipeline() {
-        stopRequestingData()
-        renderer.flush()
-        synchronizer.removeRenderer(renderer, at: .invalid)
-
-        if let observer = routeChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            routeChangeObserver = nil
-        }
-
-        renderer = Self.makeRenderer()
-        renderer.volume = outputVolume
-        synchronizer = AVSampleBufferRenderSynchronizer()
-        synchronizer.addRenderer(renderer)
-
-        resetRingBuffer()
-        observeRouteChanges()
-
-        debugLog("AudioRenderer", "Render pipeline recreated")
+    /// Whether the renderer has stopped asking for audio it needs.
+    ///
+    /// When the system's default output changes, the renderer drops what it
+    /// had queued and then never asks for more: the waiting `enqueue` does
+    /// not return, no rendering event arrives, and the clock runs on over
+    /// silence. Measured on macOS 27.0, switching between a display's speakers
+    /// and the Mac's in Control Center, every time. It shows as an enqueue
+    /// that has waited a while with next to nothing left queued — in normal
+    /// playback the renderer asks again with about 0.9 s still queued — and
+    /// the caller refills, which cancelling the stuck enqueue makes possible.
+    /// Nothing detects it while nothing is enqueued, so a change after the
+    /// last track's last buffer loses what was left of it.
+    var isStalled: Bool {
+        guard let waitingSince, synchronizer.rate > 0 else { return false }
+        let queued = CMTimeSubtract(nextPresentationTime, synchronizer.currentTime()).seconds
+        return queued < 0.25 && waitingSince.duration(to: .now) > .milliseconds(500)
     }
 
-    // MARK: - Internal
-
-    /// Resets the ring buffer indices, PTS, and unblocks any waiting writer.
-    /// Must be called on renderQueue.
-    private func resetRingBuffer() {
-        bufferLock.lock()
-        isRequestingData = false
-        readIndex = 0
-        writeIndex = 0
-        totalSamplesWritten = 0
-        writeStartTime = ProcessInfo.processInfo.systemUptime
-        stoppedAt = writeStartTime
-        let shouldSignal = writerIsWaiting
-        writerIsWaiting = false
-        bufferLock.unlock()
-
-        if shouldSignal {
-            spaceAvailable.signal()
-        }
-
-        currentPTS = .zero
+    /// Frames played out since the last `restart`, read off the render clock:
+    /// the audible playhead, not what has been decoded or queued.
+    nonisolated var playedFrames: Int64 {
+        let seconds = synchronizer.currentTime().seconds
+        return seconds.isFinite && seconds > 0 ? Int64(seconds * Double(Self.sampleRate)) : 0
     }
 
-    /// Flushes the renderer and resets the ring buffer.
-    /// Must be called on renderQueue.
-    private func resetAudioPipeline() {
-        stopRequestingData()
-        renderer.flush()
-        resetRingBuffer()
+    // MARK: - Volume
+
+    /// Sets the output gain (0…1). There is no mixer stage anywhere else, so
+    /// this is where playback volume is applied: at the output, taking effect
+    /// immediately rather than after the queued audio drains. The caller is
+    /// expected to have applied any perceptual curve already (see
+    /// SpotifyPlayer).
+    ///
+    /// Callable from anywhere. The value is applied on the actor, and it is
+    /// always the latest one, however the tasks carrying a slider's run of
+    /// changes happen to be ordered.
+    nonisolated func setVolume(_ volume: Float) {
+        requestedVolume.withLock { $0 = max(0, min(1, volume)) }
+        Task { await applyVolume() }
+    }
+
+    private func applyVolume() {
+        renderer.volume = requestedVolume.withLock { $0 }
     }
 }
