@@ -245,7 +245,7 @@
 "connection.disconnected" = "Déconnecté";
 
 /* Speakers */
-"speakers.librespot_connection" = "Connexion Librespot";
+"speakers.spotify_connection" = "Connexion à Spotify";
 
 /* Error Messages - Actions */
 "error.delete_playlist %@" = "Impossible de supprimer la playlist : %@";

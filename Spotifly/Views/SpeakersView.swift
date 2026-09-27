@@ -124,7 +124,7 @@ struct SpeakersView: View {
                         }
                     #endif
 
-                    // Librespot Connection Status
+                    // Connection to Spotify: session, dealer and Connect state
                     Section {
                         ConnectionStatusView {
                             // Reconnecting re-registers our device, which changes the cluster
@@ -132,7 +132,7 @@ struct SpeakersView: View {
                             await playbackViewModel.forceReinitialize()
                         }
                     } header: {
-                        Text("speakers.librespot_connection")
+                        Text("speakers.spotify_connection")
                     }
                 }
                 .listStyle(.inset)

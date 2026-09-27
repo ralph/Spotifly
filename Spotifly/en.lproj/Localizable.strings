@@ -245,7 +245,7 @@
 "connection.disconnected" = "Disconnected";
 
 /* Speakers */
-"speakers.librespot_connection" = "Librespot Connection";
+"speakers.spotify_connection" = "Spotify Connection";
 
 /* Error Messages - Actions */
 "error.delete_playlist %@" = "Failed to delete playlist: %@";

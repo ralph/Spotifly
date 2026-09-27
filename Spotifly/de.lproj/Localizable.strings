@@ -250,7 +250,7 @@
 "connection.disconnected" = "Getrennt";
 
 /* Speakers */
-"speakers.librespot_connection" = "Librespot-Verbindung";
+"speakers.spotify_connection" = "Spotify-Verbindung";
 
 /* Error Messages - Actions */
 "error.delete_playlist %@" = "Playlist konnte nicht gelöscht werden: %@";
