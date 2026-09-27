@@ -349,6 +349,10 @@ public actor LibrespotClient {
         audioPipeline = pipeline
         subscribeToPipeline(pipeline)
         await applyPlaybackSettings()
+
+        // A new pipeline hears of the next track only at the next track
+        // change, so after a recovery the first boundary was not gapless.
+        announceNextTrack()
     }
 
     // MARK: - Credential Management
