@@ -15,7 +15,10 @@ public actor DealerConnection {
     // MARK: - Properties
 
     private let endpoint: String
-    private let accessToken: String
+    /// Asked for the bearer token on every use. A token held from the start
+    /// expired an hour into the session, and every PutState after that was
+    /// answered 401 while playback, which asks for its own, went on.
+    private let tokenProvider: @Sendable () async throws -> String
     /// Where connect-state lives. It is *not* the dealer host, which is what
     /// PutState was aimed at until every one of them came back 403.
     private let spclientHost: String
@@ -55,9 +58,14 @@ public actor DealerConnection {
 
     // MARK: - Initialization
 
-    public init(endpoint: String, accessToken: String, spclientHost: String, deviceId: String) {
+    public init(
+        endpoint: String,
+        tokenProvider: @escaping @Sendable () async throws -> String,
+        spclientHost: String,
+        deviceId: String,
+    ) {
         self.endpoint = endpoint
-        self.accessToken = accessToken
+        self.tokenProvider = tokenProvider
         self.spclientHost = spclientHost
         self.deviceId = deviceId
         debugLog("DealerConnection", "Created for endpoint: \(endpoint)")
@@ -74,7 +82,7 @@ public actor DealerConnection {
         debugLog("DealerConnection", "Connecting to dealer...")
 
         // Build WebSocket URL with access token
-        let wsURL = buildWebSocketURL()
+        let wsURL = try await buildWebSocketURL(accessToken: tokenProvider())
 
         // Create WebSocket task
         let session = URLSession(configuration: .default)
@@ -198,7 +206,7 @@ public actor DealerConnection {
         httpRequest.httpMethod = "PUT"
         httpRequest.timeoutInterval = 15
         httpRequest.setValue(connId, forHTTPHeaderField: "X-Spotify-Connection-Id")
-        httpRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        try await httpRequest.setValue("Bearer \(tokenProvider())", forHTTPHeaderField: "Authorization")
         if let clientTokenProvider {
             try await httpRequest.setValue(clientTokenProvider(), forHTTPHeaderField: "Client-Token")
         }
@@ -633,7 +641,7 @@ public actor DealerConnection {
 
     // MARK: - Helpers
 
-    private func buildWebSocketURL() -> URL {
+    private func buildWebSocketURL(accessToken: String) -> URL {
         // Format: wss://dealer.spotify.com/?access_token=...
         // Endpoint may include port (e.g., "gew4-dealer.spotify.com:443")
         var components = URLComponents()

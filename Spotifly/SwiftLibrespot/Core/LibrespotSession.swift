@@ -35,10 +35,6 @@ public actor LibrespotSession {
     /// cleared on logout via `forgetCredentials()`.
     private var credentials: APCredentials?
 
-    /// Produces fresh bearer tokens for HTTP endpoints. Required when the AP
-    /// logged in with stored credentials, which carry no OAuth token; a token
-    /// login can serve its own from `credentials`.
-    private var tokenProvider: (@Sendable () async throws -> String)?
     private var clientTokenProvider: (@Sendable () async throws -> String)?
 
     private var apResolver: APResolver?
@@ -73,7 +69,6 @@ public actor LibrespotSession {
         clientTokenProvider: (@Sendable () async throws -> String)? = nil,
     ) async throws -> APWelcome {
         self.credentials = credentials
-        self.tokenProvider = tokenProvider
         self.clientTokenProvider = clientTokenProvider
 
         updateState(.connecting)
@@ -125,9 +120,9 @@ public actor LibrespotSession {
                 throw LibrespotError.connectionFailed("No spclient hosts available")
             }
 
-            dealerConnection = await DealerConnection(
+            dealerConnection = DealerConnection(
                 endpoint: dealerHost,
-                accessToken: bearerToken(),
+                tokenProvider: tokenProvider,
                 spclientHost: spclientHost,
                 deviceId: deviceInfo.deviceId,
             )
@@ -212,15 +207,6 @@ public actor LibrespotSession {
     /// SPClient host for track metadata and CDN resolution
     public var spclientHost: String? {
         resolvedEndpoints?.spclients.first
-    }
-
-    /// Bearer token for HTTP endpoints: the login's own token when it has
-    /// one, otherwise a fresh one from the provider.
-    private func bearerToken() async -> String {
-        if let token = credentials?.accessToken {
-            return token
-        }
-        return await (try? tokenProvider?()) ?? ""
     }
 
     // MARK: - SPIRC Publishers (forwarded from SpircController)
