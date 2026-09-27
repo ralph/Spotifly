@@ -78,7 +78,7 @@ Debug builds also read a few environment variables that drive playback without t
 
 | Variable | Effect |
 |---|---|
-| `SPOTIFLY_DEBUG_AUTOPLAY=1` | Plays a fixed album about 5 s after launch |
+| `SPOTIFLY_DEBUG_AUTOPLAY=1` | Plays a fixed album about 5 s after launch; a `spotify:` uri instead of `1` plays that |
 | `SPOTIFLY_DEBUG_PAUSE_AFTER=<s>` | With autoplay: pauses after that long, resumes 6 s later |
 | `SPOTIFLY_DEBUG_NEXT_AFTER=<s>` | With autoplay: skips twice, that far apart |
 | `SPOTIFLY_DEBUG_QUEUE_AFTER=<s>` | Queues a track, then an album |

@@ -57,12 +57,14 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 #if DEBUG
                     // Headless test scaffolding: SPOTIFLY_DEBUG_AUTOPLAY=1 starts
                     // a fixed album shortly after launch so the Swift playback
-                    // stack can be exercised without touching the UI.
-                    if ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_AUTOPLAY"] != nil {
+                    // stack can be exercised without touching the UI. A
+                    // spotify: uri instead of 1 plays that.
+                    if let autoplay = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_AUTOPLAY"] {
+                        let uri = autoplay.hasPrefix("spotify:") ? autoplay : "spotify:album:1LVj9ljlwsn2DOsXkRDOeI"
                         Task { @MainActor in
                             try? await Task.sleep(for: .seconds(5))
-                            debugLog("DebugAutoplay", "Starting album 1LVj9ljlwsn2DOsXkRDOeI")
-                            await playbackViewModel.play(uriOrUrl: "spotify:album:1LVj9ljlwsn2DOsXkRDOeI")
+                            debugLog("DebugAutoplay", "Starting \(uri)")
+                            await playbackViewModel.play(uriOrUrl: uri)
 
                             // SPOTIFLY_DEBUG_PAUSE_AFTER=<seconds>: pause through the
                             // same PlaybackViewModel path the buttons use, then resume.
