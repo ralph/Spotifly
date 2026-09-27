@@ -348,6 +348,13 @@ public actor DealerConnection {
             {
                 let command = Self.parseCommand(endpoint: commandJson["endpoint"] as? String ?? "", json: commandJson)
                 debugLog("DealerConnection", "Command received: \(commandJson["endpoint"] ?? "?")")
+                // Whole, so a command this app does not handle yet can be
+                // implemented from what Spotify actually sends.
+                if case .unknown = command,
+                   let raw = try? JSONSerialization.data(withJSONObject: commandJson, options: [.sortedKeys])
+                {
+                    debugLog("DealerConnection", "Unhandled command: \(String(decoding: raw, as: UTF8.self))")
+                }
                 commandSubject.send(SpircRemoteCommand(command: command, messageId: messageId, sentByDeviceId: sentBy))
             } else if uri.starts(with: "hm://connect-state/v1/connect/volume"),
                       let volume = json["volume"] as? NSNumber
