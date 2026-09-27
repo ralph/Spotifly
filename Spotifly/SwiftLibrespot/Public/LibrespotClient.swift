@@ -931,9 +931,16 @@ public actor LibrespotClient {
         switch state {
         case .connected:
             publishConnectionState(connected: true)
-        case .disconnected, .failed:
+        case .failed:
             publishConnectionState(connected: false)
             startAutoRecoveryIfNeeded()
+        case .disconnected:
+            // A disconnect somebody asked for waits for them to reconnect. The
+            // one before sleep used to arm recovery a second later, so the app
+            // reconnected as the Mac went to sleep and in every dark wake after,
+            // and started playing there into an output that could not start.
+            // A dying socket reports `.failed` first, which is what recovers.
+            publishConnectionState(connected: false)
         case .connecting, .authenticating:
             break
         case let .reconnecting(attempt):
