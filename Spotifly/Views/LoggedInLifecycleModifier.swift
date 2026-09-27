@@ -108,6 +108,25 @@ struct LoggedInLifecycleModifier: ViewModifier {
                         }
                     }
 
+                    // SPOTIFLY_DEBUG_TRANSFER_TO=<device name> with
+                    // SPOTIFLY_DEBUG_TRANSFER_TO_AFTER=<seconds>: hand playback to that
+                    // device the way picking it in Speakers does.
+                    if let target = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_TRANSFER_TO"],
+                       let after = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_TRANSFER_TO_AFTER"],
+                       let seconds = Double(after)
+                    {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(seconds))
+                            guard let device = store.devices.values.first(where: { $0.name == target }) else {
+                                debugLog("DebugAutoplay", "No device named \(target); have \(store.devices.values.map(\.name))")
+                                return
+                            }
+                            debugLog("DebugAutoplay", "Handing playback to \(target)")
+                            let accepted = await deviceService.transferPlayback(to: device)
+                            debugLog("DebugAutoplay", "Transfer to \(target) \(accepted ? "accepted" : "rejected")")
+                        }
+                    }
+
                     // SPOTIFLY_DEBUG_QUEUE_AFTER=<seconds>: queue a track, then an
                     // album, through the path the context menus use — locally when
                     // this device plays, as Connect commands when another one does.
