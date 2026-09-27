@@ -217,6 +217,15 @@ public actor Accesspoint {
         pendingAudioKeyRequests.removeAll()
     }
 
+    #if DEBUG
+        /// Kills the socket the way a reset from Spotify does: the receive
+        /// loop's read fails and it reports the loss, with nobody told first.
+        func debugDropConnection() {
+            debugLog("Accesspoint", "Dropping the connection")
+            connection?.cancel()
+        }
+    #endif
+
     // MARK: - Key Exchange
 
     private func performKeyExchange() async throws {

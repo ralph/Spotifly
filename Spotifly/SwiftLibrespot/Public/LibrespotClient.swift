@@ -209,6 +209,20 @@ public actor LibrespotClient {
         publishConnectionState(connected: true)
 
         debugLog("LibrespotClient", "Initialization complete")
+
+        #if DEBUG
+            // SPOTIFLY_DEBUG_DROP_AP_AFTER=<seconds>: drop the accesspoint socket
+            // that long after login. Spotify resets it now and then, and nothing
+            // on its side can be asked to, so this is how a recovery is tested.
+            if let after = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_DROP_AP_AFTER"],
+               let seconds = Double(after)
+            {
+                Task {
+                    try? await Task.sleep(for: .seconds(seconds))
+                    await session?.accesspoint?.debugDropConnection()
+                }
+            }
+        #endif
     }
 
     /// Chooses what to log in with: the stored reusable login if present,
