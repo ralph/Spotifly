@@ -68,6 +68,13 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
     /// Wall-clock time (monotonic) when writing started. Must be accessed with bufferLock held.
     private var writeStartTime: TimeInterval = 0
 
+    /// When playout stopped; the throttle's clock stands still from here
+    /// until `resume()`. Counting a pause as elapsed let the writer fill the
+    /// ring while paused — where the rest of its chunk was dropped, a skip on
+    /// resume — and then run unthrottled for the rest of the track. Must be
+    /// accessed with bufferLock held.
+    private var stoppedAt: TimeInterval = 0
+
     /// Total f32 samples written since start. Must be accessed with bufferLock held.
     private var totalSamplesWritten: Int64 = 0
 
@@ -220,7 +227,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
             writeIndex = (writeIndex + toWrite) % Self.ringBufferCapacity
             totalSamplesWritten += Int64(toWrite)
             let samplesWritten = totalSamplesWritten
-            let elapsed = ProcessInfo.processInfo.systemUptime - writeStartTime
+            let elapsed = (isRendering ? ProcessInfo.processInfo.systemUptime : stoppedAt) - writeStartTime
             let needsRestart = isRendering && !isRequestingData
             bufferLock.unlock()
 
@@ -441,6 +448,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
             }
             isRendering = false
             isRequestingData = false
+            stoppedAt = ProcessInfo.processInfo.systemUptime
             bufferLock.unlock()
 
             synchronizer.setRate(0.0, time: synchronizer.currentTime())
@@ -462,6 +470,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
                 return
             }
             isRendering = true
+            writeStartTime += ProcessInfo.processInfo.systemUptime - stoppedAt
             bufferLock.unlock()
 
             synchronizer.setRate(1.0, time: synchronizer.currentTime())
@@ -556,6 +565,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
         writeIndex = 0
         totalSamplesWritten = 0
         writeStartTime = ProcessInfo.processInfo.systemUptime
+        stoppedAt = writeStartTime
         let shouldSignal = writerIsWaiting
         writerIsWaiting = false
         bufferLock.unlock()

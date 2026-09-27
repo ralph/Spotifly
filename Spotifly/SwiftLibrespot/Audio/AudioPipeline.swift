@@ -90,10 +90,11 @@ actor AudioPipeline {
     /// thread starved every actor job — ticks, pause — for the length of a
     /// track.
     private final class DecodeLoopState: @unchecked Sendable {
-        let lock = NSLock()
+        /// A condition, so a pause can park the loop until it is resumed or
+        /// cancelled; it used to poll every 50 ms, 20 wakeups a second.
+        let lock = NSCondition()
         var cancelled = false
         var finished = false
-        var playing = false
         var paused = false
         var writtenFrames: Int64 = 0
 
@@ -107,6 +108,7 @@ actor AudioPipeline {
         func setCancelled() {
             lock.lock(); defer { lock.unlock() }
             cancelled = true
+            lock.broadcast()
         }
 
         func setFinished(frames: Int64) {
@@ -120,19 +122,19 @@ actor AudioPipeline {
             return (cancelled, finished, writtenFrames)
         }
 
-        func setPlayback(playing: Bool? = nil, paused: Bool? = nil) {
+        func setPaused(_ paused: Bool) {
             lock.lock(); defer { lock.unlock() }
-            if let playing {
-                self.playing = playing
-            }
-            if let paused {
-                self.paused = paused
-            }
+            self.paused = paused
+            lock.broadcast()
         }
 
-        func isPaused() -> Bool {
+        /// Parks the calling thread while paused. False once cancelled.
+        func waitWhilePaused() -> Bool {
             lock.lock(); defer { lock.unlock() }
-            return paused
+            while paused, !cancelled {
+                lock.wait()
+            }
+            return !cancelled
         }
     }
 
@@ -360,7 +362,7 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Pausing")
         isPaused = true
-        decodeState.setPlayback(paused: true)
+        decodeState.setPaused(true)
         sink.stop()
         stopPositionTimer()
         playbackStateSubject.send(.paused(trackUri: uri))
@@ -371,7 +373,7 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Resuming")
         isPaused = false
-        decodeState.setPlayback(paused: false)
+        decodeState.setPaused(false)
         sink.resume()
         startPositionTimer()
         playbackStateSubject.send(.playing(trackUri: uri))
@@ -421,10 +423,10 @@ actor AudioPipeline {
     /// `ov_clear` — and a second party inside `ov_read` on the same
     /// `OggVorbis_File` is undefined behavior, not a glitch.
     ///
-    /// Termination is prompt by construction: the writer returns from a full
-    /// buffer once the sink has been stopped (backpressure checks rendering),
-    /// and the pause park polls a flag. Bounded anyway, so a wedged thread can
-    /// never take playback control down with it.
+    /// Termination is prompt by construction: stopping the sink wakes a writer
+    /// held back by it (a full buffer, the throttle), and cancelling wakes the
+    /// pause park. Bounded anyway, so a wedged thread can never take playback
+    /// control down with it.
     private func retireDecodeThread() async {
         decodeState.setCancelled()
 
@@ -494,7 +496,7 @@ actor AudioPipeline {
             sink.start()
         }
 
-        decodeState.setPlayback(playing: true, paused: keepPaused)
+        decodeState.setPaused(keepPaused)
         startDecodeThread(decoder)
 
         if keepPaused {
@@ -608,9 +610,8 @@ actor AudioPipeline {
     }
 
     /// The decode loop, running on its own thread. Synchronous by design:
-    /// every long wait here (throttled writes, pause polling, cancellation
-    /// polling) would otherwise occupy a cooperative-concurrency thread and
-    /// starve the actor's jobs.
+    /// every long wait here (throttled writes, the pause park) would otherwise
+    /// occupy a cooperative-concurrency thread and starve the actor's jobs.
     ///
     /// `decoder` is owned solely by this thread until `state.cancelled`
     /// observes true and the caller has joined the thread.
@@ -628,24 +629,8 @@ actor AudioPipeline {
 
         var totalWritten: Int64 = 0
 
-        while !state.snapshot().cancelled {
-            // A pause parks here. Polling rather than suspending keeps
-            // cancellation honored without a second party waking us.
-            var parked = 0
-            while !state.snapshot().cancelled, state.isPaused() {
-                if parked == 0 {
-                    debugLog("AudioPipeline", "decode paused")
-                }
-                parked += 1
-                Thread.sleep(forTimeInterval: 0.05)
-            }
-            if state.snapshot().cancelled {
-                break
-            }
-            if parked > 0 {
-                debugLog("AudioPipeline", "decode resumed after pause")
-            }
-
+        // A pause parks here until it is resumed or cancelled.
+        while state.waitWhilePaused() {
             let frames = decoder.read(into: buffer, maxFrames: chunkFrames)
             if frames <= 0 {
                 break
