@@ -102,9 +102,7 @@ public actor Accesspoint {
     /// How long a TCP connect may take before the session moves on to the
     /// next resolved accesspoint. A healthy one connects in well under 100 ms,
     /// and a refused one fails at once (see the state handler); this bounds
-    /// one that never answers. At 30 s, a connect left waiting on one host
-    /// cost half a minute of startup (2026-09-26, ap-gew4:4070) before the
-    /// next was even tried.
+    /// one that never answers.
     private static let connectTimeout: TimeInterval = 5
 
     /// Connect and authenticate with credentials
@@ -131,11 +129,9 @@ public actor Accesspoint {
 
         let conn = connection
 
-        // Bounded: NWConnection's state handler is not guaranteed to fire
-        // promptly (observed multi-minute stalls), and a silent hang here
-        // wedges the whole session start. Exactly one of the state handler
-        // and the deadline resumes the continuation — the claim flag makes
-        // the loser a no-op.
+        // Bounded by `connectTimeout`. Exactly one of the state handler and
+        // the deadline resumes the continuation — the claim flag makes the
+        // loser a no-op.
         final class DeadlineClaim: @unchecked Sendable {
             private let lock = NSLock()
             private var claimed = false
@@ -161,11 +157,10 @@ public actor Accesspoint {
                 case .ready:
                     conn?.stateUpdateHandler = nil
                     _ = deadlineClaim.tryResume(continuation, with: .success(()))
-                // A refused connect is `.waiting`, not `.failed`: Network.framework
-                // would try it again when the network changes, which on a steady
-                // one is never. Port 4070 of an accesspoint refuses about one
-                // connect in eight while 443 of the same host answers, so the
-                // session moves on at once rather than at the deadline.
+                // A refused connect is `.waiting`, not `.failed`, and is tried
+                // again only when the network changes. Failing it moves the
+                // session on to the next accesspoint at once: for port 4070,
+                // which refuses now and then, usually 443 of the same host.
                 case let .failed(error), let .waiting(error):
                     _ = deadlineClaim.tryResume(continuation, with: .failure(LibrespotError.connectionFailed(error.localizedDescription)))
                 case .cancelled:
