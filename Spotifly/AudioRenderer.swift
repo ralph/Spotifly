@@ -31,8 +31,18 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
 
     // MARK: - AVFoundation Objects (recreated on output device change)
 
-    private var renderer = AVSampleBufferAudioRenderer()
+    private var renderer = AudioRenderer.makeRenderer()
     private var synchronizer = AVSampleBufferRenderSynchronizer()
+
+    /// The renderer spatializes only multichannel audio unless told otherwise,
+    /// and Spotify's is stereo. Allowing stereo makes Spatial Audio on AirPods
+    /// and similar headphones available to it; whether it is used, and with or
+    /// without head tracking, is the listener's choice in Control Center.
+    private static func makeRenderer() -> AVSampleBufferAudioRenderer {
+        let renderer = AVSampleBufferAudioRenderer()
+        renderer.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
+        return renderer
+    }
 
     /// Output gain (0...1) applied at the renderer. There is no mixer stage
     /// anywhere else, so this is where playback volume is actually applied — at
@@ -540,7 +550,7 @@ final nonisolated class AudioRenderer: @unchecked Sendable, AudioSink {
             routeChangeObserver = nil
         }
 
-        renderer = AVSampleBufferAudioRenderer()
+        renderer = Self.makeRenderer()
         renderer.volume = outputVolume
         synchronizer = AVSampleBufferRenderSynchronizer()
         synchronizer.addRenderer(renderer)
