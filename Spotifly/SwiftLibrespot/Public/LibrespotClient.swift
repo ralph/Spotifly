@@ -716,8 +716,7 @@ public actor LibrespotClient {
             if let upcoming = playbackQueue.advance() {
                 try? await loadAndPlay(upcoming)
             } else {
-                await audioPipeline?.stop()
-                clearLocalState()
+                await rewindContext()
             }
             // The advance moved current/history/next; queue views need it.
             publishQueueNotifications()
@@ -725,7 +724,7 @@ public actor LibrespotClient {
     }
 
     /// Manual skip: always moves somewhere, wrapping past the end when repeat
-    /// allows and stopping otherwise.
+    /// allows and rewinding the context otherwise.
     private func advanceUserInitiated() async throws {
         defer { publishQueueNotifications() }
 
@@ -733,9 +732,29 @@ public actor LibrespotClient {
         if let upcoming = playbackQueue.advance(respectingRepeat: false) {
             try await loadAndPlay(upcoming)
         } else {
+            await rewindContext()
+        }
+    }
+
+    /// The queue has run out with nothing to repeat: back to the first track
+    /// of the context, loaded and paused at its start, as librespot's
+    /// `handle_stop` leaves it. Other devices show a stopped player on that
+    /// track, and their play button plays it.
+    ///
+    /// This used to stop and report no player state at all, while the device
+    /// stayed the active one. The web player read that as nothing new and
+    /// went on showing this Mac playing the last second of the last track,
+    /// its play button sending pause.
+    private func rewindContext() async {
+        let tracks = playbackQueue.contextTracks
+        guard !tracks.isEmpty else {
             await audioPipeline?.stop()
             clearLocalState()
+            return
         }
+        debugLog("LibrespotClient", "End of the context; back to its first track, paused")
+        playbackQueue.setContext(uri: playbackQueue.contextUri, tracks: tracks, startIndex: 0)
+        try? await loadCurrentTrack(paused: true)
     }
 
     /// Publishes both queue shapes the app listens to.
