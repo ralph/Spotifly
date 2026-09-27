@@ -282,8 +282,12 @@ struct NowPlayingBarView: View {
     }
 
     private var progressBar: some View {
-        // Lower frame rate when not hovering: 10 FPS on hover, 1 FPS otherwise
-        TimelineView(.animation(minimumInterval: isHoveringSeekBar ? 0.1 : 1.0)) { _ in
+        // Lower frame rate when not hovering: 10 FPS on hover, 1 FPS otherwise.
+        // Paused while nothing plays: the position is not moving, and each
+        // tick costs the main thread ~5 ms of SwiftUI update — all of the
+        // app's CPU when idle. A seek or a new position still redraws it,
+        // through the view model properties the content reads.
+        TimelineView(.animation(minimumInterval: isHoveringSeekBar ? 0.1 : 1.0, paused: !playbackViewModel.isPlaying)) { _ in
             HStack(spacing: 8) {
                 // Show timestamp only on hover
                 if isHoveringSeekBar {
