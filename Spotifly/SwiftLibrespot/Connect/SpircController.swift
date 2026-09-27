@@ -232,6 +232,10 @@ public actor SpircController {
     /// web player took playback back, and routed its own transport buttons to
     /// the device that had let go.
     private func send(_ request: PutStateRequestProto) async {
+        let player = request.device.playerState.map {
+            "\($0.isPaused ? "paused" : "playing") \($0.positionAsOfTimestamp)ms@\($0.timestamp)"
+        }
+        debugLog("SpircController", "PutState \(request.putStateReason) active=\(request.isActive): \(player ?? "no player state")")
         do {
             if let cluster = try await dealerConnection.putState(request) {
                 adopt(cluster)

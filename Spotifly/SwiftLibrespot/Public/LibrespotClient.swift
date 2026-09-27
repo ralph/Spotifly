@@ -491,7 +491,7 @@ public actor LibrespotClient {
         // repeat the last report: without this, other devices did not see the
         // track, and a transfer before the next state change dropped it.
         if localState != nil {
-            await reportPlaybackToCluster()
+            reportPlaybackToCluster()
         }
     }
 
@@ -835,7 +835,7 @@ public actor LibrespotClient {
             publishPlaybackState(for: trackUri, playing: false, paused: true, positionMs: Int64(position))
         }
 
-        await reportPlaybackToCluster()
+        reportPlaybackToCluster()
     }
 
     /// Mirrors local playback into Spirc's connect state so other Spotify
@@ -844,10 +844,36 @@ public actor LibrespotClient {
     /// The context and the queue around the track go with it: a transfer away
     /// hands the receiving device exactly this, so without them it could only
     /// continue the one track and stop.
-    private func reportPlaybackToCluster() async {
+    ///
+    /// Reports go out one at a time, each built from the state as it is when
+    /// it goes. Every remote command is acknowledged with a report the moment
+    /// it returns, which can be before the pipeline's own state event has
+    /// updated `localState`. Taken as snapshots and sent side by side, that
+    /// stale report and the fresh one raced, and Spotify kept whichever it
+    /// took last: after a pause from the web player it showed this Mac
+    /// playing, its play button sent pause, and the next launch mirrored the
+    /// stale state back as playback.
+    private func reportPlaybackToCluster() {
+        reportDue = true
+        guard reporting == nil else { return }
+        reporting = Task {
+            while reportDue {
+                reportDue = false
+                await sendPlaybackReport()
+            }
+            reporting = nil
+        }
+    }
+
+    /// Whether another report is due once the one going out has been sent.
+    private var reportDue = false
+    /// Sends the reports in turn; nil while none is going out.
+    private var reporting: Task<Void, Never>?
+
+    private func sendPlaybackReport() async {
         guard let session else { return }
         guard let current = localState else {
-            Task { await session.reportLocalPlayerState(nil, active: false) }
+            await session.reportLocalPlayerState(nil, active: false)
             return
         }
 
@@ -869,8 +895,7 @@ public actor LibrespotClient {
             nextTracks: playbackQueue.upcoming(),
             previousTracks: Array(playbackQueue.recent().reversed()),
         )
-        let becameActive = current.isPlaying
-        Task { await session.reportLocalPlayerState(spircState, active: becameActive) }
+        await session.reportLocalPlayerState(spircState, active: current.isPlaying)
     }
 
     // MARK: - Session Wiring
@@ -1066,7 +1091,7 @@ public actor LibrespotClient {
             // as the one playing — over silence, with every control sent here.
             debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
             await session?.reportLocalActive(false)
-            await reportPlaybackToCluster()
+            reportPlaybackToCluster()
         }
     }
 
@@ -1152,7 +1177,7 @@ public actor LibrespotClient {
         // as librespot's notify after `handle_request` does — also the ones
         // that change nothing a playback state would report, such as a track
         // queued while paused, which otherwise went unanswered.
-        await reportPlaybackToCluster()
+        reportPlaybackToCluster()
     }
 
     // MARK: - State Publishing
@@ -1198,7 +1223,7 @@ public actor LibrespotClient {
             paused: current.isPaused,
             positionMs: Int64(position),
         )
-        await reportPlaybackToCluster()
+        reportPlaybackToCluster()
     }
 
     /// Duration of the currently loaded track, captured when it starts. The
