@@ -28,6 +28,10 @@ PR; the rest are recorded but not planned.
 
 ### Recorded, not planned
 
+- **A reconnect restarts the audio** — [keep-playing-through-a-reconnect.md](keep-playing-through-a-reconnect.md).
+  An accesspoint reset rebuilds the audio pipeline, which costs about 0.17 s of silence and a
+  short repeat, although the track playing needs nothing from the socket. Keep the pipeline
+  and swap its accesspoint instead. Found in the hour-long run of 2026-09-27.
 - **The player's interface is still FFI-shaped** — [player-interface-after-the-ffi.md](player-interface-after-the-ffi.md).
   Ten Combine subjects, types built for C, a static facade. A five-step move to ordered
   streams and one `@Observable` model; the last step, the macOS 27 renderer, is done. Also
