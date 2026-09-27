@@ -91,11 +91,9 @@ actor AudioPipeline {
     /// reached the end of the track.
     private var decoded: (frames: Int64, finished: Bool) = (0, false)
 
-    /// Numbers each decode. Only the current one writes `decoded` or asks for
-    /// a refill: one being replaced can still resume once after the next has
-    /// started, when a second seek did not wait for it. Taken before the sink
-    /// restarts and bumped by teardown, so a start that awaited the sink while
-    /// a stop or a newer start ran gives way to it.
+    /// Numbers each decode, so a refill a decode asked for is dropped once
+    /// another has replaced it, and a replaced decode's last chunk is not
+    /// counted as the new one's.
     private var decodeRun = 0
 
     /// Frames per chunk handed to the sink, 93 ms. The renderer takes about
@@ -161,49 +159,91 @@ actor AudioPipeline {
         gapless = enabled
     }
 
+    // MARK: - Transitions
+
+    /// Whether a transition — loading, seeking, pausing, resuming, stopping,
+    /// refilling — is under way; see `transition`.
+    private var transitionInProgress = false
+    private var waitingTransitions: [CheckedContinuation<Void, Never>] = []
+
+    /// Runs `body` as the only transition under way. Others wait their turn,
+    /// in order, and ticks and continuations stand aside until it is done.
+    ///
+    /// A transition awaits the renderer and the decode it retires, and this
+    /// actor lets anything in at those awaits. Interleaved there, a stop was
+    /// overridden by the start it landed in, a tick adopted a continuation a
+    /// seek was retiring, and a seek positioned a track loaded meanwhile —
+    /// each once guarded at its own await. One at a time, none can happen.
+    private func transition<T>(_ body: () async throws -> T) async rethrows -> T {
+        if transitionInProgress {
+            await withCheckedContinuation { waitingTransitions.append($0) }
+        } else {
+            transitionInProgress = true
+        }
+        defer {
+            if waitingTransitions.isEmpty {
+                transitionInProgress = false
+            } else {
+                waitingTransitions.removeFirst().resume()
+            }
+        }
+        return try await body()
+    }
+
     // MARK: - Playback Control
 
     /// Plays a track by URI, resolving everything needed along the way.
     ///
+    /// Two transitions with the download between them, so neither a pause
+    /// nor a newer load waits for the network: the newer load bumps the
+    /// generation, and this one then gives way.
+    ///
     /// - Parameter paused: load and position the track but hold playout until
     ///   `resume()`, as a handover of paused playback needs.
     func playTrack(uri: String, positionMs: UInt64 = 0, paused: Bool = false) async throws {
-        let continued = continuedUri
-        continuedUri = nil
-        if continued == uri, currentTrackUri == uri, positionMs == 0, !paused, isPlaying, !isPaused {
-            debugLog("AudioPipeline", "\(uri) is already playing, without a gap")
-            // Republished for the position it has actually reached.
-            playbackStateSubject.send(.playing(trackUri: uri))
-            return
+        var generation = 0
+        let alreadyPlaying = await transition {
+            let continued = continuedUri
+            continuedUri = nil
+            if continued == uri, currentTrackUri == uri, positionMs == 0, !paused, isPlaying, !isPaused {
+                debugLog("AudioPipeline", "\(uri) is already playing, without a gap")
+                // Republished for the position it has actually reached.
+                playbackStateSubject.send(.playing(trackUri: uri))
+                return true
+            }
+
+            debugLog("AudioPipeline", "Playing \(uri) at \(positionMs)ms")
+            playbackStateSubject.send(.loading(trackUri: uri))
+
+            loadGeneration += 1
+            generation = loadGeneration
+            await teardownTrack()
+            return false
         }
-
-        debugLog("AudioPipeline", "Playing \(uri) at \(positionMs)ms")
-        playbackStateSubject.send(.loading(trackUri: uri))
-
-        loadGeneration += 1
-        let generation = loadGeneration
-        await teardownTrack()
+        guard !alreadyPlaying else { return }
 
         let track = try await preparedTrack(for: uri)
         let vorbis = try VorbisDecoder(bytes: track.ogg)
         debugLog("AudioPipeline", "Decoder open: \(vorbis.format.sampleRate)Hz x\(vorbis.format.channels), \(vorbis.totalFrames) frames")
 
-        guard generation == loadGeneration else {
-            debugLog("AudioPipeline", "Superseded while loading \(uri)")
-            vorbis.close()
-            throw CancellationError()
+        try await transition {
+            guard generation == loadGeneration else {
+                debugLog("AudioPipeline", "Superseded while loading \(uri)")
+                vorbis.close()
+                throw CancellationError()
+            }
+
+            current = track
+            currentTrackUri = uri
+            durationMs = Int64(track.durationMs)
+            sampleRate = vorbis.format.sampleRate
+            decoder = vorbis
+
+            let startFrame = positionMs > 0
+                ? Int64((Double(positionMs) / 1000.0) * Double(vorbis.format.sampleRate))
+                : 0
+            await startDecoding(from: startFrame, keepPaused: paused)
         }
-
-        current = track
-        currentTrackUri = uri
-        durationMs = Int64(track.durationMs)
-        sampleRate = vorbis.format.sampleRate
-        decoder = vorbis
-
-        let startFrame = positionMs > 0
-            ? Int64((Double(positionMs) / 1000.0) * Double(vorbis.format.sampleRate))
-            : 0
-        await startDecoding(from: startFrame, keepPaused: paused)
     }
 
     // MARK: - Prepared Tracks
@@ -322,28 +362,37 @@ actor AudioPipeline {
     /// The decode, if still running, waits out the pause inside the sink: a
     /// paused renderer takes nothing more once it is full.
     func pause() async {
-        guard let uri = currentTrackUri, isPlaying, !isPaused else { return }
+        await transition {
+            guard let uri = currentTrackUri, isPlaying, !isPaused else { return }
 
-        debugLog("AudioPipeline", "Pausing")
-        isPaused = true
-        stopPositionTimer()
-        playbackStateSubject.send(.paused(trackUri: uri))
-        await sink.pause()
+            debugLog("AudioPipeline", "Pausing")
+            isPaused = true
+            stopPositionTimer()
+            await sink.pause()
+            playbackStateSubject.send(.paused(trackUri: uri))
+        }
     }
 
     func resume() async {
-        guard let uri = currentTrackUri, isPlaying, isPaused else { return }
+        await transition {
+            guard let uri = currentTrackUri, isPlaying, isPaused else { return }
 
-        debugLog("AudioPipeline", "Resuming")
-        isPaused = false
-        startPositionTimer()
-        playbackStateSubject.send(.playing(trackUri: uri))
-        await sink.resume()
+            debugLog("AudioPipeline", "Resuming")
+            isPaused = false
+            await sink.resume()
+            startPositionTimer()
+            playbackStateSubject.send(.playing(trackUri: uri))
+        }
     }
 
+    /// Also supersedes a load waiting on the network, which would otherwise
+    /// start playing once its download arrived.
     func stop() async {
-        debugLog("AudioPipeline", "Stopping")
-        await teardownAndGoIdle()
+        await transition {
+            debugLog("AudioPipeline", "Stopping")
+            loadGeneration += 1
+            await teardownAndGoIdle()
+        }
     }
 
     /// Stops the current track and tears down its resources, publishing idle.
@@ -362,21 +411,22 @@ actor AudioPipeline {
     /// Seeks within the current track. Works while playing or paused; either
     /// way the decode restarts from the new offset and holds there if paused.
     func seek(positionMs: UInt64) async throws {
+        try await transition {
+            try await performSeek(positionMs: positionMs)
+        }
+    }
+
+    /// `seek`, inside a transition that is already under way.
+    private func performSeek(positionMs: UInt64) async throws {
         guard currentTrackUri != nil, let decoder else {
             throw LibrespotError.invalidState("No track loaded")
         }
 
         debugLog("AudioPipeline", "Seeking to \(positionMs)ms")
         let frame = Int64((Double(positionMs) / 1000.0) * Double(decoder.format.sampleRate))
-        let generation = loadGeneration
 
-        let dropped = continuation
-        continuation = nil
         await retireDecoding()
-        dropContinuation(dropped)
-        // A load that began meanwhile is another track; this position is not its.
-        guard generation == loadGeneration, self.decoder === decoder else { return }
-
+        dropContinuation()
         await startDecoding(from: frame, keepPaused: isPaused)
     }
 
@@ -432,11 +482,8 @@ actor AudioPipeline {
         isPlaying = true
         isPaused = keepPaused
 
-        decodeRun += 1
-        let run = decodeRun
         await sink.restart(paused: keepPaused)
-        guard run == decodeRun else { return }
-        startDecodeTask(decoder, run: run)
+        startDecodeTask(decoder)
 
         if keepPaused {
             stopPositionTimer()
@@ -446,8 +493,10 @@ actor AudioPipeline {
         playbackStateSubject.send(keepPaused ? .paused(trackUri: currentTrackUri ?? "") : .playing(trackUri: currentTrackUri ?? ""))
     }
 
-    private func startDecodeTask(_ decoder: VorbisDecoder, run: Int) {
+    private func startDecodeTask(_ decoder: VorbisDecoder) {
         decodeTask?.cancel()
+        decodeRun += 1
+        let run = decodeRun
         decoded = (0, false)
         decodeTask = Task { await self.decode(decoder, run: run) }
     }
@@ -494,14 +543,17 @@ actor AudioPipeline {
     /// queued: load again from the playhead, as a seek to the same place would.
     /// What played in the meantime was silence, and is skipped.
     private func refill(after run: Int) async {
-        guard run == decodeRun, currentTrackUri != nil, isPlaying else { return }
-        // A stall is noticed a second or so after it starts, so near the end
-        // of a track the clock may have run into the next one before a tick
-        // made it the loaded track. Measured against this one, the playhead
-        // would sit at its end, and the refill would decode nothing more of it.
-        adoptContinuationIfReached()
-        debugLog("AudioPipeline", "Refilling the output from the playhead")
-        try? await seek(positionMs: currentPositionMs())
+        await transition {
+            guard run == decodeRun, currentTrackUri != nil, isPlaying else { return }
+            // A stall is noticed a second or so after it starts, so near the
+            // end of a track the clock may have run into the next one before a
+            // tick made it the loaded track. Measured against this one, the
+            // playhead would sit at its end, and the refill would decode
+            // nothing more of it.
+            adoptContinuationIfReached()
+            debugLog("AudioPipeline", "Refilling the output from the playhead")
+            try? await performSeek(positionMs: currentPositionMs())
+        }
     }
 
     // MARK: - Gapless Continuation
@@ -525,7 +577,7 @@ actor AudioPipeline {
         // queue, or the end of this track, which auto-advance then loads the
         // ordinary way from the same fetch.
         guard let track, track.quality == quality, nextUri == uri, continuation == nil,
-              isPlaying, !endOfTrackFired, decoded.finished,
+              !transitionInProgress, isPlaying, !endOfTrackFired, decoded.finished,
               let decoder = try? VorbisDecoder(bytes: track.ogg)
         else { return }
 
@@ -535,8 +587,7 @@ actor AudioPipeline {
         let startFrame = trackStartSinkFrame + decoded.frames
         continuation = (track, decoder, startFrame)
         debugLog("AudioPipeline", "Decoding \(uri) behind the current track, from sink frame \(startFrame)")
-        decodeRun += 1
-        startDecodeTask(decoder, run: decodeRun)
+        startDecodeTask(decoder)
     }
 
     private func adoptContinuationIfReached() {
@@ -572,15 +623,11 @@ actor AudioPipeline {
         endOfTrackSubject.send(ended)
     }
 
-    /// Releases a continuation taken out of `continuation`, once its decode
-    /// has been retired. Its file is kept, for when that track is asked for
-    /// after all.
-    ///
-    /// Callers take it out before they await the retirement, not after: a
-    /// tick in that await would otherwise make it the loaded track, with its
-    /// decode already cancelled, and end the one being sought or torn down.
-    private func dropContinuation(_ continuation: Continuation?) {
+    /// Forgets the continuation, once its decode has been retired. Its file is
+    /// kept, for when that track is asked for after all.
+    private func dropContinuation() {
         guard let continuation else { return }
+        self.continuation = nil
         continuation.decoder.close()
         debugLog("AudioPipeline", "Dropped the continuation into \(continuation.track.uri)")
         if upcoming == nil, continuation.track.uri != current?.uri {
@@ -593,11 +640,8 @@ actor AudioPipeline {
 
     /// Cancels whatever is running and releases the loaded track.
     private func teardownTrack() async {
-        decodeRun += 1
-        let dropped = continuation
-        continuation = nil
         await retireDecoding()
-        dropContinuation(dropped)
+        dropContinuation()
         positionTimer?.cancel()
         positionTimer = nil
 
@@ -633,7 +677,8 @@ actor AudioPipeline {
 
     /// Periodic tick: publish position, detect end of track and a stalled output.
     private func tick() async {
-        guard currentTrackUri != nil, isPlaying, !isPaused else { return }
+        // A transition under way owns the state this reads and changes.
+        guard !transitionInProgress, currentTrackUri != nil, isPlaying, !isPaused else { return }
 
         adoptContinuationIfReached()
 
