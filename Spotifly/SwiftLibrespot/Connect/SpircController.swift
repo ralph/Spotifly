@@ -52,6 +52,9 @@ public actor SpircController {
     /// How often state is republished while nothing happens.
     private static let heartbeatInterval: Duration = .seconds(30)
 
+    /// The last PutState asked for, which the next one waits for.
+    private var publishing: Task<Void, Never>?
+
     // MARK: - Publishers
 
     private nonisolated(unsafe) let clusterStateSubject = CurrentValueSubject<ClusterState?, Never>(nil)
@@ -171,17 +174,31 @@ public actor SpircController {
 
     // MARK: - State Publishing
 
-    /// Republishes our device/player state to the cluster.
+    /// Republishes our device/player state to the cluster, once the PutState
+    /// before it has been answered.
+    ///
+    /// One at a time, and each request is built only when it goes. PutStates
+    /// are separate HTTP requests, and the cluster keeps whichever it handles
+    /// last: a heartbeat still in flight when a pause was reported could land
+    /// after it, and other devices saw this one playing until the next
+    /// heartbeat. librespot's Spirc awaits each PutState in its loop the same
+    /// way.
     ///
     /// - Parameter reason: why the state moved; nil means routine heartbeat.
     func publishState(reason: PutStateReason?) async {
-        guard isReady else { return }
+        let previous = publishing
+        let next = Task {
+            await previous?.value
+            guard isReady else { return }
 
-        var request = buildPutStateRequest(isActive: isActive)
-        if let reason {
-            request.putStateReason = reason
+            var request = buildPutStateRequest(isActive: isActive)
+            if let reason {
+                request.putStateReason = reason
+            }
+            await send(request)
         }
-        await send(request)
+        publishing = next
+        await next.value
     }
 
     private func startHeartbeat() {
@@ -215,11 +232,7 @@ public actor SpircController {
             setActive(true)
         }
 
-        guard isReady else { return }
-
-        var request = buildPutStateRequest(isActive: isActive)
-        request.putStateReason = becameActive ? .newDevice : (state != nil ? .playerStateChanged : .spircNotify)
-        await send(request)
+        await publishState(reason: becameActive ? .newDevice : (state != nil ? .playerStateChanged : .spircNotify))
     }
 
     /// Puts our state and takes the cluster it is answered with as current.
