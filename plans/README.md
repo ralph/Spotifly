@@ -28,6 +28,10 @@ PR; the rest are recorded but not planned.
 
 ### Recorded, not planned
 
+- **The player's interface is still FFI-shaped** — [player-interface-after-the-ffi.md](player-interface-after-the-ffi.md).
+  Ten Combine subjects, types built for C, a static facade. A five-step move to ordered
+  streams and one `@Observable` model. Also answers whether a slow UI can interrupt
+  playback: no.
 - **Playlist writes Spotifly cannot do** — [playlist-attributes-not-written.md](playlist-attributes-not-written.md).
   Reading is complete; only writing cover art and attributes is missing.
 - **Playlist folders** — [playlist-folder-hierarchy.md](playlist-folder-hierarchy.md). Deferred
