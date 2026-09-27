@@ -118,6 +118,9 @@ public enum SpircCommand: Sendable {
     case setVolume(UInt32)
     case setShuffle(Bool)
     case setRepeat(RepeatMode)
+    /// `set_options`, which the web player sends for both shuffle and repeat:
+    /// any of the three flags, each only when it changes.
+    case setOptions(shuffle: Bool?, repeatContext: Bool?, repeatTrack: Bool?)
     case transfer(TransferState)
     case addToQueue(uri: String)
     case unknown(String)

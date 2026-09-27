@@ -553,6 +553,16 @@ public actor DealerConnection {
         case "set_repeating_context":
             return .setRepeat(((json["value"] as? Bool) ?? false) ? .context : .off)
 
+        case "set_options":
+            // What the web player sends for its shuffle and repeat buttons — not
+            // the set_shuffling_context / set_repeating_* above — so those buttons
+            // did nothing here until this was read.
+            return .setOptions(
+                shuffle: json["shuffling_context"] as? Bool,
+                repeatContext: json["repeating_context"] as? Bool,
+                repeatTrack: json["repeating_track"] as? Bool,
+            )
+
         case "add_to_queue":
             let track = json["track"] as? [String: Any]
             return .addToQueue(uri: track?["uri"] as? String ?? "")

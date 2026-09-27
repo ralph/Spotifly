@@ -1105,6 +1105,18 @@ public actor LibrespotClient {
             }
             await setRepeat(repeatMode)
 
+        case let .setOptions(shuffle, repeatContext, repeatTrack):
+            // librespot applies each flag that is present. Repeat-one wins over
+            // repeat-context, as clients send both on for it.
+            if repeatContext != nil || repeatTrack != nil {
+                let track = repeatTrack ?? (repeatMode == .track)
+                let context = repeatContext ?? (repeatMode == .context)
+                await setRepeat(track ? .track : (context ? .context : .off))
+            }
+            if let shuffle {
+                await setShuffle(shuffle)
+            }
+
         case let .addToQueue(uri):
             await addToQueue(uri: uri)
 

@@ -137,3 +137,40 @@ struct VolumeCommandTests {
         #expect(DealerConnection.volume(inSetVolumeCommand: Data(#"{"volume":19731}"#.utf8)) == nil)
     }
 }
+
+/// Shuffle and repeat as Spotify's web player sends them: one `set_options` endpoint.
+struct SetOptionsCommandTests {
+    /// The `command` objects of the web player's own requests, captured from its page on
+    /// 2026-09-27 while it controlled this app: the shuffle button, then the repeat button.
+    private static let capturedShuffle = #"""
+    {"shuffling_context":true,"modes":{"context_enhancement":"NONE"},"logging_params":{"page_instance_ids":["b577dccf-3300-4168-b835-505221756720"],"interaction_ids":["f139a8af-ef24-41e2-8ea6-65e0706c8401"],"command_id":"5a0cb69e32d038a8b2d74973994ea893"},"endpoint":"set_options"}
+    """#
+    private static let capturedRepeat = #"""
+    {"repeating_context":true,"repeating_track":false,"endpoint":"set_options","logging_params":{"command_id":"421374f94414a93c3f883980d02b44e3"}}
+    """#
+
+    private static func parse(_ json: String) throws -> SpircCommand {
+        let object = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        return DealerConnection.parseCommand(endpoint: object["endpoint"] as? String ?? "", json: object)
+    }
+
+    @Test func `the shuffle button sets only shuffle`() throws {
+        guard case let .setOptions(shuffle, repeatContext, repeatTrack) = try Self.parse(Self.capturedShuffle) else {
+            Issue.record("not read as set_options")
+            return
+        }
+        #expect(shuffle == true)
+        #expect(repeatContext == nil)
+        #expect(repeatTrack == nil)
+    }
+
+    @Test func `the repeat button sets only repeat`() throws {
+        guard case let .setOptions(shuffle, repeatContext, repeatTrack) = try Self.parse(Self.capturedRepeat) else {
+            Issue.record("not read as set_options")
+            return
+        }
+        #expect(shuffle == nil)
+        #expect(repeatContext == true)
+        #expect(repeatTrack == false)
+    }
+}
