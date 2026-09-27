@@ -74,13 +74,6 @@
             ReferencedContainer = "container:Spotifly.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <EnvironmentVariables>
-         <EnvironmentVariable
-            key = "RUST_LOG"
-            value = "librespot=debug,spotifly_rust=debug"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

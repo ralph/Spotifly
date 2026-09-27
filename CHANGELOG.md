@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - `rust/src/proxy_sink.rs`, the last tracked file of the Rust layer. The branch had removed the Rust FFI, but `main` created this file afterwards, so merging `main` in brought it back as a new file with nothing left to build it.
+- The scheme's `RUST_LOG=librespot=debug,spotifly_rust=debug` launch variable and the `rust/target/` ignore rule. Nothing reads the one or produces the other.
 
 ## [1.2.7] - 2026-08-14
 

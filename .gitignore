@@ -19,9 +19,6 @@ build/
 .LSOverride
 ._*
 
-# Rust (also in rust/.gitignore but here for completeness)
-rust/target/
-
 # IDE
 .idea/
 .vscode/
