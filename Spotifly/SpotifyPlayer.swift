@@ -578,8 +578,9 @@ enum SpotifyPlayer {
         Task { await LibrespotClient.shared.applyPlaybackSettings() }
     }
 
-    /// Gets the gapless playback setting.
-    static var gapless: Bool {
+    /// The stored gapless setting, defaulting to on. `nonisolated` like
+    /// `bitrate`: applying it to a new pipeline must not wait for the main thread.
+    nonisolated static var gapless: Bool {
         UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
     }
 

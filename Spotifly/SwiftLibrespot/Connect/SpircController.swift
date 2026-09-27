@@ -156,6 +156,8 @@ public actor SpircController {
         heartbeatTask = nil
         isReady = false
         subscriptions.removeAll()
+        dealerPushes?.cancel()
+        dealerPushes = nil
 
         // Tell the cluster this device is going away. Best effort: a dead
         // socket must not block shutdown.
@@ -385,24 +387,38 @@ public actor SpircController {
 
     // MARK: - Dealer Subscriptions
 
+    private nonisolated enum DealerPush: Sendable {
+        case cluster(ClusterUpdateProto)
+        case command(SpircRemoteCommand)
+    }
+
+    /// Hands the dealer's pushes to this actor one at a time, in the order
+    /// they arrived. They used to hop through the main actor on the way, so
+    /// a remote pause waited for whatever SwiftUI was busy with.
+    private var dealerPushes: Task<Void, Never>?
+
     private func setupDealerSubscriptions() async {
-        // Subscribe to cluster updates
+        let (pushes, continuation) = AsyncStream.makeStream(of: DealerPush.self)
+
         dealerConnection.clusterUpdates
-            .sink { [weak self] update in
-                Task { @MainActor [weak self] in
-                    await self?.handleClusterUpdate(update)
-                }
-            }
+            .sink { continuation.yield(.cluster($0)) }
             .store(in: &subscriptions)
 
-        // Subscribe to commands
         dealerConnection.commands
-            .sink { [weak self] command in
-                Task { @MainActor [weak self] in
+            .sink { continuation.yield(.command($0)) }
+            .store(in: &subscriptions)
+
+        dealerPushes?.cancel()
+        dealerPushes = Task { [weak self] in
+            for await push in pushes {
+                switch push {
+                case let .cluster(update):
+                    await self?.handleClusterUpdate(update)
+                case let .command(command):
                     await self?.handleCommand(command)
                 }
             }
-            .store(in: &subscriptions)
+        }
     }
 
     private func handleClusterUpdate(_ update: ClusterUpdateProto) async {
