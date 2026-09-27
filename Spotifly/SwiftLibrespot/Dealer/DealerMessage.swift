@@ -123,6 +123,12 @@ public enum SpircCommand: Sendable {
     case setOptions(shuffle: Bool?, repeatContext: Bool?, repeatTrack: Bool?)
     case transfer(TransferState)
     case addToQueue(uri: String)
+    /// `set_queue`, which another device sends when its user edits the queue:
+    /// the whole list of next tracks as it should be now. This carries its
+    /// queue section, everything before the first track the context provides.
+    /// A track moved within that section arrives without a provider, and the
+    /// context tracks after it are a window of ten, whose edits are not adopted.
+    case setQueue(queuedUris: [String])
     case unknown(String)
 
     public struct PlayCommand: Sendable {

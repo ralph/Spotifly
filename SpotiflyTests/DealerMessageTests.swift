@@ -174,3 +174,57 @@ struct SetOptionsCommandTests {
         #expect(repeatTrack == false)
     }
 }
+
+/// Queue edits as other devices send them, captured on 2026-09-27 while this app played
+/// "Not Bad for New Jersey" with a track and then the same album queued: the iPhone app
+/// removing and moving queued tracks, and the web player sending the queue back as it was.
+/// The fixtures leave out `logging_params`, which names the sending device.
+struct SetQueueCommandTests {
+    private static func queued(_ fixture: String) throws -> [String] {
+        let object = try #require(JSONSerialization.jsonObject(with: fixtureData(fixture)) as? [String: Any])
+        guard case let .setQueue(uris) = DealerConnection.parseCommand(endpoint: object["endpoint"] as? String ?? "", json: object) else {
+            Issue.record("not read as set_queue")
+            return []
+        }
+        return uris.map { $0.replacingOccurrences(of: "spotify:track:", with: "") }
+    }
+
+    /// The album's tracks after the first, as queued.
+    private static let albumRest = [
+        "4dXrwm7f6Hrpyk6MTvBO98", "3fHhIJkGYR4QKy1LvjXUOK", "7aEd4015g5QiEVNCEgstMS",
+        "48EGw6eq8yJxNYWZ6M4Kck", "3hQDsAxTyB6IZa7ZXgV4HD", "28BisapD9huxRmUAxYs0qD",
+        "12Vu0bL0e0ljFaI3VTYp4A", "335IQurCbCu8aXABK69b42", "1fjCCMPyDcHf6Iw3gQNEQJ",
+        "1kEzkpxMYuqc8AiAbg6XNB",
+    ]
+    private static let albumFirst = "2J1gYYXbLb3JJWjbOS6DJO"
+    private static let betterBefore = "4dXrwm7f6Hrpyk6MTvBO98"
+    private static let pearls = "3fHhIJkGYR4QKy1LvjXUOK"
+    private static let onGoodTerms = "48EGw6eq8yJxNYWZ6M4Kck"
+
+    /// The context tracks that follow carry the same album's tracks: taking them too
+    /// would queue each one twice.
+    @Test func `the queue section ends at the first context track`() throws {
+        #expect(try Self.queued("set-queue-web-player-unchanged") == ["0Y9muyQw5qQ6l7ZMEkkUNG", Self.albumFirst] + Self.albumRest)
+    }
+
+    @Test func `a track removed on the phone is left out`() throws {
+        #expect(try Self.queued("set-queue-iphone-removed") == [Self.albumFirst] + Self.albumRest.filter { $0 != Self.betterBefore })
+    }
+
+    /// The moved track arrives without a provider; it is still in the queue section.
+    @Test func `a track moved to the top of the queue leads it`() throws {
+        #expect(try Self.queued("set-queue-iphone-moved-to-top") == [Self.pearls, Self.albumFirst] + Self.albumRest.filter { $0 != Self.pearls })
+    }
+
+    @Test func `a track moved within the queue takes its new place`() throws {
+        let rest = Self.albumRest.filter { $0 != Self.onGoodTerms }
+        #expect(try Self.queued("set-queue-iphone-moved-within") == [Self.albumFirst, rest[0], Self.onGoodTerms] + rest.dropFirst())
+    }
+
+    @Test func `a set_queue without its list does not empty the queue`() {
+        guard case .unknown = DealerConnection.parseCommand(endpoint: "set_queue", json: ["endpoint": "set_queue"]) else {
+            Issue.record("read as a queue")
+            return
+        }
+    }
+}

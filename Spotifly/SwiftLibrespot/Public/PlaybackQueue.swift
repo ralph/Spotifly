@@ -66,7 +66,8 @@ final nonisolated class PlaybackQueue {
 
     /// Replaces the explicitly queued tracks wholesale, as a handover does:
     /// the sender's queue is the queue now, and whatever was left here from
-    /// before the playback went away has played elsewhere since.
+    /// before the playback went away has played elsewhere since. A remote
+    /// `set_queue` does the same with the queue another device has edited.
     func replaceUserQueue(with uris: [String]) {
         userQueue = uris
     }

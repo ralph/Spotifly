@@ -1217,6 +1217,13 @@ public actor LibrespotClient {
         case let .addToQueue(uri):
             await addToQueue(uri: uri)
 
+        case let .setQueue(queuedUris):
+            // The sender's queue is the queue now. Ignored, the report below
+            // sent the old one back, and the edit snapped back where it was made.
+            debugLog("LibrespotClient", "Queue set remotely: \(queuedUris.count) queued")
+            playbackQueue.replaceUserQueue(with: queuedUris)
+            publishQueueNotifications()
+
         case let .transfer(state):
             await takeOver(state)
 

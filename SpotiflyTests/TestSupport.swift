@@ -191,3 +191,14 @@ func spclientAPI(
         transport: transport,
     )
 }
+
+// MARK: - Fixtures
+
+/// Anchors `Bundle(for:)` to the test bundle, which carries `Fixtures/`.
+private final class FixtureBundleToken {}
+
+/// A captured payload from `SpotiflyTests/Fixtures`, by file name without `.json`.
+func fixtureData(_ name: String) throws -> Data {
+    let url = try #require(Bundle(for: FixtureBundleToken.self).url(forResource: name, withExtension: "json"))
+    return try Data(contentsOf: url)
+}
