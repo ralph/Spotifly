@@ -627,8 +627,10 @@ actor AudioPipeline {
         positionSubject.send(UInt64(positionMs))
         fetchNextIfDue(positionMs: Int64(positionMs))
 
-        // While a continuation waits for the playhead, the decode is its.
-        guard continuation == nil, decoded.finished, decoded.frames > 0, !endOfTrackFired else { return }
+        // While a continuation waits for the playhead, the decode is its. A
+        // decode that finished having produced nothing — a seek to the very
+        // end — ends the track at once; waiting for frames kept it silent.
+        guard continuation == nil, decoded.finished, !endOfTrackFired else { return }
 
         if gapless, !isPreparingContinuation, let next = nextUri {
             isPreparingContinuation = true
