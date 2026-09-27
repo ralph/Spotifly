@@ -107,6 +107,22 @@ struct LoggedInLifecycleModifier: ViewModifier {
                             _ = await SpotifyPlayer.transferToLocal()
                         }
                     }
+
+                    // SPOTIFLY_DEBUG_QUEUE_AFTER=<seconds>: queue a track, then an
+                    // album, through the path the context menus use — locally when
+                    // this device plays, as Connect commands when another one does.
+                    if let queueAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_QUEUE_AFTER"],
+                       let seconds = Double(queueAfter)
+                    {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(seconds))
+                            debugLog("DebugAutoplay", "Queueing a track")
+                            await playbackViewModel.addToQueue(uri: "spotify:track:0Y9muyQw5qQ6l7ZMEkkUNG")
+                            try? await Task.sleep(for: .seconds(3))
+                            debugLog("DebugAutoplay", "Queueing an album")
+                            await playbackViewModel.addToQueue(uri: "spotify:album:1LVj9ljlwsn2DOsXkRDOeI")
+                        }
+                    }
                 #endif
             }
             // Connection handling is driven by the connection snapshot, not by the Connect
