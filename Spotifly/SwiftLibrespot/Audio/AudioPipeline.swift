@@ -93,7 +93,9 @@ actor AudioPipeline {
 
     /// Numbers each decode. Only the current one writes `decoded` or asks for
     /// a refill: one being replaced can still resume once after the next has
-    /// started, when a second seek did not wait for it.
+    /// started, when a second seek did not wait for it. Taken before the sink
+    /// restarts and bumped by teardown, so a start that awaited the sink while
+    /// a stop or a newer start ran gives way to it.
     private var decodeRun = 0
 
     /// Frames per chunk handed to the sink, 93 ms. The renderer takes about
@@ -323,9 +325,9 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Pausing")
         isPaused = true
-        await sink.pause()
         stopPositionTimer()
         playbackStateSubject.send(.paused(trackUri: uri))
+        await sink.pause()
     }
 
     func resume() async {
@@ -333,9 +335,9 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Resuming")
         isPaused = false
-        await sink.resume()
         startPositionTimer()
         playbackStateSubject.send(.playing(trackUri: uri))
+        await sink.resume()
     }
 
     func stop() async {
@@ -365,8 +367,11 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Seeking to \(positionMs)ms")
         let frame = Int64((Double(positionMs) / 1000.0) * Double(decoder.format.sampleRate))
+        let generation = loadGeneration
 
         await retireDecoding()
+        // A load that began meanwhile is another track; this position is not its.
+        guard generation == loadGeneration, self.decoder === decoder else { return }
         dropContinuation()
 
         await startDecoding(from: frame, keepPaused: isPaused)
@@ -420,8 +425,11 @@ actor AudioPipeline {
         isPlaying = true
         isPaused = keepPaused
 
+        decodeRun += 1
+        let run = decodeRun
         await sink.restart(paused: keepPaused)
-        startDecodeTask(decoder)
+        guard run == decodeRun else { return }
+        startDecodeTask(decoder, run: run)
 
         if keepPaused {
             stopPositionTimer()
@@ -431,10 +439,8 @@ actor AudioPipeline {
         playbackStateSubject.send(keepPaused ? .paused(trackUri: currentTrackUri ?? "") : .playing(trackUri: currentTrackUri ?? ""))
     }
 
-    private func startDecodeTask(_ decoder: VorbisDecoder) {
+    private func startDecodeTask(_ decoder: VorbisDecoder, run: Int) {
         decodeTask?.cancel()
-        decodeRun += 1
-        let run = decodeRun
         decoded = (0, false)
         decodeTask = Task { await self.decode(decoder, run: run) }
     }
@@ -522,7 +528,8 @@ actor AudioPipeline {
         let startFrame = trackStartSinkFrame + decoded.frames
         continuation = (track, decoder, startFrame)
         debugLog("AudioPipeline", "Decoding \(uri) behind the current track, from sink frame \(startFrame)")
-        startDecodeTask(decoder)
+        decodeRun += 1
+        startDecodeTask(decoder, run: decodeRun)
     }
 
     private func adoptContinuationIfReached() {
@@ -575,6 +582,7 @@ actor AudioPipeline {
 
     /// Cancels whatever is running and releases the loaded track.
     private func teardownTrack() async {
+        decodeRun += 1
         await retireDecoding()
         dropContinuation()
         positionTimer?.cancel()
@@ -616,13 +624,6 @@ actor AudioPipeline {
 
         adoptContinuationIfReached()
 
-        if decodeTask != nil, await sink.isStalled {
-            debugLog("AudioPipeline", "The output stopped taking audio")
-            let run = decodeRun
-            Task { await refill(after: run) }
-            return
-        }
-
         let positionMs = frameToMs(currentTrackFrame())
         positionSubject.send(UInt64(positionMs))
         fetchNextIfDue(positionMs: Int64(positionMs))
@@ -630,23 +631,32 @@ actor AudioPipeline {
         // While a continuation waits for the playhead, the decode is its. A
         // decode that finished having produced nothing — a seek to the very
         // end — ends the track at once; waiting for frames kept it silent.
-        guard continuation == nil, decoded.finished, !endOfTrackFired else { return }
+        if continuation == nil, decoded.finished, !endOfTrackFired {
+            if gapless, !isPreparingContinuation, let next = nextUri {
+                isPreparingContinuation = true
+                Task { await prepareContinuation(of: next) }
+            }
 
-        if gapless, !isPreparingContinuation, let next = nextUri {
-            isPreparingContinuation = true
-            Task { await prepareContinuation(of: next) }
+            // Both sides of this comparison count frames decoded *this load*:
+            // the playhead relative to where the track started in the sink,
+            // against frames written since. Mixing in absolute frames would
+            // fire the moment a seek finished decoding, cutting the tail off.
+            // Without a continuation the sink is flushed for whatever plays
+            // next, so this waits for the very last frame.
+            if sink.playedFrames - trackStartSinkFrame >= decoded.frames {
+                endOfTrackFired = true
+                debugLog("AudioPipeline", "End of track")
+                endOfTrackSubject.send(currentTrackUri ?? "")
+                return
+            }
         }
 
-        // Both sides of this comparison count frames decoded *this load*: the
-        // playhead relative to where the track started in the sink, against
-        // frames written since. Mixing in absolute frames would fire the
-        // moment a seek finished decoding, cutting the tail off. Without a
-        // continuation the sink is flushed for whatever plays next, so this
-        // waits for the very last frame.
-        if sink.playedFrames - trackStartSinkFrame >= decoded.frames {
-            endOfTrackFired = true
-            debugLog("AudioPipeline", "End of track")
-            endOfTrackSubject.send(currentTrackUri ?? "")
+        // Last, because it awaits the renderer: a stop can land meanwhile, and
+        // nothing may act afterwards on what was true before it.
+        let run = decodeRun
+        if decodeTask != nil, await sink.isStalled {
+            debugLog("AudioPipeline", "The output stopped taking audio")
+            Task { await refill(after: run) }
         }
     }
 
