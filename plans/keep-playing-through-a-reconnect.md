@@ -86,11 +86,12 @@ After it, three runs:
 - **While paused.** Kept paused at 10004 ms and reported paused; resume played from there
   and took the active role back.
 - **A pause pressed during the outage was ignored**, and the seek bar froze until the
-  reconnect. That is `PlaybackViewModel`, not the pipeline: it ignores transport controls while
-  the session is down (`pause() ignored - session not connected yet`) and pins the position,
-  on the assumption, from librespot's days, that a lost session means stopped audio. The Swift
-  pipeline plays on through an outage, before this change too, until the recovery replaced it.
+  reconnect. That was `PlaybackViewModel`, not the pipeline: it ignored transport controls
+  while the session was down (`pause() ignored - session not connected yet`) and pinned the
+  position, on the assumption, from librespot's days, that a lost session means stopped audio.
+  The Swift pipeline played on through an outage before this change too, until the recovery
+  replaced it. Fixed alongside: commands for this device go to the local player whether or
+  not the session is up, and only another device's position holds while it is down.
 
 One run waited 5 s for `ap-gew4.spotify.com:4070` to time out before the next accesspoint
-answered, so an outage lasted 6.5 s where it is usually 1.3 s. Inaudible now, but it is the
-window in which the controls above are ignored.
+answered, so an outage lasted 6.5 s where it is usually 1.3 s. Inaudible now.

@@ -93,8 +93,17 @@ final class PlaybackViewModel {
         isInitialized
     }
 
-    /// Whether the local librespot session can currently provide advancing playback state.
+    /// Whether the session is up, and with it the cluster that reports another device's
+    /// playback.
     private var isConnectionReady = false
+
+    /// Whether the displayed position runs on. A local track plays on while the session
+    /// reconnects, from the pipeline's memory; another device's position arrives over the
+    /// session, and holds while it is down.
+    private var positionRuns: Bool {
+        isPlaying && (isConnectionReady || SpotifyPlayer.isActiveDevice)
+    }
+
     private var lastAlbumArtURL: String?
     private var connectionStateSubscription: AnyCancellable?
     private var playbackStateSubscription: AnyCancellable?
@@ -581,9 +590,8 @@ final class PlaybackViewModel {
     func togglePlayPause(trackId: String) async {
         if isPlaying, currentTrackUri == trackId {
             // Route through pause() rather than calling SpotifyPlayer directly: it carries
-            // the connectivity guard and the connect-state fallback for remote devices, and
-            // it leaves isPlaying to the playback state the client publishes instead of
-            // asserting it here
+            // the connect-state fallback for remote devices, and it leaves isPlaying to the
+            // playback state the client publishes instead of asserting it here
             pause()
         } else if !isPlaying, currentTrackUri == trackId {
             resume()
@@ -595,12 +603,9 @@ final class PlaybackViewModel {
 
     /// Stops playback and clears the view model's playback state. Called on logout.
     ///
-    /// Deliberately not gated on the session being connected, unlike the transport commands.
-    /// Those are Connect commands that go nowhere without a session, so acting on them
-    /// locally would desync the UI. `SpotifyPlayer.stop()` instead stops the audio pipeline
-    /// directly — a local teardown, not a Connect command — and works while disconnected.
-    /// Guarding it meant logging out during an outage left buffered audio playing and the
-    /// previous track showing.
+    /// Deliberately not gated on the session being connected: `SpotifyPlayer.stop()` stops
+    /// the audio pipeline directly and works while disconnected. Guarding it meant logging
+    /// out during an outage left buffered audio playing and the previous track showing.
     func stop() {
         SpotifyPlayer.stop()
         isPlaying = false
@@ -636,11 +641,18 @@ final class PlaybackViewModel {
     /// Issues a transport command locally when Spotifly is the active device, and through
     /// connect-state otherwise. Returns whether the command was issued at all.
     ///
-    /// The local branch is gated on the session being connected: during a reconnect there is
-    /// no pipeline to command, and the callers that move the UI optimistically must not do
-    /// so for a command that never happened — hence the `Bool` rather than a plain dispatch.
-    /// The remote branch reports failures through `errorMessage`; the local branch leaves
-    /// the resulting playback state to the client's playback publisher.
+    /// While this device is active, the command goes to the local player whether or not the
+    /// session is connected. The pipeline holds the track in memory and plays on through a
+    /// reconnect, and pausing, resuming or seeking it needs nothing from the session. Under
+    /// librespot a reconnect tore the player down, so this was gated on the session, and
+    /// after the port that gate ignored a pause pressed during a reset while the music
+    /// played on.
+    ///
+    /// With nobody active and no session, nothing is issued, and the callers that move the
+    /// UI optimistically must not do so for a command that never happened, hence the
+    /// `Bool` rather than a plain dispatch. The remote branch reports failures through
+    /// `errorMessage`; the local branch leaves the resulting playback state to the client's
+    /// playback publisher.
     ///
     /// `isActiveDevice` is two-valued and the cluster is not: Spotifly is active, another
     /// device is, or **nobody** is. The third state is reached routinely — waking from sleep
@@ -700,11 +712,6 @@ final class PlaybackViewModel {
             return true
         }
 
-        // During reconnection, session may not be fully connected yet
-        guard SpotifyPlayer.isSessionConnected else {
-            debugLog("PlaybackViewModel", "\(name) ignored - session not connected yet")
-            return false
-        }
         local()
         return true
     }
@@ -1069,7 +1076,8 @@ final class PlaybackViewModel {
             }
     }
 
-    /// Brings `isConnectionReady` in line with the client, freezing the position when it drops.
+    /// Brings `isConnectionReady` in line with the client, freezing another device's position
+    /// when it drops.
     ///
     /// Reads the live flags rather than trusting the delivered snapshot, which may already
     /// be stale by the time it arrives.
@@ -1084,39 +1092,22 @@ final class PlaybackViewModel {
         let isReady = SpotifyPlayer.isSessionConnected && SpotifyPlayer.isSpircReady
         guard isReady != isConnectionReady else { return }
 
-        if !isReady {
+        if !isReady, !SpotifyPlayer.isActiveDevice {
             freezePositionForDisconnect()
         }
         isConnectionReady = isReady
     }
 
-    /// Pins the displayed position where playback actually stopped.
+    /// Pins the displayed position where another device's playback was last seen. Its
+    /// position arrives over the session, so there is nothing to advance by until the
+    /// session is back, and without the pin the display would fall back to the last anchor.
     ///
-    /// Which value is truthful depends on who was playing:
-    ///
-    /// - **Local playback**: the last position the pipeline reported. It stopped advancing
-    ///   when the audio did, so it is exactly where playback ended.
-    /// - **Remote playback**: the displayed position. The pipeline's position belongs to a
-    ///   local player that was not the one playing, so it is unrelated.
-    ///
-    /// The `playerPosition > 0` clause guards the gap between the two: zero is reported both
-    /// for "at the start" and for "nothing loaded". Snapping a running progress bar to zero
-    /// because the position was cleared out from under it would be worse than holding the
-    /// last shown value — so a zero is only adopted when we have no anchor of our own either.
-    ///
-    /// Such zeroes do arrive: `AudioPipeline` publishes one whenever it goes idle, which is
-    /// every stop and every teardown, and logout resets it too.
+    /// Local playback is not frozen: the pipeline plays on through a reconnect. Under
+    /// librespot a reconnect tore the player down and this pinned local playback too, at the
+    /// pipeline's last position; after the port that froze the seek bar while the music
+    /// played on.
     private func freezePositionForDisconnect() {
-        let displayedPosition = interpolatedPositionMs
-        let playerPosition = SpotifyPlayer.positionMs
-        let frozenPosition = if SpotifyPlayer.isActiveDevice,
-                                playerPosition > 0 || positionAnchorMs == 0
-        {
-            playerPosition
-        } else {
-            displayedPosition
-        }
-
+        let frozenPosition = interpolatedPositionMs
         anchorPosition(frozenPosition)
         debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(frozenPosition)ms")
     }
@@ -1357,7 +1348,7 @@ final class PlaybackViewModel {
     /// Computed position using anchor interpolation - UI should bind to this
     /// Called by TimelineView on every frame for smooth updates
     var interpolatedPositionMs: UInt32 {
-        guard isPlaying, isConnectionReady else { return currentPositionMs }
+        guard positionRuns else { return currentPositionMs }
         let elapsed = CACurrentMediaTime() - positionAnchorTime
         let elapsedMs = UInt32(max(0, min(elapsed * 1000, Double(UInt32.max - 1))))
         return clampedToTrack(positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue)
@@ -1475,10 +1466,10 @@ final class PlaybackViewModel {
             }
         }
 
-        // A held position is honest while disconnected: nothing is advancing for
-        // interpolation to be anchored to, and a recovery reloads the track at the last
-        // position the pipeline reported (`LibrespotClient.runRecovery`).
-        guard isPlaying, isConnectionReady else { return }
+        // Another device's position holds while disconnected, since nothing reports it. A
+        // local track runs on through a reconnect, and the pipeline's position is still
+        // there to check it against.
+        guard positionRuns else { return }
 
         // Check for significant drift from the player's position - only when active device
         // Remote playback position is interpolated from cluster timestamp, not real-time.
