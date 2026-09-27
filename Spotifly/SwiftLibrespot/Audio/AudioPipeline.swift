@@ -129,7 +129,8 @@ actor AudioPipeline {
     ///
     /// If the queue changes its mind in the last seconds of a track, the start
     /// of this one is heard before the load auto-advance then asks for.
-    private var continuation: (track: PreparedTrack, decoder: VorbisDecoder, startFrame: Int64)?
+    private var continuation: Continuation?
+    private typealias Continuation = (track: PreparedTrack, decoder: VorbisDecoder, startFrame: Int64)
 
     /// A continuation is waiting for its file.
     private var isPreparingContinuation = false
@@ -369,10 +370,12 @@ actor AudioPipeline {
         let frame = Int64((Double(positionMs) / 1000.0) * Double(decoder.format.sampleRate))
         let generation = loadGeneration
 
+        let dropped = continuation
+        continuation = nil
         await retireDecoding()
+        dropContinuation(dropped)
         // A load that began meanwhile is another track; this position is not its.
         guard generation == loadGeneration, self.decoder === decoder else { return }
-        dropContinuation()
 
         await startDecoding(from: frame, keepPaused: isPaused)
     }
@@ -569,11 +572,15 @@ actor AudioPipeline {
         endOfTrackSubject.send(ended)
     }
 
-    /// Forgets the continuation, once its thread has been retired. Its file is
-    /// kept, for when that track is asked for after all.
-    private func dropContinuation() {
+    /// Releases a continuation taken out of `continuation`, once its decode
+    /// has been retired. Its file is kept, for when that track is asked for
+    /// after all.
+    ///
+    /// Callers take it out before they await the retirement, not after: a
+    /// tick in that await would otherwise make it the loaded track, with its
+    /// decode already cancelled, and end the one being sought or torn down.
+    private func dropContinuation(_ continuation: Continuation?) {
         guard let continuation else { return }
-        self.continuation = nil
         continuation.decoder.close()
         debugLog("AudioPipeline", "Dropped the continuation into \(continuation.track.uri)")
         if upcoming == nil, continuation.track.uri != current?.uri {
@@ -587,8 +594,10 @@ actor AudioPipeline {
     /// Cancels whatever is running and releases the loaded track.
     private func teardownTrack() async {
         decodeRun += 1
+        let dropped = continuation
+        continuation = nil
         await retireDecoding()
-        dropContinuation()
+        dropContinuation(dropped)
         positionTimer?.cancel()
         positionTimer = nil
 
