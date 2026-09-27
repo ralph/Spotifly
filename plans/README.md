@@ -28,10 +28,6 @@ PR; the rest are recorded but not planned.
 
 ### Recorded, not planned
 
-- **A reconnect restarts the audio** — [keep-playing-through-a-reconnect.md](keep-playing-through-a-reconnect.md).
-  An accesspoint reset rebuilds the audio pipeline, which costs about 0.17 s of silence and a
-  short repeat, although the track playing needs nothing from the socket. Keep the pipeline
-  and swap its accesspoint instead. Found in the hour-long run of 2026-09-27.
 - **The player's interface is still FFI-shaped** — [player-interface-after-the-ffi.md](player-interface-after-the-ffi.md).
   Ten Combine subjects, types built for C, a static facade. A five-step move to ordered
   streams and one `@Observable` model; the last step, the macOS 27 renderer, is done. Also
@@ -68,6 +64,7 @@ PR; the rest are recorded but not planned.
 
 | Plan | Status |
 | --- | --- |
+| [keep-playing-through-a-reconnect.md](keep-playing-through-a-reconnect.md) | Fixed 2026-09-27 (#68): a reset no longer rebuilds the pipeline. Checked with the drop hook, mid-track and paused. Controls pressed during the outage are still ignored |
 | [single-grant-partner-api.md](single-grant-partner-api.md) | **Track A shipped** 2026-08-14 (#49, #51, #53, #54). One grant, no dashboard app, `api.spotify.com` retired. Track B is open — see above |
 | [seek-bar-jumps-between-two-position-clocks.md](seek-bar-jumps-between-two-position-clocks.md) | Fixed 2026-08-14, confirmed at runtime across three logs |
 | [navigation-one-location-value.md](navigation-one-location-value.md) | Completed. Fixed two navigation tests that had failed for months and were wrongly treated as a baseline |

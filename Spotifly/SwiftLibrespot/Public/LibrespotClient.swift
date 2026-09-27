@@ -326,18 +326,26 @@ public actor LibrespotClient {
                 return try await clientTokenProvider()
             }
 
-            // A rebuilt session carries a fresh accesspoint socket; the old
-            // pipeline would keep asking the corpse for audio keys.
+            // A rebuilt session carries a fresh accesspoint socket, which the
+            // pipeline moves to for the audio keys it fetches from here on.
             await attachTransport()
 
-            // attachTransport hands back an empty pipeline, so without this the
-            // session comes back reporting connected while nothing plays and
-            // resume() resumes silence. Reload where we were, paused if it was:
-            // only a playing track used to come back, so after a wake, or a
-            // dropped connection while paused, play did nothing at all.
+            // A reset leaves the track playing from memory, and the rebuilt
+            // session only has to be told: it registered with no active device.
+            // Rebuilding the pipeline instead cost a gap and a repeat each time.
+            //
+            // Sleep stops the pipeline, and without a reload the session came
+            // back reporting connected while nothing played, and resume()
+            // resumed silence. Reload where we were, paused if it was: only a
+            // playing track used to come back, so after a wake play did nothing.
             if let was, let uri = playbackQueue.currentUri {
-                debugLog("LibrespotClient", "Recovery reloading \(uri) at \(resumeAt)ms\(was.isPlaying ? "" : ", paused")")
-                try? await audioPipeline?.playTrack(uri: uri, positionMs: resumeAt, paused: !was.isPlaying)
+                if await audioPipeline?.holdsTrack == true {
+                    debugLog("LibrespotClient", "Recovery kept \(uri) \(was.isPlaying ? "playing" : "paused")")
+                    await publishPlaybackStateRefresh()
+                } else {
+                    debugLog("LibrespotClient", "Recovery reloading \(uri) at \(resumeAt)ms\(was.isPlaying ? "" : ", paused")")
+                    try? await audioPipeline?.playTrack(uri: uri, positionMs: resumeAt, paused: !was.isPlaying)
+                }
             }
 
             publishConnectionState(connected: true)
@@ -348,7 +356,8 @@ public actor LibrespotClient {
         }
     }
 
-    /// Creates SPClient and the audio pipeline against the current session.
+    /// Creates SPClient against the current session, and the audio pipeline
+    /// if there is none: a reconnect moves the existing one over.
     private func attachTransport() async {
         guard let tokenProvider else { return }
         let host = await session?.spclientHost
@@ -367,7 +376,11 @@ public actor LibrespotClient {
 
         await spclient?.setCountryCode(accesspoint.lastCountryCode)
 
-        await audioPipeline?.stop()
+        if let audioPipeline {
+            await audioPipeline.reattach(accesspoint: accesspoint, spclient: spclient)
+            return
+        }
+
         pipelineSubscriptions.removeAll()
 
         let pipeline = AudioPipeline(accesspoint: accesspoint, spclient: spclient, sink: SpotifyPlayer.audioRenderer)
@@ -376,7 +389,7 @@ public actor LibrespotClient {
         await applyPlaybackSettings()
 
         // A new pipeline hears of the next track only at the next track
-        // change, so after a recovery the first boundary was not gapless.
+        // change, so the first boundary after a rebuild was not gapless.
         announceNextTrack()
     }
 

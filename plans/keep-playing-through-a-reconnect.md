@@ -1,7 +1,8 @@
 # A reconnect restarts the audio it does not need to touch
 
-Status: **recorded, not planned, 2026-09-27.** Found in an hour-long run on `swift-librespot`;
-nothing here is broken, it is a hiccup that can be taken out.
+Status: **implemented 2026-09-27** as proposed below, and checked with the debug hook: see
+[Result](#result). Found in an hour-long run on `swift-librespot`; nothing here was broken, it
+was a hiccup that could be taken out.
 
 Component: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`runRecovery`,
 `attachTransport`), `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`.
@@ -71,3 +72,25 @@ the reconnect's first report makes this device active again within the second.
 To test: a reset cannot be forced from Spotify's side, so drop the accesspoint socket from a
 debug hook (`SPOTIFLY_DEBUG_DROP_AP_AFTER=<s>`, alongside the other `SPOTIFLY_DEBUG_*`) and
 listen for the gap, then check the log for no `Stopping` and a gapless next boundary.
+
+## Result
+
+Implemented as proposed; the hook is `SPOTIFLY_DEBUG_DROP_AP_AFTER`. Before the change it
+reproduced the run above: `Stopping`, then a reload at a position read before the reconnect.
+After it, three runs:
+
+- **Mid-track, with the fetch-ahead due during the outage.** The fetch started over the dead
+  socket and failed; the recovery kept the track playing (`Recovery kept … playing`, no
+  `Stopping`), the device was active again 46 ms after the reconnect, the fetch was made again
+  over the new socket, and the next track followed without a gap.
+- **While paused.** Kept paused at 10004 ms and reported paused; resume played from there
+  and took the active role back.
+- **A pause pressed during the outage was ignored**, and the seek bar froze until the
+  reconnect. That is `PlaybackViewModel`, not the pipeline: it ignores transport controls while
+  the session is down (`pause() ignored - session not connected yet`) and pins the position,
+  on the assumption, from librespot's days, that a lost session means stopped audio. The Swift
+  pipeline plays on through an outage, before this change too, until the recovery replaced it.
+
+One run waited 5 s for `ap-gew4.spotify.com:4070` to time out before the next accesspoint
+answered, so an outage lasted 6.5 s where it is usually 1.3 s. Inaudible now, but it is the
+window in which the controls above are ignored.
