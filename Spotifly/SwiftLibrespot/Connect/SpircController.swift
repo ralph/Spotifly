@@ -179,11 +179,7 @@ public actor SpircController {
         if let reason {
             request.putStateReason = reason
         }
-        do {
-            try await dealerConnection.putState(request)
-        } catch {
-            debugLog("SpircController", "PutState failed: \(error)")
-        }
+        await send(request)
     }
 
     private func startHeartbeat() {
@@ -221,7 +217,26 @@ public actor SpircController {
 
         var request = buildPutStateRequest(isActive: isActive)
         request.putStateReason = becameActive ? .newDevice : (state != nil ? .playerStateChanged : .spircNotify)
-        _ = try? await dealerConnection.putState(request)
+        await send(request)
+    }
+
+    /// Puts our state and takes the cluster it is answered with as current.
+    ///
+    /// The answer is the whole cluster, and it is the only reliable way to
+    /// learn that our own report made this device the active one: the dealer
+    /// does not always push that change back. With a web player handing
+    /// playback here, no push named this device in two and a half minutes of
+    /// playing — so the app never knew it was active, did not stop when the
+    /// web player took playback back, and routed its own transport buttons to
+    /// the device that had let go.
+    private func send(_ request: PutStateRequestProto) async {
+        do {
+            if let cluster = try await dealerConnection.putState(request) {
+                adopt(cluster)
+            }
+        } catch {
+            debugLog("SpircController", "PutState failed: \(error)")
+        }
     }
 
     /// Takes or gives up the active role, mirroring librespot's

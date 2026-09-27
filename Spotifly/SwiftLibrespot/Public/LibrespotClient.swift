@@ -926,8 +926,10 @@ public actor LibrespotClient {
         activeDeviceSubject.send(activeId)
 
         if nowActive, !wasActive {
+            debugLog("LibrespotClient", "This device is now the active one")
             becameActiveSubject.send()
         } else if !nowActive, wasActive {
+            debugLog("LibrespotClient", "No longer the active device (now: \(activeId.isEmpty ? "nobody" : activeId))")
             becameInactiveSubject.send()
             // Only a device that *took* playback is a reason to stop. An empty
             // id is nobody: our own goodbye leaves one when the session drops,
