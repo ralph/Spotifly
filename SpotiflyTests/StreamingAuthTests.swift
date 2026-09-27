@@ -140,6 +140,27 @@ struct ConnectCommandTests {
         #expect(try encoded(.shuffle(false)).contains("\"value\":false"))
     }
 
+    /// The web player's own request, captured from open.spotify.com's network tab on
+    /// 2026-09-27 (Firefox) while queueing a track on another device. `command_id` is a fresh
+    /// correlation id on every command, so it is the one field not compared.
+    @Test func `add to queue is the request the web player sends`() throws {
+        let captured = """
+        {"command":{"track":{"uri":"spotify:track:0Y9muyQw5qQ6l7ZMEkkUNG","metadata":{"is_queued":"true"},\
+        "provider":"queue"},"endpoint":"add_to_queue","logging_params":{"command_id":"d13b8f7c31149fa031ef30bac9e39bf8"}}}
+        """
+        let body = try #require(JSONSerialization.jsonObject(with: Data(captured.utf8)) as? [String: Any])
+        let expected = try #require(body["command"] as? [String: Any])
+
+        let command = try fields(.addToQueue(trackUri: "spotify:track:0Y9muyQw5qQ6l7ZMEkkUNG"))
+
+        #expect(Set(command.keys) == Set(expected.keys))
+        #expect(command["endpoint"] as? String == "add_to_queue")
+        let track = try #require(command["track"] as? [String: Any])
+        let expectedTrack = try #require(expected["track"] as? [String: Any])
+        #expect(NSDictionary(dictionary: track).isEqual(to: expectedTrack))
+        #expect((command["logging_params"] as? [String: Any])?["command_id"] is String)
+    }
+
     @Test func `a negative seek is clamped rather than sent`() throws {
         #expect(try encoded(.seek(toMs: -5)).contains("\"value\":0"))
     }

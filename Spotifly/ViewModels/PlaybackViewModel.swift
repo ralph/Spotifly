@@ -543,9 +543,25 @@ final class PlaybackViewModel {
 
         errorMessage = nil
 
-        // The client appends to its own queue and republishes it, which is what updates the
-        // queue views.
-        SpotifyPlayer.addToQueue(uri: uri)
+        // Queued where playback is. While another device plays, the queue on screen is its
+        // queue, mirrored — adding to this Mac's own, which nothing was playing from, changed
+        // nothing anyone could see or hear. connect-state queues one track per command, so an
+        // album or playlist goes as its tracks, in order.
+        let issued = sendTransportCommand(
+            "addToQueue()",
+            local: { SpotifyPlayer.addToQueue(uri: uri) },
+            remote: { from, to in
+                for track in try await SpotifyPlayer.queueableTracks(for: uri) {
+                    try await SpclientAPI().sendCommand(.addToQueue(trackUri: track), from: from, to: to)
+                }
+            },
+        )
+
+        // Mid-reconnect there is no session to command, but the local queue does not need
+        // one: it is what playback continues from once the session is back.
+        if !issued {
+            SpotifyPlayer.addToQueue(uri: uri)
+        }
     }
 
     // MARK: - Playback State Helpers

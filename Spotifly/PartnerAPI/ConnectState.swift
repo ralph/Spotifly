@@ -22,8 +22,8 @@ import Foundation
 /// which is how "the request shape is right" was established separately from "the target was
 /// there".
 nonisolated struct ConnectCommand: Encodable, Sendable {
-    /// The `endpoint` values this app sends. Spotify defines more — `set_options` for repeat,
-    /// `add_to_queue` — which stay out until something calls for them.
+    /// The `endpoint` values this app sends. Spotify defines more — `set_options` for repeat —
+    /// which stay out until something calls for them.
     enum Kind: String, Encodable, Sendable {
         case pause
         case resume
@@ -32,6 +32,16 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         case seekTo = "seek_to"
         case setShufflingContext = "set_shuffling_context"
         case play
+        case addToQueue = "add_to_queue"
+    }
+
+    /// The track an `add_to_queue` names, in the shape the web player sends it — marked as
+    /// queued twice over, in its metadata and as its provider. Captured from open.spotify.com's
+    /// network tab on 2026-09-27, queueing a track on another device.
+    struct QueuedTrack: Encodable, Sendable {
+        let uri: String
+        let metadata = ["is_queued": "true"]
+        let provider = "queue"
     }
 
     /// Where a `play` command starts.
@@ -123,6 +133,7 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
     /// which of the two it is.
     var boolValue: Bool?
     var context: Context?
+    var track: QueuedTrack?
 
     enum CodingKeys: String, CodingKey {
         case endpoint
@@ -130,6 +141,7 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         case value
         case context
         case options
+        case track
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -147,6 +159,7 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
             try container.encode(context, forKey: .context)
             try container.encodeIfPresent(context.options, forKey: .options)
         }
+        try container.encodeIfPresent(track, forKey: .track)
     }
 
     static let pause = ConnectCommand(endpoint: .pause)
@@ -169,6 +182,11 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
     /// Plays a bare list of tracks, which this endpoint can only do as an inline context.
     static func play(trackUris: [String]) -> ConnectCommand {
         ConnectCommand(endpoint: .play, context: Context(trackUris: trackUris))
+    }
+
+    /// Queues one track on the device that is playing.
+    static func addToQueue(trackUri: String) -> ConnectCommand {
+        ConnectCommand(endpoint: .addToQueue, track: QueuedTrack(uri: trackUri))
     }
 }
 

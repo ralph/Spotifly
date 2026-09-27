@@ -529,6 +529,11 @@ enum SpotifyPlayer {
         Task { await LibrespotClient.shared.addToQueue(uri: uri) }
     }
 
+    /// The tracks queueing `uri` means: the track, or an album's or playlist's tracks.
+    static func queueableTracks(for uri: String) async throws -> [String] {
+        try await LibrespotClient.shared.queueableTracks(for: uri)
+    }
+
     // MARK: - Playback Settings
 
     /// Streaming bitrate options
