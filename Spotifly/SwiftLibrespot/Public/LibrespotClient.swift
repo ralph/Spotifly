@@ -124,6 +124,11 @@ public actor LibrespotClient {
         reconnectTask?.cancel()
         reconnectTask = nil
 
+        // The old session's playback goes with it. Kept, it went on saying "playing" over a
+        // pipeline that is torn down next, it stopped the new session mirroring the cluster,
+        // and a mirror the new session did find was the same state again, which the player
+        // model does not pass on.
+        clearLocalState()
         await teardown()
 
         let credentials = try await credentialsForLogin()
