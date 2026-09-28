@@ -167,21 +167,6 @@ enum SpotifyPlayer {
         LibrespotClient.shared.setQueue
     }
 
-    /// Emits when this device stops being the active Connect device.
-    ///
-    /// Activity, not health. Do not drive reconnection from this — use `connectionState`,
-    /// which is the authoritative source for whether commands can be sent.
-    static var becameInactive: AnyPublisher<Void, Never> {
-        LibrespotClient.shared.becameInactive
-    }
-
-    /// Emits when this device becomes the active Connect device.
-    ///
-    /// Also activity, not readiness: the session was already connected beforehand.
-    static var becameActive: AnyPublisher<Void, Never> {
-        LibrespotClient.shared.becameActive
-    }
-
     /// The Connect device list, pushed on cluster updates. Replaces `/me/player/devices`.
     static var devices: AnyPublisher<[Device]?, Never> {
         LibrespotClient.shared.devices

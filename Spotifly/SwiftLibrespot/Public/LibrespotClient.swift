@@ -88,8 +88,6 @@ public actor LibrespotClient {
     private nonisolated(unsafe) let volumeSubject = PassthroughSubject<UInt16, Never>()
     private nonisolated(unsafe) let loadingSubject = PassthroughSubject<LoadingNotification, Never>()
     private nonisolated(unsafe) let setQueueSubject = PassthroughSubject<SetQueueNotification, Never>()
-    private nonisolated(unsafe) let becameInactiveSubject = PassthroughSubject<Void, Never>()
-    private nonisolated(unsafe) let becameActiveSubject = PassthroughSubject<Void, Never>()
     private nonisolated(unsafe) let activeDeviceSubject = PassthroughSubject<String, Never>()
     private nonisolated(unsafe) let devicesSubject = CurrentValueSubject<[Device]?, Never>(nil)
     private nonisolated(unsafe) let connectionStateSubject = CurrentValueSubject<LibrespotConnectionState?, Never>(nil)
@@ -114,14 +112,6 @@ public actor LibrespotClient {
 
     nonisolated var setQueue: AnyPublisher<SetQueueNotification, Never> {
         setQueueSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var becameInactive: AnyPublisher<Void, Never> {
-        becameInactiveSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var becameActive: AnyPublisher<Void, Never> {
-        becameActiveSubject.eraseToAnyPublisher()
     }
 
     nonisolated var activeDeviceChanged: AnyPublisher<String, Never> {
@@ -1017,10 +1007,8 @@ public actor LibrespotClient {
 
         if nowActive, !wasActive {
             debugLog("LibrespotClient", "This device is now the active one")
-            becameActiveSubject.send()
         } else if !nowActive, wasActive {
             debugLog("LibrespotClient", "No longer the active device (now: \(activeId.isEmpty ? "nobody" : activeId))")
-            becameInactiveSubject.send()
             // Only a device that *took* playback is a reason to stop. An empty
             // id is nobody: our own goodbye leaves one when the session drops,
             // and the rebuilt session's registration is answered with it —
