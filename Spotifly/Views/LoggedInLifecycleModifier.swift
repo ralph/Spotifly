@@ -125,6 +125,37 @@ struct LoggedInLifecycleModifier: ViewModifier {
                         }
                     }
 
+                    // SPOTIFLY_DEBUG_REINIT_AFTER=<seconds>: rebuild the session the way
+                    // Speakers → Reconnect does, and log what the bar holds before and
+                    // after. The model passes on changes only, so a rebuild that loses
+                    // the track shows nothing wrong anywhere else.
+                    if let reinitAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_REINIT_AFTER"],
+                       let seconds = Double(reinitAfter)
+                    {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(seconds))
+                            debugLog("DebugAutoplay", "Rebuilding; before: \(debugPlaybackSummary())")
+                            await playbackViewModel.forceReinitialize()
+                            debugLog("DebugAutoplay", "Rebuilt: \(debugPlaybackSummary())")
+                            try? await Task.sleep(for: .seconds(3))
+                            debugLog("DebugAutoplay", "Rebuilt, 3 s on: \(debugPlaybackSummary())")
+                        }
+                    }
+
+                    // SPOTIFLY_DEBUG_RESUME_AFTER=<seconds>: press Play, as the bar's
+                    // button does. On another device's track, mirrored, that takes it over.
+                    if let resumeAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_RESUME_AFTER"],
+                       let seconds = Double(resumeAfter)
+                    {
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(seconds))
+                            debugLog("DebugAutoplay", "Resume; before: \(debugPlaybackSummary())")
+                            playbackViewModel.resume()
+                            try? await Task.sleep(for: .seconds(4))
+                            debugLog("DebugAutoplay", "Resumed, 4 s on: \(debugPlaybackSummary())")
+                        }
+                    }
+
                     // SPOTIFLY_DEBUG_QUEUE_AFTER=<seconds>: queue a track, then an
                     // album, through the path the context menus use — locally when
                     // this device plays, as Connect commands when another one does.
@@ -202,4 +233,13 @@ struct LoggedInLifecycleModifier: ViewModifier {
             debugLog("LoggedInLifecycle", "Profile unavailable: \(error.localizedDescription)")
         }
     }
+
+    #if DEBUG
+        /// What the bar shows, and whether the client agrees it is playing.
+        private func debugPlaybackSummary() -> String {
+            "uri=\(playbackViewModel.currentTrackUri ?? "nil") at \(playbackViewModel.interpolatedPositionMs)ms, "
+                + "playing=\(playbackViewModel.isPlaying), client playing=\(SpotifyPlayer.isPlaying), "
+                + "active=\(SpotifyPlayer.isActiveDevice)"
+        }
+    #endif
 }

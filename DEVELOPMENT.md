@@ -86,6 +86,8 @@ Debug builds also read a few environment variables that drive playback without t
 | `SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER=<s>` | Pulls playback to this instance |
 | `SPOTIFLY_DEBUG_TRANSFER_TO=<name>` with `SPOTIFLY_DEBUG_TRANSFER_TO_AFTER=<s>` | Hands playback to the named device |
 | `SPOTIFLY_DEBUG_DROP_AP_AFTER=<s>` | Drops the accesspoint socket that long after login, as a reset from Spotify does |
+| `SPOTIFLY_DEBUG_REINIT_AFTER=<s>` | Rebuilds the session as Speakers → Reconnect does, and logs the bar's track before and after |
+| `SPOTIFLY_DEBUG_RESUME_AFTER=<s>` | Presses Play, as the bar's button does; on another device's track, mirrored, that takes it over |
 
 Connect only shows its problems with a second device: another instance under
 `SPOTIFLY_DEBUG_DEVICE_ID`, or Spotify's web player.
