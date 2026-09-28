@@ -426,7 +426,14 @@ final class PlaybackViewModel {
             return
         }
 
-        SpotifyPlayer.playRadio(trackUri: trackUri)
+        do {
+            try await SpotifyPlayer.playRadio(trackUri: trackUri)
+        } catch is CancellationError {
+            // Another start overtook this one; it reports for itself.
+        } catch {
+            debugLog("PlaybackViewModel", "Radio for \(trackUri) failed: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// The uri a remote play request should name.
@@ -640,9 +647,8 @@ final class PlaybackViewModel {
     ///
     /// With nobody active and no session, nothing is issued, and the callers that move the
     /// UI optimistically must not do so for a command that never happened, hence the
-    /// `Bool` rather than a plain dispatch. The remote branch reports failures through
-    /// `errorMessage`; the local branch leaves the resulting playback state to the client's
-    /// playback publisher.
+    /// `Bool` rather than a plain dispatch. Both branches report a failure through
+    /// `errorMessage`; the resulting playback state is left to what the client publishes.
     ///
     /// `isActiveDevice` is two-valued and the cluster is not: Spotifly is active, another
     /// device is, or **nobody** is. The third state is reached routinely — waking from sleep
@@ -667,42 +673,43 @@ final class PlaybackViewModel {
     @discardableResult
     private func sendTransportCommand(
         _ name: String,
-        local: @escaping () -> Void,
+        local: @escaping () async throws -> Void,
         remote: @escaping (_ from: String, _ to: String) async throws -> Void,
         declined: @escaping (SpclientError) -> Void = { _ in },
     ) -> Bool {
-        guard SpotifyPlayer.isActiveDevice else {
-            guard let route = connectRoute() else {
-                // Nothing out there to command, so command ourselves. The playback state
-                // that follows is reported to Spirc as this device being active, so the
-                // Connect role comes back with it — which is what pressing a transport
-                // control with no device active asks for.
-                guard SpotifyPlayer.isSessionConnected else {
-                    debugLog("PlaybackViewModel", "\(name) dropped - no active device and session not connected")
-                    return false
-                }
-                debugLog("PlaybackViewModel", "\(name) had no active device - running locally")
-                local()
-                return true
-            }
-
-            Task {
-                do {
-                    try await remote(route.from, route.to)
-                } catch let error as SpclientError where error.isDeclined {
-                    // Spotify refusing on its own terms — no track to go back to, or a device
-                    // that will not take the command. The user pressed a control deliberately
-                    // and nothing is broken, so this is a log line rather than an error banner.
-                    debugLog("PlaybackViewModel", "\(name) declined: \(error.localizedDescription)")
-                    declined(error)
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-            return true
+        let command: () async throws -> Void
+        if SpotifyPlayer.isActiveDevice {
+            command = local
+        } else if let route = connectRoute() {
+            command = { try await remote(route.from, route.to) }
+        } else if SpotifyPlayer.isSessionConnected {
+            // Nothing out there to command, so command ourselves. The playback state that
+            // follows is reported to Spirc as this device being active, so the Connect role
+            // comes back with it — which is what pressing a transport control with no device
+            // active asks for.
+            debugLog("PlaybackViewModel", "\(name) had no active device - running locally")
+            command = local
+        } else {
+            debugLog("PlaybackViewModel", "\(name) dropped - no active device and session not connected")
+            return false
         }
 
-        local()
+        Task {
+            do {
+                try await command()
+            } catch is CancellationError {
+                // A newer load took over, as a second skip does; it reports for itself.
+            } catch let error as SpclientError where error.isDeclined {
+                // Spotify refusing on its own terms — no track to go back to, or a device
+                // that will not take the command. The user pressed a control deliberately
+                // and nothing is broken, so this is a log line rather than an error banner.
+                debugLog("PlaybackViewModel", "\(name) declined: \(error.localizedDescription)")
+                declined(error)
+            } catch {
+                debugLog("PlaybackViewModel", "\(name) failed: \(error.localizedDescription)")
+                errorMessage = error.localizedDescription
+            }
+        }
         return true
     }
 
@@ -722,7 +729,7 @@ final class PlaybackViewModel {
     func next() {
         guard sendTransportCommand(
             "next()",
-            local: { SpotifyPlayer.next() },
+            local: { try await SpotifyPlayer.next() },
             remote: { try await SpclientAPI().sendCommand(.next, from: $0, to: $1) },
         ) else {
             return
@@ -743,7 +750,7 @@ final class PlaybackViewModel {
     func previous() {
         guard sendTransportCommand(
             "previous()",
-            local: { SpotifyPlayer.previous() },
+            local: { try await SpotifyPlayer.previous() },
             remote: { try await SpclientAPI().sendCommand(.previous, from: $0, to: $1) },
             declined: { [weak self] error in
                 guard error.isNoPreviousTrack else { return }
@@ -1137,7 +1144,7 @@ final class PlaybackViewModel {
     private func performSeek(to positionMs: UInt32) {
         let issued = sendTransportCommand(
             "performSeek",
-            local: { SpotifyPlayer.seek(positionMs: positionMs) },
+            local: { try await SpotifyPlayer.seek(positionMs: positionMs) },
             remote: { try await SpclientAPI().sendCommand(.seek(toMs: Int(positionMs)), from: $0, to: $1) },
         )
 
@@ -1444,9 +1451,9 @@ final class PlaybackViewModel {
         // until the command lands — so nothing can be judged inside the grace window. Past
         // it, an optimistic anchor that no measurement has confirmed is one playback never
         // carried out: `performSeek` rolls back a command it could not *issue*, but one
-        // that was issued and then failed reports nothing back, since `SpotifyPlayer.seek`
-        // fires it into a task and discards the error. Then either direction is evidence,
-        // because the display is somewhere playback never went.
+        // that was issued and then failed reports an error but no position to go back to.
+        // Then either direction is evidence, because the display is somewhere playback
+        // never went.
         let playerPosition = SpotifyPlayer.positionMs
         let displayedPosition = interpolatedPositionMs
         let displayedLead = Int64(displayedPosition) - Int64(playerPosition)

@@ -240,18 +240,18 @@ enum SpotifyPlayer {
     }
 
     /// Skips to the next track in the queue.
-    static func next() {
-        Task { try? await LibrespotClient.shared.next() }
+    static func next() async throws {
+        try await LibrespotClient.shared.next()
     }
 
     /// Skips to the previous track in the queue.
-    static func previous() {
-        Task { try? await LibrespotClient.shared.previous() }
+    static func previous() async throws {
+        try await LibrespotClient.shared.previous()
     }
 
     /// Seeks to the given position in milliseconds.
-    static func seek(positionMs: UInt32) {
-        Task { try? await LibrespotClient.shared.seek(positionMs: positionMs) }
+    static func seek(positionMs: UInt32) async throws {
+        try await LibrespotClient.shared.seek(positionMs: positionMs)
     }
 
     /// Sets the playback volume (0.0 - 1.0).
@@ -290,8 +290,8 @@ enum SpotifyPlayer {
 
     /// Plays radio for a seed track.
     /// - Parameter trackUri: The Spotify track URI to use as seed
-    static func playRadio(trackUri: String) {
-        Task { try? await LibrespotClient.shared.playRadio(trackUri: trackUri) }
+    static func playRadio(trackUri: String) async throws {
+        try await LibrespotClient.shared.playRadio(trackUri: trackUri)
     }
 
     // MARK: - Streaming Authorization
