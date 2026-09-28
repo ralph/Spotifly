@@ -66,7 +66,7 @@ final class DeviceService {
         // Optimistically mark the target device as active for immediate UI feedback,
         // remembering the previous one so a rejected transfer can be undone
         let previousActiveDeviceId = player.activeDeviceId
-        let updatesBeforeTransfer = player.activeDeviceUpdates
+        let revisionBeforeTransfer = player.clusterRevision
         player.setActiveDevice(device.id)
 
         // Check if target is our local device
@@ -90,7 +90,7 @@ final class DeviceService {
             // while this transfer is awaited, and that fact outranks restoring what was
             // true before the tap — including when it names the very device asked for,
             // which the active id alone cannot distinguish from the optimistic update.
-            if player.activeDeviceUpdates == updatesBeforeTransfer {
+            if player.clusterRevision == revisionBeforeTransfer {
                 player.setActiveDevice(previousActiveDeviceId)
             }
             return false

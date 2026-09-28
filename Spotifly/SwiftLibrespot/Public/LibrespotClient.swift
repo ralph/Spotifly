@@ -225,6 +225,7 @@ public actor LibrespotClient {
             $0.devices = nil
             $0.queue = nil
             $0.activeDeviceId = ""
+            $0.clusterRevision += 1
         }
     }
 
@@ -938,6 +939,7 @@ public actor LibrespotClient {
         publish {
             $0.devices = devices
             $0.activeDeviceId = activeId
+            $0.clusterRevision += 1
         }
 
         if nowActive, !wasActive {

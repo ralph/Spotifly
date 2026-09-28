@@ -89,6 +89,9 @@ nonisolated struct PlayerSnapshot: Equatable {
     var devices: [Device]?
     /// Empty while no device is active.
     var activeDeviceId = ""
+    /// Counts the cluster reports, so the model can let a fresh one overrule a
+    /// transfer's guess even when it names the device it named before.
+    var clusterRevision = 0
     /// Whichever device is playing: this one, or another one, mirrored.
     var playback: PlaybackState?
     var queue: QueueState?

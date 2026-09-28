@@ -36,18 +36,12 @@ final class PlayerModel {
     /// of the cluster; see `setActiveDevice(_:)`.
     private(set) var activeDeviceId: String?
 
-    /// How many times the cluster has named a different active device. A
-    /// transfer compares it before and after, to tell whether one landed while
-    /// it waited.
-    private(set) var activeDeviceUpdates = 0
+    /// The cluster report last applied. A transfer compares it before and after,
+    /// to tell whether one landed while it waited.
+    private(set) var clusterRevision = 0
 
     /// The devices as the cluster reported them; nil until it has.
     private var reportedDevices: [Device]?
-
-    /// The active device the cluster last named. `activeDeviceId` follows it
-    /// only when it moves, so a transfer's guess survives snapshots about
-    /// something else.
-    private var reportedActiveDeviceId = ""
 
     /// Starts applying `snapshots`; without them, the model changes only
     /// through `apply(_:)`, which is what tests use.
@@ -93,15 +87,22 @@ final class PlayerModel {
         if snapshot.devices != reportedDevices {
             reportedDevices = snapshot.devices
         }
-        if snapshot.activeDeviceId != reportedActiveDeviceId {
-            reportedActiveDeviceId = snapshot.activeDeviceId
-            activeDeviceId = snapshot.activeDeviceId.isEmpty ? nil : snapshot.activeDeviceId
-            activeDeviceUpdates += 1
+        // Every cluster report overrules a transfer's guess, including one that
+        // names the device it named before: a transfer the target never took up
+        // leaves the cluster where it was, and snapshots that arrive while the
+        // main actor is busy are coalesced, so a report and its reversal can
+        // come as one. A snapshot about something else leaves the guess alone.
+        if snapshot.clusterRevision != clusterRevision {
+            clusterRevision = snapshot.clusterRevision
+            let reported = snapshot.activeDeviceId.isEmpty ? nil : snapshot.activeDeviceId
+            if reported != activeDeviceId {
+                activeDeviceId = reported
+            }
         }
     }
 
     /// Marks a device active ahead of the cluster, so a transfer shows at once.
-    /// The next device the cluster names replaces it.
+    /// The next cluster report replaces it.
     func setActiveDevice(_ deviceId: String?) {
         activeDeviceId = deviceId
     }
