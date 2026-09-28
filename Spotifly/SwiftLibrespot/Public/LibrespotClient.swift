@@ -958,8 +958,6 @@ public actor LibrespotClient {
             debugLog("LibrespotClient", "Mirroring \(remote.track?.uri ?? "no track") (playing=\(remote.isPlaying), paused=\(remote.isPaused)) from \(activeId.isEmpty ? "no active device" : activeId)")
             mirror(remote, deviceActive: !activeId.isEmpty)
         }
-
-        await publishConnectionState(connected: session?.isConnected == true)
     }
 
     /// Another device took playback: this one stops, as librespot's Spirc does
