@@ -1,7 +1,7 @@
 # Playback errors are never shown
 
 Status: **implemented** 2026-09-28 on `playback-errors` (#72), as proposed below, and checked
-live for a failing play; see [Result](#result). The manual checks at the end are still open.
+live: a failing play by autoplay, and the manual checks by Ralph. See [Result](#result).
 
 Component: `Spotifly/ViewModels/PlaybackViewModel.swift` (`errorMessage`),
 `Spotifly/Views/NowPlayingBarView.swift`, and the views that write the view model's error:
@@ -120,6 +120,14 @@ at 12:27:33 local time. The row was back to normal in the one at 12:27:38. The w
 stack's own, and "CDN error" is the wrong category for a context resolve. That is a
 `LibrespotError` naming problem, left alone here.
 
-Seen in the same run, and not caused by this change: the bar had mirrored a paused track at
+Manual, by Ralph, the same day: every check passed on screen. The log agrees. There were three
+`addToLibrary` requests while offline, from the heart in the bar, a track row and the mini
+player. After a transfer to the phone, Next with Wi-Fi off logged
+`next() failed: Es besteht anscheinend keine Verbindung zum Internet.` 2 ms after the command
+went out, and the promised position was withdrawn. The reconnect after Wi-Fi came back was
+clean. Previous on the phone does not appear in that log. The declined path it covers is
+unchanged by this work: `sendTransportCommand` sets the error only outside it, as before.
+
+Seen in the first run, and not caused by this change: the bar had mirrored a paused track at
 launch (`Playback state update: … uri=spotify:track:5cimfl3QpL5imIMMvxFzCQ`), and by the time
 of the failed play it showed no track at all.
