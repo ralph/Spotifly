@@ -467,8 +467,30 @@ public actor LibrespotClient {
         await audioPipeline?.pause()
     }
 
-    public func resume() async {
-        await audioPipeline?.resume()
+    /// Resumes what is loaded here. With nothing loaded while the snapshot
+    /// shows a track, that track is another device's, mirrored, and nobody
+    /// plays it: resuming then takes it over from where it was left, as Play
+    /// does on Spotify's own clients, instead of resuming an empty pipeline.
+    public func resume() async throws {
+        guard localState == nil, let mirrored = latest.withLock({ $0.playback }) else {
+            await audioPipeline?.resume()
+            return
+        }
+        let queue = latest.withLock { $0.queue }
+        let contextUri = queue?.contextUri ?? ""
+        let positionMs = UInt64(max(0, mirrored.positionMs))
+        debugLog("LibrespotClient", "Taking over the mirrored \(mirrored.trackUri) in \(contextUri.isEmpty ? "a list of tracks" : contextUri) at \(positionMs)ms")
+
+        shuffleEnabled = mirrored.shuffle
+        playbackQueue.setShuffle(mirrored.shuffle)
+        repeatMode = mirrored.repeatTrack ? .track : (mirrored.repeatContext ? .context : .off)
+        playbackQueue.setRepeat(repeatMode)
+        if contextUri.isEmpty {
+            // Started from a bare list of uris, so the list is all there is.
+            try await playTracks([mirrored.trackUri] + (queue?.nextTracks.map(\.uri) ?? []), positionMs: positionMs)
+        } else {
+            try await play(uriOrUrl: contextUri, trackIndex: -1, startingAtUri: mirrored.trackUri, positionMs: positionMs)
+        }
     }
 
     public func stop() async {
@@ -1111,7 +1133,7 @@ public actor LibrespotClient {
             await pause()
 
         case .resume:
-            await resume()
+            try? await resume()
 
         case let .seekTo(positionMs):
             try? await audioPipeline?.seek(positionMs: positionMs)

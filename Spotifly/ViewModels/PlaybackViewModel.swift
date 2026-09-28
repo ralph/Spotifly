@@ -681,8 +681,9 @@ final class PlaybackViewModel {
     ///
     /// What the local fallback recovers is **resume**, which is also the only one that needs
     /// recovering. A paused pipeline still holds its track, so resuming plays on from where
-    /// it stopped — and the playing state that follows is reported to Spirc as this device
-    /// being active, which takes the Connect role back with it. The others reach a pipeline
+    /// it stopped; with nothing loaded here, the client takes over the track another device
+    /// left, which the bar mirrors. Either way the playing state that follows is reported to
+    /// Spirc as this device being active, which takes the Connect role back with it. The others reach a pipeline
     /// that is stopped or empty and do nothing — and that is the right outcome rather than a
     /// gap to close: with nobody active there is no track playing, so there is nothing to
     /// pause, skip or seek. Activating for them would take the Connect role away from the
@@ -831,7 +832,7 @@ final class PlaybackViewModel {
     func resume() {
         guard sendTransportCommand(
             "resume()",
-            local: { SpotifyPlayer.resume() },
+            local: { try await SpotifyPlayer.resume() },
             remote: { try await SpclientAPI().sendCommand(.resume, from: $0, to: $1) },
         ) else {
             return

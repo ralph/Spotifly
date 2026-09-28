@@ -232,9 +232,9 @@ enum SpotifyPlayer {
         Task { await LibrespotClient.shared.pause() }
     }
 
-    /// Resumes playback.
-    static func resume() {
-        Task { await LibrespotClient.shared.resume() }
+    /// Resumes playback, or takes over another device's track the bar mirrors.
+    static func resume() async throws {
+        try await LibrespotClient.shared.resume()
     }
 
     /// Stops playback.
