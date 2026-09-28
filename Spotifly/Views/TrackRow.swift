@@ -265,7 +265,6 @@ struct TrackRow: View {
             do {
                 try await trackService.toggleFavorite(trackId: track.id)
             } catch {
-                // Error is handled by optimistic rollback in TrackService
                 playbackViewModel.errorMessage = String(localized: "error.update_favorite \(error.localizedDescription)")
             }
 
