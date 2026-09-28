@@ -397,7 +397,7 @@ struct NowPlayingBarView: View {
                 do {
                     try await trackService.toggleFavorite(trackId: trackId)
                 } catch {
-                    playbackViewModel.errorMessage = "Failed to update favorite: \(error.localizedDescription)"
+                    playbackViewModel.errorMessage = String(localized: "error.update_favorite \(error.localizedDescription)")
                 }
             }
         } label: {

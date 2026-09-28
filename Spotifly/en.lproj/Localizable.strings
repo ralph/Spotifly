@@ -82,6 +82,9 @@
 "error.reorder_queue" = "Failed to reorder queue";
 "error.clear_queue" = "Failed to clear queue";
 "error.no_playback_device" = "This Mac is not connected to Spotify, so it cannot start playback elsewhere";
+"error.player_not_ready" = "The player did not connect to Spotify in time";
+"error.player_not_initialized" = "The player is not connected to Spotify";
+"error.no_tracks_to_play" = "No tracks to play";
 
 /* Empty States */
 "empty.select_item" = "Select an item from the sidebar";
@@ -252,6 +255,10 @@
 "error.remove_album %@" = "Failed to remove album: %@";
 "error.unfollow_artist %@" = "Failed to unfollow artist: %@";
 "error.follow_artist %@" = "Failed to follow artist: %@";
+"error.update_favorite %@" = "Failed to update favorite: %@";
+"error.add_to_playlist %@" = "Failed to add to playlist: %@";
+"error.remove_from_playlist %@" = "Failed to remove from playlist: %@";
+"error.create_playlist %@" = "Failed to create playlist: %@";
 
 /* Profile */
 "profile.logged_in_as %@" = "Logged in as %@";

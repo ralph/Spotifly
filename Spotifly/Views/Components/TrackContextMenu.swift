@@ -163,7 +163,7 @@ struct TrackContextMenu: View {
             do {
                 try await trackService.toggleFavorite(trackId: track.id)
             } catch {
-                playbackViewModel.errorMessage = "Failed to update favorite: \(error.localizedDescription)"
+                playbackViewModel.errorMessage = String(localized: "error.update_favorite \(error.localizedDescription)")
             }
         }
     }
@@ -177,7 +177,7 @@ struct TrackContextMenu: View {
                 )
                 onPlaylistAdded?()
             } catch {
-                playbackViewModel.errorMessage = "Failed to add to playlist: \(error.localizedDescription)"
+                playbackViewModel.errorMessage = String(localized: "error.add_to_playlist \(error.localizedDescription)")
             }
         }
     }
@@ -190,7 +190,7 @@ struct TrackContextMenu: View {
                     uids: [uid],
                 )
             } catch {
-                playbackViewModel.errorMessage = "Failed to remove from playlist: \(error.localizedDescription)"
+                playbackViewModel.errorMessage = String(localized: "error.remove_from_playlist \(error.localizedDescription)")
             }
         }
     }

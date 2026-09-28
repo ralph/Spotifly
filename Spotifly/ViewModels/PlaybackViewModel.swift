@@ -287,7 +287,7 @@ final class PlaybackViewModel {
                 errorMessage = nil
             } else {
                 debugLog("PlaybackViewModel", "Player did not become ready within \(Self.readinessTimeout)")
-                errorMessage = "Player did not become ready"
+                errorMessage = String(localized: "error.player_not_ready")
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -389,7 +389,7 @@ final class PlaybackViewModel {
         }
 
         guard !trackUris.isEmpty else {
-            errorMessage = "No tracks to play"
+            errorMessage = String(localized: "error.no_tracks_to_play")
             return
         }
 
@@ -546,7 +546,7 @@ final class PlaybackViewModel {
         }
 
         guard isInitialized else {
-            errorMessage = "Player not initialized"
+            errorMessage = String(localized: "error.player_not_initialized")
             return
         }
 

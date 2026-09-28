@@ -82,6 +82,9 @@
 "error.reorder_queue" = "Impossible de réorganiser la file d'attente";
 "error.clear_queue" = "Impossible de vider la file d'attente";
 "error.no_playback_device" = "Ce Mac n'est pas connecté à Spotify et ne peut donc pas lancer la lecture ailleurs";
+"error.player_not_ready" = "Le lecteur ne s'est pas connecté à Spotify à temps";
+"error.player_not_initialized" = "Le lecteur n'est pas connecté à Spotify";
+"error.no_tracks_to_play" = "Aucun titre à lire";
 
 /* Empty States */
 "empty.select_item" = "Sélectionnez un élément dans la barre latérale";
@@ -252,6 +255,10 @@
 "error.remove_album %@" = "Impossible de retirer l'album : %@";
 "error.unfollow_artist %@" = "Impossible de ne plus suivre l'artiste : %@";
 "error.follow_artist %@" = "Impossible de suivre l'artiste : %@";
+"error.update_favorite %@" = "Impossible de mettre à jour les titres likés : %@";
+"error.add_to_playlist %@" = "Impossible d'ajouter le titre à la playlist : %@";
+"error.remove_from_playlist %@" = "Impossible de retirer le titre de la playlist : %@";
+"error.create_playlist %@" = "Impossible de créer la playlist : %@";
 
 /* Profile */
 "profile.logged_in_as %@" = "Connecté en tant que %@";
