@@ -289,6 +289,11 @@ final class PlaybackViewModel {
         // rebuild proves otherwise. Matters when initialize() throws on a restart.
         isInitialized = false
         isLoading = true
+        // The old session's track goes down with it, so it is cleared now, not once the new
+        // session is up: that session reports a track of its own while it is being built —
+        // the one another device left paused, mirrored — and the player model passes on
+        // changes only, so a reset afterwards wiped it for good. Harmless on a first init.
+        clearPlaybackState()
         let generation = lifecycleGeneration
         do {
             try await SpotifyPlayer.initialize()
@@ -321,18 +326,21 @@ final class PlaybackViewModel {
             await SpotifyPlayer.shutdownAndCleanup()
             isInitialized = false
             errorMessage = nil
+            // Whatever that session mirrored belongs to the account that left.
+            clearPlaybackState()
         }
+        isLoading = false
+    }
 
-        // Reset stale playback state — after (re)init the pipeline has no track loaded.
-        // Publish the stopped rate before clearing the URI, then remove the old track's
-        // metadata. Harmless on a first init, where these are already at their defaults.
+    /// Forgets the track: publishes the stopped rate before clearing the URI, then removes
+    /// the old track's metadata.
+    private func clearPlaybackState() {
         isPlaying = false
         updateNowPlayingPosition()
         currentTrackUri = nil
         lastHandledTrackUri = nil
         updateNowPlayingInfo()
         anchorPosition(0)
-        isLoading = false
     }
 
     /// How long to wait for the player to become usable after initialization.

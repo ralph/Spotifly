@@ -154,4 +154,6 @@ views together to save nothing.
 
 Seen in the first run, and not caused by this change: the bar had mirrored a paused track at
 launch (`Playback state update: … uri=spotify:track:5cimfl3QpL5imIMMvxFzCQ`), and by the time
-of the failed play it showed no track at all.
+of the failed play it showed no track at all. Fixed afterwards: `performInitialization` cleared
+the track after the mirrored state had arrived, and the model does not repeat an unchanged
+state. See the changelog.
