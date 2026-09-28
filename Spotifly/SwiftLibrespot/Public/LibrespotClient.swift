@@ -4,20 +4,19 @@
 //
 //  The playback engine behind the app's SpotifyPlayer facade.
 //
-//  Everything user-facing reads static publishers off SpotifyPlayer; this
-//  class owns the machinery that feeds them: one session (AP socket, dealer,
-//  Spirc), one audio pipeline, and the client-side queue that orders tracks.
+//  Everything user-facing reads the snapshots this client publishes; it owns
+//  the machinery that produces them: one session (AP socket, dealer, Spirc),
+//  one audio pipeline, and the client-side queue that orders tracks.
 //
 
 import AVFoundation
-import Combine
 import Foundation
 import Synchronization
 
 /// Main client for Swift librespot.
 ///
-/// An actor: every control call serializes here. Publishers are thread-safe
-/// Combine subjects, readable synchronously by the facade without awaiting.
+/// An actor: every control call serializes here. The latest snapshot sits
+/// behind a lock, readable synchronously by the facade without awaiting.
 public actor LibrespotClient {
     // MARK: - Singleton
 
@@ -66,58 +65,14 @@ public actor LibrespotClient {
     /// pipeline replaces the old one.
     private var pipelineEvents: Task<Void, Never>?
 
-    /// Whether this device is the cluster's active one. Kept beside the
-    /// subject so the synchronous facade getter never awaits the actor.
-    private nonisolated let isActiveDeviceFlag = Mutex(false)
-
     /// What the local player is doing, or nil when it holds nothing.
     ///
-    /// Kept apart from `playbackStateSubject`, which shows *whichever* device
-    /// is playing: while another one is, the subject mirrors the cluster.
+    /// Kept apart from the snapshot's playback, which shows *whichever* device
+    /// is playing: while another one is, it mirrors the cluster.
     /// Only this is ever reported to the cluster as this device's state —
     /// reporting the mirror would claim another device's playback as ours,
     /// and with it the active role.
     private var localState: PlaybackState?
-
-    // MARK: - Publishers (the facade's data sources)
-
-    private nonisolated(unsafe) let queueSubject = CurrentValueSubject<QueueState?, Never>(nil)
-    private nonisolated(unsafe) let playbackStateSubject = CurrentValueSubject<PlaybackState?, Never>(nil)
-    private nonisolated(unsafe) let volumeSubject = PassthroughSubject<UInt16, Never>()
-    private nonisolated(unsafe) let loadingSubject = PassthroughSubject<LoadingNotification, Never>()
-    private nonisolated(unsafe) let activeDeviceSubject = PassthroughSubject<String, Never>()
-    private nonisolated(unsafe) let devicesSubject = CurrentValueSubject<[Device]?, Never>(nil)
-    private nonisolated(unsafe) let connectionStateSubject = CurrentValueSubject<LibrespotConnectionState?, Never>(nil)
-
-    // MARK: - Public Publishers
-
-    nonisolated var queue: AnyPublisher<QueueState?, Never> {
-        queueSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var playbackState: AnyPublisher<PlaybackState?, Never> {
-        playbackStateSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var volumeChanged: AnyPublisher<UInt16, Never> {
-        volumeSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var loading: AnyPublisher<LoadingNotification, Never> {
-        loadingSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var activeDeviceChanged: AnyPublisher<String, Never> {
-        activeDeviceSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var devices: AnyPublisher<[Device]?, Never> {
-        devicesSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var connectionState: AnyPublisher<LibrespotConnectionState?, Never> {
-        connectionStateSubject.eraseToAnyPublisher()
-    }
 
     // MARK: - Snapshots (what the app shows)
 
@@ -261,14 +216,11 @@ public actor LibrespotClient {
         publishConnectionState(connected: false)
     }
 
-    /// Shuts down and clears every replaying publisher, so a later login does
-    /// not inherit the previous account's devices, queue, or playback state.
+    /// Shuts down and clears the snapshot, so a later login does not inherit
+    /// the previous account's devices, queue, or playback state.
     public func shutdownAndCleanup() async {
         await shutdown()
-        devicesSubject.send(nil)
-        queueSubject.send(nil)
         clearLocalState()
-        isActiveDeviceFlag.withLock { $0 = false }
         publish {
             $0.devices = nil
             $0.queue = nil
@@ -607,11 +559,10 @@ public actor LibrespotClient {
     ///
     /// Both directions still reach the gain: a local change applies it in
     /// `PlaybackViewModel.volume.didSet` before it ever gets here, and a remote
-    /// one comes back out through `volumeSubject` into that same setter.
+    /// one comes back out through the snapshot's volume into that same setter.
     public func setVolume(_ volume: Double) async {
         let clamped = max(0, min(1, volume))
         logicalVolume = UInt32(clamped * 65535)
-        volumeSubject.send(UInt16(logicalVolume))
         publish { $0.volume = clamped }
         // Other clients draw this device's slider from what Spirc reports.
         await session?.reportLocalVolume(logicalVolume)
@@ -639,19 +590,20 @@ public actor LibrespotClient {
     private nonisolated let flags = Mutex(Flags())
 
     nonisolated var currentConnectionState: LibrespotConnectionState? {
-        connectionStateSubject.value
+        latest.withLock { $0.connection }
     }
 
     nonisolated var isPlayingFlagValue: Bool {
-        playbackStateSubject.value?.isPlaying == true
+        latest.withLock { $0.playback?.isPlaying == true }
     }
 
     nonisolated var positionMsCached: UInt64 {
         positionCache.withLock { $0 }
     }
 
+    /// Whether this device is the cluster's active one.
     nonisolated var isActiveDeviceFlagValue: Bool {
-        isActiveDeviceFlag.withLock { $0 }
+        latest.withLock { $0.activeDeviceId == deviceInfo.deviceId }
     }
 
     /// Position cache, fed by the pipeline's position ticks and read from
@@ -716,7 +668,6 @@ public actor LibrespotClient {
         // length; until metadata lands, zero is the honest answer.
         knownDurationMs = 0
         let position = UInt32(clamping: positionMs)
-        loadingSubject.send(LoadingNotification(trackUri: uri, positionMs: position))
         publishPlaybackState(for: uri, playing: !paused, paused: paused, positionMs: Int64(position))
 
         do {
@@ -797,7 +748,6 @@ public actor LibrespotClient {
             nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
         )
-        queueSubject.send(queue)
         publish { $0.queue = queue }
     }
 
@@ -831,17 +781,13 @@ public actor LibrespotClient {
     /// The local player holds nothing any more.
     private func clearLocalState() {
         localState = nil
-        playbackStateSubject.send(nil)
         publish { $0.playback = nil }
     }
 
     private func handlePipelineState(_ state: AudioPipeline.AudioPlaybackState) async {
         switch state {
-        case .idle:
-            break // end-of-track and stop own the nil transition
-
-        case let .loading(trackUri):
-            loadingSubject.send(LoadingNotification(trackUri: trackUri, positionMs: 0))
+        case .idle, .loading:
+            break // end-of-track and stop own the nil transition, and a load publishes its own
 
         case let .playing(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
@@ -981,19 +927,14 @@ public actor LibrespotClient {
 
     private func handleClusterUpdate(_ cluster: SpircController.ClusterState) async {
         let devices = cluster.devices.map(\.asEntity)
-        devicesSubject.send(devices)
 
         // An empty active id is Connect saying "nobody is playing", which is a
-        // state worth adopting rather than skipping: ignoring it left the flag
-        // and the store pointing at a device that has since stopped, and the
-        // app went on routing commands to it. `setActiveDevice("")` marks every
-        // device inactive, which is exactly the intended reading.
+        // state worth adopting rather than skipping: ignoring it left the app
+        // pointing at a device that has since stopped, and routing commands to
+        // it. Every device then shows as inactive, which is the intended reading.
         let activeId = cluster.activeDeviceId ?? ""
-        let wasActive = isActiveDeviceFlag.withLock { $0 }
+        let wasActive = isActiveDeviceFlagValue
         let nowActive = !activeId.isEmpty && activeId == deviceInfo.deviceId
-        isActiveDeviceFlag.withLock { $0 = nowActive }
-
-        activeDeviceSubject.send(activeId)
         publish {
             $0.devices = devices
             $0.activeDeviceId = activeId
@@ -1068,8 +1009,6 @@ public actor LibrespotClient {
             nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: remote.prevTracks.reversed().map { QueueItem(uri: $0.uri, provider: $0.provider) },
         )
-        playbackStateSubject.send(playback)
-        queueSubject.send(queue)
         publish {
             $0.playback = playback
             $0.queue = queue
@@ -1245,7 +1184,6 @@ public actor LibrespotClient {
             timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
         )
         localState = state
-        playbackStateSubject.send(state)
         publish { $0.playback = state }
     }
 
@@ -1284,9 +1222,7 @@ public actor LibrespotClient {
             reconnectAttempt: reconnectAttempt,
             lastError: error,
             connectedSinceMs: connected ? UInt64(Date().timeIntervalSince1970 * 1000) : nil,
-            isActiveDevice: isActiveDeviceFlag.withLock { $0 },
         )
-        connectionStateSubject.send(state)
         publish { $0.connection = state }
     }
 
