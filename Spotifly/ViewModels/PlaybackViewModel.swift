@@ -1562,7 +1562,7 @@ final class PlaybackViewModel {
             } else {
                 store.removeTrackFromFavorites(trackId)
             }
-            errorMessage = error.localizedDescription
+            errorMessage = String(localized: "error.update_favorite \(error.localizedDescription)")
         }
     }
 
