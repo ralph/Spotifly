@@ -220,31 +220,14 @@ enum SpotifyPlayer {
         Task { await LibrespotClient.shared.disconnect() }
     }
 
-    /// Outcome of a force-reconnect request.
-    ///
-    /// `alreadyRecovering` and `noSession` both mean "nothing was started", but they need
-    /// opposite responses: the first is fine to ignore because recovery is already under
-    /// way, while the second means there is nothing to reconnect *to* and only a full
-    /// rebuild will help. Collapsing them into one `false` is how a wake could end up
-    /// doing nothing at all.
-    enum ForceReconnectOutcome {
-        case started
-        case alreadyRecovering
-        case noSession
-    }
-
     /// Asks the client to reconnect, without tearing down what it already has.
     ///
     /// Preferred over `PlaybackViewModel.forceReinitialize` wherever a session may exist:
     /// reinitialize runs a destructive cleanup first, which invalidates any reconnect loop
     /// currently working the problem.
     @discardableResult
-    static func forceReconnect() -> ForceReconnectOutcome {
-        switch LibrespotClient.shared.forceReconnectSync() {
-        case .started: .started
-        case .alreadyRecovering: .alreadyRecovering
-        case .noSession: .noSession
-        }
+    static func forceReconnect() -> LibrespotClient.ForceReconnectOutcome {
+        LibrespotClient.shared.forceReconnectSync()
     }
 
     // MARK: - Synchronous State

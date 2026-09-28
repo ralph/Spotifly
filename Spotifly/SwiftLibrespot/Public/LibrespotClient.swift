@@ -286,6 +286,12 @@ public actor LibrespotClient {
     }
 
     /// Outcome of a reconnect request.
+    ///
+    /// `alreadyRecovering` and `noSession` both mean "nothing was started", but they need
+    /// opposite responses: the first is fine to ignore because recovery is already under
+    /// way, while the second means there is nothing to reconnect *to* and only a full
+    /// rebuild will help. Collapsing them into one `false` is how a wake could end up
+    /// doing nothing at all.
     enum ForceReconnectOutcome {
         case started
         case alreadyRecovering
