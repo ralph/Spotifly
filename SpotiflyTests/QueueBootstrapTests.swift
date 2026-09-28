@@ -43,7 +43,7 @@ struct QueueBootstrapTests {
     }
 
     @Test func `an empty snapshot carries no playback`() {
-        let empty = QueueState(currentTrack: nil, nextTracks: [], previousTracks: [])
+        let empty = QueueState(contextUri: "", currentTrack: nil, nextTracks: [], previousTracks: [])
 
         #expect(QueueService.queueUpdate(from: empty) == nil)
     }
@@ -51,6 +51,7 @@ struct QueueBootstrapTests {
     /// History alone is exactly what a wiped queue looks like, so it is not enough to apply.
     @Test func `previous tracks alone carry no playback`() {
         let snapshot = QueueState(
+            contextUri: "",
             currentTrack: nil,
             nextTracks: [],
             previousTracks: [item("played")],
@@ -60,7 +61,7 @@ struct QueueBootstrapTests {
     }
 
     @Test func `a current track alone carries playback`() throws {
-        let snapshot = QueueState(currentTrack: item("playing"), nextTracks: [], previousTracks: [])
+        let snapshot = QueueState(contextUri: "", currentTrack: item("playing"), nextTracks: [], previousTracks: [])
         let update = try #require(QueueService.queueUpdate(from: snapshot))
 
         #expect(update.current?.trackId == "playing")
@@ -70,7 +71,7 @@ struct QueueBootstrapTests {
     @Test func `pending tracks alone carry playback`() throws {
         // Nothing is playing but the cluster still knows what is queued — that is an answer,
         // not the absence of one, so it may be applied.
-        let snapshot = QueueState(currentTrack: nil, nextTracks: [item("pending")], previousTracks: [])
+        let snapshot = QueueState(contextUri: "", currentTrack: nil, nextTracks: [item("pending")], previousTracks: [])
         let update = try #require(QueueService.queueUpdate(from: snapshot))
 
         #expect(update.current == nil)
@@ -82,6 +83,7 @@ struct QueueBootstrapTests {
     /// something else. The cluster carries it.
     @Test func `history comes back with the rest`() throws {
         let snapshot = QueueState(
+            contextUri: "",
             currentTrack: item("playing"),
             nextTracks: [item("pending")],
             previousTracks: [item("played")],
@@ -109,6 +111,7 @@ struct QueueBootstrapTests {
             provider: "context",
         )
         let snapshot = QueueState(
+            contextUri: "",
             currentTrack: item("playing"),
             nextTracks: [episode, item("pending")],
             previousTracks: [],
@@ -122,6 +125,7 @@ struct QueueBootstrapTests {
     /// from one the context supplied.
     @Test func `the provider survives the conversion`() throws {
         let snapshot = QueueState(
+            contextUri: "",
             currentTrack: nil,
             nextTracks: [item("queued", provider: "queue")],
             previousTracks: [],

@@ -16,8 +16,6 @@ final class QueueService {
     private let store: AppStore
     private let trackService: TrackService
     private var queueSubscription: AnyCancellable?
-    private var setQueueSubscription: AnyCancellable?
-    private var pendingQueueRefreshTask: Task<Void, Never>?
     private var pendingTrackIds: Set<String> = []
     /// Subject for debouncing metadata fetch requests
     private let fetchSubject = PassthroughSubject<Void, Never>()
@@ -52,23 +50,14 @@ final class QueueService {
     /// Idempotent: a `.task` runs again when its view reappears, and the guard reads the
     /// subscription it protects rather than a separate flag that could drift from it.
     func activate() {
-        guard setQueueSubscription == nil else { return }
+        guard queueSubscription == nil else { return }
         recordActivation(self)
 
-        // The client publishes both shapes together whenever its queue moves. This one
-        // carries the resolved entries the store renders.
+        // The client publishes the whole queue, with its context, whenever it moves.
         queueSubscription = SpotifyPlayer.queue
             .receive(on: DispatchQueue.main)
             .sink { [weak self] queueState in
                 self?.handleQueueUpdate(queueState)
-            }
-
-        // And this one carries the context uri beside them, which is what a queue *set*
-        // — locally or by a remote command — has to record.
-        setQueueSubscription = SpotifyPlayer.setQueue
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] notification in
-                self?.handleSetQueue(notification)
             }
 
         // Debounced so rapid queue updates do not cancel an in-flight metadata fetch.
@@ -84,76 +73,6 @@ final class QueueService {
     }
 
     // MARK: - Queue Updates
-
-    /// Handle set queue notification (fires immediately when queue is set or context is loaded)
-    private func handleSetQueue(_ notification: SetQueueNotification) {
-        let contextInfo = notification.contextUri.isEmpty ? "" : " context=\(notification.contextUri),"
-        log("Set queue:\(contextInfo) prev=\(notification.prevTracks.count), current=\(notification.currentTrack != nil ? 1 : 0), next=\(notification.nextTracks.count)")
-
-        // A SetQueue with a context URI but no tracks is provisional: the Rust path emitted
-        // one during context setup, before `fill_up_next_tracks` had filled the queue in.
-        // `LibrespotClient` resolves a context to its full track list before publishing, so
-        // this should not fire any more; it stays because the alternative to keeping the
-        // existing queue and refreshing is blanking it.
-        let isProvisional = !notification.contextUri.isEmpty
-            && notification.currentTrack == nil
-            && notification.nextTracks.isEmpty
-            && notification.prevTracks.isEmpty
-        if isProvisional {
-            log("Provisional SetQueue (emitted before fill_up) — keeping existing queue, scheduling refresh")
-            // Deliberately does not bump the live-state revision: this notification carries
-            // no usable queue, and the refresh it schedules is a Web API fetch that the
-            // freshness barrier would otherwise discard as stale.
-            scheduleQueueRefresh()
-            return
-        }
-
-        cancelPendingQueueRefresh()
-        store.noteLiveStateReceived()
-
-        let currentEntry = notification.currentTrack.flatMap(Self.queueEntry(from:))
-        let nextEntries = notification.nextTracks.compactMap(Self.queueEntry(from:))
-        let prevEntries = notification.prevTracks.compactMap(Self.queueEntry(from:))
-
-        store.setQueue(previous: prevEntries, current: currentEntry, next: nextEntries, contextUri: notification.contextUri)
-        reconcileQueueCurrentTrack()
-
-        fetchTrackMetadata(for: Self.trackIds(prevEntries, currentEntry, nextEntries))
-    }
-
-    /// Number of times a queue refresh may be re-attempted after coming back empty-handed.
-    private static let queueRefreshAttempts = 3
-
-    private func scheduleQueueRefresh() {
-        pendingQueueRefreshTask?.cancel()
-        pendingQueueRefreshTask = Task { @MainActor [weak self] in
-            // This refresh exists to recover a queue librespot has not filled in yet, so it
-            // is the one caller of the bootstrap that cannot simply accept a discarded
-            // response. A live callback landing mid-fetch drops the whole Web API snapshot,
-            // including the queue being waited for, and nothing else would go looking for it
-            // again. Retrying is bounded so a steady stream of callbacks cannot keep it
-            // alive; a real SetQueue cancels the task outright.
-            //
-            // Each attempt issues fresh requests and captures the live revision anew, so a
-            // retry is not the discarded snapshot coming back — it is a newer one, taken
-            // after the callback that invalidated the last. What it cannot rule out is the
-            // Web API lagging the live state, which is what the sleep before each attempt is
-            // for, and which every caller of the bootstrap already accepts.
-            for _ in 0 ..< Self.queueRefreshAttempts {
-                try? await Task.sleep(for: .milliseconds(800))
-                guard !Task.isCancelled, let self else { return }
-                if await fetchInitialPlaybackState() {
-                    return
-                }
-                log("Queue refresh did not apply — retrying")
-            }
-        }
-    }
-
-    private func cancelPendingQueueRefresh() {
-        pendingQueueRefreshTask?.cancel()
-        pendingQueueRefreshTask = nil
-    }
 
     /// Queue and playback callbacks arrive through independent main-actor hops. Reconcile
     /// after every usable queue update as well as when PlaybackViewModel changes the URI,
@@ -176,25 +95,16 @@ final class QueueService {
 
         let currentEntry = state.currentTrack.flatMap(Self.queueEntry(from:))
         let nextEntries = state.nextTracks.compactMap(Self.queueEntry(from:))
-        // previousTracks is nil when from Web API (which doesn't provide history)
-        let previousEntries = state.previousTracks?.compactMap(Self.queueEntry(from:))
+        let previousEntries = state.previousTracks.compactMap(Self.queueEntry(from:))
 
-        if let prevCount = previousEntries?.count {
-            log("Queue updated from the player: prev=\(prevCount), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
-        } else {
-            log("Queue updated from Web API: current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count) (preserving previous)")
-        }
+        let contextInfo = state.contextUri.isEmpty ? "" : " context=\(state.contextUri),"
+        log("Queue updated from the player:\(contextInfo) prev=\(previousEntries.count), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
 
         store.noteLiveStateReceived()
-        store.setQueue(previous: previousEntries, current: currentEntry, next: nextEntries)
+        store.setQueue(previous: previousEntries, current: currentEntry, next: nextEntries, contextUri: state.contextUri)
         reconcileQueueCurrentTrack()
 
-        // Real queue arrived — cancel any pending Web API refresh
-        if !nextEntries.isEmpty {
-            cancelPendingQueueRefresh()
-        }
-
-        fetchTrackMetadata(for: Self.trackIds(previousEntries ?? [], currentEntry, nextEntries))
+        fetchTrackMetadata(for: Self.trackIds(previousEntries, currentEntry, nextEntries))
     }
 
     // MARK: - Metadata Fetching
@@ -262,8 +172,7 @@ final class QueueService {
     /// had to pass `previous: nil` and hope something else filled it in.
     ///
     /// - Returns: `false` when nothing was applied, which for this source means only one
-    ///   thing: no cluster update has arrived yet. Callers that can wait should try again —
-    ///   `scheduleQueueRefresh` is the one that must.
+    ///   thing: no cluster update has arrived yet. Callers that can wait should try again.
     @discardableResult
     func fetchInitialPlaybackState() async -> Bool {
         guard let update = Self.queueUpdate(from: currentQueueSnapshot()) else {
@@ -308,7 +217,7 @@ final class QueueService {
 
         let current = snapshot.currentTrack.flatMap(queueEntry(from:))
         let next = snapshot.nextTracks.compactMap(queueEntry(from:))
-        let previous = (snapshot.previousTracks ?? []).compactMap(queueEntry(from:))
+        let previous = snapshot.previousTracks.compactMap(queueEntry(from:))
 
         guard current != nil || !next.isEmpty else { return nil }
 
@@ -322,13 +231,7 @@ final class QueueService {
         return QueueEntry(trackId: trackId, provider: TrackProvider(from: provider))
     }
 
-    /// The two shapes a queue track arrives in: an item of a cluster snapshot, and a track
-    /// of a SetQueue notification.
     private static func queueEntry(from item: QueueItem) -> QueueEntry? {
         queueEntry(uri: item.uri, provider: item.provider)
-    }
-
-    private static func queueEntry(from track: SetQueueTrackInfo) -> QueueEntry? {
-        queueEntry(uri: track.uri, provider: track.provider)
     }
 }

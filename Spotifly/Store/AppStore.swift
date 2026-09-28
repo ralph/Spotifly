@@ -708,9 +708,7 @@ final class AppStore {
     ///
     /// It is coarser — a queue response can be discarded because a playback state arrived —
     /// and that costs nothing for the callers whose live state is replacing what is there
-    /// anyway. The one caller it does cost is the refresh scheduled after a provisional
-    /// `SetQueue`, which is waiting for a queue nothing is going to publish; that one
-    /// retries (see `QueueService.scheduleQueueRefresh`).
+    /// anyway.
     private(set) var liveStateRevision: UInt64 = 0
 
     /// Records that authoritative state arrived from the player.

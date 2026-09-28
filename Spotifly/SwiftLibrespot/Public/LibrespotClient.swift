@@ -83,7 +83,6 @@ public actor LibrespotClient {
     private nonisolated(unsafe) let playbackStateSubject = CurrentValueSubject<PlaybackState?, Never>(nil)
     private nonisolated(unsafe) let volumeSubject = PassthroughSubject<UInt16, Never>()
     private nonisolated(unsafe) let loadingSubject = PassthroughSubject<LoadingNotification, Never>()
-    private nonisolated(unsafe) let setQueueSubject = PassthroughSubject<SetQueueNotification, Never>()
     private nonisolated(unsafe) let activeDeviceSubject = PassthroughSubject<String, Never>()
     private nonisolated(unsafe) let devicesSubject = CurrentValueSubject<[Device]?, Never>(nil)
     private nonisolated(unsafe) let connectionStateSubject = CurrentValueSubject<LibrespotConnectionState?, Never>(nil)
@@ -104,10 +103,6 @@ public actor LibrespotClient {
 
     nonisolated var loading: AnyPublisher<LoadingNotification, Never> {
         loadingSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var setQueue: AnyPublisher<SetQueueNotification, Never> {
-        setQueueSubject.eraseToAnyPublisher()
     }
 
     nonisolated var activeDeviceChanged: AnyPublisher<String, Never> {
@@ -493,7 +488,7 @@ public actor LibrespotClient {
     }
 
     public func previous() async throws {
-        defer { publishQueueNotifications() }
+        defer { publishQueue() }
 
         if let previous = playbackQueue.backward() {
             try await loadAndPlay(previous)
@@ -515,7 +510,7 @@ public actor LibrespotClient {
         for track in tracks {
             playbackQueue.enqueue(track)
         }
-        publishQueueNotifications()
+        publishQueue()
         // The queue is part of the reported player state, and heartbeats only
         // repeat the last report: without this, other devices did not see the
         // track, and a transfer before the next state change dropped it.
@@ -545,7 +540,7 @@ public actor LibrespotClient {
         shuffleEnabled = enabled
         playbackQueue.setShuffle(enabled)
         // Shuffle reorders what comes next, so the queue views move with it.
-        publishQueueNotifications()
+        publishQueue()
         await publishPlaybackStateRefresh()
     }
 
@@ -691,7 +686,7 @@ public actor LibrespotClient {
 
     private func setQueue(contextUri: String, tracks: [String], startIndex: Int) {
         playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex)
-        publishQueueNotifications()
+        publishQueue()
     }
 
     private func loadCurrentTrack(positionMs: UInt64 = 0, paused: Bool = false) async throws {
@@ -748,14 +743,14 @@ public actor LibrespotClient {
                 await rewindContext()
             }
             // The advance moved current/history/next; queue views need it.
-            publishQueueNotifications()
+            publishQueue()
         }
     }
 
     /// Manual skip: always moves somewhere, wrapping past the end when repeat
     /// allows and rewinding the context otherwise.
     private func advanceUserInitiated() async throws {
-        defer { publishQueueNotifications() }
+        defer { publishQueue() }
 
         // A manual skip moves even under repeat-one; only auto-advance honors it.
         if let upcoming = playbackQueue.advance(respectingRepeat: false) {
@@ -786,26 +781,14 @@ public actor LibrespotClient {
         try? await loadCurrentTrack(paused: true)
     }
 
-    /// Publishes both queue shapes the app listens to.
-    private func publishQueueNotifications() {
-        let recent = playbackQueue.recent()
-        let current = playbackQueue.currentUri
-        let upcoming = playbackQueue.upcoming()
+    /// Publishes the queue, with the context it plays from.
+    private func publishQueue() {
         announceNextTrack()
-
-        let currentItem = current.map { QueueItem(uri: $0, provider: "context") }
-
         queueSubject.send(QueueState(
-            currentTrack: currentItem,
-            nextTracks: upcoming.map { QueueItem(uri: $0.uri, provider: $0.provider) },
-            previousTracks: recent.map { QueueItem(uri: $0.uri, provider: $0.provider) },
-        ))
-
-        setQueueSubject.send(SetQueueNotification(
             contextUri: playbackQueue.contextUri,
-            currentTrack: current.map { SetQueueTrackInfo(uri: $0, provider: "context") },
-            nextTracks: upcoming.map { SetQueueTrackInfo(uri: $0.uri, provider: $0.provider) },
-            prevTracks: recent.map { SetQueueTrackInfo(uri: $0.uri, provider: $0.provider) },
+            currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: "context") },
+            nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
         ))
     }
 
@@ -1067,20 +1050,14 @@ public actor LibrespotClient {
             repeatContext: options.repeatingContext,
             timestampMs: remote.timestamp,
         ))
-        // Both queue shapes, as for local playback: the set-queue one carries
-        // the context, which the queue's heading and a double-click on one of
-        // its rows play from. Without it they named the last local context.
-        let previous = remote.prevTracks.reversed()
+        // The context goes with the queue, as for local playback: the queue's
+        // heading and a double-click on one of its rows play from it. Without
+        // it they named the last local context.
         queueSubject.send(QueueState(
+            contextUri: remote.contextUri,
             currentTrack: QueueItem(uri: track.uri, provider: track.provider),
             nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
-            previousTracks: previous.map { QueueItem(uri: $0.uri, provider: $0.provider) },
-        ))
-        setQueueSubject.send(SetQueueNotification(
-            contextUri: remote.contextUri,
-            currentTrack: SetQueueTrackInfo(uri: track.uri, provider: track.provider),
-            nextTracks: remote.nextTracks.map { SetQueueTrackInfo(uri: $0.uri, provider: $0.provider) },
-            prevTracks: previous.map { SetQueueTrackInfo(uri: $0.uri, provider: $0.provider) },
+            previousTracks: remote.prevTracks.reversed().map { QueueItem(uri: $0.uri, provider: $0.provider) },
         ))
     }
 
@@ -1212,7 +1189,7 @@ public actor LibrespotClient {
             // sent the old one back, and the edit snapped back where it was made.
             debugLog("LibrespotClient", "Queue set remotely: \(queuedUris.count) queued")
             playbackQueue.replaceUserQueue(with: queuedUris)
-            publishQueueNotifications()
+            publishQueue()
 
         case let .transfer(state):
             await takeOver(state)

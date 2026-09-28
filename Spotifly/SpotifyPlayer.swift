@@ -48,12 +48,13 @@ nonisolated enum StreamingAuthResult: Equatable {
     case cancelled
 }
 
-/// Queue state containing current, next, and previous tracks.
+/// The queue around the current track, and the context it plays from.
 struct QueueState {
+    /// Empty when playback started from a bare list of tracks.
+    let contextUri: String
     let currentTrack: QueueItem?
     let nextTracks: [QueueItem]
-    /// Previous tracks from the queue history
-    let previousTracks: [QueueItem]?
+    let previousTracks: [QueueItem]
 }
 
 /// Playback state as reported by the local player or a remote command.
@@ -74,20 +75,6 @@ nonisolated struct PlaybackState: Equatable {
 struct LoadingNotification {
     let trackUri: String
     let positionMs: UInt32
-}
-
-/// Track info in a set queue notification
-struct SetQueueTrackInfo {
-    let uri: String
-    let provider: String
-}
-
-/// Set queue notification containing the full queue state with context info
-struct SetQueueNotification {
-    let contextUri: String
-    let currentTrack: SetQueueTrackInfo?
-    let nextTracks: [SetQueueTrackInfo]
-    let prevTracks: [SetQueueTrackInfo]
 }
 
 /// Connection state of the streaming session.
@@ -140,11 +127,6 @@ enum SpotifyPlayer {
     /// Fires early when a track starts loading, before metadata is fetched.
     static var loading: AnyPublisher<LoadingNotification, Never> {
         LibrespotClient.shared.loading
-    }
-
-    /// Fires when the queue is set/modified (e.g., from a mobile app set_queue command).
-    static var setQueue: AnyPublisher<SetQueueNotification, Never> {
-        LibrespotClient.shared.setQueue
     }
 
     /// The Connect device list, pushed on cluster updates. Replaces `/me/player/devices`.
