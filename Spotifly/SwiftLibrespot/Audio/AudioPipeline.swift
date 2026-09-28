@@ -346,7 +346,7 @@ actor AudioPipeline {
 
         // The whole file is ciphertext, keystream from block 0. Nothing is
         // skipped: the stream opens with the Ogg capture pattern once decrypted.
-        let decrypted = try await AESDecryptor(key: fileKey).decrypt(encrypted)
+        let decrypted = try AESDecryptor(key: fileKey).decrypt(encrypted)
         let vorbisStream = Self.vorbisStreamOffset(decrypted)
         debugLog("AudioPipeline", "Decrypted \(decrypted.count) bytes; Vorbis begins at \(vorbisStream.offset) after \(vorbisStream.skippedPages) Spotify page(s)")
 
