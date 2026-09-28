@@ -76,9 +76,6 @@ final class AppStore {
     /// All playlists indexed by ID
     private(set) var playlists: [String: Playlist] = [:]
 
-    /// All devices indexed by ID
-    private(set) var devices: [String: Device] = [:]
-
     /// Album IDs per artist, in the order the API returned them. Cached like album
     /// and playlist tracks are, so an artist's discography is fetched once instead
     /// of on every visit to their page.
@@ -145,12 +142,6 @@ final class AppStore {
     /// Queue state (previous/current/next track IDs + loading state)
     var queue = Queue()
 
-    // MARK: - Device Loading State
-
-    /// True until the first cluster update arrives. Not a request in flight — the device list
-    /// is pushed, so there is nothing to fail and no error to show; there is only "not yet".
-    var devicesIsLoading = false
-
     // MARK: - User Profile
 
     /// Current user's profile (singleton)
@@ -183,11 +174,6 @@ final class AppStore {
         savedTrackIds.compactMap { tracks[$0] }
     }
 
-    /// Available Spotify devices
-    var availableDevices: [Device] {
-        Array(devices.values)
-    }
-
     // MARK: - Queue Computed Properties
 
     /// Current track entity from the tracks store
@@ -214,16 +200,6 @@ final class AppStore {
     /// Current track index within the full queue
     var currentIndex: Int {
         queue.previousTracks.count
-    }
-
-    /// Active device (if any) - derived from devices dictionary
-    var activeDevice: Device? {
-        devices.values.first { $0.isActive }
-    }
-
-    /// Active device ID - computed from devices (no stored duplication)
-    var activeDeviceId: String? {
-        activeDevice?.id
     }
 
     // MARK: - Entity Mutations
@@ -362,44 +338,6 @@ final class AppStore {
         for playlist in newPlaylists {
             upsertPlaylist(playlist)
         }
-    }
-
-    /// Upsert devices
-    func upsertDevices(_ newDevices: [Device]) {
-        let currentActiveId = activeDeviceId
-        devices.removeAll()
-        for device in newDevices {
-            devices[device.id] = device
-        }
-        // Preserve our tracked active device — HTTP data may lag behind after transfers.
-        // On first load (currentActiveId == nil) the HTTP is_active field is used as-is.
-        if let currentActiveId, devices[currentActiveId] != nil {
-            setActiveDevice(currentActiveId)
-        }
-    }
-
-    /// Optimistically set a device as active (for immediate UI feedback during transfer)
-    /// Creates new Device instances with updated isActive values
-    func setActiveDevice(_ deviceId: String) {
-        var updatedDevices: [String: Device] = [:]
-        for (id, device) in devices {
-            let isActive = id == deviceId
-            if device.isActive != isActive {
-                // Create new Device with updated isActive
-                updatedDevices[id] = Device(
-                    id: device.id,
-                    name: device.name,
-                    type: device.type,
-                    isActive: isActive,
-                    isPrivateSession: device.isPrivateSession,
-                    isRestricted: device.isRestricted,
-                    volumePercent: device.volumePercent,
-                )
-            } else {
-                updatedDevices[id] = device
-            }
-        }
-        devices = updatedDevices
     }
 
     // MARK: - Library Paging
@@ -743,7 +681,6 @@ final class AppStore {
                 let albums: [String: Album]
                 let artists: [String: Artist]
                 let playlists: [String: Playlist]
-                let devices: [String: Device]
                 let artistAlbumIds: [String: [String]]
 
                 let userPlaylistIds: [String]
@@ -765,8 +702,6 @@ final class AppStore {
 
                 let queue: QueueSnapshot
 
-                let activeDeviceId: String?
-
                 struct QueueItemSnapshot: Encodable {
                     let trackId: String
                     let provider: String
@@ -784,7 +719,6 @@ final class AppStore {
                 albums: albums,
                 artists: artists,
                 playlists: playlists,
-                devices: devices,
                 artistAlbumIds: artistAlbumIds,
                 userPlaylistIds: userPlaylistIds,
                 userAlbumIds: userAlbumIds,
@@ -804,7 +738,6 @@ final class AppStore {
                     currentTrack: queue.currentTrack.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
                     nextTracks: queue.nextTracks.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
                 ),
-                activeDeviceId: activeDeviceId,
             )
 
             let encoder = JSONEncoder()

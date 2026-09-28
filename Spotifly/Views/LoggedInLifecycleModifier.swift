@@ -33,7 +33,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // Before the first `await`, so no Spirc notification can arrive while the
                 // player is unobserved.
                 queueService.activate()
-                deviceService.activate()
                 playbackViewModel.setStore(store)
                 playbackViewModel.setQueueService(queueService)
 
@@ -116,8 +115,8 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     {
                         Task { @MainActor in
                             try? await Task.sleep(for: .seconds(seconds))
-                            guard let device = store.devices.values.first(where: { $0.name == target }) else {
-                                debugLog("DebugAutoplay", "No device named \(target); have \(store.devices.values.map(\.name))")
+                            guard let device = player.devices.first(where: { $0.name == target }) else {
+                                debugLog("DebugAutoplay", "No device named \(target); have \(player.devices.map(\.name))")
                                 return
                             }
                             debugLog("DebugAutoplay", "Handing playback to \(target)")

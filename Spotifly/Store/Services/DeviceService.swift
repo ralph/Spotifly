@@ -3,88 +3,34 @@
 //  Spotifly
 //
 //  Service for Spotify Connect device operations.
-//  Handles API calls and updates AppStore on success.
 //
 
-import Combine
 import Foundation
 
+/// Transfers playback between Connect devices.
+///
+/// **Devices are not loaded; they arrive.** The cluster pushes the device list over the
+/// dealer socket, and `PlayerModel` holds it. A push alone is not enough to start with: the
+/// dealer only carries *changes*, and this device's own registration is answered over HTTP
+/// rather than pushed, so on a quiet account nothing arrived at all. `SpircController`
+/// adopts the cluster that answers its PutState as well, and both reach the model the same
+/// way.
 @MainActor
 @Observable
 final class DeviceService {
-    private let store: AppStore
     private let player: PlayerModel
 
     /// Timestamp of the last outgoing transfer, used to delay the
     /// `fetchInitialPlaybackState` that fires on reconnect.
     private var lastTransferTime: ContinuousClock.Instant?
 
-    /// Counts authoritative active-device updates from the cluster, so a transfer can tell
-    /// whether one landed while it was awaiting the transfer request.
-    private var activeDeviceUpdates = 0
-
     /// The transfer currently in flight, if any. Transfers are chained onto it so no two
     /// ever overlap — see `transferPlayback(to:)`.
     private var transferTask: Task<Bool, Never>?
 
-    @ObservationIgnored private var devicesCancellable: AnyCancellable?
-    @ObservationIgnored private var activeDeviceCancellable: AnyCancellable?
-
-    init(store: AppStore, player: PlayerModel = .shared) {
-        self.store = store
+    init(player: PlayerModel = .shared) {
         self.player = player
     }
-
-    /// Starts the throttled device load and active-device tracking. Call once, from the
-    /// view that kept this instance.
-    ///
-    /// Deliberately not done in `init`: SwiftUI runs a View's `init` repeatedly and keeps
-    /// only the first `State(initialValue:)`, so a discarded instance would keep issuing
-    /// device requests and writing active-device changes into a store nothing reads.
-    ///
-    /// Idempotent — the guard reads the subscription it protects.
-    func activate() {
-        guard devicesCancellable == nil else { return }
-        recordActivation(self)
-        // Both of these are fed from inside the LibrespotClient actor, and a
-        // Combine subject delivers to its subscribers *synchronously* on
-        // whatever thread sent. These closures touch the main-actor store, so
-        // without the hop the isolation check traps — which is exactly what
-        // happened the first time a real cluster arrived.
-        devicesCancellable = SpotifyPlayer.devices
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] devices in
-                guard let self, let devices else { return }
-                store.upsertDevices(devices)
-                store.devicesIsLoading = false
-            }
-        activeDeviceCancellable = SpotifyPlayer.activeDeviceChanged
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] deviceId in
-                self?.activeDeviceUpdates += 1
-                self?.store.setActiveDevice(deviceId)
-            }
-    }
-
-    // MARK: - Device Loading
-
-    // **Devices are not loaded any more; they arrive.**
-    //
-    // `/me/player/devices` was an HTTP poll, which is why this service used to carry a
-    // throttled subject, an in-flight task and an error message. The cluster pushes the same
-    // list over the dealer socket librespot already holds, so the whole apparatus is gone and
-    // what is left is a subscription. A device appearing or disappearing now reaches Speakers
-    // without anyone asking.
-    //
-    // **A push alone is not enough to start with**, which was measured the hard way: the
-    // dealer only carries *changes*, and the device's own registration is answered over HTTP
-    // rather than pushed — so on a quiet account nothing arrived at all and Speakers stayed
-    // empty while a Connect stereo sat there reachable. `SpircController.registerDevice`
-    // adopts the cluster that answers its PutState as well as subscribing to the pushes, and
-    // both arrive here by the same route.
-    //
-    // `devicesIsLoading` stays true until the first list lands, and the publisher replays it
-    // to a Speakers view opened later.
 
     // MARK: - Playback Transfer
 
@@ -119,9 +65,9 @@ final class DeviceService {
 
         // Optimistically mark the target device as active for immediate UI feedback,
         // remembering the previous one so a rejected transfer can be undone
-        let previousActiveDeviceId = store.activeDeviceId
-        let updatesBeforeTransfer = activeDeviceUpdates
-        store.setActiveDevice(device.id)
+        let previousActiveDeviceId = player.activeDeviceId
+        let updatesBeforeTransfer = player.activeDeviceUpdates
+        player.setActiveDevice(device.id)
 
         // Check if target is our local device
         let isLocalDevice = device.id == player.ownDeviceId
@@ -143,13 +89,9 @@ final class DeviceService {
             // competing tap, but not the cluster: another client can activate a device
             // while this transfer is awaited, and that fact outranks restoring what was
             // true before the tap — including when it names the very device asked for,
-            // which the store alone cannot distinguish from the optimistic update.
-            //
-            // An empty ID clears the flag on every device, which is the right rollback when
-            // nothing was active before. Skipping the call in that case, as this used to,
-            // left the target marked active even though the transfer was rejected.
-            if activeDeviceUpdates == updatesBeforeTransfer {
-                store.setActiveDevice(previousActiveDeviceId ?? "")
+            // which the active id alone cannot distinguish from the optimistic update.
+            if player.activeDeviceUpdates == updatesBeforeTransfer {
+                player.setActiveDevice(previousActiveDeviceId)
             }
             return false
         }

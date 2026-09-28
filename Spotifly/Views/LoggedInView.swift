@@ -48,7 +48,7 @@ struct LoggedInView: View {
         _artistService = State(initialValue: ArtistService(store: store))
         let trackService = TrackService(store: store)
         _queueService = State(initialValue: QueueService(store: store, trackService: trackService))
-        _deviceService = State(initialValue: DeviceService(store: store))
+        _deviceService = State(initialValue: DeviceService())
         _navigationCoordinator = State(initialValue: NavigationCoordinator(store: store))
         _trackService = State(initialValue: trackService)
         _homeService = State(initialValue: HomeService(store: store))
@@ -91,15 +91,15 @@ struct LoggedInView: View {
                 .searchable(text: $searchText)
                 .onSubmit(of: .search) { performSearch() }
                 .onChange(of: searchText) { _, newValue in handleSearchTextChange(newValue) }
-                .onChange(of: store.activeDeviceId) { _, newId in
+                .onChange(of: player.activeDeviceId) { _, newId in
                     if newId == nil || newId == player.ownDeviceId {
                         playbackViewModel.becameLocalActiveDevice()
                     } else {
-                        playbackViewModel.becameRemoteActiveDevice(volumePercent: store.activeDevice?.volumePercent)
+                        playbackViewModel.becameRemoteActiveDevice(volumePercent: player.activeDevice?.volumePercent)
                     }
                 }
-                .onChange(of: store.activeDevice?.volumePercent) { _, newPercent in
-                    guard let newPercent, store.activeDeviceId != player.ownDeviceId else { return }
+                .onChange(of: player.activeDevice?.volumePercent) { _, newPercent in
+                    guard let newPercent, player.activeDeviceId != player.ownDeviceId else { return }
                     playbackViewModel.remoteDeviceVolumeUpdated(newPercent)
                 }
             }

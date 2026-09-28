@@ -10,6 +10,7 @@ import SwiftUI
 
 struct NowPlayingBarView: View {
     @Environment(AppStore.self) private var store
+    @Environment(PlayerModel.self) private var player
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
     @Environment(\.displayScale) private var displayScale
@@ -448,7 +449,7 @@ struct NowPlayingBarView: View {
     /// and reading `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` off the reply, having already let the
     /// user drag the slider somewhere it would not stay.
     private var volumeRefused: Bool {
-        playbackViewModel.remoteVolume != nil && store.activeDevice?.disableVolume == true
+        playbackViewModel.remoteVolume != nil && player.activeDevice?.disableVolume == true
     }
 
     private var volumeControl: some View {
@@ -486,7 +487,7 @@ struct NowPlayingBarView: View {
 
                 // A greyed-out slider says "not now"; it does not say the device is the reason.
                 if volumeRefused {
-                    Text("volume.device_controls_itself \(store.activeDevice?.name ?? "")")
+                    Text("volume.device_controls_itself \(player.activeDevice?.name ?? "")")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: 180)

@@ -476,7 +476,7 @@ final class PlaybackViewModel {
     private func resolvedPlaybackTarget() -> PlaybackTarget {
         Self.playbackTarget(
             isInitialized: isInitialized,
-            activeDeviceId: store?.activeDeviceId,
+            activeDeviceId: player.activeDeviceId,
         )
     }
 
@@ -719,8 +719,7 @@ final class PlaybackViewModel {
     /// source from the session, which is why librespot's transfer passes its own id for both
     /// sides — so this is an identifier for their logs rather than a routing decision.
     private func connectRoute() -> (from: String, to: String)? {
-        guard let store,
-              let to = store.activeDeviceId, !to.isEmpty,
+        guard let to = player.activeDeviceId, !to.isEmpty,
               let from = player.ownDeviceId, !from.isEmpty
         else { return nil }
 

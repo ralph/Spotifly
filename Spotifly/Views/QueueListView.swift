@@ -39,6 +39,7 @@ extension View {
 
 struct QueueListView: View {
     @Environment(AppStore.self) private var store
+    @Environment(PlayerModel.self) private var player
     @Environment(DeviceService.self) private var deviceService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
@@ -142,7 +143,7 @@ struct QueueListView: View {
                     .font(.headline)
 
                 // "Playing from X on Y" subtitle
-                if let device = store.activeDevice {
+                if let device = player.activeDevice {
                     playingFromText(device: device)
                         .font(.caption)
                         .foregroundStyle(.secondary)
