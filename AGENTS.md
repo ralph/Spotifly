@@ -125,9 +125,19 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 
 **AppStore** (`Store/AppStore.swift`)
 - Single source of truth for all entity data
-- Normalized entity tables: `tracks`, `albums`, `artists`, `playlists`, `devices`
+- Normalized entity tables: `tracks`, `albums`, `artists`, `playlists`
 - ID arrays for ordered collections: `savedTrackIds`, `userPlaylistIds`, `userAlbumIds`, `userArtistIds`
 - Injected via `@Environment(AppStore.self)`
+
+**PlayerModel** (`Store/PlayerModel.swift`)
+- What the UI shows of the player: the connection, the Connect devices and the active one,
+  the playback state, the queue with its context, and the volume
+- Fed by `LibrespotClient.snapshots`: one `PlayerSnapshot` per change, and a slow main thread
+  gets the newest rather than a backlog. The client never waits for the UI
+- Views read it via `@Environment(PlayerModel.self)`. `QueueService` and `PlaybackViewModel`
+  follow it with `Observations`. Nothing subscribes to the client directly, and nothing needs
+  a hop to the main queue
+- Commands still go through the static `SpotifyPlayer` facade
 
 **Entities** (`Store/Entities.swift`)
 - Unified data models: `Track`, `Album`, `Artist`, `Playlist`, `Device`
@@ -136,7 +146,8 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 
 **Services** (`Store/Services/`)
 - Handle API calls and update AppStore on success
-- Each service takes `AppStore` in its initializer
+- Each service takes `AppStore` in its initializer, except `DeviceService`, which only
+  transfers playback and writes its guess at the active device into `PlayerModel`
 - Injected via `@Environment(XxxService.self)`
 - Available services: `TrackService`, `AlbumService`, `ArtistService`, `PlaylistService`, `HomeService`, `SearchService`, `DeviceService`, `QueueService`
 

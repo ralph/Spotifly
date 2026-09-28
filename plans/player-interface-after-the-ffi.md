@@ -1,8 +1,9 @@
 # The player's interface to the app is still shaped like the FFI it replaced
 
-Status: **proposed, 2026-09-27; step 5 done the same day, steps 1–4 not started.** The two
-places where the player waited on the main thread were fixed on the day (`5c00231`);
-everything else here is a refactor with no behaviour change intended.
+Status: **done.** Step 5 landed on 2026-09-27, steps 1–4 on 2026-09-28 on `player-interface`
+(#71). See "How it landed" at the end for where the result differs from the proposal. The two
+places where the player waited on the main thread were fixed on 2026-09-27 (`5c00231`);
+everything else here was a refactor with no behaviour change intended.
 
 Component: `Spotifly/SpotifyPlayer.swift`, `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`,
 and everything that subscribes to them — `PlaybackViewModel`, `QueueService`, `DeviceService`,
@@ -117,3 +118,50 @@ Five steps, each shippable on its own, in order of value per risk.
    renderer wants more; the decode loop is a task that awaits it, and the ring buffer, the
    write throttle, the feed callback, the decode thread and the pause park are gone. See
    `docs/cpu-benchmark.md`, "Feeding the renderer".
+
+## How it landed
+
+The sections above describe the code as it was before steps 1–4.
+
+1. **Residue.** All of it went, as listed. `spircReady` was deleted rather than given a
+   meaning, and its row on the connection dashboard went with it. The provisional-SetQueue
+   refresh in `QueueService` went too. It covered the Rust path, and could never have helped,
+   because the `QueueState` sent just before had already applied the empty queue.
+2. **Race-free reads.** `positionCache`, the active-device flag and `Flags` are behind
+   `Mutex`. The active-device flag was later folded into the snapshot (step 4).
+3. **Ordered events.** The pipeline sends state, position, end of track and errors on one
+   `AsyncStream`, and the session sends its state, Spirc's clusters and its commands on another.
+   Each has one consumer loop in `LibrespotClient`. The decision on remote commands: they
+   stay concurrent, each in its own task as before, but the tasks now start in the order the
+   commands arrived. Handling them one at a time would hold a Next behind a play that is still
+   loading, where the pipeline's load generation already lets the Next supersede it.
+4. **One observable model.** `PlayerModel` (`Store/PlayerModel.swift`) applies
+   `PlayerSnapshot`s that the client yields on an `AsyncStream` with `.bufferingNewest(1)`.
+   The same snapshot, behind a `Mutex`, serves the facade's synchronous reads. Where the result
+   differs from the proposal:
+   - **Two consumers still observe**, because they have side effects rather than a view to
+     draw. `QueueService` projects the queue into the store and loads metadata, and
+     `PlaybackViewModel` anchors the position and publishes Now Playing. Both use
+     `Observations` on the model, on the main actor, with no Combine and no hop.
+     `ConnectionService` is gone. `DeviceService` is down to transfers, and the store no
+     longer holds devices or the connection.
+   - **The facade stays static for commands.** It carries more than the client (the
+     renderer, the settings, the streaming grant, transfers). A fake player would need a
+     protocol over all of it, for tests that do not exist yet. The model is what views get
+     from the environment, and `PlayerModelTests` drive it with snapshots, no engine needed.
+   - **Commands report failures.** `next`, `previous`, `seek` and `playRadio` are
+     `async throws`, and local and remote transport commands share one error path. The
+     view model's `errorMessage` is still shown nowhere, so failures reach the log but not
+     the screen.
+   - **The loading notification went.** Every one of them either went out beside an
+     optimistic playback state naming the same track and position, or anchored the position
+     at zero until the next state corrected it.
+   - **Not done:** positions still cross as `Int64`, the provider as a `String`, and
+     repeat as two `Bool`s.
+
+Two bugs came to light while doing this, and were fixed:
+
+- The dashboard's uptime went back to zero on every cluster update, because each update
+  republished the connection state with a fresh connect time.
+- A device the store marked active lost its `disableVolume` flag.
+

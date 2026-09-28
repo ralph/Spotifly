@@ -29,8 +29,8 @@ Swift. There is no Rust, no package manager and no librespot.
 |---|---|
 | `Spotifly/Auth/` | One OAuth grant (PKCE) against Spotify's own desktop client id, redirected to a one-shot listener on a loopback port. That single token signs in to the accesspoint, which hands back credentials for reconnecting, and is the bearer for every HTTP API; tokens live in the keychain. |
 | `Spotifly/PartnerAPI/` | The APIs Spotify's own clients use: pathfinder GraphQL at `api-partner.spotify.com` for the library, search and pages, and spclient REST. The public Web API is not used. |
-| `Spotifly/Store/` | The normalized `AppStore` and the services that fill it — see `AGENTS.md`. |
-| `Spotifly/SpotifyPlayer.swift` | The static facade the app talks to for playback, backed by `LibrespotClient.shared`. |
+| `Spotifly/Store/` | The normalized `AppStore` and the services that fill it, and `PlayerModel`, which holds what the UI shows of the player — see `AGENTS.md`. |
+| `Spotifly/SpotifyPlayer.swift` | The static facade the app sends playback commands through, backed by `LibrespotClient.shared`. The client publishes its state as snapshots, which `PlayerModel` applies on the main actor. |
 | `Spotifly/SwiftLibrespot/` | Playback and Spotify Connect. A Swift port of the protocol handling that [librespot](https://github.com/librespot-org/librespot) implements in Rust — hence the names — which neither links nor builds librespot. |
 | `…/Network/` | Accesspoint resolution, the TCP connection with its Diffie-Hellman handshake and Shannon cipher, and the spclient HTTP client (metadata, `storage-resolve`, connect-state). |
 | `…/Dealer/`, `…/Connect/` | The dealer WebSocket, and `SpircController`, which publishes this device's state to the Connect cluster and turns remote commands into player calls. |

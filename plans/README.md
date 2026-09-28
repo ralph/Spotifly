@@ -28,10 +28,6 @@ PR; the rest are recorded but not planned.
 
 ### Recorded, not planned
 
-- **The player's interface is still FFI-shaped** — [player-interface-after-the-ffi.md](player-interface-after-the-ffi.md).
-  Ten Combine subjects, types built for C, a static facade. A five-step move to ordered
-  streams and one `@Observable` model; the last step, the macOS 27 renderer, is done. Also
-  answers whether a slow UI can interrupt playback: no.
 - **Playlist writes Spotifly cannot do** — [playlist-attributes-not-written.md](playlist-attributes-not-written.md).
   Reading is complete; only writing cover art and attributes is missing.
 - **Playlist folders** — [playlist-folder-hierarchy.md](playlist-folder-hierarchy.md). Deferred
@@ -64,6 +60,7 @@ PR; the rest are recorded but not planned.
 
 | Plan | Status |
 | --- | --- |
+| [player-interface-after-the-ffi.md](player-interface-after-the-ffi.md) | Done 2026-09-28 (#71): ordered streams in the engine, one `@Observable` `PlayerModel` fed by snapshots, no Combine between the player and the UI. Also answers whether a slow UI can interrupt playback: no |
 | [keep-playing-through-a-reconnect.md](keep-playing-through-a-reconnect.md) | Fixed 2026-09-27 (#68): a reset no longer rebuilds the pipeline. Checked with the drop hook, mid-track and paused. Controls pressed during the outage work now too |
 | [single-grant-partner-api.md](single-grant-partner-api.md) | **Track A shipped** 2026-08-14 (#49, #51, #53, #54). One grant, no dashboard app, `api.spotify.com` retired. Track B is open — see above |
 | [seek-bar-jumps-between-two-position-clocks.md](seek-bar-jumps-between-two-position-clocks.md) | Fixed 2026-08-14, confirmed at runtime across three logs |
