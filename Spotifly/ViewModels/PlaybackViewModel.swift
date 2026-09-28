@@ -695,22 +695,41 @@ final class PlaybackViewModel {
         }
 
         Task {
+            // Where the caller moved the display ahead of playback for this command, if it
+            // did. Callers anchor after this returns, and this runs after them.
+            let promise = optimisticAnchorTime
             do {
                 try await command()
             } catch is CancellationError {
                 // A newer load took over, as a second skip does; it reports for itself.
-            } catch let error as SpclientError where error.isDeclined {
-                // Spotify refusing on its own terms — no track to go back to, or a device
-                // that will not take the command. The user pressed a control deliberately
-                // and nothing is broken, so this is a log line rather than an error banner.
-                debugLog("PlaybackViewModel", "\(name) declined: \(error.localizedDescription)")
-                declined(error)
             } catch {
-                debugLog("PlaybackViewModel", "\(name) failed: \(error.localizedDescription)")
-                errorMessage = error.localizedDescription
+                if let error = error as? SpclientError, error.isDeclined {
+                    // Spotify refusing on its own terms — no track to go back to, or a device
+                    // that will not take the command. The user pressed a control deliberately
+                    // and nothing is broken, so this is a log line rather than an error banner.
+                    debugLog("PlaybackViewModel", "\(name) declined: \(error.localizedDescription)")
+                    declined(error)
+                } else {
+                    debugLog("PlaybackViewModel", "\(name) failed: \(error.localizedDescription)")
+                    errorMessage = error.localizedDescription
+                }
+                withdraw(promise)
             }
         }
         return true
+    }
+
+    /// Puts the display back where playback is, after a command that moved it ahead failed.
+    ///
+    /// Nothing reports back a command that did not happen, and another device's position is
+    /// not drift-checked, so the display stayed where the command had promised. It used to be
+    /// put back by chance, when the next cluster push re-sent the unchanged playback state;
+    /// the player model passes on only what changed. Left alone once a newer command has
+    /// moved the display, or a measurement has replaced the promise.
+    private func withdraw(_ promise: Double?) {
+        guard let promise, optimisticAnchorTime == promise else { return }
+        debugLog("PlaybackViewModel", "Withdrawing the position a failed command promised")
+        handlePlaybackStateUpdate(player.playback)
     }
 
     /// Who to address a connect-state command as, and to. Nil when nothing is active.
@@ -1450,10 +1469,10 @@ final class PlaybackViewModel {
         // playback. That is a promise, not a measurement, and the two disagree by design
         // until the command lands — so nothing can be judged inside the grace window. Past
         // it, an optimistic anchor that no measurement has confirmed is one playback never
-        // carried out: `performSeek` rolls back a command it could not *issue*, but one
-        // that was issued and then failed reports an error but no position to go back to.
-        // Then either direction is evidence, because the display is somewhere playback
-        // never went.
+        // carried out: `performSeek` rolls back a command it could not *issue*, and
+        // `withdraw` one that failed, but a command that returned having done nothing — a
+        // seek before there is a pipeline to reach — says so to nobody. Then either
+        // direction is evidence, because the display is somewhere playback never went.
         let playerPosition = SpotifyPlayer.positionMs
         let displayedPosition = interpolatedPositionMs
         let displayedLead = Int64(displayedPosition) - Int64(playerPosition)
