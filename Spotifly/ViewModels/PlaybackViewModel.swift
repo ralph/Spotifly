@@ -108,10 +108,6 @@ final class PlaybackViewModel {
     }
 
     private var lastAlbumArtURL: String?
-    private var connectionStateSubscription: AnyCancellable?
-    private var playbackStateSubscription: AnyCancellable?
-    private var volumeSubscription: AnyCancellable?
-    private var loadingSubscription: AnyCancellable?
     /// Flag to prevent feedback loop when we set volume locally
     private var isSettingVolumeLocally = false
     /// Subject for debouncing volume changes
@@ -143,11 +139,8 @@ final class PlaybackViewModel {
     private var logoutTask: Task<Void, Never>?
 
     private init() {
-        setupConnectionStateSubscription()
-        setupPlaybackStateSubscription()
-        setupVolumeSubscription()
+        observePlayer()
         setupVolumeDebounceSubscription()
-        setupLoadingSubscription()
         setupSeekSubscription()
         setupRemoteCommandCenter()
 
@@ -1039,7 +1032,33 @@ final class PlaybackViewModel {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
-    // MARK: - Player State Subscriptions
+    // MARK: - Player State
+
+    /// Follows the connection, the playback state and the volume in the player model. Each
+    /// observation gives the value as it stands, then every change, on the main actor.
+    ///
+    /// The playback state is how external control shows up: a phone pausing *this* device
+    /// sends a Connect command over the dealer, which pauses the pipeline, whose state
+    /// arrives here exactly as a local pause would.
+    private func observePlayer() {
+        Task { [weak self, player] in
+            for await _ in Observations({ player.connection }) {
+                self?.handleConnectionChange()
+            }
+        }
+        Task { [weak self, player] in
+            for await state in Observations({ player.playback }) {
+                self?.handlePlaybackStateUpdate(state)
+            }
+        }
+        Task { [weak self, player] in
+            for await volume in Observations({ player.volume }) {
+                if let volume {
+                    self?.handleVolumeChange(volume)
+                }
+            }
+        }
+    }
 
     /// Adopts a recovery the client completed on its own after an explicit initialization
     /// failed.
@@ -1048,28 +1067,20 @@ final class PlaybackViewModel {
     /// to `LibrespotClient`'s auto-recovery, and clearing it would make the next user
     /// command start a destructive rebuild from here. An explicit initialization clears it
     /// itself before rebuilding.
-    private func setupConnectionStateSubscription() {
-        connectionStateSubscription = SpotifyPlayer.connectionState
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self else {
-                    return
-                }
+    private func handleConnectionChange() {
+        syncConnectionReadiness()
 
-                syncConnectionReadiness()
+        guard isConnectionReady,
+              !isInitialized,
+              !isLoggingOut,
+              initializationTask == nil
+        else {
+            return
+        }
 
-                guard isConnectionReady,
-                      !isInitialized,
-                      !isLoggingOut,
-                      initializationTask == nil
-                else {
-                    return
-                }
-
-                debugLog("PlaybackViewModel", "Adopting recovery the client completed on its own")
-                isInitialized = true
-                errorMessage = nil
-            }
+        debugLog("PlaybackViewModel", "Adopting recovery the client completed on its own")
+        isInitialized = true
+        errorMessage = nil
     }
 
     /// Brings `isConnectionReady` in line with the client, freezing another device's position
@@ -1078,7 +1089,7 @@ final class PlaybackViewModel {
     /// Reads the live flags rather than trusting the delivered snapshot, which may already
     /// be stale by the time it arrives.
     ///
-    /// Called from the connection-state callback *and* once a second from the drift check.
+    /// Called on every connection change *and* once a second from the drift check.
     /// The second caller is deliberate: display interpolation now depends on this flag, so
     /// a single missed callback would leave the progress bar stopped during healthy
     /// playback — a more visible failure than the drift this prevents. Re-reading the flags
@@ -1098,65 +1109,18 @@ final class PlaybackViewModel {
         isConnectionReady = isReady
     }
 
-    /// Subscribe to the playback state the client publishes.
-    ///
-    /// This is how external control shows up: a phone pausing *this* device sends a Connect
-    /// command over the dealer, which pauses the pipeline, whose state arrives here exactly
-    /// as a local pause would.
-    private func setupPlaybackStateSubscription() {
-        playbackStateSubscription = SpotifyPlayer.playbackState
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                self?.handlePlaybackStateUpdate(state)
-            }
-    }
-
-    /// Subscribe to remote volume changes from Spirc
-    /// This allows volume changes from other devices to update the local slider
-    private func setupVolumeSubscription() {
-        volumeSubscription = SpotifyPlayer.volumeChanged
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] volumeU16 in
-                guard let self else { return }
-                // Convert from 0-65535 to 0.0-1.0
-                let normalizedVolume = Double(volumeU16) / 65535.0
-                debugLog("PlaybackViewModel", "Remote volume change: \(volumeU16) -> \(normalizedVolume)")
-                // Set flag to prevent feedback loop
-                isSettingVolumeLocally = true
-                volume = normalizedVolume
-                isSettingVolumeLocally = false
-                // Only persist when Spotifly is the active device
-                if remoteVolume == nil {
-                    saveVolume()
-                }
-            }
-    }
-
-    /// Subscribe to loading notifications from Spirc
-    /// This fires early (~180ms) when a track starts loading, before metadata is fetched
-    /// Allows faster Now Playing updates when playing from remote devices
-    private func setupLoadingSubscription() {
-        loadingSubscription = SpotifyPlayer.loading
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] notification in
-                guard let self else { return }
-                debugLog("PlaybackViewModel", "Loading notification: \(notification.trackUri) at \(notification.positionMs)ms")
-
-                // Update current track URI immediately for faster Now Playing updates
-                let trackChanged = !notification.trackUri.isEmpty && notification.trackUri != currentTrackUri
-                if trackChanged {
-                    currentTrackUri = notification.trackUri
-                    // Mark as playing since we're loading a new track
-                    isPlaying = true
-                }
-
-                // Use position from loading callback - this is reliable
-                anchorPosition(notification.positionMs)
-
-                if trackChanged {
-                    updateNowPlayingInfo()
-                }
-            }
+    /// The logical Connect volume the client published: set here and echoed back, or
+    /// changed from another device. Moves the slider without sending it back.
+    private func handleVolumeChange(_ newVolume: Double) {
+        debugLog("PlaybackViewModel", "Volume published: \(newVolume)")
+        // Set flag to prevent feedback loop
+        isSettingVolumeLocally = true
+        volume = newVolume
+        isSettingVolumeLocally = false
+        // Only persist when Spotifly is the active device
+        if remoteVolume == nil {
+            saveVolume()
+        }
     }
 
     /// Subscribe to debounced seek requests
