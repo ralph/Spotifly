@@ -70,6 +70,7 @@ struct SpotiflyApp: App {
                     windowState.exitMiniPlayerMode(window: notification.object as? NSWindow)
                 }
                 .environment(windowState)
+                .environment(PlayerModel.shared)
                 .preferredColorScheme(appearanceMode.colorScheme)
                 .onChange(of: appearanceMode, initial: true) { _, mode in
                     mode.apply()

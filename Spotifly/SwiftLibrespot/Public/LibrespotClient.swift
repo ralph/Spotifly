@@ -119,10 +119,31 @@ public actor LibrespotClient {
         connectionStateSubject.eraseToAnyPublisher()
     }
 
+    // MARK: - Snapshots (what the app shows)
+
+    /// The latest snapshot, which the facade's synchronous reads use.
+    private nonisolated let latest = Mutex(PlayerSnapshot())
+
+    /// Every change, for the one consumer that shows them. One that falls
+    /// behind gets the newest snapshot, not the ones in between, and yielding
+    /// never waits for it.
+    nonisolated let snapshots: AsyncStream<PlayerSnapshot>
+    private nonisolated let snapshotSink: AsyncStream<PlayerSnapshot>.Continuation
+
+    /// Changes the latest snapshot and yields it. Only called on this actor,
+    /// so snapshots go out in the order they were made.
+    private func publish(_ change: (inout PlayerSnapshot) -> Void) {
+        snapshotSink.yield(latest.withLock { snapshot in
+            change(&snapshot)
+            return snapshot
+        })
+    }
+
     // MARK: - Initialization
 
     private init() {
         deviceInfo = DeviceInfo.create(name: "Spotifly")
+        (snapshots, snapshotSink) = AsyncStream.makeStream(of: PlayerSnapshot.self, bufferingPolicy: .bufferingNewest(1))
         debugLog("LibrespotClient", "Created for device \(deviceInfo.deviceName) (\(deviceInfo.deviceId))")
     }
 
@@ -248,6 +269,11 @@ public actor LibrespotClient {
         queueSubject.send(nil)
         clearLocalState()
         isActiveDeviceFlag.withLock { $0 = false }
+        publish {
+            $0.devices = nil
+            $0.queue = nil
+            $0.activeDeviceId = ""
+        }
     }
 
     /// Drops all connections and subscriptions. Credentials survive — sleep
@@ -586,6 +612,7 @@ public actor LibrespotClient {
         let clamped = max(0, min(1, volume))
         logicalVolume = UInt32(clamped * 65535)
         volumeSubject.send(UInt16(logicalVolume))
+        publish { $0.volume = clamped }
         // Other clients draw this device's slider from what Spirc reports.
         await session?.reportLocalVolume(logicalVolume)
     }
@@ -768,12 +795,14 @@ public actor LibrespotClient {
     /// Publishes the queue, with the context it plays from.
     private func publishQueue() {
         announceNextTrack()
-        queueSubject.send(QueueState(
+        let queue = QueueState(
             contextUri: playbackQueue.contextUri,
             currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: "context") },
             nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
-        ))
+        )
+        queueSubject.send(queue)
+        publish { $0.queue = queue }
     }
 
     // MARK: - Pipeline Wiring
@@ -807,6 +836,7 @@ public actor LibrespotClient {
     private func clearLocalState() {
         localState = nil
         playbackStateSubject.send(nil)
+        publish { $0.playback = nil }
     }
 
     private func handlePipelineState(_ state: AudioPipeline.AudioPlaybackState) async {
@@ -968,6 +998,10 @@ public actor LibrespotClient {
         isActiveDeviceFlag.withLock { $0 = nowActive }
 
         activeDeviceSubject.send(activeId)
+        publish {
+            $0.devices = devices
+            $0.activeDeviceId = activeId
+        }
 
         if nowActive, !wasActive {
             debugLog("LibrespotClient", "This device is now the active one")
@@ -1018,7 +1052,7 @@ public actor LibrespotClient {
 
         let playing = deviceActive && remote.isPlaying && !remote.isPaused
         let options = remote.options
-        playbackStateSubject.send(PlaybackState(
+        let playback = PlaybackState(
             isPlaying: playing,
             isPaused: !playing,
             trackUri: track.uri,
@@ -1028,16 +1062,22 @@ public actor LibrespotClient {
             repeatTrack: options.repeatingTrack,
             repeatContext: options.repeatingContext,
             timestampMs: remote.timestamp,
-        ))
+        )
         // The context goes with the queue, as for local playback: the queue's
         // heading and a double-click on one of its rows play from it. Without
         // it they named the last local context.
-        queueSubject.send(QueueState(
+        let queue = QueueState(
             contextUri: remote.contextUri,
             currentTrack: QueueItem(uri: track.uri, provider: track.provider),
             nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: remote.prevTracks.reversed().map { QueueItem(uri: $0.uri, provider: $0.provider) },
-        ))
+        )
+        playbackStateSubject.send(playback)
+        queueSubject.send(queue)
+        publish {
+            $0.playback = playback
+            $0.queue = queue
+        }
     }
 
     /// Picks up playback another device handed over — librespot's
@@ -1210,6 +1250,7 @@ public actor LibrespotClient {
         )
         localState = state
         playbackStateSubject.send(state)
+        publish { $0.playback = state }
     }
 
     /// Re-emits the last playback state — used after option changes (shuffle,
@@ -1250,6 +1291,7 @@ public actor LibrespotClient {
             isActiveDevice: isActiveDeviceFlag.withLock { $0 },
         )
         connectionStateSubject.send(state)
+        publish { $0.connection = state }
     }
 
     // MARK: - Helpers

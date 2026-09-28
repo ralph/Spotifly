@@ -307,7 +307,7 @@ struct UserProfile {
 // MARK: - Device
 
 /// Spotify Connect device.
-struct Device: Identifiable, Hashable, Encodable {
+nonisolated struct Device: Identifiable, Hashable, Encodable {
     let id: String
     let name: String
     let type: String

@@ -49,7 +49,7 @@ nonisolated enum StreamingAuthResult: Equatable {
 }
 
 /// The queue around the current track, and the context it plays from.
-struct QueueState {
+nonisolated struct QueueState: Equatable {
     /// Empty when playback started from a bare list of tracks.
     let contextUri: String
     let currentTrack: QueueItem?
@@ -89,6 +89,23 @@ nonisolated struct LibrespotConnectionState: Equatable {
     /// cluster's active device id. The single fact that playback routing and
     /// the UI both read.
     let isActiveDevice: Bool
+}
+
+/// Everything the player tells the app, as of one moment.
+///
+/// The client yields one on every change, to the one consumer that shows them:
+/// `PlayerModel`. The facade's synchronous reads use the latest one.
+nonisolated struct PlayerSnapshot: Equatable {
+    var connection: LibrespotConnectionState?
+    /// The Connect devices; nil until the first cluster has arrived.
+    var devices: [Device]?
+    /// Empty while no device is active.
+    var activeDeviceId = ""
+    /// Whichever device is playing: this one, or another one, mirrored.
+    var playback: PlaybackState?
+    var queue: QueueState?
+    /// The logical Connect volume, 0–1; nil until one has been set.
+    var volume: Double?
 }
 
 // MARK: - Bridge Subjects
