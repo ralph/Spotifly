@@ -14,9 +14,6 @@ import SwiftUI
 private struct ConnectionStatusRow: View {
     let label: LocalizedStringKey
     let isConnected: Bool
-    /// Shown in place of the connected/disconnected text where the row has something more
-    /// specific to say, such as how far Spirc got.
-    let detail: String?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -29,17 +26,9 @@ private struct ConnectionStatusRow: View {
 
             Spacer()
 
-            if let detail {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            } else {
-                Text(isConnected ? String(localized: "connection.connected") : String(localized: "connection.disconnected"))
-                    .font(.caption)
-                    .foregroundStyle(isConnected ? .green : .secondary)
-            }
+            Text(isConnected ? String(localized: "connection.connected") : String(localized: "connection.disconnected"))
+                .font(.caption)
+                .foregroundStyle(isConnected ? .green : .secondary)
         }
     }
 }
@@ -125,24 +114,15 @@ struct ConnectionStatusView: View {
                     Text("connection.status")
                         .font(.headline)
                     Spacer()
-                    statusBadge(isConnected: connection.isConnected && connection.spircReady)
+                    statusBadge(isConnected: connection.isConnected)
                 }
 
                 Divider()
 
-                VStack(spacing: 8) {
-                    ConnectionStatusRow(
-                        label: "connection.session",
-                        isConnected: connection.isConnected,
-                        detail: nil,
-                    )
-
-                    ConnectionStatusRow(
-                        label: "connection.spirc",
-                        isConnected: connection.spircReady,
-                        detail: connection.spircReady ? String(localized: "connection.spirc_ready") : String(localized: "connection.spirc_not_ready"),
-                    )
-                }
+                ConnectionStatusRow(
+                    label: "connection.session",
+                    isConnected: connection.isConnected,
+                )
 
                 Divider()
 

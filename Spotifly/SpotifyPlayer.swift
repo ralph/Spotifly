@@ -93,7 +93,6 @@ struct SetQueueNotification {
 /// Connection state of the streaming session.
 nonisolated struct LibrespotConnectionState: Equatable {
     let sessionConnected: Bool
-    let spircReady: Bool
     let deviceId: String?
     let deviceName: String
     let reconnectAttempt: UInt32
@@ -253,11 +252,6 @@ enum SpotifyPlayer {
     /// Whether the session is currently connected and ready for playback commands.
     static var isSessionConnected: Bool {
         LibrespotClient.shared.currentConnectionState?.sessionConnected == true
-    }
-
-    /// Whether Spirc is initialized and connected to Spotify Connect.
-    static var isSpircReady: Bool {
-        LibrespotClient.shared.currentConnectionState?.spircReady == true
     }
 
     /// Whether this device is the active Spotify Connect device.

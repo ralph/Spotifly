@@ -325,19 +325,16 @@ final class PlaybackViewModel {
     /// How long to wait for the player to become usable after initialization.
     private static let readinessTimeout: Duration = .seconds(5)
 
-    /// Polls until the client reports a usable player, or the timeout expires.
-    ///
-    /// Both halves are required: every Spotifly control goes through Spirc, so a connected
-    /// session without a ready Spirc is not a player we can drive.
+    /// Polls until the client reports a connected session, or the timeout expires.
     private func waitUntilReady() async -> Bool {
         let deadline = ContinuousClock.now + Self.readinessTimeout
         while ContinuousClock.now < deadline {
-            if SpotifyPlayer.isSessionConnected, SpotifyPlayer.isSpircReady {
+            if SpotifyPlayer.isSessionConnected {
                 return true
             }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return SpotifyPlayer.isSessionConnected && SpotifyPlayer.isSpircReady
+        return SpotifyPlayer.isSessionConnected
     }
 
     /// Where a play request should go.
@@ -1086,7 +1083,7 @@ final class PlaybackViewModel {
     /// on the timer makes that self-heal within a second, and routing both callers through
     /// here means the timer can never flip the flag without also freezing the position.
     private func syncConnectionReadiness() {
-        let isReady = SpotifyPlayer.isSessionConnected && SpotifyPlayer.isSpircReady
+        let isReady = SpotifyPlayer.isSessionConnected
         guard isReady != isConnectionReady else { return }
 
         // Pinned where last seen, or the display would fall back to the last anchor once it

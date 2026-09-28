@@ -233,9 +233,6 @@
 /* Connection Status */
 "connection.status" = "État de la connexion";
 "connection.session" = "Session";
-"connection.spirc" = "Spirc";
-"connection.spirc_ready" = "Prêt";
-"connection.spirc_not_ready" = "Pas prêt";
 "connection.uptime" = "Temps de fonctionnement";
 "connection.reconnect_attempts" = "Tentatives de reconnexion";
 "connection.device_id" = "ID de l'appareil";

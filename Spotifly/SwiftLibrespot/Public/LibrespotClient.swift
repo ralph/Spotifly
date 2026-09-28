@@ -1280,7 +1280,6 @@ public actor LibrespotClient {
     ) {
         let state = LibrespotConnectionState(
             sessionConnected: connected,
-            spircReady: connected,
             deviceId: deviceInfo.deviceId,
             deviceName: deviceInfo.deviceName,
             reconnectAttempt: reconnectAttempt,

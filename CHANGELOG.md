@@ -93,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - **The Rust layer, and librespot with it.** `rust/` — the crate that built librespot from a checkout beside the repo, its `build.sh`, and the `spotifly_rust.h` header Swift called it through — and the "Build Rust Library" phase that ran before every build, with the `-lspotifly_rust` link flags and the search paths that found it. `rust/src/proxy_sink.rs` came back once, in a merge of `main`, which had created it after the branch removed the rest, and is gone too.
 - The scheme's `RUST_LOG=librespot=debug,spotifly_rust=debug` launch variable and the `rust/target/` ignore rule. Nothing reads the one or produces the other.
+- The connection dashboard's Spirc row. `spircReady` was set from the same value as `sessionConnected`, so the row showed the session row a second time; the readiness checks that required both now read the session alone.
 
 ## [1.2.7] - 2026-08-14
 

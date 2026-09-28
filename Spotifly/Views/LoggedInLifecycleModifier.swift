@@ -161,7 +161,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // is easy to miss because it looks like a view modifier rather than a
             // subscription.
             .onReceive(SpotifyPlayer.connectionState.receive(on: DispatchQueue.main)) { state in
-                let isReady = state?.sessionConnected == true && state?.spircReady == true
+                let isReady = state?.sessionConnected == true
                 defer { wasConnectionReady = isReady }
 
                 // Only react to transitions.
