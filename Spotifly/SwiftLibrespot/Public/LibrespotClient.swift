@@ -12,6 +12,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import Synchronization
 
 /// Main client for Swift librespot.
 ///
@@ -66,7 +67,7 @@ public actor LibrespotClient {
 
     /// Whether this device is the cluster's active one. Kept beside the
     /// subject so the synchronous facade getter never awaits the actor.
-    private nonisolated(unsafe) var isActiveDeviceFlag = false
+    private nonisolated let isActiveDeviceFlag = Mutex(false)
 
     /// What the local player is doing, or nil when it holds nothing.
     ///
@@ -242,7 +243,7 @@ public actor LibrespotClient {
         devicesSubject.send(nil)
         queueSubject.send(nil)
         clearLocalState()
-        isActiveDeviceFlag = false
+        isActiveDeviceFlag.withLock { $0 = false }
     }
 
     /// Drops all connections and subscriptions. Credentials survive — sleep
@@ -272,7 +273,7 @@ public actor LibrespotClient {
             // where the wake's reconnect loads it. The stop alone left it
             // "playing" at position zero, and the wake played it from the top.
             if let current = localState, current.isPlaying {
-                let position = await audioPipeline?.currentPositionMs() ?? positionCache
+                let position = await audioPipeline?.currentPositionMs() ?? positionCache.withLock { $0 }
                 publishPlaybackState(for: current.trackUri, playing: false, paused: true, positionMs: Int64(position))
             }
             await audioPipeline?.stop()
@@ -633,20 +634,20 @@ public actor LibrespotClient {
     }
 
     nonisolated var positionMsCached: UInt64 {
-        positionCache
+        positionCache.withLock { $0 }
     }
 
     nonisolated var isActiveDeviceFlagValue: Bool {
-        isActiveDeviceFlag
+        isActiveDeviceFlag.withLock { $0 }
     }
 
     nonisolated var queueSnapshotValue: QueueState? {
         queueSubject.value
     }
 
-    /// Position cache, fed by the pipeline's position ticks. Written from the
-    /// actor and read anywhere; a torn read costs one stale slider sample.
-    private nonisolated(unsafe) var positionCache: UInt64 = 0
+    /// Position cache, fed by the pipeline's position ticks and read from
+    /// anywhere.
+    private nonisolated let positionCache = Mutex<UInt64>(0)
 
     /// Starts rebuilding the session if it is down, without blocking: the
     /// outcome says whether recovery began, was already under way, or is
@@ -804,7 +805,7 @@ public actor LibrespotClient {
 
         pipeline.position
             .sink { [weak self] positionMs in
-                self?.positionCache = positionMs
+                self?.positionCache.withLock { $0 = positionMs }
             }
             .store(in: &pipelineSubscriptions)
 
@@ -984,9 +985,9 @@ public actor LibrespotClient {
         // app went on routing commands to it. `setActiveDevice("")` marks every
         // device inactive, which is exactly the intended reading.
         let activeId = cluster.activeDeviceId ?? ""
-        let wasActive = isActiveDeviceFlag
+        let wasActive = isActiveDeviceFlag.withLock { $0 }
         let nowActive = !activeId.isEmpty && activeId == deviceInfo.deviceId
-        isActiveDeviceFlag = nowActive
+        isActiveDeviceFlag.withLock { $0 = nowActive }
 
         activeDeviceSubject.send(activeId)
 
@@ -1268,7 +1269,7 @@ public actor LibrespotClient {
             reconnectAttempt: reconnectAttempt,
             lastError: error,
             connectedSinceMs: connected ? UInt64(Date().timeIntervalSince1970 * 1000) : nil,
-            isActiveDevice: isActiveDeviceFlag,
+            isActiveDevice: isActiveDeviceFlag.withLock { $0 },
         )
         connectionStateSubject.send(state)
     }
