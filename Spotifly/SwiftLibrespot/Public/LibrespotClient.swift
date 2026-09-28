@@ -41,7 +41,8 @@ public actor LibrespotClient {
     /// The account the session plays as.
     private var usernameProvider: (@Sendable () async -> String?)?
 
-    private var subscriptions: Set<AnyCancellable> = []
+    /// Consumes the current session's events; cancelled when it is torn down.
+    private var sessionEvents: Task<Void, Never>?
 
     // MARK: - Queue & Playback Bookkeeping
 
@@ -252,7 +253,8 @@ public actor LibrespotClient {
     /// Drops all connections and subscriptions. Credentials survive — sleep
     /// uses this shape, and wake rebuilds from them.
     private func teardown() async {
-        subscriptions.removeAll()
+        sessionEvents?.cancel()
+        sessionEvents = nil
         await audioPipeline?.stop()
         await session?.disconnect()
         audioPipeline = nil
@@ -890,26 +892,28 @@ public actor LibrespotClient {
     // MARK: - Session Wiring
 
     private func subscribeToSession(_ session: LibrespotSession) {
-        session.statePublisher
-            .sink { [weak self] state in
-                guard let self else { return }
-                Task { await self.handleSessionState(state) }
-            }
-            .store(in: &subscriptions)
+        sessionEvents?.cancel()
+        let events = session.events
+        sessionEvents = Task { await self.handle(events) }
+    }
 
-        session.clusterStatePublisher
-            .sink { [weak self] cluster in
-                guard let self else { return }
-                Task { await self.handleClusterUpdate(cluster) }
+    /// Handles the session's events one at a time, in the order it sent them.
+    ///
+    /// A remote command is only started in order, in a task of its own, as
+    /// each was before: a Next then supersedes a play that is still loading,
+    /// through the pipeline's load generation, where handling commands one at
+    /// a time would hold the skip up until the load had finished.
+    private func handle(_ events: AsyncStream<LibrespotSession.Event>) async {
+        for await event in events {
+            switch event {
+            case let .state(state):
+                handleSessionState(state)
+            case let .cluster(cluster):
+                await handleClusterUpdate(cluster)
+            case let .command(command):
+                Task { await executeRemoteCommand(command) }
             }
-            .store(in: &subscriptions)
-
-        session.commandsPublisher
-            .sink { [weak self] command in
-                guard let self else { return }
-                Task { await self.executeRemoteCommand(command) }
-            }
-            .store(in: &subscriptions)
+        }
     }
 
     private func handleSessionState(_ state: SessionState) {
@@ -949,9 +953,7 @@ public actor LibrespotClient {
 
     // MARK: - Cluster Handling
 
-    private func handleClusterUpdate(_ cluster: SpircController.ClusterState?) async {
-        guard let cluster else { return }
-
+    private func handleClusterUpdate(_ cluster: SpircController.ClusterState) async {
         let devices = cluster.devices.map(\.asEntity)
         devicesSubject.send(devices)
 

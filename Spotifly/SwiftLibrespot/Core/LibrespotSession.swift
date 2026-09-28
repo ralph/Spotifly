@@ -43,19 +43,31 @@ public actor LibrespotSession {
     private var dealerConnection: DealerConnection?
     private var spircController: SpircController?
 
-    private nonisolated(unsafe) let stateSubject = CurrentValueSubject<SessionState, Never>(.disconnected)
+    // MARK: - Events
 
-    // MARK: - Publishers
-
-    public nonisolated var statePublisher: AnyPublisher<SessionState, Never> {
-        stateSubject.eraseToAnyPublisher()
+    enum Event: Sendable {
+        case state(SessionState)
+        /// A cluster Spirc adopted, pushed by the dealer or returned by PutState.
+        case cluster(SpircController.ClusterState)
+        case command(SpircRemoteCommand)
     }
+
+    /// The session's states and what Spirc hears, for one consumer, in the
+    /// order they happened. Starts with the state the session is created in.
+    nonisolated let events: AsyncStream<Event>
+    private nonisolated let eventSink: AsyncStream<Event>.Continuation
 
     // MARK: - Initialization
 
     public init(deviceInfo: DeviceInfo) {
         self.deviceInfo = deviceInfo
+        (events, eventSink) = AsyncStream.makeStream(of: Event.self)
+        eventSink.yield(.state(state))
         debugLog("LibrespotSession", "Session created for device: \(deviceInfo.deviceName)")
+    }
+
+    deinit {
+        eventSink.finish()
     }
 
     // MARK: - Connection Management
@@ -191,7 +203,7 @@ public actor LibrespotSession {
 
     private func updateState(_ newState: SessionState) {
         state = newState
-        stateSubject.send(newState)
+        eventSink.yield(.state(newState))
     }
 
     // MARK: - Session Info
@@ -214,35 +226,24 @@ public actor LibrespotSession {
         resolvedEndpoints?.spclients.first
     }
 
-    // MARK: - SPIRC Publishers (forwarded from SpircController)
-
-    public nonisolated var clusterStatePublisher: AnyPublisher<SpircController.ClusterState?, Never> {
-        spircClusterStateSubject.eraseToAnyPublisher()
-    }
-
-    public nonisolated var commandsPublisher: AnyPublisher<SpircRemoteCommand, Never> {
-        spircCommandSubject.eraseToAnyPublisher()
-    }
-
-    private nonisolated(unsafe) let spircClusterStateSubject = CurrentValueSubject<SpircController.ClusterState?, Never>(nil)
-    private nonisolated(unsafe) let spircCommandSubject = PassthroughSubject<SpircRemoteCommand, Never>()
+    // MARK: - SPIRC Events (forwarded from SpircController)
 
     private var spircSubscriptions: Set<AnyCancellable> = []
 
+    /// Spirc sends synchronously from its own actor, so forwarding each value
+    /// as it comes keeps Spirc's order. Its cluster subject replays the one
+    /// that answered registration, which a quiet account never gets pushed.
     private func setupSpircSubscriptions() {
         spircSubscriptions.removeAll()
         guard let spirc = spircController else { return }
 
         spirc.clusterStatePublisher
-            .sink { [weak self] state in
-                self?.spircClusterStateSubject.send(state)
-            }
+            .compactMap(\.self)
+            .sink { [eventSink] in eventSink.yield(.cluster($0)) }
             .store(in: &spircSubscriptions)
 
         spirc.commands
-            .sink { [weak self] command in
-                self?.spircCommandSubject.send(command)
-            }
+            .sink { [eventSink] in eventSink.yield(.command($0)) }
             .store(in: &spircSubscriptions)
     }
 
