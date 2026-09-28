@@ -186,7 +186,10 @@ public actor LibrespotClient {
 
         await attachTransport()
 
-        flags.markConnected()
+        flags.withLock {
+            $0.hasEverConnected = true
+            $0.hasSession = true
+        }
 
         publishConnectionState(connected: true)
 
@@ -256,7 +259,10 @@ public actor LibrespotClient {
         session = nil
         spclient = nil
 
-        flags.sessionGone()
+        flags.withLock {
+            $0.hasSession = false
+            $0.recovering = false
+        }
     }
 
     // MARK: - Sleep / Wake / Recovery
@@ -295,7 +301,7 @@ public actor LibrespotClient {
     }
 
     private func runRecovery() async {
-        defer { flags.endRecovery() }
+        defer { flags.withLock { $0.recovering = false } }
         guard !shuttingDown else { return }
         guard let session, let credentials = await session.currentCredentials, let tokenProvider else { return }
 
@@ -587,43 +593,23 @@ public actor LibrespotClient {
     // MARK: - Synchronous State (read by the facade without awaiting)
 
     /// Connection bookkeeping the synchronous facade reads. The actor updates
-    /// it; the methods keep check-and-set honest for reconnect dedup.
-    private final nonisolated class Flags: @unchecked Sendable {
-        private let lock = NSLock()
+    /// it; one lock around check-and-set keeps reconnects from doubling up.
+    private nonisolated struct Flags {
         var hasEverConnected = false
         var hasSession = false
         var recovering = false
 
-        func markConnected() {
-            lock.lock()
-            defer { lock.unlock() }
-            hasEverConnected = true
-            hasSession = true
-        }
-
-        func sessionGone() {
-            lock.lock()
-            defer { lock.unlock() }
-            hasSession = false
-            recovering = false
-        }
-
-        func tryBeginRecovery() -> Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            guard hasEverConnected, hasSession, !recovering else { return false }
+        /// Claims the recovery, unless there is no session to recover or
+        /// someone is already at it.
+        mutating func beginRecovery() -> ForceReconnectOutcome {
+            guard hasEverConnected, hasSession else { return .noSession }
+            guard !recovering else { return .alreadyRecovering }
             recovering = true
-            return true
-        }
-
-        func endRecovery() {
-            lock.lock()
-            defer { lock.unlock() }
-            recovering = false
+            return .started
         }
     }
 
-    private nonisolated let flags = Flags()
+    private nonisolated let flags = Mutex(Flags())
 
     nonisolated var currentConnectionState: LibrespotConnectionState? {
         connectionStateSubject.value
@@ -653,14 +639,11 @@ public actor LibrespotClient {
     /// outcome says whether recovery began, was already under way, or is
     /// pointless, and the work itself continues in a task.
     nonisolated func forceReconnectSync() -> ForceReconnectOutcome {
-        if flags.tryBeginRecovery() {
+        let outcome = flags.withLock { $0.beginRecovery() }
+        if outcome == .started {
             Task { await self.runRecovery() }
-            return .started
         }
-        if !flags.hasEverConnected || !flags.hasSession {
-            return .noSession
-        }
-        return .alreadyRecovering
+        return outcome
     }
 
     // MARK: - Settings
@@ -958,13 +941,13 @@ public actor LibrespotClient {
     }
 
     private func startAutoRecoveryIfNeeded() {
-        guard !shuttingDown, flags.tryBeginRecovery() else { return }
+        guard !shuttingDown, flags.withLock({ $0.beginRecovery() }) == .started else { return }
 
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled else {
-                self?.flags.endRecovery()
+                self?.flags.withLock { $0.recovering = false }
                 return
             }
             await self?.runRecovery()
