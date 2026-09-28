@@ -289,10 +289,9 @@ final class PlaybackViewModel {
         // rebuild proves otherwise. Matters when initialize() throws on a restart.
         isInitialized = false
         isLoading = true
-        // The old session's track goes down with it, so it is cleared now, not once the new
-        // session is up: that session reports a track of its own while it is being built —
-        // the one another device left paused, mirrored — and the player model passes on
-        // changes only, so a reset afterwards wiped it for good. Harmless on a first init.
+        // Cleared before the rebuild, not after: the new session can report a track while it
+        // is being built, such as another device's paused one, and the player model passes on
+        // changes only, so a later reset would erase it for good.
         clearPlaybackState()
         let generation = lifecycleGeneration
         do {
@@ -631,10 +630,7 @@ final class PlaybackViewModel {
     /// out during an outage left buffered audio playing and the previous track showing.
     func stop() {
         SpotifyPlayer.stop()
-        isPlaying = false
-        currentTrackUri = nil
-        lastHandledTrackUri = nil
-        updateNowPlayingInfo()
+        clearPlaybackState()
     }
 
     /// Sets the AppStore reference. Call this after AppStore is created.
