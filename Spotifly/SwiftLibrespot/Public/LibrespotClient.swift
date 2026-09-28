@@ -217,7 +217,8 @@ public actor LibrespotClient {
     }
 
     /// Shuts down and clears the snapshot, so a later login does not inherit
-    /// the previous account's devices, queue, or playback state.
+    /// the previous account's devices, queue, or playback state. The playback
+    /// goes in `shutdown()`'s teardown, with the pipeline it ran on.
     public func shutdownAndCleanup() async {
         await shutdown()
         publish {
@@ -236,10 +237,16 @@ public actor LibrespotClient {
     private func teardown() async {
         sessionEvents?.cancel()
         sessionEvents = nil
-        await audioPipeline?.stop()
-        clearLocalState()
-        await session?.disconnect()
+        // The pipeline goes before anything is awaited, so that nothing still on
+        // its way from it, an event or an auto-advance, can report a track once
+        // the playback has been dropped.
+        let pipeline = audioPipeline
         audioPipeline = nil
+        pipelineEvents?.cancel()
+        pipelineEvents = nil
+        clearLocalState()
+        await pipeline?.stop()
+        await session?.disconnect()
         session = nil
         spclient = nil
 
@@ -795,10 +802,13 @@ public actor LibrespotClient {
 
         case let .playing(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
+            // Torn down or replaced while this waited: the track is no one's now.
+            guard !Task.isCancelled else { return }
             publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position))
 
         case let .paused(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
+            guard !Task.isCancelled else { return }
             publishPlaybackState(for: trackUri, playing: false, paused: true, positionMs: Int64(position))
         }
 
