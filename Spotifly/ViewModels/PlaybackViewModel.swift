@@ -405,10 +405,8 @@ final class PlaybackViewModel {
             await initializeIfNeeded()
         }
 
-        guard !trackUris.isEmpty else {
-            errorMessage = String(localized: "error.no_tracks_to_play")
-            return
-        }
+        // The one caller disables its button on an empty list, so this only guards `[0]`.
+        guard !trackUris.isEmpty else { return }
 
         switch resolvedPlaybackTarget() {
         case .local:
