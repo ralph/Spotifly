@@ -206,15 +206,9 @@ struct NowPlayingBarView: View {
             .clipShape(.rect(cornerRadius: 4))
     }
 
-    /// How long a playback error stands in for the track's title before the title comes back.
-    private static let errorDisplayDuration: Duration = .seconds(5)
-
-    /// The track's title and artist, or for a few seconds the playback error in their place.
-    ///
-    /// This is the one place `PlaybackViewModel.errorMessage` is shown. The bar is mounted in
-    /// the window and as the mini player alike, where there is no room above it for a banner,
-    /// and two caption lines fit the height the title and artist take. The error clears
-    /// itself here; the view model also clears it when a new play or queue request starts.
+    /// The track's title and artist, or `PlaybackViewModel.errorMessage` in their place while
+    /// it is set — the one place it is shown. Two caption lines fit the same height, and the
+    /// mini player has no room above the bar for a banner.
     private var trackInfo: some View {
         VStack(alignment: .leading, spacing: 2) {
             if let message = playbackViewModel.errorMessage {
@@ -234,15 +228,6 @@ struct NowPlayingBarView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: playbackViewModel.errorMessage)
-        .task(id: playbackViewModel.errorMessage) {
-            guard let message = playbackViewModel.errorMessage else { return }
-            // A caption changing in place is not announced by itself.
-            AccessibilityNotification.Announcement(message).post()
-            try? await Task.sleep(for: Self.errorDisplayDuration)
-            // Cancelled when the message changed, or the bar went away mid-wait.
-            guard !Task.isCancelled else { return }
-            playbackViewModel.errorMessage = nil
-        }
     }
 
     private var playbackControls: some View {

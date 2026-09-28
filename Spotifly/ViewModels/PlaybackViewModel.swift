@@ -44,7 +44,24 @@ final class PlaybackViewModel {
     }
 
     private var lastHandledTrackUri: String?
-    var errorMessage: String?
+
+    /// The error the now-playing bar shows in place of the track's title. Views set it too,
+    /// for favorite and playlist failures. It clears itself after five seconds, here rather
+    /// than in the bar, because the bar is not always mounted: with the window closed, media
+    /// keys and ⌘L still reach this model, and an error from then must not greet its reopening.
+    var errorMessage: String? {
+        didSet {
+            guard let errorMessage, errorMessage != oldValue else { return }
+            // A caption changing in place is not announced by itself.
+            AccessibilityNotification.Announcement(errorMessage).post()
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                if self?.errorMessage == errorMessage {
+                    self?.errorMessage = nil
+                }
+            }
+        }
+    }
 
     /// Returns the URI of the currently playing track (alias for currentTrackUri)
     var currentlyPlayingURI: String? {
