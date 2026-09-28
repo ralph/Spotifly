@@ -13,7 +13,6 @@
 //
 
 import AVFoundation
-import Combine
 import Foundation
 
 /// Coordinates downloading, decryption, decoding, and playback of a track.
@@ -30,32 +29,31 @@ actor AudioPipeline {
     private let spclient: SPClient?
     private let sink: AudioRenderer
 
-    // MARK: - Publishers
+    // MARK: - Events
 
-    private nonisolated(unsafe) let playbackStateSubject = CurrentValueSubject<AudioPlaybackState, Never>(.idle)
-    private nonisolated(unsafe) let positionSubject = CurrentValueSubject<UInt64, Never>(0)
-    private nonisolated(unsafe) let errorSubject = PassthroughSubject<LibrespotError, Never>()
-    private nonisolated(unsafe) let endOfTrackSubject = PassthroughSubject<String, Never>()
+    /// Everything the pipeline tells its owner, for one consumer, in the order
+    /// it happened. Finishes when the pipeline goes away.
+    nonisolated let events: AsyncStream<Event>
+    private nonisolated let eventSink: AsyncStream<Event>.Continuation
 
-    nonisolated var playbackState: AnyPublisher<AudioPlaybackState, Never> {
-        playbackStateSubject.eraseToAnyPublisher()
-    }
+    private var state = AudioPlaybackState.idle
 
-    nonisolated var position: AnyPublisher<UInt64, Never> {
-        positionSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated var errors: AnyPublisher<LibrespotError, Never> {
-        errorSubject.eraseToAnyPublisher()
-    }
-
-    /// Fires once when a track has fully played out — the hook auto-advance
-    /// uses. Not fired for stop, skip, or replacement.
-    nonisolated var endOfTrack: AnyPublisher<String, Never> {
-        endOfTrackSubject.eraseToAnyPublisher()
+    private func publish(_ newState: AudioPlaybackState) {
+        state = newState
+        eventSink.yield(.state(newState))
     }
 
     // MARK: - Types
+
+    enum Event: Sendable {
+        case state(AudioPlaybackState)
+        /// Where the playhead is, on every tick while playing, and zero on stop.
+        case position(UInt64)
+        /// Sent once when a track has fully played out — the hook auto-advance
+        /// uses. Not sent for stop, skip, or replacement.
+        case endOfTrack(String)
+        case error(LibrespotError)
+    }
 
     enum AudioPlaybackState: Sendable, Equatable {
         case idle
@@ -144,13 +142,18 @@ actor AudioPipeline {
         self.audioKeyProvider = audioKeyProvider
         self.spclient = spclient
         self.sink = sink
+        (events, eventSink) = AsyncStream.makeStream(of: Event.self)
         debugLog("AudioPipeline", "Initialized")
+    }
+
+    deinit {
+        eventSink.finish()
     }
 
     /// Whether nothing is loaded or loading: after a stop, and before the
     /// first track.
     var isStopped: Bool {
-        playbackStateSubject.value == .idle
+        state == .idle
     }
 
     // MARK: - Settings
@@ -214,12 +217,12 @@ actor AudioPipeline {
             if continued == uri, currentTrackUri == uri, positionMs == 0, !paused, isPlaying, !isPaused {
                 debugLog("AudioPipeline", "\(uri) is already playing, without a gap")
                 // Republished for the position it has actually reached.
-                playbackStateSubject.send(.playing(trackUri: uri))
+                publish(.playing(trackUri: uri))
                 return true
             }
 
             debugLog("AudioPipeline", "Playing \(uri) at \(positionMs)ms")
-            playbackStateSubject.send(.loading(trackUri: uri))
+            publish(.loading(trackUri: uri))
 
             loadGeneration += 1
             generation = loadGeneration
@@ -378,7 +381,7 @@ actor AudioPipeline {
             isPaused = true
             stopPositionTimer()
             await sink.pause()
-            playbackStateSubject.send(.paused(trackUri: uri))
+            publish(.paused(trackUri: uri))
         }
     }
 
@@ -390,7 +393,7 @@ actor AudioPipeline {
             isPaused = false
             await sink.resume()
             startPositionTimer()
-            playbackStateSubject.send(.playing(trackUri: uri))
+            publish(.playing(trackUri: uri))
         }
     }
 
@@ -413,8 +416,8 @@ actor AudioPipeline {
         upcoming?.fetch.cancel()
         upcoming = nil
         isPlaying = false
-        playbackStateSubject.send(.idle)
-        positionSubject.send(0)
+        publish(.idle)
+        eventSink.yield(.position(0))
     }
 
     /// Seeks within the current track. Works while playing or paused; either
@@ -471,7 +474,7 @@ actor AudioPipeline {
     private func startDecoding(from frame: Int64, keepPaused: Bool = false) async {
         guard let decoder else { return }
         guard decoder.isOpen else {
-            errorSubject.send(.decodingFailed("decoder closed"))
+            eventSink.yield(.error(.decodingFailed("decoder closed")))
             return
         }
 
@@ -499,7 +502,7 @@ actor AudioPipeline {
         } else {
             startPositionTimer()
         }
-        playbackStateSubject.send(keepPaused ? .paused(trackUri: currentTrackUri ?? "") : .playing(trackUri: currentTrackUri ?? ""))
+        publish(keepPaused ? .paused(trackUri: currentTrackUri ?? "") : .playing(trackUri: currentTrackUri ?? ""))
     }
 
     private func startDecodeTask(_ decoder: VorbisDecoder) {
@@ -542,7 +545,7 @@ actor AudioPipeline {
                 Task { await self.refill(after: run) }
                 return
             case .failed:
-                errorSubject.send(.decodingFailed("the audio output refused a buffer"))
+                eventSink.yield(.error(.decodingFailed("the audio output refused a buffer")))
                 return
             }
         }
@@ -629,7 +632,7 @@ actor AudioPipeline {
         // request publishes it; publishing it here, ahead of the queue, would
         // report it with the previous track's place in the context.
         debugLog("AudioPipeline", "End of track; \(uri) follows without a gap")
-        endOfTrackSubject.send(ended)
+        eventSink.yield(.endOfTrack(ended))
     }
 
     /// Forgets the continuation, once its decode has been retired. Its file is
@@ -692,7 +695,7 @@ actor AudioPipeline {
         adoptContinuationIfReached()
 
         let positionMs = frameToMs(currentTrackFrame())
-        positionSubject.send(UInt64(positionMs))
+        eventSink.yield(.position(UInt64(positionMs)))
         fetchNextIfDue(positionMs: Int64(positionMs))
 
         // While a continuation waits for the playhead, the decode is its. A
@@ -713,7 +716,7 @@ actor AudioPipeline {
             if sink.playedFrames - trackStartSinkFrame >= decoded.frames {
                 endOfTrackFired = true
                 debugLog("AudioPipeline", "End of track")
-                endOfTrackSubject.send(currentTrackUri ?? "")
+                eventSink.yield(.endOfTrack(currentTrackUri ?? ""))
                 return
             }
         }

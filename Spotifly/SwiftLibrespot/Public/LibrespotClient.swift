@@ -61,9 +61,9 @@ public actor LibrespotClient {
     /// such an event landed must abandon rather than write its results.
     private var lifecycleGeneration = 0
     private var reconnectTask: Task<Void, Never>?
-    /// Subscriptions to the current audio pipeline's publishers; cleared
-    /// whenever a new pipeline replaces the old one.
-    private var pipelineSubscriptions: Set<AnyCancellable> = []
+    /// Consumes the current audio pipeline's events; cancelled whenever a new
+    /// pipeline replaces the old one.
+    private var pipelineEvents: Task<Void, Never>?
 
     /// Whether this device is the cluster's active one. Kept beside the
     /// subject so the synchronous facade getter never awaits the actor.
@@ -365,8 +365,6 @@ public actor LibrespotClient {
         await spclient?.setCountryCode(accesspoint.lastCountryCode)
 
         guard audioPipeline == nil else { return }
-
-        pipelineSubscriptions.removeAll()
 
         let pipeline = AudioPipeline(
             audioKeyProvider: AudioKeyProvider { [weak session] in await session?.connectedAccesspoint },
@@ -779,33 +777,28 @@ public actor LibrespotClient {
     // MARK: - Pipeline Wiring
 
     private func subscribeToPipeline(_ pipeline: AudioPipeline) {
-        pipeline.playbackState
-            .sink { [weak self] state in
-                guard let self else { return }
-                Task { await self.handlePipelineState(state) }
-            }
-            .store(in: &pipelineSubscriptions)
+        pipelineEvents?.cancel()
+        let events = pipeline.events
+        pipelineEvents = Task { await self.handle(events) }
+    }
 
-        pipeline.position
-            .sink { [weak self] positionMs in
-                self?.positionCache.withLock { $0 = positionMs }
-            }
-            .store(in: &pipelineSubscriptions)
-
-        pipeline.endOfTrack
-            .sink { [weak self] uri in
-                guard let self else { return }
-                Task { await self.handleEndOfTrack(uri) }
-            }
-            .store(in: &pipelineSubscriptions)
-
-        pipeline.errors
-            .sink { [weak self] error in
+    /// Handles the pipeline's events one at a time, in the order it sent
+    /// them. Each used to reach this actor in a task of its own, so two sent
+    /// back to back, a pause and a resume, could be handled the other way round.
+    private func handle(_ events: AsyncStream<AudioPipeline.Event>) async {
+        for await event in events {
+            switch event {
+            case let .state(state):
+                await handlePipelineState(state)
+            case let .position(positionMs):
+                positionCache.withLock { $0 = positionMs }
+            case let .endOfTrack(uri):
+                handleEndOfTrack(uri)
+            case let .error(error):
                 debugLog("LibrespotClient", "Audio pipeline error: \(error.localizedDescription)")
-                guard let self else { return }
-                Task { await self.clearLocalState() }
+                clearLocalState()
             }
-            .store(in: &pipelineSubscriptions)
+        }
     }
 
     /// The local player holds nothing any more.
