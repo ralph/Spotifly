@@ -124,11 +124,6 @@ public actor LibrespotClient {
         reconnectTask?.cancel()
         reconnectTask = nil
 
-        // The old session's playback goes with it. Kept, it went on saying "playing" over a
-        // pipeline that is torn down next, it stopped the new session mirroring the cluster,
-        // and a mirror the new session did find was the same state again, which the player
-        // model does not pass on.
-        clearLocalState()
         await teardown()
 
         let credentials = try await credentialsForLogin()
@@ -225,7 +220,6 @@ public actor LibrespotClient {
     /// the previous account's devices, queue, or playback state.
     public func shutdownAndCleanup() async {
         await shutdown()
-        clearLocalState()
         publish {
             $0.devices = nil
             $0.queue = nil
@@ -234,12 +228,16 @@ public actor LibrespotClient {
         }
     }
 
-    /// Drops all connections and subscriptions. Credentials survive — sleep
-    /// uses this shape, and wake rebuilds from them.
+    /// Drops all connections and subscriptions, and the playback that ran on
+    /// them. Kept, it read as still playing over a pipeline that is gone, and
+    /// the next session's identical mirror was no change for the player model
+    /// to pass on. Credentials survive. Sleep does not come through here:
+    /// `disconnect()` keeps its track for the wake.
     private func teardown() async {
         sessionEvents?.cancel()
         sessionEvents = nil
         await audioPipeline?.stop()
+        clearLocalState()
         await session?.disconnect()
         audioPipeline = nil
         session = nil
