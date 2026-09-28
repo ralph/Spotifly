@@ -654,10 +654,6 @@ public actor LibrespotClient {
         isActiveDeviceFlag.withLock { $0 }
     }
 
-    nonisolated var queueSnapshotValue: QueueState? {
-        queueSubject.value
-    }
-
     /// Position cache, fed by the pipeline's position ticks and read from
     /// anywhere.
     private nonisolated let positionCache = Mutex<UInt64>(0)

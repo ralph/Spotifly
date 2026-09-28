@@ -15,7 +15,8 @@ import Foundation
 final class QueueService {
     private let store: AppStore
     private let trackService: TrackService
-    private var queueSubscription: AnyCancellable?
+    private let player: PlayerModel
+    private var queueObservation: Task<Void, Never>?
     private var pendingTrackIds: Set<String> = []
     /// Subject for debouncing metadata fetch requests
     private let fetchSubject = PassthroughSubject<Void, Never>()
@@ -37,28 +38,32 @@ final class QueueService {
     init(
         store: AppStore,
         trackService: TrackService,
+        player: PlayerModel = .shared,
     ) {
         Self.instanceCount += 1
         tag = "[svc#\(Self.instanceCount) store:\(storeTag(store))]"
         self.store = store
         self.trackService = trackService
+        self.player = player
     }
 
     /// Starts listening to the player. Call once, from the view that actually kept this
     /// instance — see `activate()` on the sibling services for why `init` must not do it.
     ///
     /// Idempotent: a `.task` runs again when its view reappears, and the guard reads the
-    /// subscription it protects rather than a separate flag that could drift from it.
+    /// observation it protects rather than a separate flag that could drift from it.
     func activate() {
-        guard queueSubscription == nil else { return }
+        guard queueObservation == nil else { return }
         recordActivation(self)
 
-        // The client publishes the whole queue, with its context, whenever it moves.
-        queueSubscription = SpotifyPlayer.queue
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] queueState in
-                self?.handleQueueUpdate(queueState)
+        // The whole queue, with its context, as the player last published it: first as it
+        // stands, then on every change.
+        queueObservation = Task { [weak self, player] in
+            for await queue in Observations({ player.queue }) {
+                guard let self else { return }
+                handleQueueUpdate(queue)
             }
+        }
 
         // Debounced so rapid queue updates do not cancel an in-flight metadata fetch.
         fetchDebounceSubscription = fetchSubject
@@ -175,7 +180,7 @@ final class QueueService {
     ///   thing: no cluster update has arrived yet. Callers that can wait should try again.
     @discardableResult
     func fetchInitialPlaybackState() async -> Bool {
-        guard let update = Self.queueUpdate(from: currentQueueSnapshot()) else {
+        guard let update = Self.queueUpdate(from: player.queue) else {
             log("Cluster says nothing usable yet — keeping the existing queue")
             return false
         }

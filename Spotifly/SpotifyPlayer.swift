@@ -538,12 +538,3 @@ enum SpotifyPlayer {
 actor SpotifyPlayerActor {
     static let shared = SpotifyPlayerActor()
 }
-
-/// The last queue state the client published, or nil if none has arrived.
-///
-/// The push equivalent of `/me/player/queue`, for the recovery paths that need to ask
-/// rather than wait. Nil is meaningful and distinct from an empty queue: it means nothing
-/// has been heard yet, so a caller should try again rather than conclude nothing is playing.
-nonisolated func currentQueueSnapshot() -> QueueState? {
-    LibrespotClient.shared.queueSnapshotValue
-}
