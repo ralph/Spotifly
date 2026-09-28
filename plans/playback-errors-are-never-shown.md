@@ -54,16 +54,19 @@ Why there:
 The cost is that the track's name is hidden while the error shows. Five seconds is enough to
 read a sentence, and short enough that a stale error does not stand in for the song.
 
-**How it clears.** The bar clears it five seconds after it appears, with a `.task(id:)` on the
-message. The bar is mounted whenever the user is logged in, in the window and in the mini
-player alike, so the timer always runs. Switching between the two restarts the five seconds,
-which is harmless. The view model's existing clears stay: a new play, a new remote start,
-`addToQueue`, and an initialization that succeeds each clear the error when they start.
+**How it clears.** A `didSet` on `errorMessage` clears it five seconds after it is set, and the
+bar only shows what is there. The first version ran the timer in the bar, with a `.task(id:)`
+on the message, on the reasoning that the bar is mounted whenever the user is logged in. It is
+not: the app keeps running with its window closed, and media keys and ⌘L still reach the view
+model, so an error set then never expired and would have greeted the window's reopening. The
+review moved it (see [Review](#review)). The view model's existing clears stay: a new play, a
+new remote start, `addToQueue`, and an initialization that succeeds each clear the error when
+they start.
 
 Successful transport commands deliberately do **not** clear it. A Next that works would also
 wipe a favorite that failed a second earlier, and the timer ends the error soon enough anyway.
-The timer is keyed on the text, so a second failure with the same message does not restart it.
-The error then clears five seconds after the first failure. That is fine.
+A second failure with the same message starts no new timer, so the error clears five seconds
+after the first. That is fine.
 
 VoiceOver users get the same message as an announcement, since a caption changing in place
 is not announced by itself.
@@ -73,11 +76,12 @@ is not announced by itself.
 The view model passes on `error.localizedDescription`, which is English and sometimes
 technical ("Spotify rejected the request (HTTP 502)"). Translating the errors the stack throws
 is out of scope here. The app's own prefixes are not, though, because they become visible
-with this change: "Failed to update favorite: %@" (three sites), "Failed to add to playlist:
-%@", "Failed to remove from playlist: %@", "Failed to create playlist: %@", "Player did not
-become ready", "Player not initialized" and "No tracks to play". They get `error.*` keys in
-the three `Localizable.strings`, in the form `error.remove_album %@` already uses. The three
-favorite sites share one key.
+with this change: "Failed to update favorite: %@" (four sites: a track row, its menu, the bar's
+heart, and ⌘L through the view model), "Failed to add to playlist: %@", "Failed to remove from
+playlist: %@", "Failed to create playlist: %@", "Player did not become ready" and "Player not
+initialized". They get `error.*` keys in the three `Localizable.strings`, in the form
+`error.remove_album %@` already uses. The four favorite sites share one key. A seventh, "No
+tracks to play", was dropped instead: its one caller disables its button on an empty list.
 
 ## Steps
 
@@ -127,6 +131,26 @@ player. After a transfer to the phone, Next with Wi-Fi off logged
 went out, and the promised position was withdrawn. The reconnect after Wi-Fi came back was
 clean. Previous on the phone does not appear in that log. The declined path it covers is
 unchanged by this work: `sendTransportCommand` sets the error only outside it, as before.
+
+## Review
+
+A `/simplify` pass with four reviewers (reuse, simplification, efficiency, altitude) led to
+four commits:
+
+- **The clear moved into the view model** (`4eae324`), for the closed-window case above. It
+  also stopped a switch to or from the mini player announcing the error again, and the bar no
+  longer writes back to the model. Checked live again with the same autoplay run: the error
+  showed at 20:37:56 and was gone in the 20:38:02 screenshot.
+- **⌘L's favorite error got the prefix** (`a61d5cd`). `toggleCurrentTrackFavorite` set the bare
+  description, so the same failure read differently from a heart and from the keyboard.
+- **"No tracks to play" was dropped** (`f7ec098`), as unreachable.
+- A comment in `TrackRow` saying the favorite error was swallowed was deleted (`01a7236`).
+
+Left alone: moving `trackInfo` into its own view so the rest of the bar does not re-render
+when the error changes (about two re-renders per error); merging `error.player_not_ready` and
+`error.player_not_initialized`, which are worded alike but reached separately, the second
+during a logout; and a shared helper for the one-line favorite `catch`, which would tie three
+views together to save nothing.
 
 Seen in the first run, and not caused by this change: the bar had mirrored a paused track at
 launch (`Playback state update: … uri=spotify:track:5cimfl3QpL5imIMMvxFzCQ`), and by the time
