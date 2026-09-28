@@ -64,10 +64,6 @@ public actor LibrespotClient {
     /// whenever a new pipeline replaces the old one.
     private var pipelineSubscriptions: Set<AnyCancellable> = []
 
-    /// Monotonic counter stamped onto every published connection snapshot so
-    /// out-of-order deliveries cannot regress one.
-    private var connectionRevision: UInt64 = 0
-
     /// Whether this device is the cluster's active one. Kept beside the
     /// subject so the synchronous facade getter never awaits the actor.
     private nonisolated(unsafe) var isActiveDeviceFlag = false
@@ -1282,11 +1278,8 @@ public actor LibrespotClient {
         error: String? = nil,
         reconnectAttempt: UInt32 = 0,
     ) {
-        connectionRevision += 1
         let state = LibrespotConnectionState(
-            revision: connectionRevision,
             sessionConnected: connected,
-            sessionConnectionId: nil,
             spircReady: connected,
             deviceId: deviceInfo.deviceId,
             deviceName: deviceInfo.deviceName,

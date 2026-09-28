@@ -336,7 +336,6 @@ struct SpotifyConnection: Equatable, Encodable {
     let deviceId: String?
     let deviceName: String
     let isConnected: Bool
-    let connectionId: String?
     let connectedSince: Date?
     let spircReady: Bool
     let reconnectAttempts: UInt32

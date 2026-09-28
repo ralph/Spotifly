@@ -91,14 +91,8 @@ struct SetQueueNotification {
 }
 
 /// Connection state of the streaming session.
-///
-/// `revision` orders snapshots on arrival: several sources publish
-/// independently (session events, cluster updates, recovery), and a delayed
-/// older snapshot must not overwrite a newer one. See `deliverConnectionState`.
-nonisolated struct LibrespotConnectionState: Equatable, Codable {
-    let revision: UInt64
+nonisolated struct LibrespotConnectionState: Equatable {
     let sessionConnected: Bool
-    let sessionConnectionId: String?
     let spircReady: Bool
     let deviceId: String?
     let deviceName: String
@@ -109,19 +103,6 @@ nonisolated struct LibrespotConnectionState: Equatable, Codable {
     /// cluster's active device id. The single fact that playback routing and
     /// the UI both read.
     let isActiveDevice: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case revision
-        case sessionConnected = "session_connected"
-        case sessionConnectionId = "session_connection_id"
-        case spircReady = "spirc_ready"
-        case deviceId = "device_id"
-        case deviceName = "device_name"
-        case reconnectAttempt = "reconnect_attempt"
-        case lastError = "last_error"
-        case connectedSinceMs = "connected_since_ms"
-        case isActiveDevice = "is_active_device"
-    }
 }
 
 // MARK: - Bridge Subjects

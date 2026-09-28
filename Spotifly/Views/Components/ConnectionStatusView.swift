@@ -15,7 +15,7 @@ private struct ConnectionStatusRow: View {
     let label: LocalizedStringKey
     let isConnected: Bool
     /// Shown in place of the connected/disconnected text where the row has something more
-    /// specific to say — a connection id, or how far Spirc got.
+    /// specific to say, such as how far Spirc got.
     let detail: String?
 
     var body: some View {
@@ -134,7 +134,7 @@ struct ConnectionStatusView: View {
                     ConnectionStatusRow(
                         label: "connection.session",
                         isConnected: connection.isConnected,
-                        detail: connection.connectionId.map { truncateId($0) },
+                        detail: nil,
                     )
 
                     ConnectionStatusRow(

@@ -55,7 +55,6 @@ final class ConnectionService {
             deviceId: state.deviceId,
             deviceName: state.deviceName,
             isConnected: state.sessionConnected,
-            connectionId: state.sessionConnectionId,
             connectedSince: connectedSince,
             spircReady: state.spircReady,
             reconnectAttempts: state.reconnectAttempt,
