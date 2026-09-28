@@ -670,9 +670,14 @@ final class PlaybackViewModel {
     /// user's other clients in order to accomplish nothing, and making them work would mean
     /// silently starting playback in response to "next" or "seek" — a different feature, not
     /// this fix.
+    ///
+    /// `promisesPosition` marks the commands whose caller moves the display ahead of
+    /// playback — skips and seeks — and so have a promise to withdraw if they fail. Any
+    /// other command leaves a promise standing, including one a seek still in flight made.
     @discardableResult
     private func sendTransportCommand(
         _ name: String,
+        promisesPosition: Bool = false,
         local: @escaping () async throws -> Void,
         remote: @escaping (_ from: String, _ to: String) async throws -> Void,
         declined: @escaping (SpclientError) -> Void = { _ in },
@@ -695,9 +700,9 @@ final class PlaybackViewModel {
         }
 
         Task {
-            // Where the caller moved the display ahead of playback for this command, if it
-            // did. Callers anchor after this returns, and this runs after them.
-            let promise = optimisticAnchorTime
+            // Where the caller moved the display ahead of playback for this command.
+            // Callers anchor after this returns, and this runs after them.
+            let promise = promisesPosition ? optimisticAnchorTime : nil
             do {
                 try await command()
             } catch is CancellationError {
@@ -748,6 +753,7 @@ final class PlaybackViewModel {
     func next() {
         guard sendTransportCommand(
             "next()",
+            promisesPosition: true,
             local: { try await SpotifyPlayer.next() },
             remote: { try await SpclientAPI().sendCommand(.next, from: $0, to: $1) },
         ) else {
@@ -769,6 +775,7 @@ final class PlaybackViewModel {
     func previous() {
         guard sendTransportCommand(
             "previous()",
+            promisesPosition: true,
             local: { try await SpotifyPlayer.previous() },
             remote: { try await SpclientAPI().sendCommand(.previous, from: $0, to: $1) },
             declined: { [weak self] error in
@@ -1163,6 +1170,7 @@ final class PlaybackViewModel {
     private func performSeek(to positionMs: UInt32) {
         let issued = sendTransportCommand(
             "performSeek",
+            promisesPosition: true,
             local: { try await SpotifyPlayer.seek(positionMs: positionMs) },
             remote: { try await SpclientAPI().sendCommand(.seek(toMs: Int(positionMs)), from: $0, to: $1) },
         )
