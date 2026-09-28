@@ -161,11 +161,6 @@ final class AppStore {
         userProfile?.id
     }
 
-    // MARK: - Connection State
-
-    /// Our connection to Spotify (single source of truth for connection info)
-    private(set) var connection: SpotifyConnection?
-
     // MARK: - Computed Properties (Derived State)
 
     /// User's playlists in display order
@@ -229,16 +224,6 @@ final class AppStore {
     /// Active device ID - computed from devices (no stored duplication)
     var activeDeviceId: String? {
         activeDevice?.id
-    }
-
-    /// Our device ID - computed from connection
-    var ownDeviceId: String? {
-        connection?.deviceId
-    }
-
-    /// Whether we're connected to Spotify
-    var isConnected: Bool {
-        connection?.isConnected ?? false
     }
 
     // MARK: - Entity Mutations
@@ -748,13 +733,6 @@ final class AppStore {
         userProfile = profile
     }
 
-    // MARK: - Connection State Actions
-
-    /// Update connection state
-    func setConnection(_ connection: SpotifyConnection?) {
-        self.connection = connection
-    }
-
     // MARK: - Debug
 
     #if DEBUG
@@ -799,8 +777,6 @@ final class AppStore {
                     let currentTrack: QueueItemSnapshot?
                     let nextTracks: [QueueItemSnapshot]
                 }
-
-                let connection: SpotifyConnection?
             }
 
             let snapshot = StoreSnapshot(
@@ -829,7 +805,6 @@ final class AppStore {
                     nextTracks: queue.nextTracks.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
                 ),
                 activeDeviceId: activeDeviceId,
-                connection: connection,
             )
 
             let encoder = JSONEncoder()

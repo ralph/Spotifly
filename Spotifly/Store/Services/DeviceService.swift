@@ -13,6 +13,7 @@ import Foundation
 @Observable
 final class DeviceService {
     private let store: AppStore
+    private let player: PlayerModel
 
     /// Timestamp of the last outgoing transfer, used to delay the
     /// `fetchInitialPlaybackState` that fires on reconnect.
@@ -29,8 +30,9 @@ final class DeviceService {
     @ObservationIgnored private var devicesCancellable: AnyCancellable?
     @ObservationIgnored private var activeDeviceCancellable: AnyCancellable?
 
-    init(store: AppStore) {
+    init(store: AppStore, player: PlayerModel = .shared) {
         self.store = store
+        self.player = player
     }
 
     /// Starts the throttled device load and active-device tracking. Call once, from the
@@ -122,7 +124,7 @@ final class DeviceService {
         store.setActiveDevice(device.id)
 
         // Check if target is our local device
-        let isLocalDevice = device.id == store.connection?.deviceId
+        let isLocalDevice = device.id == player.ownDeviceId
 
         let accepted = if isLocalDevice {
             // Transfer TO local - use Spirc's native transfer

@@ -14,11 +14,9 @@ struct LoggedInLifecycleModifier: ViewModifier {
     let playbackViewModel: PlaybackViewModel
     let queueService: QueueService
     let deviceService: DeviceService
-    let connectionService: ConnectionService
     let homeService: HomeService
 
-    /// Last observed connection readiness; nil until the first snapshot arrives.
-    @State private var wasConnectionReady: Bool?
+    @Environment(PlayerModel.self) private var player
 
     /// Whether readiness has been lost since the last re-sync.
     @State private var connectionDropped = false
@@ -36,7 +34,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // player is unobserved.
                 queueService.activate()
                 deviceService.activate()
-                connectionService.activate()
                 playbackViewModel.setStore(store)
                 playbackViewModel.setQueueService(queueService)
 
@@ -146,27 +143,11 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     }
                 #endif
             }
-            // Connection handling is driven by the connection snapshot, not by the Connect
-            // activation callbacks. Activation and connection are different facts: another
-            // device taking over emits a deactivation, and re-activating emits an
-            // activation, neither of which says anything about whether the session is
-            // healthy. Keying off readiness means a device handoff no longer arms the
-            // recovery path or triggers a Web API refetch.
-            //
-            // `.receive(on:)` is not optional here. The client publishes this from
-            // inside its actor, and a Combine subject delivers synchronously on
-            // whichever thread called `send` — so this closure, which writes the
-            // `@State` below it, ran off the main thread and SwiftUI said so.
-            // Every other subscriber to these publishers already hops; `.onReceive`
-            // is easy to miss because it looks like a view modifier rather than a
-            // subscription.
-            .onReceive(SpotifyPlayer.connectionState.receive(on: DispatchQueue.main)) { state in
-                let isReady = state?.sessionConnected == true
-                defer { wasConnectionReady = isReady }
-
-                // Only react to transitions.
-                guard let wasReady = wasConnectionReady, wasReady != isReady else { return }
-
+            // Connection handling is driven by whether the session is connected, not by
+            // which device is active. Activation and connection are different facts:
+            // another device taking over says nothing about whether the session is
+            // healthy, so a device handoff neither arms the recovery path nor refetches.
+            .onChange(of: player.connection?.isConnected == true) { _, isReady in
                 guard isReady else {
                     connectionDropped = true
                     return
@@ -175,9 +156,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // A reconnect is a drop followed by a rise. The rise on its own is also what
                 // a cold start looks like, and that one is handled by .task above — so
                 // treating every rise as a reconnect doubled the bootstrap on every launch.
-                // Waiting for `wasConnectionReady` to be non-nil did not prevent that:
-                // `connectionState` is a CurrentValueSubject, so subscribing delivers its
-                // seed immediately and the first real transition is never the first callback.
                 guard connectionDropped else { return }
                 connectionDropped = false
 

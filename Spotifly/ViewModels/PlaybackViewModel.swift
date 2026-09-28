@@ -18,6 +18,9 @@ final class PlaybackViewModel {
     /// Shared singleton instance - ensures only one timer runs
     static let shared = PlaybackViewModel()
 
+    /// What the player last published.
+    private let player = PlayerModel.shared
+
     /// Reference to AppStore for reading current track metadata (set by LoggedInView)
     private weak var store: AppStore?
 
@@ -509,7 +512,7 @@ final class PlaybackViewModel {
         _ command: ConnectCommand,
         deviceId: String,
     ) async {
-        guard let from = store?.connection?.deviceId, !from.isEmpty else {
+        guard let from = player.ownDeviceId, !from.isEmpty else {
             errorMessage = String(localized: "error.no_playback_device")
             return
         }
@@ -718,7 +721,7 @@ final class PlaybackViewModel {
     private func connectRoute() -> (from: String, to: String)? {
         guard let store,
               let to = store.activeDeviceId, !to.isEmpty,
-              let from = store.connection?.deviceId, !from.isEmpty
+              let from = player.ownDeviceId, !from.isEmpty
         else { return nil }
 
         return (from, to)

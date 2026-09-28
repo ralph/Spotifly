@@ -103,12 +103,12 @@ private struct UptimeDisplay: View {
 
 /// Main dashboard showing librespot connection status
 struct ConnectionStatusView: View {
-    @Environment(AppStore.self) private var store
+    @Environment(PlayerModel.self) private var player
     var onReconnect: (@Sendable () async -> Void)?
     @State private var isReconnecting = false
 
     var body: some View {
-        if let connection = store.connection {
+        if let connection = player.connection {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("connection.status")

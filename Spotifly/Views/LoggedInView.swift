@@ -12,6 +12,7 @@ struct LoggedInView: View {
 
     @Environment(WindowState.self) private var windowState
     @Environment(AuthViewModel.self) private var authViewModel
+    @Environment(PlayerModel.self) private var player
 
     private let playbackViewModel = PlaybackViewModel.shared
 
@@ -23,7 +24,6 @@ struct LoggedInView: View {
     @State private var albumService: AlbumService
     @State private var artistService: ArtistService
     @State private var queueService: QueueService
-    @State private var connectionService: ConnectionService
     @State private var deviceService: DeviceService
     @State private var navigationCoordinator: NavigationCoordinator
 
@@ -48,7 +48,6 @@ struct LoggedInView: View {
         _artistService = State(initialValue: ArtistService(store: store))
         let trackService = TrackService(store: store)
         _queueService = State(initialValue: QueueService(store: store, trackService: trackService))
-        _connectionService = State(initialValue: ConnectionService(store: store))
         _deviceService = State(initialValue: DeviceService(store: store))
         _navigationCoordinator = State(initialValue: NavigationCoordinator(store: store))
         _trackService = State(initialValue: trackService)
@@ -93,21 +92,20 @@ struct LoggedInView: View {
                 .onSubmit(of: .search) { performSearch() }
                 .onChange(of: searchText) { _, newValue in handleSearchTextChange(newValue) }
                 .onChange(of: store.activeDeviceId) { _, newId in
-                    if newId == nil || newId == store.ownDeviceId {
+                    if newId == nil || newId == player.ownDeviceId {
                         playbackViewModel.becameLocalActiveDevice()
                     } else {
                         playbackViewModel.becameRemoteActiveDevice(volumePercent: store.activeDevice?.volumePercent)
                     }
                 }
                 .onChange(of: store.activeDevice?.volumePercent) { _, newPercent in
-                    guard let newPercent, store.activeDeviceId != store.ownDeviceId else { return }
+                    guard let newPercent, store.activeDeviceId != player.ownDeviceId else { return }
                     playbackViewModel.remoteDeviceVolumeUpdated(newPercent)
                 }
             }
         }
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
         .searchShortcuts()
-        .environment(connectionService)
         .environment(deviceService)
         .environment(queueService)
         .environment(homeService)
@@ -126,7 +124,6 @@ struct LoggedInView: View {
                 playbackViewModel: playbackViewModel,
                 queueService: queueService,
                 deviceService: deviceService,
-                connectionService: connectionService,
                 homeService: homeService,
             ),
         )

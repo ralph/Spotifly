@@ -331,7 +331,7 @@ nonisolated struct Device: Identifiable, Hashable, Encodable {
 // MARK: - Spotify Connection
 
 /// Our app's connection state to Spotify (single source of truth for connection info).
-/// Converted from LibrespotConnectionState in `ConnectionService`.
+/// Converted from LibrespotConnectionState in `PlayerModel`.
 struct SpotifyConnection: Equatable, Encodable {
     let deviceId: String?
     let deviceName: String

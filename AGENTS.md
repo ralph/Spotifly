@@ -138,7 +138,7 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 - Handle API calls and update AppStore on success
 - Each service takes `AppStore` in its initializer
 - Injected via `@Environment(XxxService.self)`
-- Available services: `TrackService`, `AlbumService`, `ArtistService`, `PlaylistService`, `HomeService`, `SearchService`, `DeviceService`, `QueueService`, `ConnectionService`
+- Available services: `TrackService`, `AlbumService`, `ArtistService`, `PlaylistService`, `HomeService`, `SearchService`, `DeviceService`, `QueueService`
 
 ### Network Request Deduplication
 
