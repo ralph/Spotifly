@@ -1,6 +1,7 @@
 # Playback errors are never shown
 
-Status: **planned** 2026-09-28, on `playback-errors`, with a draft PR.
+Status: **implemented** 2026-09-28 on `playback-errors` (#72), as proposed below, and checked
+live for a failing play; see [Result](#result). The manual checks at the end are still open.
 
 Component: `Spotifly/ViewModels/PlaybackViewModel.swift` (`errorMessage`),
 `Spotifly/Views/NowPlayingBarView.swift`, and the views that write the view model's error:
@@ -100,3 +101,25 @@ Nothing changes in `sendTransportCommand`, the declined check or the cancellatio
 - Manual, by Ralph: with Wi-Fi off, the heart in the bar and in a track row; Next while
   another device plays; the same in the mini player; and Previous at the first track of a
   remote device, which must stay silent (declined).
+
+## Result
+
+Landed as planned, in three commits: the bar (`NowPlayingBarView.trackInfo`, 26 lines), the
+seven localized messages, and this record. The unit suite is unchanged at 374, all passing.
+
+Live, Debug build, `SPOTIFLY_DEBUG_AUTOPLAY=spotify:album:0000000000000000000000`, with a
+window screenshot every second:
+
+```
+10:27:32.606Z DebugAutoplay] Starting spotify:album:0000000000000000000000
+10:27:32.638Z SPClient] Context resolve FAILED: HTTP 404, body: … No such album found …
+```
+
+The bar showed "CDN error: Context resolve failed: HTTP 404" in red from the next screenshot,
+at 12:27:33 local time. The row was back to normal in the one at 12:27:38. The wording is the
+stack's own, and "CDN error" is the wrong category for a context resolve. That is a
+`LibrespotError` naming problem, left alone here.
+
+Seen in the same run, and not caused by this change: the bar had mirrored a paused track at
+launch (`Playback state update: … uri=spotify:track:5cimfl3QpL5imIMMvxFzCQ`), and by the time
+of the failed play it showed no track at all.
