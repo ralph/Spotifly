@@ -84,7 +84,7 @@ final class AppStore {
 
     /// User's playlist IDs in display order
     private(set) var userPlaylistIds: [String] = []
-    /// The same playlists in their folders, empty without any; see `setPlaylistOutline(_:)`.
+    /// The same playlists in their folders; see `setPlaylistOutline(_:)`.
     private(set) var playlistOutline: [PlaylistOutlineRow] = []
 
     /// User's saved album IDs in display order
@@ -402,9 +402,17 @@ final class AppStore {
     }
 
     /// The playlists as Spotify nests them in folders; see `PlaylistService.loadPlaylistOutline`.
-    /// Empty for an account with no folders, whose Playlists section is the flat list.
+    /// Empty for an account with no folders, whose Playlists section is the flat list. Loaded in
+    /// full, where the flat list pages as it is scrolled, so it is the section's list whenever
+    /// there is one, and the library changes made here edit it too.
     func setPlaylistOutline(_ rows: [PlaylistOutlineRow]) {
         playlistOutline = rows
+    }
+
+    /// A playlist added to the library goes at the top of the outline, where Spotify puts it.
+    private func addToPlaylistOutline(_ playlistId: String) {
+        guard !playlistOutline.isEmpty, !playlistOutline.contains(where: { $0.item.playlistId == playlistId }) else { return }
+        playlistOutline.insert(PlaylistOutlineRow(item: .playlist(id: playlistId), depth: 0), at: 0)
     }
 
     /// Append playlist IDs (for pagination)
@@ -553,11 +561,13 @@ final class AppStore {
     func addPlaylistToUserLibrary(_ playlist: Playlist) {
         upsertPlaylist(playlist)
         userPlaylistIds.insert(playlist.id, at: 0)
+        addToPlaylistOutline(playlist.id)
     }
 
     /// Remove playlist from user's library
     func removePlaylistFromUserLibrary(_ playlistId: String) {
         userPlaylistIds.removeAll { $0 == playlistId }
+        playlistOutline.removeAll { $0.item.playlistId == playlistId }
         playlists.removeValue(forKey: playlistId)
         deletedEntitySelections.insert(.playlist(id: playlistId))
     }
@@ -589,6 +599,7 @@ final class AppStore {
         guard !userPlaylistIds.contains(playlistId) else { return }
         deletedEntitySelections.remove(.playlist(id: playlistId))
         userPlaylistIds.insert(playlistId, at: 0)
+        addToPlaylistOutline(playlistId)
     }
 
     // MARK: - Search Actions

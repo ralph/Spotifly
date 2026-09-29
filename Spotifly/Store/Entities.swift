@@ -271,6 +271,22 @@ struct PlaylistOutlineRow: Hashable {
         /// the rest of the store uses.
         case folder(uri: String, name: String)
         case playlist(id: String)
+
+        var folderUri: String? {
+            if case let .folder(uri, _) = self {
+                uri
+            } else {
+                nil
+            }
+        }
+
+        var playlistId: String? {
+            if case let .playlist(id) = self {
+                id
+            } else {
+                nil
+            }
+        }
     }
 
     let item: Item

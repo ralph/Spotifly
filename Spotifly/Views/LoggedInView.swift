@@ -267,8 +267,9 @@ struct LoggedInView: View {
             let previousSelection = navigationCoordinator.selectedPlaylistId
             store.playlistsPagination.reset()
             store.setUserPlaylistIds([])
+            async let outline: Void = playlistService.loadPlaylistOutline(forceRefresh: true)
             try? await playlistService.loadUserPlaylists(forceRefresh: true)
-            try? await playlistService.loadPlaylistOutline(forceRefresh: true)
+            try? await outline
             navigationCoordinator.restorePlaylistSelection(
                 previous: previousSelection,
                 available: store.userPlaylistIds,

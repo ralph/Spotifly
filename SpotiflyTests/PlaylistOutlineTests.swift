@@ -81,26 +81,56 @@ struct PlaylistOutlineLoadingTests {
     }
 }
 
+/// The outline is loaded whole, where the flat list pages as it is scrolled, so it is the
+/// section's list, and the library changes made here edit it too.
 @MainActor
-struct PlaylistOutlineMergeTests {
-    /// The flat list follows every change made here, the outline is loaded once: a playlist
-    /// created since goes at the top, and one deleted since is left out.
-    @Test func `the flat list says what is in the library`() throws {
-        let playlists = Dictionary(uniqueKeysWithValues: ["new", "p1", "p3"].map { ($0, playlist(id: $0)) })
-        let rows = [
-            PlaylistOutlineRow(item: .playlist(id: "p1"), depth: 0),
-            PlaylistOutlineRow(item: .folder(uri: folder, name: "Folder"), depth: 0),
-            PlaylistOutlineRow(item: .playlist(id: "p3"), depth: 1),
-            PlaylistOutlineRow(item: .playlist(id: "deleted"), depth: 1),
-        ]
-
-        let outline = try #require(PlaylistsListView.outline(rows, library: ["new", "p1", "p3"], playlists: playlists))
-
-        #expect(outline.map(\.id) == ["new", "p1", folder, "p3"])
-        #expect(outline.map(\.depth) == [0, 0, 0, 1])
+struct PlaylistOutlineLibraryTests {
+    private func store(with rows: [PlaylistOutlineRow]) -> AppStore {
+        let store = AppStore()
+        store.upsertPlaylists(["p1", "p3"].map { playlist(id: $0) })
+        store.setPlaylistOutline(rows)
+        return store
     }
 
-    @Test func `no folders, no outline`() {
-        #expect(PlaylistsListView.outline([], library: ["p1"], playlists: [:]) == nil)
+    private let rows = [
+        PlaylistOutlineRow(item: .playlist(id: "p1"), depth: 0),
+        PlaylistOutlineRow(item: .folder(uri: folder, name: "Folder"), depth: 0),
+        PlaylistOutlineRow(item: .playlist(id: "p3"), depth: 1),
+    ]
+
+    @Test func `a playlist added to the library goes at the top of the outline`() {
+        let store = store(with: rows)
+
+        store.addPlaylistToUserLibrary(playlist(id: "new"))
+        store.addPlaylistToUserLibraryById("followed")
+
+        #expect(store.playlistOutline.map(\.item.playlistId) == ["followed", "new", "p1", nil, "p3"])
+    }
+
+    @Test func `a playlist removed from the library leaves the outline`() {
+        let store = store(with: rows)
+
+        store.removePlaylistFromUserLibrary("p3")
+
+        #expect(store.playlistOutline.map(\.item.playlistId) == ["p1", nil])
+    }
+
+    /// Without folders there is no outline to keep, and the section is the flat list.
+    @Test func `without an outline, a new playlist makes none`() {
+        let store = AppStore()
+
+        store.addPlaylistToUserLibrary(playlist(id: "new"))
+
+        #expect(store.playlistOutline.isEmpty)
+    }
+
+    @Test func `the section shows the outline's rows, at their depths`() throws {
+        let store = store(with: rows)
+
+        let outline = try #require(PlaylistsListView.outline(store.playlistOutline, playlists: store.playlists))
+
+        #expect(outline.map(\.id) == ["p1", folder, "p3"])
+        #expect(outline.map(\.depth) == [0, 0, 1])
+        #expect(PlaylistsListView.outline([], playlists: store.playlists) == nil)
     }
 }

@@ -167,39 +167,27 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                             }
                         }
 
-                        if let outline {
-                            ForEach(visibleRows(of: outline).enumerated(), id: \.element.id) { index, outlineRow in
-                                VStack(spacing: 0) {
-                                    if index > 0 {
-                                        Divider()
-                                            .padding(.leading, 56 + Self.indent(outlineRow.depth))
-                                    }
-
-                                    switch outlineRow {
-                                    case let .folder(uri, name, depth):
-                                        folderRow(uri: uri, name: name)
-                                            .padding(.leading, Self.indent(depth))
-                                    case let .entity(entity, depth):
-                                        row(for: entity)
-                                            .padding(.leading, Self.indent(depth))
-                                    }
+                        ForEach(rows.enumerated(), id: \.element.id) { index, outlineRow in
+                            VStack(spacing: 0) {
+                                if index > 0 {
+                                    Divider()
+                                        .padding(.leading, 56 + Self.indent(outlineRow.depth))
                                 }
-                            }
-                        } else {
-                            ForEach(items.enumerated(), id: \.element.id) { index, item in
-                                VStack(spacing: 0) {
-                                    if index > 0 {
-                                        Divider()
-                                            .padding(.leading, 56)
-                                    }
 
-                                    row(for: item)
+                                switch outlineRow {
+                                case let .folder(uri, name, depth):
+                                    folderRow(uri: uri, name: name)
+                                        .padding(.leading, Self.indent(depth))
+                                case let .entity(entity, depth):
+                                    row(for: entity)
+                                        .padding(.leading, Self.indent(depth))
                                 }
                             }
                         }
 
-                        // Load more indicator
-                        if pagination.hasMore {
+                        // Load more indicator. An outline is loaded whole, and the flat pages
+                        // behind it are not what it shows.
+                        if pagination.hasMore, outline == nil {
                             ProgressView()
                                 .padding()
                                 .onAppear {
@@ -237,6 +225,11 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                 select(entity.id, true)
             },
         )
+    }
+
+    /// What the list shows: the outline, less what closed folders hold, or the flat entries.
+    private var rows: [LibraryOutlineRow<Entity>] {
+        outline.map(visibleRows(of:)) ?? items.map { .entity($0, depth: 0) }
     }
 
     private static func indent(_ depth: Int) -> CGFloat {
@@ -308,7 +301,16 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     /// coordinator is told at this call site that the step is automatic, so it replaces the
     /// route rather than recording a history entry the user never asked for.
     private func selectFirstIfNeeded() {
-        guard selectedId == nil, let first = items.first else { return }
+        guard selectedId == nil else { return }
+        // The first row shown, which in an outline is not inside a closed folder.
+        let first = rows.lazy.compactMap { row -> Entity? in
+            if case let .entity(entity, _) = row {
+                entity
+            } else {
+                nil
+            }
+        }.first
+        guard let first else { return }
         select(first.id, false)
     }
 

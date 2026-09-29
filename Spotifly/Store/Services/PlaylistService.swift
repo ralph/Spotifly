@@ -84,18 +84,13 @@ final class PlaylistService {
         }
     }
 
-    /// Loads the playlists as Spotify nests them in folders, for the Playlists section.
+    /// Loads the playlists as Spotify nests them in folders, for the Playlists section. The
+    /// flat list above stays what everything else reads, the add-to-playlist menus above all.
     ///
-    /// The flat list above stays what everything else reads, the add-to-playlist menus above
-    /// all: flattened, it holds every playlist, those inside folders too, and no folders. The
-    /// flattened list with folders included puts the folders together, and every entry at depth
-    /// 0, so it cannot carry the tree (measured on 2026-09-29).
-    ///
-    /// Unflattened, `libraryV3` answers the top level, and inside each folder named in
-    /// `expandedFolders` what it holds, one level deeper; with every folder named, the whole
-    /// tree comes as one offset-paged list. So: the top level, then again with its folders
-    /// named, and again while a pass finds folders not named yet, which only a folder inside a
-    /// folder shows. An account with no folders costs the one request.
+    /// Every folder named in `expandedFolders` comes open (`libraryPlaylistOutline`), so: the
+    /// top level, then again with its folders named, and again while a pass finds folders not
+    /// named yet, which only a folder inside a folder shows. An account with no folders costs
+    /// the one pass.
     func loadPlaylistOutline(forceRefresh: Bool = false) async throws {
         guard forceRefresh || !outlineLoaded else { return }
         if forceRefresh {
@@ -105,15 +100,11 @@ final class PlaylistService {
         try await listRequests.run(Self.outlineKey) {
             var expanded: [String] = []
             for _ in 0 ..< Self.outlinePassLimit {
-                let rows = try await self.outlineRows(expanding: expanded)
-                let folders = rows.compactMap {
-                    if case let .folder(uri, _) = $0.item {
-                        uri
-                    } else {
-                        nil
-                    }
-                }
+                let (rows, playlists) = try await self.outlinePass(expanding: expanded)
+                let folders = rows.compactMap(\.item.folderUri)
                 if Set(folders).isSubset(of: expanded) {
+                    // The last pass holds every playlist the others did, so it is stored alone.
+                    self.store.upsertPlaylists(playlists)
                     self.store.setPlaylistOutline(folders.isEmpty ? [] : rows)
                     self.outlineLoaded = true
                     return
@@ -124,21 +115,22 @@ final class PlaylistService {
         }
     }
 
-    /// Every page of one outline pass, the playlists stored as they come.
-    private func outlineRows(expanding folders: [String]) async throws -> [PlaylistOutlineRow] {
+    /// Every page of one outline pass: its rows, and the playlists they name.
+    private func outlinePass(expanding folders: [String]) async throws -> ([PlaylistOutlineRow], [Playlist]) {
         var rows: [PlaylistOutlineRow] = []
+        var playlists: [Playlist] = []
         var offset = 0
         while true {
             let page = try await partnerAPI.libraryPlaylistOutline(offset: offset, expandedFolders: folders)
             try Task.checkCancellation()
 
             let items = page.items ?? []
-            store.upsertPlaylists(items.compactMap { $0.item?.data.flatMap(Playlist.init(pathfinder:)) })
+            playlists += page.entities.compactMap(Playlist.init(pathfinder:))
             rows += items.compactMap(Self.outlineRow(from:))
 
             offset += items.count
             if items.isEmpty || offset >= page.totalCount ?? 0 {
-                return rows
+                return (rows, playlists)
             }
         }
     }

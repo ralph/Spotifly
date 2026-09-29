@@ -103,11 +103,13 @@ has its answer: the hierarchy arrives in **one** offset-paged list once every fo
   open is kept in `@AppStorage`, across launches, as Spotify's clients keep theirs. Without
   folders there is no outline, and the section is exactly the flat list it was, the plan's
   fallback.
-- **The flat list says what is in the library.** The outline is loaded once, and every change
-  made here goes to the flat list, so `PlaylistsListView.outline` shows the outline's rows for
-  the playlists the flat list holds: a playlist created or followed since goes at the top, where
-  the flat list puts it, and one deleted or unfollowed since is left out. Refresh loads both
-  again.
+- **The outline is the section's list whenever there is one.** It is loaded whole, where the
+  flat list pages as it is scrolled, so it holds every playlist from the start. The store's
+  library changes edit it as they edit the flat list: a playlist created or followed goes at
+  its top, where Spotify puts it, and one deleted or unfollowed leaves it. The section's first
+  selection is its first visible playlist, never one inside a closed folder, and it shows no
+  load-more spinner, since the flat pages behind it are not what it shows. Refresh loads both
+  lists again, side by side.
 
 Selecting a folder expands it in place, the plan's cheaper answer: no folder page. The trap the
 plan named stays shut: `PathfinderPlaylist.id` still refuses a folder's uri, so no folder becomes
@@ -118,8 +120,8 @@ a playlist row.
 - [x] Measured, as above.
 - [x] Unit tests: a first pass that finds a folder is followed by one that names it, and the
       outline has the folder's playlist at depth 1; an account with no folders costs one request
-      and has no outline; the section's outline takes a playlist created since at the top and
-      leaves out one deleted since.
+      and has no outline; a playlist added to the library goes at the top of the outline, one
+      removed leaves it, and without folders none is made.
 - [x] Rendered in the test host (a temporary test, deleted after): a playlist at the top, the
       selected one, an open folder with its playlist indented under it and the chevron down, a
       closed folder with its playlist hidden and the chevron right, and a last playlist.
