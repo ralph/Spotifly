@@ -1,28 +1,29 @@
 # The seek bar jumps because two clocks measure two different things
 
-Status: **fixed 2026-08-14, confirmed at runtime.** Two runs, `../seek-after.log` and
-`../seek-after2.log`: the jitter is gone, every dense run of snapshots now chains exactly
-(`X` equals the previous `Y`) where before `X` ran ~1550 ms high every other line, and the
-second run played 74 seconds untouched with **no** Connect snapshots and **no** drift
-correction — the stretch that used to be corrected once a second.
-
-Both of those runs also caught the first attempt at the abandoned-command case firing
-wrongly during a scrub. `../seek-after3.log` confirms the command-scoped replacement: three
-and a half minutes of a context's first track from `10:20:32.026`, then a backward scrub of
-134 seconds in four steps, and **zero** `Drift correction:` lines. Of 80 consecutive
-snapshot pairs less than a second apart, every one chains exactly except the two the scrub
-itself moved — and not one of them jumps *forward*, which was the whole signature.
+Status: **Done** 2026-08-14, confirmed at runtime in three logs.
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`
 Found: 2026-08-14, from `../seek.log`
 
-## Symptom
+## Summary
+
+For the first track of a context, the seek bar jumped back about 1.5 s and caught up, over and
+over, for the first 20–25 s. The drift check compared the display with the player's position,
+which then came from the decoder and ran ahead by the buffered audio, and it corrected in both
+directions. It now corrects only a display that runs ahead, or one a transport command moved
+and nothing confirmed. Since #65 the player reports the audible position, so the buffer no
+longer sits between the two clocks. The one-sided rule stays, not re-measured against the new
+clock; the comment on the drift check in `PlaybackViewModel` says so.
+
+## Problem
+
+### Symptom
 
 For the **first track** of a freshly started playlist or album, the seek bar jumps back
 about 1.5 seconds and then catches up, over and over, for roughly the first 20–25 seconds
 of the track. After that it runs smoothly. Subsequent tracks in the same context do not
 show it.
 
-## The two clocks
+### The two clocks
 
 Spotifly reads playback position from two places that do not mean the same thing.
 
@@ -63,7 +64,7 @@ For the first track of a context that is within a buffer-fill of when the music 
 which is close enough to be the honest clock here. It is not a physical playhead, and
 nothing in this codebase has one.
 
-## Evidence
+### Evidence
 
 Playback of the first track starts at `05:48:06.429`:
 
@@ -124,7 +125,7 @@ why the log then shows `23016 -> 25013` and 25013 from there on. The 2.0 s is no
 ceiling either: an already-rendering `start()` re-arms the throttle without clearing the
 buffer, `AudioRenderer.swift:345`.)
 
-## Mechanism
+### Mechanism
 
 1. The drift timer fires, reads the decoder clock, sees ~1.55 s of "drift", and jumps the
    anchor forward by that much.
@@ -140,7 +141,7 @@ gets a chance to correct the dishonest one. It has its own write-up in
 `plans/connect-state-put-echoes-itself-into-a-429.md`, including how it ends: sometimes
 Spotify rate-limits it.
 
-## Why it settles, and why only the first track
+### Why it settles, and why only the first track
 
 **Why it settles after ~20 s:** the Connect snapshots stop. In `seek.log` the last one
 during playback is at `05:48:22`; after that the anchor is written only by the drift
@@ -177,7 +178,9 @@ of a context honest. It does not make tracks two onward honest — they run abou
 seconds ahead of what you hear, quietly and consistently. Only a real audible playhead
 fixes that, which is the change listed under *Left standing*.
 
-## Fix
+## Solution
+
+### Fix
 
 **Give the drift correction two thresholds, because it is detecting two things.** The
 decoder clock is not a rival measurement of the same quantity — it is an *upper bound* on
@@ -270,7 +273,7 @@ Why this shape:
 fire repeatedly without logging, which is why this had to be inferred from the `X ->` side
 of somebody else's message. It is the regression signal for this plan.
 
-### Rejected: subtract the renderer's in-flight audio
+#### Rejected: subtract the renderer's in-flight audio
 
 The tempting fix is to make `SpotifyPlayer.positionMs` report the audible position by
 subtracting what `AudioRenderer` still holds (ring buffer, plus `currentPTS` minus
@@ -301,7 +304,7 @@ A real audible playhead is a bigger, separate change: explicit epochs rebased on
 flush, route change, pause/resume and track transition, consumed by the local
 playback-state callback and by Rust's rehydration as well as by the getter.
 
-### Also rejected
+#### Also rejected
 
 - *Raise the 500 ms threshold above the buffer depth.* Disables the check for the stall it
   exists to catch, and 2.0 s is not a hard ceiling.
@@ -310,7 +313,7 @@ playback-state callback and by Rust's rehydration as well as by the getter.
 - *Shrink `maxBufferAheadSeconds`.* Reduces the error without removing it, and spends the
   dropout headroom the throttle exists to provide.
 
-### Left standing, same root cause
+#### Left standing, same root cause
 
 All four are written up in
 `plans/the-reported-position-is-the-decoder-not-the-playhead.md`, which is where the work
@@ -338,6 +341,23 @@ bigger change above:
   that most wants the audible playhead.
 
 ## Verification
+
+### Confirmed at runtime
+
+Two runs, `../seek-after.log` and
+`../seek-after2.log`: the jitter is gone, every dense run of snapshots now chains exactly
+(`X` equals the previous `Y`) where before `X` ran ~1550 ms high every other line, and the
+second run played 74 seconds untouched with **no** Connect snapshots and **no** drift
+correction — the stretch that used to be corrected once a second.
+
+Both of those runs also caught the first attempt at the abandoned-command case firing
+wrongly during a scrub. `../seek-after3.log` confirms the command-scoped replacement: three
+and a half minutes of a context's first track from `10:20:32.026`, then a backward scrub of
+134 seconds in four steps, and **zero** `Drift correction:` lines. Of 80 consecutive
+snapshot pairs less than a second apart, every one chains exactly except the two the scrub
+itself moved — and not one of them jumps *forward*, which was the whole signature.
+
+### Checks
 
 The fix is a number becoming correct, so verify by measurement, not by watching.
 

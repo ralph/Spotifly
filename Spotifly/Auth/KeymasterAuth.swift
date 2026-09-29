@@ -79,7 +79,7 @@ nonisolated enum KeymasterAuthError: Error, LocalizedError, Equatable {
 ///
 /// It is a plain PKCE flow — no DPoP proof, no client token on the exchange. Both were tested
 /// against the live service and neither is required; see
-/// `plans/single-grant-partner-api.md` for the probe this rests on.
+/// `plans/done/single-grant-partner-api.md` for the probe this rests on.
 nonisolated enum KeymasterAuth {
     /// Spotify's desktop client id, the same one librespot defaults to
     /// (`SessionConfig::default().client_id`). It is the only id that can obtain the client

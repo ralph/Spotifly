@@ -1,18 +1,23 @@
 # Waking from sleep empties the queue and leaves the play button dead
 
-Status: **fixed and confirmed at runtime, 2026-08-03.** Kept as a record.
-`dfa447f`, `0be0c8c`, `3f61731`, then `e5011b0` and two follow-ups from review; see
-*Implemented fix* below. Confirmed by a manual sleep/wake cycle on the reporter's Mac:
-the queue survives and the paused track resumes. The handoff regression check — another
-device playing while Spotifly's transport buttons drive it remotely — was not part of that
-run and remains unexercised.
+Status: **Done** 2026-08-03 (`dfa447f`, `0be0c8c`, `3f61731`, then `e5011b0` and two
+follow-ups from review), confirmed by a sleep and wake by hand.
 Components: `Spotifly/Store/Services/QueueService.swift`,
-`Spotifly/ViewModels/PlaybackViewModel.swift`, `Spotifly/Store/AppStore.swift`,
-`rust/src/lib.rs`
-Found: 2026-08-03, branch `sleep-issue`. Evidence: `../sleep.log`, `../sleep.json`,
+`Spotifly/ViewModels/PlaybackViewModel.swift`, `Spotifly/Store/AppStore.swift`
+Found: 2026-08-03, branch `sleep-issue`. Evidence: `../sleep.log`, `../sleep.json`, a
 screenshot of the Queue section.
 
-## Symptom
+## Summary
+
+After a wake from sleep the queue was empty and the play button did nothing. The reconnect's
+bootstrap found no playback and applied that as an empty queue, and resume, with nobody active,
+went nowhere. The bootstrap now keeps the queue when the response carries no playback, the rule
+`QueueService.responseCarriesPlayback` still follows. The resume fallback was Rust and Web API
+code, and went with them.
+
+## Problem
+
+### Symptom
 
 Play an album locally, pause it (AirPods into their case), let the Mac sleep, walk away.
 On return, with the Queue section open the whole time:
@@ -28,9 +33,9 @@ On return, with the Queue section open the whole time:
 
 Only quitting and relaunching, or explicitly playing something new, recovers.
 
-## Evidence
+### Evidence
 
-### Timeline (`sleep.log`)
+#### Timeline (`sleep.log`)
 
 ```text
 09:29:00.639  PlayerEvent::Playing: spotify:track:3U6zVXn1JBiT0QiyJHUJ2o   # I'm So Bored, 286894ms
@@ -62,7 +67,7 @@ Two silences in that log are as informative as the lines:
 - **No playback-state or queue callback follows the eight `PUT`s.** The requests were
   answered with `404 NO_ACTIVE_DEVICE`; there was no device for them to command.
 
-### Store dump (`sleep.json`, taken after the fact)
+#### Store dump (`sleep.json`, taken after the fact)
 
 ```json
 "queue": {
@@ -80,9 +85,9 @@ entirely in what Swift believes about the queue and about where to send commands
 This is the exact shape the screenshot shows: 8 previous, no current, no next, so
 `currentIndex` (8) equals `queueLength` (8) and the counter renders `8 + 1` over `8`.
 
-## Mechanism
+### Mechanism
 
-### Defect 1 — "the Web API knows nothing" is applied as "the queue is empty"
+#### Defect 1 — "the Web API knows nothing" is applied as "the queue is empty"
 
 Wake triggers a reconnect, the connection snapshot goes not-ready then ready, and
 `LoggedInLifecycleModifier.swift:112-116` re-bootstraps from the Web API. Inside
@@ -122,7 +127,7 @@ why the Now Playing bar and the queue end up disagreeing: the bar is never touch
 (`applyWebAPIPlaybackState` is guarded by `if let state = playbackState`, which was nil),
 so it keeps the correct track while the queue has dropped it.
 
-### Defect 2 — `!isActiveDevice` is read as "a remote device is playing"
+#### Defect 2 — `!isActiveDevice` is read as "a remote device is playing"
 
 Every transport command routes through `sendTransportCommand`
 (`PlaybackViewModel.swift:499-523`):
@@ -151,7 +156,7 @@ everything needed to resume `I'm So Bored` at 93606 ms. `spotifly_play_uri` and
 exactly this reason, so *starting* a new track would have worked. Only *resuming* was
 unreachable.
 
-### Why the flag was false — the sleep teardown deactivates us
+#### Why the flag was false — the sleep teardown deactivates us
 
 `spotifly_disconnect` (`lib.rs:2508`) calls `spirc.shutdown()`. librespot answers any
 shutdown with `handle_disconnect`, which emits `PlayerEvent::SessionDisconnected`, and the
@@ -171,7 +176,7 @@ records `store_active_device(false)`. The rebuilt session is connected, Spirc-re
 deliberately not the active device — which is a defensible passive-startup policy, but it
 leaves Swift permanently routing to a Web API that has no target.
 
-### Defect 3 (minor) — the queue counter can point past the end
+#### Defect 3 (minor) — the queue counter can point past the end
 
 `NowPlayingBarView.swift:343` renders `store.currentIndex + 1` over `store.queueLength`,
 where `currentIndex` is `previousTracks.count` (`AppStore.swift:261`) and `queueLength`
@@ -179,7 +184,7 @@ counts the current entry only when it exists (`AppStore.swift:257`). Any state w
 history and no current track prints `n+1` of `n`. Defect 1 produced it here, but a queue
 played to its end reaches the same state legitimately.
 
-## Scope
+### Scope
 
 - Defects 1 and 3 need no sleep at all: **any** reconnect that finds no active playback
   wipes the queue. Sleep is simply the reliable way to reach it.
@@ -189,7 +194,9 @@ played to its end reaches the same state legitimately.
 - The user-visible severity is high: paused playback becomes unresumable, and the queue is
   lost with no way to get it back short of relaunching.
 
-## Implemented fix
+## Solution
+
+### Implemented fix
 
 1. **The bootstrap keeps the queue when the response carries no playback.**
    `QueueService.responseCarriesPlayback` names the distinction between "Spotify has nothing
@@ -225,7 +232,13 @@ reach an inactive Spirc and are correctly dropped. Activating for them would tak
 Connect role from the user's other clients to accomplish nothing, and making them work would
 mean silently starting playback in response to "next" — a different feature.
 
-## To reproduce
+## Verification
+
+Confirmed by a manual sleep and wake on the reporter's Mac: the queue survives and the paused
+track resumes. The handoff check, another device playing while Spotifly's transport buttons
+drive it remotely, was not part of that run and remains unexercised.
+
+### To reproduce
 
 1. Play an album locally with several tracks still pending, Queue section open.
 2. Pause.
@@ -235,11 +248,3 @@ mean silently starting playback in response to "next" — a different feature.
 
 A regression check is the log line `Initial queue: current=0, next=0` appearing while the
 store still had a current track and pending tracks.
-
-## Related
-
-- `plans/position-interpolation-runs-on-during-outage.md` — same wake path; the freshness
-  barrier and readiness ordering introduced there guard against *stale* server state, not
-  against *absent* server state.
-- `plans/queue-current-pointer-lags-requested-index.md` — the reconciliation that cannot
-  help here because the track is no longer in the list.

@@ -419,7 +419,7 @@ struct NowPlayingBarView: View {
     /// It is a fair trade — every other list in the app already resolves statuses through the
     /// cache, so this makes the bar consistent rather than uniquely stale — and the real fix is
     /// Spotify's collection change feed, which the Rust path received over Mercury and dropped
-    /// unread, and which nothing subscribes to at all now (`plans/single-grant-partner-api.md`,
+    /// unread, and which nothing subscribes to at all now (`plans/done/single-grant-partner-api.md`,
     /// task 12). Polling on view re-appearance was never going to be the right mechanism for that.
     private func resolveCurrentTrackFavoriteStatusIfNeeded() async {
         guard let trackId = currentTrackId else { return }

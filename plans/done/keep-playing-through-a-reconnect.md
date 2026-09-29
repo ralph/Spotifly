@@ -1,13 +1,21 @@
 # A reconnect restarts the audio it does not need to touch
 
-Status: **implemented 2026-09-27** as proposed below, and checked with the debug hook: see
-[Result](#result). Found in an hour-long run on `swift-librespot`; nothing here was broken, it
-was a hiccup that could be taken out.
+Status: **Done** 2026-09-27 (#68). Checked with the `SPOTIFLY_DEBUG_DROP_AP_AFTER` hook.
+Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`runRecovery`,
+`attachTransport`), `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`
+Found: in an hour-long run on `swift-librespot`, before #65 merged
 
-Component: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`runRecovery`,
-`attachTransport`), `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`.
+## Summary
 
-## What happens
+Spotify resets the accesspoint socket now and then. Recovery threw the audio pipeline away and
+reloaded the track, although the track was in memory and needed nothing from the socket: about
+0.16 s of silence, then about a second heard twice. Nothing was broken; it was a hiccup that
+could be taken out. The pipeline now stays through a reset and asks the session for its socket
+each time it needs an audio key.
+
+## Problem
+
+### What happens
 
 In the run, Spotify's accesspoint (`ap-gew4`) reset the connection twice, at 15:37:59 and
 15:40:00 CEST, and then held for the remaining 45 minutes. The second reset came two minutes
@@ -42,14 +50,16 @@ pipeline away. What is heard:
 Until `3164c14` the first track change after a recovery was not gapless either, because the
 new pipeline had not been told the next track.
 
-## Why the pipeline is rebuilt
+### Why the pipeline is rebuilt
 
 `AudioPipeline` is created with the session's `Accesspoint` and `SPClient` as `let`s, and
 `attachTransport` builds a new one after every reconnect: "the old pipeline would keep asking
 the corpse for audio keys". The accesspoint is needed only for a track's audio key; the
 current track, and the next one once fetched ahead, need nothing from it.
 
-## Proposal
+## Solution
+
+### Proposal
 
 Keep the pipeline and swap what it fetches with.
 
@@ -73,7 +83,9 @@ To test: a reset cannot be forced from Spotify's side, so drop the accesspoint s
 debug hook (`SPOTIFLY_DEBUG_DROP_AP_AFTER=<s>`, alongside the other `SPOTIFLY_DEBUG_*`) and
 listen for the gap, then check the log for no `Stopping` and a gapless next boundary.
 
-## Result
+## Verification
+
+### Result
 
 Implemented as proposed; the hook is `SPOTIFLY_DEBUG_DROP_AP_AFTER`. Before the change it
 reproduced the run above: `Stopping`, then a reload at a position read before the reconnect.

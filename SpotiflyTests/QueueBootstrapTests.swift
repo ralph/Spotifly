@@ -15,7 +15,7 @@ import Testing
 /// 204 while no device was active — but the hazard did not: an answer meaning "I have nothing
 /// to tell you" is shaped exactly like one meaning "nothing is queued", and applying the second
 /// when you were handed the first is what emptied the queue on every wake from sleep. See
-/// `plans/wake-from-sleep-loses-queue-and-resume.md`.
+/// `plans/done/wake-from-sleep-loses-queue-and-resume.md`.
 ///
 /// Now the two forms are a **nil** snapshot, meaning no cluster update has arrived, and a
 /// snapshot with nothing playing and nothing pending.

@@ -1,25 +1,33 @@
 # Section navigation: one request, one pattern, one cache
 
-Status: **completed. Kept as the reference for the loading pattern**, which `CLAUDE.md`
-points at from *Network Request Deduplication* — the rules there (a key means one
-postcondition, check the cache before the token, a superseded run must not write, cache what
-was fetched rather than what is non-empty) are this plan's conclusions and are still in force.
-`InFlightRequests` and `BatchInFlightRequests` are the shipped result.
+Status: **Done** 2026-07-31 (#44, branch `improve-section-nav`). Kept as the reference for the
+loading pattern that `AGENTS.md` describes.
+Components: `Spotifly/Store/Services/InFlightRequests.swift`, the services in
+`Spotifly/Store/Services/`, and the section views
+Found: 2026-07-31, from albums that opened empty
+
+## Summary
+
+Opening a section fetched the same thing several times, and an album could open empty. The fix
+is the pattern `AGENTS.md` points at from *Network Request Deduplication*: a key means one
+postcondition, check the cache before the token, a superseded run must not write, and cache
+what was fetched rather than what is non-empty. `InFlightRequests` and `BatchInFlightRequests`
+are the shipped result.
 
 Two things have moved since it was written. The endpoints it names are Web API ones that no
 longer exist — the same pattern now runs against pathfinder and spclient — and the four
 library sections share one `AppStore.loadLibraryPage` rather than a copy each.
 
-Branch: `improve-section-nav`
+## Problem
 
-## Symptom
+### Symptom
 
 Opening an album in the Albums section often shows the header but no tracks, with a
 red `Abgebrochen` (= `URLError.cancelled`) under the disabled play button. The same
 class of problem exists in Favorites / Playlists / Artists in weaker forms, because
 each section grew its own variant of the same loading code.
 
-## What the log actually shows
+### What the log actually shows
 
 ```
 14:07:15.991 SpotifySession  Returning valid token: BQDxlBtVL2y_76vbgDkc...
@@ -37,9 +45,9 @@ metadata did not need fetching at all. Halving this pair is fix #1.
 Genuinely duplicated requests are still possible in the current code (see below);
 they are just not what this excerpt proves.
 
-## Diagnosis
+### Diagnosis
 
-### 1. Two entry points into one unguarded fetch
+#### 1. Two entry points into one unguarded fetch
 
 `AlbumDetailView.task(id: albumId)` runs two loads back to back:
 
@@ -59,7 +67,7 @@ one, but it is a `Set<String>` + 50 ms polling loop that only guards the
 already has a proper per-ID `Task` map; `ArtistService` has nothing. Three
 sections, three different answers.
 
-### 2. Requests die with the view
+#### 2. Requests die with the view
 
 Album and artist detail fetches run *structurally inside* the view's `.task`. When
 SwiftUI tears the view down, the `URLSession` request is cancelled →
@@ -85,7 +93,7 @@ Teardown sources, in rough order of likelihood:
 A plain `@Observable` body recomputation does *not* cancel a task while structural
 and explicit identity hold.
 
-### 3. The polling waiter fails silently
+#### 3. The polling waiter fails silently
 
 A second caller reaching `getAlbumTracks` while the first is in flight polls
 `loadingAlbumTrackIds` every 50 ms. When the first load is cancelled the flag is
@@ -93,14 +101,14 @@ cleared by its `defer`, the poll exits, and the waiter returns `[]` — **no err
 no retry**. The album stays empty until the user navigates away and back. This is
 "viele Alben laden nicht".
 
-### 4. `tracksLoaded` is not a load marker
+#### 4. `tracksLoaded` is not a load marker
 
 `Album.tracksLoaded` / `Playlist.tracksLoaded` are defined as `!trackIds.isEmpty`.
 An album or playlist that genuinely has no tracks is therefore re-fetched on every
 single visit, forever — and emptying a playlist produces the same state. Any cache
 rule built on it inherits the bug.
 
-### 5. Fetched data lives in `@State`, not in the store
+#### 5. Fetched data lives in `@State`, not in the store
 
 The three detail views mirror their entity into `@State`. `ArtistDetailView` also
 mirrors the artist's albums into `@State albums`, which is never written to the
@@ -109,7 +117,7 @@ is discarded on teardown and fetched again. `@State` is identity-bound and does 
 follow later initialiser values, so the dual `init(album:)` / `init(albumId:)`
 shape is a second source of staleness.
 
-### 6. Redundant requests elsewhere
+#### 6. Redundant requests elsewhere
 
 - The detail views' `.task(id: tracks…)` calls `refreshFavoriteStatuses`, which
   deliberately ignores `resolvedFavoriteTrackIds` — so `/me/tracks/contains` is
@@ -118,11 +126,13 @@ shape is a second source of staleness.
   by reloading", but that returns the optimistically-mutated cached list without
   ever hitting the network.
 
-## Design
+## Solution
+
+### Design
 
 One helper, one entry point per entity, all fetched data in `AppStore`.
 
-### `InFlightRequests<Value>` — `Store/Services/InFlightRequests.swift`
+#### `InFlightRequests<Value>` — `Store/Services/InFlightRequests.swift`
 
 ```swift
 @MainActor
@@ -166,7 +176,7 @@ used by the detail views so a cancellation is never rendered as an error message
 Not an extension on `Error` — this is a view-layer presentation rule, not a
 universal truth about errors.
 
-### Explicit load markers instead of inference
+#### Explicit load markers instead of inference
 
 `Album` and `Playlist` get two stored flags, replacing the derived `tracksLoaded`:
 
@@ -187,7 +197,7 @@ Known limitation, deliberately not fixed here: album tracks and artist albums ar
 fetched with `limit=50` and no pagination, so for a >50-item album the marker
 records "loaded" for a truncated list. That is pre-existing and orthogonal.
 
-### Uniform service API
+#### Uniform service API
 
 | Service | Entry point | Key | Requests when everything is cached |
 |---|---|---|---|
@@ -210,7 +220,7 @@ albums, each guarded by its own marker.
 become private or disappear. The four list loads move onto the same helper — they
 are four hand-written copies of it today — with pagination semantics unchanged.
 
-### Views read the store
+#### Views read the store
 
 `AlbumDetailView`, `ArtistDetailView`, `PlaylistDetailView`:
 
@@ -231,7 +241,7 @@ rather than to one key. That is already true of these views today (their `tracks
 computed properties read `store.albums` and `store.tracks`), the store is small,
 and per-entity observable boxes would be disproportionate here.
 
-### Deliberately out of scope
+#### Deliberately out of scope
 
 - **`RecentlyPlayedService` keeps calling `SpotifyAPI` directly.** Routing it
   through `ensureAlbumLoaded` would turn a metadata-only prefetch into a full track
@@ -250,7 +260,7 @@ and per-entity observable boxes would be disproportionate here.
   after it. Pre-existing; guarding it properly needs response revisioning, which is
   more machinery than this buys.
 
-## Commits (one per fix)
+### Commits (one per fix)
 
 1. `InFlightRequests` helper + `isCancellation` + tests.
 2. Explicit `detailsLoaded` / `tracksLoaded` markers on `Album` and `Playlist`,

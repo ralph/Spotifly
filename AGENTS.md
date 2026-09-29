@@ -53,16 +53,15 @@ substitute back for, and the substitute looks canonical from every angle. spclie
 id-faithful: it returns whatever id you ask for, so it hydrates entities without ever
 introducing a second identity. Measured against a known pair on 2026-08-13 (Xavier Rudd, "The
 Letter": original `459GknUJgpky3io0y482bi`, DE substitute `7FcObTmCbQYyC8qzlTL2SE`); the
-detail is in `plans/single-grant-partner-api.md`.
+detail is in `plans/done/single-grant-partner-api.md`.
 
 So the choice is only *which* id every path agrees on, and the market id is the one every
 path can produce. Send `market=from_token` everywhere it is supported and let the answer
 stand: that is what makes a searched track and a saved track the same track.
 
 **This reverses the earlier rule**, which normalised back to the original through a
-`RelinkableTrackCodable` protocol — the reasoning is in
-`plans/relinked-track-now-playing-identity.md` and `plans/web-api-track-relinking-identity.md`,
-both now historical. That rule existed because Spotify's
+`RelinkableTrackCodable` protocol. The two plans that introduced it were deleted on
+2026-09-29 and are in git history. That rule existed because Spotify's
 [relinking docs](https://developer.spotify.com/documentation/web-api/concepts/track-relinking)
 require the original id for Web API writes. It stopped being available once search moved to
 pathfinder, and the mismatch it caused was live: a relinked track favorited from search saved
@@ -198,7 +197,7 @@ Rules when adding a loading path:
 - **Views read the store**, never a `@State` copy of an entity.
 
 The services that hold registries are stored as `@State` in `LoggedInView` so the
-registries survive view recreation. `plans/section-request-pattern.md` has the full reasoning.
+registries survive view recreation. `plans/done/section-request-pattern.md` has the full reasoning.
 
 ## Debug Logging
 
@@ -221,6 +220,39 @@ filtering on the module prefix:
 - `Accesspoint` — the TCP connection to Spotify: connect, handshake, login, audio keys
 - `LibrespotSession`, `LibrespotClient` — session lifecycle, recovery, command dispatch
 - `AudioPipeline`, `AudioRenderer` — track loads, decoding, position, end of track
+
+## Plans
+
+`plans/` holds one Markdown file per problem, named after it, in one of two folders:
+
+- `plans/open/` — not done: problems recorded but not planned, and those with a plan. Status
+  says which, and ranks the ones being worked on. A plan being written lives on a
+  `plan/<topic>` branch with a draft PR until it is merged.
+- `plans/done/` — implemented. Kept because they record why the code does what it does, and
+  code comments cite several. Move a plan here in the PR that finishes it, and set its status.
+
+There is no index file; the folders are the index. A plan that no longer describes the code,
+and whose reasoning nothing relies on, is deleted rather than kept, since git history has it.
+Paths and plan names inside a done plan are as of when it was written, so a plan it names
+may since have been deleted.
+
+Every plan has the same structure:
+
+```markdown
+# <The problem, or what is built, in one line>
+
+Status: **Open** or **Done**, then the date, PR or commits, and anything unconfirmed
+Components: `the/files.swift` it touches
+Found: <date>, <how it came up>
+
+## Summary
+## Problem
+## Solution
+## Verification
+```
+
+Anything else goes under one of the four as a `###` section. An open plan with no solution
+yet says so under Solution and Verification rather than leaving them out.
 
 ## Changelog & Releases
 
