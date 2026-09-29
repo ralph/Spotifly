@@ -313,7 +313,7 @@ public actor SpircController {
 
     private func buildPutStateRequest(isActive: Bool) -> PutStateRequestProto {
         var request = PutStateRequestProto()
-        request.device = buildDevice(playerState: playerState)
+        request.device = buildDevice()
         request.memberType = .connectState
         request.isActive = isActive
         request.putStateReason = isActive ? .newDevice : .spircHello
@@ -336,7 +336,7 @@ public actor SpircController {
     ///
     /// Active-ness is *not* part of it — `ConnectDeviceInfo` has no such
     /// field; `PutStateRequest.is_active` is where the cluster reads it.
-    private func buildDevice(playerState: SpircPlayerState?) -> ConnectDevice {
+    private func buildDevice() -> ConnectDevice {
         var deviceInfoProto = ConnectDeviceInfo()
         deviceInfoProto.canPlay = deviceInfo.supportsPlayback
         deviceInfoProto.volume = volume
