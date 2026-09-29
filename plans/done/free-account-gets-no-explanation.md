@@ -142,12 +142,26 @@ Nobody here has a free account, so the checks that matter need none:
 - [x] The hidden registration, live, with a throwaway device id from the test host
       (2026-09-29): hidden, the cluster came back with 2 devices, the app's own among them
       and the probe not; registered as a player, the probe was listed.
-- [ ] Live, Debug build: `SPOTIFLY_DEBUG_ACCOUNT_TYPE=free` overrides the parsed value. Launch
-      with it: the library loads, a play on this Mac shows the notice instead of an error,
-      Logout works, and a phone does not list this Mac as a speaker. Without it, nothing
-      changes. Paste the `Accesspoint` line that shows the parsed type. Not run: the steps
-      are in #58.
+- [x] Live, Debug build of `63ae6de` (this branch with main merged), DE Premium account,
+      2026-09-29. All eight of #58's checks **passed**:
+      - With `SPOTIFLY_DEBUG_ACCOUNT_TYPE=free` the log reads
+        `[2026-09-29T18:53:56.950Z DEBUG Accesspoint] Account type: premium`, then
+        `Account type run as free`.
+      - The library, a playlist, an album and a search load.
+      - The phone does not list this Mac. Speakers says "Dieser Mac spielt nur für
+        Premium-Konten", with no row to enable it.
+      - With nothing playing, the first double-click raises the notice and the bar
+        message, and the next one only the bar message. Play on an album, Start Radio and the
+        bar's Play show the bar message. The log shows the bar's Play refused: `resume() had
+        no active device, and this account does not stream here`.
+      - The mini player's Play shows the bar message.
+      - With the phone playing, a double-click plays on the phone. Pause and Next control
+        it, and the bar and the queue follow it. The Mac never reported itself active.
+      - Logout in the notice returns to the login screen.
+      - Without the variable, the log shows only `Account type: premium`. The phone lists
+        Spotifly, and a double-click plays on the Mac.
 - [x] Build, 387 unit tests and `swiftformat --swiftversion 6.4 --lint .`, run bare, exit 0.
+      Again after merging main: 441 tests, lint exit 0.
 - [ ] If a free account can be borrowed, run the real case and record what happens,
       including whether login succeeds. That settles the question this plan can only reason
-      about.
+      about. Not done: none was at hand.
