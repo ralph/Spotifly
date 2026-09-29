@@ -30,7 +30,8 @@ final nonisolated class PlaybackQueue {
     /// context resumes.
     private(set) var userQueue: [String] = []
 
-    /// Tracks already played, most recent last, for skip-backwards.
+    /// Context tracks already played, most recent last, for skip-backwards. Queued tracks are
+    /// not kept, as in librespot, which puts "only songs from our context" in `prev_tracks`.
     private(set) var history: [String] = []
 
     /// A user-queue track that is playing now. It sits outside the context,
@@ -155,10 +156,15 @@ final nonisolated class PlaybackQueue {
     ///   current track; a manual skip must move regardless, so callers pass
     ///   false there.
     func advance(respectingRepeat: Bool = true) -> String? {
-        // User queue entries always play next, once.
+        let leavingQueued = userQueueCurrent != nil
+
+        // User queue entries always play next, once. The context track they interrupt goes
+        // into the history; a queued track followed by another does not.
         if !userQueue.isEmpty {
             let next = userQueue.removeFirst()
-            pushHistory()
+            if !leavingQueued {
+                pushHistory()
+            }
             userQueueCurrent = next
             return next
         }
@@ -170,7 +176,12 @@ final nonisolated class PlaybackQueue {
             return contextTracks[currentIndex]
         }
 
-        pushHistory()
+        // Leaving a queued track pushes nothing: the context track it interrupted went in
+        // when the queued track started. Pushing `currentUri` here, once the queued track was
+        // cleared, put that context track in a second time.
+        if !leavingQueued {
+            pushHistory()
+        }
 
         if shuffleEnabled {
             let next = shufflePosition + 1
