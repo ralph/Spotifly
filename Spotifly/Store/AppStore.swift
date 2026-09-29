@@ -15,6 +15,8 @@ import SwiftUI
 struct QueueEntry: Equatable {
     let trackId: String
     let provider: TrackProvider
+    /// The cluster's name for this row, when another device's queue gave one.
+    var uid: String?
 }
 
 /// Normalized queue state storing track entries (ID + provider)
@@ -34,14 +36,7 @@ struct Queue: Equatable {
     /// is already correct, so the playing track's logical identity is authoritative.
     func reconciled(currentTrackId trackId: String) -> Queue {
         let allTracks = previousTracks + (currentTrack.map { [$0] } ?? []) + nextTracks
-        let reportedIndex = previousTracks.count
-        let matchingIndices = allTracks.indices.filter { allTracks[$0].trackId == trackId }
-
-        guard let currentIndex = matchingIndices.min(by: { lhs, rhs in
-            let lhsDistance = abs(lhs - reportedIndex)
-            let rhsDistance = abs(rhs - reportedIndex)
-            return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
-        }) else {
+        guard let currentIndex = allTracks.nearestIndex(to: previousTracks.count, where: { $0.trackId == trackId }) else {
             return self
         }
 
@@ -67,6 +62,9 @@ final class AppStore {
 
     /// All tracks indexed by ID - single source of truth
     private(set) var tracks: [String: Track] = [:]
+
+    /// The uris of the tracks here that Spotify said will not play, which playback steps over.
+    private(set) var unplayableTrackUris: Set<String> = []
 
     /// All albums indexed by ID
     private(set) var albums: [String: Album] = [:]
@@ -215,10 +213,23 @@ final class AppStore {
         resolvedFavoriteTrackIds.contains(trackId)
     }
 
-    /// Upsert tracks
+    /// Upsert tracks, keeping `unplayableTrackUris` in step. Every answer that replaces a track
+    /// here says whether it plays, except spclient's, which only fills in tracks the store
+    /// lacks.
     func upsertTracks(_ newTracks: [Track]) {
+        var unplayable = unplayableTrackUris
         for track in newTracks {
             tracks[track.id] = track
+            if track.isPlayable {
+                unplayable.remove(track.uri)
+            } else {
+                unplayable.insert(track.uri)
+            }
+        }
+        // Written only when it changed: every write notifies, and the logged-in view passes
+        // it on to playback.
+        if unplayable != unplayableTrackUris {
+            unplayableTrackUris = unplayable
         }
     }
 

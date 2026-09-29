@@ -271,6 +271,7 @@ struct PlaylistDetailView: View {
                 await playbackViewModel.play(
                     uriOrUrl: uri,
                     trackIndex: index,
+                    startingAtUri: track.uri,
                 )
             },
         )

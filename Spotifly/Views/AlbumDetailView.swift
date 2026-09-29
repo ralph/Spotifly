@@ -175,6 +175,7 @@ struct AlbumDetailView: View {
                                     await playbackViewModel.play(
                                         uriOrUrl: album.uri,
                                         trackIndex: index,
+                                        startingAtUri: track.uri,
                                     )
                                 },
                             )

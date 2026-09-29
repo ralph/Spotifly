@@ -189,3 +189,169 @@ struct PlaybackQueueHandoverTests {
         #expect(queue.upcoming().map(\.uri) == ["q1", "q2", "t1"])
     }
 }
+
+/// Where a context starts when a row names its index and its track. The index counts rows in
+/// the view's list, which is not the resolved context, so the track decides and the index only
+/// says which copy. See `plans/done/clicked-row-plays-another-track.md`.
+struct ContextStartTests {
+    /// `b` twice, at 1 and 3.
+    private let tracks = ["a", "b", "c", "b", "d"]
+
+    @Test func `the index wins when it names the track`() {
+        let start = PlaybackQueue.start(in: tracks, index: 3, uri: "b")
+
+        #expect(start.index == 3)
+        #expect(start.tracks == tracks)
+    }
+
+    /// The Liked Songs case before #77: the list and the context in another order.
+    @Test func `a stale index finds the track wherever it is`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 0, uri: "c").index == 2)
+        #expect(PlaybackQueue.start(in: tracks, index: 4, uri: "a").index == 0)
+    }
+
+    @Test func `of two copies, the one nearer the index wins`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 0, uri: "b").index == 1)
+        #expect(PlaybackQueue.start(in: tracks, index: 4, uri: "b").index == 3)
+    }
+
+    @Test func `a tie goes to the earlier copy`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 2, uri: "b").index == 1)
+    }
+
+    /// A list older than the context: the clicked track still plays, and what follows it is
+    /// what followed its row.
+    @Test func `a track the context does not name goes in at the index`() {
+        let start = PlaybackQueue.start(in: tracks, index: 2, uri: "x")
+
+        #expect(start.index == 2)
+        #expect(start.tracks == ["a", "b", "x", "c", "b", "d"])
+    }
+
+    /// A resume or a handover names a track without an index, as it always did.
+    @Test func `without an index, a track the context does not name goes in front`() {
+        let start = PlaybackQueue.start(in: tracks, index: nil, uri: "x")
+
+        #expect(start.index == 0)
+        #expect(start.tracks == ["x"] + tracks)
+    }
+
+    @Test func `an index past the end is clamped, then checked against the track`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 99, uri: nil).index == 4)
+        #expect(PlaybackQueue.start(in: tracks, index: 99, uri: "d").index == 4)
+        #expect(PlaybackQueue.start(in: tracks, index: 99, uri: "a").index == 0)
+    }
+
+    @Test func `an index alone is taken as it is`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 2, uri: nil).index == 2)
+    }
+
+    @Test func `a track alone starts at its first copy`() {
+        #expect(PlaybackQueue.start(in: tracks, index: nil, uri: "b").index == 1)
+    }
+
+    @Test func `neither starts at the top`() {
+        let start = PlaybackQueue.start(in: tracks, index: nil, uri: nil)
+
+        #expect(start.index == 0)
+        #expect(start.tracks == tracks)
+    }
+}
+
+/// A double-click on a queue row: the queue moves to that row and keeps what it had.
+struct QueueJumpTests {
+    private func queue(_ tracks: [String]) -> PlaybackQueue {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: tracks, startIndex: 0)
+        return queue
+    }
+
+    private func album(_ count: Int) -> [String] {
+        (0 ..< count).map { "t\($0)" }
+    }
+
+    private func upcoming(_ queue: PlaybackQueue) -> [String] {
+        queue.upcoming().map(\.uri)
+    }
+
+    @Test func `a context row ahead plays, and the tracks passed over go into the history`() {
+        let queue = queue(album(6))
+
+        #expect(queue.skip(toUpcoming: 2, uri: "t3") == "t3")
+        #expect(queue.currentUri == "t3")
+        #expect(queue.history == ["t0", "t1", "t2"])
+        #expect(upcoming(queue) == ["t4", "t5"])
+    }
+
+    /// The plan's case: they were dropped, because the context was resolved again.
+    @Test func `queued tracks stay queued when a context row is chosen`() {
+        let queue = queue(album(5))
+        queue.enqueue("q0")
+        queue.enqueue("q1")
+
+        #expect(queue.skip(toUpcoming: 3, uri: "t2") == "t2")
+        #expect(upcoming(queue) == ["q0", "q1", "t3", "t4"])
+    }
+
+    @Test func `a queued row plays, and the queued tracks before it are skipped`() {
+        let queue = queue(album(3))
+        queue.enqueue("q0")
+        queue.enqueue("q1")
+        queue.enqueue("q2")
+
+        #expect(queue.skip(toUpcoming: 1, uri: "q1") == "q1")
+        #expect(queue.currentUri == "q1")
+        #expect(upcoming(queue) == ["q2", "t1", "t2"])
+    }
+
+    @Test func `under shuffle, the shuffle order is kept`() {
+        let queue = queue(album(8))
+        queue.setShuffle(true)
+        let before = upcoming(queue)
+
+        #expect(queue.skip(toUpcoming: 3, uri: before[3]) == before[3])
+        #expect(upcoming(queue) == Array(before.dropFirst(4)))
+    }
+
+    /// The queue view's list can be split a row away from the client's while the store
+    /// reconciles it, so the index alone could name the neighbour.
+    @Test func `the track decides, and the index picks the copy nearest it`() {
+        let queue = queue(["a", "b", "a", "c", "a"])
+
+        #expect(queue.skip(toUpcoming: 2, uri: "b") == "b")
+        #expect(queue.contextPosition == 1)
+
+        #expect(queue.skip(toUpcoming: 2, uri: "a") == "a")
+        #expect(queue.contextPosition == 4)
+    }
+
+    /// A `skip_next` from another device names a track and no index: librespot steps to the
+    /// first copy ahead.
+    @Test func `without an index, the first copy ahead plays`() {
+        let queue = queue(["a", "b", "a", "c", "a"])
+
+        #expect(queue.skip(toUpcoming: nil, uri: "a") == "a")
+        #expect(queue.contextPosition == 2)
+    }
+
+    @Test func `a row no longer listed plays nothing and moves nothing`() {
+        let queue = queue(album(3))
+
+        #expect(queue.skip(toUpcoming: 0, uri: "gone") == nil)
+        #expect(queue.stepBack(toRecent: 0, uri: "gone") == nil)
+        #expect(queue.currentUri == "t0")
+        #expect(upcoming(queue) == ["t1", "t2"])
+    }
+
+    /// Looked up through `recent()`, the list the view shows, whichever order it has.
+    @Test func `a history row steps back to it, as Previous would`() throws {
+        let queue = queue(album(5))
+        _ = queue.skip(toUpcoming: 2, uri: "t3")
+        let row = try #require(queue.recent().firstIndex { $0.uri == "t1" })
+
+        #expect(queue.stepBack(toRecent: row, uri: "t1") == "t1")
+        #expect(queue.currentUri == "t1")
+        #expect(queue.history == ["t0"])
+        #expect(upcoming(queue) == ["t2", "t3", "t4"])
+    }
+}

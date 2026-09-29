@@ -231,12 +231,8 @@ final class QueueService {
 
     /// A queue track becomes an entry only if its uri names a track — the cluster can carry
     /// episodes and ads, which this app has no row for.
-    private static func queueEntry(uri: String, provider: String) -> QueueEntry? {
-        guard let trackId = SpotifyAPI.parseTrackURI(uri) else { return nil }
-        return QueueEntry(trackId: trackId, provider: TrackProvider(from: provider))
-    }
-
     private static func queueEntry(from item: QueueItem) -> QueueEntry? {
-        queueEntry(uri: item.uri, provider: item.provider)
+        guard let trackId = SpotifyAPI.parseTrackURI(item.uri) else { return nil }
+        return QueueEntry(trackId: trackId, provider: TrackProvider(from: item.provider), uid: item.uid)
     }
 }
