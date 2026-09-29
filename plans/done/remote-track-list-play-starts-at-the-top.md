@@ -1,7 +1,7 @@
 # A remote play of a bare track list plays nothing
 
-Status: **Done** 2026-09-29. Built and unit-tested. Not yet seen in the running app; see
-Verification. The sending side has a plan of its own:
+Status: **Done** 2026-09-29 (#84). Built, unit-tested, and both live checks passed on `0dd7076`
+the same day; see Verification. The sending side has a plan of its own:
 `plans/open/plays-sent-to-a-librespot-device.md`.
 Components: `Spotifly/SwiftLibrespot/Dealer/DealerConnection.swift` (`parseCommand`, `play`),
 `Spotifly/SwiftLibrespot/Dealer/DealerMessage.swift` (`PlayCommand`),
@@ -87,9 +87,21 @@ Not changed:
       sent as the context. Against the old parser the three list cases fail: nothing was read.
 - [x] The start rule itself is `ContextStartTests`, from #79.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, 2026-09-29.
-- [ ] Live, two instances (`DEVELOPMENT.md`, `SPOTIFLY_DEBUG_DEVICE_ID`): play something on
-      instance B, then on instance A search for a song, open "Show all tracks" and press Play Tracks.
-      B plays the list from its first track, and its queue shows the rest. Before, B did
-      nothing.
-- [ ] Live, handover: with B playing that list, pick A in B's Speakers. A continues the same
-      track at the same place, with the rest of the list after it.
+- [x] Live, a bare list sent to the Mac. **The two-instance step first written here could not
+      work:** a Spotifly that can play keeps a play for itself (`PlaybackViewModel.playbackTarget`),
+      so instance A would have played the list and sent B nothing. The Web API's
+      `PUT /me/player/play` with `uris` answered 429 to the web player's token. So the command
+      went from Chrome, with the web player's token, to
+      `connect-state/v1/player/command/from/…/to/<the Mac>`: `context: {uri: "", url: "",
+      pages: [{tracks: [Gold Lion, Girlfriend, The Diamond Church Street Choir]}]}` and
+      `options.skip_to: {track_uri: <the third>, track_index: 2}`. **Passed** on `0dd7076`,
+      2026-09-29: `Remote command: play(… Context.tracks([…3…]), trackUri: …7ue34Zx…, index: 2)`,
+      then `Playing spotify:track:7ue34ZxB8zyetZ0BCiIrn2`.
+- [x] Live, handover: the same list sent starting at Gold Lion, handed to a phone from Speakers,
+      and taken back after about ten seconds. **Passed**, same day: the phone sent
+      `TransferState(contextUri: "", contextTrackUris: [the three], currentTrackUri: Gold Lion,
+      positionAsOfTimestamp: 53126)`, and the Mac took over at 65391 ms, where the phone had got
+      to, with the other two tracks after it in the queue.
+- Seen along the way: the queue's header went on naming the album played before ("Alive"),
+  since `AppStore.setQueue` ignores an empty context uri. Recorded as
+  `plans/open/queue-header-names-the-previous-context.md`.
