@@ -172,3 +172,71 @@ struct PlaybackQueueHandoverTests {
         #expect(queue.upcoming().map(\.uri) == ["q1", "q2", "t1"])
     }
 }
+
+/// Where a context starts when a row names its index and its track. The index counts rows in
+/// the view's list, which is not the resolved context, so the track decides and the index only
+/// says which copy. See `plans/done/clicked-row-plays-another-track.md`.
+struct ContextStartTests {
+    /// `b` twice, at 1 and 3.
+    private let tracks = ["a", "b", "c", "b", "d"]
+
+    @Test func `the index wins when it names the track`() {
+        let start = PlaybackQueue.start(in: tracks, index: 3, uri: "b")
+
+        #expect(start.index == 3)
+        #expect(start.tracks == tracks)
+    }
+
+    /// The Liked Songs case before #77: the list and the context in another order.
+    @Test func `a stale index finds the track wherever it is`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 0, uri: "c").index == 2)
+        #expect(PlaybackQueue.start(in: tracks, index: 4, uri: "a").index == 0)
+    }
+
+    @Test func `of two copies, the one nearer the index wins`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 0, uri: "b").index == 1)
+        #expect(PlaybackQueue.start(in: tracks, index: 4, uri: "b").index == 3)
+    }
+
+    @Test func `a tie goes to the earlier copy`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 2, uri: "b").index == 1)
+    }
+
+    /// A list older than the context: the clicked track still plays, and what follows it is
+    /// what followed its row.
+    @Test func `a track the context does not name goes in at the index`() {
+        let start = PlaybackQueue.start(in: tracks, index: 2, uri: "x")
+
+        #expect(start.index == 2)
+        #expect(start.tracks == ["a", "b", "x", "c", "b", "d"])
+    }
+
+    /// A resume or a handover names a track without an index, as it always did.
+    @Test func `without an index, a track the context does not name goes in front`() {
+        let start = PlaybackQueue.start(in: tracks, index: nil, uri: "x")
+
+        #expect(start.index == 0)
+        #expect(start.tracks == ["x"] + tracks)
+    }
+
+    @Test func `an index past the end is clamped, then checked against the track`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 99, uri: nil).index == 4)
+        #expect(PlaybackQueue.start(in: tracks, index: 99, uri: "d").index == 4)
+        #expect(PlaybackQueue.start(in: tracks, index: 99, uri: "a").index == 0)
+    }
+
+    @Test func `an index alone is taken as it is`() {
+        #expect(PlaybackQueue.start(in: tracks, index: 2, uri: nil).index == 2)
+    }
+
+    @Test func `a track alone starts at its first copy`() {
+        #expect(PlaybackQueue.start(in: tracks, index: nil, uri: "b").index == 1)
+    }
+
+    @Test func `neither starts at the top`() {
+        let start = PlaybackQueue.start(in: tracks, index: nil, uri: nil)
+
+        #expect(start.index == 0)
+        #expect(start.tracks == tracks)
+    }
+}

@@ -223,9 +223,13 @@ struct QueueListView: View {
                         currentSection: .queue,
                         onDoubleTap: {
                             if let contextUri = store.queue.contextUri {
+                                // The row's index counts queue rows, not context tracks,
+                                // so it only picks between copies of the track. A queued
+                                // track is not in the context at all, and goes in front.
                                 await playbackViewModel.play(
                                     uriOrUrl: contextUri,
-                                    trackIndex: index,
+                                    trackIndex: item.provider == .queue ? -1 : index,
+                                    startingAt: item.track.uri,
                                 )
                             } else {
                                 await playbackViewModel.play(uriOrUrl: item.track.uri)

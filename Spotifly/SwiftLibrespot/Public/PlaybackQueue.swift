@@ -48,6 +48,51 @@ final nonisolated class PlaybackQueue {
     // MARK: - Loading
 
     /// Replaces the whole playing context.
+    /// Where a context starts, from what the caller named: a position in it, a track, or
+    /// both.
+    ///
+    /// A double-click names both: the row's index as its view counts rows, and the row's
+    /// track. The view's list is not the resolved context, so the index alone can name
+    /// another track (`plans/done/clicked-row-plays-another-track.md`). So the track decides,
+    /// and the index only says which copy of it, since a playlist can hold a track twice. The
+    /// copy nearest the index wins, the earlier one on a tie, as
+    /// `Queue.reconciled(currentTrackId:)` chooses. An index alone is clamped to the context, as
+    /// it always was.
+    ///
+    /// A track the context does not name at all still has to be the one that plays, so it is
+    /// put in: at the index, so that what follows is what followed the row, or in front without
+    /// one, as a resume or a handover of a relinked id always did. Measured on 2026-09-29, the
+    /// resolver and pathfinder named the same ids in the same order for Liked Songs (320
+    /// tracks) and for both "Food In The Belly" albums, the one holding a relinked track. So a
+    /// missing track means a list older than the context, not two ways of naming it.
+    ///
+    /// - Returns: the tracks to play, the named track put in when it was missing, and the
+    ///   index to start at.
+    static func start(
+        in tracks: [String],
+        index: Int?,
+        uri: String?,
+    ) -> (tracks: [String], index: Int) {
+        guard !tracks.isEmpty else { return (uri.map { [$0] } ?? [], 0) }
+        let position = index.map { min(max($0, 0), tracks.count - 1) }
+        guard let uri else { return (tracks, position ?? 0) }
+
+        if let position, tracks[position] == uri {
+            return (tracks, position)
+        }
+        let target = position ?? 0
+        let nearest = tracks.indices.filter { tracks[$0] == uri }.min { lhs, rhs in
+            let (lhsDistance, rhsDistance) = (abs(lhs - target), abs(rhs - target))
+            return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
+        }
+        if let nearest {
+            return (tracks, nearest)
+        }
+        var withTrack = tracks
+        withTrack.insert(uri, at: target)
+        return (withTrack, target)
+    }
+
     func setContext(uri: String, tracks: [String], startIndex: Int) {
         contextUri = uri
         contextTracks = tracks
