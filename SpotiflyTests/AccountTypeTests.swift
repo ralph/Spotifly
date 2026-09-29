@@ -33,9 +33,9 @@ struct AccountTypeTests {
     }
 
     @Test func `only Premium plays here, and so does an account whose type never came`() {
-        #expect(LibrespotConnectionState.streams(accountType: "premium"))
-        #expect(!LibrespotConnectionState.streams(accountType: "free"))
-        #expect(LibrespotConnectionState.streams(accountType: nil))
+        #expect(LibrespotSession.streams(accountType: "premium"))
+        #expect(!LibrespotSession.streams(accountType: "free"))
+        #expect(LibrespotSession.streams(accountType: nil))
     }
 
     /// As the web player registers when it cannot play. Measured on 2026-09-29: a device
@@ -58,20 +58,18 @@ struct AccountTypeTests {
 @MainActor
 struct PlaybackTargetTests {
     @Test func `this Mac takes a play, even while a phone is active`() {
-        #expect(PlaybackViewModel.playbackTarget(isInitialized: true, needsPremium: false, activeDeviceId: "phone") == .local)
+        #expect(PlaybackViewModel.playbackTarget(local: .ready, activeDeviceId: "phone") == .local)
     }
 
     @Test func `for an account that may not play here, a play goes to the active device`() {
-        #expect(PlaybackViewModel.playbackTarget(isInitialized: true, needsPremium: true, activeDeviceId: "phone") == .remote(deviceId: "phone"))
+        #expect(PlaybackViewModel.playbackTarget(local: .needsPremium, activeDeviceId: "phone") == .remote(deviceId: "phone"))
     }
 
     @Test func `for an account that may not play here, with nothing active, the play says Premium`() {
-        #expect(PlaybackViewModel.playbackTarget(isInitialized: true, needsPremium: true, activeDeviceId: nil) == .needsPremium)
-        // A login refused for want of Premium leaves no session at all.
-        #expect(PlaybackViewModel.playbackTarget(isInitialized: false, needsPremium: true, activeDeviceId: nil) == .needsPremium)
+        #expect(PlaybackViewModel.playbackTarget(local: .needsPremium, activeDeviceId: nil) == .needsPremium)
     }
 
     @Test func `without a session, with nothing active, the play asks for authorization`() {
-        #expect(PlaybackViewModel.playbackTarget(isInitialized: false, needsPremium: false, activeDeviceId: nil) == .needsAuthorization)
+        #expect(PlaybackViewModel.playbackTarget(local: .needsAuthorization, activeDeviceId: nil) == .needsAuthorization)
     }
 }

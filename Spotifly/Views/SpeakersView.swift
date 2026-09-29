@@ -64,11 +64,7 @@ struct SpeakersView: View {
                     // credentials file exists: revoked or stale credentials leave the
                     // file in place while every initialization fails, and keying on the
                     // file would hide the only way to recover from exactly that.
-                    if playbackViewModel.localPlaybackNeedsPremium {
-                        // Hidden from Connect as well, so there is nothing to enable.
-                        Label("speakers.this_mac_needs_premium", systemImage: "laptopcomputer.slash")
-                            .foregroundStyle(.secondary)
-                    } else if !playbackViewModel.isLocalPlaybackAvailable {
+                    if playbackViewModel.localPlayback == .needsAuthorization {
                         // Stays enabled while the grant waits, and cancels it instead of
                         // starting a second one. A browser tab closed without authorizing
                         // sends nothing at all, so without this the row spun until the
@@ -98,6 +94,10 @@ struct SpeakersView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                    } else if playbackViewModel.localPlayback == .needsPremium {
+                        // Registered hidden, so absent too, and nothing here enables it.
+                        Label("speakers.this_mac_needs_premium", systemImage: "laptopcomputer.slash")
+                            .foregroundStyle(.secondary)
                     }
                 } header: {
                     Text("speakers.spotify_connect")

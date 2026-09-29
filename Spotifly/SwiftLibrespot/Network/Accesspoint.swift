@@ -751,12 +751,11 @@ public actor Accesspoint {
 
     // MARK: - Account Type
 
-    /// The account type, waiting up to `timeout` for the packet that names it. It comes
+    /// The account type, waiting until `deadline` for the packet that names it. It comes
     /// with the login's first few packets, next to the country code, so this rarely waits.
-    func accountType(waitingUpTo timeout: Duration) async -> String? {
-        let deadline = ContinuousClock.now + timeout
+    func accountType(waitingUntil deadline: ContinuousClock.Instant) async -> String? {
         while accountType == nil, isConnected, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(50))
+            guard await (try? Task.sleep(for: .milliseconds(50))) != nil else { break }
         }
         return accountType
     }
@@ -804,15 +803,15 @@ public actor Accesspoint {
             debugLog("Accesspoint", "Country code: \(country)")
 
         case .productInfo:
-            let parsed = Self.accountType(inProductInfo: packet.payload)
-            accountType = parsed
+            accountType = Self.accountType(inProductInfo: packet.payload)
+            debugLog("Accesspoint", "Account type: \(accountType ?? "none")")
             #if DEBUG
                 // SPOTIFLY_DEBUG_ACCOUNT_TYPE=free: run a Premium account as a free one.
                 if let overridden = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_ACCOUNT_TYPE"] {
                     accountType = overridden
+                    debugLog("Accesspoint", "Account type run as \(overridden)")
                 }
             #endif
-            debugLog("Accesspoint", "Account type: \(parsed ?? "none")\(accountType == parsed ? "" : ", run as \(accountType ?? "none")")")
 
         case .mercuryEvent:
             // TODO: Parse and dispatch Mercury event

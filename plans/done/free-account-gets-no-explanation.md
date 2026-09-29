@@ -66,22 +66,25 @@ plan leaves it as it is.
       (`financial-product` names the plan and its price), or are client flags.
 - [x] Parsed in `Accesspoint.handlePacket`, next to `countryCode`, as `accountType`. A regex
       for `<type>…</type>` rather than `XMLParser`: the elements are flat, the value is a
-      word, and nothing else is read. The session reads it before registering (Task 3) and
-      keeps it as `LibrespotSession.accountType`.
-- [x] Exposed as `LibrespotConnectionState.accountType`, nil until the packet arrives, and
-      to the UI as `SpotifyConnection.streams`. **One change from the plan:** what counts as
-      Premium is decided in one place, `LibrespotConnectionState.streams(accountType:)`,
-      because the session needs it too, to register. It is librespot's rule: only `premium`
-      streams, and a type that never came is let through.
+      word, and nothing else is read.
+- [x] **Changed from the plan: the app gets a Bool, not the type.** The session needs the
+      decision before it registers (Task 3), so it makes it once, as
+      `LibrespotSession.streams`, by librespot's rule (`streams(accountType:)`): only
+      `premium` streams, and a type that never came is let through. The client publishes
+      that as `LibrespotConnectionState.streams`, and the UI reads it as
+      `SpotifyConnection.streams`. Carrying the type as well meant working the rule out
+      twice, once in the session and once in the app, for a value nothing else reads. The
+      type itself is in the `Accesspoint` log line.
 
 ### Task 2: make a refused login terminal
 
 - [x] A refusal with `premiumAccountRequired` throws `LibrespotError.premiumRequired`, from
       both places a login is refused: the unencrypted `APResponseMessage`, and the
       `AuthFailure` packet, whose `APLoginFailed` was dropped until now (the error only said
-      "Server rejected authentication"). `PlaybackViewModel` takes it as it takes a free
-      account's type: a play aimed here explains Premium instead of asking to authorize, and
-      `initializeIfNeeded` does not log in again at every play.
+      "Server rejected authentication"). The client publishes it as it publishes a free
+      account's type, `streams` false, at the first login or a recovery. So a play aimed
+      here explains Premium instead of asking to authorize, and `initializeIfNeeded` does not
+      log in again at every play.
 - [x] **An initial-login failure cannot reach the recovery path**, so nothing guards it there.
       `Flags.beginRecovery` answers `.noSession` unless `hasEverConnected` and `hasSession`
       are both set, and both are set only after `initialize` succeeds; `teardown` clears
@@ -90,13 +93,16 @@ plan leaves it as it is.
 
 ### Task 3: browse-only
 
-- [x] **Local playback is off, the library is not.** `PlaybackViewModel.playbackTarget` sends
-      a play to the local player only if the account streams. Otherwise it goes to the active
-      device, if there is one, and `.needsPremium` if not. Where a Premium account's play
-      goes is unchanged: this Mac, even while a phone plays. The other two ways to start
-      playback here check the same flag: radio, which only plays here, and the transport
-      controls' fallback when no device is active, which would take over the track another
-      device left. Queueing with nothing active adds nothing here either.
+- [x] **Local playback is off, the library is not.** `PlaybackViewModel.localPlayback` is
+      one value, `.ready`, `.needsAuthorization` or `.needsPremium`, and `playbackTarget`
+      sends a play here only when it is `.ready`. Otherwise the play goes to the active
+      device, if there is one, and is explained if not. Where a Premium account's play goes
+      is unchanged: this Mac, even while a phone plays. Radio routes through the same
+      function with no remote option. The transport controls' fallback when no device is
+      active, which would take over the track another device left, checks the same value,
+      and queueing with nothing active adds nothing here either. Behind all of it,
+      `LibrespotClient.loadAndPlay`, which every local start passes, refuses with
+      `premiumRequired`, so a path the view model misses shows the reason, not a raw error.
 - [x] **Told once, with Logout.** The first play this Mac refuses raises an alert that says
       the library, search and playlists work and playing here needs Premium, with Logout and
       OK. Later ones say it in the bar, as "Playing on this Mac needs Spotify Premium." Once
@@ -131,7 +137,7 @@ Nobody here has a free account, so the checks that matter need none:
       missing type does. A device that may not play builds a registration with `can_play`
       and `can_be_player` false and `hidden` true. `PlaybackTargetTests` covers the routing:
       a play goes here for Premium even with a phone active, to the phone for a free account,
-      and to `.needsPremium` with nothing active, logged in or refused.
+      and to `.needsPremium` with nothing active.
 - [x] The hidden registration, live, with a throwaway device id from the test host
       (2026-09-29): hidden, the cluster came back with 2 devices, the app's own among them
       and the probe not; registered as a player, the probe was listed.

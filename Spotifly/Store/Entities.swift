@@ -339,7 +339,7 @@ struct SpotifyConnection: Equatable, Encodable {
     let connectedSince: Date?
     let reconnectAttempts: UInt32
     let lastError: String?
-    /// Whether this Mac may play for the account; see `LibrespotConnectionState.streams`.
+    /// Whether this Mac may play for the account. See `LibrespotConnectionState.streams`.
     let streams: Bool
 }
 

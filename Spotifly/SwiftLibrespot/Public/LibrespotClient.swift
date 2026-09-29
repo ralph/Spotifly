@@ -40,8 +40,8 @@ public actor LibrespotClient {
     /// The account the session plays as.
     private var usernameProvider: (@Sendable () async -> String?)?
 
-    /// The account's product, as the session's last login named it.
-    private var accountType: String?
+    /// Whether this Mac may play for the account, as the last login found.
+    private var streams = true
 
     /// Consumes the current session's events; cancelled when it is torn down.
     private var sessionEvents: Task<Void, Never>?
@@ -139,11 +139,20 @@ public actor LibrespotClient {
         session = newSession
         subscribeToSession(newSession)
 
-        let welcome = try await newSession.connect(credentials: credentials) {
-            try await provider()
-        } clientTokenProvider: { [clientTokenProvider] in
-            guard let clientTokenProvider else { throw LibrespotError.notInitialized }
-            return try await clientTokenProvider()
+        let welcome: APWelcome
+        do {
+            welcome = try await newSession.connect(credentials: credentials) {
+                try await provider()
+            } clientTokenProvider: { [clientTokenProvider] in
+                guard let clientTokenProvider else { throw LibrespotError.notInitialized }
+                return try await clientTokenProvider()
+            }
+        } catch LibrespotError.premiumRequired {
+            // Published as a free account's type is, so the app explains Premium rather
+            // than offer a sign-in the accesspoint would refuse again.
+            streams = false
+            publishConnectionState(connected: false)
+            throw LibrespotError.premiumRequired
         }
 
         // A logout or shutdown landed while we were connecting; everything
@@ -256,7 +265,7 @@ public actor LibrespotClient {
         await session?.disconnect(stopped: stopReport(of: stopped))
         session = nil
         spclient = nil
-        accountType = nil
+        streams = true
 
         flags.withLock {
             $0.hasSession = false
@@ -337,6 +346,9 @@ public actor LibrespotClient {
             debugLog("LibrespotClient", "Recovery succeeded")
         } catch {
             debugLog("LibrespotClient", "Recovery failed: \(error)")
+            if case .premiumRequired? = error as? LibrespotError {
+                streams = false
+            }
             publishConnectionState(connected: false, error: error.localizedDescription)
         }
     }
@@ -362,7 +374,7 @@ public actor LibrespotClient {
         guard let accesspoint = await session.accesspoint else { return }
 
         await spclient?.setCountryCode(accesspoint.lastCountryCode)
-        accountType = await session.accountType
+        streams = await session.streams
 
         guard audioPipeline == nil else { return }
 
@@ -702,6 +714,12 @@ public actor LibrespotClient {
     /// Deliberately separate from `play`: advancing through an existing queue
     /// must not rebuild it.
     private func loadAndPlay(_ uri: String, positionMs: UInt64 = 0, paused: Bool = false) async throws {
+        // The app routes plays elsewhere for such an account; this is the one place every
+        // local start passes, so anything it misses is refused with the reason, not a raw
+        // error from the audio key or the CDN.
+        guard streams else {
+            throw LibrespotError.premiumRequired
+        }
         guard let audioPipeline else {
             throw LibrespotError.notInitialized
         }
@@ -1278,7 +1296,7 @@ public actor LibrespotClient {
             reconnectAttempt: reconnectAttempt,
             lastError: error,
             connectedSinceMs: connected ? UInt64(Date().timeIntervalSince1970 * 1000) : nil,
-            accountType: accountType,
+            streams: streams,
         )
         publish { $0.connection = state }
     }

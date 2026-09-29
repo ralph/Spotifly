@@ -105,28 +105,28 @@ final class PlaybackViewModel {
     /// recovers from those itself.
     private var isInitialized = false
 
-    /// Whether this Mac can currently play audio itself.
+    /// Whether this Mac can play audio itself, and if not, what would change that.
+    nonisolated enum LocalPlayback: Equatable {
+        case ready
+        /// No usable session. Authorizing streaming is the fix.
+        case needsAuthorization
+        /// Spotify named the account other than Premium at login, or refused the login for
+        /// want of it. Nothing in the app fixes that; the library, search and other devices'
+        /// playback work as ever.
+        case needsPremium
+    }
+
+    /// Anything asking "is this Mac a playback device" wants this.
     ///
     /// Cached credentials existing on disk is not the same fact: they can be revoked or
     /// stale, in which case initialization fails and the app must still offer to
-    /// re-authorize. Anything asking "is this Mac a playback device" wants this, not the
-    /// presence of a file.
-    var isLocalPlaybackAvailable: Bool {
-        isInitialized
+    /// re-authorize.
+    var localPlayback: LocalPlayback {
+        if player.connection?.streams == false {
+            return .needsPremium
+        }
+        return isInitialized ? .ready : .needsAuthorization
     }
-
-    /// Whether Spotify said this account may not play on this Mac: its type is not Premium,
-    /// or it refused the login for want of Premium. The library, search and the playback of
-    /// other devices still work; what does not is anything that plays here.
-    var localPlaybackNeedsPremium: Bool {
-        loginRefusedForPremium || player.connection?.streams == false
-    }
-
-    /// The accesspoint refused the last login with `premiumAccountRequired`. Nobody has seen
-    /// it do that: under librespot, a free account logged in and was only turned away by
-    /// the account type. It is here so that, if it does, this is said rather than offering
-    /// an authorization that would be refused the same way.
-    private var loginRefusedForPremium = false
 
     /// Whether this launch has shown the notice already. Later plays say it in the bar.
     private var hasShownPremiumNotice = false
@@ -206,7 +206,7 @@ final class PlaybackViewModel {
     /// Initializes the player unless it is already up, or Spotify refused it for want of
     /// Premium, as it would again. Reconnect in Speakers still tries.
     func initializeIfNeeded() async {
-        guard !loginRefusedForPremium else { return }
+        guard localPlayback != .needsPremium else { return }
         await runInitialization(force: false)
     }
 
@@ -234,7 +234,6 @@ final class PlaybackViewModel {
         let task = Task { @MainActor in
             lifecycleGeneration &+= 1
             isInitialized = false
-            loginRefusedForPremium = false
             hasShownPremiumNotice = false
             isLoggingOut = true
             defer { isLoggingOut = false }
@@ -310,7 +309,6 @@ final class PlaybackViewModel {
         // We are about to tear the session down, so nothing is initialized until the
         // rebuild proves otherwise. Matters when initialize() throws on a restart.
         isInitialized = false
-        loginRefusedForPremium = false
         isLoading = true
         // Cleared before the rebuild, not after: the new session can report a track while it
         // is being built, such as another device's paused one, and the player model passes on
@@ -334,8 +332,8 @@ final class PlaybackViewModel {
                 errorMessage = String(localized: "error.player_not_ready")
             }
         } catch LibrespotError.premiumRequired {
-            // Said when a play is aimed here, as for a free account that logged in.
-            loginRefusedForPremium = true
+            // Said when a play is aimed here, as for a free account that logged in; the
+            // client published it.
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -395,17 +393,16 @@ final class PlaybackViewModel {
     ///
     /// Local wins when it exists; otherwise an active remote device serves the request over
     /// connect-state. Only when neither exists is there anything to tell the user —
-    /// nagging about local streaming while a phone is playing would be noise. What there is
-    /// to tell depends on why this Mac cannot play: it has no session, which authorizing
-    /// fixes, or the account is not Premium, which nothing here fixes.
-    nonisolated static func playbackTarget(isInitialized: Bool, needsPremium: Bool, activeDeviceId: String?) -> PlaybackTarget {
-        if isInitialized, !needsPremium {
+    /// nagging about local streaming while a phone is playing would be noise — and what
+    /// depends on why this Mac cannot play.
+    nonisolated static func playbackTarget(local: LocalPlayback, activeDeviceId: String?) -> PlaybackTarget {
+        if local == .ready {
             return .local
         }
         if let activeDeviceId {
             return .remote(deviceId: activeDeviceId)
         }
-        return needsPremium ? .needsPremium : .needsAuthorization
+        return local == .needsPremium ? .needsPremium : .needsAuthorization
     }
 
     func play(uriOrUrl: String, trackIndex: Int = -1) async {
@@ -413,7 +410,8 @@ final class PlaybackViewModel {
             await initializeIfNeeded()
         }
 
-        switch resolvedPlaybackTarget() {
+        let target = resolvedPlaybackTarget()
+        switch target {
         case .local:
             await startLocally(startedUri: uriOrUrl) {
                 try await SpotifyPlayer.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex)
@@ -427,11 +425,8 @@ final class PlaybackViewModel {
                 deviceId: deviceId,
             )
 
-        case .needsAuthorization:
-            needsStreamingAuthorization = true
-
-        case .needsPremium:
-            explainNeedsPremium()
+        case .needsAuthorization, .needsPremium:
+            explain(target)
         }
     }
 
@@ -447,7 +442,8 @@ final class PlaybackViewModel {
         // The one caller disables its button on an empty list, so this only guards `[0]`.
         guard !trackUris.isEmpty else { return }
 
-        switch resolvedPlaybackTarget() {
+        let target = resolvedPlaybackTarget()
+        switch target {
         case .local:
             await startLocally(startedUri: trackUris[0]) {
                 try await SpotifyPlayer.playTracks(trackUris)
@@ -459,11 +455,8 @@ final class PlaybackViewModel {
                 deviceId: deviceId,
             )
 
-        case .needsAuthorization:
-            needsStreamingAuthorization = true
-
-        case .needsPremium:
-            explainNeedsPremium()
+        case .needsAuthorization, .needsPremium:
+            explain(target)
         }
     }
 
@@ -478,12 +471,10 @@ final class PlaybackViewModel {
             await initializeIfNeeded()
         }
 
-        guard !localPlaybackNeedsPremium else {
-            explainNeedsPremium()
-            return
-        }
-        guard isInitialized else {
-            needsStreamingAuthorization = true
+        // No remote device: radio has no connect-state command.
+        let target = Self.playbackTarget(local: localPlayback, activeDeviceId: nil)
+        guard target == .local else {
+            explain(target)
             return
         }
 
@@ -535,21 +526,23 @@ final class PlaybackViewModel {
     /// phone is no longer offered and `.needsAuthorization` is the honest answer. Enabling
     /// playback is also the fix, which is what the alert already says.
     private func resolvedPlaybackTarget() -> PlaybackTarget {
-        Self.playbackTarget(
-            isInitialized: isInitialized,
-            needsPremium: localPlaybackNeedsPremium,
-            activeDeviceId: player.activeDeviceId,
-        )
+        Self.playbackTarget(local: localPlayback, activeDeviceId: player.activeDeviceId)
     }
 
-    /// Says why a play aimed at this Mac did not start, for an account that may not play
-    /// here: the first time with the notice, which offers Logout, and after that in the bar.
-    private func explainNeedsPremium() {
-        if hasShownPremiumNotice {
-            errorMessage = String(localized: "playback.needs_premium")
-        } else {
+    /// Says why a play found nowhere to go. Without a session, by offering to authorize.
+    /// For an account that may not play here, the first time with the notice, which offers
+    /// Logout, and after that in the bar.
+    private func explain(_ target: PlaybackTarget) {
+        switch target {
+        case .needsAuthorization:
+            needsStreamingAuthorization = true
+        case .needsPremium where hasShownPremiumNotice:
+            errorMessage = LibrespotError.premiumRequired.localizedDescription
+        case .needsPremium:
             hasShownPremiumNotice = true
             showsPremiumNotice = true
+        case .local, .remote:
+            break
         }
     }
 
@@ -642,7 +635,7 @@ final class PlaybackViewModel {
         // With nobody active and no session there is nothing to command, but the local queue
         // does not need one: it is what playback continues from once the session is back.
         // Nothing continues from it for an account that does not stream here.
-        if !issued, !localPlaybackNeedsPremium {
+        if !issued, localPlayback != .needsPremium {
             SpotifyPlayer.addToQueue(uri: uri)
         }
     }
@@ -764,9 +757,9 @@ final class PlaybackViewModel {
             // follows is reported to Spirc as this device being active, so the Connect role
             // comes back with it — which is what pressing a transport control with no device
             // active asks for. Unless this Mac may not play for the account.
-            guard !localPlaybackNeedsPremium else {
+            guard localPlayback != .needsPremium else {
                 debugLog("PlaybackViewModel", "\(name) had no active device, and this account does not stream here")
-                explainNeedsPremium()
+                explain(.needsPremium)
                 return false
             }
             debugLog("PlaybackViewModel", "\(name) had no active device - running locally")
