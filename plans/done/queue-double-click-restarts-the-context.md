@@ -1,7 +1,7 @@
 # A double-click in the queue starts its context over
 
-Status: **Done** 2026-09-29. Built and unit-tested. Not yet seen in the running app; see
-Verification. Starting a *context* by uid is not done; see Solution.
+Status: **Done** 2026-09-29 (#86). Built, unit-tested, and the six live checks passed on
+`ff9c6f7` the same day; see Verification. Starting a *context* by uid is not done; see Solution.
 Components: `Spotifly/Views/QueueListView.swift`, `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`
 (`skip(toUpcoming:uri:)`, `stepBack(toRecent:uri:)`),
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`skip(toNext:uri:)`,
@@ -99,15 +99,16 @@ looks the row up through `recent()`, so it holds in either order.
 - [x] `skip_next` carries the track and uid, and the uri alone without one; one received is
       read with its track, or without. A mirrored row keeps its uid into the store.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, 2026-09-29.
-- [ ] Live, local: start an album at track 1 and queue two tracks by hand. Double-click the
+- [x] Live, local: start an album at track 1 and queue two tracks by hand. Double-click the
       album's track 5 in the queue. It plays; both queued tracks are still next; the history
       shows tracks 1 to 4. Press Previous: track 4.
-- [ ] Live, local: double-click the second queued track. It plays; the first is gone; the album
+- [x] Live, local: double-click the second queued track. It plays; the first is gone; the album
       continues after it.
-- [ ] Live, local, shuffle: note the next five tracks, double-click the third. The two after it
+- [x] Live, local, shuffle: note the next five tracks, double-click the third. The two after it
       are the same as before.
-- [ ] Live, local: double-click a history row. It plays; the rows after it are next again.
-- [ ] Live, remote: with the web player playing an album, double-click a later row in this
+- [x] Live, local: double-click a history row. It plays; the rows after it are next again.
+- [x] Live, remote: with the web player playing an album, double-click a later row in this
       app's queue. The web player plays that row, without starting the album over.
-- [ ] Live, the other way: with this Mac playing an album, click a later row in the web
+- [x] Live, the other way: with this Mac playing an album, click a later row in the web
       player's queue panel. The Mac plays that row.
+      All six **passed** on `ff9c6f7` (with #84 and `main` merged in), 2026-09-29.
