@@ -121,4 +121,4 @@ request, ran one task, and showed "Album wurde nicht gefunden…" with no Try ag
       The track section says "Es besteht anscheinend keine Verbindung zum Internet." with
       Erneut versuchen; with Wi-Fi back, it loads all 36 tracks. **Passed**, same build. The
       cover went on spinning after that; recorded as
-      `plans/open/artwork-stuck-after-network-drop.md`.
+      `plans/done/artwork-stuck-after-network-drop.md`.
