@@ -15,7 +15,9 @@ struct FavoritesListView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        Group {
+        // A ZStack, not a Group: a Group hands its `.task` to each branch, so switching
+        // between loading and the error started the load again, forever.
+        ZStack {
             if store.favoritesPagination.isLoading, store.favoriteTracks.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
@@ -56,6 +58,11 @@ struct FavoritesListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(store.favoriteTracks.enumerated(), id: \.element.id) { index, track in
+                            if index > 0 {
+                                Divider()
+                                    .padding(.leading, 94)
+                            }
+
                             TrackRow(
                                 track: track,
                                 index: index,
@@ -67,14 +74,10 @@ struct FavoritesListView: View {
                                     await playbackViewModel.play(
                                         uriOrUrl: LikedSongs.uri,
                                         trackIndex: index,
+                                        startingAtUri: track.uri,
                                     )
                                 },
                             )
-
-                            if index < store.favoriteTracks.count - 1 {
-                                Divider()
-                                    .padding(.leading, 94)
-                            }
                         }
 
                         // Load more indicator

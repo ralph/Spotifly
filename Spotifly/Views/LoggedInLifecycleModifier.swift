@@ -189,6 +189,11 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     }
                 #endif
             }
+            // Playback steps over what the lists said will not play. Initially too, which
+            // sends an empty set at login, so nothing of the previous account's is left.
+            .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
+                SpotifyPlayer.setUnplayable(uris)
+            }
             // Connection handling is driven by whether the session is connected, not by
             // which device is active. Activation and connection are different facts:
             // another device taking over says nothing about whether the session is

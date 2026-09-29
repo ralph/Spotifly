@@ -34,7 +34,9 @@ struct ArtistDetailView: View {
     }
 
     var body: some View {
-        Group {
+        // A ZStack, not a Group: a Group hands its `.task` to each branch, so switching
+        // between loading and the error started the load again, forever.
+        ZStack {
             if let artist {
                 artistContent(artist)
             } else if let errorMessage {

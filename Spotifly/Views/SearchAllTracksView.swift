@@ -59,6 +59,11 @@ struct SearchAllTracksView: View {
                 // Track list
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(tracks.enumerated(), id: \.element.id) { index, track in
+                        if index > 0 {
+                            Divider()
+                                .padding(.leading, 94)
+                        }
+
                         TrackRow(
                             track: track,
                             index: index,
@@ -69,11 +74,6 @@ struct SearchAllTracksView: View {
                                 await playbackViewModel.playRadio(trackUri: track.uri)
                             },
                         )
-
-                        if index < tracks.count - 1 {
-                            Divider()
-                                .padding(.leading, 94)
-                        }
                     }
                 }
                 .background(Color(NSColor.controlBackgroundColor))

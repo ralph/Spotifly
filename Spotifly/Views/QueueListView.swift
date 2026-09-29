@@ -47,32 +47,34 @@ struct QueueListView: View {
 
     @State private var scrollPosition = ScrollPosition(idType: Int.self)
 
-    /// Queue item with track and provider info
+    /// Queue item with track and provider info, and the row a double-click plays.
     private struct QueueDisplayItem {
         let track: Track
         let provider: TrackProvider
+        let row: PlaybackViewModel.QueueRow
     }
 
-    /// Flattened queue with provider info: previous + current + next
+    /// Flattened queue with provider info: previous + current + next. A track whose metadata
+    /// has not arrived has no row, so each item keeps its index in its own list.
     private var allQueueItems: [QueueDisplayItem] {
         var items: [QueueDisplayItem] = []
+        let queue = store.queue
 
-        // Previous tracks
-        for entry in store.queue.previousTracks {
+        for (index, entry) in queue.previousTracks.enumerated() {
             if let track = store.tracks[entry.trackId] {
-                items.append(QueueDisplayItem(track: track, provider: entry.provider))
+                let row = PlaybackViewModel.QueueRow.previous(index: index, trackUri: track.uri)
+                items.append(QueueDisplayItem(track: track, provider: entry.provider, row: row))
             }
         }
 
-        // Current track
-        if let entry = store.queue.currentTrack, let track = store.tracks[entry.trackId] {
-            items.append(QueueDisplayItem(track: track, provider: entry.provider))
+        if let entry = queue.currentTrack, let track = store.tracks[entry.trackId] {
+            items.append(QueueDisplayItem(track: track, provider: entry.provider, row: .current))
         }
 
-        // Next tracks
-        for entry in store.queue.nextTracks {
+        for (index, entry) in queue.nextTracks.enumerated() {
             if let track = store.tracks[entry.trackId] {
-                items.append(QueueDisplayItem(track: track, provider: entry.provider))
+                let row = PlaybackViewModel.QueueRow.next(index: index, trackUri: track.uri, uid: entry.uid)
+                items.append(QueueDisplayItem(track: track, provider: entry.provider, row: row))
             }
         }
 
@@ -213,6 +215,11 @@ struct QueueListView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(allQueueItems.enumerated(), id: \.offset) { index, item in
+                    if index > 0 {
+                        Divider()
+                            .padding(.leading, 78)
+                    }
+
                     TrackRow(
                         track: item.track,
                         index: index,
@@ -222,22 +229,10 @@ struct QueueListView: View {
                         playbackViewModel: playbackViewModel,
                         currentSection: .queue,
                         onDoubleTap: {
-                            if let contextUri = store.queue.contextUri {
-                                await playbackViewModel.play(
-                                    uriOrUrl: contextUri,
-                                    trackIndex: index,
-                                )
-                            } else {
-                                await playbackViewModel.play(uriOrUrl: item.track.uri)
-                            }
+                            playbackViewModel.play(queueRow: item.row)
                         },
                     )
                     .id(index)
-
-                    if index < allQueueItems.count - 1 {
-                        Divider()
-                            .padding(.leading, 78)
-                    }
                 }
             }
             .scrollTargetLayout()

@@ -36,7 +36,9 @@ struct AlbumDetailView: View {
     }
 
     var body: some View {
-        Group {
+        // A ZStack, not a Group: a Group hands its `.task` to each branch, so switching
+        // between loading and the error started the load again, forever.
+        ZStack {
             if let album {
                 albumContent(album)
             } else if let errorMessage {
@@ -162,6 +164,11 @@ struct AlbumDetailView: View {
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(tracks.enumerated(), id: \.offset) { index, track in
+                            if index > 0 {
+                                Divider()
+                                    .padding(.leading, 54)
+                            }
+
                             TrackRow(
                                 track: track,
                                 showTrackNumber: true,
@@ -173,14 +180,10 @@ struct AlbumDetailView: View {
                                     await playbackViewModel.play(
                                         uriOrUrl: album.uri,
                                         trackIndex: index,
+                                        startingAtUri: track.uri,
                                     )
                                 },
                             )
-
-                            if index < tracks.count - 1 {
-                                Divider()
-                                    .padding(.leading, 54)
-                            }
                         }
                     }
                     .background(Color(NSColor.controlBackgroundColor))
