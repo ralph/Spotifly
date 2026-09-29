@@ -264,15 +264,15 @@ actor LoopbackCallbackServer {
         return code?.isEmpty == false ? successPage : failurePage
     }
 
-    nonisolated static let successPage = bundledPage("OAuthSuccess", fallback: "Spotifly is authorized.")
-    nonisolated static let failurePage = bundledPage("OAuthFailure", fallback: "Spotifly was not authorized.")
+    nonisolated static let successPage = bundledPage("OAuthSuccess")
+    nonisolated static let failurePage = bundledPage("OAuthFailure")
 
     /// A page from the app bundle, or a plain line should the resource be missing.
-    private nonisolated static func bundledPage(_ name: String, fallback: String) -> String {
+    private nonisolated static func bundledPage(_ name: String) -> String {
         guard let url = Bundle.main.url(forResource: name, withExtension: "html"),
               let page = try? String(contentsOf: url, encoding: .utf8)
         else {
-            return "<html><body>\(fallback) You can close this tab.</body></html>"
+            return "<html><body>Please go back to the Spotifly window.</body></html>"
         }
         return page
     }
