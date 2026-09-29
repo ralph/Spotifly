@@ -77,6 +77,21 @@ nonisolated struct LibrespotConnectionState: Equatable {
     let reconnectAttempt: UInt32
     let lastError: String?
     let connectedSinceMs: UInt64?
+    /// The account's product, `premium` or `free`, as the accesspoint named it after login;
+    /// nil until it has.
+    let accountType: String?
+
+    /// Whether this Mac may play for the account.
+    var streams: Bool {
+        Self.streams(accountType: accountType)
+    }
+
+    /// Only Premium streams, as under librespot, whose `check_catalogue` quit for anything
+    /// else. A type that never came is let through, as it was there. The session registers
+    /// by this rule and the app routes plays by it, so they agree.
+    static func streams(accountType: String?) -> Bool {
+        accountType.map { $0 == "premium" } ?? true
+    }
 }
 
 /// Everything the player tells the app, as of one moment.

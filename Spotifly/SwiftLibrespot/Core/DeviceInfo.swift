@@ -50,8 +50,8 @@ public nonisolated struct DeviceInfo: Sendable {
     /// Software version
     public let softwareVersion: String
 
-    /// Whether this device supports audio playback
-    public let supportsPlayback: Bool
+    /// Whether this device plays audio. Spotify Connect offers it as a speaker only if so.
+    public var supportsPlayback: Bool
 
     /// Whether this device supports volume control
     public let supportsVolume: Bool

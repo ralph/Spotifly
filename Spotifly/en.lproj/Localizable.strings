@@ -277,5 +277,10 @@
 "playback.needs_authorization_title" = "Enable playback on this Mac?";
 "playback.needs_authorization_message" = "There is no device to play on. Authorize streaming to play here, or start playback on another device first.";
 "playback.needs_authorization_authorize" = "Authorize";
+"playback.needs_premium" = "Playing on this Mac needs Spotify Premium.";
+"playback.needs_premium_title" = "Playing on this Mac needs Spotify Premium";
+"playback.needs_premium_message" = "Your library, search and playlists work as usual. To play music on this Mac, log out and log in with a Premium account.";
+"speakers.this_mac_needs_premium" = "This Mac plays only for Premium accounts";
+"common.ok" = "OK";
 "common.cancel" = "Cancel";
 "auth.enable_playback_wrong_account" = "That Spotify account is not the one you are signed in with. Sign the browser into the same account and try again.";

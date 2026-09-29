@@ -282,5 +282,10 @@
 "playback.needs_authorization_title" = "Wiedergabe auf diesem Mac aktivieren?";
 "playback.needs_authorization_message" = "Es ist kein Gerät zum Abspielen verfügbar. Autorisiere das Streaming, um hier abzuspielen, oder starte die Wiedergabe zuerst auf einem anderen Gerät.";
 "playback.needs_authorization_authorize" = "Autorisieren";
+"playback.needs_premium" = "Wiedergabe auf diesem Mac nur mit Spotify Premium.";
+"playback.needs_premium_title" = "Wiedergabe auf diesem Mac nur mit Spotify Premium";
+"playback.needs_premium_message" = "Bibliothek, Suche und Playlists funktionieren wie gewohnt. Um auf diesem Mac Musik abzuspielen, melde dich ab und mit einem Premium-Konto wieder an.";
+"speakers.this_mac_needs_premium" = "Dieser Mac spielt nur für Premium-Konten";
+"common.ok" = "OK";
 "common.cancel" = "Abbrechen";
 "auth.enable_playback_wrong_account" = "Dieses Spotify-Konto ist nicht das, mit dem du angemeldet bist. Melde dich im Browser mit demselben Konto an und versuche es erneut.";

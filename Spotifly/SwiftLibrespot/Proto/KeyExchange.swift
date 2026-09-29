@@ -84,6 +84,14 @@ public nonisolated struct APResponseMessage: Sendable {
     public nonisolated struct LoginFailed: Sendable {
         public let errorCode: SpotifyErrorCode
         public let errorDescription: String?
+
+        /// `APLoginFailed { 10: error_code, 40: error_description }`, nested here or alone in
+        /// an `AuthFailure` packet.
+        init(_ fields: [ProtobufField]) {
+            let code = fields.last(10).map { UInt32(truncatingIfNeeded: $0.value) }
+            errorCode = code.flatMap(SpotifyErrorCode.init(rawValue:)) ?? .protocolError
+            errorDescription = fields.last(40)?.string
+        }
     }
 
     /// Nil unless the answer carries a Diffie-Hellman challenge.
@@ -91,8 +99,7 @@ public nonisolated struct APResponseMessage: Sendable {
     public let loginFailed: LoginFailed?
 
     /// `APResponseMessage { 10: challenge, 30: login_failed }`, where the challenge nests as
-    /// `login_crypto_challenge (10) → diffie_hellman (10) → { 10: gs, 30: gs_signature }` and
-    /// the refusal is `{ 10: error_code, 40: error_description }`.
+    /// `login_crypto_challenge (10) → diffie_hellman (10) → { 10: gs, 30: gs_signature }`.
     static func parse(from data: Data) -> APResponseMessage {
         let fields = ProtobufReader.fields(in: data)
         let diffieHellman = fields.last(10)?.fields.last(10)?.fields.last(10)?.fields
@@ -105,13 +112,7 @@ public nonisolated struct APResponseMessage: Sendable {
                     gsSignature: diffieHellman.last(30)?.bytes ?? Data(),
                 )
             },
-            loginFailed: refusal.map { refusal in
-                let code = refusal.last(10).map { UInt32(truncatingIfNeeded: $0.value) }
-                return LoginFailed(
-                    errorCode: code.flatMap(SpotifyErrorCode.init(rawValue:)) ?? .protocolError,
-                    errorDescription: refusal.last(40)?.string,
-                )
-            },
+            loginFailed: refusal.map(LoginFailed.init),
         )
     }
 }

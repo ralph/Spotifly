@@ -185,6 +185,17 @@ struct LoggedInView: View {
         } message: {
             Text("playback.needs_authorization_message")
         }
+        // Raised by the first play this Mac cannot start because the account is not Premium.
+        // Everything else still works, so this is a notice rather than a screen of its own.
+        .alert(
+            "playback.needs_premium_title",
+            isPresented: Bindable(playbackViewModel).showsPremiumNotice,
+        ) {
+            Button("auth.logout", action: handleLogout)
+            Button("common.ok", role: .cancel) {}
+        } message: {
+            Text("playback.needs_premium_message")
+        }
     }
 
     /// The main content router with its content toolbar attached directly. Search is

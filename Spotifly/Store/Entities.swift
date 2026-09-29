@@ -339,6 +339,8 @@ struct SpotifyConnection: Equatable, Encodable {
     let connectedSince: Date?
     let reconnectAttempts: UInt32
     let lastError: String?
+    /// Whether this Mac may play for the account; see `LibrespotConnectionState.streams`.
+    let streams: Bool
 }
 
 // MARK: - Queue Models

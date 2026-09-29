@@ -64,7 +64,11 @@ struct SpeakersView: View {
                     // credentials file exists: revoked or stale credentials leave the
                     // file in place while every initialization fails, and keying on the
                     // file would hide the only way to recover from exactly that.
-                    if !playbackViewModel.isLocalPlaybackAvailable {
+                    if playbackViewModel.localPlaybackNeedsPremium {
+                        // Hidden from Connect as well, so there is nothing to enable.
+                        Label("speakers.this_mac_needs_premium", systemImage: "laptopcomputer.slash")
+                            .foregroundStyle(.secondary)
+                    } else if !playbackViewModel.isLocalPlaybackAvailable {
                         // Stays enabled while the grant waits, and cancels it instead of
                         // starting a second one. A browser tab closed without authorizing
                         // sends nothing at all, so without this the row spun until the

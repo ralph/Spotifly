@@ -46,6 +46,10 @@ public actor Accesspoint {
     /// Market the session is playing in, as announced by the server after login.
     public private(set) var lastCountryCode: String?
 
+    /// The account's product, `premium` or `free`, as the `ProductInfo` packet names it
+    /// after login. Nil until that packet arrives.
+    public private(set) var accountType: String?
+
     /// Sets the unexpected-disconnect hook.
     public func setCloseHandler(_ handler: (@Sendable () -> Void)?) {
         closeHandler = handler
@@ -505,8 +509,7 @@ public actor Accesspoint {
             let errorData = try await readRawBytes(count: dataLength, timeout: 10)
 
             if let loginFailed = APResponseMessage.parse(from: errorData).loginFailed {
-                debugLog("Accesspoint", "Login failed: \(loginFailed.errorCode), desc: \(loginFailed.errorDescription ?? "none")")
-                throw LibrespotError.authenticationFailed("Server rejected: \(loginFailed.errorCode)")
+                throw Self.refusal(loginFailed)
             }
             throw LibrespotError.authenticationFailed("Challenge verification failed (unencrypted error)")
         }
@@ -518,10 +521,19 @@ public actor Accesspoint {
         case .apWelcome:
             return try APWelcome.parse(from: response.payload)
         case .authFailure:
-            throw LibrespotError.authenticationFailed("Server rejected authentication")
+            throw Self.refusal(APResponseMessage.LoginFailed(ProtobufReader.fields(in: response.payload)))
         default:
             throw LibrespotError.authenticationFailed("Unexpected response: \(response.command)")
         }
+    }
+
+    /// The error a refused login throws. One for want of Premium is its own, so the app can say
+    /// so rather than offer a sign-in that would be refused the same way.
+    private static func refusal(_ failed: APResponseMessage.LoginFailed) -> LibrespotError {
+        debugLog("Accesspoint", "Login failed: \(failed.errorCode), desc: \(failed.errorDescription ?? "none")")
+        return failed.errorCode == .premiumAccountRequired
+            ? .premiumRequired
+            : .authenticationFailed("Server rejected: \(failed.errorCode)")
     }
 
     // MARK: - Packet I/O
@@ -737,6 +749,25 @@ public actor Accesspoint {
         }
     }
 
+    // MARK: - Account Type
+
+    /// The account type, waiting up to `timeout` for the packet that names it. It comes
+    /// with the login's first few packets, next to the country code, so this rarely waits.
+    func accountType(waitingUpTo timeout: Duration) async -> String? {
+        let deadline = ContinuousClock.now + timeout
+        while accountType == nil, isConnected, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return accountType
+    }
+
+    /// Reads `type` from a `ProductInfo` payload: `<products><product>`, then about a hundred
+    /// flat elements, `<type>premium</type>` among them. The rest describe the plan, its
+    /// billing and client flags, and nothing here reads them.
+    nonisolated static func accountType(inProductInfo payload: Data) -> String? {
+        String(decoding: payload, as: UTF8.self).firstMatch(of: /<type>([^<]*)<\/type>/).map { String($0.1) }
+    }
+
     // MARK: - Background Tasks
 
     private func receiveLoop() async {
@@ -771,6 +802,17 @@ public actor Accesspoint {
             let country = String(data: packet.payload, encoding: .utf8) ?? "??"
             lastCountryCode = country
             debugLog("Accesspoint", "Country code: \(country)")
+
+        case .productInfo:
+            let parsed = Self.accountType(inProductInfo: packet.payload)
+            accountType = parsed
+            #if DEBUG
+                // SPOTIFLY_DEBUG_ACCOUNT_TYPE=free: run a Premium account as a free one.
+                if let overridden = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_ACCOUNT_TYPE"] {
+                    accountType = overridden
+                }
+            #endif
+            debugLog("Accesspoint", "Account type: \(parsed ?? "none")\(accountType == parsed ? "" : ", run as \(accountType ?? "none")")")
 
         case .mercuryEvent:
             // TODO: Parse and dispatch Mercury event

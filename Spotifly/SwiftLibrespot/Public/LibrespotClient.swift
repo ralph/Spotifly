@@ -40,6 +40,9 @@ public actor LibrespotClient {
     /// The account the session plays as.
     private var usernameProvider: (@Sendable () async -> String?)?
 
+    /// The account's product, as the session's last login named it.
+    private var accountType: String?
+
     /// Consumes the current session's events; cancelled when it is torn down.
     private var sessionEvents: Task<Void, Never>?
 
@@ -253,6 +256,7 @@ public actor LibrespotClient {
         await session?.disconnect(stopped: stopReport(of: stopped))
         session = nil
         spclient = nil
+        accountType = nil
 
         flags.withLock {
             $0.hasSession = false
@@ -358,6 +362,7 @@ public actor LibrespotClient {
         guard let accesspoint = await session.accesspoint else { return }
 
         await spclient?.setCountryCode(accesspoint.lastCountryCode)
+        accountType = await session.accountType
 
         guard audioPipeline == nil else { return }
 
@@ -1273,6 +1278,7 @@ public actor LibrespotClient {
             reconnectAttempt: reconnectAttempt,
             lastError: error,
             connectedSinceMs: connected ? UInt64(Date().timeIntervalSince1970 * 1000) : nil,
+            accountType: accountType,
         )
         publish { $0.connection = state }
     }

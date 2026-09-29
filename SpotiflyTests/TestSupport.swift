@@ -197,8 +197,8 @@ func spclientAPI(
 /// Anchors `Bundle(for:)` to the test bundle, which carries `Fixtures/`.
 private final class FixtureBundleToken {}
 
-/// A captured payload from `SpotiflyTests/Fixtures`, by file name without `.json`.
-func fixtureData(_ name: String) throws -> Data {
-    let url = try #require(Bundle(for: FixtureBundleToken.self).url(forResource: name, withExtension: "json"))
+/// A captured payload from `SpotiflyTests/Fixtures`, by file name without its extension.
+func fixtureData(_ name: String, withExtension fileExtension: String = "json") throws -> Data {
+    let url = try #require(Bundle(for: FixtureBundleToken.self).url(forResource: name, withExtension: fileExtension))
     return try Data(contentsOf: url)
 }

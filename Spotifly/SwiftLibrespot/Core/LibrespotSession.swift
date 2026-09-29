@@ -30,6 +30,10 @@ public actor LibrespotSession {
 
     public let deviceInfo: DeviceInfo
 
+    /// The account's product, as the accesspoint named it at the last login; nil if it did
+    /// not in time. See `LibrespotConnectionState.streams`.
+    public private(set) var accountType: String?
+
     /// Credentials of the current or most recent login. Kept across
     /// disconnections so a reconnect does not need them handed in again;
     /// cleared on logout via `forgetCredentials()`.
@@ -151,8 +155,14 @@ public actor LibrespotSession {
                 Task { await self.handleTransportLost() }
             }
 
+            // Read before registering: this Mac is offered as a speaker only for an account
+            // that may stream here.
+            accountType = await accesspoint!.accountType(waitingUpTo: .seconds(2))
+            var device = deviceInfo
+            device.supportsPlayback = deviceInfo.supportsPlayback && LibrespotConnectionState.streams(accountType: accountType)
+
             spircController = SpircController(
-                deviceInfo: deviceInfo,
+                deviceInfo: device,
                 accesspoint: accesspoint!,
                 dealerConnection: dealerConnection!,
             )
