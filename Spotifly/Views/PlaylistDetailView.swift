@@ -152,7 +152,7 @@ struct PlaylistDetailView: View {
     @ViewBuilder
     private func playlistArtwork(_ playlist: Playlist) -> some View {
         if let url = playlist.images.url(for: 200, scale: displayScale) {
-            AsyncImage(url: url) { phase in
+            RetryingAsyncImage(url: url) { phase in
                 switch phase {
                 case .empty:
                     ProgressView()

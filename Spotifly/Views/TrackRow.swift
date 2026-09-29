@@ -134,7 +134,7 @@ struct TrackRow: View {
 
             // Album art (if available)
             if let url = track.images.url(for: 40, scale: displayScale) {
-                AsyncImage(url: url) { phase in
+                RetryingAsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()

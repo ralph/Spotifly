@@ -173,7 +173,7 @@ struct NowPlayingBarView: View {
                     .clipShape(.rect(cornerRadius: 4))
             } else {
                 // Load new image
-                AsyncImage(url: url) { phase in
+                RetryingAsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()
