@@ -780,9 +780,9 @@ public actor LibrespotClient {
             attempts: max(1, playbackQueue.userQueue.count + playbackQueue.contextTracks.count),
             load: { try await self.loadAndPlay($0, releasingOnFailure: false) },
             advance: { self.playbackQueue.advance(respectingRepeat: false) },
-            skipped: { uri, error in
-                debugLog("LibrespotClient", "Skipping \(uri): \(error.localizedDescription)")
-                self.interrupt(error, skipped: true)
+            skipped: { uri, name in
+                debugLog("LibrespotClient", "Skipping \(uri), \(name): not available")
+                self.interrupt(.skipped(trackName: name))
             },
         )
         switch outcome {
@@ -792,7 +792,7 @@ public actor LibrespotClient {
             await rewindContext()
         case let .stopped(error):
             debugLog("LibrespotClient", "Auto-advance stopped: \(error.localizedDescription)")
-            interrupt(error, skipped: false)
+            interrupt(.stopped(error))
             await releasePlayback()
         }
     }
@@ -833,7 +833,7 @@ public actor LibrespotClient {
         } catch is CancellationError {
             // A newer load took over, and it reports for itself.
         } catch {
-            interrupt(error, skipped: false)
+            interrupt(.stopped(error))
         }
     }
 
@@ -873,7 +873,7 @@ public actor LibrespotClient {
                 debugLog("LibrespotClient", "Audio pipeline error: \(error.localizedDescription)")
                 clearLocalState()
                 await releasePlayback()
-                interrupt(error, skipped: false)
+                interrupt(.stopped(error))
             }
         }
     }
@@ -897,13 +897,9 @@ public actor LibrespotClient {
 
     /// Tells the app that playback went past a track, or stopped, over an
     /// error nobody was waiting for.
-    private func interrupt(_ error: any Error, skipped: Bool) {
+    private func interrupt(_ kind: PlaybackInterruption.Kind) {
         interruptions += 1
-        let interruption = PlaybackInterruption(
-            reason: error.localizedDescription,
-            skipped: skipped,
-            sequence: interruptions,
-        )
+        let interruption = PlaybackInterruption(kind: kind, sequence: interruptions)
         publish { $0.interruption = interruption }
     }
 

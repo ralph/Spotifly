@@ -23,7 +23,7 @@ music. Spotify's own clients grey these rows out, and the data to do the same al
   or an artist's top tracks. Nothing marks it before the double-click fails.
 - **The queue.** The upcoming list shows it too. Auto-advance now skips it, but only when it
   gets there, and the queue said it would play.
-- **Next and Previous** onto one stop with "“…” is not available on Spotify". #57 left them
+- **Next and Previous** onto one stop with "Not available on Spotify: “…”". #57 left them
   that way on purpose. Nobody pressed them expecting a skip. With the availability known up
   front, they could step over it the way Spotify's clients do.
 

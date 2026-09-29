@@ -39,13 +39,13 @@ nonisolated enum AutoAdvance {
     ///     holds. Each skip costs a metadata request or two.
     ///   - load: plays a uri, or throws why it could not.
     ///   - advance: moves the queue on and returns its next uri, or nil at its end.
-    ///   - skipped: told about each track before the queue moves past it.
+    ///   - skipped: told the uri and the name of each track before the queue moves past it.
     static func run(
         from uri: String,
         attempts: Int,
         load: (String) async throws -> Void,
         advance: () -> String?,
-        skipped: (String, any Error) -> Void,
+        skipped: (_ uri: String, _ name: String) -> Void,
     ) async -> Outcome {
         var uri = uri
         var attemptsLeft = attempts
@@ -57,10 +57,10 @@ nonisolated enum AutoAdvance {
                 return .superseded
             } catch {
                 attemptsLeft -= 1
-                guard case LibrespotError.trackUnavailable = error, attemptsLeft > 0 else {
+                guard case let LibrespotError.trackUnavailable(name) = error, attemptsLeft > 0 else {
                     return .stopped(error)
                 }
-                skipped(uri, error)
+                skipped(uri, name)
                 guard let next = advance() else { return .queueEnded }
                 uri = next
             }

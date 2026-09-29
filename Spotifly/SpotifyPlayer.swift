@@ -75,17 +75,29 @@ nonisolated struct PlaybackState: Equatable {
 /// caller to be thrown to. They reach the now-playing bar this way instead, as the errors of
 /// plays the app starts reach it through `PlaybackViewModel.errorMessage`.
 nonisolated struct PlaybackInterruption: Equatable {
-    /// What went wrong, as the error describes itself.
-    let reason: String
-    /// Playback went on to the next track, rather than stopping at this one.
-    let skipped: Bool
+    enum Kind: Equatable {
+        /// Auto-advance went past this track, which Spotify withholds.
+        case skipped(trackName: String)
+        /// Playback stopped, for this reason.
+        case stopped(reason: String)
+
+        static func stopped(_ error: any Error) -> Kind {
+            .stopped(reason: error.localizedDescription)
+        }
+    }
+
+    let kind: Kind
     /// Tells one interruption from the next. The model passes on changes only, so without it
     /// the same track skipped twice in a row would be told once.
     let sequence: Int
 
-    /// What the now-playing bar says.
+    /// What the now-playing bar says. The reason comes first, because the bar cuts off what
+    /// does not fit, and a track name is the part that can go.
     var message: String {
-        skipped ? String(localized: "playback.skipped \(reason)") : reason
+        switch kind {
+        case let .skipped(trackName): String(localized: "playback.skipped_unavailable \(trackName)")
+        case let .stopped(reason): reason
+        }
     }
 }
 

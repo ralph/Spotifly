@@ -19,6 +19,7 @@ struct AutoAdvanceTests {
         private var position = 0
         private(set) var loaded: [String] = []
         private(set) var skipped: [String] = []
+        private(set) var skippedNames: [String] = []
 
         init(_ queue: [String], failing failures: [String: any Error] = [:]) {
             self.queue = queue
@@ -46,7 +47,10 @@ struct AutoAdvanceTests {
                     }
                     return self.queue[self.position]
                 },
-                skipped: { uri, _ in self.skipped.append(uri) },
+                skipped: { uri, name in
+                    self.skipped.append(uri)
+                    self.skippedNames.append(name)
+                },
             )
         }
     }
@@ -61,6 +65,7 @@ struct AutoAdvanceTests {
         #expect(outcome.kind == "playing")
         #expect(player.loaded == ["b", "c"])
         #expect(player.skipped == ["b"])
+        #expect(player.skippedNames == ["Girlfriend (feat. Dâm-Funk)"])
     }
 
     /// The plan's rule: a skip must mean the track cannot play, never that the network

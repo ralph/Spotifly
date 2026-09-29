@@ -25,6 +25,18 @@ struct NowPlayingBarView: View {
     @State private var showNewPlaylistDialog = false
     @State private var showPlaylistAddedSuccess = false
 
+    /// The error under the pointer, kept after the view model clears it; see `errorMessage`.
+    @State private var heldErrorMessage: String?
+    @State private var showFullErrorMessage = false
+
+    /// The error the bar shows: the view model's, or the one the pointer is on.
+    ///
+    /// The view model clears an error after five seconds, and one cut off at the bar's width
+    /// is only read in full by pointing at it, so an error stays while the pointer is on it.
+    private var errorMessage: String? {
+        playbackViewModel.errorMessage ?? heldErrorMessage
+    }
+
     /// Whether something is currently playing or queued
     private var hasPlayback: Bool {
         playbackViewModel.currentTrackUri != nil
@@ -207,16 +219,31 @@ struct NowPlayingBarView: View {
     }
 
     /// The track's title and artist, or `PlaybackViewModel.errorMessage` in their place while
-    /// it is set — the one place it is shown. Two caption lines fit the same height, and the
+    /// it is set, or while the pointer is on it — the one place it is shown. Two caption lines fit the same height, and the
     /// mini player has no room above the bar for a banner.
     private var trackInfo: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let message = playbackViewModel.errorMessage {
+            if let message = errorMessage {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
-                    .help(message)
+                    // Without it the row offers one line's height, and the second line the
+                    // bar has room for went unused.
+                    .fixedSize(horizontal: false, vertical: true)
+                    // The full text at once, not as a tooltip: a tooltip waits for the
+                    // pointer to rest, and the error was often gone before it appeared.
+                    .onHover { hovering in
+                        heldErrorMessage = hovering ? message : nil
+                        showFullErrorMessage = hovering
+                    }
+                    .popover(isPresented: $showFullErrorMessage, arrowEdge: .top) {
+                        Text(message)
+                            .font(.callout)
+                            .frame(width: 280, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(12)
+                    }
             } else if let track = currentTrack {
                 Text(track.name)
                     .font(.subheadline.weight(.medium))
@@ -227,7 +254,7 @@ struct NowPlayingBarView: View {
                     .lineLimit(1)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: playbackViewModel.errorMessage)
+        .animation(.easeInOut(duration: 0.2), value: errorMessage)
     }
 
     private var playbackControls: some View {

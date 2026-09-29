@@ -7,7 +7,8 @@ Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`handleEndOf
 `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`prepare`, `fileToPlay`),
 `Spotifly/SwiftLibrespot/Core/Errors.swift` (`trackUnavailable`),
 `Spotifly/SpotifyPlayer.swift` (`PlaybackInterruption`), `Spotifly/Store/PlayerModel.swift`,
-`Spotifly/ViewModels/PlaybackViewModel.swift` (`observePlayer`)
+`Spotifly/ViewModels/PlaybackViewModel.swift` (`observePlayer`),
+`Spotifly/Views/NowPlayingBarView.swift` (`trackInfo`)
 Found: 2026-08-14, in `../seek-after.log`, under librespot. Re-read against the Swift stack
 on 2026-09-29, and seen the same day with a country-restricted track in Liked Songs.
 
@@ -22,8 +23,8 @@ not.
 A *user-started* play of an unplayable track was observed on 2026-09-29: the bar shows an
 error that names the wrong cause, and Spotify Connect goes on reporting the track as playing.
 
-**Now:** auto-advance goes past a track Spotify withholds and the bar says "Skipped: “…” is
-not available on Spotify". Any other load error still stops playback, and the bar says why. A
+**Now:** auto-advance goes past a track Spotify withholds and the bar says "Skipped, not
+available: “…”". Any other load error still stops playback, and the bar says why. A
 failed load lets go of the active role, so other devices stop showing this Mac as playing.
 What is left is in `plans/open/unplayable-tracks-look-playable.md`.
 
@@ -172,11 +173,12 @@ superseded load neither skips nor stops.
       `PlayerSnapshot` for the last auto-advance that failed or was skipped: the uri and the
       error. `PlaybackViewModel` puts it into `errorMessage`, which the bar already shows for
       five seconds. New localization keys go in `de`, `en` and `fr`.
-      **Done** as `PlayerSnapshot.interruption`, a `PlaybackInterruption` of the error's
-      description, whether it was skipped, and a sequence number. The number is needed because
-      `PlayerModel` passes on changes only, so the same skip twice in a row would otherwise be
-      told once. It stays in the snapshot until the next one, so the newest-only stream cannot
-      drop it. The keys are `error.track_unavailable %@` and `playback.skipped %@`.
+      **Done** as `PlayerSnapshot.interruption`, a `PlaybackInterruption`: a skip with the
+      track's name, or a stop with the error's description, and a sequence number. The number
+      is needed because `PlayerModel` passes on changes only, so the same skip twice in a row
+      would otherwise be told once. It stays in the snapshot until the next one, so the
+      newest-only stream cannot drop it. The keys are `error.track_unavailable %@` and
+      `playback.skipped_unavailable %@`.
 - [x] A stop caused by an error that is not skipped shows the same way. That is the other half
       of "says nothing". So does a failed rewind to the context's first track, and an audio
       pipeline error mid-track, which cleared the playback just as silently.
@@ -191,10 +193,18 @@ superseded load neither skips nor stops.
 - [x] Name the real cause. "Track not found: No Ogg Vorbis file available" reads like a bug for
       a track Spotify has simply withheld. "Not available in your country" is accurate for
       `COUNTRY_RESTRICTED`.
-      **Done** as "“Girlfriend (feat. Dâm-Funk)” is not available on Spotify", and "Skipped: …"
-      in front of it for a skip. It does not say "in your country": the metadata allows the
+      **Done** as "Not available on Spotify: “Girlfriend (feat. Dâm-Funk)”", and "Skipped, not
+      available: “…”" for a skip. It does not say "in your country": the metadata allows the
       track in no country (see *What the metadata says*). A play started from the app, Next or
-      Previous shows the same message through #72.
+      Previous shows the same message through #72. The reason comes first because the bar cuts
+      off what does not fit. The first wording, name first, showed only
+      "Übersprungen: „Girlfriend (feat. Dâm-Funk)“ ist a…" in the first live run.
+- [x] Found in that run: the bar showed one line of the error, although it allows two, and the
+      tooltip holding the full text rarely appeared. The row offered the label one line's
+      height, so it now takes its own (`fixedSize(horizontal: false, vertical: true)`), checked
+      by rendering the row with `ImageRenderer`. The tooltip waited for the pointer to rest,
+      and by then the error had usually cleared itself after its five seconds. Pointing at the
+      error now keeps it up and shows the full text in a popover at once.
 
 ### Not in this plan
 
@@ -213,10 +223,15 @@ These are in `plans/open/unplayable-tracks-look-playable.md`:
 
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, run bare with the exit
       code checked. 2026-09-29: build succeeded, all tests passed, lint exit 0.
-- [ ] Live: a playlist of three tracks, playable, Step 1's unplayable one, playable. From a
+- [x] Live: a playlist of three tracks, playable, Step 1's unplayable one, playable. From a
       DE account, `6PpbRUIbMyUbJkWHS3eQ8j` is one. Seek near
       the end of the first. The second is skipped and the bar says so, and the third plays.
       Paste the `LibrespotClient` and `AudioPipeline` lines.
+      **2026-09-29**, with "Spotifly test: Girlfriend" (`0qNtVGwd9fPrEUdMTygw8y`: "Gold Lion",
+      "Girlfriend", "The Diamond Church Street Choir"). Seen in the bar, not in the log: "The
+      Diamond Church Street Choir" playing as 3/3, under
+      "Übersprungen: „Girlfriend (feat. Dâm-Funk)“ ist a…", the first wording, cut off. The
+      log lines were not kept.
 - [ ] Live: the same playlist with Wi-Fi turned off in the first ten seconds of the first
       track, before the fetch-ahead runs. At the end of the track, playback stops and the bar
       shows the error. Nothing is skipped.
