@@ -168,7 +168,7 @@ track twice and only the position says which.
       (30th Anniversary Deluxe): from Welcome to Paradise, two Nexts to Basket Case, and a
       double-click on the next row played She. A double-clicked queued track plays but stays
       in the queue, and comes round again; that is the restart
-      `plans/open/queue-double-click-restarts-the-context.md` records.
+      `plans/done/queue-double-click-restarts-the-context.md` records.
 - [x] Live, Favorites: heart a track that is not saved, and before the list refreshes,
       double-click a row below the top. It plays the row clicked. **Passed**, same run.
 - [x] Live, remote, from a phone: start a playlist track on the Mac. The Mac plays that one.

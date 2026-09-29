@@ -51,7 +51,7 @@ that newest first was intended for the UI, and the port's reference says otherwi
   `previousTracks` was in play order, under librespot.
 
 A double-click on a history row plays the wrong track for the same reason, but that is the
-row-index problem in `plans/open/clicked-row-plays-another-track.md` (#79). Once that is
+row-index problem in `plans/done/clicked-row-plays-another-track.md` (#79). Once that is
 fixed, the order no longer decides what plays, and this is only about what the list shows.
 
 ## Solution
