@@ -182,11 +182,8 @@ public actor SpircController {
         dealerPushes?.cancel()
         dealerPushes = nil
 
-        // No goodbye. A PutState with `becameInactive` was answered 422 every
-        // time, and the disconnect that follows takes this device off the
-        // other devices' lists anyway: a quarter of a second after it, the web
-        // player no longer showed it, nor that it had been playing here.
-        // librespot's `PUT …/inactive` is not needed for that either.
+        // No goodbye: Spotify answers a `becameInactive` PutState 422, and the
+        // disconnect that follows already takes this device off Connect.
     }
 
     // MARK: - State Publishing

@@ -137,8 +137,8 @@ enum SpotifyPlayer {
         )
     }
 
-    /// Shuts down, which takes this device off Spotify Connect.
-    /// Call this when the app is quitting to properly disconnect from Spotify Connect.
+    /// Shuts down, which takes this device off Spotify Connect. Call this when the app is
+    /// quitting.
     ///
     /// Awaitable so callers can order it against a rebuild of the same global player, and
     /// so the quit can wait for it.
