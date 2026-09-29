@@ -65,10 +65,9 @@ public actor SPClient {
 
     /// Track metadata containing file information
     public struct TrackMetadata: Sendable {
-        public let gid: Data
         public let name: String
         public let durationMs: Int
-        public var files: [AudioFile]
+        public let files: [AudioFile]
 
         public struct AudioFile: Sendable {
             public let fileId: Data
@@ -106,18 +105,12 @@ public actor SPClient {
     }
 
     /// A track's name, duration and playable files, in one request to the extended-metadata
-    /// endpoint.
-    ///
-    /// A load used to ask `/metadata/4` first, and this only once that had answered: two round
-    /// trips before the audio key and the CDN url were even asked for. `/metadata/4` answers a
-    /// stub with no files these days, and the `Track` this endpoint wraps carries the rest as
-    /// well. Measured on 2026-09-29 from the web player's session: name (2), duration (7), files
-    /// (12), and for a relinked recording its alternative (13) — "Not Bad for New Jersey" came
-    /// back as 215205 ms, the length the app had logged playing it.
+    /// endpoint, whose `Track` carries all three; see
+    /// `plans/done/track-load-waits-on-two-metadata-requests.md`.
     ///
     /// Request: `BatchedEntityRequest { 1: header, 2: { 1: uri, 2: { 1: TRACK_V4(10) } } }`
     /// Response: nested arrays whose leaf is a `google.protobuf.Any` wrapping the `Track`.
-    public func getTrack(uri entityUri: String, gid: Data) async throws -> TrackMetadata {
+    public func getTrack(uri entityUri: String) async throws -> TrackMetadata {
         let host = spclientHost ?? "spclient.wg.spotify.com"
         let url = URL(string: "https://\(host)/extended-metadata/v0/extended-metadata")!
 
@@ -144,9 +137,8 @@ public actor SPClient {
         }
 
         // A track that does not exist answers HTTP 200 with no `Track`, and 404 in the entity's
-        // own header (measured the same day); `/metadata/4` answered it with a 404. Either way
-        // it is not found, not withheld.
-        guard let track = Self.parseTrackResponse(data, gid: gid) else {
+        // own header: not found, not withheld. A withheld one has a `Track` with no files.
+        guard let track = Self.parseTrackResponse(data) else {
             throw LibrespotError.trackNotFound(entityUri)
         }
         return track
@@ -176,17 +168,15 @@ public actor SPClient {
     }
 
     /// The `Track` the answer wraps, or nil when it wraps none.
-    nonisolated static func parseTrackResponse(_ data: Data, gid: Data) -> TrackMetadata? {
+    nonisolated static func parseTrackResponse(_ data: Data) -> TrackMetadata? {
         // BatchedExtensionResponse { 2: arrays[] }
         for array in ProtobufReader.fields(in: data) where array.number == 2 {
             // EntityExtensionDataArray { 2: kind varint, 3: datas[] }
             for entry in array.fields where entry.number == 3 {
-                // EntityExtensionData { 1: header{1 status}, 3: extension_data = Any }
-                for any in entry.fields where any.number == 3 {
-                    // google.protobuf.Any { 2: value }, the value a full `Track`
-                    if let track = any.fields.last(2) {
-                        return trackMetadata(track.fields, gid: gid)
-                    }
+                // EntityExtensionData { 1: header{1 status}, 3: extension_data = Any }, and
+                // google.protobuf.Any { 2: value }, the value a full `Track`
+                if let track = entry.fields.last(3)?.fields.last(2) {
+                    return trackMetadata(track.fields)
                 }
                 let status = entry.fields.last(1)?.fields.last(1)?.value
                 debugLog("SPClient", "Extended metadata: no track, entity status \(status.map(String.init) ?? "none")")
@@ -236,7 +226,7 @@ public actor SPClient {
     }
 
     /// Reads the `Track` message: `{2 name, 7 duration, 12 files[], 13 alternative[]}`.
-    private nonisolated static func trackMetadata(_ fields: [ProtobufField], gid: Data) -> TrackMetadata {
+    private nonisolated static func trackMetadata(_ fields: [ProtobufField]) -> TrackMetadata {
         let name = fields.last(2)?.string ?? ""
         // `sint32` in metadata.proto. Read as a plain varint it was doubled:
         // 403518 ms for a track the decoder counts 8897582 frames of, 201.8 s.
@@ -245,7 +235,7 @@ public actor SPClient {
 
         debugLog("SPClient", "Parsed track: \(name), duration=\(duration)ms, files=\(files.count)")
 
-        return TrackMetadata(gid: gid, name: name, durationMs: duration, files: files)
+        return TrackMetadata(name: name, durationMs: duration, files: files)
     }
 
     /// A `Track`'s playable files. They sit at `Track.file` (12); a relinked

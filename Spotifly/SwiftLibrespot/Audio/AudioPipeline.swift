@@ -337,7 +337,7 @@ actor AudioPipeline {
         }
 
         let trackId = try Self.trackGid(fromUri: uri)
-        let metadata = try await spclient.getTrack(uri: uri, gid: trackId)
+        let metadata = try await spclient.getTrack(uri: uri)
 
         debugLog("AudioPipeline", "Track '\(metadata.name)': \(metadata.files.count) file(s), \(metadata.durationMs)ms")
 

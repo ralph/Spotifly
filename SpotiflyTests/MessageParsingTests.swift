@@ -246,17 +246,20 @@ struct SPClientParsingTests {
         }
     }
 
-    /// A `Track` wrapped the way the extended-metadata endpoint answers with one.
-    private static func extendedMetadataResponse(track: Data) -> Data {
+    /// A `Track` wrapped the way the extended-metadata endpoint answers with one, or, without
+    /// one, the way it answers for an entity it has none of.
+    private static func extendedMetadataResponse(track: Data?, status: Int = 200) -> Data {
         ProtobufWriter.message {
             $0.message(field: 2) { array in // extended_metadata
                 array.varint(field: 2, 10) // extension_kind: TRACK_V4
                 array.message(field: 3) { entry in // extension_data
-                    entry.message(field: 1) { $0.varint(field: 1, 200) } // header.status_code
+                    entry.message(field: 1) { $0.varint(field: 1, status) } // header.status_code
                     entry.string(field: 2, "spotify:track:abc") // entity_uri
-                    entry.message(field: 3) { any in // google.protobuf.Any
-                        any.string(field: 1, "type.googleapis.com/spotify.metadata.Track")
-                        any.bytes(field: 2, track)
+                    if let track {
+                        entry.message(field: 3) { any in // google.protobuf.Any
+                            any.string(field: 1, "type.googleapis.com/spotify.metadata.Track")
+                            any.bytes(field: 2, track)
+                        }
                     }
                 }
             }
@@ -268,7 +271,7 @@ struct SPClientParsingTests {
     }
 
     private static func parse(_ track: Data) -> SPClient.TrackMetadata? {
-        SPClient.parseTrackResponse(extendedMetadataResponse(track: track), gid: Data())
+        SPClient.parseTrackResponse(extendedMetadataResponse(track: track))
     }
 
     @Test func `the extended-metadata answer yields the wrapped track's files`() throws {
@@ -302,17 +305,23 @@ struct SPClientParsingTests {
     /// A track that does not exist: HTTP 200, a 404 in the entity's header, and no `Track`,
     /// measured with `spotify:track:0000000000000000000000`.
     @Test func `an entity without a track is none`() {
-        let response = ProtobufWriter.message {
-            $0.message(field: 2) { array in
-                array.varint(field: 2, 10)
-                array.message(field: 3) { entry in
-                    entry.message(field: 1) { $0.varint(field: 1, 404) }
-                    entry.string(field: 2, "spotify:track:0000000000000000000000")
-                }
-            }
+        #expect(SPClient.parseTrackResponse(Self.extendedMetadataResponse(track: nil, status: 404)) == nil)
+    }
+
+    /// "Girlfriend", which Spotify withholds in DE, measured the same day: a `Track` with its name,
+    /// its duration and a restriction (11), and no files, of its own or an alternative's. So it
+    /// still reads as withheld, and auto-advance still steps over it.
+    @Test func `a withheld track has its name and no files`() throws {
+        let track = ProtobufWriter.message {
+            $0.string(field: 2, "Girlfriend (feat. Dâm-Funk)")
+            $0.varint(field: 7, 402_146) // sint32 201073
+            $0.message(field: 11) { $0.string(field: 2, "") } // restriction
         }
 
-        #expect(SPClient.parseTrackResponse(response, gid: Data()) == nil)
+        let metadata = try #require(Self.parse(track))
+
+        #expect(metadata.name == "Girlfriend (feat. Dâm-Funk)")
+        #expect(metadata.files.isEmpty)
     }
 
     @Test func `a relinked track's files come from its alternative`() throws {

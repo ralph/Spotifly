@@ -50,11 +50,14 @@ by field:
 | "Not Bad for New Jersey", `2J1gYYXbLb3JJWjbOS6DJO` | 200; `Track` with name (2) "Not Bad for New Jersey", duration (7) sint32 215205, 4 files (12) |
 | "The Letter", original `459GknUJgpky3io0y482bi` | 200; name, duration 251293, a restriction (11), no files, 1 alternative (13) |
 | "The Letter", DE substitute `7FcObTmCbQYyC8qzlTL2SE` | 200; name, duration 251293, 4 files |
+| "Girlfriend", `6PpbRUIbMyUbJkWHS3eQ8j`, withheld in DE | 200; name, duration 201073, a restriction, no files and no alternative |
 | `spotify:track:0000000000000000000000` | HTTP 200, the entity's header status 404, no `Track`; `/metadata/4` answered HTTP 404 |
 
 215205 ms is the length the app had logged playing that track the same day. So the wrapped
 `Track` carries everything the load read from `/metadata/4`: the name, for the unavailable
-message, and the duration.
+message, and the duration. And a withheld track is a `Track` without files, not a missing one:
+"Girlfriend", which #57 was about, still reads as withheld and is stepped over. The review of the
+change asked for that row, since the track had only been measured through `/metadata/4`.
 
 ### What changed
 
@@ -76,7 +79,8 @@ The first step of the plan, both requests at once, is moot with one request.
 
 - [x] Measured, as above.
 - [x] Unit tests: the wrapped track's name and its sint32 duration, as measured; an entity with
-      no `Track` parses as none; the file rules (own files, the alternative, unnamed formats,
+      no `Track` parses as none; a withheld track, shaped as "Girlfriend" answered, parses with
+      its name and no files; the file rules (own files, the alternative, unnamed formats,
       a file without an id), now through the one parser.
 - [x] Build, 443 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
 - [ ] Live: the `AudioPipeline` log shows one `[POST] extended-metadata` and no
