@@ -72,9 +72,10 @@ struct TrackRow: View {
         }
     }
 
-    /// Whether the row should be disabled (unavailable tracks)
+    /// Whether the row is greyed out: a queue entry the player could not name, or a track
+    /// Spotify said it will not play here, as its own clients grey those.
     private var isUnavailable: Bool {
-        provider == .unavailable
+        provider == .unavailable || !track.isPlayable
     }
 
     init(
@@ -230,6 +231,7 @@ struct TrackRow: View {
         .padding(.vertical, 8)
         .background(isCurrentTrack ? Color.green.opacity(0.1) : Color.clear)
         .opacity(isPlayedTrack || isUnavailable ? 0.5 : 1.0)
+        .help(track.unplayableMessage ?? "")
         .contentShape(Rectangle())
         .contextMenu {
             TrackContextMenu(
@@ -243,6 +245,12 @@ struct TrackRow: View {
             )
         }
         .onTapGesture(count: 2) {
+            // A track Spotify will not play starts nothing: played, it would only fail with the
+            // same message, and search's double-click starts radio, which is refused too.
+            if let message = track.unplayableMessage {
+                playbackViewModel.errorMessage = message
+                return
+            }
             guard let onDoubleTap else { return }
             Task { await onDoubleTap() }
         }
