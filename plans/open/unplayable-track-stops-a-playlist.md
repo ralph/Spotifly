@@ -49,8 +49,8 @@ error that names the wrong cause, and Spotify Connect goes on reporting the trac
 ### Observed on 2026-09-29
 
 Double-clicking "Girlfriend (feat. Dâm-Funk)" by Christine and the Queens
-(`spotify:track:6PpbRUIbMyUbJkWHS3eQ8j`), index 484 of the account's Liked Songs, in DE. The row
-and the song matched; the track cannot play here. Pathfinder says so before anything is
+(`spotify:track:6PpbRUIbMyUbJkWHS3eQ8j`) in the account's Liked Songs, in DE. The row and the
+song matched; the track cannot play here. Pathfinder says so before anything is
 loaded. The Liked Songs `fetchPlaylistContents` item carries
 
 ```
@@ -71,6 +71,12 @@ The player found no files and no playable alternative:
 The bar showed "Track not found: No Ogg Vorbis file available" (#72) beside the track, with
 "1/51". The web player on another machine showed the Mac playing it. It is not a relinking
 case: a market substitute would have been returned in its place, as "The Letter" is.
+
+**It is not rare.** That day, 221 of the account's 609 Liked Songs were `COUNTRY_RESTRICTED`,
+all with the same reason, from three albums. Two albums were bulk-saved in 2019 and made up
+contiguous runs of 106 and 114 rows. With auto-advance stopping at the first unplayable
+track, Liked Songs could not play past row 178. Those two albums were un-favorited the same
+day, so "Girlfriend" is the one left in that library to test with.
 
 ### Found under librespot
 
