@@ -165,27 +165,28 @@ struct QueueListView: View {
 
     @ViewBuilder
     private func playingFromText(device: Device) -> some View {
-        let context = contextInfo
-        let contextName = context?.name ?? String(localized: "queue.title")
         let deviceIcon = deviceService.deviceIcon(for: device.type)
 
         HStack(spacing: 4) {
-            Text("queue.playing_from")
+            if let context = contextInfo {
+                Text("queue.playing_from")
 
-            if let context {
                 // Context name is a tappable link
                 Button {
                     navigateToContext(type: context.type, id: context.id)
                 } label: {
-                    Text("\"\(contextName)\"")
+                    Text("\"\(context.name)\"")
                         .foregroundStyle(.green)
                 }
                 .buttonStyle(.plain)
+
+                Text("queue.on_device")
             } else {
-                Text("\"\(contextName)\"")
+                // A bare list of tracks, or a context the store has no name for. It used to
+                // say "Playing from "Queue"", as if that were the name.
+                Text("queue.playing_on")
             }
 
-            Text("queue.on_device")
             Image(systemName: deviceIcon)
             Text(device.name)
         }

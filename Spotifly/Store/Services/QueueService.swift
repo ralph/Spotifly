@@ -185,7 +185,7 @@ final class QueueService {
             return false
         }
 
-        store.setQueue(previous: update.previous, current: update.current, next: update.next)
+        store.setQueue(previous: update.previous, current: update.current, next: update.next, contextUri: update.contextUri)
         reconcileQueueCurrentTrack()
 
         log("Initial queue: prev=\(update.previous.count), current=\(update.current != nil ? 1 : 0), next=\(update.next.count)")
@@ -217,7 +217,7 @@ final class QueueService {
     /// not enough — history with nothing playing is what a wiped queue looks like.
     static func queueUpdate(
         from snapshot: QueueState?,
-    ) -> (previous: [QueueEntry], current: QueueEntry?, next: [QueueEntry])? {
+    ) -> (previous: [QueueEntry], current: QueueEntry?, next: [QueueEntry], contextUri: String)? {
         guard let snapshot else { return nil }
 
         let current = snapshot.currentTrack.flatMap(queueEntry(from:))
@@ -226,7 +226,7 @@ final class QueueService {
 
         guard current != nil || !next.isEmpty else { return nil }
 
-        return (previous, current, next)
+        return (previous, current, next, snapshot.contextUri)
     }
 
     /// A queue track becomes an entry only if its uri names a track — the cluster can carry

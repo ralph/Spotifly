@@ -112,6 +112,7 @@
 "queue.open" = "Ouvrir la file d'attente";
 "queue.playing_from" = "Lecture depuis";
 "queue.on_device" = "sur";
+"queue.playing_on" = "Lecture sur";
 "queue.song_count %lld %lld" = "%lld titres (%lld à venir)";
 "queue.scroll_to_current" = "Aller au titre en cours";
 "queue.refresh" = "Actualiser la file d'attente";

@@ -28,7 +28,8 @@ struct Queue: Equatable {
     var currentTrack: QueueEntry?
     /// Next tracks in queue
     var nextTracks: [QueueEntry] = []
-    /// Context URI (e.g., "spotify:album:123" or "spotify:playlist:456")
+    /// Context URI (e.g., "spotify:album:123" or "spotify:playlist:456"), or nil while a bare
+    /// list of tracks plays
     var contextUri: String?
 
     /// Returns the same queue ordering, split around the occurrence of `trackId` nearest
@@ -654,16 +655,18 @@ final class AppStore {
     // MARK: - Queue Actions
 
     /// Set queue state with queue entries. If `previous` is nil, preserves existing (Web API doesn't provide history).
-    func setQueue(previous: [QueueEntry]?, current: QueueEntry?, next: [QueueEntry], contextUri: String? = nil) {
+    ///
+    /// The player always says what it plays from, and an empty `contextUri` is a bare list of
+    /// tracks: Play Tracks under search, or a list sent from another device. It clears the
+    /// context, which used to be kept from whatever played before, so the queue went on naming
+    /// that album.
+    func setQueue(previous: [QueueEntry]?, current: QueueEntry?, next: [QueueEntry], contextUri: String) {
         if let previous {
             queue.previousTracks = previous
         }
         queue.currentTrack = current
         queue.nextTracks = next
-        // Only update contextUri if provided (non-nil and non-empty)
-        if let uri = contextUri, !uri.isEmpty {
-            queue.contextUri = uri
-        }
+        queue.contextUri = contextUri.isEmpty ? nil : contextUri
     }
 
     /// Aligns the queue's current pointer with the authoritative logical track identity.
