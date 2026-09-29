@@ -274,6 +274,17 @@ nonisolated struct PathfinderPlaylist: Decodable, Sendable {
         ownerV2?.data?.name ?? ownerV2?.data?.username
     }
 
+    /// The uri when this is a playlist *folder*, `spotify:user:<user>:folder:<hash>`, which
+    /// decodes as this type too; see `id`.
+    var folderUri: String? {
+        guard let uri else { return nil }
+        let parts = uri.split(separator: ":")
+        guard parts.count == 5, parts[0] == "spotify", parts[1] == "user", parts[3] == "folder" else {
+            return nil
+        }
+        return uri
+    }
+
     var imageURL: String? {
         (images?.items ?? []).first?.largestURL
     }

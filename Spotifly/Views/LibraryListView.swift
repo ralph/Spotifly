@@ -20,6 +20,25 @@ extension Album: @MainActor LibraryEntity {}
 extension Artist: @MainActor LibraryEntity {}
 extension Playlist: @MainActor LibraryEntity {}
 
+/// A row of a library section shown in its folders: a folder, or an entry, at its depth.
+enum LibraryOutlineRow<Entity: LibraryEntity>: Identifiable {
+    case folder(uri: String, name: String, depth: Int)
+    case entity(Entity, depth: Int)
+
+    var id: String {
+        switch self {
+        case let .folder(uri, _, _): uri
+        case let .entity(entity, _): entity.id
+        }
+    }
+
+    var depth: Int {
+        switch self {
+        case let .folder(_, _, depth), let .entity(_, depth): depth
+        }
+    }
+}
+
 /// Everything the three sections show and say differently — the whole of it.
 struct LibrarySectionStyle {
     let loadingText: LocalizedStringKey
@@ -49,8 +68,15 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     let loadMore: @MainActor () async throws -> Void
     let style: LibrarySectionStyle
     let playbackViewModel: PlaybackViewModel
+    /// The entries in their folders, shown instead of `items` where the section has folders.
+    /// `items` still decides what loads, and what is selected first.
+    var outline: [LibraryOutlineRow<Entity>]?
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
+
+    /// The folders open in the list, by uri, one per line: kept across launches, as Spotify's
+    /// clients keep theirs. A folder starts closed.
+    @AppStorage("openLibraryFolders") private var openFolderList = ""
 
     @State private var errorMessage: String?
 
@@ -141,14 +167,34 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                             }
                         }
 
-                        ForEach(items.enumerated(), id: \.element.id) { index, item in
-                            VStack(spacing: 0) {
-                                if index > 0 {
-                                    Divider()
-                                        .padding(.leading, 56)
-                                }
+                        if let outline {
+                            ForEach(visibleRows(of: outline).enumerated(), id: \.element.id) { index, outlineRow in
+                                VStack(spacing: 0) {
+                                    if index > 0 {
+                                        Divider()
+                                            .padding(.leading, 56 + Self.indent(outlineRow.depth))
+                                    }
 
-                                row(for: item)
+                                    switch outlineRow {
+                                    case let .folder(uri, name, depth):
+                                        folderRow(uri: uri, name: name)
+                                            .padding(.leading, Self.indent(depth))
+                                    case let .entity(entity, depth):
+                                        row(for: entity)
+                                            .padding(.leading, Self.indent(depth))
+                                    }
+                                }
+                            }
+                        } else {
+                            ForEach(items.enumerated(), id: \.element.id) { index, item in
+                                VStack(spacing: 0) {
+                                    if index > 0 {
+                                        Divider()
+                                            .padding(.leading, 56)
+                                    }
+
+                                    row(for: item)
+                                }
                             }
                         }
 
@@ -191,6 +237,71 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                 select(entity.id, true)
             },
         )
+    }
+
+    private static func indent(_ depth: Int) -> CGFloat {
+        CGFloat(depth) * 20
+    }
+
+    private var openFolders: Set<String> {
+        Set(openFolderList.split(separator: "\n").map(String.init))
+    }
+
+    /// The outline without what closed folders hold: the rows deeper than a closed folder, up
+    /// to the next row at its depth or above.
+    private func visibleRows(of outline: [LibraryOutlineRow<Entity>]) -> [LibraryOutlineRow<Entity>] {
+        let open = openFolders
+        var closedDepth: Int?
+        return outline.filter { row in
+            if let depth = closedDepth {
+                if row.depth > depth {
+                    return false
+                }
+                closedDepth = nil
+            }
+            if case let .folder(uri, _, depth) = row, !open.contains(uri) {
+                closedDepth = depth
+            }
+            return true
+        }
+    }
+
+    private func folderRow(uri: String, name: String) -> some View {
+        let isOpen = openFolders.contains(uri)
+        return HStack(spacing: 10) {
+            Image(systemName: "folder")
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
+                .frame(width: 36, height: 36)
+                .background(.quaternary)
+                .clipShape(style.artworkShape)
+
+            Text(name)
+                .font(.system(size: 13))
+                .lineLimit(1)
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(isOpen ? 90 : 0))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            var open = openFolders
+            if isOpen {
+                open.remove(uri)
+            } else {
+                open.insert(uri)
+            }
+            openFolderList = open.sorted().joined(separator: "\n")
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
     }
 
     /// The section always shows a detail, so entering it lands on the first entry. The

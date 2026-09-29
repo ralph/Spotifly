@@ -263,6 +263,20 @@ struct Playlist: Identifiable, Hashable, Encodable {
     }
 }
 
+/// A row of the Playlists section as Spotify nests it: a folder or a playlist, and how deep in
+/// the folders it sits, 0 at the top. In Spotify's order, each folder followed by what it holds.
+struct PlaylistOutlineRow: Hashable {
+    enum Item: Hashable {
+        /// Keyed by its full uri, `spotify:user:<user>:folder:<hash>`: the hash alone is no id
+        /// the rest of the store uses.
+        case folder(uri: String, name: String)
+        case playlist(id: String)
+    }
+
+    let item: Item
+    let depth: Int
+}
+
 /// One entry in a playlist: a track, and the id of *this occurrence* of it.
 ///
 /// The `uid` is what the client's own API mutates by — `removeFromPlaylist` and

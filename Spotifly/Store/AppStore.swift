@@ -84,6 +84,8 @@ final class AppStore {
 
     /// User's playlist IDs in display order
     private(set) var userPlaylistIds: [String] = []
+    /// The same playlists in their folders, empty without any; see `setPlaylistOutline(_:)`.
+    private(set) var playlistOutline: [PlaylistOutlineRow] = []
 
     /// User's saved album IDs in display order
     private(set) var userAlbumIds: [String] = []
@@ -397,6 +399,12 @@ final class AppStore {
     /// Set user's playlist IDs (replaces existing)
     func setUserPlaylistIds(_ ids: [String]) {
         userPlaylistIds = ids
+    }
+
+    /// The playlists as Spotify nests them in folders; see `PlaylistService.loadPlaylistOutline`.
+    /// Empty for an account with no folders, whose Playlists section is the flat list.
+    func setPlaylistOutline(_ rows: [PlaylistOutlineRow]) {
+        playlistOutline = rows
     }
 
     /// Append playlist IDs (for pagination)
