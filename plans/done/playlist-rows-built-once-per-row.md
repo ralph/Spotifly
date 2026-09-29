@@ -1,7 +1,7 @@
 # The playlist view builds its rows once per row
 
-Status: **Done** 2026-09-29. Measured in a hosted view, before and after. Not yet seen in the
-running app; see Verification.
+Status: **Done** 2026-09-29 (#83). Measured in a hosted view, before and after, and the live
+checks passed on `0189b9b` the same day; see Verification.
 Components: `Spotifly/Views/PlaylistDetailView.swift` (`rows`, `trackList`),
 `Spotifly/Views/FavoritesListView.swift`, `Spotifly/Views/QueueListView.swift`,
 `Spotifly/Views/AlbumDetailView.swift`, `Spotifly/Views/SearchAllTracksView.swift`,
@@ -80,10 +80,15 @@ worth the parameters it would thread through four functions here.
 
       The test was not kept: it needs a counter in the view's code.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, 2026-09-29.
-- [ ] Live: open the largest playlist in the library. The tracks appear without a pause, and
+- [x] Live: open the largest playlist in the library. The tracks appear without a pause, and
       scrolling to the bottom and back is smooth. Dividers sit between rows, none above the
-      first or below the last.
-- [ ] Live, own playlist: drag a row a few places down, then drag one up past the top edge of
-      the window so the list scrolls. Both moves stick after a reload.
-- [ ] Live, queue: with a long album playing, scroll the queue away and press the toolbar's
-      scroll-to-current button. The current row comes back to the centre.
+      first or below the last. **Passed** on `0189b9b`, 2026-09-29, with "Spotifly test: 1007
+      tracks": a private copy of the public "Mein Lotta-Leben~Alle Hörspiele", made for this,
+      since the library's longest own playlist had 409.
+- [x] Live, own playlist: drag a row a few places down, then drag one up past the top edge of
+      the window so the list scrolls. Both moves stick after a reload. **Passed**, same run, in
+      that copy.
+- [x] Live, queue: with a long album playing, scroll the queue away and press the toolbar's
+      scroll-to-current button. The current row comes back to the centre. **Passed**, same run.
+- [x] Live, the other lists: Liked Songs, an album, Search's track list and the library
+      sidebars keep their dividers between rows only. **Passed**, same run.
