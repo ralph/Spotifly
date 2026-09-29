@@ -84,7 +84,7 @@ func isCancellation(_ error: Error) -> Bool {
 
 /// Whether asking again could end differently, so a view's error offers Try again.
 ///
-/// Not for an album or artist Spotify has none of: it answers the same every time
+/// Not for something Spotify has none of: it answers the same every time
 /// (`PartnerAPIError.notFound`).
 func isRetryable(_ error: Error) -> Bool {
     if case PartnerAPIError.notFound = error {

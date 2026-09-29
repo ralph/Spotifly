@@ -16,9 +16,8 @@ nonisolated enum PartnerAPIError: Error, LocalizedError, Equatable {
     case mutationRejected(String, String)
     /// Spotify has no such album, artist or playlist for this account, and says so with HTTP
     /// 200 and a union whose `__typename` is `NotFound`. Measured on 2026-09-29: an album from
-    /// another market and an id that never existed answer alike, and so do both artist
-    /// operations and all three playlist ones. Asking again gets the same answer, so the views
-    /// offer no retry; see `isRetryable(_:)`.
+    /// another market and an id that never existed answer alike. Asking again gets the same
+    /// answer, so the views offer no retry; see `isRetryable(_:)`.
     case notFound(Entity)
 
     enum Entity: Sendable {

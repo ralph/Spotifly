@@ -377,7 +377,6 @@ struct PlaylistDetailView: View {
     private func reloadTracks() async {
         isLoading = true
         errorMessage = nil
-        canRetry = true
 
         do {
             try await playlistService.reloadPlaylistTracks(playlistId: playlistId)

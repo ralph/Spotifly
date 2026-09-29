@@ -254,9 +254,8 @@ struct PathfinderResponseTests {
         }
     }
 
-    /// Measured from the web player on 2026-09-29, under the app's variables and its own, for
-    /// `fetchPlaylist`, `fetchPlaylistContents` and `fetchPlaylistMetadata` alike. With no uri to
-    /// build a playlist from, it read as "Spotify returned no data", with a Try again.
+    /// Measured from the web player on 2026-09-29, under the app's variables and its own. With
+    /// no uri to build a playlist from, it read as "Spotify returned no data", with a Try again.
     @Test func `a playlist Spotify has none of is not found, not empty`() async throws {
         let api = partnerAPI { _ in
             (
