@@ -31,7 +31,8 @@ final class PlaybackViewModel {
     /// Set when a play request arrived with nowhere to serve it: no local player and no
     /// active remote device. The view presents the Auth / Cancel alert on this.
     var needsStreamingAuthorization = false
-    /// Raised by the first play this Mac cannot start because the account is not Premium.
+    /// Raised by the first play this Mac cannot start because the account is not Premium,
+    /// for the notice that offers Logout.
     var showsPremiumNotice = false
 
     var isPlaying = false
@@ -128,7 +129,7 @@ final class PlaybackViewModel {
         return isInitialized ? .ready : .needsAuthorization
     }
 
-    /// Whether this launch has shown the notice already. Later plays say it in the bar.
+    /// Whether this launch has raised the notice already.
     private var hasShownPremiumNotice = false
 
     /// Whether the session is up, and with it the cluster that reports another device's
@@ -530,17 +531,19 @@ final class PlaybackViewModel {
     }
 
     /// Says why a play found nowhere to go. Without a session, by offering to authorize.
-    /// For an account that may not play here, the first time with the notice, which offers
-    /// Logout, and after that in the bar.
+    /// For an account that may not play here, in the bar, and the first time also with the
+    /// notice, which offers Logout. The bar every time, because the mini player shows the
+    /// bar and not the notice.
     private func explain(_ target: PlaybackTarget) {
         switch target {
         case .needsAuthorization:
             needsStreamingAuthorization = true
-        case .needsPremium where hasShownPremiumNotice:
-            errorMessage = LibrespotError.premiumRequired.localizedDescription
         case .needsPremium:
-            hasShownPremiumNotice = true
-            showsPremiumNotice = true
+            errorMessage = LibrespotError.premiumRequired.localizedDescription
+            if !hasShownPremiumNotice {
+                hasShownPremiumNotice = true
+                showsPremiumNotice = true
+            }
         case .local, .remote:
             break
         }

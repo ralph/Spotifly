@@ -105,8 +105,9 @@ plan leaves it as it is.
       `premiumRequired`, so a path the view model misses shows the reason, not a raw error.
 - [x] **Told once, with Logout.** The first play this Mac refuses raises an alert that says
       the library, search and playlists work and playing here needs Premium, with Logout and
-      OK. Later ones say it in the bar, as "Playing on this Mac needs Spotify Premium." Once
-      per launch, and again after a logout. Speakers says it in place of "Enable this Mac".
+      OK. Once per launch, and again after a logout. Every refused play also says it in the
+      bar, as "Playing on this Mac needs Spotify Premium.", since the mini player shows the
+      bar and not the alert. Speakers says it in place of "Enable this Mac".
       Nothing of `PremiumRequiredView` came back.
 - [x] **This Mac is not offered as a speaker.** The device list does depend on the
       registration: the cluster is the answer to a PutState and the dealer pushes it to

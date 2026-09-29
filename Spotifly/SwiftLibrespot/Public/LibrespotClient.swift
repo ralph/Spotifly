@@ -148,6 +148,11 @@ public actor LibrespotClient {
                 return try await clientTokenProvider()
             }
         } catch LibrespotError.premiumRequired {
+            // A logout that landed meanwhile has moved on to the next account, which this
+            // must not be said of.
+            guard lifecycleGeneration == generation else {
+                throw LibrespotError.invalidState("Initialization superseded")
+            }
             // Published as a free account's type is, so the app explains Premium rather
             // than offer a sign-in the accesspoint would refuse again.
             streams = false
