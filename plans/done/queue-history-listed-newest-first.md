@@ -1,7 +1,7 @@
 # The queue lists its history newest first
 
-Status: **Done** 2026-09-29, on branch `queue-history-play-order`, stacked on #80. Built and
-unit-tested. Not yet seen in the running app; see Verification.
+Status: **Done** 2026-09-29 (#81). Built, unit-tested, and the live checks passed on `98808b6`
+(with `main` and #86 merged in) the same day; see Verification.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift` (`recent`),
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`publishQueue`, `spircState`, the
 mirrored queue), `Spotifly/Views/QueueListView.swift`, `Spotifly/Store/AppStore.swift`
@@ -77,10 +77,13 @@ queued. Before, only the middle row did.
       thirteen, it is the last ten, still in play order.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, run bare with the exit
       code checked. 2026-09-29: build succeeded, 379 tests passed, lint exit 0.
-- [ ] Live, local: start an album at its first track and let three tracks play; skipping
+- [x] Live, local: start an album at its first track and let three tracks play; skipping
       with Next is enough. The queue reads 1, 2, 3 above track 4. Before the fix it read
-      3, 2, 1.
-- [ ] Live, mirrored: play an album on a phone and skip three tracks there, with the Mac
-      showing it. The Mac's queue reads 1, 2, 3 above track 4.
-- [ ] Live, Connect: with the Mac playing after those skips, hand playback to the phone and
-      press Previous there. It goes to track 3, as before.
+      3, 2, 1. **Passed** on `98808b6`, 2026-09-29.
+- [x] Live, mirrored: play an album on a phone and skip three tracks there, with the Mac
+      showing it. The Mac's queue reads 1, 2, 3 above track 4. **Passed**, same run.
+- [x] Live, Connect: with the Mac playing after those skips, hand playback to the phone and
+      press Previous there. It goes to track 3, as before. **Passed**, same run: Previous twice
+      went to track 3, then track 2.
+- [x] Live, with #86: after those skips, double-click track 2 in the history. It plays, and
+      track 3 is next again. **Passed**, same run.
