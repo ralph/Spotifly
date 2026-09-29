@@ -131,6 +131,15 @@ struct KeymasterCallbackTests {
         #expect(LoopbackCallbackServer.failurePage.contains("Authentication Failed"))
     }
 
+    @Test func `both pages link back to the app through a scheme it registers`() throws {
+        let urlTypes = try #require(Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]])
+        let schemes = urlTypes.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
+
+        for page in [LoopbackCallbackServer.successPage, LoopbackCallbackServer.failurePage] {
+            #expect(schemes.contains { page.contains("href=\"\($0)://") })
+        }
+    }
+
     @Test func `only a redirect with a code gets the success page`() throws {
         func page(_ query: String) throws -> String {
             try LoopbackCallbackServer.page(for: #require(URLComponents(string: "http://127.0.0.1/login?\(query)")))
