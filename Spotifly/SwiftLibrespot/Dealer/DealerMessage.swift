@@ -135,9 +135,14 @@ public enum SpircCommand: Sendable {
     case setQueue(queuedUris: [String])
     case unknown(String)
 
-    public struct PlayCommand: Sendable {
+    public nonisolated struct PlayCommand: Sendable {
+        /// The album, playlist or other context to resolve; nil when the
+        /// command carries its tracks instead.
         public let contextUri: String?
+        /// `skip_to`: the track to start on, and its index as the sender
+        /// counted. The track decides; see `PlaybackQueue.start(in:index:uri:)`.
         public let trackUri: String?
+        /// The tracks of a context sent inline, with no uri of its own.
         public let trackUris: [String]?
         public let index: Int?
         public let positionMs: UInt64?

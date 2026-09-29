@@ -529,17 +529,23 @@ public actor DealerConnection {
         case "play":
             let context = json["context"] as? [String: Any]
             let skipTo = options?["skip_to"] as? [String: Any]
-            let trackUri = (skipTo?["track_uri"] as? String)
-                ?? (json["uris"] as? [String])?.first
-                ?? (context?["uri"] as? String).flatMap(Self.trackUriIfTrack)
-
-            let index = (skipTo?["track_index"] as? NSNumber)?.intValue
+            // Empty is how Spotify's clients spell "no uri": the web player's
+            // own empty context is `uri: ""`, and so is this app's bare list.
+            let contextUri = (context?["uri"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            // Without a uri, the tracks come inline, and they are the context:
+            // librespot's `PlayContext::Tracks`, which is how a Web API `uris`
+            // play arrives. With one, pages are only a window of the context,
+            // which is resolved instead.
+            let pages = contextUri == nil ? context?["pages"] as? [[String: Any]] : nil
+            let trackUris = pages?
+                .flatMap { $0["tracks"] as? [[String: Any]] ?? [] }
+                .compactMap { $0["uri"] as? String }
 
             return .play(SpircCommand.PlayCommand(
-                contextUri: context?["uri"] as? String,
-                trackUri: trackUri,
-                trackUris: json["uris"] as? [String],
-                index: index,
+                contextUri: contextUri,
+                trackUri: skipTo?["track_uri"] as? String,
+                trackUris: trackUris,
+                index: (skipTo?["track_index"] as? NSNumber)?.intValue,
                 positionMs: (options?["seek_to"] as? NSNumber)?.uint64Value,
             ))
 
@@ -606,10 +612,6 @@ public actor DealerConnection {
     }
 
     /// A context uri that is actually a single-track context, or nil.
-    private nonisolated static func trackUriIfTrack(_ uri: String) -> String? {
-        uri.starts(with: "spotify:track:") ? uri : nil
-    }
-
     // MARK: - Ping Loop
 
     /// Keeps the socket alive and notices a peer that has stopped answering.

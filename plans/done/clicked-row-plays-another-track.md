@@ -142,7 +142,7 @@ track twice and only the position says which.
 ### Not in this plan
 
 - **A remote play of a bare track list**, and a handover of one, still choose their start on
-  their own: `plans/open/remote-track-list-play-starts-at-the-top.md`.
+  their own: `plans/done/remote-track-list-play-starts-at-the-top.md`.
 - **Starting by uid**, now in `plans/open/queue-double-click-restarts-the-context.md` beside
   the queue skip, which needs an exact row too. The resolver's tracks carry a `uid`: the app's
   log on 2026-09-29 shows `"uid":"87ced089511bc3c325f3"` for the first Liked Songs track, the same uid

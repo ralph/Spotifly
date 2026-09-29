@@ -424,19 +424,35 @@ public actor LibrespotClient {
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
-    public func playTracks(_ uris: [String], positionMs: UInt64 = 0) async throws {
-        let normalized = uris.map(Self.normalizedUri)
-        guard let first = normalized.first else {
+    /// Plays a list of tracks that no album or playlist names.
+    /// - Parameters:
+    ///   - index, startingAtUri: where in the list to start, by the rule
+    ///     `play(uriOrUrl:)` follows: the track decides, and one the list
+    ///     lacks goes in at the index.
+    ///   - paused: load it without starting playout, as a paused handover does.
+    public func playTracks(
+        _ uris: [String],
+        index: Int? = nil,
+        startingAtUri: String? = nil,
+        positionMs: UInt64 = 0,
+        paused: Bool = false,
+    ) async throws {
+        let start = PlaybackQueue.start(
+            in: uris.map(Self.normalizedUri),
+            index: index,
+            uri: startingAtUri.map(Self.normalizedUri),
+        )
+        guard let first = start.tracks.first else {
             throw LibrespotError.invalidState("No tracks to play")
         }
 
-        if normalized.count == 1, first.contains("spotify:track:") {
-            try await play(uriOrUrl: first, positionMs: positionMs)
+        if start.tracks.count == 1, first.contains("spotify:track:") {
+            try await play(uriOrUrl: first, positionMs: positionMs, paused: paused)
             return
         }
 
-        setQueue(contextUri: "", tracks: normalized, startIndex: 0)
-        try await loadCurrentTrack(positionMs: positionMs)
+        setQueue(contextUri: "", tracks: start.tracks, startIndex: start.index)
+        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
     /// Song radio for a seed track, resolved through its station context.
@@ -1084,9 +1100,12 @@ public actor LibrespotClient {
                 )
             } else {
                 // Started from a bare list of uris, so the list is all there is.
-                let tracks = transfer.contextTrackUris.contains(track) ? transfer.contextTrackUris : [track]
-                setQueue(contextUri: "", tracks: tracks, startIndex: tracks.firstIndex(of: track) ?? 0)
-                try await loadCurrentTrack(positionMs: positionMs, paused: transfer.isPaused)
+                try await playTracks(
+                    transfer.contextTrackUris,
+                    startingAtUri: track,
+                    positionMs: positionMs,
+                    paused: transfer.isPaused,
+                )
             }
         } catch is CancellationError {
             // A newer load took over, and it reports for itself.
@@ -1121,9 +1140,14 @@ public actor LibrespotClient {
                     startingAtUri: playCommand.trackUri,
                     positionMs: positionMs,
                 )
-            } else if let uris = playCommand.trackUris, uris.count > 1 {
-                try? await playTracks(uris, positionMs: positionMs)
-            } else if let single = playCommand.trackUri ?? playCommand.trackUris?.first {
+            } else if let uris = playCommand.trackUris, !uris.isEmpty {
+                try? await playTracks(
+                    uris,
+                    index: playCommand.index,
+                    startingAtUri: playCommand.trackUri,
+                    positionMs: positionMs,
+                )
+            } else if let single = playCommand.trackUri {
                 try? await play(uriOrUrl: single, positionMs: positionMs)
             }
 
