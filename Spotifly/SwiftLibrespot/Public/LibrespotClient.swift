@@ -53,11 +53,19 @@ public actor LibrespotClient {
     private var shuffleEnabled = false
     private var repeatMode = PlaybackQueue.RepeatMode.off
 
-    /// Tracks Spotify will not play for the account: named by the app, from what its lists
-    /// said, and learned here from loads that failed as unavailable. Next, Previous,
-    /// auto-advance and the fetch-ahead step over them without loading them. The context
-    /// resolver's answer does not say, measured 2026-09-29, so nothing else could.
-    private var unplayable: Set<String> = []
+    /// Tracks Spotify will not play for the account, as the app's lists said, replaced each
+    /// time it tells. Next, Previous, auto-advance and the fetch-ahead step over them, and
+    /// those learned below, without loading them. The context resolver's answer does not
+    /// say, measured 2026-09-29, so nothing else could.
+    private var listedUnplayable: Set<String> = []
+    /// Tracks that failed to load here as unavailable, kept for the rest of the login.
+    private var failedUnplayable: Set<String> = []
+
+    /// Whether a track is known not to play, as of now, for the queue to step over.
+    private var knownUnplayable: (String) -> Bool {
+        let listed = listedUnplayable, failed = failedUnplayable
+        return { listed.contains($0) || failed.contains($0) }
+    }
 
     // MARK: - Connection Bookkeeping
 
@@ -227,7 +235,8 @@ public actor LibrespotClient {
     /// goes in `shutdown()`'s teardown, with the pipeline it ran on.
     public func shutdownAndCleanup() async {
         await shutdown()
-        unplayable.removeAll()
+        listedUnplayable = []
+        failedUnplayable = []
         publish {
             $0.devices = nil
             $0.queue = nil
@@ -520,7 +529,7 @@ public actor LibrespotClient {
     public func previous() async throws {
         defer { publishQueue() }
 
-        if let previous = stepOverUnplayable(from: playbackQueue.backward(), step: playbackQueue.backward) {
+        if let previous = playbackQueue.move(by: playbackQueue.backward, skipping: knownUnplayable) {
             try await loadAndPlay(previous)
         } else {
             // Nowhere back: restart the current track, like every other client.
@@ -589,14 +598,14 @@ public actor LibrespotClient {
     private func announceNextTrack() {
         let next = repeatMode == .track
             ? playbackQueue.currentUri
-            : playbackQueue.upcoming().first { !unplayable.contains($0.uri) }?.uri
+            : playbackQueue.upcomingPlayable(skipping: knownUnplayable)
         Task { [audioPipeline] in await audioPipeline?.setNextTrack(next) }
     }
 
-    /// Adds tracks the app knows will not play, from what its lists said.
-    public func markUnplayable(_ uris: [String]) {
-        guard !unplayable.isSuperset(of: uris) else { return }
-        unplayable.formUnion(uris)
+    /// Replaces the tracks the app's lists said will not play.
+    public func setUnplayable(_ uris: Set<String>) {
+        guard uris != listedUnplayable else { return }
+        listedUnplayable = uris
         // The track fetched ahead may be one of them.
         announceNextTrack()
     }
@@ -604,13 +613,8 @@ public actor LibrespotClient {
     /// Where a list starts when nobody named a track: its first not known to be unplayable,
     /// or its first if it has none.
     private func firstPlayable(in tracks: [String]) -> Int {
-        tracks.firstIndex { !unplayable.contains($0) } ?? 0
-    }
-
-    /// `uri`, or the first track after it that `step` reaches and that is not known to be
-    /// unplayable; see `AutoAdvance.stepOver`.
-    private func stepOverUnplayable(from uri: String?, step: () -> String?) -> String? {
-        AutoAdvance.stepOver(unplayable.contains, from: uri, in: playbackQueue, step: step)
+        let isUnplayable = knownUnplayable
+        return tracks.firstIndex { !isUnplayable($0) } ?? 0
     }
 
     // MARK: - Volume
@@ -762,7 +766,7 @@ public actor LibrespotClient {
         } catch {
             // Known from here on, so the queue steps over it next time round.
             if case LibrespotError.trackUnavailable = error {
-                unplayable.insert(uri)
+                failedUnplayable.insert(uri)
             }
             throw error
         }
@@ -794,7 +798,7 @@ public actor LibrespotClient {
         let outcome = await AutoAdvance.run(
             from: uri,
             in: playbackQueue,
-            isUnplayable: unplayable.contains,
+            isUnplayable: knownUnplayable,
             load: { try await self.startTrack($0) },
             skipped: { uri, name in
                 debugLog("LibrespotClient", "Skipping \(uri), \(name): not available")
@@ -818,8 +822,7 @@ public actor LibrespotClient {
         defer { publishQueue() }
 
         // A manual skip moves even under repeat-one; only auto-advance honors it.
-        let step = { self.playbackQueue.advance(respectingRepeat: false) }
-        if let upcoming = stepOverUnplayable(from: step(), step: step) {
+        if let upcoming = playbackQueue.move(by: { playbackQueue.advance(respectingRepeat: false) }, skipping: knownUnplayable) {
             try await loadAndPlay(upcoming)
         } else {
             await rewindContext()

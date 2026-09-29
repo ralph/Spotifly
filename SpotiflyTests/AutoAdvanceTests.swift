@@ -165,7 +165,7 @@ struct AutoAdvanceTests {
         }
         let unplayable: Set = ["c", "b"]
 
-        let previous = AutoAdvance.stepOver(unplayable.contains, from: queue.backward(), in: queue, step: queue.backward)
+        let previous = queue.move(by: queue.backward, skipping: unplayable.contains)
 
         #expect(previous == "a")
         #expect(queue.currentUri == "a")

@@ -5,10 +5,13 @@ What this left is in `plans/open/unplayable-tracks-found-by-loading.md`.
 Components: `Spotifly/PartnerAPI/PathfinderSearch.swift` (`PathfinderPlayability`),
 `Spotifly/PartnerAPI/PathfinderPlaylist.swift`, `Spotifly/PartnerAPI/PathfinderAlbum.swift`,
 `Spotifly/PartnerAPI/PathfinderEntities.swift`, `Spotifly/Store/Entities.swift` (`Track`,
-`Playability`), `Spotifly/Store/AppStore.swift` (`upsertTracks`),
-`Spotifly/Views/TrackRow.swift`, `Spotifly/Views/Components/TrackContextMenu.swift`,
-`Spotifly/SwiftLibrespot/Public/AutoAdvance.swift` (`stepOver`),
-`Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`unplayable`, `markUnplayable`)
+`Playability`), `Spotifly/Store/AppStore.swift` (`upsertTracks`, `unplayableTrackUris`),
+`Spotifly/Views/TrackRow.swift`, `Spotifly/Views/Components/TrackCard.swift`,
+`Spotifly/Views/Components/TrackContextMenu.swift`, `Spotifly/Views/LoggedInLifecycleModifier.swift`,
+`Spotifly/ViewModels/PlaybackViewModel.swift` (`playRadio`),
+`Spotifly/SwiftLibrespot/Public/PlaybackQueue+Unplayable.swift`,
+`Spotifly/SwiftLibrespot/Public/AutoAdvance.swift`,
+`Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`setUnplayable`, `knownUnplayable`)
 Found: 2026-09-29, with 221 of one account's 609 Liked Songs `COUNTRY_RESTRICTED`; see
 `plans/done/unplayable-track-stops-a-playlist.md`
 
@@ -88,11 +91,12 @@ All read from the code in review; none has been observed.
        entry it cannot name, and its tooltip says "Not available in your country: “…”" for
        `COUNTRY_RESTRICTED` and "Not available on Spotify: “…”" otherwise. That covers every
        list that uses the row: playlists, Liked Songs, albums, search's track list and the
-       queue. Play Next is disabled for it.
-3. [x] **Decided: step over it, and never load it.**
-       - **A double-click** plays nothing and says why in the bar. Every list plays from the
-         row clicked, so there is nothing else it could mean, and Spotify's clients do nothing
-         there either.
+       queue. Search's track cards are dimmed the same way.
+3. [x] **Decided: it starts nothing, and playback steps over it without loading it.**
+       - **A double-click** plays nothing and says why in the bar. Neither does radio from
+         it, wherever it is started: search's double-click and cards, and the menu, where
+         Play Next and Start Radio are disabled. `PlaybackViewModel.playRadio` checks the
+         store, so every way in says the same.
        - **Next, Previous, auto-advance and the fetch-ahead** step over a known one without
          loading it, and without a "Skipped" message, since its row is greyed.
        - **Play on an album or playlist** starts at the first track that plays, and so does the
@@ -100,12 +104,15 @@ All read from the code in review; none has been observed.
        - **How playback knows.** The context resolver's answer has no playability, measured on
          the same playlist: its tracks carry `uid`, `uri` and `metadata`, whose keys are
          `added_at`, `added_by_username` and `highlight_id`. So the app tells it:
-         `AppStore.upsertTracks` passes the uris of unplayable tracks to
-         `LibrespotClient.markUnplayable`. The client also learns from a load that failed as
-         unavailable, so a second pass round a context that the app never listed loads none
-         of them twice. The set is cleared at logout.
-       - `AutoAdvance.stepOver` does the stepping, and is tested against a real queue. Each
-         track stepped over goes into the history, as a skipped one did since #57.
+         `AppStore.upsertTracks` keeps `unplayableTrackUris`, adding and removing as tracks
+         arrive, and `LoggedInLifecycleModifier` passes each change to
+         `LibrespotClient.setUnplayable`. The client also keeps the tracks that failed to load
+         as unavailable, so a second pass round a context the app never listed loads none of
+         them twice. Both are cleared at logout.
+       - The stepping is the queue's, in `PlaybackQueue+Unplayable.swift` (`stepOver`, `move`,
+         `upcomingPlayable`), built on its own moves and tested against a real queue. It is a
+         file of its own because other open PRs rework `PlaybackQueue.swift`. Each track
+         stepped over goes into the history, as a skipped one has since #57.
 
 ### What else #57 left, now
 

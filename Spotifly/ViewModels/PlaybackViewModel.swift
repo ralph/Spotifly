@@ -457,6 +457,13 @@ final class PlaybackViewModel {
     /// anyway and its failure discarded with it, so track cards and context menus silently
     /// did nothing; asking for authorization is the honest answer.
     func playRadio(trackUri: String) async {
+        // A track Spotify will not play starts nothing, radio included, wherever it is
+        // clicked: a search card, a row or its menu.
+        if let message = SpotifyAPI.parseTrackURI(trackUri).flatMap({ store?.tracks[$0] })?.unplayableMessage {
+            errorMessage = message
+            return
+        }
+
         if !isInitialized {
             await initializeIfNeeded()
         }

@@ -152,11 +152,6 @@ nonisolated struct PathfinderDuration: Decodable, Sendable {
 nonisolated struct PathfinderPlayability: Decodable, Sendable {
     let playable: Bool?
     let reason: String?
-
-    /// Unplayable only where the answer says so.
-    var entity: Playability {
-        playable == false ? .unplayable(reason: reason) : .playable
-    }
 }
 
 nonisolated struct PathfinderTrack: Decodable, Sendable {

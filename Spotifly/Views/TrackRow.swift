@@ -245,8 +245,8 @@ struct TrackRow: View {
             )
         }
         .onTapGesture(count: 2) {
-            // Played, it would only fail with the same message, and every list plays from the
-            // row that was clicked, so there is nothing else a double-click could mean here.
+            // A track Spotify will not play starts nothing: played, it would only fail with the
+            // same message, and search's double-click starts radio, which is refused too.
             if let message = track.unplayableMessage {
                 playbackViewModel.errorMessage = message
                 return

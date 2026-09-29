@@ -195,8 +195,8 @@ enum SpotifyPlayer {
 
     /// Tells playback which tracks Spotify will not play, from what the app's lists said, so
     /// that it steps over them instead of loading each to find out.
-    nonisolated static func markUnplayable(_ uris: [String]) {
-        Task { await LibrespotClient.shared.markUnplayable(uris) }
+    static func setUnplayable(_ uris: Set<String>) {
+        Task { await LibrespotClient.shared.setUnplayable(uris) }
     }
 
     // MARK: - Synchronous State

@@ -46,18 +46,17 @@ nonisolated enum AutoAdvance {
     static func run(
         from uri: String,
         in queue: PlaybackQueue,
-        isUnplayable: (String) -> Bool = { _ in false },
+        isUnplayable: (String) -> Bool,
         load: (String) async throws -> Void,
         skipped: (_ uri: String, _ name: String) -> Void,
     ) async -> Outcome {
-        guard var uri = stepOver(isUnplayable, from: uri, in: queue, step: { queue.advance(respectingRepeat: false) }) else {
-            return .queueEnded
-        }
+        let advance = { queue.advance(respectingRepeat: false) }
         // The context's tracks count the one the run starts from, unless the
         // queue has just taken it off the user queue.
         var attemptsLeft = queue.userQueue.count + queue.contextTracks.count
             + (queue.currentProvider == "queue" ? 1 : 0)
-        while true {
+        var next: String? = uri
+        while let uri = queue.stepOver(isUnplayable, from: next, by: advance) {
             do {
                 try await load(uri)
                 return .playing
@@ -69,34 +68,9 @@ nonisolated enum AutoAdvance {
                     return .stopped(error)
                 }
                 skipped(uri, name)
-                let step = { queue.advance(respectingRepeat: false) }
-                guard let next = stepOver(isUnplayable, from: step(), in: queue, step: step) else {
-                    return .queueEnded
-                }
-                uri = next
+                next = advance()
             }
         }
-    }
-
-    /// `uri`, or the first track `step` moves the queue on to that is not known to be
-    /// unplayable. Nil when the queue runs out first, or goes once round it without finding
-    /// one, which repeat would otherwise make forever.
-    ///
-    /// Moving on is the queue's own: Next, Previous and auto-advance each pass the step they
-    /// take, so the tracks stepped over land in the history the way played ones do.
-    static func stepOver(
-        _ isUnplayable: (String) -> Bool,
-        from uri: String?,
-        in queue: PlaybackQueue,
-        step: () -> String?,
-    ) -> String? {
-        var uri = uri
-        var stepsLeft = queue.userQueue.count + queue.contextTracks.count
-        while let candidate = uri, isUnplayable(candidate) {
-            guard stepsLeft > 0 else { return nil }
-            stepsLeft -= 1
-            uri = step()
-        }
-        return uri
+        return .queueEnded
     }
 }
