@@ -388,16 +388,14 @@ public actor LibrespotClient {
 
     /// Plays a track, album, playlist, artist, or station URI/URL.
     /// - Parameters:
-    ///   - trackIndex: index within the context to start at (-1 = none).
+    ///   - trackIndex: where in the context to start; nil for its start.
     ///   - startingAtUri: the track to start on. With an index as well, the
-    ///     track decides and the index says which copy of it; see
-    ///     `PlaybackQueue.start(in:index:uri:)`. A double-click sends both, and
-    ///     so does a Connect `play`, as `skip_to.track_uri` and `track_index`.
+    ///     track decides; see `PlaybackQueue.start(in:index:uri:)`.
     ///   - positionMs: where in that track to start.
     ///   - paused: load it without starting playout, as a paused handover does.
     public func play(
         uriOrUrl: String,
-        trackIndex: Int,
+        trackIndex: Int? = nil,
         startingAtUri: String? = nil,
         positionMs: UInt64 = 0,
         paused: Bool = false,
@@ -421,11 +419,7 @@ public actor LibrespotClient {
             throw LibrespotError.trackNotFound("Context has no tracks")
         }
 
-        let start = PlaybackQueue.start(
-            in: context.tracks,
-            index: trackIndex >= 0 ? trackIndex : nil,
-            uri: startingAtUri,
-        )
+        let start = PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri)
         setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: start.tracks, startIndex: start.index)
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
@@ -437,7 +431,7 @@ public actor LibrespotClient {
         }
 
         if normalized.count == 1, first.contains("spotify:track:") {
-            try await play(uriOrUrl: first, trackIndex: 0, positionMs: positionMs)
+            try await play(uriOrUrl: first, positionMs: positionMs)
             return
         }
 
@@ -450,7 +444,7 @@ public actor LibrespotClient {
         guard let id = SpotifyAPI.parseTrackURI(trackUri) ?? Self.trackIdOnly(from: trackUri) else {
             throw LibrespotError.trackNotFound("Not a track uri")
         }
-        try await play(uriOrUrl: "spotify:station:track:\(id)", trackIndex: 0)
+        try await play(uriOrUrl: "spotify:station:track:\(id)")
     }
 
     // MARK: - Playback: Transport
@@ -481,7 +475,7 @@ public actor LibrespotClient {
             // Started from a bare list of uris, so the list is all there is.
             try await playTracks([mirrored.trackUri] + (queue?.nextTracks.map(\.uri) ?? []), positionMs: positionMs)
         } else {
-            try await play(uriOrUrl: contextUri, trackIndex: -1, startingAtUri: mirrored.trackUri, positionMs: positionMs)
+            try await play(uriOrUrl: contextUri, startingAtUri: mirrored.trackUri, positionMs: positionMs)
         }
     }
 
@@ -1084,7 +1078,6 @@ public actor LibrespotClient {
             if !transfer.contextUri.isEmpty {
                 try await play(
                     uriOrUrl: transfer.contextUri,
-                    trackIndex: -1,
                     startingAtUri: track,
                     positionMs: positionMs,
                     paused: transfer.isPaused,
@@ -1124,14 +1117,14 @@ public actor LibrespotClient {
             if let contextUri = playCommand.contextUri, !contextUri.isEmpty {
                 try? await play(
                     uriOrUrl: contextUri,
-                    trackIndex: playCommand.index ?? -1,
+                    trackIndex: playCommand.index,
                     startingAtUri: playCommand.trackUri,
                     positionMs: positionMs,
                 )
             } else if let uris = playCommand.trackUris, uris.count > 1 {
                 try? await playTracks(uris, positionMs: positionMs)
             } else if let single = playCommand.trackUri ?? playCommand.trackUris?.first {
-                try? await play(uriOrUrl: single, trackIndex: 0, positionMs: positionMs)
+                try? await play(uriOrUrl: single, positionMs: positionMs)
             }
 
         case .pause:

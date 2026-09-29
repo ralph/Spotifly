@@ -383,6 +383,28 @@ extension Sequence where Element: Hashable {
     }
 }
 
+extension Array {
+    /// The index of the element matching `predicate` that is nearest `target`, the earlier one
+    /// on a tie, or nil when none matches.
+    ///
+    /// For a track a list can hold more than once: the queue's current track, and the track a
+    /// double-click starts at. Searches outward from `target`, so it stops at the nearest
+    /// match. A `target` outside the list counts from its nearer end.
+    nonisolated func nearestIndex(to target: Int, where predicate: (Element) -> Bool) -> Int? {
+        guard !isEmpty else { return nil }
+        let target = Swift.min(Swift.max(target, 0), count - 1)
+        for distance in 0 ... Swift.max(target, count - 1 - target) {
+            if target - distance >= 0, predicate(self[target - distance]) {
+                return target - distance
+            }
+            if distance > 0, target + distance < count, predicate(self[target + distance]) {
+                return target + distance
+            }
+        }
+        return nil
+    }
+}
+
 // MARK: - Duration Formatting
 
 /// Format milliseconds as track time (e.g., "3:45")

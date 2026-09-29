@@ -67,7 +67,7 @@ struct FavoritesListView: View {
                                     await playbackViewModel.play(
                                         uriOrUrl: LikedSongs.uri,
                                         trackIndex: index,
-                                        startingAt: track.uri,
+                                        startingAtUri: track.uri,
                                     )
                                 },
                             )

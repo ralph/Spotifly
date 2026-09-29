@@ -96,11 +96,10 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
             url = "context://\(uri)"
             pages = nil
 
-            let index = trackIndex.flatMap { $0 >= 0 ? $0 : nil }
             if uri.hasPrefix("spotify:track:") {
                 options = Options(skipTo: SkipTo(trackUri: uri))
-            } else if trackUri != nil || index != nil {
-                options = Options(skipTo: SkipTo(trackUri: trackUri, trackIndex: index))
+            } else if trackUri != nil || trackIndex != nil {
+                options = Options(skipTo: SkipTo(trackUri: trackUri, trackIndex: trackIndex))
             } else {
                 options = nil
             }

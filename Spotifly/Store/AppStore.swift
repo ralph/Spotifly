@@ -33,14 +33,7 @@ struct Queue: Equatable {
     /// is already correct, so the playing track's logical identity is authoritative.
     func reconciled(currentTrackId trackId: String) -> Queue {
         let allTracks = previousTracks + (currentTrack.map { [$0] } ?? []) + nextTracks
-        let reportedIndex = previousTracks.count
-        let matchingIndices = allTracks.indices.filter { allTracks[$0].trackId == trackId }
-
-        guard let currentIndex = matchingIndices.min(by: { lhs, rhs in
-            let lhsDistance = abs(lhs - reportedIndex)
-            let rhsDistance = abs(rhs - reportedIndex)
-            return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
-        }) else {
+        guard let currentIndex = allTracks.nearestIndex(to: previousTracks.count, where: { $0.trackId == trackId }) else {
             return self
         }
 

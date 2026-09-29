@@ -90,7 +90,9 @@ track twice and only the position says which.
 
 - [x] Pull the start choice out of `LibrespotClient.play` into a pure function over the
       resolved tracks, the index and the uri, so it can be tested without a session.
-      **Done** as `PlaybackQueue.start(in:index:uri:)`.
+      **Done** as `PlaybackQueue.start(in:index:uri:)`. The nearest copy comes from
+      `Array.nearestIndex(to:where:)`, which `Queue.reconciled` now uses too, so the rule lives
+      in one place.
 - [x] Precedence when both are given: the index if `tracks[index]` is that uri. Otherwise the
       occurrence of the uri nearest the index, searching both ways and preferring the nearer.
       `Queue.reconciled(currentTrackId:)` already solves the same problem and is the model.
@@ -120,8 +122,9 @@ track twice and only the position says which.
       `track_uid`, `track_index` and `page_index` together. So no corrected index is needed.
       What Spotify's phone app does is not observed; see Verification.
 - [x] The four call sites pass the row's `track.uri`: `QueueListView`, `FavoritesListView`,
-      `PlaylistDetailView`, `AlbumDetailView`. A queued track in the queue view sends no index:
-      it is not in the context, and a queue row's index would put it anywhere.
+      `PlaylistDetailView`, `AlbumDetailView`. The queue view sends the track alone: a queue
+      row's index counts queue rows, not the context's tracks. The `-1` that meant "no index"
+      is gone; `trackIndex` is an optional from the views to `LibrespotClient.play`.
 
 ### Step 3: decide what a queue double-click means
 
@@ -138,6 +141,8 @@ track twice and only the position says which.
 
 ### Not in this plan
 
+- **A remote play of a bare track list**, and a handover of one, still choose their start on
+  their own: `plans/open/remote-track-list-play-starts-at-the-top.md`.
 - **Starting by uid**, now in `plans/open/queue-double-click-restarts-the-context.md` beside
   the queue skip, which needs an exact row too. The resolver's tracks carry a `uid`: the app's
   log on 2026-09-29 shows `"uid":"87ced089511bc3c325f3"` for the first Liked Songs track, the same uid
