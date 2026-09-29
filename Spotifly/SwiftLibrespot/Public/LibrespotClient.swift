@@ -646,13 +646,11 @@ public actor LibrespotClient {
     }
 
     /// A track Spotify withholds, found out by loading it or by fetching it ahead: the queue
-    /// steps over it from now on, the fetch-ahead moves past it, and the app greys it, since
-    /// no list said so.
+    /// steps over it from now on, and the app greys it, since no list said so.
     private func markUnplayable(_ uri: String) {
         failedUnplayable.insert(uri)
         let withheld = failedUnplayable
         publish { $0.withheld = withheld }
-        announceNextTrack()
     }
 
     /// Replaces the tracks the app's lists said will not play.
@@ -944,6 +942,10 @@ public actor LibrespotClient {
                 handleEndOfTrack(uri)
             case let .withheldAhead(uri):
                 markUnplayable(uri)
+                // The fetch ahead moves on to the track after it. A failed load does not
+                // announce: the run it is part of announces once it has moved the queue, and an
+                // announcement from mid-run could land after that one.
+                announceNextTrack()
             case let .error(error):
                 debugLog("LibrespotClient", "Audio pipeline error: \(error.localizedDescription)")
                 await playbackFailed(error)
