@@ -1,6 +1,6 @@
 # QueueItem carries seven fields nothing sets
 
-Status: **Done** 2026-09-29. Built and unit-tested; see Verification.
+Status: **Done** 2026-09-29 (#90). Built and unit-tested; see Verification.
 Components: `Spotifly/SpotifyPlayer.swift` (`QueueItem`), `Spotifly/Views/TrackRow.swift`
 (`QueueItem.toTrack`), `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (the
 placeholder initializer, the mirrored queue), `SpotiflyTests/QueueBootstrapTests.swift`
