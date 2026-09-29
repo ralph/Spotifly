@@ -39,9 +39,9 @@ music. Spotify's own clients grey these rows out, and the data to do the same al
   no `alternative`. A relinked one has the same restriction with an alternative, and plays. So
   the restriction alone does not mean unplayable. `Track(spclient:id:)` reads neither field.
 
-### Smaller paths that still stop at one
+### What else #57 left
 
-Left over from #57. They are rare, and none has been observed.
+All read from the code in review; none has been observed.
 
 - **Rewinding to an unavailable first track.** When the queue ends, `rewindContext` loads the
   context's first track paused. If that one is withheld, playback stops with the message
@@ -55,6 +55,19 @@ Left over from #57. They are rare, and none has been observed.
   ahead, and the change of track loads it cold, with a gap, where it could have been
   gapless. The pipeline could report the failed fetch-ahead, so the client moves "next" past
   it and publishes the skip then.
+- **A run of unavailable tracks costs two requests each, with no cap.** `AutoAdvance.run`
+  tries as many tracks as the queue holds, and each costs `/metadata/4` and extended-metadata
+  in turn. A playlist of 500 withheld tracks takes about 1,000 requests before it stops.
+  Knowing playability up front would let auto-advance step over them without loading any.
+  Without that, a cap on skips in a row would bound it.
+- **Each attempt shows the skipped track, and reports it.** `startTrack` publishes an
+  optimistic "playing" state for every track it tries, and the pipeline's `.loading` event
+  reports it to the cluster. So the bar and other devices show the withheld track for as
+  long as its metadata requests take. The bar also updates the Now Playing info, and fetches
+  the cover if it differs.
+- **A failed transfer reports twice.** `loadAndPlay` gives up playback through
+  `playbackFailed`, and `takeOver`'s catch releases again. That second release is needed for a
+  context that fails to resolve, before any load. The cost is one extra PutState.
 
 ## Solution
 
@@ -66,8 +79,8 @@ Not planned yet. A likely shape:
    menu. The reason also lets the message say "in your country" where that is what Spotify
    reports.
 3. Decide whether a double-click, Next and Previous step over a track known to be unplayable,
-   rather than failing on it. The queue is built from uris, so this needs a lookup in the
-   store.
+   rather than failing on it. So could auto-advance, without loading it. The queue is built
+   from uris, so this needs a lookup in the store.
 
 ## Verification
 
