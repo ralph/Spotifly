@@ -102,11 +102,11 @@ final class QueueService {
         let nextEntries = state.nextTracks.compactMap(Self.queueEntry(from:))
         let previousEntries = state.previousTracks.compactMap(Self.queueEntry(from:))
 
-        let contextInfo = state.contextUri.isEmpty ? "" : " context=\(state.contextUri),"
+        let contextInfo = state.context.map { " context=\($0)," } ?? ""
         log("Queue updated from the player:\(contextInfo) prev=\(previousEntries.count), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
 
         store.noteLiveStateReceived()
-        store.setQueue(previous: previousEntries, current: currentEntry, next: nextEntries, contextUri: state.contextUri)
+        store.setQueue(previous: previousEntries, current: currentEntry, next: nextEntries)
         reconcileQueueCurrentTrack()
 
         fetchTrackMetadata(for: Self.trackIds(previousEntries, currentEntry, nextEntries))
@@ -185,7 +185,7 @@ final class QueueService {
             return false
         }
 
-        store.setQueue(previous: update.previous, current: update.current, next: update.next, contextUri: update.contextUri)
+        store.setQueue(previous: update.previous, current: update.current, next: update.next)
         reconcileQueueCurrentTrack()
 
         log("Initial queue: prev=\(update.previous.count), current=\(update.current != nil ? 1 : 0), next=\(update.next.count)")
@@ -217,7 +217,7 @@ final class QueueService {
     /// not enough — history with nothing playing is what a wiped queue looks like.
     static func queueUpdate(
         from snapshot: QueueState?,
-    ) -> (previous: [QueueEntry], current: QueueEntry?, next: [QueueEntry], contextUri: String)? {
+    ) -> (previous: [QueueEntry], current: QueueEntry?, next: [QueueEntry])? {
         guard let snapshot else { return nil }
 
         let current = snapshot.currentTrack.flatMap(queueEntry(from:))
@@ -226,7 +226,7 @@ final class QueueService {
 
         guard current != nil || !next.isEmpty else { return nil }
 
-        return (previous, current, next, snapshot.contextUri)
+        return (previous, current, next)
     }
 
     /// A queue track becomes an entry only if its uri names a track — the cluster can carry

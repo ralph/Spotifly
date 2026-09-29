@@ -146,28 +146,13 @@ struct QueueBootstrapTests {
         #expect(update.next.first?.provider == .queue)
     }
 
-    /// The first snapshot names its context, as every later update does.
-    @Test func `the initial snapshot carries its context`() throws {
-        let snapshot = QueueState(
-            contextUri: "spotify:album:alive",
-            currentTrack: item("playing"),
-            nextTracks: [],
-            previousTracks: [],
-        )
-        let update = try #require(QueueService.queueUpdate(from: snapshot))
+    /// A bare list of tracks has an empty context uri, and names no context.
+    @Test func `a queue names its context, and a bare list none`() {
+        let album = QueueState(contextUri: "spotify:album:alive", currentTrack: item("a1"), nextTracks: [], previousTracks: [])
+        let bareList = QueueState(contextUri: "", currentTrack: item("t1"), nextTracks: [], previousTracks: [])
 
-        #expect(update.contextUri == "spotify:album:alive")
-    }
-
-    /// A bare list after an album played under "Alive"'s name until this cleared it.
-    @Test func `a bare list clears the context of what played before`() {
-        let store = AppStore()
-        store.setQueue(previous: [], current: QueueEntry(trackId: "a1", provider: .context), next: [], contextUri: "spotify:album:alive")
-        #expect(store.queue.contextUri == "spotify:album:alive")
-
-        store.setQueue(previous: [], current: QueueEntry(trackId: "t1", provider: .context), next: [], contextUri: "")
-
-        #expect(store.queue.contextUri == nil)
+        #expect(album.context == "spotify:album:alive")
+        #expect(bareList.context == nil)
     }
 
     @Test func `a paused local queue is exactly what an empty snapshot would destroy`() {
@@ -177,11 +162,10 @@ struct QueueBootstrapTests {
             previous: [QueueEntry(trackId: "played", provider: .context)],
             current: QueueEntry(trackId: "playing", provider: .context),
             next: [QueueEntry(trackId: "pending", provider: .context)],
-            contextUri: "",
         )
 
         // Applying an empty update keeps the history and drops everything that matters.
-        store.setQueue(previous: nil, current: nil, next: [], contextUri: "")
+        store.setQueue(previous: nil, current: nil, next: [])
 
         #expect(store.queue.previousTracks.map(\.trackId) == ["played"])
         #expect(store.queue.currentTrack == nil)
