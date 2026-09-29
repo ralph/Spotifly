@@ -79,9 +79,34 @@ struct Track: Identifiable, Hashable, Encodable {
     let albumName: String?
     let images: ImageSet
 
+    /// Whether Spotify will play this track for the account. `.playable` unless the answer it
+    /// came from said otherwise; spclient's metadata does not say.
+    var playability = Playability.playable
+
     var durationFormatted: String {
         formatTrackTime(milliseconds: durationMs)
     }
+
+    var isPlayable: Bool {
+        playability == .playable
+    }
+
+    /// What to tell the user when this track will not play here: that it is not available in
+    /// their country, where that is Spotify's reason, and otherwise that it is not available.
+    var unplayableMessage: String? {
+        guard case let .unplayable(reason) = playability else { return nil }
+        return reason == "COUNTRY_RESTRICTED"
+            ? String(localized: "error.track_unavailable_in_country \(name)")
+            : String(localized: "error.track_unavailable \(name)")
+    }
+}
+
+/// Whether a track plays for the account. Spotify withholds some everywhere, and some only in
+/// the account's country (`COUNTRY_RESTRICTED`); its clients grey those rows out. An album's
+/// unplayable tracks come without a reason.
+enum Playability: Hashable, Encodable {
+    case playable
+    case unplayable(reason: String?)
 }
 
 // MARK: - Album
@@ -380,6 +405,28 @@ extension Sequence where Element: Hashable {
     nonisolated func uniqued() -> [Element] {
         var seen = Set<Element>()
         return filter { seen.insert($0).inserted }
+    }
+}
+
+extension Array {
+    /// The index of the element matching `predicate` that is nearest `target`, the earlier one
+    /// on a tie, or nil when none matches.
+    ///
+    /// For a track a list can hold more than once: the queue's current track, and the track a
+    /// double-click starts at. Searches outward from `target`, so it stops at the nearest
+    /// match. A `target` outside the list counts from its nearer end.
+    nonisolated func nearestIndex(to target: Int, where predicate: (Element) -> Bool) -> Int? {
+        guard !isEmpty else { return nil }
+        let target = Swift.min(Swift.max(target, 0), count - 1)
+        for distance in 0 ... Swift.max(target, count - 1 - target) {
+            if target - distance >= 0, predicate(self[target - distance]) {
+                return target - distance
+            }
+            if distance > 0, target + distance < count, predicate(self[target + distance]) {
+                return target + distance
+            }
+        }
+        return nil
     }
 }
 

@@ -235,19 +235,22 @@ struct PlaylistDetailView: View {
                 await reloadTracks()
             }
         } else if !tracks.isEmpty {
-            normalTrackList
+            trackList
         }
     }
 
-    private var normalTrackList: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    /// Lazy, because a playlist can hold thousands of tracks. The divider goes above each row
+    /// but the first, so no row reads `rows`, which is built anew on every read. See
+    /// `plans/done/playlist-rows-built-once-per-row.md`.
+    private var trackList: some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows.enumerated(), id: \.offset) { index, row in
-                trackRowView(item: row.item, track: row.track, index: index)
-
-                if index < rows.count - 1 {
+                if index > 0 {
                     Divider()
                         .padding(.leading, 94)
                 }
+
+                trackRowView(item: row.item, track: row.track, index: index)
             }
         }
         .background(Color(NSColor.controlBackgroundColor))
@@ -271,6 +274,7 @@ struct PlaylistDetailView: View {
                 await playbackViewModel.play(
                     uriOrUrl: uri,
                     trackIndex: index,
+                    startingAtUri: track.uri,
                 )
             },
         )

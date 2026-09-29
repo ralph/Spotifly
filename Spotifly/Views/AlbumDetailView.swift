@@ -162,6 +162,11 @@ struct AlbumDetailView: View {
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(tracks.enumerated(), id: \.offset) { index, track in
+                            if index > 0 {
+                                Divider()
+                                    .padding(.leading, 54)
+                            }
+
                             TrackRow(
                                 track: track,
                                 showTrackNumber: true,
@@ -173,14 +178,10 @@ struct AlbumDetailView: View {
                                     await playbackViewModel.play(
                                         uriOrUrl: album.uri,
                                         trackIndex: index,
+                                        startingAtUri: track.uri,
                                     )
                                 },
                             )
-
-                            if index < tracks.count - 1 {
-                                Divider()
-                                    .padding(.leading, 54)
-                            }
                         }
                     }
                     .background(Color(NSColor.controlBackgroundColor))

@@ -86,6 +86,9 @@
 "error.player_not_initialized" = "Der Player ist nicht mit Spotify verbunden";
 "error.album_not_found" = "Album wurde nicht gefunden. Vielleicht ist es in deinem Land nicht verfügbar.";
 "error.artist_not_found" = "Künstler wurde nicht gefunden.";
+"error.track_unavailable %@" = "Auf Spotify nicht verfügbar: „%@“";
+"error.track_unavailable_in_country %@" = "In deinem Land nicht verfügbar: „%@“";
+"playback.skipped_unavailable %@" = "Übersprungen, nicht verfügbar: „%@“";
 
 /* Empty States */
 "empty.select_item" = "Wähle ein Element aus der Seitenleiste";

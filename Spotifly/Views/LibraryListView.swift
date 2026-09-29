@@ -141,12 +141,12 @@ struct LibraryListView<Entity: LibraryEntity>: View {
 
                         ForEach(items.enumerated(), id: \.element.id) { index, item in
                             VStack(spacing: 0) {
-                                row(for: item)
-
-                                if index < items.count - 1 {
+                                if index > 0 {
                                     Divider()
                                         .padding(.leading, 56)
                                 }
+
+                                row(for: item)
                             }
                         }
 

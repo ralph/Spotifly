@@ -56,6 +56,11 @@ struct FavoritesListView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(store.favoriteTracks.enumerated(), id: \.element.id) { index, track in
+                            if index > 0 {
+                                Divider()
+                                    .padding(.leading, 94)
+                            }
+
                             TrackRow(
                                 track: track,
                                 index: index,
@@ -67,14 +72,10 @@ struct FavoritesListView: View {
                                     await playbackViewModel.play(
                                         uriOrUrl: LikedSongs.uri,
                                         trackIndex: index,
+                                        startingAtUri: track.uri,
                                     )
                                 },
                             )
-
-                            if index < store.favoriteTracks.count - 1 {
-                                Divider()
-                                    .padding(.leading, 94)
-                            }
                         }
 
                         // Load more indicator

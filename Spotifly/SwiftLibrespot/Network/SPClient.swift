@@ -278,22 +278,30 @@ public actor SPClient {
     /// market-substituted tracks — so the alternatives' files stand in when
     /// the track has none of its own.
     ///
-    /// `knownFormatsOnly` drops the formats `AudioFormat` does not name before
-    /// that choice is made, as the extended-metadata path always has; the
-    /// `/metadata/4` path keeps them, as `.unknown`.
+    /// `knownFormatsOnly` leaves the formats `AudioFormat` does not name out
+    /// of that choice, as the extended-metadata path always has; the
+    /// `/metadata/4` path keeps them, as `.unknown`. When they are all there
+    /// is, they are returned either way, as `.unknown`: an empty list means
+    /// Spotify withholds the track (`LibrespotError.trackUnavailable`), and a
+    /// track in formats this player does not decode is not that.
     private nonisolated static func playableFiles(
         inTrack fields: [ProtobufField],
         knownFormatsOnly: Bool,
     ) -> [TrackMetadata.AudioFile] {
         func files(of track: [ProtobufField]) -> [TrackMetadata.AudioFile] {
-            track.filter { $0.number == 12 }
-                .compactMap { audioFile($0.fields) }
-                .filter { !knownFormatsOnly || $0.format != .unknown }
+            track.filter { $0.number == 12 }.compactMap { audioFile($0.fields) }
+        }
+        func choice(_ own: [TrackMetadata.AudioFile], _ alternatives: [TrackMetadata.AudioFile]) -> [TrackMetadata.AudioFile] {
+            own.isEmpty ? alternatives : own
         }
 
         let own = files(of: fields)
-        guard own.isEmpty else { return own }
-        return fields.filter { $0.number == 13 }.flatMap { files(of: $0.fields) }
+        let alternatives = fields.filter { $0.number == 13 }.flatMap { files(of: $0.fields) }
+        let everything = choice(own, alternatives)
+        guard knownFormatsOnly else { return everything }
+
+        let known = choice(own.filter { $0.format != .unknown }, alternatives.filter { $0.format != .unknown })
+        return known.isEmpty ? everything : known
     }
 
     /// `AudioFile { 1: file_id, 2: format }`, or nil without a file id. A
