@@ -84,6 +84,20 @@ album. For the artist it shows a generic "something went wrong".
 - [x] `SPOTIFLY_DEBUG_OPEN=<spotify:album:… or spotify:artist:…>` opens that page in a Debug
       build, since nothing in the app leads to such an id.
 
+### Found in live testing: the page asked again and again
+
+Run in the app on 2026-09-29, the foreign album never showed its message: the page spun, and
+the log had `getAlbum` about twenty times a second. A probe logging the view's task and
+appearance showed one view instance cycling `task end (error set) → disappear → task start →
+appear` every 100 ms. The cause is older than this plan. `AlbumDetailView` put its `.task(id:)`
+on a `Group` around the loading, error and content branches, and a `Group` applies its
+modifiers to each child. So when the error branch replaced the spinner, the error view's own
+task ran `loadAlbum`, which cleared the error, which brought back the spinner and its task.
+Any failure of a page's first load looped this way, a network error included. The artist and
+playlist pages, Favorites and `LibraryListView` had the same shape, and all five now use a
+`ZStack`, a container whose modifiers apply once. With that change the same probe made one
+request, ran one task, and showed "Album wurde nicht gefunden…" with no Try again.
+
 ## Verification
 
 - [x] Unit tests: the recorded album body throws `notFound` from `album(id:)`, and the recorded

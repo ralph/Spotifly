@@ -15,7 +15,9 @@ struct FavoritesListView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        Group {
+        // A ZStack, not a Group: a Group hands its `.task` to each branch, so switching
+        // between loading and the error started the load again, forever.
+        ZStack {
             if store.favoritesPagination.isLoading, store.favoriteTracks.isEmpty {
                 VStack(spacing: 16) {
                     ProgressView()
