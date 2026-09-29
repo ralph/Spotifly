@@ -1,8 +1,8 @@
 # An album Spotify cannot find reads as "Spotify returned no data"
 
-Status: **Done** 2026-09-29, on branch `album-not-found`, stacked on #80. Built and
-unit-tested. Not yet seen in the running app: no path in the app is known to reach it, so the
-live check below uses a new debug hook.
+Status: **Done** 2026-09-29 (#82). Built, unit-tested, and checked in the running app the same
+day with a new debug hook, on `2eb2f4b`, after a loop the first run found was fixed; see
+Verification.
 Components: `Spotifly/PartnerAPI/PartnerAPI.swift` (`album(id:)`, `artistUnion`,
 `PartnerAPIError.notFound`), `Spotifly/PartnerAPI/PathfinderAlbum.swift`,
 `Spotifly/PartnerAPI/PathfinderArtist.swift`, `Spotifly/Views/AlbumDetailView.swift`,
@@ -105,11 +105,20 @@ request, ran one task, and showed "Album wurde nicht gefunden…" with no Try ag
       not `NotFound`.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, run bare with the exit
       code checked. 2026-09-29: build succeeded, 380 tests passed, lint exit 0.
-- [ ] Live, album: run a Debug build with
+- [x] Live, album: run a Debug build with
       `SPOTIFLY_DEBUG_OPEN=spotify:album:2ZWlPOoWh0626oTaHrnl2a` from a DE account. The album
       page says "Album wurde nicht gefunden. Vielleicht ist es in deinem Land nicht verfügbar."
-      and has no Try again button.
-- [ ] Live, artist: `SPOTIFLY_DEBUG_OPEN=spotify:artist:0000000000000000000000`. The artist page
-      says "Künstler wurde nicht gefunden." with no Try again.
-- [ ] Live, unchanged: `SPOTIFLY_DEBUG_OPEN=spotify:album:2noRn2Aes5aoNVsU6iWThc` (Discovery, DE)
-      opens the album as usual.
+      and has no Try again button. **The first run looped** (see "Found in live testing"
+      above). **Passed** on `2eb2f4b`: the message, no Try again, and `getAlbum` once. The
+      window's layout squeezed around the message; that is recorded as
+      `plans/open/full-page-error-collapses-the-layout.md`.
+- [x] Live, artist: `SPOTIFLY_DEBUG_OPEN=spotify:artist:0000000000000000000000`. The artist page
+      says "Künstler wurde nicht gefunden." with no Try again. **Passed**, same build, with the
+      same layout.
+- [x] Live, unchanged: `SPOTIFLY_DEBUG_OPEN=spotify:album:2noRn2Aes5aoNVsU6iWThc` (Discovery, DE)
+      opens the album as usual. **Passed**, same build.
+- [x] Live, a real failure keeps its retry: Wi-Fi off, open "Anthology 4" from the library.
+      The track section says "Es besteht anscheinend keine Verbindung zum Internet." with
+      Erneut versuchen; with Wi-Fi back, it loads all 36 tracks. **Passed**, same build. The
+      cover went on spinning after that; recorded as
+      `plans/open/artwork-stuck-after-network-drop.md`.
