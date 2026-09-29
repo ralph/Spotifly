@@ -1,7 +1,7 @@
 # Queue rows have no identity, so every jump finds its row again by uri
 
 Status: **In progress.** Read from the code in review; nothing observed. The history and part 1
-are done; see Progress.
+are done; part 2 is open, and smaller than it was; see Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
@@ -95,3 +95,18 @@ Not defined yet.
       position. A skip in that wait published its own track, which the stale state then
       overwrote until the new track's `.playing` came. Both drop a state whose track is no
       longer current.
+- **Part 2, uids: not done, and what is left of it** (2026-09-29). With the queue published
+  with its track, the view's list is split where the player's is, so a row's index names the
+  exact row and `nearestIndex` finds it at that index. What uids would still fix:
+  - **`skip_next` from the web player** names a track by uri, and a duplicate ahead resolves to
+    the first copy. librespot's `handle_next` does the same (`skip_next.track.map(|t| t.uri)`);
+    go-librespot matches a uid first (`tracks.ContextTrackComparator`).
+  - **Rows the store drops.** `QueueService` keeps only track rows, so a context with episodes
+    shifts the view's indices past the first one. The uri still finds the row unless the track
+    repeats close by.
+  - What it would take: `q<n>` uids for queued tracks as librespot's `add_to_queue` makes them;
+    the resolver's uid for context rows, which `parseContextReport` drops. Whether context-resolve
+    answers carry a `uid` per track is **not measured**; librespot's `context.rs` generates a
+    UUID when one is missing. Inventing uids for the rows other devices see risks confusing a
+    receiving device's own matching (`context.rs` copies a transferred uid onto its context
+    track), so measure first.
