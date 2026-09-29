@@ -12,7 +12,7 @@ import Testing
 /// What goes out in the authorization request.
 ///
 /// The redirect is plain HTTP on loopback because that is what Spotify's desktop client id is
-/// registered with — see `plans/single-grant-partner-api.md`.
+/// registered with — see `plans/done/single-grant-partner-api.md`.
 struct KeymasterAuthorizationURLTests {
     private func queryItems(_ url: URL) throws -> [String: String] {
         let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))

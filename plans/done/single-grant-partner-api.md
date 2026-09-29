@@ -1,38 +1,25 @@
 # One grant, no dashboard app — moving Spotifly onto the client's own APIs
 
-Status: **both tracks shipped.** Track B shipped 2026-09-27 as #65, by a different route
-than B1–B4 below: the vendored libvorbis decodes, the pipeline downloads the whole file
-before decoding rather than streaming it, and `rust/` is gone. The B1 spike plan (#61) was
-closed unimplemented. Track A landed across #49, #51, #53 and #54 and is in 1.2.7 — one
-grant with Spotify's own desktop client id, the pathfinder and spclient clients, search,
-library, home, playlist writes, and the retirement of `api.spotify.com` and the user's
-dashboard client id. Nothing in the app calls the Web API any longer. The 16 ticked tasks
-below are that work. The four unticked ones are Track B as it was planned, left unticked
-because #65 did not follow them.
+Status: **Done.** Track A 2026-08-14 (#49, #51, #53, #54), in 1.2.7. Track B 2026-09-27 (#65),
+by a different route than planned.
+Components: `Spotifly/Auth/KeymasterAuth.swift`, `Spotifly/PartnerAPI/`, `Spotifly/Store/Services/`
+Found: after the login5 break of 2026-08-11
+
+## Summary
+
+One grant with Spotify's own desktop client id serves playback and every read and write the
+app makes, through the pathfinder and spclient clients: search, library, home and playlist
+writes. `api.spotify.com` and the user's dashboard client id are retired, so a user no longer
+registers a Spotify developer application, and nothing in the app calls the Web API any
+longer. The 16 ticked tasks below are Track A. Track B, playback in Swift, shipped as #65.
 
 Two pieces were deliberately cut from Track A rather than left unfinished, and each has its
-own plan: `plans/playlist-attributes-not-written.md` and `plans/playlist-folder-hierarchy.md`.
+own plan: `plans/open/playlist-attributes-not-written.md` and
+`plans/open/playlist-folder-hierarchy.md`.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
-> (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+## Problem
 
-**Goal:** One browser authorization, minted with Spotify's own desktop client id, that serves
-local playback *and* every metadata read and write the app performs — so Spotifly stops
-requiring each user to register a Spotify developer application and allowlist themselves in it.
-
-**Architecture:** Swift owns the OAuth flow and holds the token. That single token authorizes
-three things: the librespot session (accesspoint login), the pathfinder GraphQL API at
-`api-partner.spotify.com`, and the spclient REST API at `spclient.wg.spotify.com`. The Web API
-at `api.spotify.com` and the user's dashboard client id are retired at the end of the
-migration, not the start — every phase leaves a working app.
-
-**Tech Stack:** Swift 6.3 / SwiftUI, strict concurrency; Swift Testing (`import Testing`);
-Rust FFI retained for playback for now (see Track B for its exit).
-
----
-
-## Evidence
+### Evidence
 
 This plan rests on a probe rather than on inference. `libspot-probe/` in the workspace root
 (Go, built against the `libspot/` checkout) runs five legs against the live service with one
@@ -69,7 +56,7 @@ dashboard client id cannot obtain a client token at all. That constraint is unch
 plan resolves it by removing the dashboard client id from the app rather than working around
 it.
 
-## Why this is worth doing
+### Why this is worth doing
 
 Playback already works on `rework-auth`: `spotifly_authorize_streaming` mints a keymaster
 token through `librespot_oauth` and caches the AP credentials. What that branch does *not*
@@ -87,7 +74,24 @@ client-id text field, the allowlist screen and its three localizations, the whit
 `SpotifyConfig`, and the entire second OAuth flow — plus the class of bug where the two grants
 authorize different accounts, which `rework-auth` had to add a guard for.
 
-## Global constraints
+## Solution
+
+### Goal and architecture
+
+**Goal:** One browser authorization, minted with Spotify's own desktop client id, that serves
+local playback *and* every metadata read and write the app performs — so Spotifly stops
+requiring each user to register a Spotify developer application and allowlist themselves in it.
+
+**Architecture:** Swift owns the OAuth flow and holds the token. That single token authorizes
+three things: the librespot session (accesspoint login), the pathfinder GraphQL API at
+`api-partner.spotify.com`, and the spclient REST API at `spclient.wg.spotify.com`. The Web API
+at `api.spotify.com` and the user's dashboard client id are retired at the end of the
+migration, not the start — every phase leaves a working app.
+
+**Tech Stack:** Swift 6.3 / SwiftUI, strict concurrency; Swift Testing (`import Testing`);
+Rust FFI retained for playback for now (see Track B for its exit).
+
+### Global constraints
 
 - **Never send a keymaster token to `api.spotify.com`.** Every endpoint returns 429. During
   the migration both tokens exist; they are not interchangeable and must not share a provider.
@@ -176,11 +180,9 @@ authorize different accounts, which `rework-auth` had to add a guard for.
 - One commit per problem. Every task's commit includes its `CHANGELOG.md` entry under
   `## [Unreleased]`, matching the surrounding density — mechanism and why, not just what.
 
----
+### Track A — one grant, and the client's own APIs
 
-## Track A — one grant, and the client's own APIs
-
-### Phase 1: Swift owns the grant
+#### Phase 1: Swift owns the grant
 
 The OAuth flow moves from Rust into Swift. Not because Rust does it badly, but because Swift
 needs the *token*, and today Rust mints it, hands it to librespot and drops it. Everything
@@ -220,7 +222,7 @@ downstream in this plan needs that token in Swift, and Track B needs it there pe
 
       It did: 8 → 9, and 9 is where it still stands.
 
-### Phase 2: The two API clients
+#### Phase 2: The two API clients
 
 - [x] **Task 4: Client-Token acquisition.**
       A protobuf POST to `clienttoken.spotify.com/v1/clienttoken` carrying client id, version
@@ -246,7 +248,7 @@ downstream in this plan needs that token in Swift, and Track B needs it there pe
       sends) and protobuf (extended-metadata, storage-resolve — needed by Track B, not by
       Track A). Base62↔GID conversion lands here; it is 20 lines and both clients need it.
 
-### Phase 3: Migrate the reads, one at a time
+#### Phase 3: Migrate the reads, one at a time
 
 43 call sites across seven `SpotifyAPI+*.swift` files. Each task ports one service's reads
 behind the existing service layer, so `AppStore`, `InFlightRequests` and the views do not move.
@@ -399,7 +401,7 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       Folder *hierarchy* — showing the tree, nesting playlists under folders — remains unbuilt
       and is a genuine feature rather than a migration gap. Deferred deliberately; the shape of
       the work and the two variables still unmeasured are in
-      `plans/playlist-folder-hierarchy.md`.
+      `plans/open/playlist-folder-hierarchy.md`.
 
       **Audiobooks are not asked for.** The account in testing had two, and the app has no
       entity, screen or playback path for one. Not requesting the filter is the whole of
@@ -537,7 +539,7 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       shows. **Chips** (`homeChips`, "Music"/"Podcasts"/"Audiobooks" with sub-chips) are decoded
       by nobody — they filter the page, and the app has no screen for two of the three.
 
-### Phase 4: Retire the dashboard app
+#### Phase 4: Retire the dashboard app
 
 Only once no `api.spotify.com` call remains — **which is now the case.**
 
@@ -569,7 +571,7 @@ Only once no `api.spotify.com` call remains — **which is now the case.**
 
       Not built: setting a playlist's **cover image**, `collaborative`, or `pl3_version`. No
       screen offers any of them, and *reading* a cover was never affected — see
-      `plans/playlist-attributes-not-written.md`, which also records that the image is not part
+      `plans/open/playlist-attributes-not-written.md`, which also records that the image is not part
       of the attributes message at all and needs an endpoint nobody here has measured.
 
 - [x] **Task 13: Retire the dashboard app.** `SpotifyConfig`, `SpotifyAuth`, `SpotifySession`,
@@ -610,18 +612,19 @@ Only once no `api.spotify.com` call remains — **which is now the case.**
       *deleted* on launch rather than orphaned: a live refresh token for an app Spotifly no
       longer speaks to is not ours to leave on someone's machine.
 
----
-
-## Track B — Swift-native playback
+### Track B — Swift-native playback
 
 Shipped 2026-09-27 as #65, by a different route than the four tasks planned here, which were
 deleted on 2026-09-29. The vendored libvorbis decodes, the pipeline downloads the whole file
 before decoding, and `rust/` is gone. `DEVELOPMENT.md` has the architecture.
 
----
-
-## What this plan does not decide
+### What this plan does not decide
 
 - **How persisted-query hashes get refreshed** when Spotify rotates them. Today the answer is
   "watch libspot and copy". If that becomes painful, a small extractor that reads them out of
   the live web client is the fallback, but it is not worth building pre-emptively.
+
+## Verification
+
+Each task in Track A records how it was verified, next to its checkbox: requests measured
+live rather than assumed, and writes confirmed against a live playlist and library.

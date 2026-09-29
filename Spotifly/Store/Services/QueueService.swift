@@ -210,7 +210,7 @@ final class QueueService {
     /// reason: an answer meaning "I have nothing to tell you" decodes identically to one
     /// meaning "nothing is queued", and applying the second when you were given the first
     /// wipes a real queue. That is what emptied the queue on every wake from sleep — see
-    /// `plans/wake-from-sleep-loses-queue-and-resume.md`.
+    /// `plans/done/wake-from-sleep-loses-queue-and-resume.md`.
     ///
     /// The two forms it takes here: **nil**, when no cluster update has arrived at all, and a
     /// snapshot that yields no current track and nothing pending. Previous tracks alone are

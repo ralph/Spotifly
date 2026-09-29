@@ -1,13 +1,21 @@
 # Playback errors are never shown
 
-Status: **implemented** 2026-09-28 on `playback-errors` (#72), as proposed below, and checked
-live: a failing play by autoplay, and the manual checks by Ralph. See [Result](#result).
+Status: **Done** 2026-09-28 (#72). Checked live with a failing autoplay, and by hand.
+Components: `Spotifly/ViewModels/PlaybackViewModel.swift` (`errorMessage`),
+`Spotifly/Views/NowPlayingBarView.swift`, `Spotifly/Views/TrackRow.swift`,
+`Spotifly/Views/Components/TrackContextMenu.swift`
+Found: 2026-09-28, while landing #71
 
-Component: `Spotifly/ViewModels/PlaybackViewModel.swift` (`errorMessage`),
-`Spotifly/Views/NowPlayingBarView.swift`, and the views that write the view model's error:
-`TrackRow.swift` and `Components/TrackContextMenu.swift`.
+## Summary
 
-## What happens
+`PlaybackViewModel.errorMessage` was set in sixteen places and shown in none, so a play that
+failed, a Next that timed out or a favorite that did not save looked like a button that did
+nothing. The now-playing bar now shows the error in place of the title and artist for five
+seconds, in the mini player too.
+
+## Problem
+
+### What happens
 
 `PlaybackViewModel.errorMessage` is set in sixteen places and read in none:
 
@@ -34,7 +42,9 @@ What stays out, as now:
   answering `no_prev_track` with the seek it stood for.
 - **`CancellationError`**: a newer load took over. It reports for itself.
 
-## Where the error appears
+## Solution
+
+### Where the error appears
 
 **In the now-playing bar, in place of the track's title and artist, for five seconds.** A red
 caption with a warning glyph, two lines at most, and the full text as a tooltip. Then the
@@ -71,7 +81,7 @@ after the first. That is fine.
 VoiceOver users get the same message as an announcement, since a caption changing in place
 is not announced by itself.
 
-## Messages
+### Messages
 
 The view model passes on `error.localizedDescription`, which is English and sometimes
 technical ("Spotify rejected the request (HTTP 502)"). Translating the errors the stack throws
@@ -83,7 +93,7 @@ initialized". They get `error.*` keys in the three `Localizable.strings`, in the
 `error.remove_album %@` already uses. The four favorite sites share one key. A seventh, "No
 tracks to play", was dropped instead: its one caller disables its button on an empty list.
 
-## Steps
+### Steps
 
 One commit each.
 
@@ -106,7 +116,7 @@ Nothing changes in `sendTransportCommand`, the declined check or the cancellatio
   another device plays; the same in the mini player; and Previous at the first track of a
   remote device, which must stay silent (declined).
 
-## Result
+### Result
 
 Landed as planned, in three commits: the bar (`NowPlayingBarView.trackInfo`, 26 lines), the
 seven localized messages, and this record. The unit suite is unchanged at 374, all passing.
@@ -132,7 +142,7 @@ went out, and the promised position was withdrawn. The reconnect after Wi-Fi cam
 clean. Previous on the phone does not appear in that log. The declined path it covers is
 unchanged by this work: `sendTransportCommand` sets the error only outside it, as before.
 
-## Review
+### Review
 
 A `/simplify` pass with four reviewers (reuse, simplification, efficiency, altitude) led to
 four commits:

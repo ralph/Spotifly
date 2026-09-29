@@ -1,12 +1,20 @@
 # Playlist attributes Spotifly cannot write
 
-Status: **not started** — recorded so the absence is deliberate rather than discovered
+Status: **Open.** Recorded, not planned, so that the absence is deliberate rather than
+discovered.
 Components: `Spotifly/PartnerAPI/PlaylistChanges.swift`, `Spotifly/PartnerAPI/SpclientAPI.swift`,
 `Spotifly/Store/Services/PlaylistService.swift`
-Recorded: 2026-08-13, splitting the "not built" note out of task 12c in
-`single-grant-partner-api.md`
+Found: 2026-08-13, splitting the "not built" note out of task 12c in
+`plans/done/single-grant-partner-api.md`
 
-## What is missing, and what is not
+## Summary
+
+Spotifly writes a playlist's name and description. It cannot set its cover image, whether it
+is collaborative, or `pl3_version`. Reading is complete: cover art shows everywhere it should.
+
+## Problem
+
+### What is missing, and what is not
 
 **Reading is complete. This is only about writing.** Playlist cover art displays everywhere it
 should: `PathfinderPlaylist.images` decodes it, `Playlist.images` holds it as an `ImageSet`, and
@@ -37,7 +45,7 @@ what the app sets keeps `ListAttributesPartialState`'s partial semantics honest 
 omitted and the existing value stands, so every field the struct names is a field a rename could
 overwrite with nothing if a caller forgets it.
 
-## Why it is not a defect
+### Why it is not a defect
 
 There is no screen for any of the three. Nothing in the app offers to change a playlist's cover,
 make one collaborative, or touch a version field, so there is no button wired to a call that
@@ -45,7 +53,9 @@ silently does nothing. The risk this file exists to prevent is the opposite one:
 `changePlaylistAttributes` and assuming the write path covers the rest of the attributes,
 then building a UI on top of it.
 
-## What each would take
+## Solution
+
+### What each would take
 
 **`collaborative` and `pl3_version` are the cheap half.** Both are fields on the same
 `ListAttributes` message that `name` and `description` already ride in, so adding them is two
@@ -65,3 +75,7 @@ Whoever picks this up should also expect an image write to need a **re-read**, t
 `addTracksToPlaylist` does: the mutation is unlikely to answer with the CDN urls of the sizes
 Spotify generated, and a row holding a stale `ImageSet` is a cover that does not change until
 the next launch.
+
+## Verification
+
+Not defined until this is planned.

@@ -1,13 +1,21 @@
 # Playlist folders: show the hierarchy Spotify has
 
-Status: **not started** — deferred deliberately; the flat list works and is correct
+Status: **Open.** Deferred deliberately: the flat list shows every playlist and is correct.
 Components: `Spotifly/PartnerAPI/PathfinderLibrary.swift`, `Spotifly/PartnerAPI/PathfinderSearch.swift`,
 `Spotifly/Store/Services/PlaylistService.swift`, `Spotifly/Views/PlaylistsListView.swift`,
 `Spotifly/Store/AppStore.swift`, `Spotifly/Store/Entities.swift`
-Recorded: 2026-08-13, splitting the "does not attempt" note out of task 12 in
-`single-grant-partner-api.md`
+Found: 2026-08-13, splitting the "does not attempt" note out of task 12 in
+`plans/done/single-grant-partner-api.md`
 
-## The flat list is not a workaround
+## Summary
+
+The Playlists section is a flat list. Spotify's `libraryV3` has the folder hierarchy, and
+Spotifly drops it. Nothing is broken, because every playlist is shown, including those inside
+folders. Showing the tree is a feature the client APIs made possible, not a debt.
+
+## Problem
+
+### The flat list is not a workaround
 
 Worth stating first, because "folders are not built" invites someone to treat the current
 behaviour as broken. It is not: **every playlist is shown, including the ones inside folders.**
@@ -18,7 +26,7 @@ What is new is that Spotify's own API *has* the hierarchy and this app throws it
 API never exposed folders at all; `libraryV3` does. So this is a feature the client APIs made
 possible, not a debt the migration created.
 
-## What the API offers, measured
+### What the API offers, measured
 
 Two variables decide it, measured 2026-08-13 against an account with four folders
 (`PathfinderLibraryVariables`):
@@ -35,7 +43,7 @@ exercised** — nobody here has sent a folder uri or a non-empty expanded list a
 answer. That is the first thing to measure, and the cheapest: it decides whether the hierarchy
 arrives in one request or one request per open folder.
 
-## The trap already paid for
+### The trap already paid for
 
 **A folder decodes cleanly as a playlist.** It carries a `uri` and a `name` and nothing in the
 shape distinguishes it, so the only thing that tells them apart is the uri's kind:
@@ -51,7 +59,9 @@ feature has to stop relying on it as a filter and start treating a folder as its
 which means the change is not additive: removing the drop without adding a `Folder` entity puts
 the broken rows straight back.
 
-## Shape of the work
+## Solution
+
+### Shape of the work
 
 1. **Measure `expandedFolders` and `folderUri` first.** One request with the whole tree and one
    request per expansion are different features; do not design before knowing which is on offer.
@@ -69,8 +79,12 @@ the broken rows straight back.
    get exactly today's rendering, and the pagination arithmetic in `PaginationState.advance` is
    written against a flat page count.
 
-## What not to do
+### What not to do
 
 Do not make folders a *filter* on the existing list. The pagination is offset-based over the
 list Spotify returns, so a client-side regroup of one page reorders within that page only, and
 the tree changes shape as later pages arrive.
+
+## Verification
+
+Not defined until this is planned.

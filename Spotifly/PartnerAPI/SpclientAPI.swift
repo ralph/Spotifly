@@ -176,7 +176,7 @@ nonisolated struct SpclientAPI: Sendable {
     ///
     /// The batching endpoint the real client uses for this is `extended-metadata`, which is
     /// protobuf and deliberately out of scope until the Swift playback track needs it
-    /// (`plans/single-grant-partner-api.md`, task 6). Move this there if the request volume
+    /// (`plans/done/single-grant-partner-api.md`, task 6). Move this there if the request volume
     /// ever shows up.
     static let metadataConcurrency = 8
 

@@ -1,15 +1,23 @@
 # The player's interface to the app is still shaped like the FFI it replaced
 
-Status: **done.** Step 5 landed on 2026-09-27, steps 1–4 on 2026-09-28 on `player-interface`
-(#71). See "How it landed" at the end for where the result differs from the proposal. The two
-places where the player waited on the main thread were fixed on 2026-09-27 (`5c00231`);
-everything else here was a refactor with no behaviour change intended.
+Status: **Done** 2026-09-28 (#71). The two places where the player waited on the main thread
+were fixed on 2026-09-27 (`5c00231`).
+Components: `Spotifly/SpotifyPlayer.swift`, `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`,
+`Spotifly/Store/PlayerModel.swift`, and what subscribed to them: `PlaybackViewModel`,
+`QueueService`, `DeviceService`, `ConnectionService`, `LoggedInLifecycleModifier`
+Found: when #65 removed the FFI
 
-Component: `Spotifly/SpotifyPlayer.swift`, `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`,
-and everything that subscribes to them — `PlaybackViewModel`, `QueueService`, `DeviceService`,
-`ConnectionService`, `LoggedInLifecycleModifier`.
+## Summary
 
-## Can a slow UI interrupt playback?
+With the Rust layer gone, the player still talked to the app in the shape the FFI had given
+it: ten Combine subjects, several of them one fact under different names, and types carrying
+FFI residue. The client now yields ordered snapshots to one `@Observable` `PlayerModel`, with
+no Combine between the player and the UI. A slow UI cannot interrupt playback. Apart from the
+two main-thread waits, this was a refactor with no behaviour change intended.
+
+## Problem
+
+### Can a slow UI interrupt playback?
 
 No, by construction. Where the audio lives:
 
@@ -41,7 +49,7 @@ millisecond per chunk. With a second or more queued in the renderer, a delay has
 long to be heard, and a gapless handover needs the tick within about a second of the decode
 finishing.
 
-## What the interface looks like now
+### What the interface looks like now
 
 `SpotifyPlayer.swift` says it itself: "Every type here is the same shape it was across the FFI,
 so services and views needed no changes." The migration was right to keep it for the port.
@@ -76,7 +84,9 @@ Keeping it now carries these costs:
   `playRadio()` are `Task { try? await … }`, so the UI cannot tell a skip that failed from one
   that worked.
 
-## Proposal
+## Solution
+
+### Proposal
 
 Five steps, each shippable on its own, in order of value per risk.
 
@@ -119,7 +129,7 @@ Five steps, each shippable on its own, in order of value per risk.
    write throttle, the feed callback, the decode thread and the pause park are gone. See
    `docs/cpu-benchmark.md`, "Feeding the renderer".
 
-## How it landed
+### How it landed
 
 The sections above describe the code as it was before steps 1–4.
 
@@ -165,3 +175,7 @@ Two bugs came to light while doing this, and were fixed:
   republished the connection state with a fresh connect time.
 - A device the store marked active lost its `disableVolume` flag.
 
+## Verification
+
+This plan records no live run of its own. `PlayerModelTests` drive the model with snapshots,
+with no engine. The two bugs found along the way are under *How it landed*.

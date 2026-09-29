@@ -1,15 +1,20 @@
 # A stale cluster timestamp can park the progress bar at the end of the track
 
-Status: **fixed 2026-08-03 (`67a6c16`), not confirmed at runtime.** Both paths now share
-`positionAnchor(forPosition:takenAt:)`, which discards the compensation as recommended
-below. Confirming it needs a remote device playing with a cluster timestamp stale enough to
-overshoot the track end, which is not something that can be provoked on demand — the
-regression signal is the log line, not a reproduction.
+Status: **Done** 2026-08-03 (`67a6c16`), not confirmed at runtime.
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`
-Found: 2026-08-03, reviewing the position code for simplification after
-`plans/resume-after-deactivation-restarts-the-track.md`
+Found: 2026-08-03, reviewing the position code for simplification
 
-## Symptom
+## Summary
+
+While Spotifly shows another device playing, a cluster snapshot can be old enough that
+back-dating the position by its age runs past the end of the track, and the progress bar
+parks there until a fresher update. Both anchoring paths now share
+`positionAnchor(forPosition:takenAt:)`, which discards the compensation in that case rather
+than clamping it.
+
+## Problem
+
+### Symptom
 
 While Spotifly is **monitoring a remote device** (a phone or speaker is playing, Spotifly
 is not the active device), the progress bar can jump to the very end of the track and sit
@@ -19,7 +24,7 @@ on the next cluster update carrying a fresher timestamp, or at the next track ch
 Not observed in the wild. Found by reading, and by noticing a 735-second-old timestamp in
 `../sleep2.log` that was harmless only by luck — see *Reachability*.
 
-## Mechanism
+### Mechanism
 
 Two paths anchor the position from a snapshot that was true at some earlier moment, and
 both run the clock back by the elapsed time so interpolation does not report a stale
@@ -52,7 +57,7 @@ comment already says so: *"the API timestamp is when Spotify last received a sta
 it can be arbitrarily stale during uninterrupted playback."* That is a statement about
 Spotify's timestamp, not about the endpoint that delivered it.
 
-## Why only the remote path
+### Why only the remote path
 
 Both callbacks arrive at the same Swift handler, but their timestamps come from different
 places in Rust:
@@ -70,7 +75,7 @@ Compensation itself is **correct and necessary** on that path — `position_as_o
 plus elapsed time *is* the current position of a healthy remote device. The defect is only
 the missing upper bound.
 
-## Reachability
+### Reachability
 
 Needs a cluster update where `position_as_of_timestamp + elapsed > duration` **and**
 `isPlaying` ends up true. `isPlaying` for a non-active device is
@@ -87,7 +92,9 @@ time was stored and simply never used. Every path that later resumes playback re
 (`resume()`, `syncPositionAnchor` from the drift check, or the next cluster update), so a
 stored-but-unused back-dated anchor does not appear to survive into a playing state.
 
-## Fix sketch
+## Solution
+
+### Fix sketch
 
 The two blocks are the same computation with one extra condition, so the fix and the
 de-duplication are the same change — one helper returning the anchor time:
@@ -105,7 +112,7 @@ Both call sites then become `anchorPosition(posMs, at: anchorTime(…))`. Roughl
 net, and it removes the duplicated arithmetic flagged as item #4 in the position-code
 simplification pass.
 
-### Discard the compensation, do not clamp it
+#### Discard the compensation, do not clamp it
 
 Take the Web API path's existing behaviour — drop the compensation entirely and anchor at
 the raw position — rather than capping the elapsed time so the result lands on the track
@@ -137,7 +144,7 @@ One thing to preserve while doing it: **the differing log lines.** The Web API p
 staleness explicitly and the Mercury path logs the raw elapsed time. Keep both — these logs
 are how every position bug on this branch was diagnosed.
 
-## Not worth doing
+### Not worth doing
 
 - Gating compensation on `isActiveDevice`. The local path's timestamp is always fresh, so
   compensation there is already a no-op; gating changes nothing and leaves the remote path,
@@ -145,7 +152,13 @@ are how every position bug on this branch was diagnosed.
 - Changing what Rust sends. Both timestamps honestly mean "the moment this position was
   true". The field is fine; only the consumer's missing bound is not.
 
-## To reproduce
+## Verification
+
+Not confirmed at runtime. It needs a remote device playing with a cluster timestamp stale
+enough to overshoot the track end, which cannot be provoked on demand, so the regression
+signal is the log line, not a reproduction.
+
+### To reproduce
 
 Start playback on a phone, leave Spotifly monitoring it without becoming the active device,
 and watch for a cluster update whose logged `timestamp was <n>ms ago` exceeds the remaining
@@ -160,9 +173,3 @@ Position anchor: 12087 -> 12087 (timestamp was 735255ms ago, stale — ignoring 
 
 Before the fix that line could only ever appear with the `Web API position anchor:` prefix.
 Seeing it with the plain `Position anchor:` prefix is the fix working.
-
-## Related
-
-- `plans/position-interpolation-runs-on-during-outage.md` — established the one-clock rule
-  these two paths implement.
-- `plans/resume-after-deactivation-restarts-the-track.md` — the position work that led here.

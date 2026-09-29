@@ -101,7 +101,7 @@ nonisolated struct PathfinderMutationResult: Decodable, Sendable {
 /// `api-partner` and `spclient` are separate hosts with separate request shapes, but they are
 /// authorized identically — a keymaster bearer identifying the user and a client token
 /// identifying the application, both from the single grant this app now performs (see
-/// `plans/single-grant-partner-api.md`) — and they refuse identically. Held in one place so the
+/// `plans/done/single-grant-partner-api.md`) — and they refuse identically. Held in one place so the
 /// refusal rule below is written once rather than three times.
 nonisolated struct SpotifyCredentials: Sendable {
     /// Injected so request construction and decoding can be tested without a network.

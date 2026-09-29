@@ -36,7 +36,7 @@ import Foundation
     ///
     /// That is invisible in every other way. It went unnoticed until a queue log line
     /// reported metadata as cached and the very next line fetched it anyway; see
-    /// `plans/logged-in-view-init-side-effects.md`.
+    /// `plans/done/logged-in-view-init-side-effects.md`.
     ///
     /// **This only covers services that call it.** A new service that subscribes inside its
     /// own `init` is not protected, because it never reaches an `activate()` to report from
