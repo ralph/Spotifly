@@ -1,6 +1,7 @@
 # Queue rows have no identity, so every jump finds its row again by uri
 
-Status: **Open.** Recorded, not planned. Read from the code in review; nothing observed.
+Status: **In progress.** Read from the code in review; nothing observed. The history's part of
+it is done; see Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
@@ -57,3 +58,14 @@ Duplicates bullet, and can land before the uids.
 ## Verification
 
 Not defined yet.
+
+## Progress
+
+- **The history as context positions** (2026-09-29, stacked on #92). `PlaybackQueue` keeps
+  `historyPositions: [Int]`, where each context track that played sits in the context, and
+  `history` maps them to uris for its readers. `backward()` returns to that position instead of
+  `contextTracks.firstIndex(of:)`, and `stepBack(toRecent:uri:)` and `recent()` read through
+  them. `setContext` is the only writer of `contextTracks` and clears the positions with it, so
+  none can point into another context. A unit test: in `a b a c`, playing from the second `a`
+  and pressing Previous comes back to position 2, and the context goes on with `c`; before, it
+  went back to position 0, and on with `b`. That settles the Duplicates bullet.

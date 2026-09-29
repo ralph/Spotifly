@@ -108,6 +108,19 @@ struct PlaybackQueueTests {
         #expect(queue.history == ["t0"])
     }
 
+    /// `plans/done/queue-rows-have-no-identity.md`: `backward()` went back to the first copy
+    /// of a track the context holds twice, whichever copy had played.
+    @Test func `Previous returns to the copy of a repeated track that played`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["a", "b", "a", "c"], startIndex: 2)
+        _ = queue.advance()
+
+        #expect(queue.backward() == "a")
+        #expect(queue.contextPosition == 2)
+        // And the context carries on from there, not from the first copy.
+        #expect(queue.advance() == "c")
+    }
+
     @Test func `backward returns along history`() {
         let queue = PlaybackQueue()
         queue.setContext(uri: "spotify:album:a", tracks: album(3), startIndex: 0)
