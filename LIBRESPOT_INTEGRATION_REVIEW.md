@@ -59,10 +59,10 @@ None of these appear anywhere below. They were found by unplugging ethernet.
 | Backoff gave up after ~3 minutes, leaving nothing to notice the network returning | Fixed `2f1644c` |
 | Playback never resumed after reconnect — nothing loaded a track | Fixed `1562456` |
 | A dead session went unnoticed while Spotifly was not the active device | Fixed `cf3f5d8` |
-| librespot deletes a track from the queue permanently on a *transient* load failure | Upstream, ticketed: [`plans/librespot/upstream-transient-load-failure.md`](plans/librespot/upstream-transient-load-failure.md) |
-| Audio throttle anchor not reset on rebuild, so playback races ~40× after a resume | Fixed `222e0d2`, confirmed at runtime (42× → 1.03×). Write-up: [`plans/audio-renderer-throttle-not-reset-on-rebuild.md`](plans/audio-renderer-throttle-not-reset-on-rebuild.md) |
+| librespot deletes a track from the queue permanently on a *transient* load failure | Upstream draft written, never filed; deleted with the librespot plans on 2026-09-29 |
+| Audio throttle anchor not reset on rebuild, so playback races ~40× after a resume | Fixed `222e0d2`, confirmed at runtime (42× → 1.03×). The write-up was deleted on 2026-09-29, with the Rust layer it described |
 | Position jumped to a stale Web API value and back, because readiness was published before the session was rehydrated | Fixed `b34889c`, confirmed at runtime |
-| Position interpolation keeps running while the session is down, so it snaps back a few seconds on resume | Fixed `6049511`, confirmed at runtime (anchor correction 46s → 5s → 0). Write-up: [`plans/position-interpolation-runs-on-during-outage.md`](plans/position-interpolation-runs-on-during-outage.md) |
+| Position interpolation keeps running while the session is down, so it snaps back a few seconds on resume | Fixed `6049511`, confirmed at runtime (anchor correction 46s → 5s → 0). The write-up was deleted on 2026-09-29; the rule it set is documented at `PlaybackViewModel.syncConnectionReadiness` |
 | Stopping the audio renderer with a full ring buffer deadlocked librespot's player thread, hanging teardown | Fixed `2d7922b`, confirmed at runtime |
 
 ---

@@ -614,38 +614,14 @@ Only once no `api.spotify.com` call remains — **which is now the case.**
 
 ## Track B — Swift-native playback
 
-Independent of Track A and gated on one unknown. The `swift-librespot` branch already has the
-expensive parts working — Shannon cipher, Diffie-Hellman, the AP handshake, dealer, connect
-state, spclient, chunked CDN download. What it does not have is audio:
-`Audio/VorbisDecoder.swift` returns silence from a `TODO`, and `AudioPipeline.swift` calls
-`downloadAllData()` before decoding rather than streaming, with a comment conceding as much.
-Neither is an architectural dead end; both were left for last.
-
-- [ ] **Task B1 (the gate): a decoder spike.**
-      Standalone, outside the app. Take a CDN url and AES key from `libspot-probe -show-token`,
-      fetch the file, decrypt it (AES-CTR, 167-byte header skipped), decode through libvorbis or
-      tremor, write a WAV, listen to it. Success criteria: it sounds correct, and decoding runs
-      comfortably faster than realtime on one core. C dependencies are acceptable; Rust and Go
-      are not.
-      **If this fails, Track B stops here** and librespot keeps playing music at no cost to
-      Track A.
-- [ ] **Task B2:** Wire the decoder into `AudioPipeline` incrementally — decode from
-      `ChunkedDownloader` as chunks arrive, feed an `AVAudioSourceNode`, start playback after
-      roughly a second of decoded audio rather than after the whole file.
-- [ ] **Task B3:** Replace the branch's auth layer with Phase 1's, which is simpler than what
-      it currently carries: no login5, no stored credentials, no client-token dance for the AP.
-- [ ] **Task B4:** Seek, gapless, and the 49-function FFI surface's Swift equivalents; delete
-      `rust/` when the last one is gone.
-
-Open question for B4, to be settled with a measurement rather than a preference: Spotify serves
-some tracks as AAC, which `AVFoundation` decodes natively. If the catalogue coverage is good
-enough it may be cheaper than Vorbis for some paths. Do not act on this before B1.
+Shipped 2026-09-27 as #65, by a different route than the four tasks planned here, which were
+deleted on 2026-09-29. The vendored libvorbis decodes, the pipeline downloads the whole file
+before decoding, and `rust/` is gone. `DEVELOPMENT.md` has the architecture.
 
 ---
 
 ## What this plan does not decide
 
-- **Whether Track B ships at all** — B1 decides it.
 - **How persisted-query hashes get refreshed** when Spotify rotates them. Today the answer is
   "watch libspot and copy". If that becomes painful, a small extractor that reads them out of
   the live web client is the fallback, but it is not worth building pre-emptively.

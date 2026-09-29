@@ -60,9 +60,8 @@ path can produce. Send `market=from_token` everywhere it is supported and let th
 stand: that is what makes a searched track and a saved track the same track.
 
 **This reverses the earlier rule**, which normalised back to the original through a
-`RelinkableTrackCodable` protocol — the reasoning is in
-`plans/relinked-track-now-playing-identity.md` and `plans/web-api-track-relinking-identity.md`,
-both now historical. That rule existed because Spotify's
+`RelinkableTrackCodable` protocol. The two plans that introduced it were deleted on
+2026-09-29 and are in git history. That rule existed because Spotify's
 [relinking docs](https://developer.spotify.com/documentation/web-api/concepts/track-relinking)
 require the original id for Web API writes. It stopped being available once search moved to
 pathfinder, and the mismatch it caused was live: a relinked track favorited from search saved
