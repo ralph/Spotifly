@@ -77,22 +77,18 @@ struct SpotiflyApp: App {
         KeychainManager.purgeDashboardGrant()
     }
 
+    /// Hosting the unit tests (`TEST_HOST`), the app finds the developer's grant, stored login
+    /// and Connect device id, so its content would sign in and register as the Debug app the
+    /// developer has open. The tests need the app's code, not its window.
+    private static let hostsUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { notification in
-                    windowState.exitMiniPlayerMode(window: notification.object as? NSWindow)
-                }
-                .environment(windowState)
-                .environment(PlayerModel.shared)
-                .preferredColorScheme(appearanceMode.colorScheme)
-                .onChange(of: appearanceMode, initial: true) { _, mode in
-                    mode.apply()
-                }
-                // The window that is open takes any `de.rvdh.spotifly://` URL, such as the
-                // sign-in page's link back to the app. Unclaimed, each one opened a second
-                // main window with its own services.
-                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+            if Self.hostsUnitTests {
+                EmptyView()
+            } else {
+                mainWindow
+            }
         }
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
         .commands {
@@ -103,6 +99,23 @@ struct SpotiflyApp: App {
             PreferencesView()
                 .preferredColorScheme(appearanceMode.colorScheme)
         }
+    }
+
+    private var mainWindow: some View {
+        ContentView()
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { notification in
+                windowState.exitMiniPlayerMode(window: notification.object as? NSWindow)
+            }
+            .environment(windowState)
+            .environment(PlayerModel.shared)
+            .preferredColorScheme(appearanceMode.colorScheme)
+            .onChange(of: appearanceMode, initial: true) { _, mode in
+                mode.apply()
+            }
+            // The window that is open takes any `de.rvdh.spotifly://` URL, such as the
+            // sign-in page's link back to the app. Unclaimed, each one opened a second
+            // main window with its own services.
+            .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
     }
 }
 

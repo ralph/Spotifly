@@ -1213,7 +1213,8 @@ public actor LibrespotClient {
         let queue = QueueState(
             contextUri: remote.contextUri,
             currentTrack: QueueItem(uri: track.uri, provider: track.provider),
-            nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid) },
+            // Proto3: a row without a uid has "".
+            nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) },
             // In play order, as the cluster keeps them and the local queue
             // publishes them.
             previousTracks: remote.prevTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
@@ -1461,27 +1462,6 @@ public actor LibrespotClient {
     private static func trackIdOnly(from uri: String) -> String? {
         guard let range = uri.range(of: "spotify:track:") else { return nil }
         return String(uri[range.upperBound...])
-    }
-}
-
-// MARK: - QueueItem Convenience
-
-extension QueueItem {
-    /// A metadata-less placeholder; names hydrate through the store.
-    nonisolated init(uri: String, provider: String, uid: String = "") {
-        self.init(
-            id: uri,
-            uri: uri,
-            name: "",
-            artistName: "",
-            imageURLString: "",
-            durationMs: 0,
-            albumId: nil,
-            artistId: nil,
-            externalUrl: nil,
-            provider: provider,
-            uid: uid.isEmpty ? nil : uid,
-        )
     }
 }
 
