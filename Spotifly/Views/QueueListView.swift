@@ -213,6 +213,11 @@ struct QueueListView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(allQueueItems.enumerated(), id: \.offset) { index, item in
+                    if index > 0 {
+                        Divider()
+                            .padding(.leading, 78)
+                    }
+
                     TrackRow(
                         track: item.track,
                         index: index,
@@ -232,11 +237,6 @@ struct QueueListView: View {
                         },
                     )
                     .id(index)
-
-                    if index < allQueueItems.count - 1 {
-                        Divider()
-                            .padding(.leading, 78)
-                    }
                 }
             }
             .scrollTargetLayout()

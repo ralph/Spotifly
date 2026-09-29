@@ -239,15 +239,18 @@ struct PlaylistDetailView: View {
         }
     }
 
+    /// Lazy, because a playlist can hold thousands of tracks: built eagerly, 2,000 rows took
+    /// 5 s to lay out. The divider goes above each row but the first, so no row reads `rows`,
+    /// which is built anew on every read. See `plans/done/playlist-rows-built-once-per-row.md`.
     private var normalTrackList: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows.enumerated(), id: \.offset) { index, row in
-                trackRowView(item: row.item, track: row.track, index: index)
-
-                if index < rows.count - 1 {
+                if index > 0 {
                     Divider()
                         .padding(.leading, 94)
                 }
+
+                trackRowView(item: row.item, track: row.track, index: index)
             }
         }
         .background(Color(NSColor.controlBackgroundColor))
