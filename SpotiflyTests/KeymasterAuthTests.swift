@@ -125,6 +125,10 @@ struct KeymasterCallbackTests {
         #expect(LoopbackCallbackServer.parseRequestLine("POST /login HTTP/1.1\r\n\r\n") == nil)
         #expect(LoopbackCallbackServer.parseRequestLine("garbage") == nil)
     }
+
+    @Test func `the browser tab gets the success page from the bundle, not the fallback line`() {
+        #expect(LoopbackCallbackServer.successPage.contains("Authentication Successful"))
+    }
 }
 
 /// The token response, and the rotation that must survive it.

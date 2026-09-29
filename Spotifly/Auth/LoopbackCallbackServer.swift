@@ -236,7 +236,7 @@ actor LoopbackCallbackServer {
                     return
                 }
 
-                let body = "<html><body>Spotifly is authorized. You can close this tab.</body></html>"
+                let body = successPage
                 let response = """
                 HTTP/1.1 200 OK\r
                 Content-Type: text/html; charset=utf-8\r
@@ -255,6 +255,17 @@ actor LoopbackCallbackServer {
 
         read(Data())
     }
+
+    /// What the browser tab shows once the redirect has landed: `OAuthSuccess.html` from the
+    /// app bundle, or a plain line should the resource be missing.
+    nonisolated static let successPage: String = {
+        guard let url = Bundle.main.url(forResource: "OAuthSuccess", withExtension: "html"),
+              let page = try? String(contentsOf: url, encoding: .utf8)
+        else {
+            return "<html><body>Spotifly is authorized. You can close this tab.</body></html>"
+        }
+        return page
+    }()
 
     /// Pulls the query out of an HTTP request line: `GET /login?code=…&state=… HTTP/1.1`.
     ///
