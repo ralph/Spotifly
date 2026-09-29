@@ -1,6 +1,7 @@
 # A stale cluster timestamp can park the progress bar at the end of the track
 
-Status: **Done** 2026-08-03 (`67a6c16`), not confirmed at runtime.
+Status: **Done** 2026-08-03 (`67a6c16`). Seen at work at runtime on 2026-09-29; see
+Verification.
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`
 Found: 2026-08-03, reviewing the position code for simplification
 
@@ -154,9 +155,19 @@ are how every position bug on this branch was diagnosed.
 
 ## Verification
 
-Not confirmed at runtime. It needs a remote device playing with a cluster timestamp stale
-enough to overshoot the track end, which cannot be provoked on demand, so the regression
-signal is the log line, not a reproduction.
+**Seen at runtime on 2026-09-29**, by chance, in the log of a live check for #58: launched while
+the phone's last state was more than an hour and a half old, the app printed
+
+```text
+[2026-09-29T18:53:57.163Z DEBUG PlaybackViewModel] Position anchor: 0 -> 72872 (timestamp was 5958765ms ago, stale — ignoring compensation)
+```
+
+with the plain `Position anchor:` prefix, which is the fix working (see below), and again on the
+next launch a minute later. The overshoot itself was not watched on screen.
+
+It needs a remote device playing with a cluster timestamp stale enough to overshoot the track
+end, which cannot be provoked on demand, so the regression signal is the log line, not a
+reproduction.
 
 ### To reproduce
 
