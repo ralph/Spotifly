@@ -235,14 +235,14 @@ struct PlaylistDetailView: View {
                 await reloadTracks()
             }
         } else if !tracks.isEmpty {
-            normalTrackList
+            trackList
         }
     }
 
-    /// Lazy, because a playlist can hold thousands of tracks: built eagerly, 2,000 rows took
-    /// 5 s to lay out. The divider goes above each row but the first, so no row reads `rows`,
-    /// which is built anew on every read. See `plans/done/playlist-rows-built-once-per-row.md`.
-    private var normalTrackList: some View {
+    /// Lazy, because a playlist can hold thousands of tracks. The divider goes above each row
+    /// but the first, so no row reads `rows`, which is built anew on every read. See
+    /// `plans/done/playlist-rows-built-once-per-row.md`.
+    private var trackList: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows.enumerated(), id: \.offset) { index, row in
                 if index > 0 {

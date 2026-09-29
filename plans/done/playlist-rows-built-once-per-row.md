@@ -2,9 +2,10 @@
 
 Status: **Done** 2026-09-29. Measured in a hosted view, before and after. Not yet seen in the
 running app; see Verification.
-Components: `Spotifly/Views/PlaylistDetailView.swift` (`rows`, `normalTrackList`),
+Components: `Spotifly/Views/PlaylistDetailView.swift` (`rows`, `trackList`),
 `Spotifly/Views/FavoritesListView.swift`, `Spotifly/Views/QueueListView.swift`,
-`Spotifly/Views/AlbumDetailView.swift`, `Spotifly/Views/SearchAllTracksView.swift`
+`Spotifly/Views/AlbumDetailView.swift`, `Spotifly/Views/SearchAllTracksView.swift`,
+`Spotifly/Views/LibraryListView.swift`
 Found: 2026-09-29, in the efficiency review of #79
 
 ## Summary
@@ -47,13 +48,19 @@ about 2.5 ms a row: the playlist's `VStack` built every `TrackRow`, where Liked 
 
 1. **The divider goes above each row but the first** (`if index > 0`), in all five lists. No
    row reads the list's count any more, so none can rebuild it. Same lines on screen.
+   `LibraryListView` gets the same rule, for one idiom everywhere: its `items` is a stored
+   `let`, so its count cost nothing.
 2. **The playlist's track list is a `LazyVStack`.** It sits inside the page's `VStack` under
    the header, in the same `ScrollView`, and still loads lazily. Albums and search stay eager:
    they are short.
 
-Not changed: the playlist view still reads `tracks`, which maps `rows`, about six times per
-pass (the header's count and duration, the play button, the favourites task's id). Each is
-O(n), not per row, and the lazy list does not depend on them.
+Not changed: the playlist view still builds `rows` about eight times per pass, mostly through
+`tracks` (the header's count and duration, the play button, the favourites task's id). That
+is O(n) per pass, not per row: about 2.5 ms at 2,000 tracks in an optimised build. The
+favourites task's id is the tracks' ids joined, about 44 KB, and it includes their order, so
+each step of a drag restarts the task, which then finds every status already known. Binding
+`rows` once in `body` and keying the task on the playlist would remove both; neither was
+worth the parameters it would thread through four functions here.
 
 ## Verification
 
