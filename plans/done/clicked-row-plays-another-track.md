@@ -2,7 +2,7 @@
 
 Status: **Done** 2026-09-29 (#79). Built and unit-tested. Steps 1 and 2 are done; Step 3 is
 decided and its better half is in `plans/done/queue-double-click-restarts-the-context.md`.
-Not yet seen in the running app; see Verification.
+Checked in the running app on 2026-09-29, on `24e1dbd`; see Verification.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift` (`start(in:index:uri:)`),
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`play`, the remote `.play` command), `Spotifly/ViewModels/PlaybackViewModel.swift` (`play(uriOrUrl:trackIndex:)`),
 `Spotifly/SpotifyPlayer.swift` (`play`), `Spotifly/PartnerAPI/ConnectState.swift`
@@ -162,11 +162,23 @@ track twice and only the position says which.
       with a tie and "neither" besides. Two more pin `skip_to` carrying both fields.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, run bare with the exit
       code checked. 2026-09-29: build succeeded, all tests passed, lint exit 0.
-- [ ] Live, queue: start an album at track 5 and let two tracks play. Double-click the row
+- [x] Live, queue: start an album at track 5 and let two tracks play. Double-click the row
       after the current one, then a history row. Each plays the track clicked. Repeat with a
-      queued track and with shuffle on.
-- [ ] Live, Favorites: heart a track that is not saved, and before the list refreshes,
-      double-click a row below the top. It plays the row clicked.
-- [ ] Live, remote: with a phone playing, double-click a track in an album on the Mac. The
-      phone plays that track. Then, from the phone, start a playlist track on the Mac. The Mac
-      plays that one.
+      queued track and with shuffle on. **Passed** on `24e1dbd`, 2026-09-29, with Dookie
+      (30th Anniversary Deluxe): from Welcome to Paradise, two Nexts to Basket Case, and a
+      double-click on the next row played She. A double-clicked queued track plays but stays
+      in the queue, and comes round again; that is the restart
+      `plans/open/queue-double-click-restarts-the-context.md` records.
+- [x] Live, Favorites: heart a track that is not saved, and before the list refreshes,
+      double-click a row below the top. It plays the row clicked. **Passed**, same run.
+- [x] Live, remote, from a phone: start a playlist track on the Mac. The Mac plays that one.
+      **Passed**, same run.
+- [ ] ~~Live, remote, to a phone: with a phone playing, double-click a track in an album on the
+      Mac. The phone plays that track.~~ **Withdrawn: the expectation was wrong.** When this
+      Mac can play, a play started on it goes to the Mac even while a phone plays
+      (`PlaybackViewModel.playbackTarget`), and it did: the Mac took playback over.
+      `skip_to.track_uri` goes out only when the Mac has no player of its own, which the unit
+      tests cover.
+- [x] Live, after merging #57 and #87 in: with "Girlfriend" moved to the top of "Spotifly
+      test: Girlfriend", Play starts at Gold Lion, and a double-click on "Girlfriend" says it
+      is not available. **Passed**, same run.

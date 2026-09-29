@@ -62,6 +62,9 @@ final class AppStore {
     /// All tracks indexed by ID - single source of truth
     private(set) var tracks: [String: Track] = [:]
 
+    /// The uris of the tracks here that Spotify said will not play, which playback steps over.
+    private(set) var unplayableTrackUris: Set<String> = []
+
     /// All albums indexed by ID
     private(set) var albums: [String: Album] = [:]
 
@@ -209,10 +212,23 @@ final class AppStore {
         resolvedFavoriteTrackIds.contains(trackId)
     }
 
-    /// Upsert tracks
+    /// Upsert tracks, keeping `unplayableTrackUris` in step. Every answer that replaces a track
+    /// here says whether it plays, except spclient's, which only fills in tracks the store
+    /// lacks.
     func upsertTracks(_ newTracks: [Track]) {
+        var unplayable = unplayableTrackUris
         for track in newTracks {
             tracks[track.id] = track
+            if track.isPlayable {
+                unplayable.remove(track.uri)
+            } else {
+                unplayable.insert(track.uri)
+            }
+        }
+        // Written only when it changed: every write notifies, and the logged-in view passes
+        // it on to playback.
+        if unplayable != unplayableTrackUris {
+            unplayableTrackUris = unplayable
         }
     }
 

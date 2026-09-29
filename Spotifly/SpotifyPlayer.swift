@@ -72,6 +72,22 @@ nonisolated struct PlaybackState: Equatable {
     let timestampMs: Int64
 }
 
+/// Playback that went past a track, or stopped, over an error.
+///
+/// Auto-advance, a remote command and a pipeline error are started by the client, not by a
+/// call from the app, so their errors have no caller to be thrown to. They reach the
+/// now-playing bar this way. A play the app started comes this way too, and throws the same
+/// text, which `PlaybackViewModel.errorMessage` takes once.
+nonisolated struct PlaybackInterruption: Equatable {
+    /// What the now-playing bar says. A message about a track puts the reason before the
+    /// track's name, because the bar cuts off what does not fit, and the name can go.
+    let message: String
+    /// Tells one interruption from the next, counted on the snapshot as `clusterRevision` is.
+    /// The model passes on changes only, so without it the same track skipped twice in a row
+    /// would be told once.
+    let sequence: Int
+}
+
 /// Connection state of the streaming session.
 nonisolated struct LibrespotConnectionState: Equatable {
     let sessionConnected: Bool
@@ -100,6 +116,9 @@ nonisolated struct PlayerSnapshot: Equatable {
     var queue: QueueState?
     /// The logical Connect volume, 0–1; nil until one has been set.
     var volume: Double?
+    /// The latest interruption. It stays until the next one, so a consumer that falls behind
+    /// and gets a later snapshot still sees it.
+    var interruption: PlaybackInterruption?
 }
 
 /// The one audio output. Fed by the decode loop inside the pipeline; volume,
@@ -175,6 +194,12 @@ enum SpotifyPlayer {
     @discardableResult
     static func forceReconnect() -> LibrespotClient.ForceReconnectOutcome {
         LibrespotClient.shared.forceReconnectSync()
+    }
+
+    /// Tells playback which tracks Spotify will not play, from what the app's lists said, so
+    /// that it steps over them instead of loading each to find out.
+    static func setUnplayable(_ uris: Set<String>) {
+        Task { await LibrespotClient.shared.setUnplayable(uris) }
     }
 
     // MARK: - Synchronous State
