@@ -32,7 +32,7 @@ final class PlayerModel {
     /// The logical Connect volume, 0–1; nil until one has been set.
     private(set) var volume: Double?
 
-    /// The latest skip or stop that auto-advance published.
+    /// The latest skip, or stop over an error, that the client published.
     private(set) var interruption: PlaybackInterruption?
 
     /// The active Connect device, or nil while none is. A transfer sets it ahead

@@ -52,16 +52,34 @@ final class PlaybackViewModel {
     var errorMessage: String? {
         didSet {
             guard let errorMessage, errorMessage != oldValue else { return }
+            errorMessageExpired = false
             // A caption changing in place is not announced by itself.
             AccessibilityNotification.Announcement(errorMessage).post()
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(5))
-                if self?.errorMessage == errorMessage {
-                    self?.errorMessage = nil
+                guard let self, self.errorMessage == errorMessage else { return }
+                if isErrorMessageHeld {
+                    errorMessageExpired = true
+                } else {
+                    self.errorMessage = nil
                 }
             }
         }
     }
+
+    /// Set by the bar while the pointer is on the error. The bar cuts off what does not fit,
+    /// and the error is read in full by pointing at it, so it stays past its five seconds
+    /// until the pointer leaves.
+    var isErrorMessageHeld = false {
+        didSet {
+            if !isErrorMessageHeld, errorMessageExpired {
+                errorMessage = nil
+            }
+        }
+    }
+
+    /// Whether the error's five seconds ran out while it was held.
+    private var errorMessageExpired = false
 
     /// Returns the URI of the currently playing track (alias for currentTrackUri)
     var currentlyPlayingURI: String? {

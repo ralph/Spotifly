@@ -231,8 +231,18 @@ actor AudioPipeline {
         }
         guard !alreadyPlaying else { return }
 
-        let track = try await preparedTrack(for: uri)
-        let vorbis = try VorbisDecoder(bytes: track.ogg)
+        let track: PreparedTrack
+        let vorbis: VorbisDecoder
+        do {
+            track = try await preparedTrack(for: uri)
+            vorbis = try VorbisDecoder(bytes: track.ogg)
+        } catch {
+            // A newer load or a stop came while this one fetched. Its failure
+            // is no longer news, and acting on it, by clearing the state or
+            // skipping to the next track, would undo what came after.
+            guard generation == loadGeneration else { throw CancellationError() }
+            throw error
+        }
         debugLog("AudioPipeline", "Decoder open: \(vorbis.format.sampleRate)Hz x\(vorbis.format.channels), \(vorbis.totalFrames) frames")
 
         try await transition {
@@ -303,9 +313,17 @@ actor AudioPipeline {
         }
         if let upcoming, upcoming.uri == uri {
             self.upcoming = nil
-            if let track = try? await upcoming.fetch.value, track.quality == quality {
-                debugLog("AudioPipeline", "Using \(uri) fetched ahead")
-                return track
+            do {
+                let track = try await upcoming.fetch.value
+                if track.quality == quality {
+                    debugLog("AudioPipeline", "Using \(uri) fetched ahead")
+                    return track
+                }
+            } catch let LibrespotError.trackUnavailable(name) {
+                // A fact about the track: fetching it again gets the same answer.
+                throw LibrespotError.trackUnavailable(name: name)
+            } catch {
+                // Anything else may not recur, so it is fetched again below.
             }
         }
         return try await prepare(uri)

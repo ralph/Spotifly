@@ -69,36 +69,20 @@ nonisolated struct PlaybackState: Equatable {
     let timestampMs: Int64
 }
 
-/// Playback that went past a track, or stopped, over an error nobody saw happen.
+/// Playback that went past a track, or stopped, over an error.
 ///
-/// Auto-advance is started by the client, not by a call from the app, so its errors have no
-/// caller to be thrown to. They reach the now-playing bar this way instead, as the errors of
-/// plays the app starts reach it through `PlaybackViewModel.errorMessage`.
+/// Auto-advance, a remote command and a pipeline error are started by the client, not by a
+/// call from the app, so their errors have no caller to be thrown to. They reach the
+/// now-playing bar this way. A play the app started comes this way too, and throws the same
+/// text, which `PlaybackViewModel.errorMessage` takes once.
 nonisolated struct PlaybackInterruption: Equatable {
-    enum Kind: Equatable {
-        /// Auto-advance went past this track, which Spotify withholds.
-        case skipped(trackName: String)
-        /// Playback stopped, for this reason.
-        case stopped(reason: String)
-
-        static func stopped(_ error: any Error) -> Kind {
-            .stopped(reason: error.localizedDescription)
-        }
-    }
-
-    let kind: Kind
-    /// Tells one interruption from the next. The model passes on changes only, so without it
-    /// the same track skipped twice in a row would be told once.
+    /// What the now-playing bar says. A message about a track puts the reason before the
+    /// track's name, because the bar cuts off what does not fit, and the name can go.
+    let message: String
+    /// Tells one interruption from the next, counted on the snapshot as `clusterRevision` is.
+    /// The model passes on changes only, so without it the same track skipped twice in a row
+    /// would be told once.
     let sequence: Int
-
-    /// What the now-playing bar says. The reason comes first, because the bar cuts off what
-    /// does not fit, and a track name is the part that can go.
-    var message: String {
-        switch kind {
-        case let .skipped(trackName): String(localized: "playback.skipped_unavailable \(trackName)")
-        case let .stopped(reason): reason
-        }
-    }
 }
 
 /// Connection state of the streaming session.

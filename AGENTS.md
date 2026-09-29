@@ -132,7 +132,7 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 **PlayerModel** (`Store/PlayerModel.swift`)
 - What the UI shows of the player: the connection, the Connect devices and the active one,
   the playback state, the queue with its context, the volume, and the last track playback
-  skipped or stopped at over an error nobody was waiting for (`PlaybackInterruption`)
+  skipped or stopped at over an error (`PlaybackInterruption`)
 - Fed by `LibrespotClient.snapshots`: one `PlayerSnapshot` per change, and a slow main thread
   gets the newest rather than a backlog. The client never waits for the UI
 - Views read it via `@Environment(PlayerModel.self)`. `QueueService` and `PlaybackViewModel`

@@ -41,21 +41,20 @@ music. Spotify's own clients grey these rows out, and the data to do the same al
 
 ### Smaller paths that still stop at one
 
-Left over from #57. All four are rare, and none has been observed.
+Left over from #57. They are rare, and none has been observed.
 
 - **Rewinding to an unavailable first track.** When the queue ends, `rewindContext` loads the
   context's first track paused. If that one is withheld, playback stops with the message
   rather than rewinding to the first track that plays.
-- **A remote `play` of an unavailable track.** The Mac lets go of the active role, as it
-  should, but its own bar says nothing. The device that sent the command has its own UI, so
-  this may be right as it is.
 - **Files the player cannot decode.** A track whose files are all MP3, AAC or FLAC throws
   `trackNotFound("No Ogg Vorbis file available")`. That is not the skipped error, so
   auto-advance stops there. Spotify has not been seen to serve such a track to a Premium
   account.
-- **An unavailable next track is fetched twice.** The prefetch fails, and the load at the end
-  of the track asks again before it skips. That is two metadata requests and two
-  extended-metadata requests for a track that cannot play.
+- **The skip waits for the end of the track.** The fetch-ahead learns 10 to 30 seconds early
+  that the next track is withheld, but nothing acts on it: the track after it is not fetched
+  ahead, and the change of track loads it cold, with a gap, where it could have been
+  gapless. The pipeline could report the failed fetch-ahead, so the client moves "next" past
+  it and publishes the skip then.
 
 ## Solution
 

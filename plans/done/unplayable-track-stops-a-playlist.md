@@ -3,8 +3,9 @@
 Status: **Done** 2026-09-29 (#57). Built, unit-tested and lint-clean. The live checks under
 Verification are not run yet.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`handleEndOfTrack`,
-`autoAdvance`, `loadAndPlay`, `releasePlayback`), `Spotifly/SwiftLibrespot/Public/AutoAdvance.swift`,
-`Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`prepare`, `fileToPlay`),
+`autoAdvance`, `loadAndPlay`, `startTrack`, `playbackFailed`),
+`Spotifly/SwiftLibrespot/Public/AutoAdvance.swift`,
+`Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`playTrack`, `preparedTrack`, `fileToPlay`),
 `Spotifly/SwiftLibrespot/Core/Errors.swift` (`trackUnavailable`),
 `Spotifly/SpotifyPlayer.swift` (`PlaybackInterruption`), `Spotifly/Store/PlayerModel.swift`,
 `Spotifly/ViewModels/PlaybackViewModel.swift` (`observePlayer`),
@@ -159,10 +160,16 @@ Spotify withholding the track, and it has not been seen.
       Skipping is only for auto-advance, where nobody pressed anything.
 - [x] Found while building it: a load that failed *after a newer one started* still threw its
       own error, not a cancellation. `loadAndPlay` then cleared the newer load's state, and a
-      skip would have moved the queue under it. A load generation in `LibrespotClient` turns
-      that failure into a `CancellationError`.
+      skip would have moved the queue under it. `AudioPipeline.playTrack` already had a load
+      generation, checked only after a successful fetch; it now checks it after a failed one
+      too and throws `CancellationError`. That covers a `stop()` as well, such as another
+      device taking over while a skip loads.
+- [x] Found in review: the fetch-ahead of an unavailable next track failed, and
+      `preparedTrack` swallowed that and fetched it again at the end of the track. It now
+      rethrows `trackUnavailable`, which asking again cannot change.
 
-The rule is `AutoAdvance.run`, a static function over closures, so `AutoAdvanceTests` checks it
+The rule is `AutoAdvance.run`, a static function over the client's `PlaybackQueue` and two
+closures, so `AutoAdvanceTests` checks it against a real queue
 without a session: an unavailable track is skipped; a `URLError`, a `trackNotFound` or an audio
 key failure stops; repeat over nothing but unavailable tracks stops after one pass; and a
 superseded load neither skips nor stops.
@@ -173,8 +180,8 @@ superseded load neither skips nor stops.
       `PlayerSnapshot` for the last auto-advance that failed or was skipped: the uri and the
       error. `PlaybackViewModel` puts it into `errorMessage`, which the bar already shows for
       five seconds. New localization keys go in `de`, `en` and `fr`.
-      **Done** as `PlayerSnapshot.interruption`, a `PlaybackInterruption`: a skip with the
-      track's name, or a stop with the error's description, and a sequence number. The number
+      **Done** as `PlayerSnapshot.interruption`, a `PlaybackInterruption`: the message and a
+      sequence number, counted on the snapshot as `clusterRevision` is. The number
       is needed because `PlayerModel` passes on changes only, so the same skip twice in a row
       would otherwise be told once. It stays in the snapshot until the next one, so the
       newest-only stream cannot drop it. The keys are `error.track_unavailable %@` and
@@ -185,11 +192,16 @@ superseded load neither skips nor stops.
 - [x] Report the stop to Connect. After a failed load, `clearLocalState` should also report
       the cleared state to the cluster, so a phone stops showing the Mac as playing a track it
       never started. This applies to a user-started play too.
-      **Done** in `loadAndPlay` rather than `clearLocalState`, which a stand-down and a
-      teardown also call. `releasePlayback()` gives up the active role and reports, as a failed
-      transfer already did. `rewindContext` explains why a report with no player state is not
-      enough while the device stays active. Auto-advance holds the release back while it
-      skips, so other devices do not see the Mac stop and start again between two tracks.
+      **Done** in `playbackFailed` rather than `clearLocalState`, which a stand-down and a
+      teardown also call. It is the one place a failure ends playback: it clears the local
+      state, gives up the active role and reports, as a failed transfer already did, and
+      publishes the interruption. `loadAndPlay`, auto-advance's stop and a pipeline error all
+      go through it. `rewindContext` explains why a report with no player state is not enough
+      while the device stays active. Auto-advance tries tracks with `startTrack`, which does
+      none of this, and fails once at the end, so other devices do not see the Mac stop and
+      start again between two tracks. A failed transfer still reports twice, once from the load
+      and once from `takeOver`, whose own release is needed for a context that fails to
+      resolve.
 - [x] Name the real cause. "Track not found: No Ogg Vorbis file available" reads like a bug for
       a track Spotify has simply withheld. "Not available in your country" is accurate for
       `COUNTRY_RESTRICTED`.
@@ -214,8 +226,6 @@ These are in `plans/open/unplayable-tracks-look-playable.md`:
   already sends.
 - A rewind to a context whose first track is unavailable stops there, rather than finding the
   first one that plays.
-- A remote `play` of an unavailable track lets go of the active role but shows nothing on the
-  Mac. The device that sent it has its own UI.
 - A track whose files are all in formats the player does not decode stops auto-advance. Not
   seen.
 

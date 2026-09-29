@@ -11,41 +11,28 @@ import Testing
 
 /// The rule `LibrespotClient` follows at the end of a track, run against a stand-in queue.
 struct AutoAdvanceTests {
-    /// A queue of uris, and which of them fail to load and how.
+    /// The client's queue, and which of its tracks fail to load and how.
     private final class Player {
-        let queue: [String]
+        let queue = PlaybackQueue()
         let failures: [String: any Error]
-        var repeats = false
-        private var position = 0
         private(set) var loaded: [String] = []
         private(set) var skipped: [String] = []
         private(set) var skippedNames: [String] = []
 
-        init(_ queue: [String], failing failures: [String: any Error] = [:]) {
-            self.queue = queue
+        init(_ tracks: [String], startingAt index: Int = 0, failing failures: [String: any Error] = [:]) {
+            queue.setContext(uri: "spotify:playlist:test", tracks: tracks, startIndex: index)
             self.failures = failures
         }
 
-        func advance(from index: Int) async -> AutoAdvance.Outcome {
-            position = index
-            return await AutoAdvance.run(
-                from: queue[index],
-                attempts: queue.count,
+        func autoAdvance() async -> AutoAdvance.Outcome {
+            await AutoAdvance.run(
+                from: queue.currentUri ?? "",
+                in: queue,
                 load: { uri in
                     self.loaded.append(uri)
                     if let failure = self.failures[uri] {
                         throw failure
                     }
-                },
-                advance: {
-                    if self.position + 1 < self.queue.count {
-                        self.position += 1
-                    } else if self.repeats {
-                        self.position = 0
-                    } else {
-                        return nil
-                    }
-                    return self.queue[self.position]
                 },
                 skipped: { uri, name in
                     self.skipped.append(uri)
@@ -58,9 +45,9 @@ struct AutoAdvanceTests {
     private static let unavailable = LibrespotError.trackUnavailable(name: "Girlfriend (feat. Dâm-Funk)")
 
     @Test func `an unavailable track is skipped and the next one plays`() async {
-        let player = Player(["a", "b", "c"], failing: ["b": Self.unavailable])
+        let player = Player(["a", "b", "c"], startingAt: 1, failing: ["b": Self.unavailable])
 
-        let outcome = await player.advance(from: 1)
+        let outcome = await player.autoAdvance()
 
         #expect(outcome.kind == "playing")
         #expect(player.loaded == ["b", "c"])
@@ -77,9 +64,9 @@ struct AutoAdvanceTests {
             LibrespotError.audioKeyFailed("timeout"),
         ]
         for error in errors {
-            let player = Player(["a", "b", "c"], failing: ["b": error])
+            let player = Player(["a", "b", "c"], startingAt: 1, failing: ["b": error])
 
-            let outcome = await player.advance(from: 1)
+            let outcome = await player.autoAdvance()
 
             #expect(outcome.kind == "stopped")
             #expect(player.loaded == ["b"])
@@ -90,9 +77,9 @@ struct AutoAdvanceTests {
     /// Repeat wraps the queue, so nothing but the attempt count ends this.
     @Test func `under repeat, a queue of nothing but unavailable tracks stops after one pass`() async {
         let player = Player(["a", "b", "c"], failing: ["a": Self.unavailable, "b": Self.unavailable, "c": Self.unavailable])
-        player.repeats = true
+        player.queue.setRepeat(.context)
 
-        let outcome = await player.advance(from: 0)
+        let outcome = await player.autoAdvance()
 
         #expect(outcome.kind == "stopped")
         #expect(player.loaded == ["a", "b", "c"])
@@ -100,9 +87,9 @@ struct AutoAdvanceTests {
     }
 
     @Test func `the queue running out while skipping is its end, not a failure`() async {
-        let player = Player(["a", "b"], failing: ["b": Self.unavailable])
+        let player = Player(["a", "b"], startingAt: 1, failing: ["b": Self.unavailable])
 
-        let outcome = await player.advance(from: 1)
+        let outcome = await player.autoAdvance()
 
         #expect(outcome.kind == "queueEnded")
         #expect(player.skipped == ["b"])
@@ -111,7 +98,7 @@ struct AutoAdvanceTests {
     @Test func `a newer load taking over is neither skipped nor a stop`() async {
         let player = Player(["a", "b"], failing: ["a": CancellationError()])
 
-        let outcome = await player.advance(from: 0)
+        let outcome = await player.autoAdvance()
 
         #expect(outcome.kind == "superseded")
         #expect(player.skipped.isEmpty)
@@ -132,36 +119,22 @@ struct TrackFileChoiceTests {
     /// "Girlfriend" on 2026-09-29: `restriction { countries_allowed: "" }`, no files, no
     /// alternative. It used to fail as "Track not found: No Ogg Vorbis file available".
     @Test func `a track with no file at all is unavailable, and named`() {
-        let error = #expect(throws: LibrespotError.self) {
+        #expect(throws: LibrespotError.trackUnavailable(name: "Girlfriend (feat. Dâm-Funk)")) {
             try AudioPipeline.fileToPlay(self.metadata(name: "Girlfriend (feat. Dâm-Funk)", []), uri: "spotify:track:6PpbRUIbMyUbJkWHS3eQ8j", preferring: .normal)
         }
-        guard case let .trackUnavailable(name)? = error else {
-            Issue.record("expected trackUnavailable, got \(String(describing: error))")
-            return
-        }
-        #expect(name == "Girlfriend (feat. Dâm-Funk)")
     }
 
     @Test func `an unavailable track without a name is named by its uri`() {
-        let error = #expect(throws: LibrespotError.self) {
+        #expect(throws: LibrespotError.trackUnavailable(name: "spotify:track:x")) {
             try AudioPipeline.fileToPlay(self.metadata(name: "", []), uri: "spotify:track:x", preferring: .normal)
         }
-        guard case let .trackUnavailable(name)? = error else {
-            Issue.record("expected trackUnavailable, got \(String(describing: error))")
-            return
-        }
-        #expect(name == "spotify:track:x")
     }
 
     /// Files this player does not decode are not Spotify withholding the track, so auto-advance
     /// does not skip it and the message does not claim so.
     @Test func `files in other formats only are not called unavailable`() {
-        let error = #expect(throws: LibrespotError.self) {
+        #expect(throws: LibrespotError.trackNotFound("No Ogg Vorbis file available")) {
             try AudioPipeline.fileToPlay(self.metadata([.mp3320, .aac48]), uri: "spotify:track:x", preferring: .normal)
-        }
-        guard case .trackNotFound? = error else {
-            Issue.record("expected trackNotFound, got \(String(describing: error))")
-            return
         }
     }
 

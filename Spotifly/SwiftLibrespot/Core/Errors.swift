@@ -8,7 +8,7 @@
 import Foundation
 
 /// Errors that can occur during Spotify connection and playback
-public enum LibrespotError: Error, LocalizedError, Sendable {
+public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
     // MARK: - Connection Errors
 
     case connectionFailed(String)

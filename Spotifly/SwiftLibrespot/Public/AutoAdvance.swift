@@ -18,7 +18,8 @@ import Foundation
 /// stops playback instead: skipping those would pass over a playlist's worth of playable tracks
 /// while the network blinked.
 ///
-/// A function over closures, so the rule is tested without a session.
+/// It runs on the client's `PlaybackQueue` and two closures, so the rule is tested against a real
+/// queue and no session.
 nonisolated enum AutoAdvance {
     enum Outcome {
         /// A track is loaded.
@@ -31,24 +32,23 @@ nonisolated enum AutoAdvance {
         case stopped(any Error)
     }
 
-    /// Loads `uri`, and goes on past every unavailable track.
+    /// Loads `uri`, and goes on through `queue` past every unavailable track.
+    ///
+    /// Each skip costs the metadata requests. Repeat wraps the queue, so a context of nothing
+    /// but unavailable tracks would skip forever: the run tries at most as many tracks as the
+    /// queue holds.
     ///
     /// - Parameters:
-    ///   - attempts: the most loads to try. Repeat wraps the queue, so a context of nothing
-    ///     but unavailable tracks would skip forever; the caller passes how many the queue
-    ///     holds. Each skip costs a metadata request or two.
     ///   - load: plays a uri, or throws why it could not.
-    ///   - advance: moves the queue on and returns its next uri, or nil at its end.
     ///   - skipped: told the uri and the name of each track before the queue moves past it.
     static func run(
         from uri: String,
-        attempts: Int,
+        in queue: PlaybackQueue,
         load: (String) async throws -> Void,
-        advance: () -> String?,
         skipped: (_ uri: String, _ name: String) -> Void,
     ) async -> Outcome {
         var uri = uri
-        var attemptsLeft = attempts
+        var attemptsLeft = queue.userQueue.count + queue.contextTracks.count
         while true {
             do {
                 try await load(uri)
@@ -61,7 +61,7 @@ nonisolated enum AutoAdvance {
                     return .stopped(error)
                 }
                 skipped(uri, name)
-                guard let next = advance() else { return .queueEnded }
+                guard let next = queue.advance(respectingRepeat: false) else { return .queueEnded }
                 uri = next
             }
         }
