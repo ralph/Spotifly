@@ -28,7 +28,7 @@ struct PathfinderRequestTests {
         #expect(persisted["version"] as? Int == 1)
         #expect(
             persisted["sha256Hash"] as? String
-                == "59ee4a659c32e9ad894a71308207594a65ba67bb6b632b183abe97303a51fa55",
+                == "b02683192a98dde7966b5e6655a79eeb62713eab703eda9902c932818dd52751",
         )
     }
 
