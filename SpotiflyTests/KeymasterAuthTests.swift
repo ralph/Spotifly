@@ -126,8 +126,19 @@ struct KeymasterCallbackTests {
         #expect(LoopbackCallbackServer.parseRequestLine("garbage") == nil)
     }
 
-    @Test func `the browser tab gets the success page from the bundle, not the fallback line`() {
+    @Test func `both browser pages come from the bundle, not the fallback line`() {
         #expect(LoopbackCallbackServer.successPage.contains("Authentication Successful"))
+        #expect(LoopbackCallbackServer.failurePage.contains("Authentication Failed"))
+    }
+
+    @Test func `only a redirect with a code gets the success page`() throws {
+        func page(_ query: String) throws -> String {
+            try LoopbackCallbackServer.page(for: #require(URLComponents(string: "http://127.0.0.1/login?\(query)")))
+        }
+
+        #expect(try page("code=abc&state=s") == LoopbackCallbackServer.successPage)
+        #expect(try page("error=access_denied&state=s") == LoopbackCallbackServer.failurePage)
+        #expect(try page("code=&state=s") == LoopbackCallbackServer.failurePage)
     }
 }
 

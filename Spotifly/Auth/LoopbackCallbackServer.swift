@@ -236,7 +236,7 @@ actor LoopbackCallbackServer {
                     return
                 }
 
-                let body = successPage
+                let body = page(for: components)
                 let response = """
                 HTTP/1.1 200 OK\r
                 Content-Type: text/html; charset=utf-8\r
@@ -256,16 +256,26 @@ actor LoopbackCallbackServer {
         read(Data())
     }
 
-    /// What the browser tab shows once the redirect has landed: `OAuthSuccess.html` from the
-    /// app bundle, or a plain line should the resource be missing.
-    nonisolated static let successPage: String = {
-        guard let url = Bundle.main.url(forResource: "OAuthSuccess", withExtension: "html"),
+    /// What the browser tab shows once the redirect has landed: the success page when Spotify
+    /// sent a code, and the failure page when it did not, as after a declined consent. Only the
+    /// code is looked at; `KeymasterAuth` judges the state and the error.
+    nonisolated static func page(for callback: URLComponents) -> String {
+        let code = callback.queryItems?.first { $0.name == "code" }?.value
+        return code?.isEmpty == false ? successPage : failurePage
+    }
+
+    nonisolated static let successPage = bundledPage("OAuthSuccess", fallback: "Spotifly is authorized.")
+    nonisolated static let failurePage = bundledPage("OAuthFailure", fallback: "Spotifly was not authorized.")
+
+    /// A page from the app bundle, or a plain line should the resource be missing.
+    private nonisolated static func bundledPage(_ name: String, fallback: String) -> String {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "html"),
               let page = try? String(contentsOf: url, encoding: .utf8)
         else {
-            return "<html><body>Spotifly is authorized. You can close this tab.</body></html>"
+            return "<html><body>\(fallback) You can close this tab.</body></html>"
         }
         return page
-    }()
+    }
 
     /// Pulls the query out of an HTTP request line: `GET /login?code=…&state=… HTTP/1.1`.
     ///
