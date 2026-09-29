@@ -140,13 +140,9 @@ enum SpotifyPlayer {
     /// Shuts down and sends goodbye to other devices.
     /// Call this when the app is quitting to properly disconnect from Spotify Connect.
     ///
-    /// Awaitable so callers can order it against a rebuild of the same global player.
-    ///
-    /// `nonisolated` matters at app termination: the project builds with
-    /// `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so a main-actor-isolated version could
-    /// not start until `applicationWillTerminate` returned — by which point AppKit may
-    /// already have torn the process down.
-    nonisolated static func shutdown() async {
+    /// Awaitable so callers can order it against a rebuild of the same global player, and
+    /// so the quit can wait for it.
+    static func shutdown() async {
         await LibrespotClient.shared.shutdown()
     }
 
