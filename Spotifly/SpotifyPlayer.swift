@@ -11,30 +11,15 @@
 
 import Foundation
 
-/// Queue item metadata. Field names aligned with Track for consistency.
-nonisolated struct QueueItem: Identifiable, Equatable, Encodable {
-    let id: String // uri
+/// A row of the player's queue. Only its uri and provider: names, artwork and durations come
+/// from the store, which hydrates them by track id.
+nonisolated struct QueueItem: Equatable {
     let uri: String
-    let name: String // Aligned with Track.name
-    let artistName: String
-    let imageURLString: String // Aligned with Track
-    let durationMs: UInt32
-    let albumId: String?
-    let artistId: String?
-    let externalUrl: String?
     /// Track provider: "context", "queue", "autoplay", or "unavailable"
     let provider: String
     /// The cluster's name for this row, which a `skip_next` can jump to. Only
     /// another device's queue has them; this client's own rows go by position.
     var uid: String?
-
-    var durationFormatted: String {
-        formatTrackTime(milliseconds: Int(durationMs))
-    }
-
-    var imageURL: URL? {
-        URL(string: imageURLString)
-    }
 }
 
 /// Outcome of the one-time streaming authorization.
