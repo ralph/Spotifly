@@ -86,6 +86,7 @@
 "error.player_not_initialized" = "Le lecteur n'est pas connecté à Spotify";
 "error.album_not_found" = "Album introuvable. Il n'est peut-être pas disponible dans votre pays.";
 "error.artist_not_found" = "Artiste introuvable.";
+"error.playlist_not_found" = "Playlist introuvable.";
 
 /* Empty States */
 "empty.select_item" = "Sélectionnez un élément dans la barre latérale";

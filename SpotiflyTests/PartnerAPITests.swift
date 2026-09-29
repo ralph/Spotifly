@@ -254,6 +254,22 @@ struct PathfinderResponseTests {
         }
     }
 
+    /// Measured from the web player on 2026-09-29, under the app's variables and its own, for
+    /// `fetchPlaylist`, `fetchPlaylistContents` and `fetchPlaylistMetadata` alike. With no uri to
+    /// build a playlist from, it read as "Spotify returned no data", with a Try again.
+    @Test func `a playlist Spotify has none of is not found, not empty`() async throws {
+        let api = partnerAPI { _ in
+            (
+                Data(#"{"data":{"playlistV2":{"__typename":"NotFound","message":"Object with uri 'spotify:playlist:0000000000000000000000' not found"}}}"#.utf8),
+                httpResponse(200),
+            )
+        }
+
+        await #expect(throws: PartnerAPIError.notFound(.playlist)) {
+            _ = try await api.playlist(id: "0000000000000000000000")
+        }
+    }
+
     @Test func `a non-200 is an error before the body is trusted`() async throws {
         let api = partnerAPI { _ in (Data(), httpResponse(403)) }
 

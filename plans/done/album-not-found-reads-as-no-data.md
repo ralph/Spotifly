@@ -60,9 +60,9 @@ Measured on 2026-09-29 from the web player, with this app's variables:
   "NotFound"}}}`. The artist page had the same "Spotify returned no data".
 - **An album id that never existed answers like a foreign one**: `NotFound`, the same body. So
   the message cannot promise that the album is only restricted by country.
-- **Playlists do not.** `fetchPlaylist` for a playlist id that does not exist answers HTTP 500
-  with an empty body. That is a different problem, in
-  `plans/open/playlist-not-found-answers-500.md`.
+- **Playlists answered HTTP 500 once.** `fetchPlaylist` for a playlist id that does not exist
+  answered HTTP 500 with an empty body. Measured again later the same day, it answers
+  `NotFound` like the rest; see `plans/done/playlist-not-found-answers-500.md`.
 
 The web player shows "Album wurde nicht gefunden" and offers a search, not a retry, for the
 album. For the artist it shows a generic "something went wrong".

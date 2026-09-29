@@ -14,15 +14,17 @@ nonisolated enum PartnerAPIError: Error, LocalizedError, Equatable {
     case emptyPayload
     /// A write Spotify answered with HTTP 200 and a failure `__typename`.
     case mutationRejected(String, String)
-    /// Spotify has no such album or artist for this account, and says so with HTTP 200 and a
-    /// union whose `__typename` is `NotFound`. Measured on 2026-09-29: an album from another
-    /// market and an id that never existed answer alike, and so do both artist operations.
-    /// Asking again gets the same answer, so the views offer no retry; see `isRetryable(_:)`.
+    /// Spotify has no such album, artist or playlist for this account, and says so with HTTP
+    /// 200 and a union whose `__typename` is `NotFound`. Measured on 2026-09-29: an album from
+    /// another market and an id that never existed answer alike, and so do both artist
+    /// operations and all three playlist ones. Asking again gets the same answer, so the views
+    /// offer no retry; see `isRetryable(_:)`.
     case notFound(Entity)
 
     enum Entity: Sendable {
         case album
         case artist
+        case playlist
     }
 
     var errorDescription: String? {
@@ -43,6 +45,8 @@ nonisolated enum PartnerAPIError: Error, LocalizedError, Equatable {
             String(localized: "error.album_not_found")
         case .notFound(.artist):
             String(localized: "error.artist_not_found")
+        case .notFound(.playlist):
+            String(localized: "error.playlist_not_found")
         }
     }
 }
@@ -334,6 +338,9 @@ nonisolated struct PartnerAPI: Sendable {
 
         guard let playlist = response.data?.playlistV2 else {
             throw PartnerAPIError.emptyPayload
+        }
+        guard playlist.typename != "NotFound" else {
+            throw PartnerAPIError.notFound(.playlist)
         }
 
         return playlist
