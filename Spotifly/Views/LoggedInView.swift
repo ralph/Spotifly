@@ -153,10 +153,10 @@ struct LoggedInView: View {
             if navigationCoordinator.needsThreeColumnLayout {
                 HSplitView {
                     contentRouter
-                        .frame(minWidth: 280, idealWidth: 380, maxWidth: 560)
+                        .frame(minWidth: 280, idealWidth: 380, maxWidth: 560, maxHeight: .infinity)
 
                     LoggedInDetailRouterView(playbackViewModel: playbackViewModel)
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .toolbar {
                             LoggedInDetailToolbar(playbackViewModel: playbackViewModel)
                         }
@@ -165,6 +165,10 @@ struct LoggedInView: View {
                 contentRouter
             }
         }
+        // Every pane fills the window's height, whatever it shows. The split view took the
+        // height its panes asked for, so a page showing only an error message squeezed the
+        // window to its few lines, and the bar below followed it into the window's middle.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottom) {
             NowPlayingBarView(
                 playbackViewModel: playbackViewModel,
