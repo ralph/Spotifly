@@ -9,7 +9,8 @@ import Foundation
 import Network
 
 /// Counts the network's returns, for work that failed or stalled while it was away and that
-/// nothing else would start again, such as artwork; see `RetryingAsyncImage`.
+/// nothing else would start again: artwork (`RetryingAsyncImage`) and a page's failed load
+/// (`InlineLoadError`).
 @MainActor
 @Observable
 final class NetworkMonitor {
@@ -20,18 +21,14 @@ final class NetworkMonitor {
 
     /// Whether the last path was usable. Starts true, so the first report, which describes the
     /// path as it is at launch, counts only if it is a way back from being offline.
-    private var satisfied = true
-
-    @ObservationIgnored private let monitor = NWPathMonitor()
+    @ObservationIgnored private var satisfied = true
 
     private init() {
-        monitor.pathUpdateHandler = { [weak self] path in
-            let satisfied = path.status == .satisfied
-            Task { @MainActor in
-                self?.update(satisfied: satisfied)
+        Task {
+            for await path in NWPathMonitor() {
+                update(satisfied: path.status == .satisfied)
             }
         }
-        monitor.start(queue: DispatchQueue(label: "NetworkMonitor"))
     }
 
     /// For tests, which cannot take the network away.

@@ -5,7 +5,7 @@ seen with the network actually dropped; see Verification.
 Components: every `AsyncImage` in `Spotifly/Views`: `AlbumDetailView`, `ArtistDetailView`
 (twice), `PlaylistDetailView`, `LibraryListView`, `TrackRow`, `NowPlayingBarView`,
 `Components/CardArtwork.swift`, `SidebarView`; new: `Spotifly/NetworkMonitor.swift`,
-`Spotifly/Views/Components/RetryingAsyncImage.swift`
+`Spotifly/Views/Components/RetryingAsyncImage.swift`, `Spotifly/Views/Components/InlineLoadError.swift`
 Found: 2026-09-29, testing #82's check 4: Wi-Fi off, open an album, Wi-Fi on, Try again
 
 ## Summary
@@ -47,8 +47,8 @@ for `AsyncImage(url:content:)` that every one of the nine sites now uses, their 
 unchanged. It starts its load again whenever the network comes back, unless its image has
 arrived.
 
-- **When the network is back** comes from `NetworkMonitor`, an `NWPathMonitor` that counts the
-  path's returns to `.satisfied` after it was not. The app had no network monitor; the
+- **When the network is back** comes from `NetworkMonitor`, which iterates `NWPathMonitor` as
+  the `AsyncSequence` it is and counts the path's returns to `.satisfied` after it was not. The app had no network monitor; the
   accesspoint session's reconnect was the other candidate, but it follows the session, not the
   network, and backs off.
 - **Asking again** is a new identity for the `AsyncImage` (`.id(attempt)`), which drops the
@@ -64,6 +64,13 @@ The plan's other two options are not needed: the album page's Try again no longe
 the cover, which retries by itself when the network returns, and a spinner that has gone on for
 a while now ends when the network does come back.
 
+**The page's own load too.** The altitude review pointed out that the repro's other half, the
+track list, waited for Try again just the same. `InlineLoadError` now calls its retry on
+`NetworkMonitor`'s returns as well, when it offers one, which covers the album, artist and
+playlist pages, whole or a section of them. So the repro heals without a press. Other loads that
+wait for a manual retry, and failures while the network stays up, are recorded in
+`plans/open/failed-loads-wait-for-try-again.md`.
+
 ## Verification
 
 - [x] Unit tests: `NetworkMonitor` counts a return only after the network was away, and counts
@@ -76,5 +83,6 @@ a while now ends when the network does come back.
       was asked again.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
 - [ ] Live: turn Wi-Fi off, open an album from the library that has not been opened this
-      session, turn Wi-Fi on. The cover appears within a few seconds, without leaving the page
-      or pressing Try again. Covers that had loaded before do not flash.
+      session, turn Wi-Fi on. Within a few seconds the cover appears and the track list loads,
+      without leaving the page or pressing Try again. Covers that had loaded before do not
+      flash.
