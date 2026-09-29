@@ -1,7 +1,7 @@
 # Queue rows have no identity, so every jump finds its row again by uri
 
-Status: **In progress.** Read from the code in review; nothing observed. The history's part of
-it is done; see Progress.
+Status: **In progress.** Read from the code in review; nothing observed. The history and part 1
+are done; see Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
@@ -69,3 +69,19 @@ Not defined yet.
   none can point into another context. A unit test: in `a b a c`, playing from the second `a`
   and pressing Previous comes back to position 2, and the context goes on with `c`; before, it
   went back to position 0, and on with `b`. That settles the Duplicates bullet.
+- **Part 1: the queue is published with the track** (2026-09-29, stacked on the above).
+  `startTrack` publishes the playback state and the queue in one snapshot, before the wait for
+  metadata, key and CDN, through a `queue:` parameter on `publishPlaybackState`. `publishQueue`
+  still runs after the load, in the same `defer`s, for one reason found on the way: it also
+  announces the track to fetch ahead, and announcing it before the load cancels a fetched-ahead
+  copy of the very track being loaded (`AudioPipeline.setNextTrack` drops an `upcoming` that is
+  not the new next). Its second publish of the same queue changes nothing, since `PlayerModel`
+  writes only what changed.
+  - With queue and track always agreeing, `Queue.reconciled`, `AppStore.reconcileQueueCurrentTrack`
+    and both callers are gone, with `QueueReconciliationTests`. The one gap left is the hop
+    between `QueueService`'s and `PlaybackViewModel`'s observations of the same snapshot, which
+    lasts until the next main-actor turn: the store's lists and the bar's track come from one
+    snapshot and meet on the next turn.
+  - Every other publisher already agreed: the mirror publishes queue and playback together; a
+    queue change without a track change (Add to Queue, `set_queue`, shuffle) publishes the queue
+    alone; and a rewind or a new context goes through `startTrack` too.
