@@ -126,28 +126,25 @@ struct KeymasterCallbackTests {
         #expect(LoopbackCallbackServer.parseRequestLine("garbage") == nil)
     }
 
-    @Test func `both browser pages come from the bundle, not the fallback line`() {
-        #expect(LoopbackCallbackServer.successPage.contains("Authentication Successful"))
-        #expect(LoopbackCallbackServer.failurePage.contains("Authentication Failed"))
-    }
-
-    @Test func `both pages link back to the app through a scheme it registers`() throws {
+    /// The fallback line has no link, so this also fails if either page is missing from the bundle.
+    @Test func `both bundled pages link back to the app through a scheme it registers`() throws {
         let urlTypes = try #require(Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]])
         let schemes = urlTypes.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
 
+        #expect(LoopbackCallbackServer.successPage.contains("Authentication Successful"))
+        #expect(LoopbackCallbackServer.failurePage.contains("Authentication Failed"))
         for page in [LoopbackCallbackServer.successPage, LoopbackCallbackServer.failurePage] {
             #expect(schemes.contains { page.contains("href=\"\($0)://") })
         }
     }
 
     @Test func `only a redirect with a code gets the success page`() throws {
-        func page(_ query: String) throws -> String {
-            try LoopbackCallbackServer.page(for: #require(URLComponents(string: "http://127.0.0.1/login?\(query)")))
-        }
+        let success = LoopbackCallbackServer.successPage
+        let failure = LoopbackCallbackServer.failurePage
 
-        #expect(try page("code=abc&state=s") == LoopbackCallbackServer.successPage)
-        #expect(try page("error=access_denied&state=s") == LoopbackCallbackServer.failurePage)
-        #expect(try page("code=&state=s") == LoopbackCallbackServer.failurePage)
+        #expect(try LoopbackCallbackServer.page(for: callback("code=abc&state=s")) == success)
+        #expect(try LoopbackCallbackServer.page(for: callback("error=access_denied&state=s")) == failure)
+        #expect(try LoopbackCallbackServer.page(for: callback("code=&state=s")) == failure)
     }
 }
 
