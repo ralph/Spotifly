@@ -279,10 +279,10 @@ struct PathfinderResponseTests {
             )
         }
 
-        await #expect(throws: PartnerAPIError.entityFailed(.playlist, "Failed to fetch playlist for uri spotify:playlist:x, status code: 400 BAD_REQUEST")) {
+        await #expect(throws: PartnerAPIError.entityFailed(.playlist)) {
             _ = try await api.playlist(id: "x")
         }
-        #expect(isRetryable(PartnerAPIError.entityFailed(.playlist, "")))
+        #expect(isRetryable(PartnerAPIError.entityFailed(.playlist)))
         #expect(!isRetryable(PartnerAPIError.notFound(.playlist)))
     }
 
@@ -465,9 +465,9 @@ struct SpotifyURITests {
 @MainActor
 struct NotFoundMemoryTests {
     @Test func `an album Spotify has none of is asked for once`() async {
-        let requests = Recorder<Void>()
+        let requests = Tally()
         let service = AlbumService(store: AppStore(), partnerAPI: partnerAPI { _ in
-            requests.record(())
+            requests.increment()
             return (Data(#"{"data":{"albumUnion":{"__typename":"NotFound"}}}"#.utf8), httpResponse(200))
         })
 
@@ -476,22 +476,22 @@ struct NotFoundMemoryTests {
                 try await service.ensureAlbumLoaded(albumId: "2ZWlPOoWh0626oTaHrnl2a")
             }
         }
-        #expect(requests.values.count == 1)
+        #expect(requests.count == 1)
     }
 
     /// Only a `NotFound` is remembered: any other failure may pass, so the next visit asks.
     @Test func `a failure that may pass is asked for again`() async {
-        let requests = Recorder<Void>()
+        let requests = Tally()
         let service = PlaylistService(store: AppStore(), partnerAPI: partnerAPI { _ in
-            requests.record(())
+            requests.increment()
             return (Data(#"{"data":{"playlistV2":{"__typename":"GenericError","message":"503"}}}"#.utf8), httpResponse(200))
         })
 
         for _ in 0 ..< 2 {
-            await #expect(throws: PartnerAPIError.entityFailed(.playlist, "503")) {
+            await #expect(throws: PartnerAPIError.entityFailed(.playlist)) {
                 try await service.ensurePlaylistLoaded(playlistId: "x")
             }
         }
-        #expect(requests.values.count == 2)
+        #expect(requests.count == 2)
     }
 }

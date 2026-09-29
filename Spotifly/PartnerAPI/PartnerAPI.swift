@@ -20,10 +20,10 @@ nonisolated enum PartnerAPIError: Error, LocalizedError, Equatable {
     /// answer, so the views offer no retry; see `isRetryable(_:)`.
     case notFound(Entity)
     /// Spotify answered the album, artist or playlist with a failure `__typename` other than
-    /// `NotFound`, carrying its own message. Measured on 2026-09-29: a malformed playlist id
-    /// answers HTTP 200 with `GenericError`, "Failed to fetch playlist for uri …, status code:
-    /// 400 BAD_REQUEST". It may be passing, so the views offer a retry.
-    case entityFailed(Entity, String)
+    /// `NotFound`. Measured on 2026-09-29: a malformed playlist id answers HTTP 200 with
+    /// `GenericError`, "Failed to fetch playlist for uri …, status code: 400 BAD_REQUEST", which
+    /// is logged. It may be passing, so the views offer a retry.
+    case entityFailed(Entity)
 
     enum Entity: Sendable {
         case album
@@ -51,11 +51,11 @@ nonisolated enum PartnerAPIError: Error, LocalizedError, Equatable {
             String(localized: "error.artist_not_found")
         case .notFound(.playlist):
             String(localized: "error.playlist_not_found")
-        case .entityFailed(.album, _):
+        case .entityFailed(.album):
             String(localized: "error.album_failed")
-        case .entityFailed(.artist, _):
+        case .entityFailed(.artist):
             String(localized: "error.artist_failed")
-        case .entityFailed(.playlist, _):
+        case .entityFailed(.playlist):
             String(localized: "error.playlist_failed")
         }
     }
@@ -365,7 +365,7 @@ nonisolated struct PartnerAPI: Sendable {
             throw PartnerAPIError.notFound(kind)
         case "GenericError":
             debugLog("PartnerAPI", "\(kind) failed: \(union.message ?? "no message")")
-            throw PartnerAPIError.entityFailed(kind, union.message ?? "")
+            throw PartnerAPIError.entityFailed(kind)
         default:
             return union
         }

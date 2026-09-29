@@ -35,10 +35,8 @@ struct InlineLoadError: View {
     }
 }
 
-/// What a detail page says went wrong, and whether its Try again could end differently. One
-/// value, so the two cannot describe different errors, as a message and a flag kept side by side
-/// could once a second writer set only the message.
-struct LoadFailure: Equatable {
+/// What a detail page says went wrong, and whether its Try again could end differently.
+struct LoadFailure {
     let message: String
     /// False where asking again gets the same answer, as for an album Spotify has none of: the
     /// button would only ever fail again. See `isRetryable(_:)`.

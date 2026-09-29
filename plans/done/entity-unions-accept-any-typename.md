@@ -51,7 +51,7 @@ compares `__typename` against. Besides `Album`, `Artist` and `Playlist`, it swit
 So `PartnerAPI.entity(_:kind:)` names the failures instead:
 
 - `NotFound` throws `notFound(kind)`, as before, and is not retried;
-- `GenericError` throws the new `entityFailed(kind, message)`, "Spotify could not load this
+- `GenericError` throws the new `entityFailed(kind)`, "Spotify could not load this
   album." (artist, playlist; de and fr too), which stays retryable, with Spotify's own message in
   the log;
 - anything else decodes as before, and a kind that carries no entity is still "Spotify returned

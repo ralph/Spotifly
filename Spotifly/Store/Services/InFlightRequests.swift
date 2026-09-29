@@ -94,12 +94,8 @@ nonisolated func isRetryable(_ error: Error) -> Bool {
     }
 }
 
-/// The albums, artists or playlists Spotify answered `NotFound` for, this session.
-///
-/// Asking again gets the same answer, and each visit to the page asked: nothing recorded the
-/// miss, and a service's `ensure…Loaded` only checks whether the entity is in the store. So a
-/// miss is remembered, and the next ask for it fails at once, as `TrackService` does for tracks
-/// spclient has none of. Only `NotFound` is: any other failure may pass.
+/// The albums, artists or playlists Spotify answered `NotFound` for, this session, which fail at
+/// once when asked for again. Only `NotFound` is kept: any other failure may pass.
 @MainActor
 final class NotFoundMemory {
     private let kind: PartnerAPIError.Entity
