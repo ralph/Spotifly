@@ -241,6 +241,13 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.canRefreshCurrentSection)
     }
 
+    @Test(arguments: [NavigationItem.queue, .speakers, .startpage, .profile])
+    func `sections pushed by the player or with nothing to fetch offer no refresh`(section: NavigationItem) {
+        let coordinator = NavigationCoordinator(store: AppStore())
+        coordinator.selectNavigationItem(section)
+        #expect(!coordinator.canRefreshCurrentSection)
+    }
+
     @Test func `history cap drops oldest entries and back still works`() {
         let coordinator = NavigationCoordinator(store: AppStore())
 

@@ -298,11 +298,8 @@ struct LoggedInView: View {
             store.setSavedTrackIds([])
             try? await trackService.loadFavorites(forceRefresh: true)
 
-        case .speakers:
-            // Nothing to refresh: the device list is pushed from the cluster.
-            break
-
         default:
+            // `canRefreshCurrentSection` offers no button anywhere else.
             break
         }
     }
