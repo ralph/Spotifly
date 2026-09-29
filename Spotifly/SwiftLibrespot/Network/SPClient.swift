@@ -105,42 +105,19 @@ public actor SPClient {
         }
     }
 
-    /// Get track metadata from spclient
-    /// This fetches file IDs needed for audio key requests
-    public func getTrackMetadata(trackId: Data) async throws -> TrackMetadata {
-        let host = spclientHost ?? "spclient.wg.spotify.com"
-        let gidHex = trackId.hexString
-
-        let url = URL(string: "https://\(host)/metadata/4/track/\(gidHex)")!
-
-        debugLog("SPClient", "[GET] \(url)")
-
-        let request = try await authorizedRequest(url: url, accept: "application/x-protobuf")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw LibrespotError.cdnError("Invalid response")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            debugLog("SPClient", "Track metadata request failed: HTTP \(httpResponse.statusCode), body: \(String(data: data.prefix(200), encoding: .utf8) ?? "?")")
-            throw LibrespotError.trackNotFound(gidHex)
-        }
-
-        return Self.parseTrackMetadata(data, gid: trackId)
-    }
-
-    // MARK: - Extended Metadata (audio files)
-
-    /// Fetches a track's playable audio files via the extended-metadata
-    /// endpoint. `/metadata/4` answers with a stub (title, duration, no
-    /// files) these days — the files only come from here.
+    /// A track's name, duration and playable files, in one request to the extended-metadata
+    /// endpoint.
+    ///
+    /// A load used to ask `/metadata/4` first, and this only once that had answered: two round
+    /// trips before the audio key and the CDN url were even asked for. `/metadata/4` answers a
+    /// stub with no files these days, and the `Track` this endpoint wraps carries the rest as
+    /// well. Measured on 2026-09-29 from the web player's session: name (2), duration (7), files
+    /// (12), and for a relinked recording its alternative (13) — "Not Bad for New Jersey" came
+    /// back as 215205 ms, the length the app had logged playing it.
     ///
     /// Request: `BatchedEntityRequest { 1: header, 2: { 1: uri, 2: { 1: TRACK_V4(10) } } }`
-    /// Response: nested arrays whose leaf is a `google.protobuf.Any` wrapping
-    /// the full `Track`.
-    public func getAudioFiles(entityUri: String) async throws -> [TrackMetadata.AudioFile] {
+    /// Response: nested arrays whose leaf is a `google.protobuf.Any` wrapping the `Track`.
+    public func getTrack(uri entityUri: String, gid: Data) async throws -> TrackMetadata {
         let host = spclientHost ?? "spclient.wg.spotify.com"
         let url = URL(string: "https://\(host)/extended-metadata/v0/extended-metadata")!
 
@@ -149,7 +126,7 @@ public actor SPClient {
         var request = try await authorizedRequest(url: url, accept: "application/x-protobuf")
         request.httpMethod = "POST"
         request.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Self.buildAudioFilesRequest(
+        request.httpBody = Self.buildTrackRequest(
             entityUri: entityUri,
             country: countryCode,
             catalogue: catalogue,
@@ -166,11 +143,17 @@ public actor SPClient {
             throw LibrespotError.trackNotFound(entityUri)
         }
 
-        return Self.parseAudioFilesResponse(data)
+        // A track that does not exist answers HTTP 200 with no `Track`, and 404 in the entity's
+        // own header (measured the same day); `/metadata/4` answered it with a 404. Either way
+        // it is not found, not withheld.
+        guard let track = Self.parseTrackResponse(data, gid: gid) else {
+            throw LibrespotError.trackNotFound(entityUri)
+        }
+        return track
     }
 
     /// Encodes the BatchedEntityRequest asking for one entity's `Track`.
-    nonisolated static func buildAudioFilesRequest(entityUri: String, country: String?, catalogue: String) -> Data {
+    nonisolated static func buildTrackRequest(entityUri: String, country: String?, catalogue: String) -> Data {
         ProtobufWriter.message {
             // Header naming market + catalogue; without it the service
             // answers each entity with 410 Gone.
@@ -192,30 +175,24 @@ public actor SPClient {
         }
     }
 
-    /// Walks the response nesting down to the wrapped `Track`s.
-    nonisolated static func parseAudioFilesResponse(_ data: Data) -> [TrackMetadata.AudioFile] {
-        var result: [TrackMetadata.AudioFile] = []
-        var arrayCount = 0
-        var dataCount = 0
-
+    /// The `Track` the answer wraps, or nil when it wraps none.
+    nonisolated static func parseTrackResponse(_ data: Data, gid: Data) -> TrackMetadata? {
         // BatchedExtensionResponse { 2: arrays[] }
         for array in ProtobufReader.fields(in: data) where array.number == 2 {
-            arrayCount += 1
             // EntityExtensionDataArray { 2: kind varint, 3: datas[] }
             for entry in array.fields where entry.number == 3 {
-                dataCount += 1
                 // EntityExtensionData { 1: header{1 status}, 3: extension_data = Any }
                 for any in entry.fields where any.number == 3 {
                     // google.protobuf.Any { 2: value }, the value a full `Track`
-                    for value in any.fields where value.number == 2 {
-                        result += playableFiles(inTrack: value.fields, knownFormatsOnly: true)
+                    if let track = any.fields.last(2) {
+                        return trackMetadata(track.fields, gid: gid)
                     }
                 }
+                let status = entry.fields.last(1)?.fields.last(1)?.value
+                debugLog("SPClient", "Extended metadata: no track, entity status \(status.map(String.init) ?? "none")")
             }
         }
-
-        debugLog("SPClient", "Extended metadata: \(arrayCount) array(s), \(dataCount) data(s), yielded \(result.count) file(s)")
-        return result
+        return nil
     }
 
     // MARK: - CDN URL Resolution
@@ -258,14 +235,13 @@ public actor SPClient {
         return CDNUrl(url: cdnUrl, expiresAt: nil)
     }
 
-    /// Parses the `Track` message: `{2 name, 7 duration, 12 files[], 13 alternative[]}`.
-    nonisolated static func parseTrackMetadata(_ data: Data, gid: Data) -> TrackMetadata {
-        let fields = ProtobufReader.fields(in: data)
+    /// Reads the `Track` message: `{2 name, 7 duration, 12 files[], 13 alternative[]}`.
+    private nonisolated static func trackMetadata(_ fields: [ProtobufField], gid: Data) -> TrackMetadata {
         let name = fields.last(2)?.string ?? ""
         // `sint32` in metadata.proto. Read as a plain varint it was doubled:
         // 403518 ms for a track the decoder counts 8897582 frames of, 201.8 s.
         let duration = fields.last(7).map { Int(truncatingIfNeeded: $0.sint64) } ?? 0
-        let files = playableFiles(inTrack: fields, knownFormatsOnly: false)
+        let files = playableFiles(inTrack: fields)
 
         debugLog("SPClient", "Parsed track: \(name), duration=\(duration)ms, files=\(files.count)")
 
@@ -278,16 +254,11 @@ public actor SPClient {
     /// market-substituted tracks — so the alternatives' files stand in when
     /// the track has none of its own.
     ///
-    /// `knownFormatsOnly` leaves the formats `AudioFormat` does not name out
-    /// of that choice, as the extended-metadata path always has; the
-    /// `/metadata/4` path keeps them, as `.unknown`. When they are all there
-    /// is, they are returned either way, as `.unknown`: an empty list means
-    /// Spotify withholds the track (`LibrespotError.trackUnavailable`), and a
-    /// track in formats this player does not decode is not that.
-    private nonisolated static func playableFiles(
-        inTrack fields: [ProtobufField],
-        knownFormatsOnly: Bool,
-    ) -> [TrackMetadata.AudioFile] {
+    /// Formats `AudioFormat` does not name are left out of that choice. When
+    /// they are all there is, they are returned anyway, as `.unknown`: an empty
+    /// list means Spotify withholds the track (`LibrespotError.trackUnavailable`),
+    /// and a track in formats this player does not decode is not that.
+    private nonisolated static func playableFiles(inTrack fields: [ProtobufField]) -> [TrackMetadata.AudioFile] {
         func files(of track: [ProtobufField]) -> [TrackMetadata.AudioFile] {
             track.filter { $0.number == 12 }.compactMap { audioFile($0.fields) }
         }
@@ -297,11 +268,8 @@ public actor SPClient {
 
         let own = files(of: fields)
         let alternatives = fields.filter { $0.number == 13 }.flatMap { files(of: $0.fields) }
-        let everything = choice(own, alternatives)
-        guard knownFormatsOnly else { return everything }
-
         let known = choice(own.filter { $0.format != .unknown }, alternatives.filter { $0.format != .unknown })
-        return known.isEmpty ? everything : known
+        return known.isEmpty ? choice(own, alternatives) : known
     }
 
     /// `AudioFile { 1: file_id, 2: format }`, or nil without a file id. A

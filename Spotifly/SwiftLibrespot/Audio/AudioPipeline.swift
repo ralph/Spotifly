@@ -329,21 +329,15 @@ actor AudioPipeline {
         return try await prepare(uri)
     }
 
-    /// Metadata, then the audio key and the CDN url side by side, then the
-    /// download and decryption.
+    /// Metadata, in one request, then the audio key and the CDN url side by
+    /// side, then the download and decryption.
     private func prepare(_ uri: String) async throws -> PreparedTrack {
         guard let spclient else {
             throw LibrespotError.invalidState("SPClient not configured")
         }
 
         let trackId = try Self.trackGid(fromUri: uri)
-        var metadata = try await spclient.getTrackMetadata(trackId: trackId)
-
-        // /metadata/4 answers a stub without files; the playable list comes
-        // from extended-metadata.
-        if metadata.files.isEmpty {
-            metadata.files = try await spclient.getAudioFiles(entityUri: uri)
-        }
+        let metadata = try await spclient.getTrack(uri: uri, gid: trackId)
 
         debugLog("AudioPipeline", "Track '\(metadata.name)': \(metadata.files.count) file(s), \(metadata.durationMs)ms")
 
