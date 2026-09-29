@@ -165,10 +165,23 @@ struct AutoAdvanceTests {
         }
         let unplayable: Set = ["c", "b"]
 
-        let previous = queue.move(by: queue.backward, skipping: unplayable.contains)
+        let previous = queue.back(skipping: unplayable.contains)
 
         #expect(previous == "a")
         #expect(queue.currentUri == "a")
+    }
+
+    /// Found in review. Previous restarts the current track when there is nowhere back to go,
+    /// and the queue has to stay on it, not on the withheld track it stepped back over.
+    @Test func `with nothing back that plays, Previous leaves the queue where it is`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:playlist:test", tracks: ["g", "b"], startIndex: 0)
+        _ = queue.advance()
+        let unplayable: Set = ["g"]
+
+        #expect(queue.back(skipping: unplayable.contains) == nil)
+        #expect(queue.currentUri == "b")
+        #expect(queue.history == ["g"])
     }
 
     @Test func `a newer load taking over is neither skipped nor a stop`() async {

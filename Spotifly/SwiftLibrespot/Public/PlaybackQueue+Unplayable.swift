@@ -26,9 +26,18 @@ nonisolated extension PlaybackQueue {
     }
 
     /// The first track `step` moves the queue to that `isUnplayable` does not name: Next with
-    /// `advance`, Previous with `backward`.
+    /// `advance`. A Next that finds none rewinds the context, which puts the queue back.
     func move(by step: () -> String?, skipping isUnplayable: (String) -> Bool) -> String? {
         stepOver(isUnplayable, from: step(), by: step)
+    }
+
+    /// Where Previous goes back to: the latest track in the history that `isUnplayable` does
+    /// not name. Nil, with the queue left where it is, when none of the history plays. Stepping
+    /// back through it would have emptied it and left the queue on its oldest track, while
+    /// Previous restarts the one playing.
+    func back(skipping isUnplayable: (String) -> Bool) -> String? {
+        guard history.contains(where: { !isUnplayable($0) }) else { return nil }
+        return move(by: backward, skipping: isUnplayable)
     }
 
     /// What auto-advance will reach next, without moving there.

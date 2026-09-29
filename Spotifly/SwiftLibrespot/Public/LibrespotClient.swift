@@ -529,7 +529,7 @@ public actor LibrespotClient {
     public func previous() async throws {
         defer { publishQueue() }
 
-        if let previous = playbackQueue.move(by: playbackQueue.backward, skipping: knownUnplayable) {
+        if let previous = playbackQueue.back(skipping: knownUnplayable) {
             try await loadAndPlay(previous)
         } else {
             // Nowhere back: restart the current track, like every other client.

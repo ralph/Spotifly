@@ -110,7 +110,9 @@ All read from the code in review; none has been observed.
          as unavailable, so a second pass round a context the app never listed loads none of
          them twice. Both are cleared at logout.
        - The stepping is the queue's, in `PlaybackQueue+Unplayable.swift` (`stepOver`, `move`,
-         `upcomingPlayable`), built on its own moves and tested against a real queue. It is a
+         `back`, `upcomingPlayable`), built on its own moves and tested against a real queue.
+         Previous steps back only when something in the history plays; otherwise it restarts
+         the current track and leaves the queue where it was (found in review). It is a
          file of its own because other open PRs rework `PlaybackQueue.swift`. Each track
          stepped over goes into the history, as a skipped one has since #57.
 
@@ -131,13 +133,13 @@ All read from the code in review; none has been observed.
 - [x] The shapes, measured 2026-09-29 with a throwaway probe from the test host, for "Girlfriend
       (feat. Dâm-Funk)" (`COUNTRY_RESTRICTED` in Germany) and its album, its artist, a search
       and home. The context resolver was probed on the same playlist.
-- [x] Unit tests (`PlayabilityTests`, `AutoAdvanceTests`), 8 new, 398 in all:
+- [x] Unit tests (`PlayabilityTests`, `AutoAdvanceTests`), 9 new, 399 in all:
       - the playlist, album and search shapes;
       - the message by reason;
       - a known track stepped over without a load or a word, also after one that failed to
         load;
       - a queue known to be all unplayable ends after one pass under repeat;
-      - Previous steps back over known ones.
+      - Previous steps back over known ones, and leaves the queue alone when none plays.
       Lint exits 0.
 - [ ] In the app, with the playlist "Spotifly test: Girlfriend": the row is greyed with the
       tooltip, a double-click says why, and Play, Next, Previous and auto-advance pass over it.
