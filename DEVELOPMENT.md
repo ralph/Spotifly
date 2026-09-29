@@ -59,6 +59,9 @@ The unit tests:
 xcodebuild -scheme Spotifly -configuration Debug test -destination 'platform=macOS' -only-testing:SpotiflyTests GENERATE_INFOPLIST_FILE=YES
 ```
 
+They run inside the app (`TEST_HOST`). Hosting them, it opens an empty window and does not sign
+in, so a test run leaves the Debug app you have open, and its Connect device, alone.
+
 Format Swift before committing:
 
 ```bash

@@ -22,18 +22,7 @@ import Testing
 @MainActor
 struct QueueBootstrapTests {
     private func item(_ id: String, provider: String = "context") -> QueueItem {
-        QueueItem(
-            id: "spotify:track:\(id)",
-            uri: "spotify:track:\(id)",
-            name: "Track \(id)",
-            artistName: "Artist",
-            imageURLString: "",
-            durationMs: 1000,
-            albumId: nil,
-            artistId: nil,
-            externalUrl: nil,
-            provider: provider,
-        )
+        QueueItem(uri: "spotify:track:\(id)", provider: provider)
     }
 
     /// The cold-start case: nothing has been pushed yet, which is not the same as being told
@@ -109,18 +98,7 @@ struct QueueBootstrapTests {
     /// The cluster can name things this app has no row for, and a queue is not a reason to
     /// invent one.
     @Test func `items that are not tracks are dropped`() throws {
-        let episode = QueueItem(
-            id: "spotify:episode:e1",
-            uri: "spotify:episode:e1",
-            name: "Episode",
-            artistName: "",
-            imageURLString: "",
-            durationMs: 1000,
-            albumId: nil,
-            artistId: nil,
-            externalUrl: nil,
-            provider: "context",
-        )
+        let episode = QueueItem(uri: "spotify:episode:e1", provider: "context")
         let snapshot = QueueState(
             contextUri: "",
             currentTrack: item("playing"),
