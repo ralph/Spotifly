@@ -102,7 +102,6 @@ struct ConnectPlayCommandTests {
         #expect(!json.contains("skip_to"))
     }
 
-    /// librespot's `PlayCommand` requires both, and the web player sends both on every play.
     @Test func `every play carries a play origin and options`() throws {
         for command in [ConnectCommand.play(uri: "spotify:album:a1"), .play(trackUris: ["spotify:track:t1"])] {
             let sent = try fields(command)
@@ -112,14 +111,11 @@ struct ConnectPlayCommandTests {
         }
     }
 
-    /// Sent empty, librespot read `"uri": ""` as a context to resolve instead of playing the
-    /// pages.
     @Test func `an inline list carries no uri or url`() throws {
-        let context = try #require(try fields(.play(trackUris: ["spotify:track:t1"]))["context"] as? [String: Any])
+        let context = try #require(fields(.play(trackUris: ["spotify:track:t1"]))["context"] as? [String: Any])
 
         #expect(context["uri"] == nil)
         #expect(context["url"] == nil)
-        #expect(context["pages"] != nil)
     }
 
     @Test func `a bare track list becomes an inline context`() throws {

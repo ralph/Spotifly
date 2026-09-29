@@ -85,9 +85,8 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
             }
         }
 
-        /// Nil for an inline list. Sent empty, librespot read it as a context to resolve:
-        /// its context is proto2, so `"uri": ""` parses as a uri, and only a missing one takes
-        /// the `PlayContext::Tracks` branch that plays the pages.
+        /// Nil for an inline list: librespot resolves `"uri": ""` as a context, and plays the
+        /// pages only without a uri.
         let uri: String?
         let url: String?
         var pages: [Page]?
@@ -125,13 +124,11 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         }
     }
 
-    /// Where a play came from, which librespot requires of every `play`: its
-    /// `PlayCommand.play_origin` has no default, and neither has `options`, so a play without
-    /// either did not parse there, if Spotify relays the command as sent. The web player sends
-    /// both on every play. Named after the app, as go-librespot names itself.
+    /// Where a play came from. librespot's `PlayCommand` requires it, and `options`, and the
+    /// web player sends both on every play.
     struct PlayOrigin: Encodable, Sendable {
         let featureIdentifier = "spotifly"
-        let featureVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let featureVersion = DeviceInfo.appVersion
 
         enum CodingKeys: String, CodingKey {
             case featureIdentifier = "feature_identifier"
