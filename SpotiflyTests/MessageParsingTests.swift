@@ -332,6 +332,20 @@ struct SPClientParsingTests {
         #expect(metadata.files.map(\.format) == [.unknown])
     }
 
+    /// Found in review. Dropped before the empty check, a track with nothing but such formats
+    /// read as having no files at all, which is how Spotify withholds a track, so auto-advance
+    /// skipped it and the bar called it unavailable.
+    @Test func `extended metadata keeps unnamed formats when they are all there is`() {
+        let track = ProtobufWriter.message {
+            Self.file(&$0, id: 1, format: 16) // FLAC_FLAC
+        }
+
+        let extended = SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))
+
+        #expect(Self.ids(extended) == [1])
+        #expect(extended.map(\.format) == [.unknown])
+    }
+
     @Test func `a file without an id is skipped`() {
         let track = ProtobufWriter.message {
             $0.message(field: 12) { $0.varint(field: 2, 1) }

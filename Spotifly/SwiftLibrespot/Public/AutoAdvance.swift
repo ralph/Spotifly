@@ -48,7 +48,10 @@ nonisolated enum AutoAdvance {
         skipped: (_ uri: String, _ name: String) -> Void,
     ) async -> Outcome {
         var uri = uri
+        // The context's tracks count the one the run starts from, unless the
+        // queue has just taken it off the user queue.
         var attemptsLeft = queue.userQueue.count + queue.contextTracks.count
+            + (queue.currentProvider == "queue" ? 1 : 0)
         while true {
             do {
                 try await load(uri)

@@ -24,6 +24,11 @@ struct AutoAdvanceTests {
             self.failures = failures
         }
 
+        /// The end of the current track: what `handleEndOfTrack` does before the run.
+        func endOfTrack() -> String? {
+            queue.advance()
+        }
+
         func autoAdvance() async -> AutoAdvance.Outcome {
             await AutoAdvance.run(
                 from: queue.currentUri ?? "",
@@ -86,6 +91,22 @@ struct AutoAdvanceTests {
         #expect(player.skipped == ["a", "b"])
     }
 
+    /// Found in review. The track the run starts from had already left the user queue when the
+    /// attempts were counted, so the run gave up one track short: here, before wrapping round to
+    /// the one track that plays.
+    @Test func `a queued track the run starts from counts as an attempt of its own`() async {
+        let player = Player(["c", "u1", "u2"], failing: ["q": Self.unavailable, "u1": Self.unavailable, "u2": Self.unavailable])
+        player.queue.setRepeat(.context)
+        player.queue.enqueue("q")
+        #expect(player.endOfTrack() == "q")
+
+        let outcome = await player.autoAdvance()
+
+        #expect(outcome.kind == "playing")
+        #expect(player.loaded == ["q", "u1", "u2", "c"])
+        #expect(player.skipped == ["q", "u1", "u2"])
+    }
+
     @Test func `the queue running out while skipping is its end, not a failure`() async {
         let player = Player(["a", "b"], startingAt: 1, failing: ["b": Self.unavailable])
 
@@ -131,10 +152,11 @@ struct TrackFileChoiceTests {
     }
 
     /// Files this player does not decode are not Spotify withholding the track, so auto-advance
-    /// does not skip it and the message does not claim so.
+    /// does not skip it and the message does not claim so. `.unknown` is how the extended-metadata
+    /// answer hands on a format `AudioFormat` does not name, when it is all there is.
     @Test func `files in other formats only are not called unavailable`() {
         #expect(throws: LibrespotError.trackNotFound("No Ogg Vorbis file available")) {
-            try AudioPipeline.fileToPlay(self.metadata([.mp3320, .aac48]), uri: "spotify:track:x", preferring: .normal)
+            try AudioPipeline.fileToPlay(self.metadata([.mp3320, .aac48, .unknown]), uri: "spotify:track:x", preferring: .normal)
         }
     }
 

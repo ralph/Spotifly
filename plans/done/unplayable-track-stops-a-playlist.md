@@ -164,6 +164,15 @@ Spotify withholding the track, and it has not been seen.
       generation, checked only after a successful fetch; it now checks it after a failed one
       too and throws `CancellationError`. That covers a `stop()` as well, such as another
       device taking over while a skip loads.
+- [x] Found in code review: the attempts were counted after the end of the track had taken
+      the next one off the user queue, so a run that started there gave up one track short.
+      On a repeating context whose one playable track had just ended, it stopped instead of
+      wrapping round to it. The track the run starts from now counts when it came off the user
+      queue.
+- [x] Found in code review: extended-metadata drops formats `AudioFormat` does not name, so a
+      track with nothing but those read as having no files at all, and was skipped as
+      unavailable. They are kept, as `.unknown`, when they are all there is, so such a track
+      stops with `trackNotFound` as intended.
 - [x] Found in review: the fetch-ahead of an unavailable next track failed, and
       `preparedTrack` swallowed that and fetched it again at the end of the track. It now
       rethrows `trackUnavailable`, which asking again cannot change.
