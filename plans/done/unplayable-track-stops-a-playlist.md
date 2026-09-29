@@ -1,7 +1,7 @@
 # An unplayable track stops a playlist, and says nothing
 
-Status: **Done** 2026-09-29 (#57). Built, unit-tested and lint-clean. The live checks under
-Verification are not run yet.
+Status: **Done** 2026-09-29 (#57). Built, unit-tested and lint-clean, and the four live checks
+under Verification passed on the final build (`c2760e3`) the same day.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`handleEndOfTrack`,
 `autoAdvance`, `loadAndPlay`, `startTrack`, `playbackFailed`),
 `Spotifly/SwiftLibrespot/Public/AutoAdvance.swift`,
@@ -250,10 +250,13 @@ These are in `plans/open/unplayable-tracks-look-playable.md`:
       "Girlfriend", "The Diamond Church Street Choir"). Seen in the bar, not in the log: "The
       Diamond Church Street Choir" playing as 3/3, under
       "Übersprungen: „Girlfriend (feat. Dâm-Funk)“ ist a…", the first wording, cut off. The
-      log lines were not kept.
-- [ ] Live: the same playlist with Wi-Fi turned off in the first ten seconds of the first
+      log lines were not kept. **Re-run on the final build (`c2760e3`) the same day: passed**,
+      with the message in its final wording and the popover on pointing at it.
+- [x] Live: the same playlist with Wi-Fi turned off in the first ten seconds of the first
       track, before the fetch-ahead runs. At the end of the track, playback stops and the bar
-      shows the error. Nothing is skipped.
-- [ ] A phone watching the Mac shows the third track as playing, not the second.
-- [ ] Live: double-click `6PpbRUIbMyUbJkWHS3eQ8j` in Liked Songs. The bar names the reason,
-      and a phone or the web player stops showing the Mac as playing it.
+      shows the error. Nothing is skipped. **Passed** on `c2760e3`, 2026-09-29.
+- [x] A phone watching the Mac shows the third track as playing, not the second. **Passed**
+      on `c2760e3`, 2026-09-29.
+- [x] Live: double-click `6PpbRUIbMyUbJkWHS3eQ8j` in Liked Songs. The bar names the reason,
+      and a phone or the web player stops showing the Mac as playing it. **Passed** on
+      `c2760e3`, 2026-09-29.
