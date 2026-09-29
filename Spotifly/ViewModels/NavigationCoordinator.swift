@@ -107,18 +107,6 @@ final class NavigationCoordinator {
         forward.last.map(title(for:))
     }
 
-    /// Whether the toolbar offers to refresh: only for the library sections, whose lists come
-    /// from a fetch `LoggedInView.refreshCurrentSection` can repeat. The queue and Speakers are
-    /// pushed by the player and the cluster, so a button there did nothing.
-    var canRefreshCurrentSection: Bool {
-        switch current.section {
-        case .playlists, .albums, .artists, .favorites:
-            true
-        default:
-            false
-        }
-    }
-
     // MARK: - Navigation
 
     func selectNavigationItem(_ section: NavigationItem?) {
