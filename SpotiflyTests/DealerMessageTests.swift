@@ -283,7 +283,7 @@ struct PlayCommandTests {
         #expect(command.context == .tracks(["spotify:track:t1", "spotify:track:t2"]))
     }
 
-    /// Search's Play All on another device is this command, so one Spotifly can play a list on
+    /// Search's Play Tracks on another device is this command, so one Spotifly can play a list on
     /// another.
     @Test func `the bare list this app sends is read back as that list`() throws {
         let sent = try JSONEncoder().encode(ConnectCommand.play(trackUris: ["spotify:track:t1", "spotify:track:t2"]))

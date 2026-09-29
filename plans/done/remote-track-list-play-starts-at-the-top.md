@@ -28,7 +28,7 @@ A context with no uri, its tracks inline under `pages[].tracks[]`:
   ability to handle/play tracks". A `PUT /me/player/play` with `uris` arrives that way, with
   `offset` as the `skip_to`. librespot plays it as the context `spotify:web-api`.
 - **This app.** `ConnectCommand.play(trackUris:)` sends `uri: ""`, `url: ""` and the pages.
-  Search's Play All sends it when another device is playing, so one Spotifly playing a list on
+  Play Tracks, under Search's "Show all tracks", sends it when another device is playing, so one Spotifly playing a list on
   another took this path.
 - **Spotify's own clients:** not seen sending one. The web player names its ad-hoc lists
   (`spotify:list:recent searches:default`, for example), and the iPhone sends a playlist's uri
@@ -88,7 +88,7 @@ Not changed:
 - [x] The start rule itself is `ContextStartTests`, from #79.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, 2026-09-29.
 - [ ] Live, two instances (`DEVELOPMENT.md`, `SPOTIFLY_DEBUG_DEVICE_ID`): play something on
-      instance B, then on instance A search for a song and press Play All in its track list.
+      instance B, then on instance A search for a song, open "Show all tracks" and press Play Tracks.
       B plays the list from its first track, and its queue shows the rest. Before, B did
       nothing.
 - [ ] Live, handover: with B playing that list, pick A in B's Speakers. A continues the same

@@ -32,7 +32,7 @@ always.
 ## Solution
 
 Not planned yet. First see it: run librespot from its checkout as a Connect device on the same
-account, and from this app play an album on it, then Search's Play All. If either fails:
+account, and from this app play an album on it, then Play Tracks under Search's "Show all tracks". If either fails:
 
 1. Send `play_origin` (the web player sends `feature_identifier` and `feature_version`) and an
    `options` object on every play, as the web player does.
