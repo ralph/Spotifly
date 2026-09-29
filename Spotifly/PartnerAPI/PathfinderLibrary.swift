@@ -53,9 +53,10 @@ nonisolated struct PathfinderLibraryPage<Entity: Decodable & Sendable>: Decodabl
 
 /// One library entry: when it was added, and the thing that was added.
 ///
-/// The uri sits on the wrapper as `_uri` *beside* the entity rather than inside it, which is why
-/// this type exists at all instead of the page holding entities directly. The entity does carry
-/// its own `uri` for the three kinds the app stores, so the wrapper's copy is not read.
+/// The entity is nested under `item.data`, beside the entry's own `addedAt` and `pinned`, which
+/// is why this type exists at all instead of the page holding entities directly. The wrapper
+/// also carries a `_uri`, which is not read: the entity has its own `uri` for the three kinds
+/// the app stores.
 nonisolated struct PathfinderLibraryItem<Entity: Decodable & Sendable>: Decodable, Sendable {
     struct Wrapper: Decodable, Sendable {
         let data: Entity?
