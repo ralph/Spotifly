@@ -244,8 +244,16 @@ public actor LibrespotClient {
         audioPipeline = nil
         pipelineEvents?.cancel()
         pipelineEvents = nil
+        let stopped = localState?.paused(atMs: Int64(Date().timeIntervalSince1970 * 1000))
         clearLocalState()
         await pipeline?.stop()
+        // Spotify hears the position only when the state changes, so it would
+        // keep the last report, often the track's start and still "playing",
+        // and the next launch or this rebuild would mirror that. A phone that
+        // goes reports where it stopped, paused; so does this.
+        if let stopped, currentConnectionState?.sessionConnected == true {
+            await report(stopped)
+        }
         await session?.disconnect()
         session = nil
         spclient = nil
@@ -870,8 +878,13 @@ public actor LibrespotClient {
     private var reporting: Task<Void, Never>?
 
     private func sendPlaybackReport() async {
+        await report(localState)
+    }
+
+    /// Reports `current` to the cluster, or that nothing plays here.
+    private func report(_ current: PlaybackState?) async {
         guard let session else { return }
-        guard let current = localState else {
+        guard let current else {
             await session.reportLocalPlayerState(nil, active: false)
             return
         }
@@ -1337,5 +1350,29 @@ extension SpotifyDeviceType {
         case .chromebook: "chromebook"
         default: "unknown"
         }
+    }
+}
+
+// MARK: - Stopping
+
+private nonisolated extension PlaybackState {
+    /// This state paused where it had got to at `nowMs`. A playing state has
+    /// moved on since it was taken, by the time since its timestamp, as other
+    /// devices read it; the pipeline cannot say, because a logout stops it
+    /// first.
+    func paused(atMs nowMs: Int64) -> PlaybackState {
+        let elapsed = isPlaying ? max(0, nowMs - timestampMs) : 0
+        let position = durationMs > 0 ? min(positionMs + elapsed, durationMs) : positionMs + elapsed
+        return PlaybackState(
+            isPlaying: false,
+            isPaused: true,
+            trackUri: trackUri,
+            positionMs: position,
+            durationMs: durationMs,
+            shuffle: shuffle,
+            repeatTrack: repeatTrack,
+            repeatContext: repeatContext,
+            timestampMs: nowMs,
+        )
     }
 }
