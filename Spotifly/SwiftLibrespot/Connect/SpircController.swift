@@ -157,6 +157,23 @@ public actor SpircController {
 
         heartbeatTask?.cancel()
         heartbeatTask = nil
+
+        // Where playback had got to, paused there, before the goodbye, as
+        // librespot's `handle_disconnect` does. Spotify hears the position
+        // only when the state changes, so it would keep the last report, often
+        // the track's start and still "playing", and the next launch, the
+        // rebuilt session or the wake would mirror that.
+        if var state = playerState, state.isPlaying {
+            let now = UInt64(Date().timeIntervalSince1970 * 1000)
+            let elapsed = now > state.timestamp ? now - state.timestamp : 0
+            state.positionMs = state.durationMs > 0 ? min(state.positionMs + elapsed, state.durationMs) : state.positionMs + elapsed
+            state.isPlaying = false
+            state.isPaused = true
+            state.timestamp = now
+            playerState = state
+            await publishState(reason: .playerStateChanged)
+        }
+
         isReady = false
         subscriptions.removeAll()
         dealerPushes?.cancel()
