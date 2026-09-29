@@ -125,7 +125,7 @@ nonisolated struct PathfinderArtistSnippet: Decodable, Sendable {
 }
 
 /// The artists beside a track, in the one shape every track-bearing operation returns them:
-/// search, the album view, the playlist view and the saved-tracks page all send `items[]` of a
+/// search, the album view and the playlist view (Liked Songs included) all send `items[]` of a
 /// uri and a `profile.name`.
 nonisolated struct PathfinderArtistList: Decodable, Sendable {
     let items: [PathfinderArtistSnippet]?
@@ -160,8 +160,6 @@ nonisolated struct PathfinderTrack: Decodable, Sendable {
     let albumOfTrack: AlbumOfTrack?
     let artists: PathfinderArtistList?
     let duration: PathfinderDuration?
-    /// Absent from search results, present in the saved-tracks page.
-    let trackNumber: Int?
 
     var durationMs: Int? {
         duration?.totalMilliseconds

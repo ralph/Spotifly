@@ -63,8 +63,9 @@ struct FavoritesListView: View {
                                 playbackViewModel: playbackViewModel,
                                 currentSection: .favorites,
                                 onDoubleTap: {
+                                    // The playlist the list was read from; see `LikedSongs`.
                                     await playbackViewModel.play(
-                                        uriOrUrl: "spotify:collection:tracks",
+                                        uriOrUrl: LikedSongs.uri,
                                         trackIndex: index,
                                     )
                                 },
