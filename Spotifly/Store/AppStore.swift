@@ -19,7 +19,8 @@ struct QueueEntry: Equatable {
 
 /// Normalized queue state storing track entries (ID + provider)
 struct Queue: Equatable {
-    /// Previously played tracks (from the local queue only - Web API doesn't provide this)
+    /// What played before the current track, in play order: the most recent last. From the
+    /// local queue, or from the cluster's `prev_tracks` while another device plays.
     var previousTracks: [QueueEntry] = []
     /// Current track
     var currentTrack: QueueEntry?
