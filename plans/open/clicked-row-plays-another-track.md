@@ -1,6 +1,6 @@
 # Double-clicking a row can play another track
 
-Status: **Open**. Planned, not started (branch `plan/clicked-row-plays-another-track`). Read
+Status: **Open**. Planned, not started (#79, branch `plan/clicked-row-plays-another-track`). Read
 from the code; the queue case is not yet observed in the app.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`play`, the remote `.play`
 command), `Spotifly/ViewModels/PlaybackViewModel.swift` (`play(uriOrUrl:trackIndex:)`),
