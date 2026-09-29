@@ -156,19 +156,16 @@ final nonisolated class PlaybackQueue {
     ///   current track; a manual skip must move regardless, so callers pass
     ///   false there.
     func advance(respectingRepeat: Bool = true) -> String? {
-        let leavingQueued = userQueueCurrent != nil
-
-        // User queue entries always play next, once. The context track they interrupt goes
-        // into the history; a queued track followed by another does not.
+        // User queue entries always play next, once.
         if !userQueue.isEmpty {
             let next = userQueue.removeFirst()
-            if !leavingQueued {
-                pushHistory()
-            }
+            pushHistory()
             userQueueCurrent = next
             return next
         }
-        userQueueCurrent = nil
+        // Back to the context once this move is made, so the push below still sees a queued
+        // track playing and records nothing for it.
+        defer { userQueueCurrent = nil }
 
         guard !contextTracks.isEmpty else { return nil }
 
@@ -176,12 +173,7 @@ final nonisolated class PlaybackQueue {
             return contextTracks[currentIndex]
         }
 
-        // Leaving a queued track pushes nothing: the context track it interrupted went in
-        // when the queued track started. Pushing `currentUri` here, once the queued track was
-        // cleared, put that context track in a second time.
-        if !leavingQueued {
-            pushHistory()
-        }
+        pushHistory()
 
         if shuffleEnabled {
             let next = shufflePosition + 1
@@ -300,12 +292,13 @@ final nonisolated class PlaybackQueue {
         !history.isEmpty
     }
 
+    /// Records the context track playing now. Nothing while a queued track plays: it is not
+    /// kept, and the context track it interrupted went in when it started.
     private func pushHistory() {
-        if let current = currentUri {
-            history.append(current)
-            if history.count > 50 {
-                history.removeFirst()
-            }
+        guard let position = contextPosition else { return }
+        history.append(contextTracks[position])
+        if history.count > 50 {
+            history.removeFirst()
         }
     }
 

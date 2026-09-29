@@ -83,14 +83,6 @@ struct PlaybackQueueTests {
         #expect(queue.advance() == "t1")
         #expect(queue.history == ["t0"])
         #expect(queue.recent().map(\.uri) == ["t0"])
-    }
-
-    @Test func `Previous after a queued track goes back to the context track, once`() {
-        let queue = PlaybackQueue()
-        queue.setContext(uri: "spotify:album:a", tracks: ["t0", "t1", "t2"], startIndex: 0)
-        queue.enqueue("q0")
-        _ = queue.advance()
-        _ = queue.advance()
 
         #expect(queue.backward() == "t0")
         #expect(queue.currentUri == "t0")
@@ -108,8 +100,6 @@ struct PlaybackQueueTests {
         #expect(queue.advance() == "q1")
         #expect(queue.advance() == "q2")
         #expect(queue.history == ["t0"])
-        // Previous from the second queued track returns to the context, not to the first
-        // queued one, which it used to name while the context stayed where it was.
         #expect(queue.backward() == "t0")
         #expect(queue.currentUri == "t0")
 

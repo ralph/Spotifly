@@ -48,9 +48,11 @@ Not planned yet. Two parts, either first:
    state. The queue view's rows would then name a uid, the three `nearestIndex` re-finds would
    go, and a `skip_next` from the web player would name the exact copy.
 
-Part 2 changes the `PlaybackQueue` model, and belongs with
-`plans/open/history-repeats-the-track-before-a-queued-one.md`, which needs "was this entry
-queued?" stored too.
+Part 2 changes the `PlaybackQueue` model. Its history needs no "was this entry queued?":
+since `plans/done/history-repeats-the-track-before-a-queued-one.md` it holds context tracks
+only, as librespot's does. So keeping it as entries can be `history: [Int]`, context indices,
+which `setContext` already clears whenever the context changes. That alone fixes the
+Duplicates bullet, and can land before the uids.
 
 ## Verification
 
