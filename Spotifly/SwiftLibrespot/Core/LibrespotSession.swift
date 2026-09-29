@@ -170,8 +170,11 @@ public actor LibrespotSession {
     /// Disconnects everything but remembers the credentials, so the client's
     /// recovery can `connect` again without them being handed in a second
     /// time — used around system sleep.
-    public func disconnect() async {
-        await spircController?.shutdown()
+    ///
+    /// - Parameter stopped: what played here, for Spirc to report paused
+    ///   before its goodbye; see `SpircController.shutdown(stopped:)`.
+    public func disconnect(stopped: SpircController.SpircPlayerState? = nil) async {
+        await spircController?.shutdown(stopped: stopped)
         await dealerConnection?.disconnect()
         await accesspoint?.disconnect()
 

@@ -151,21 +151,24 @@ public actor SpircController {
         debugLog("SpircController", "SPIRC ready")
     }
 
-    /// Shutdown and unregister from Spotify Connect
-    public func shutdown() async {
+    /// Shutdown and unregister from Spotify Connect.
+    ///
+    /// - Parameter stopped: what played here, which a deliberate disconnect
+    ///   reports paused where it had got to before the goodbye, as librespot's
+    ///   `handle_disconnect` does. Spotify hears the position only when the
+    ///   state changes, so it would keep the last report, often the track's
+    ///   start and still "playing", and whatever mirrors it next would show
+    ///   that. Nil when the transport died: the track plays on from memory,
+    ///   and the recovery reports it.
+    public func shutdown(stopped: SpircPlayerState? = nil) async {
         debugLog("SpircController", "Shutting down...")
 
         heartbeatTask?.cancel()
         heartbeatTask = nil
 
-        // Where playback had got to, paused there, before the goodbye, as
-        // librespot's `handle_disconnect` does. Spotify hears the position
-        // only when the state changes, so it would keep the last report, often
-        // the track's start and still "playing", and the next launch, the
-        // rebuilt session or the wake would mirror that.
-        if var state = playerState, state.isPlaying {
+        if var state = stopped {
             let now = UInt64(Date().timeIntervalSince1970 * 1000)
-            let elapsed = now > state.timestamp ? now - state.timestamp : 0
+            let elapsed = state.isPlaying && now > state.timestamp ? now - state.timestamp : 0
             state.positionMs = state.durationMs > 0 ? min(state.positionMs + elapsed, state.durationMs) : state.positionMs + elapsed
             state.isPlaying = false
             state.isPaused = true

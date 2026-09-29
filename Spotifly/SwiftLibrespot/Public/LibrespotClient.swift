@@ -244,12 +244,13 @@ public actor LibrespotClient {
         audioPipeline = nil
         pipelineEvents?.cancel()
         pipelineEvents = nil
-        // A report still due would say nothing plays here, and wipe the last
-        // state Spirc's goodbye reports paused where it had got to.
+        // The goodbye reports what played, as it stands now. A report still
+        // due would go out after the clear and say nothing plays here.
+        let stopped = localState
         reportDue = false
         clearLocalState()
         await pipeline?.stop()
-        await session?.disconnect()
+        await session?.disconnect(stopped: stopReport(of: stopped))
         session = nil
         spclient = nil
 
@@ -277,7 +278,7 @@ public actor LibrespotClient {
                 publishPlaybackState(for: current.trackUri, playing: false, paused: true, positionMs: Int64(position))
             }
             await audioPipeline?.stop()
-            await session?.disconnect()
+            await session?.disconnect(stopped: stopReport(of: localState))
         }
     }
 
@@ -879,7 +880,20 @@ public actor LibrespotClient {
             return
         }
 
-        let spircState = await SpircController.SpircPlayerState(
+        await session.reportLocalPlayerState(spircState(of: current), active: current.isPlaying)
+    }
+
+    /// What a deliberate disconnect hands the goodbye to report as stopped:
+    /// `current`, unless the session is down, where a PutState could only
+    /// wait out its timeout.
+    private func stopReport(of current: PlaybackState?) async -> SpircController.SpircPlayerState? {
+        guard let current, currentConnectionState?.sessionConnected == true else { return nil }
+        return await spircState(of: current)
+    }
+
+    /// `current` as Spirc reports it, with the queue around it.
+    private func spircState(of current: PlaybackState) async -> SpircController.SpircPlayerState {
+        await SpircController.SpircPlayerState(
             isPlaying: current.isPlaying,
             isPaused: current.isPaused,
             trackUri: current.trackUri.isEmpty ? nil : current.trackUri,
@@ -897,7 +911,6 @@ public actor LibrespotClient {
             nextTracks: playbackQueue.upcoming(),
             previousTracks: Array(playbackQueue.recent().reversed()),
         )
-        await session.reportLocalPlayerState(spircState, active: current.isPlaying)
     }
 
     // MARK: - Session Wiring
