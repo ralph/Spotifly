@@ -514,17 +514,25 @@ public actor LibrespotClient {
     /// Plays `uri` from the next tracks this client publishes, the copy
     /// nearest `position`, without resolving the context again. See
     /// `PlaybackQueue.skip(toUpcoming:uri:)`.
+    ///
+    /// Throws when the track is no longer listed: the caller has already moved
+    /// the display to the start of a track, and only a failure takes that back.
     public func skip(toNext position: Int?, uri: String) async throws {
         defer { publishQueue() }
-        guard let next = playbackQueue.skip(toUpcoming: position, uri: uri) else { return }
+        guard let next = playbackQueue.skip(toUpcoming: position, uri: uri) else {
+            throw LibrespotError.trackNotFound("\(uri) is no longer in the queue")
+        }
         try await loadAndPlay(next)
     }
 
     /// Plays `uri` from the previous tracks this client publishes, as Previous
     /// would, pressed that many times. See `PlaybackQueue.stepBack(toRecent:uri:)`.
+    /// Throws as `skip(toNext:uri:)` does.
     public func skip(toPrevious index: Int, uri: String) async throws {
         defer { publishQueue() }
-        guard let previous = playbackQueue.stepBack(toRecent: index, uri: uri) else { return }
+        guard let previous = playbackQueue.stepBack(toRecent: index, uri: uri) else {
+            throw LibrespotError.trackNotFound("\(uri) is no longer in the queue")
+        }
         try await loadAndPlay(previous)
     }
 

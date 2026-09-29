@@ -59,7 +59,8 @@ context again.
 3. **The track decides.** Both find the row's track nearest the row's index, as `start` does
    since #79. The view's list can be split a row away from the client's while the store
    reconciles it (`Queue.reconciled`), so an index alone could name the neighbour. A track no
-   longer listed plays nothing.
+   longer listed plays nothing, and throws, so the view model takes back the display's move to
+   0:00 (found in review: returning quietly left the bar at 0:00 over the old track).
 4. **Remotely**, a next row sends `skip_next` with `track: {uri, uid}`
    (`ConnectCommand.skipNext(to:uid:)`). The uid comes from the cluster's `ProvidedTrack.uid`,
    now kept on the mirrored `QueueItem` and on `QueueEntry`. A previous row still plays the
