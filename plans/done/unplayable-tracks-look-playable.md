@@ -1,6 +1,6 @@
 # An unplayable track looks like any other until it is played
 
-Status: **Done** 2026-09-29, stacked on #57. Not run in the app yet; the checks are in the PR.
+Status: **Done** 2026-09-29 (#87). The eight checks in the PR passed in the app the same day, on `b0344a6`.
 What this left is in `plans/open/unplayable-tracks-found-by-loading.md`.
 Components: `Spotifly/PartnerAPI/PathfinderSearch.swift` (`PathfinderPlayability`),
 `Spotifly/PartnerAPI/PathfinderPlaylist.swift`, `Spotifly/PartnerAPI/PathfinderAlbum.swift`,
@@ -141,6 +141,9 @@ All read from the code in review; none has been observed.
       - a queue known to be all unplayable ends after one pass under repeat;
       - Previous steps back over known ones, and leaves the queue alone when none plays.
       Lint exits 0.
-- [ ] In the app, with the playlist "Spotifly test: Girlfriend": the row is greyed with the
+- [x] In the app, with the playlist "Spotifly test: Girlfriend": the row is greyed with the
       tooltip, a double-click says why, and Play, Next, Previous and auto-advance pass over it.
-      The steps are in the PR.
+      **Passed**, all eight steps in #87, on `b0344a6`, 2026-09-29: the tooltip and the
+      double-click in German, the menu items disabled, a gapless change with no request for
+      the withheld track, Next and Previous, the queue, the album without a reason, Liked
+      Songs, and Play on the playlist with "Girlfriend" moved to the top.
