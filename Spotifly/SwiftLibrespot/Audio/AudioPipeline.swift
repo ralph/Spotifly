@@ -52,6 +52,9 @@ actor AudioPipeline {
         /// Sent once when a track has fully played out — the hook auto-advance
         /// uses. Not sent for stop, skip, or replacement.
         case endOfTrack(String)
+        /// The track being fetched ahead is one Spotify withholds, found out 10 to 30 seconds
+        /// before the change of track needs it, so the queue can step over it in time.
+        case withheldAhead(String)
         case error(LibrespotError)
     }
 
@@ -375,10 +378,30 @@ actor AudioPipeline {
         else { return }
 
         debugLog("AudioPipeline", "Fetching \(next) ahead")
-        upcoming = (next, Task { [weak self] in
+        upcoming = (next, Task { [weak self, eventSink] in
             guard let self else { throw CancellationError() }
-            return try await prepare(next)
+            return try await Self.fetchAhead(next, prepare: { try await self.prepare(next) }) {
+                eventSink.yield(.withheldAhead($0))
+            }
         })
+    }
+
+    /// A fetch ahead that says so when Spotify withholds the track. Without the report, the
+    /// queue found out only at the change of track, by loading it, and the track after it then
+    /// loaded cold where it could have followed without a gap. Any other failure may not recur,
+    /// so it goes unreported, and the change of track fetches again.
+    nonisolated static func fetchAhead<Track>(
+        _ uri: String,
+        prepare: () async throws -> Track,
+        withheld: (String) -> Void,
+    ) async throws -> Track {
+        do {
+            return try await prepare()
+        } catch let LibrespotError.trackUnavailable(name) {
+            debugLog("AudioPipeline", "\(uri) is withheld, found out ahead")
+            withheld(uri)
+            throw LibrespotError.trackUnavailable(name: name)
+        }
     }
 
     /// The decode, if still running, waits out the pause inside the sink: a

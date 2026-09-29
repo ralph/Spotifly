@@ -932,6 +932,11 @@ public actor LibrespotClient {
                 positionCache.withLock { $0 = positionMs }
             case let .endOfTrack(uri):
                 handleEndOfTrack(uri)
+            case let .withheldAhead(uri):
+                // Known from here on, as a failed load is, and the pipeline told the track
+                // after it, which the change of track then steps to.
+                failedUnplayable.insert(uri)
+                announceNextTrack()
             case let .error(error):
                 debugLog("LibrespotClient", "Audio pipeline error: \(error.localizedDescription)")
                 await playbackFailed(error)
