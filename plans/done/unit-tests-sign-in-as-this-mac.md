@@ -32,6 +32,15 @@ has open. The app now opens an empty window when it hosts the tests, and does no
   as the developer's app. While that app was open, the two shared one Connect identity, and
   when the host was killed the device could go missing from other devices' lists, or stand
   for a process that had gone, until the next heartbeat.
+- **It can log the developer out.** Signing in, the host refreshes the grant when its access
+  token is near expiry, and keymaster refresh tokens rotate: Spotify keeps one live refresh
+  token per client id and account (`KeymasterSession.supersedeRefresh`). The host is killed at
+  the end of every run. Killed after Spotify rotated the token and before the keychain got the
+  new one, it leaves a dead refresh token behind, and the next refresh, by the app or the next
+  host, gets `invalid_grant`, and `KeymasterSession` forgets the grant. Seen 2026-09-29: the
+  grant read `true` from a test host at about 19:05; after a dozen full test runs on branches
+  without this fix, it read `false` from two different builds at 19:50, and a Debug launch
+  showed the login screen. Inferred from that and the code, not caught in the act.
 
 ## Solution
 
