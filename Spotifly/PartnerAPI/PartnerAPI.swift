@@ -288,13 +288,13 @@ nonisolated struct PartnerAPI: Sendable {
     /// and reordering, which can only name an item the app has seen.
     func playlist(id: String) async throws -> PathfinderPlaylistUnion {
         let uri = "spotify:playlist:\(id)"
-        let first = try await playlistPage(uri: uri, offset: 0)
+        let first = try await playlistPage(variables: .init(uri: uri, offset: 0))
 
         var items = first.content?.items ?? []
         let total = first.content?.totalCount ?? items.count
 
         while items.count < total {
-            let page = try await playlistPage(uri: uri, offset: items.count)
+            let page = try await playlistPage(variables: .init(uri: uri, offset: items.count))
             let next = page.content?.items ?? []
             // A page that adds nothing ends the walk rather than repeating it forever: the
             // playlist can lose items between requests, and `totalCount` would then name a
@@ -306,11 +306,11 @@ nonisolated struct PartnerAPI: Sendable {
         return first.withItems(items)
     }
 
-    private func playlistPage(uri: String, offset: Int) async throws -> PathfinderPlaylistUnion {
-        let response: PathfinderPlaylistResponse = try await query(
-            .fetchPlaylist,
-            variables: PathfinderPlaylistVariables(uri: uri, offset: offset),
-        )
+    private func playlistPage(
+        _ operation: PathfinderOperation = .fetchPlaylist,
+        variables: PathfinderPlaylistVariables,
+    ) async throws -> PathfinderPlaylistUnion {
+        let response: PathfinderPlaylistResponse = try await query(operation, variables: variables)
 
         guard let playlist = response.data?.playlistV2 else {
             throw PartnerAPIError.emptyPayload
@@ -401,20 +401,18 @@ nonisolated struct PartnerAPI: Sendable {
         return page
     }
 
-    /// One page of Liked Songs, newest first, read as the playlist the web player reads it as.
-    ///
-    /// `fetchPlaylistContents` rather than `fetchPlaylist`: the same stored document and the
-    /// same items, without the playlist's own details, which a page of favorites never shows.
+    /// One page of Liked Songs (`LikedSongs`), newest first. Contents only: a page of favorites
+    /// never shows the playlist's own details.
     func likedSongs(
         offset: Int,
         limit: Int = LikedSongs.pageLimit,
     ) async throws -> PathfinderPlaylistUnion.Content {
-        let response: PathfinderPlaylistResponse = try await query(
+        let page = try await playlistPage(
             .fetchPlaylistContents,
-            variables: PathfinderPlaylistVariables(uri: LikedSongs.uri, offset: offset, limit: limit),
+            variables: .init(uri: LikedSongs.uri, offset: offset, limit: limit),
         )
 
-        guard let content = response.data?.playlistV2?.content else {
+        guard let content = page.content else {
             throw PartnerAPIError.emptyPayload
         }
 

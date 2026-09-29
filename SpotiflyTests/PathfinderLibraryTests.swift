@@ -181,6 +181,8 @@ struct LikedSongsTests {
         let tracks = page.tracks
 
         #expect(page.totalCount == 609)
+        // The third row has no track uri and is dropped rather than failing the page.
+        #expect(page.items?.count == 3)
         #expect(tracks.map(\.id) == ["7ue34ZxB8zyetZ0BCiIrn2", "6tuiDRFaXOBqFLpeTBjAAn"])
 
         let first = try #require(tracks.first)
@@ -194,28 +196,19 @@ struct LikedSongsTests {
         #expect(first.artistName == "The Gaslight Anthem")
     }
 
-    /// Pagination advances by the items that arrived, so a row that cannot become a track still
-    /// counts toward the offset even though it never reaches the list.
-    @Test func `a row with no track uri is dropped rather than failing the page`() throws {
-        let page = try likedSongsPage()
-
-        #expect(page.items?.count == 3)
-        #expect(page.tracks.count == 2)
-    }
-
     /// The same uri for every account, asked for through the contents-only operation of the
     /// playlist document. Any other uri here would page one list and play another.
     @Test func `Liked Songs is asked for as its playlist, one page at a time`() async throws {
-        let sent = SentBodies()
+        let sent = Recorder<Data>()
         let api = partnerAPI { request in
-            sent.bodies.append(request.httpBody ?? Data())
+            sent.record(request.httpBody ?? Data())
             return (likedSongsJSON, httpResponse(200))
         }
 
         let page = try await api.likedSongs(offset: 50)
         #expect(page.totalCount == 609)
 
-        let body = try #require(sent.bodies.first)
+        let body = try #require(sent.values.first)
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let variables = try #require(json["variables"] as? [String: Any])
         let extensions = try #require(json["extensions"] as? [String: Any])
@@ -245,11 +238,6 @@ struct LikedSongsTests {
         #expect(store.favoritesPagination.total == 609)
         #expect(store.favoritesPagination.hasMore)
     }
-}
-
-/// Request bodies a stub transport was handed, in order.
-private final class SentBodies: @unchecked Sendable {
-    var bodies: [Data] = []
 }
 
 /// `areEntitiesInLibrary` answers **positionally** — nothing in the response names the uri it is

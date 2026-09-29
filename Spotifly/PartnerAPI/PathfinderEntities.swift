@@ -251,9 +251,7 @@ extension PathfinderPlaylistUnion.Content {
     /// naming the occurrence.
     ///
     /// Rows whose track cannot be read are dropped rather than failing the page, which is the
-    /// same tolerance every other list here has. Measured against all 609 tracks of a real
-    /// library on 2026-09-29, the entities this builds match the ones `fetchLibraryTracks` made
-    /// before it field for field, down to the id.
+    /// same tolerance every other list here has.
     var tracks: [Track] {
         (items ?? []).compactMap { $0.track.flatMap(Track.init(pathfinderPlaylistTrack:)) }
     }

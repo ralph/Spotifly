@@ -85,14 +85,10 @@ nonisolated struct PathfinderTimestamp: Decodable, Sendable {
 /// still in the bundle and still answers, but the web client no longer calls it.
 ///
 /// **The list and the playback context have to be the same thing**, because the favorites view
-/// starts playback by index. Measured on 2026-09-29 against 609 saved tracks: this playlist,
-/// `fetchLibraryTracks` and the context resolver all return the same tracks under the same ids,
-/// newest first, but they break ties differently, and eight batches of up to 114 songs share an
-/// `addedAt` to the second. Resolving `spotify:collection:tracks` differed from
-/// `fetchLibraryTracks` in 121 positions, so a double-click there could start a different song
-/// than the row clicked. This
-/// playlist resolves as a context in exactly the order `fetchPlaylistContents` pages it, so the
-/// list and the player agree at every index.
+/// starts playback by index. `spotify:collection:tracks` resolves to the same songs in a
+/// different order wherever several share an `addedAt` to the second: measured on 2026-09-29,
+/// 121 of 609 rows sat at an index where it held another song. This playlist resolves in exactly
+/// the order `fetchPlaylistContents` pages it.
 ///
 /// Writes stay on `addToLibrary`/`removeFromLibrary`: the playlist is a view of the collection,
 /// not a playlist anyone edits.

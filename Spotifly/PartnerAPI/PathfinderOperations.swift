@@ -25,8 +25,7 @@ import Foundation
 /// exception is `queryArtistDiscographyAll`, which no loaded script names in that shape; its
 /// hash was read off the request the web player sends when an artist's discography opens. The
 /// first values came from libspot (`pathfinder/pfrequest/operations.go`) and
-/// `libspot-probe/harvest-hashes.sh`; libspot never had `getAlbum`, `home` or the artist
-/// operations at all.
+/// `libspot-probe/harvest-hashes.sh`.
 ///
 /// A harvested hash is a *candidate* until the service answers it, and a retired one is not
 /// necessarily dead. On 2026-09-29 every hash this replaced was still accepted, so the refresh
@@ -101,10 +100,7 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
         sha256Hash: playlistQueryHash,
     )
 
-    /// A playlist's contents *without* its details: `playlistV2` carries `content` and nothing
-    /// else. The items are the ones `fetchPlaylist` returns for the same page, in the same order,
-    /// down to every field the decoders read. This is what the web player pages Liked Songs
-    /// with, and so does this app.
+    /// A playlist's contents without its details; see `PathfinderPlaylistUnion`.
     static let fetchPlaylistContents = PathfinderOperation(
         name: "fetchPlaylistContents",
         sha256Hash: playlistQueryHash,
