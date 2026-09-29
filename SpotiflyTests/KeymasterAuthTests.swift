@@ -138,6 +138,25 @@ struct KeymasterCallbackTests {
         }
     }
 
+    @Test func `a favicon request gets a bare 404, and the redirect after it still lands`() async throws {
+        let server = LoopbackCallbackServer()
+        let port = try await server.start()
+        func get(_ path: String) async throws -> (Data, Int?) {
+            let (data, response) = try await URLSession.shared.data(from: #require(URL(string: "http://127.0.0.1:\(port)\(path)")))
+            return (data, (response as? HTTPURLResponse)?.statusCode)
+        }
+
+        let (favicon, faviconStatus) = try await get("/favicon.ico")
+        #expect(faviconStatus == 404)
+        #expect(favicon.isEmpty)
+
+        let (_, loginStatus) = try await get("/login?code=abc&state=s")
+        #expect(loginStatus == 200)
+
+        let callback = try await server.waitForCallback(timeout: .seconds(5))
+        #expect(callback.queryItems?.first { $0.name == "code" }?.value == "abc")
+    }
+
     @Test func `only a redirect with a code gets the success page`() throws {
         let success = LoopbackCallbackServer.successPage
         let failure = LoopbackCallbackServer.failurePage

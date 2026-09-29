@@ -200,8 +200,9 @@ actor LoopbackCallbackServer {
     /// so parsing the first chunk would reject a perfectly good redirect that happened to be
     /// split.
     ///
-    /// Every path here reports once and stops reading; `deliver` is the one-shot guard for
-    /// anything that slips through, so this needs no second one of its own.
+    /// Every path here reports once and stops reading, except a favicon request, which
+    /// reports nothing; `deliver` is the one-shot guard for anything that slips through, so
+    /// this needs no second one of its own.
     private nonisolated static func receiveRequest(
         on connection: NWConnection,
         completion: @escaping @Sendable (Result<URLComponents, Error>) -> Void,
@@ -236,19 +237,28 @@ actor LoopbackCallbackServer {
                     return
                 }
 
+                func respond(_ response: String) {
+                    connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
+                        connection.cancel()
+                    })
+                }
+
+                // Browsers ask for the tab's icon on their own, and that request is not the
+                // redirect: it gets a bare 404, and the listener goes on waiting.
+                guard components.path != "/favicon.ico" else {
+                    respond("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    return
+                }
+
                 let body = page(for: components)
-                let response = """
+                respond("""
                 HTTP/1.1 200 OK\r
                 Content-Type: text/html; charset=utf-8\r
                 Content-Length: \(body.utf8.count)\r
                 Connection: close\r
                 \r
                 \(body)
-                """
-
-                connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
-                    connection.cancel()
-                })
+                """)
                 completion(.success(components))
             }
         }
