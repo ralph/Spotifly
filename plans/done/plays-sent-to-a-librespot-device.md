@@ -60,10 +60,17 @@ the web player's say, and what Spotify's backend accepts.
   says it receives both, so the backend adds `position` on the way. That the backend fills in
   `play_origin` and `options` the same way is not known, so they are sent.
 
+- **Every other command parses there as it is**, checked by the review against `request.rs`:
+  pause, resume and `skip_prev` need only `logging_params`, all of whose fields are optional;
+  `skip_next`'s `track` is optional; `set_shuffling_context` wants the JSON bool this app sends;
+  `add_to_queue`'s track is a `ProvidedTrack` whose fields this app's match. Transfer and volume
+  go to their own endpoints and never reach a device as a `Request`.
+
 ### What changed
 
 - `ConnectCommand` puts `play_origin` on every `play`: `feature_identifier` `spotifly` and the
-  app's version, as go-librespot names itself.
+  app's version (`DeviceInfo.appVersion`, which the device reports too), as go-librespot names
+  itself.
 - `options` goes with every `play`, empty where there is no `skip_to`.
 - An inline list's context (`Context(trackUris:)`) leaves `uri` and `url` out instead of sending
   them empty, so librespot takes its `PlayContext::Tracks` branch.
