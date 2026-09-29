@@ -424,34 +424,27 @@ public actor LibrespotClient {
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
-    /// Plays a list of tracks that no album or playlist names.
-    /// - Parameters:
-    ///   - index, startingAtUri: where in the list to start, by the rule
-    ///     `play(uriOrUrl:)` follows: the track decides, and one the list
-    ///     lacks goes in at the index.
-    ///   - paused: load it without starting playout, as a paused handover does.
+    /// Plays a list of tracks that no album or playlist names, starting where
+    /// `trackIndex` and `startingAtUri` say; see `PlaybackQueue.start(in:index:uri:)`.
+    /// A single track is its own context, as `play(uriOrUrl:)` makes it.
     public func playTracks(
         _ uris: [String],
-        index: Int? = nil,
+        trackIndex: Int? = nil,
         startingAtUri: String? = nil,
         positionMs: UInt64 = 0,
         paused: Bool = false,
     ) async throws {
         let start = PlaybackQueue.start(
             in: uris.map(Self.normalizedUri),
-            index: index,
+            index: trackIndex,
             uri: startingAtUri.map(Self.normalizedUri),
         )
         guard let first = start.tracks.first else {
             throw LibrespotError.invalidState("No tracks to play")
         }
 
-        if start.tracks.count == 1, first.contains("spotify:track:") {
-            try await play(uriOrUrl: first, positionMs: positionMs, paused: paused)
-            return
-        }
-
-        setQueue(contextUri: "", tracks: start.tracks, startIndex: start.index)
+        let contextUri = start.tracks.count == 1 && first.contains("spotify:track:") ? first : ""
+        setQueue(contextUri: contextUri, tracks: start.tracks, startIndex: start.index)
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
@@ -1133,22 +1126,21 @@ public actor LibrespotClient {
             // from track 4" stopped after track 4. Named with an index, the
             // track decides where, as librespot's `PlayingTrack` does.
             let positionMs = playCommand.positionMs ?? 0
-            if let contextUri = playCommand.contextUri, !contextUri.isEmpty {
+            switch playCommand.context {
+            case let .uri(uri):
                 try? await play(
-                    uriOrUrl: contextUri,
+                    uriOrUrl: uri,
                     trackIndex: playCommand.index,
                     startingAtUri: playCommand.trackUri,
                     positionMs: positionMs,
                 )
-            } else if let uris = playCommand.trackUris, !uris.isEmpty {
+            case let .tracks(uris):
                 try? await playTracks(
                     uris,
-                    index: playCommand.index,
+                    trackIndex: playCommand.index,
                     startingAtUri: playCommand.trackUri,
                     positionMs: positionMs,
                 )
-            } else if let single = playCommand.trackUri {
-                try? await play(uriOrUrl: single, positionMs: positionMs)
             }
 
         case .pause:

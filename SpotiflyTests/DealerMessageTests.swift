@@ -138,6 +138,12 @@ struct VolumeCommandTests {
     }
 }
 
+/// A command object as the dealer delivers it, read by the endpoint it names.
+private func parsedCommand(_ json: String) throws -> SpircCommand {
+    let object = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+    return DealerConnection.parseCommand(endpoint: object["endpoint"] as? String ?? "", json: object)
+}
+
 /// Shuffle and repeat as Spotify's web player sends them: one `set_options` endpoint.
 struct SetOptionsCommandTests {
     /// The `command` objects of the web player's own requests, captured from its page on
@@ -149,13 +155,8 @@ struct SetOptionsCommandTests {
     {"repeating_context":true,"repeating_track":false,"endpoint":"set_options","logging_params":{"command_id":"421374f94414a93c3f883980d02b44e3"}}
     """#
 
-    private static func parse(_ json: String) throws -> SpircCommand {
-        let object = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        return DealerConnection.parseCommand(endpoint: object["endpoint"] as? String ?? "", json: object)
-    }
-
     @Test func `the shuffle button sets only shuffle`() throws {
-        guard case let .setOptions(shuffle, repeatContext, repeatTrack) = try Self.parse(Self.capturedShuffle) else {
+        guard case let .setOptions(shuffle, repeatContext, repeatTrack) = try parsedCommand(Self.capturedShuffle) else {
             Issue.record("not read as set_options")
             return
         }
@@ -165,7 +166,7 @@ struct SetOptionsCommandTests {
     }
 
     @Test func `the repeat button sets only repeat`() throws {
-        guard case let .setOptions(shuffle, repeatContext, repeatTrack) = try Self.parse(Self.capturedRepeat) else {
+        guard case let .setOptions(shuffle, repeatContext, repeatTrack) = try parsedCommand(Self.capturedRepeat) else {
             Issue.record("not read as set_options")
             return
         }
@@ -231,14 +232,10 @@ struct SetQueueCommandTests {
 
 /// Remote `play` commands, in the shapes Spotify's clients send them.
 struct PlayCommandTests {
-    private static func play(_ json: String) throws -> SpircCommand.PlayCommand {
-        let object = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        return try play(object)
-    }
-
-    private static func play(_ object: [String: Any]) throws -> SpircCommand.PlayCommand {
-        guard case let .play(command) = DealerConnection.parseCommand(endpoint: "play", json: object) else {
-            throw CocoaError(.coderInvalidValue)
+    private static func play(_ json: String) throws -> SpircCommand.PlayCommand? {
+        guard case let .play(command) = try parsedCommand(json) else {
+            Issue.record("not read as play")
+            return nil
         }
         return command
     }
@@ -246,22 +243,21 @@ struct PlayCommandTests {
     /// The iPhone app starting a playlist, from a librespot log of 2026-01-16: the uri, and the
     /// first page of tracks beside it. The page is only a window, so the uri is resolved.
     @Test func `a playlist from the iPhone is resolved by its uri, not read from its page`() throws {
-        let command = try Self.play(#"""
+        let command = try #require(try Self.play(#"""
         {"endpoint":"play","context":{"uri":"spotify:playlist:4fRJrzSdP27aXlZ1mmew7a","url":"context://spotify:playlist:4fRJrzSdP27aXlZ1mmew7a","pages":[{"tracks":[{"uid":"b91b61a0642fc20b","uri":"spotify:track:7FwBtcecmlpc1sLySPXeGE"},{"uid":"af892e84ccd0ff86","uri":"spotify:track:6VojZJpMyuKClbwyilWlQj"}]}]},"options":{"skip_to":{}}}
-        """#)
+        """#))
 
-        #expect(command.contextUri == "spotify:playlist:4fRJrzSdP27aXlZ1mmew7a")
-        #expect(command.trackUris == nil)
+        #expect(command.context == .uri("spotify:playlist:4fRJrzSdP27aXlZ1mmew7a"))
         #expect(command.trackUri == nil)
         #expect(command.index == nil)
     }
 
     @Test func `a row clicked in an album names its track and its index`() throws {
-        let command = try Self.play(#"""
+        let command = try #require(try Self.play(#"""
         {"endpoint":"play","context":{"uri":"spotify:album:a1","url":"context://spotify:album:a1"},"options":{"skip_to":{"track_uri":"spotify:track:t4","track_uid":"u4","track_index":3,"page_index":0},"seek_to":1500}}
-        """#)
+        """#))
 
-        #expect(command.contextUri == "spotify:album:a1")
+        #expect(command.context == .uri("spotify:album:a1"))
         #expect(command.trackUri == "spotify:track:t4")
         #expect(command.index == 3)
         #expect(command.positionMs == 1500)
@@ -270,42 +266,37 @@ struct PlayCommandTests {
     /// librespot's `PlayContext::Tracks`: a context with no uri carries its tracks inline, which
     /// is how a Web API `uris` play arrives. The command was read as having nothing to play.
     @Test func `a context with no uri plays the tracks it carries, from the one it names`() throws {
-        let command = try Self.play(#"""
+        let command = try #require(try Self.play(#"""
         {"endpoint":"play","context":{"pages":[{"tracks":[{"uri":"spotify:track:t1"},{"uri":"spotify:track:t2"}]},{"tracks":[{"uri":"spotify:track:t3"}]}]},"options":{"skip_to":{"track_index":2}}}
-        """#)
+        """#))
 
-        #expect(command.contextUri == nil)
-        #expect(command.trackUris == ["spotify:track:t1", "spotify:track:t2", "spotify:track:t3"])
+        #expect(command.context == .tracks(["spotify:track:t1", "spotify:track:t2", "spotify:track:t3"]))
         #expect(command.index == 2)
     }
 
     /// The web player's own empty context is `uri: ""`, `url: ""`.
     @Test func `an empty context uri is no uri`() throws {
-        let command = try Self.play(#"""
+        let command = try #require(try Self.play(#"""
         {"endpoint":"play","context":{"uri":"","url":"","pages":[{"tracks":[{"uri":"spotify:track:t1"},{"uri":"spotify:track:t2"}]}]}}
-        """#)
+        """#))
 
-        #expect(command.contextUri == nil)
-        #expect(command.trackUris == ["spotify:track:t1", "spotify:track:t2"])
+        #expect(command.context == .tracks(["spotify:track:t1", "spotify:track:t2"]))
     }
 
     /// Search's Play All on another device is this command, so one Spotifly can play a list on
     /// another.
     @Test func `the bare list this app sends is read back as that list`() throws {
-        let data = try JSONEncoder().encode(ConnectCommandEnvelope(.play(trackUris: ["spotify:track:t1", "spotify:track:t2"])))
-        let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let command = try Self.play(#require(body["command"] as? [String: Any]))
+        let sent = try JSONEncoder().encode(ConnectCommand.play(trackUris: ["spotify:track:t1", "spotify:track:t2"]))
+        let command = try #require(try Self.play(String(decoding: sent, as: UTF8.self)))
 
-        #expect(command.contextUri == nil)
-        #expect(command.trackUris == ["spotify:track:t1", "spotify:track:t2"])
+        #expect(command.context == .tracks(["spotify:track:t1", "spotify:track:t2"]))
     }
 
     @Test func `a single track is a context of its own`() throws {
-        let command = try Self.play(#"""
+        let command = try #require(try Self.play(#"""
         {"endpoint":"play","context":{"uri":"spotify:track:t1","url":"context://spotify:track:t1"},"options":{"skip_to":{"track_uri":"spotify:track:t1"}}}
-        """#)
+        """#))
 
-        #expect(command.contextUri == "spotify:track:t1")
-        #expect(command.trackUris == nil)
+        #expect(command.context == .uri("spotify:track:t1"))
     }
 }

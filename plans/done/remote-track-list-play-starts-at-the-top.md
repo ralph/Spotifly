@@ -58,19 +58,26 @@ go-librespot's reads such a field.
 
 1. **Read the list.** Without a uri, or with an empty one, `parseCommand` reads
    `context.pages[].tracks[].uri`, every page in order, as the list. With a uri, the pages are
-   only a window of the context, and are ignored as before: the context is resolved. The
-   top-level `uris` is gone, and with it `trackUriIfTrack`: a track sent as the context is
+   only a window of the context, and are ignored as before: the context is resolved.
+   `PlayCommand.context` says which, as librespot's `PlayContext` does: `.uri` or `.tracks`.
+   The top-level `uris` is gone, and with it `trackUriIfTrack`: a track sent as the context is
    played as its own context, as before.
-2. **`playTracks(_:index:startingAtUri:positionMs:paused:)`** starts through
+2. **`playTracks(_:trackIndex:startingAtUri:positionMs:paused:)`** starts through
    `PlaybackQueue.start(in:index:uri:)`. The track decides, and one the list lacks goes in at
    the index.
-3. **Both callers use it.** The remote `play` passes `skip_to`'s index and track. `takeOver`
-   passes the handed-over track, so one missing from the list plays first and the list follows,
-   rather than playing alone.
+3. **Both callers use it.** The remote `play` is now a switch on the context, `play` or
+   `playTracks`, each with `skip_to`'s index and track. `takeOver` passes the handed-over
+   track, so one missing from the list plays first and the list follows, rather than playing
+   alone.
 4. `PlayCommand` is `nonisolated`, like `TransferState`, so the tests can read it.
 
-Not changed: `resume()` of a mirrored bare list still rebuilds it as the current track and the
-next tracks, without the history.
+Not changed:
+
+- `resume()` of a mirrored bare list still rebuilds it as the current track and the next
+  tracks, without the history.
+- `takeOver` and `resume()` still decide "an empty context uri is a bare list" themselves, from
+  `TransferState.contextUri` and the mirrored queue. `TransferState` could expose the same
+  `Context` enum; that is transfer parsing, outside this plan.
 
 ## Verification
 

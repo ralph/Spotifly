@@ -529,22 +529,16 @@ public actor DealerConnection {
         case "play":
             let context = json["context"] as? [String: Any]
             let skipTo = options?["skip_to"] as? [String: Any]
-            // Empty is how Spotify's clients spell "no uri": the web player's
-            // own empty context is `uri: ""`, and so is this app's bare list.
-            let contextUri = (context?["uri"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            // Without a uri, the tracks come inline, and they are the context:
-            // librespot's `PlayContext::Tracks`, which is how a Web API `uris`
-            // play arrives. With one, pages are only a window of the context,
-            // which is resolved instead.
-            let pages = contextUri == nil ? context?["pages"] as? [[String: Any]] : nil
-            let trackUris = pages?
-                .flatMap { $0["tracks"] as? [[String: Any]] ?? [] }
-                .compactMap { $0["uri"] as? String }
+            // An empty uri is no uri. Without one the pages are the list to
+            // play; with one they are only a window, and the uri is resolved.
+            let uri = context?["uri"] as? String ?? ""
+            let pages = context?["pages"] as? [[String: Any]] ?? []
 
             return .play(SpircCommand.PlayCommand(
-                contextUri: contextUri,
+                context: uri.isEmpty
+                    ? .tracks(pages.flatMap { ($0["tracks"] as? [[String: Any]] ?? []).compactMap { $0["uri"] as? String } })
+                    : .uri(uri),
                 trackUri: skipTo?["track_uri"] as? String,
-                trackUris: trackUris,
                 index: (skipTo?["track_index"] as? NSNumber)?.intValue,
                 positionMs: (options?["seek_to"] as? NSNumber)?.uint64Value,
             ))
@@ -611,7 +605,6 @@ public actor DealerConnection {
         }
     }
 
-    /// A context uri that is actually a single-track context, or nil.
     // MARK: - Ping Loop
 
     /// Keeps the socket alive and notices a peer that has stopped answering.
