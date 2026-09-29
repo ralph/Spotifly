@@ -172,7 +172,7 @@ public actor LibrespotSession {
     /// time — used around system sleep.
     ///
     /// - Parameter stopped: what played here, for Spirc to report paused
-    ///   before its goodbye; see `SpircController.shutdown(stopped:)`.
+    ///   before the disconnect; see `SpircController.shutdown(stopped:)`.
     public func disconnect(stopped: SpircController.SpircPlayerState? = nil) async {
         await spircController?.shutdown(stopped: stopped)
         await dealerConnection?.disconnect()

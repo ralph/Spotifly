@@ -36,9 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var allowedTermination = false
 
     /// Holds the quit until the player has shut down: it tells Spotify where playback
-    /// stopped and says goodbye to the other Connect devices. Sent from
-    /// `applicationWillTerminate`, neither got out before the process ended, so the next
-    /// launch mirrored the track from wherever Spotify last heard of it, often its start.
+    /// stopped, and its disconnect takes this Mac off the other Connect devices. Sent
+    /// from `applicationWillTerminate`, the report never got out before the process
+    /// ended, so the next launch mirrored the track from wherever Spotify last heard of
+    /// it, often its start.
     /// Two seconds at most, since a PutState on a dead network waits fifteen.
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
         Task {

@@ -223,7 +223,7 @@ final class AuthViewModel {
     /// registered on Spotify Connect for the account that just logged out — and because
     /// nothing set the shutdown flag, the recovery loop treated the next network hiccup as an
     /// outage worth fixing and re-announced the device. The flag is raised before Spirc is
-    /// touched, so recovery stops even when the goodbye itself cannot go out — logging out
+    /// touched, so recovery stops even when Spotify cannot be reached — logging out
     /// mid-outage is exactly when that matters — and is cleared again by
     /// `LibrespotClient.initialize`. It goes through the playback lifecycle rather than
     /// straight to the client: tearing the session down behind `PlaybackViewModel` leaves

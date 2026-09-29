@@ -137,7 +137,7 @@ enum SpotifyPlayer {
         )
     }
 
-    /// Shuts down and sends goodbye to other devices.
+    /// Shuts down, which takes this device off Spotify Connect.
     /// Call this when the app is quitting to properly disconnect from Spotify Connect.
     ///
     /// Awaitable so callers can order it against a rebuild of the same global player, and
@@ -146,8 +146,8 @@ enum SpotifyPlayer {
         await LibrespotClient.shared.shutdown()
     }
 
-    /// Says goodbye to other Connect devices, then releases everything and
-    /// clears every replaying publisher.
+    /// Leaves Spotify Connect, then releases everything and clears every
+    /// replaying publisher.
     ///
     /// The replay subjects are right within a session and wrong across a
     /// logout: the next account's services must not be handed the previous

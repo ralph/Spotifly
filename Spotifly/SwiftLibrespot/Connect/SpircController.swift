@@ -151,10 +151,10 @@ public actor SpircController {
         debugLog("SpircController", "SPIRC ready")
     }
 
-    /// Shutdown and unregister from Spotify Connect.
+    /// Stops reporting to Spotify Connect, ahead of the disconnect.
     ///
     /// - Parameter stopped: what played here, which a deliberate disconnect
-    ///   reports paused where it had got to before the goodbye, as librespot's
+    ///   reports paused where it had got to, as librespot's
     ///   `handle_disconnect` does. Spotify hears the position only when the
     ///   state changes, so it would keep the last report, often the track's
     ///   start and still "playing", and whatever mirrors it next would show
@@ -182,14 +182,11 @@ public actor SpircController {
         dealerPushes?.cancel()
         dealerPushes = nil
 
-        // Tell the cluster this device is going away. Best effort: a dead
-        // socket must not block shutdown.
-        var goodbye = PutStateRequestProto()
-        goodbye.memberType = .connectState
-        goodbye.putStateReason = .becameInactive
-        goodbye.clientSideTimestamp = UInt64(Date().timeIntervalSince1970 * 1000)
-        goodbye.device = buildDevice(playerState: nil)
-        _ = try? await dealerConnection.putState(goodbye)
+        // No goodbye. A PutState with `becameInactive` was answered 422 every
+        // time, and the disconnect that follows takes this device off the
+        // other devices' lists anyway: a quarter of a second after it, the web
+        // player no longer showed it, nor that it had been playing here.
+        // librespot's `PUT …/inactive` is not needed for that either.
     }
 
     // MARK: - State Publishing

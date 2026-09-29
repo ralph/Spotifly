@@ -204,7 +204,7 @@ public actor LibrespotClient {
         return .accessToken(token, username: username)
     }
 
-    /// Says goodbye and tears everything down. Blocks auto-reconnect until
+    /// Leaves Spotify Connect and tears everything down. Blocks auto-reconnect until
     /// the next `initialize`.
     public func shutdown() async {
         debugLog("LibrespotClient", "Shutting down")
@@ -244,7 +244,7 @@ public actor LibrespotClient {
         audioPipeline = nil
         pipelineEvents?.cancel()
         pipelineEvents = nil
-        // The goodbye reports what played, as it stands now. A report still
+        // The last report says what played, as it stands now. A report still
         // due would go out after the clear and say nothing plays here.
         let stopped = localState
         reportDue = false
@@ -883,7 +883,7 @@ public actor LibrespotClient {
         await session.reportLocalPlayerState(spircState(of: current), active: current.isPlaying)
     }
 
-    /// What a deliberate disconnect hands the goodbye to report as stopped:
+    /// What a deliberate disconnect hands Spirc to report as stopped:
     /// `current`, unless the session is down, where a PutState could only
     /// wait out its timeout.
     private func stopReport(of current: PlaybackState?) async -> SpircController.SpircPlayerState? {
@@ -998,7 +998,7 @@ public actor LibrespotClient {
         } else if !nowActive, wasActive {
             debugLog("LibrespotClient", "No longer the active device (now: \(activeId.isEmpty ? "nobody" : activeId))")
             // Only a device that *took* playback is a reason to stop. An empty
-            // id is nobody: our own goodbye leaves one when the session drops,
+            // id is nobody: our own disconnect leaves one when the session drops,
             // and the rebuilt session's registration is answered with it —
             // stopping then turned a network blip into silence. Spirc keeps
             // claiming the role, and the next report takes it back.
