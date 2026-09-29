@@ -223,6 +223,52 @@ struct PathfinderResponseTests {
         }
     }
 
+    /// Discovery's US id, asked for from a DE account on 2026-09-29: HTTP 200, and a union that
+    /// says it is `NotFound`. It read as "Spotify returned no data", with a Try again button
+    /// that could never succeed.
+    @Test func `an album Spotify has none of is not found, not empty`() async throws {
+        let api = partnerAPI { _ in
+            (
+                Data(#"{"data":{"albumUnion":{"__typename":"NotFound"},"meV2":{"ianaTimezoneId":"Europe/Berlin"}}}"#.utf8),
+                httpResponse(200),
+            )
+        }
+
+        await #expect(throws: PartnerAPIError.notFound(.album)) {
+            _ = try await api.album(id: "2ZWlPOoWh0626oTaHrnl2a")
+        }
+    }
+
+    /// Both artist operations answer an id that does not exist the same way, measured the same
+    /// day with `spotify:artist:0000000000000000000000`.
+    @Test func `an artist Spotify has none of is not found, from either operation`() async throws {
+        let api = partnerAPI { _ in
+            (Data(#"{"data":{"artistUnion":{"__typename":"NotFound"}}}"#.utf8), httpResponse(200))
+        }
+
+        await #expect(throws: PartnerAPIError.notFound(.artist)) {
+            _ = try await api.artist(id: "0000000000000000000000")
+        }
+        await #expect(throws: PartnerAPIError.notFound(.artist)) {
+            _ = try await api.artistDiscography(id: "0000000000000000000000")
+        }
+    }
+
+    /// Measured from the web player on 2026-09-29, under the app's variables and its own. With
+    /// no uri to build a playlist from, it read as "Spotify returned no data", with a Try again.
+    @Test func `a playlist Spotify has none of is not found, not empty`() async throws {
+        let api = partnerAPI { _ in
+            (
+                Data(#"{"data":{"playlistV2":{"__typename":"NotFound","message":"Object with uri 'spotify:playlist:0000000000000000000000' not found"}}}"#.utf8),
+                httpResponse(200),
+            )
+        }
+
+        await #expect(throws: PartnerAPIError.notFound(.playlist)) {
+            _ = try await api.playlist(id: "0000000000000000000000")
+        }
+    }
+
     @Test func `a non-200 is an error before the body is trusted`() async throws {
         let api = partnerAPI { _ in (Data(), httpResponse(403)) }
 

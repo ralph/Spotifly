@@ -43,12 +43,19 @@ nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable {
         let totalCount: Int?
     }
 
+    /// `Playlist`, or `NotFound` for a playlist Spotify has none of.
+    let typename: String?
     let uri: String?
     let name: String?
     let description: String?
     let ownerV2: Owner?
     let images: Images?
     let content: Content?
+
+    private enum CodingKeys: String, CodingKey {
+        case typename = "__typename"
+        case uri, name, description, ownerV2, images, content
+    }
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))
@@ -60,6 +67,7 @@ nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable {
     /// read on, and it is what tells the caller whether there is more to fetch.
     func withItems(_ items: [PathfinderPlaylistItem]) -> PathfinderPlaylistUnion {
         PathfinderPlaylistUnion(
+            typename: typename,
             uri: uri,
             name: name,
             description: description,
@@ -109,6 +117,7 @@ nonisolated struct PathfinderPlaylistTrack: Decodable, Sendable {
     let trackDuration: PathfinderDuration?
     let albumOfTrack: AlbumOfTrack?
     let artists: PathfinderArtistList?
+    let playability: PathfinderPlayability?
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))

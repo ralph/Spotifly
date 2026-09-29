@@ -36,6 +36,9 @@ struct TrackCard: View {
             }
         }
         .buttonStyle(.plain)
+        // Greyed as its row is; a click says why rather than starting radio.
+        .opacity(track.isPlayable ? 1 : 0.5)
+        .help(track.unplayableMessage ?? "")
         .contextMenu {
             TrackContextMenu(
                 track: track,

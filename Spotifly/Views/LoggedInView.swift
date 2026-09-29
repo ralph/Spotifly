@@ -125,6 +125,7 @@ struct LoggedInView: View {
                 queueService: queueService,
                 deviceService: deviceService,
                 homeService: homeService,
+                navigationCoordinator: navigationCoordinator,
             ),
         )
         .onChange(of: store.searchCacheEvictionRevision) {

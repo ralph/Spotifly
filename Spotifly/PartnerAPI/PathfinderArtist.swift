@@ -48,11 +48,19 @@ nonisolated struct PathfinderArtistUnion: Decodable, Sendable {
         let compilations: PathfinderReleaseGroup?
     }
 
+    /// `Artist`, or `NotFound` for an artist this account cannot see; see
+    /// `PartnerAPIError.notFound`.
+    let typename: String?
     let uri: String?
     let id: String?
     let profile: Profile?
     let visuals: Visuals?
     let discography: Discography?
+
+    private enum CodingKeys: String, CodingKey {
+        case typename = "__typename"
+        case uri, id, profile, visuals, discography
+    }
 
     var artistId: String? {
         id ?? uri.flatMap(SpotifyURI.id(from:))

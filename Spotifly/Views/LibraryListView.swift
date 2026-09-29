@@ -60,7 +60,9 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     }
 
     var body: some View {
-        Group {
+        // A ZStack, not a Group: a Group hands its `.task` to each branch, so switching
+        // between loading and the error started the load again, forever.
+        ZStack {
             if pagination.isLoading, !hasContent {
                 VStack(spacing: 16) {
                     ProgressView()
@@ -141,12 +143,12 @@ struct LibraryListView<Entity: LibraryEntity>: View {
 
                         ForEach(items.enumerated(), id: \.element.id) { index, item in
                             VStack(spacing: 0) {
-                                row(for: item)
-
-                                if index < items.count - 1 {
+                                if index > 0 {
                                     Divider()
                                         .padding(.leading, 56)
                                 }
+
+                                row(for: item)
                             }
                         }
 

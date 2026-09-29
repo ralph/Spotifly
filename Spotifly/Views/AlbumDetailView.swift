@@ -20,6 +20,8 @@ struct AlbumDetailView: View {
 
     @State private var isLoading = false
     @State private var errorMessage: String?
+    /// False when Spotify has no such album, where trying again would only fail again.
+    @State private var canRetry = true
     @State private var showRemoveConfirmation = false
 
     /// The album from the store — the only copy. Whatever a load puts there shows
@@ -34,13 +36,13 @@ struct AlbumDetailView: View {
     }
 
     var body: some View {
-        Group {
+        // A ZStack, not a Group: a Group hands its `.task` to each branch, so switching
+        // between loading and the error started the load again, forever.
+        ZStack {
             if let album {
                 albumContent(album)
             } else if let errorMessage {
-                InlineLoadError(message: errorMessage) {
-                    await loadAlbum()
-                }
+                InlineLoadError(message: errorMessage, retry: canRetry ? { await loadAlbum() } : nil)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -158,12 +160,15 @@ struct AlbumDetailView: View {
                     ProgressView("loading.tracks")
                         .padding()
                 } else if let errorMessage {
-                    InlineLoadError(message: errorMessage) {
-                        await loadAlbum()
-                    }
+                    InlineLoadError(message: errorMessage, retry: canRetry ? { await loadAlbum() } : nil)
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(tracks.enumerated(), id: \.offset) { index, track in
+                            if index > 0 {
+                                Divider()
+                                    .padding(.leading, 54)
+                            }
+
                             TrackRow(
                                 track: track,
                                 showTrackNumber: true,
@@ -175,14 +180,10 @@ struct AlbumDetailView: View {
                                     await playbackViewModel.play(
                                         uriOrUrl: album.uri,
                                         trackIndex: index,
+                                        startingAtUri: track.uri,
                                     )
                                 },
                             )
-
-                            if index < tracks.count - 1 {
-                                Divider()
-                                    .padding(.leading, 54)
-                            }
                         }
                     }
                     .background(Color(NSColor.controlBackgroundColor))
@@ -207,6 +208,7 @@ struct AlbumDetailView: View {
         // a cached album must not flash a spinner over its tracks.
         isLoading = album?.tracksLoaded != true
         errorMessage = nil
+        canRetry = true
 
         do {
             try await albumService.ensureAlbumLoaded(albumId: albumId)
@@ -215,6 +217,7 @@ struct AlbumDetailView: View {
             // running and its result is in the store for whatever replaces us.
             if !isCancellation(error) {
                 errorMessage = error.localizedDescription
+                canRetry = isRetryable(error)
             }
         }
 

@@ -81,3 +81,15 @@ final class InFlightRequests<Value: Sendable> {
 func isCancellation(_ error: Error) -> Bool {
     error is CancellationError || (error as? URLError)?.code == .cancelled
 }
+
+/// Whether asking again could end differently, so a view's error offers Try again.
+///
+/// Not for something Spotify has none of: it answers the same every time
+/// (`PartnerAPIError.notFound`).
+func isRetryable(_ error: Error) -> Bool {
+    if case PartnerAPIError.notFound = error {
+        false
+    } else {
+        true
+    }
+}

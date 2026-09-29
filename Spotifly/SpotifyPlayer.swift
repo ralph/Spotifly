@@ -24,6 +24,9 @@ nonisolated struct QueueItem: Identifiable, Equatable, Encodable {
     let externalUrl: String?
     /// Track provider: "context", "queue", "autoplay", or "unavailable"
     let provider: String
+    /// The cluster's name for this row, which a `skip_next` can jump to. Only
+    /// another device's queue has them; this client's own rows go by position.
+    var uid: String?
 
     var durationFormatted: String {
         formatTrackTime(milliseconds: Int(durationMs))
@@ -52,6 +55,7 @@ nonisolated struct QueueState: Equatable {
     let contextUri: String
     let currentTrack: QueueItem?
     let nextTracks: [QueueItem]
+    /// What played before the current track, in play order: the most recent last.
     let previousTracks: [QueueItem]
 }
 
@@ -67,6 +71,22 @@ nonisolated struct PlaybackState: Equatable {
     let repeatContext: Bool
     /// Timestamp (ms since epoch) when positionMs was recorded - for computing current position
     let timestampMs: Int64
+}
+
+/// Playback that went past a track, or stopped, over an error.
+///
+/// Auto-advance, a remote command and a pipeline error are started by the client, not by a
+/// call from the app, so their errors have no caller to be thrown to. They reach the
+/// now-playing bar this way. A play the app started comes this way too, and throws the same
+/// text, which `PlaybackViewModel.errorMessage` takes once.
+nonisolated struct PlaybackInterruption: Equatable {
+    /// What the now-playing bar says. A message about a track puts the reason before the
+    /// track's name, because the bar cuts off what does not fit, and the name can go.
+    let message: String
+    /// Tells one interruption from the next, counted on the snapshot as `clusterRevision` is.
+    /// The model passes on changes only, so without it the same track skipped twice in a row
+    /// would be told once.
+    let sequence: Int
 }
 
 /// Connection state of the streaming session.
@@ -100,6 +120,9 @@ nonisolated struct PlayerSnapshot: Equatable {
     var queue: QueueState?
     /// The logical Connect volume, 0–1; nil until one has been set.
     var volume: Double?
+    /// The latest interruption. It stays until the next one, so a consumer that falls behind
+    /// and gets a later snapshot still sees it.
+    var interruption: PlaybackInterruption?
 }
 
 /// The one audio output. Fed by the decode loop inside the pipeline; volume,
@@ -177,6 +200,12 @@ enum SpotifyPlayer {
         LibrespotClient.shared.forceReconnectSync()
     }
 
+    /// Tells playback which tracks Spotify will not play, from what the app's lists said, so
+    /// that it steps over them instead of loading each to find out.
+    static func setUnplayable(_ uris: Set<String>) {
+        Task { await LibrespotClient.shared.setUnplayable(uris) }
+    }
+
     // MARK: - Synchronous State
 
     /// Whether the session is currently connected and ready for playback commands.
@@ -207,10 +236,11 @@ enum SpotifyPlayer {
     /// Supports tracks, albums, playlists, artists, and station contexts.
     /// - Parameters:
     ///   - uriOrUrl: Spotify URI or URL (e.g., "spotify:album:xxx")
-    ///   - trackIndex: Track index to start at (-1 = from beginning, 0+ = specific track)
+    ///   - trackIndex: Where in a context to start; nil for its start.
+    ///   - startingAtUri: The track to start on; with an index, it decides which track plays.
     @SpotifyPlayerActor
-    static func play(uriOrUrl: String, trackIndex: Int = -1) async throws {
-        try await LibrespotClient.shared.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex)
+    static func play(uriOrUrl: String, trackIndex: Int? = nil, startingAtUri: String? = nil) async throws {
+        try await LibrespotClient.shared.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex, startingAtUri: startingAtUri)
     }
 
     /// Plays a track by its Spotify track ID.
@@ -249,6 +279,16 @@ enum SpotifyPlayer {
     /// Skips to the previous track in the queue.
     static func previous() async throws {
         try await LibrespotClient.shared.previous()
+    }
+
+    /// Plays one of the queue's next tracks, keeping the queue.
+    static func skip(toNext position: Int?, uri: String) async throws {
+        try await LibrespotClient.shared.skip(toNext: position, uri: uri)
+    }
+
+    /// Plays one of the queue's previous tracks, keeping the queue.
+    static func skip(toPrevious index: Int, uri: String) async throws {
+        try await LibrespotClient.shared.skip(toPrevious: index, uri: uri)
     }
 
     /// Seeks to the given position in milliseconds.

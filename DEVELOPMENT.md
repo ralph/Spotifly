@@ -82,6 +82,7 @@ Debug builds also read a few environment variables that drive playback without t
 | `SPOTIFLY_DEBUG_PAUSE_AFTER=<s>` | With autoplay: pauses after that long, resumes 6 s later |
 | `SPOTIFLY_DEBUG_NEXT_AFTER=<s>` | With autoplay: skips twice, that far apart |
 | `SPOTIFLY_DEBUG_QUEUE_AFTER=<s>` | Queues a track, then an album |
+| `SPOTIFLY_DEBUG_OPEN=<uri>` | Opens a `spotify:album:`, `spotify:artist:` or `spotify:playlist:` page, for an id nothing in the app leads to |
 | `SPOTIFLY_DEBUG_DEVICE_ID=<id>` | Registers under another Connect device id, so a second instance is a second device |
 | `SPOTIFLY_DEBUG_ACCOUNT_TYPE=free` | Runs the account as that type, as if the accesspoint had named it: `free` hides this Mac from Connect and turns its playback off |
 | `SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER=<s>` | Pulls playback to this instance |

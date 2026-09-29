@@ -15,6 +15,9 @@ struct LoggedInLifecycleModifier: ViewModifier {
     let queueService: QueueService
     let deviceService: DeviceService
     let homeService: HomeService
+    /// Only the debug hooks use it. Passed in, because `LoggedInView` puts it into the
+    /// environment of the content this modifies, not of the modifier.
+    let navigationCoordinator: NavigationCoordinator
 
     @Environment(PlayerModel.self) private var player
 
@@ -156,6 +159,19 @@ struct LoggedInLifecycleModifier: ViewModifier {
                         }
                     }
 
+                    // SPOTIFLY_DEBUG_OPEN=<album, artist or playlist uri>: open that page, for
+                    // an id nothing in the app leads to, such as an album from another market.
+                    if let open = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_OPEN"] {
+                        debugLog("DebugAutoplay", "Opening \(open)")
+                        if let id = SpotifyURI.id(from: open, kind: "album") {
+                            navigationCoordinator.navigateToAlbumSection(albumId: id)
+                        } else if let id = SpotifyURI.id(from: open, kind: "artist") {
+                            navigationCoordinator.navigateToArtistSection(artistId: id)
+                        } else if let id = SpotifyURI.id(from: open, kind: "playlist") {
+                            navigationCoordinator.navigateToPlaylistSection(playlistId: id)
+                        }
+                    }
+
                     // SPOTIFLY_DEBUG_QUEUE_AFTER=<seconds>: queue a track, then an
                     // album, through the path the context menus use — locally when
                     // this device plays, as Connect commands when another one does.
@@ -172,6 +188,11 @@ struct LoggedInLifecycleModifier: ViewModifier {
                         }
                     }
                 #endif
+            }
+            // Playback steps over what the lists said will not play. Initially too, which
+            // sends an empty set at login, so nothing of the previous account's is left.
+            .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
+                SpotifyPlayer.setUnplayable(uris)
             }
             // Connection handling is driven by whether the session is connected, not by
             // which device is active. Activation and connection are different facts:

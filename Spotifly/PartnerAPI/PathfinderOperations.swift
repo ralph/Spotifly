@@ -65,7 +65,8 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     /// this has always come from the web client. The same stored document also defines
     /// `queryAlbumTracks`, which the artist page uses to preview a release. An album that is not
     /// available in the account's market answers `albumUnion: {"__typename": "NotFound"}` with
-    /// HTTP 200 rather than an error.
+    /// HTTP 200 rather than an error, which `PartnerAPI.album(id:)` turns into
+    /// `PartnerAPIError.notFound`.
     static let getAlbum = PathfinderOperation(
         name: "getAlbum",
         sha256Hash: "6a74b456cd1735c9193d9e8ec8cc5184cad7ce13572210315229db3975964361",

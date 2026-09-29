@@ -60,6 +60,9 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable {
         let totalCount: Int?
     }
 
+    /// `Album`, or `NotFound` for an album this account cannot see; see
+    /// `PartnerAPIError.notFound`.
+    let typename: String?
     let uri: String?
     let name: String?
     let type: String?
@@ -67,6 +70,11 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable {
     let coverArt: PathfinderImage?
     let artists: ArtistList?
     let tracksV2: TrackList?
+
+    private enum CodingKeys: String, CodingKey {
+        case typename = "__typename"
+        case uri, name, type, date, coverArt, artists, tracksV2
+    }
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))
@@ -94,6 +102,7 @@ nonisolated struct PathfinderAlbumTrack: Decodable, Sendable {
     let discNumber: Int?
     let duration: PathfinderDuration?
     let artists: PathfinderArtistList?
+    let playability: PathfinderPlayability?
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))

@@ -29,6 +29,13 @@ extension ImageSet {
     }
 }
 
+extension Playability {
+    /// Unplayable only where the answer says so; one that does not say plays.
+    init(pathfinder playability: PathfinderPlayability?) {
+        self = playability?.playable == false ? .unplayable(reason: playability?.reason) : .playable
+    }
+}
+
 extension Track {
     /// Nil when the result carries no id or uri — an entity `AppStore` could not key.
     init?(pathfinder track: PathfinderTrack) {
@@ -46,6 +53,7 @@ extension Track {
             artistName: track.artistNames.first ?? "Unknown",
             albumName: track.albumOfTrack?.name,
             images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
+            playability: Playability(pathfinder: track.playability),
         )
     }
 }
@@ -169,6 +177,7 @@ extension Track {
             artistName: track.artistNames.first ?? "Unknown",
             albumName: albumName,
             images: images,
+            playability: Playability(pathfinder: track.playability),
         )
     }
 }
@@ -241,6 +250,7 @@ extension Track {
             artistName: track.artistNames.first ?? "Unknown",
             albumName: track.albumOfTrack?.name,
             images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
+            playability: Playability(pathfinder: track.playability),
         )
     }
 }

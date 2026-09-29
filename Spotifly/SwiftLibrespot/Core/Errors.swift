@@ -8,7 +8,7 @@
 import Foundation
 
 /// Errors that can occur during Spotify connection and playback
-public enum LibrespotError: Error, LocalizedError, Sendable {
+public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
     // MARK: - Connection Errors
 
     case connectionFailed(String)
@@ -29,6 +29,11 @@ public enum LibrespotError: Error, LocalizedError, Sendable {
     // MARK: - Playback Errors
 
     case trackNotFound(String)
+    /// Spotify lists no file for this track, and none for a substitute: it withholds the track
+    /// from this account. Unlike `trackNotFound`, which any failed metadata request throws, this
+    /// is a fact about the track, so loading it again gets the same answer. Auto-advance skips
+    /// it; see `AutoAdvance`.
+    case trackUnavailable(name: String)
     case audioKeyFailed(String)
     case audioKeyError(Int)
     case decryptionFailed(String)
@@ -73,6 +78,8 @@ public enum LibrespotError: Error, LocalizedError, Sendable {
             "MAC verification failed"
         case let .trackNotFound(uri):
             "Track not found: \(uri)"
+        case let .trackUnavailable(name):
+            String(localized: "error.track_unavailable \(name)")
         case let .audioKeyFailed(message):
             "Failed to get audio key: \(message)"
         case let .audioKeyError(code):

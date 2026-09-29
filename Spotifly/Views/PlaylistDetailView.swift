@@ -20,6 +20,7 @@ struct PlaylistDetailView: View {
 
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var canRetry = true
     @State private var showEditDetailsDialog = false
     @State private var showDeleteConfirmation = false
     @State private var showUnfollowConfirmation = false
@@ -66,13 +67,13 @@ struct PlaylistDetailView: View {
     }
 
     var body: some View {
-        Group {
+        // A ZStack, not a Group: a Group hands its `.task` to each branch, so switching
+        // between loading and the error started the load again, forever.
+        ZStack {
             if let playlist {
                 playlistContent(playlist)
             } else if let errorMessage {
-                InlineLoadError(message: errorMessage) {
-                    await loadPlaylist()
-                }
+                InlineLoadError(message: errorMessage, retry: canRetry ? { await loadPlaylist() } : nil)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -231,23 +232,24 @@ struct PlaylistDetailView: View {
             ProgressView("loading.tracks")
                 .padding()
         } else if let errorMessage {
-            InlineLoadError(message: errorMessage) {
-                await reloadTracks()
-            }
+            InlineLoadError(message: errorMessage, retry: canRetry ? { await reloadTracks() } : nil)
         } else if !tracks.isEmpty {
-            normalTrackList
+            trackList
         }
     }
 
-    private var normalTrackList: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    /// Lazy, because a playlist can hold thousands of tracks. The divider goes above each row
+    /// but the first, so no row reads `rows`, which is built anew on every read. See
+    /// `plans/done/playlist-rows-built-once-per-row.md`.
+    private var trackList: some View {
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows.enumerated(), id: \.offset) { index, row in
-                trackRowView(item: row.item, track: row.track, index: index)
-
-                if index < rows.count - 1 {
+                if index > 0 {
                     Divider()
                         .padding(.leading, 94)
                 }
+
+                trackRowView(item: row.item, track: row.track, index: index)
             }
         }
         .background(Color(NSColor.controlBackgroundColor))
@@ -271,6 +273,7 @@ struct PlaylistDetailView: View {
                 await playbackViewModel.play(
                     uriOrUrl: uri,
                     trackIndex: index,
+                    startingAtUri: track.uri,
                 )
             },
         )
@@ -357,6 +360,7 @@ struct PlaylistDetailView: View {
         // a cached playlist must not flash a spinner over its tracks.
         isLoading = playlist?.tracksLoaded != true
         errorMessage = nil
+        canRetry = true
 
         do {
             try await playlistService.ensurePlaylistLoaded(playlistId: playlistId)
@@ -365,6 +369,7 @@ struct PlaylistDetailView: View {
             // running and its result is in the store for whatever replaces us.
             if !isCancellation(error) {
                 errorMessage = error.localizedDescription
+                canRetry = isRetryable(error)
             }
         }
 
@@ -384,6 +389,7 @@ struct PlaylistDetailView: View {
         } catch {
             if !isCancellation(error) {
                 errorMessage = error.localizedDescription
+                canRetry = isRetryable(error)
             }
         }
 

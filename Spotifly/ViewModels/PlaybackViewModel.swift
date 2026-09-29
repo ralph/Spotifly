@@ -55,16 +55,34 @@ final class PlaybackViewModel {
     var errorMessage: String? {
         didSet {
             guard let errorMessage, errorMessage != oldValue else { return }
+            errorMessageExpired = false
             // A caption changing in place is not announced by itself.
             AccessibilityNotification.Announcement(errorMessage).post()
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(5))
-                if self?.errorMessage == errorMessage {
-                    self?.errorMessage = nil
+                guard let self, self.errorMessage == errorMessage else { return }
+                if isErrorMessageHeld {
+                    errorMessageExpired = true
+                } else {
+                    self.errorMessage = nil
                 }
             }
         }
     }
+
+    /// Set by the bar while the pointer is on the error. The bar cuts off what does not fit,
+    /// and the error is read in full by pointing at it, so it stays past its five seconds
+    /// until the pointer leaves.
+    var isErrorMessageHeld = false {
+        didSet {
+            if !isErrorMessageHeld, errorMessageExpired {
+                errorMessage = nil
+            }
+        }
+    }
+
+    /// Whether the error's five seconds ran out while it was held.
+    private var errorMessageExpired = false
 
     /// Returns the URI of the currently playing track (alias for currentTrackUri)
     var currentlyPlayingURI: String? {
@@ -406,7 +424,9 @@ final class PlaybackViewModel {
         return local == .needsPremium ? .needsPremium : .needsAuthorization
     }
 
-    func play(uriOrUrl: String, trackIndex: Int = -1) async {
+    /// Plays a track or a context. A row in a list passes its index and its track; see
+    /// `PlaybackQueue.start(in:index:uri:)`.
+    func play(uriOrUrl: String, trackIndex: Int? = nil, startingAtUri: String? = nil) async {
         if !isInitialized {
             await initializeIfNeeded()
         }
@@ -414,15 +434,15 @@ final class PlaybackViewModel {
         let target = resolvedPlaybackTarget()
         switch target {
         case .local:
-            await startLocally(startedUri: uriOrUrl) {
-                try await SpotifyPlayer.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex)
+            await startLocally(startedUri: startingAtUri ?? uriOrUrl) {
+                try await SpotifyPlayer.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex, startingAtUri: startingAtUri)
             }
 
         case let .remote(deviceId):
             // One uri either way: the command's own context builder tells a track from a
             // context, where the Web API needed the caller to split them into two fields.
             await startRemotely(
-                .play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex),
+                .play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex, trackUri: startingAtUri),
                 deviceId: deviceId,
             )
 
@@ -468,6 +488,13 @@ final class PlaybackViewModel {
     /// anyway and its failure discarded with it, so track cards and context menus silently
     /// did nothing; asking for authorization is the honest answer.
     func playRadio(trackUri: String) async {
+        // A track Spotify will not play starts nothing, radio included, wherever it is
+        // clicked: a search card, a row or its menu.
+        if let message = SpotifyAPI.parseTrackURI(trackUri).flatMap({ store?.tracks[$0] })?.unplayableMessage {
+            errorMessage = message
+            return
+        }
+
         if !isInitialized {
             await initializeIfNeeded()
         }
@@ -824,18 +851,7 @@ final class PlaybackViewModel {
     }
 
     func next() {
-        guard sendTransportCommand(
-            "next()",
-            promisesPosition: true,
-            local: { try await SpotifyPlayer.next() },
-            remote: { try await SpclientAPI().sendCommand(.next, from: $0, to: $1) },
-        ) else {
-            return
-        }
-
-        // Immediately reset position to 0 for responsive UI
-        anchorPosition(0, optimistic: true)
-        updateNowPlayingInfo()
+        skip("next()", local: { try await SpotifyPlayer.next() }, remote: .next)
     }
 
     /// Previous track, or the start of this one.
@@ -846,20 +862,62 @@ final class PlaybackViewModel {
     /// `403 no_prev_track`, which left the button enabled and doing nothing while an error
     /// banner blamed Spotify. So the refusal is answered with the seek it stood for.
     func previous() {
+        skip("previous()", local: { try await SpotifyPlayer.previous() }, remote: .previous) { [weak self] error in
+            guard error.isNoPreviousTrack else { return }
+            self?.seek(to: 0)
+        }
+    }
+
+    /// A row of the queue, as a double-click names it: which list, where in it, and its track.
+    enum QueueRow {
+        case previous(index: Int, trackUri: String)
+        case current
+        /// One of the next tracks, with the cluster's uid when another device plays.
+        case next(index: Int, trackUri: String, uid: String?)
+    }
+
+    /// Plays a row of the queue and keeps the queue. Another device gets the web player's
+    /// `skip_next` naming the row. Connect has no way back to a named track, so there a
+    /// previous row starts the context from it.
+    func play(queueRow row: QueueRow) {
+        switch row {
+        case .current:
+            seek(to: 0)
+            if !isPlaying {
+                resume()
+            }
+        case let .next(index, uri, uid):
+            skip(
+                "skip(toNext:)",
+                local: { try await SpotifyPlayer.skip(toNext: index, uri: uri) },
+                remote: .skipNext(to: uri, uid: uid),
+            )
+        case let .previous(index, uri):
+            skip(
+                "skip(toPrevious:)",
+                local: { try await SpotifyPlayer.skip(toPrevious: index, uri: uri) },
+                remote: .play(uri: store?.queue.contextUri ?? uri, trackUri: uri),
+            )
+        }
+    }
+
+    /// A command that moves to another track, whose start the display shows at once.
+    private func skip(
+        _ name: String,
+        local: @escaping () async throws -> Void,
+        remote command: ConnectCommand,
+        declined: @escaping (SpclientError) -> Void = { _ in },
+    ) {
         guard sendTransportCommand(
-            "previous()",
+            name,
             promisesPosition: true,
-            local: { try await SpotifyPlayer.previous() },
-            remote: { try await SpclientAPI().sendCommand(.previous, from: $0, to: $1) },
-            declined: { [weak self] error in
-                guard error.isNoPreviousTrack else { return }
-                self?.seek(to: 0)
-            },
+            local: local,
+            remote: { try await SpclientAPI().sendCommand(command, from: $0, to: $1) },
+            declined: declined,
         ) else {
             return
         }
 
-        // Immediately reset position to 0 for responsive UI
         anchorPosition(0, optimistic: true)
         updateNowPlayingInfo()
     }
@@ -1140,8 +1198,9 @@ final class PlaybackViewModel {
 
     // MARK: - Player State
 
-    /// Follows the connection, the playback state and the volume in the player model. Each
-    /// observation gives the value as it stands, then every change, on the main actor.
+    /// Follows the connection, the playback state, the volume and the interruptions in the
+    /// player model. Each observation gives the value as it stands, then every change, on the
+    /// main actor.
     ///
     /// The playback state is how external control shows up: a phone pausing *this* device
     /// sends a Connect command over the dealer, which pauses the pipeline, whose state
@@ -1161,6 +1220,13 @@ final class PlaybackViewModel {
             for await volume in Observations({ player.volume }) {
                 if let volume {
                     self?.handleVolumeChange(volume)
+                }
+            }
+        }
+        Task { [weak self, player] in
+            for await interruption in Observations({ player.interruption }) {
+                if let interruption {
+                    self?.errorMessage = interruption.message
                 }
             }
         }

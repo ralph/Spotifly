@@ -44,6 +44,14 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         let provider = "queue"
     }
 
+    /// The queue row a `skip_next` jumps to. The web player's queue row sends
+    /// `skipToNext({uri, uid})`, read from its bundle on 2026-09-29; librespot
+    /// steps forward to the uri, go-librespot seeks to the uid, else the uri.
+    struct SkipTarget: Encodable, Sendable {
+        let uri: String
+        let uid: String?
+    }
+
     /// Where a `play` command starts.
     ///
     /// **This endpoint plays contexts, not tracks**, which is the one place the Web API was
@@ -82,19 +90,24 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         var pages: [Page]?
         let options: Options?
 
-        /// A context uri (album, playlist, artist) plays from its start, or from `trackIndex`
-        /// when one is given; a *track* uri becomes a context plus a `skip_to` naming it.
+        /// A context uri (album, playlist, artist) plays from its start, or from the track
+        /// `skip_to` names; a *track* uri becomes a context plus a `skip_to` naming it.
         /// Getting that distinction wrong plays the first track of the album rather than the
         /// one asked for.
-        init(uri: String, trackIndex: Int? = nil) {
+        ///
+        /// `trackUri` and `trackIndex` go together, as the web player sends them. A receiver
+        /// starts at the uri and falls back to the index only without one: librespot's
+        /// `PlayingTrack::try_from` and go-librespot's `loadContext` both do. So a list that
+        /// disagrees with the context still plays the row that was clicked.
+        init(uri: String, trackIndex: Int? = nil, trackUri: String? = nil) {
             self.uri = uri
             url = "context://\(uri)"
             pages = nil
 
             if uri.hasPrefix("spotify:track:") {
                 options = Options(skipTo: SkipTo(trackUri: uri))
-            } else if let trackIndex, trackIndex >= 0 {
-                options = Options(skipTo: SkipTo(trackIndex: trackIndex))
+            } else if trackUri != nil || trackIndex != nil {
+                options = Options(skipTo: SkipTo(trackUri: trackUri, trackIndex: trackIndex))
             } else {
                 options = nil
             }
@@ -134,6 +147,8 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
     var boolValue: Bool?
     var context: Context?
     var track: QueuedTrack?
+    /// Sent under the same `track` key as `track`; only one is ever set.
+    var skipTarget: SkipTarget?
 
     enum CodingKeys: String, CodingKey {
         case endpoint
@@ -160,12 +175,18 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
             try container.encodeIfPresent(context.options, forKey: .options)
         }
         try container.encodeIfPresent(track, forKey: .track)
+        try container.encodeIfPresent(skipTarget, forKey: .track)
     }
 
     static let pause = ConnectCommand(endpoint: .pause)
     static let resume = ConnectCommand(endpoint: .resume)
     static let next = ConnectCommand(endpoint: .skipNext)
     static let previous = ConnectCommand(endpoint: .skipPrev)
+
+    /// Skips ahead to a row of the queue, and plays it.
+    static func skipNext(to uri: String, uid: String?) -> ConnectCommand {
+        ConnectCommand(endpoint: .skipNext, skipTarget: SkipTarget(uri: uri, uid: uid))
+    }
 
     static func seek(toMs positionMs: Int) -> ConnectCommand {
         ConnectCommand(endpoint: .seekTo, value: max(0, positionMs))
@@ -175,8 +196,8 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         ConnectCommand(endpoint: .setShufflingContext, boolValue: enabled)
     }
 
-    static func play(uri: String, trackIndex: Int? = nil) -> ConnectCommand {
-        ConnectCommand(endpoint: .play, context: Context(uri: uri, trackIndex: trackIndex))
+    static func play(uri: String, trackIndex: Int? = nil, trackUri: String? = nil) -> ConnectCommand {
+        ConnectCommand(endpoint: .play, context: Context(uri: uri, trackIndex: trackIndex, trackUri: trackUri))
     }
 
     /// Plays a bare list of tracks, which this endpoint can only do as an inline context.
