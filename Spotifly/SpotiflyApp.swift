@@ -89,6 +89,10 @@ struct SpotiflyApp: App {
                 .onChange(of: appearanceMode, initial: true) { _, mode in
                     mode.apply()
                 }
+                // The window that is open takes any `de.rvdh.spotifly://` URL, such as the
+                // sign-in page's link back to the app. Unclaimed, each one opened a second
+                // main window with its own services.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         }
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
         .commands {
