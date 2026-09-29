@@ -250,7 +250,14 @@ final nonisolated class PlaybackQueue {
         return Array(result.prefix(limit))
     }
 
+    /// The last `limit` tracks played, in play order: the most recent last,
+    /// beside the current track.
+    ///
+    /// Both readers want that order. Connect's `prev_tracks` is kept that way
+    /// by librespot and go-librespot, and the queue view lists these above
+    /// the current track. This used to return the most recent first, which
+    /// the Connect report reversed back and the queue view showed upside down.
     func recent(limit: Int = 10) -> [(uri: String, provider: String)] {
-        history.suffix(limit).reversed().map { ($0, "context") }
+        history.suffix(limit).map { ($0, "context") }
     }
 }

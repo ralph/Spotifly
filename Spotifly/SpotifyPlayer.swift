@@ -52,6 +52,7 @@ nonisolated struct QueueState: Equatable {
     let contextUri: String
     let currentTrack: QueueItem?
     let nextTracks: [QueueItem]
+    /// What played before the current track, in play order: the most recent last.
     let previousTracks: [QueueItem]
 }
 

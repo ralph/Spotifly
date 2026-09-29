@@ -909,7 +909,7 @@ public actor LibrespotClient {
             contextIndex: playbackQueue.contextPosition,
             trackProvider: playbackQueue.currentProvider,
             nextTracks: playbackQueue.upcoming(),
-            previousTracks: Array(playbackQueue.recent().reversed()),
+            previousTracks: playbackQueue.recent(),
         )
     }
 
@@ -1058,7 +1058,9 @@ public actor LibrespotClient {
             contextUri: remote.contextUri,
             currentTrack: QueueItem(uri: track.uri, provider: track.provider),
             nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
-            previousTracks: remote.prevTracks.reversed().map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            // In play order, as the cluster keeps them and the local queue
+            // publishes them.
+            previousTracks: remote.prevTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
         )
         publish {
             $0.playback = playback

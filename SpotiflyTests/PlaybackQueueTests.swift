@@ -25,6 +25,25 @@ struct PlaybackQueueTests {
         #expect(queue.advance() == nil)
     }
 
+    /// The queue view lists these above the current track, and Connect's `prev_tracks` is in
+    /// the same order, so the most recent comes last. It came first, and the view read upside
+    /// down.
+    @Test func `history is in play order, the most recent last`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: album(14), startIndex: 0)
+
+        for _ in 0 ..< 3 {
+            _ = queue.advance()
+        }
+        #expect(queue.recent().map(\.uri) == ["spotify:track:t0", "spotify:track:t1", "spotify:track:t2"])
+
+        for _ in 0 ..< 10 {
+            _ = queue.advance()
+        }
+        #expect(queue.currentUri == "spotify:track:t13")
+        #expect(queue.recent().map(\.uri) == (3 ... 12).map { "spotify:track:t\($0)" })
+    }
+
     @Test func `repeat context wraps back to the first track`() {
         let queue = PlaybackQueue()
         queue.setContext(uri: "spotify:album:a", tracks: album(2), startIndex: 0)
