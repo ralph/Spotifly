@@ -94,6 +94,7 @@ nonisolated struct PathfinderAlbumTrack: Decodable, Sendable {
     let discNumber: Int?
     let duration: PathfinderDuration?
     let artists: PathfinderArtistList?
+    let playability: PathfinderPlayability?
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))
