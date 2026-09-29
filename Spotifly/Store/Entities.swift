@@ -414,8 +414,8 @@ extension Array {
     /// The index of the element matching `predicate` that is nearest `target`, the earlier one
     /// on a tie, or nil when none matches.
     ///
-    /// For a track a list can hold more than once: the queue's current track, and the track a
-    /// double-click starts at. Searches outward from `target`, so it stops at the nearest
+    /// For a track a list can hold more than once: the track a double-click starts at, and a
+    /// row of the queue a jump names. Searches outward from `target`, so it stops at the nearest
     /// match. A `target` outside the list counts from its nearer end.
     nonisolated func nearestIndex(to target: Int, where predicate: (Element) -> Bool) -> Int? {
         guard !isEmpty else { return nil }

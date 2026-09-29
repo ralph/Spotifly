@@ -827,6 +827,10 @@ public actor LibrespotClient {
     /// Auto-advance at end of track.
     private func handleEndOfTrack(_ uri: String) {
         Task {
+            // A skip that landed between the event and this task has moved on already:
+            // advancing again passed over its track, and repeat-one played the old one again
+            // under the new one's queue.
+            guard uri == playbackQueue.currentUri else { return }
             if repeatMode == .track {
                 await autoAdvance(to: uri)
                 return
@@ -997,13 +1001,14 @@ public actor LibrespotClient {
 
         case let .playing(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
-            // Torn down or replaced while this waited: the track is no one's now.
-            guard !Task.isCancelled else { return }
+            // Torn down or replaced while this waited: the track is no one's now. Or a skip
+            // started loading another while this waited, and published it with its queue.
+            guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
             publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position))
 
         case let .paused(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
             publishPlaybackState(for: trackUri, playing: false, paused: true, positionMs: Int64(position))
         }
 
@@ -1437,6 +1442,8 @@ public actor LibrespotClient {
     private func publishPlaybackStateRefresh() async {
         guard let current = localState else { return }
         let position = await audioPipeline?.currentPositionMs() ?? UInt64(max(0, current.positionMs))
+        // A load that started while this waited has published its own state.
+        guard localState?.trackUri == current.trackUri else { return }
         publishPlaybackState(
             for: current.trackUri,
             playing: current.isPlaying,

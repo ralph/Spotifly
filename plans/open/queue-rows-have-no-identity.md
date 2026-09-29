@@ -85,3 +85,13 @@ Not defined yet.
   - Every other publisher already agreed: the mirror publishes queue and playback together; a
     queue change without a track change (Add to Queue, `set_queue`, shuffle) publishes the queue
     alone; and a rewind or a new context goes through `startTrack` too.
+  - The review of it found three places where a track could still be published against a queue
+    that had moved on, which the re-split used to paper over:
+    - `handleEndOfTrack` acted on the ended track's uri in a task of its own. A Next landing in
+      between had moved the queue already, so the task advanced again, passing over the track
+      Next had started, or under repeat-one played the old track again under the new queue. It
+      now returns when the queue's current track is no longer the one that ended.
+    - `handlePipelineState` and `publishPlaybackStateRefresh` read the track, then await the
+      position. A skip in that wait published its own track, which the stale state then
+      overwrote until the new track's `.playing` came. Both drop a state whose track is no
+      longer current.
