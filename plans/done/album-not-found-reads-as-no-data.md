@@ -4,7 +4,7 @@ Status: **Done** 2026-09-29, on branch `album-not-found`, stacked on #80. Built 
 unit-tested. Not yet seen in the running app: no path in the app is known to reach it, so the
 live check below uses a new debug hook.
 Components: `Spotifly/PartnerAPI/PartnerAPI.swift` (`album(id:)`, `artistUnion`,
-`PartnerAPIError.notFound`, `PathfinderUnion`), `Spotifly/PartnerAPI/PathfinderAlbum.swift`,
+`PartnerAPIError.notFound`), `Spotifly/PartnerAPI/PathfinderAlbum.swift`,
 `Spotifly/PartnerAPI/PathfinderArtist.swift`, `Spotifly/Views/AlbumDetailView.swift`,
 `Spotifly/Views/ArtistDetailView.swift`, `Spotifly/Views/Components/InlineLoadError.swift`,
 `Spotifly/Views/LoggedInLifecycleModifier.swift` (`SPOTIFLY_DEBUG_OPEN`)
@@ -69,8 +69,7 @@ album. For the artist it shows a generic "something went wrong".
 
 ## Solution
 
-- [x] `PathfinderAlbumUnion` and `PathfinderArtistUnion` decode `__typename`, through a small
-      `PathfinderUnion` protocol whose `isNotFound` names the one value.
+- [x] `PathfinderAlbumUnion` and `PathfinderArtistUnion` decode `__typename`.
 - [x] `PartnerAPI.album(id:)` and both artist operations throw `PartnerAPIError.notFound(.album)`
       or `.notFound(.artist)` for it, before the empty-payload check further down can.
 - [x] The messages: "Spotify can't find this album. It may not be available in your country."
@@ -78,7 +77,7 @@ album. For the artist it shows a generic "something went wrong".
       begins with the web player's own "Album wurde nicht gefunden". The country is a "may":
       a mistyped id answers the same.
 - [x] No retry. `InlineLoadError`'s `retry` is optional, and the album and artist views pass nil
-      after a `notFound`. That covers both of their error branches: the whole page, and the
+      where `isRetryable(_:)`, beside `isCancellation(_:)`, says asking again cannot help. That covers both of their error branches: the whole page, and the
       track list or discography of an entity already in the store, which is the more likely
       way to meet this. An album from search or a discography can be cached before
       `getAlbum` is ever asked.

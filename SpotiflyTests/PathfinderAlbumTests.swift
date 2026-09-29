@@ -58,7 +58,6 @@ struct PathfinderAlbumTests {
         let album = try decodeDiscovery()
 
         #expect(album.typename == "Album")
-        #expect(!album.isNotFound)
 
         #expect(album.id == "2noRn2Aes5aoNVsU6iWThc")
         #expect(album.name == "Discovery")

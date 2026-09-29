@@ -226,7 +226,7 @@ struct ArtistDetailView: View {
             // running and its result is in the store for whatever replaces us.
             if !isCancellation(error) {
                 errorMessage = error.localizedDescription
-                canRetry = (error as? PartnerAPIError)?.isNotFound != true
+                canRetry = isRetryable(error)
             }
         }
 

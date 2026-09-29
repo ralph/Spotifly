@@ -234,10 +234,9 @@ struct PathfinderResponseTests {
             )
         }
 
-        let error = await #expect(throws: PartnerAPIError.self) {
+        await #expect(throws: PartnerAPIError.notFound(.album)) {
             _ = try await api.album(id: "2ZWlPOoWh0626oTaHrnl2a")
         }
-        #expect(error?.isNotFound == true)
     }
 
     /// Both artist operations answer an id that does not exist the same way, measured the same
@@ -247,14 +246,12 @@ struct PathfinderResponseTests {
             (Data(#"{"data":{"artistUnion":{"__typename":"NotFound"}}}"#.utf8), httpResponse(200))
         }
 
-        let overview = await #expect(throws: PartnerAPIError.self) {
+        await #expect(throws: PartnerAPIError.notFound(.artist)) {
             _ = try await api.artist(id: "0000000000000000000000")
         }
-        let discography = await #expect(throws: PartnerAPIError.self) {
+        await #expect(throws: PartnerAPIError.notFound(.artist)) {
             _ = try await api.artistDiscography(id: "0000000000000000000000")
         }
-        #expect(overview?.isNotFound == true)
-        #expect(discography?.isNotFound == true)
     }
 
     @Test func `a non-200 is an error before the body is trusted`() async throws {
