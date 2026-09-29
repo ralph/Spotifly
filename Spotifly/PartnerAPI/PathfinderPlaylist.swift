@@ -80,16 +80,12 @@ nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable {
 /// search uses `item.data`, the album view uses `track`, an artist's discography uses
 /// `releases.items`, and playlists use this.
 nonisolated struct PathfinderPlaylistItem: Decodable, Sendable {
-    struct AddedAt: Decodable, Sendable {
-        let isoString: String?
-    }
-
     struct ItemV2: Decodable, Sendable {
         let data: PathfinderPlaylistTrack?
     }
 
     let uid: String?
-    let addedAt: AddedAt?
+    let addedAt: PathfinderTimestamp?
     let itemV2: ItemV2?
 
     var track: PathfinderPlaylistTrack? {

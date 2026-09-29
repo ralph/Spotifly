@@ -62,28 +62,37 @@ private let libraryAlbumsJSON = Data("""
   ]}}}}
 """.utf8)
 
-/// From `fetchLibraryTracks`. The uri is on the wrapper as `_uri`; the entity below it has
-/// none, which is unique to this operation.
-private let libraryTracksJSON = Data("""
-{"data":{"me":{"library":{"tracks":{
-  "__typename":"UserLibraryTrackPage",
-  "totalCount":607,
+/// Liked Songs, trimmed from a real `fetchPlaylistContents` page taken on 2026-09-29 (the first
+/// two of 609). A playlist page like any other, which is the point: no `_uri` wrapper, no
+/// `me.library` nesting, only `content`.
+private let likedSongsJSON = Data("""
+{"data":{"playlistV2":{"__typename":"Playlist",
+  "content":{"__typename":"PlaylistItemsPage","pagingInfo":{"limit":2,"offset":0},"totalCount":609,
   "items":[
-    {"__typename":"UserLibraryTrackResponse",
-     "addedAt":{"isoString":"2026-08-13T07:12:40Z"},
-     "track":{"_uri":"spotify:track:7FcObTmCbQYyC8qzlTL2SE",
-       "data":{"__typename":"Track","name":"Food In The Belly",
-         "trackNumber":3,"discNumber":1,
-         "duration":{"totalMilliseconds":251293},
-         "albumOfTrack":{"uri":"spotify:album:3daDaRtJ2vfqBLwMYEgRrn","name":"Food In The Belly",
-           "coverArt":{"sources":[{"url":"https://i.scdn.co/image/x","width":640,"height":640}]},
-           "artists":{"items":[{"uri":"spotify:artist:5lbM4g6bhxjNX7R5QHP2nD",
-                                "profile":{"name":"Xavier Rudd"}}]}},
-         "artists":{"items":[{"uri":"spotify:artist:5lbM4g6bhxjNX7R5QHP2nD",
-                              "profile":{"name":"Xavier Rudd"}}]}}}},
-    {"__typename":"UserLibraryTrackResponse","addedAt":{"isoString":"2026-08-12T07:12:40Z"},
-     "track":{"data":{"__typename":"Track","name":"No uri, dropped"}}}
-  ]}}}}}
+    {"uid":"87ced089511bc3c325f3",
+     "addedAt":{"isoString":"2026-09-24T15:45:46Z"},
+     "itemV2":{"__typename":"TrackResponseWrapper","data":{"__typename":"Track",
+       "uri":"spotify:track:7ue34ZxB8zyetZ0BCiIrn2","name":"The Diamond Church Street Choir",
+       "trackNumber":4,"discNumber":1,"trackDuration":{"totalMilliseconds":192013},
+       "albumOfTrack":{"uri":"spotify:album:57wwUFU2vcfs6qNDLCBnUG","name":"American Slang",
+         "coverArt":{"sources":[{"height":300,"width":300,
+           "url":"https://i.scdn.co/image/ab67616d00001e02c37028702ae2338a7f34175d"}]}},
+       "artists":{"items":[{"uri":"spotify:artist:7If8DXZN7mlGdQkLE2FaMo",
+                            "profile":{"name":"The Gaslight Anthem"}}]}}}},
+    {"uid":"195f8110b593d39eb69b",
+     "addedAt":{"isoString":"2026-08-15T20:13:22Z"},
+     "itemV2":{"__typename":"TrackResponseWrapper","data":{"__typename":"Track",
+       "uri":"spotify:track:6tuiDRFaXOBqFLpeTBjAAn","name":"Gold Lion",
+       "trackNumber":1,"discNumber":1,"trackDuration":{"totalMilliseconds":187133},
+       "albumOfTrack":{"uri":"spotify:album:3lgIiynXHTZYaSvS1ZrMxG","name":"Show Your Bones",
+         "coverArt":{"sources":[{"height":300,"width":300,
+           "url":"https://i.scdn.co/image/ab67616d00001e027e2a5058ebceafaf066eb893"}]}},
+       "artists":{"items":[{"uri":"spotify:artist:3TNt4aUIxgfy9aoaft5Jj2",
+                            "profile":{"name":"Yeah Yeah Yeahs"}}]}}}},
+    {"uid":"0000000000000000dead",
+     "itemV2":{"__typename":"TrackResponseWrapper","data":{"__typename":"Track",
+       "name":"No uri, dropped"}}}
+  ]}}}}
 """.utf8)
 
 private func playlistsPage() throws -> PathfinderLibraryPage<PathfinderPlaylist> {
@@ -160,35 +169,74 @@ struct PathfinderLibraryTests {
     }
 }
 
-private func tracksPage() throws -> PathfinderLibraryTrackPage {
-    let response = try JSONDecoder().decode(PathfinderLibraryTracksResponse.self, from: libraryTracksJSON)
-    return try #require(response.page)
+private func likedSongsPage() throws -> PathfinderPlaylistUnion.Content {
+    let response = try JSONDecoder().decode(PathfinderPlaylistResponse.self, from: likedSongsJSON)
+    return try #require(response.data?.playlistV2?.content)
 }
 
 @MainActor
-struct PathfinderLibraryTrackTests {
-    /// **The uri is on the wrapper, not the entity.** Reading `data.uri` would be nil for every
-    /// row and silently empty the favorites list, so the conversion takes the uri as a parameter.
-    @Test func `a saved track takes its identity from the wrapper's uri`() throws {
-        let page = try tracksPage()
-        let track = try #require(page.tracks.first)
+struct LikedSongsTests {
+    @Test func `a page of Liked Songs becomes its tracks, newest first`() throws {
+        let page = try likedSongsPage()
+        let tracks = page.tracks
 
-        #expect(page.totalCount == 607)
-        #expect(track.id == "7FcObTmCbQYyC8qzlTL2SE")
-        #expect(track.uri == "spotify:track:7FcObTmCbQYyC8qzlTL2SE")
-        #expect(track.name == "Food In The Belly")
-        #expect(track.durationMs == 251_293)
-        #expect(track.trackNumber == 3)
-        #expect(track.albumId == "3daDaRtJ2vfqBLwMYEgRrn")
-        #expect(track.artistName == "Xavier Rudd")
-        #expect(track.artistId == "5lbM4g6bhxjNX7R5QHP2nD")
+        #expect(page.totalCount == 609)
+        // The third row has no track uri and is dropped rather than failing the page.
+        #expect(page.items?.count == 3)
+        #expect(tracks.map(\.id) == ["7ue34ZxB8zyetZ0BCiIrn2", "6tuiDRFaXOBqFLpeTBjAAn"])
+
+        let first = try #require(tracks.first)
+        #expect(first.uri == "spotify:track:7ue34ZxB8zyetZ0BCiIrn2")
+        #expect(first.name == "The Diamond Church Street Choir")
+        #expect(first.durationMs == 192_013)
+        #expect(first.trackNumber == 4)
+        #expect(first.albumId == "57wwUFU2vcfs6qNDLCBnUG")
+        #expect(first.albumName == "American Slang")
+        #expect(first.artistId == "7If8DXZN7mlGdQkLE2FaMo")
+        #expect(first.artistName == "The Gaslight Anthem")
     }
 
-    @Test func `a row with no uri is dropped rather than failing the page`() throws {
-        let page = try tracksPage()
+    /// The same uri for every account, asked for through the contents-only operation of the
+    /// playlist document. Any other uri here would page one list and play another.
+    @Test func `Liked Songs is asked for as its playlist, one page at a time`() async throws {
+        let sent = Recorder<Data>()
+        let api = partnerAPI { request in
+            sent.record(request.httpBody ?? Data())
+            return (likedSongsJSON, httpResponse(200))
+        }
 
-        #expect(page.items?.count == 2)
-        #expect(page.tracks.count == 1)
+        let page = try await api.likedSongs(offset: 50)
+        #expect(page.totalCount == 609)
+
+        let body = try #require(sent.values.first)
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let variables = try #require(json["variables"] as? [String: Any])
+        let extensions = try #require(json["extensions"] as? [String: Any])
+        let persisted = try #require(extensions["persistedQuery"] as? [String: Any])
+
+        #expect(json["operationName"] as? String == "fetchPlaylistContents")
+        #expect(persisted["sha256Hash"] as? String == PathfinderOperation.fetchPlaylist.sha256Hash)
+        #expect(variables["uri"] as? String == "spotify:playlist:37i9dQZF1F5p3rmiWPIYgZ")
+        #expect(variables["offset"] as? Int == 50)
+        #expect(variables["limit"] as? Int == LikedSongs.pageLimit)
+    }
+
+    @Test func `loading favorites stores the page in order and marks it saved`() async throws {
+        let store = AppStore()
+        let service = TrackService(
+            store: store,
+            partnerAPI: partnerAPI { _ in (likedSongsJSON, httpResponse(200)) },
+        )
+
+        try await service.loadFavorites()
+
+        #expect(store.savedTrackIds == ["7ue34ZxB8zyetZ0BCiIrn2", "6tuiDRFaXOBqFLpeTBjAAn"])
+        #expect(store.favoriteTracks.map(\.name) == ["The Diamond Church Street Choir", "Gold Lion"])
+        #expect(store.isFavorite("6tuiDRFaXOBqFLpeTBjAAn"))
+        // Three items arrived, one unreadable: the offset moves past all three.
+        #expect(store.favoritesPagination.nextOffset == 3)
+        #expect(store.favoritesPagination.total == 609)
+        #expect(store.favoritesPagination.hasMore)
     }
 }
 

@@ -99,8 +99,9 @@ same one pathfinder returns. The removal also cleared an entry that had been sav
 literally. That is the reading, not a certainty: the library was not re-snapshotted first.
 
 **There is more than one track-shaped response**, which is the part that bites. Pathfinder
-answers with a different shape for an album's tracks, a playlist's items, saved tracks and
-search results, and spclient's metadata has its own; each has its own `Track` initializer in
+answers with a different shape for an album's tracks, a playlist's items (saved tracks
+included: Liked Songs is read as a playlist, `LikedSongs`) and search results, and spclient's
+metadata has its own; each has its own `Track` initializer in
 `PartnerAPI/PathfinderEntities.swift` or `PartnerAPI/SpclientEntities.swift`. The failure
 mode is a hand-written conversion that reintroduces an original id from somewhere: the
 request looks correct and the store is wrong.
