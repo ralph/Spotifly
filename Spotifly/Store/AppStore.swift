@@ -214,10 +214,16 @@ final class AppStore {
         resolvedFavoriteTrackIds.contains(trackId)
     }
 
-    /// Upsert tracks
+    /// Upsert tracks. Those Spotify said will not play are passed on to playback, which steps
+    /// over them; every answer that replaces a track here says, except spclient's, which only
+    /// fills in tracks the store lacks.
     func upsertTracks(_ newTracks: [Track]) {
         for track in newTracks {
             tracks[track.id] = track
+        }
+        let unplayable = newTracks.filter { !$0.isPlayable }.map(\.uri)
+        if !unplayable.isEmpty {
+            SpotifyPlayer.markUnplayable(unplayable)
         }
     }
 

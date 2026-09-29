@@ -146,6 +146,19 @@ nonisolated struct PathfinderDuration: Decodable, Sendable {
     let totalMilliseconds: Int?
 }
 
+/// Whether a track plays for the account: `{ "playable": false, "reason": "COUNTRY_RESTRICTED" }`.
+/// Search, albums and playlists carry it on every track, measured 2026-09-29. A playable one says
+/// `"reason": "PLAYABLE"`, and an album's unplayable track gave no reason at all.
+nonisolated struct PathfinderPlayability: Decodable, Sendable {
+    let playable: Bool?
+    let reason: String?
+
+    /// Unplayable only where the answer says so.
+    var entity: Playability {
+        playable == false ? .unplayable(reason: reason) : .playable
+    }
+}
+
 nonisolated struct PathfinderTrack: Decodable, Sendable {
     struct AlbumOfTrack: Decodable, Sendable {
         let id: String?
@@ -160,6 +173,7 @@ nonisolated struct PathfinderTrack: Decodable, Sendable {
     let albumOfTrack: AlbumOfTrack?
     let artists: PathfinderArtistList?
     let duration: PathfinderDuration?
+    let playability: PathfinderPlayability?
 
     var durationMs: Int? {
         duration?.totalMilliseconds

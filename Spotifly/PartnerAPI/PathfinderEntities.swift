@@ -46,6 +46,7 @@ extension Track {
             artistName: track.artistNames.first ?? "Unknown",
             albumName: track.albumOfTrack?.name,
             images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
+            playability: track.playability?.entity ?? .playable,
         )
     }
 }
@@ -169,6 +170,7 @@ extension Track {
             artistName: track.artistNames.first ?? "Unknown",
             albumName: albumName,
             images: images,
+            playability: track.playability?.entity ?? .playable,
         )
     }
 }
@@ -241,6 +243,7 @@ extension Track {
             artistName: track.artistNames.first ?? "Unknown",
             albumName: track.albumOfTrack?.name,
             images: ImageSet(pathfinderSources: track.albumOfTrack?.coverArt?.sources),
+            playability: track.playability?.entity ?? .playable,
         )
     }
 }

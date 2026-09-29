@@ -59,6 +59,8 @@ struct TrackContextMenu: View {
         } label: {
             Label("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward")
         }
+        // Playback would step over it.
+        .disabled(!track.isPlayable)
 
         Button {
             startSongRadio()

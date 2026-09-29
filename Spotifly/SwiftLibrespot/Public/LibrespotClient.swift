@@ -53,6 +53,12 @@ public actor LibrespotClient {
     private var shuffleEnabled = false
     private var repeatMode = PlaybackQueue.RepeatMode.off
 
+    /// Tracks Spotify will not play for the account: named by the app, from what its lists
+    /// said, and learned here from loads that failed as unavailable. Next, Previous,
+    /// auto-advance and the fetch-ahead step over them without loading them. The context
+    /// resolver's answer does not say, measured 2026-09-29, so nothing else could.
+    private var unplayable: Set<String> = []
+
     // MARK: - Connection Bookkeeping
 
     private var shuttingDown = false
@@ -221,6 +227,7 @@ public actor LibrespotClient {
     /// goes in `shutdown()`'s teardown, with the pipeline it ran on.
     public func shutdownAndCleanup() async {
         await shutdown()
+        unplayable.removeAll()
         publish {
             $0.devices = nil
             $0.queue = nil
@@ -436,7 +443,8 @@ public actor LibrespotClient {
                 start = 0
             }
         } else {
-            start = 0
+            // No track named, as by Play on an album or a playlist: its first that plays.
+            start = firstPlayable(in: tracks)
         }
         setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: tracks, startIndex: start)
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
@@ -453,7 +461,7 @@ public actor LibrespotClient {
             return
         }
 
-        setQueue(contextUri: "", tracks: normalized, startIndex: 0)
+        setQueue(contextUri: "", tracks: normalized, startIndex: firstPlayable(in: normalized))
         try await loadCurrentTrack(positionMs: positionMs)
     }
 
@@ -512,7 +520,7 @@ public actor LibrespotClient {
     public func previous() async throws {
         defer { publishQueue() }
 
-        if let previous = playbackQueue.backward() {
+        if let previous = stepOverUnplayable(from: playbackQueue.backward(), step: playbackQueue.backward) {
             try await loadAndPlay(previous)
         } else {
             // Nowhere back: restart the current track, like every other client.
@@ -579,8 +587,30 @@ public actor LibrespotClient {
     /// before the current track ends. Under repeat-one that is the same track,
     /// which the pipeline already holds.
     private func announceNextTrack() {
-        let next = repeatMode == .track ? playbackQueue.currentUri : playbackQueue.upcoming(limit: 1).first?.uri
+        let next = repeatMode == .track
+            ? playbackQueue.currentUri
+            : playbackQueue.upcoming().first { !unplayable.contains($0.uri) }?.uri
         Task { [audioPipeline] in await audioPipeline?.setNextTrack(next) }
+    }
+
+    /// Adds tracks the app knows will not play, from what its lists said.
+    public func markUnplayable(_ uris: [String]) {
+        guard !unplayable.isSuperset(of: uris) else { return }
+        unplayable.formUnion(uris)
+        // The track fetched ahead may be one of them.
+        announceNextTrack()
+    }
+
+    /// Where a list starts when nobody named a track: its first not known to be unplayable,
+    /// or its first if it has none.
+    private func firstPlayable(in tracks: [String]) -> Int {
+        tracks.firstIndex { !unplayable.contains($0) } ?? 0
+    }
+
+    /// `uri`, or the first track after it that `step` reaches and that is not known to be
+    /// unplayable; see `AutoAdvance.stepOver`.
+    private func stepOverUnplayable(from uri: String?, step: () -> String?) -> String? {
+        AutoAdvance.stepOver(unplayable.contains, from: uri, in: playbackQueue, step: step)
     }
 
     // MARK: - Volume
@@ -727,7 +757,15 @@ public actor LibrespotClient {
         let position = UInt32(clamping: positionMs)
         publishPlaybackState(for: uri, playing: !paused, paused: paused, positionMs: Int64(position))
 
-        try await audioPipeline.playTrack(uri: uri, positionMs: positionMs, paused: paused)
+        do {
+            try await audioPipeline.playTrack(uri: uri, positionMs: positionMs, paused: paused)
+        } catch {
+            // Known from here on, so the queue steps over it next time round.
+            if case LibrespotError.trackUnavailable = error {
+                unplayable.insert(uri)
+            }
+            throw error
+        }
 
         knownDurationMs = await audioPipeline.currentDurationMs
     }
@@ -756,6 +794,7 @@ public actor LibrespotClient {
         let outcome = await AutoAdvance.run(
             from: uri,
             in: playbackQueue,
+            isUnplayable: unplayable.contains,
             load: { try await self.startTrack($0) },
             skipped: { uri, name in
                 debugLog("LibrespotClient", "Skipping \(uri), \(name): not available")
@@ -779,7 +818,8 @@ public actor LibrespotClient {
         defer { publishQueue() }
 
         // A manual skip moves even under repeat-one; only auto-advance honors it.
-        if let upcoming = playbackQueue.advance(respectingRepeat: false) {
+        let step = { self.playbackQueue.advance(respectingRepeat: false) }
+        if let upcoming = stepOverUnplayable(from: step(), step: step) {
             try await loadAndPlay(upcoming)
         } else {
             await rewindContext()
@@ -787,7 +827,7 @@ public actor LibrespotClient {
     }
 
     /// The queue has run out with nothing to repeat: back to the first track
-    /// of the context, loaded and paused at its start, as librespot's
+    /// of the context that plays, loaded and paused at its start, as librespot's
     /// `handle_stop` leaves it. Other devices show a stopped player on that
     /// track, and their play button plays it.
     ///
@@ -803,7 +843,7 @@ public actor LibrespotClient {
             return
         }
         debugLog("LibrespotClient", "End of the context; back to its first track, paused")
-        playbackQueue.setContext(uri: playbackQueue.contextUri, tracks: tracks, startIndex: 0)
+        playbackQueue.setContext(uri: playbackQueue.contextUri, tracks: tracks, startIndex: firstPlayable(in: tracks))
         // A failure is reported by `loadAndPlay`, and there is no caller to
         // throw it to.
         try? await loadCurrentTrack(paused: true)

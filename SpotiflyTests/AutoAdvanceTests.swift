@@ -15,6 +15,8 @@ struct AutoAdvanceTests {
     private final class Player {
         let queue = PlaybackQueue()
         let failures: [String: any Error]
+        /// Known not to play, as the app's lists would have said.
+        var unplayable: Set<String> = []
         private(set) var loaded: [String] = []
         private(set) var skipped: [String] = []
         private(set) var skippedNames: [String] = []
@@ -33,6 +35,7 @@ struct AutoAdvanceTests {
             await AutoAdvance.run(
                 from: queue.currentUri ?? "",
                 in: queue,
+                isUnplayable: unplayable.contains,
                 load: { uri in
                     self.loaded.append(uri)
                     if let failure = self.failures[uri] {
@@ -114,6 +117,58 @@ struct AutoAdvanceTests {
 
         #expect(outcome.kind == "queueEnded")
         #expect(player.skipped == ["b"])
+    }
+
+    /// Its row is greyed out already, so it is passed over without a load or a word.
+    @Test func `a track known not to play is stepped over without loading it`() async {
+        let player = Player(["a", "b", "c", "d"], startingAt: 1)
+        player.unplayable = ["b", "c"]
+
+        let outcome = await player.autoAdvance()
+
+        #expect(outcome.kind == "playing")
+        #expect(player.loaded == ["d"])
+        #expect(player.skipped.isEmpty)
+        #expect(player.queue.currentUri == "d")
+    }
+
+    @Test func `a known one after a track that failed to load is stepped over too`() async {
+        let player = Player(["a", "b", "c", "d"], startingAt: 1, failing: ["b": Self.unavailable])
+        player.unplayable = ["c"]
+
+        let outcome = await player.autoAdvance()
+
+        #expect(outcome.kind == "playing")
+        #expect(player.loaded == ["b", "d"])
+        #expect(player.skipped == ["b"])
+    }
+
+    /// Nothing is loaded, so nothing names the stop; the client rewinds the context, whose
+    /// first load then fails with the track's name.
+    @Test func `under repeat, a queue known to be all unplayable ends after one pass`() async {
+        let player = Player(["a", "b", "c"])
+        player.queue.setRepeat(.context)
+        player.unplayable = ["a", "b", "c"]
+
+        let outcome = await player.autoAdvance()
+
+        #expect(outcome.kind == "queueEnded")
+        #expect(player.loaded.isEmpty)
+    }
+
+    /// Next and Previous step the same way, each with its own move.
+    @Test func `stepping backward passes over known ones in the history`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:playlist:test", tracks: ["a", "b", "c", "d"], startIndex: 0)
+        for _ in 0 ..< 3 {
+            _ = queue.advance()
+        }
+        let unplayable: Set = ["c", "b"]
+
+        let previous = AutoAdvance.stepOver(unplayable.contains, from: queue.backward(), in: queue, step: queue.backward)
+
+        #expect(previous == "a")
+        #expect(queue.currentUri == "a")
     }
 
     @Test func `a newer load taking over is neither skipped nor a stop`() async {

@@ -39,15 +39,20 @@ nonisolated enum AutoAdvance {
     /// queue holds.
     ///
     /// - Parameters:
+    ///   - isUnplayable: whether a track is already known to be unavailable, which the queue
+    ///     then moves past without loading it, and without a word: its row is greyed out.
     ///   - load: plays a uri, or throws why it could not.
     ///   - skipped: told the uri and the name of each track before the queue moves past it.
     static func run(
         from uri: String,
         in queue: PlaybackQueue,
+        isUnplayable: (String) -> Bool = { _ in false },
         load: (String) async throws -> Void,
         skipped: (_ uri: String, _ name: String) -> Void,
     ) async -> Outcome {
-        var uri = uri
+        guard var uri = stepOver(isUnplayable, from: uri, in: queue, step: { queue.advance(respectingRepeat: false) }) else {
+            return .queueEnded
+        }
         // The context's tracks count the one the run starts from, unless the
         // queue has just taken it off the user queue.
         var attemptsLeft = queue.userQueue.count + queue.contextTracks.count
@@ -64,9 +69,34 @@ nonisolated enum AutoAdvance {
                     return .stopped(error)
                 }
                 skipped(uri, name)
-                guard let next = queue.advance(respectingRepeat: false) else { return .queueEnded }
+                let step = { queue.advance(respectingRepeat: false) }
+                guard let next = stepOver(isUnplayable, from: step(), in: queue, step: step) else {
+                    return .queueEnded
+                }
                 uri = next
             }
         }
+    }
+
+    /// `uri`, or the first track `step` moves the queue on to that is not known to be
+    /// unplayable. Nil when the queue runs out first, or goes once round it without finding
+    /// one, which repeat would otherwise make forever.
+    ///
+    /// Moving on is the queue's own: Next, Previous and auto-advance each pass the step they
+    /// take, so the tracks stepped over land in the history the way played ones do.
+    static func stepOver(
+        _ isUnplayable: (String) -> Bool,
+        from uri: String?,
+        in queue: PlaybackQueue,
+        step: () -> String?,
+    ) -> String? {
+        var uri = uri
+        var stepsLeft = queue.userQueue.count + queue.contextTracks.count
+        while let candidate = uri, isUnplayable(candidate) {
+            guard stepsLeft > 0 else { return nil }
+            stepsLeft -= 1
+            uri = step()
+        }
+        return uri
     }
 }

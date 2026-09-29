@@ -79,9 +79,34 @@ struct Track: Identifiable, Hashable, Encodable {
     let albumName: String?
     let images: ImageSet
 
+    /// Whether Spotify will play this track for the account. `.playable` unless the answer it
+    /// came from said otherwise; spclient's metadata does not say.
+    var playability = Playability.playable
+
     var durationFormatted: String {
         formatTrackTime(milliseconds: durationMs)
     }
+
+    var isPlayable: Bool {
+        playability == .playable
+    }
+
+    /// What to tell the user when this track will not play here: that it is not available in
+    /// their country, where that is Spotify's reason, and otherwise that it is not available.
+    var unplayableMessage: String? {
+        guard case let .unplayable(reason) = playability else { return nil }
+        return reason == "COUNTRY_RESTRICTED"
+            ? String(localized: "error.track_unavailable_in_country \(name)")
+            : String(localized: "error.track_unavailable \(name)")
+    }
+}
+
+/// Whether a track plays for the account. Spotify withholds some everywhere, and some only in
+/// the account's country (`COUNTRY_RESTRICTED`); its clients grey those rows out. An album's
+/// unplayable tracks come without a reason.
+enum Playability: Hashable, Encodable {
+    case playable
+    case unplayable(reason: String?)
 }
 
 // MARK: - Album
