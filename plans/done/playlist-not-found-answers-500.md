@@ -80,6 +80,10 @@ Not changed, and recorded in `plans/open/entity-unions-accept-any-typename.md`:
 - [x] Unit test: the measured `NotFound` body makes `playlist(id:)` throw
       `notFound(.playlist)`.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, 2026-09-29.
-- [ ] Live: launch with `SPOTIFLY_DEBUG_OPEN=spotify:playlist:0000000000000000000000`. The
-      playlist page says "Spotify can't find this playlist." and has no Try again button.
-- [ ] Live: open any playlist of the library. It loads as before.
+- [x] Live: run a Debug build with
+      `SPOTIFLY_DEBUG_OPEN=spotify:playlist:0000000000000000000000` from a DE account. The
+      playlist page says "Playlist wurde nicht gefunden." and has no Try again button.
+      **Passed** on `4b02ecc`, which has #82's loop fix. The window's layout squeezed around
+      the message, as recorded in `plans/open/full-page-error-collapses-the-layout.md`.
+- [x] Live: open any playlist of the library. It loads as before. **Passed**, same build.
+- [x] Live: Liked Songs still loads. **Passed**, same build.
