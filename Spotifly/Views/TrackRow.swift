@@ -367,27 +367,3 @@ extension View {
         ))
     }
 }
-
-// MARK: - QueueItem to Track Conversion
-
-extension QueueItem {
-    /// Convert QueueItem to Track for use with TrackRow and store operations.
-    /// Wraps the queue item's single image URL as a ~300px variant; full metadata
-    /// arrives later via QueueService and replaces this in the store.
-    func toTrack() -> Track {
-        let images = imageURL.map { ImageSet(variants: [ImageVariant(url: $0, size: 300)]) } ?? .empty
-        return Track(
-            id: SpotifyAPI.parseTrackURI(uri) ?? id,
-            name: name,
-            uri: uri,
-            durationMs: Int(durationMs),
-            trackNumber: nil,
-            externalUrl: externalUrl,
-            albumId: albumId,
-            artistId: artistId,
-            artistName: artistName,
-            albumName: nil,
-            images: images,
-        )
-    }
-}
