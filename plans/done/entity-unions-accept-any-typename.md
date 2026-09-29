@@ -57,6 +57,11 @@ So `PartnerAPI.entity(_:kind:)` names the failures instead:
 - anything else decodes as before, and a kind that carries no entity is still "Spotify returned
   no data" in the service.
 
+The review of the change traced its reach. `entity` also covers the discography, the later
+pages of a long playlist, and Liked Songs, whose pages go through `playlistPage`. A
+`GenericError` on a later page used to decode as an empty page and end the walk, cutting the
+playlist short without a word; it now fails the load.
+
 The three unions decode `message` and share a `PathfinderEntityUnion` protocol, so the guard
 pair written out three times is one generic function.
 
@@ -77,7 +82,7 @@ as `TrackService.unavailableTrackIds` does for tracks. Only `NotFound` is rememb
 
 ## Verification
 
-- [x] Unit tests: the measured `GenericError` body throws `entityFailed(.playlist, message)`,
+- [x] Unit tests: the measured `GenericError` body throws `entityFailed(.playlist)`,
       which `isRetryable` allows and `notFound` does not; a `PreRelease` album decodes with its
       name; an album answered `NotFound` twice costs one request; a playlist answered
       `GenericError` twice costs two.
