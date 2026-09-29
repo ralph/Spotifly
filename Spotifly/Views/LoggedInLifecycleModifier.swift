@@ -15,6 +15,9 @@ struct LoggedInLifecycleModifier: ViewModifier {
     let queueService: QueueService
     let deviceService: DeviceService
     let homeService: HomeService
+    /// Only the debug hooks use it. Passed in, because `LoggedInView` puts it into the
+    /// environment of the content this modifies, not of the modifier.
+    let navigationCoordinator: NavigationCoordinator
 
     @Environment(PlayerModel.self) private var player
 
@@ -153,6 +156,18 @@ struct LoggedInLifecycleModifier: ViewModifier {
                             playbackViewModel.resume()
                             try? await Task.sleep(for: .seconds(4))
                             debugLog("DebugAutoplay", "Resumed, 4 s on: \(debugPlaybackSummary())")
+                        }
+                    }
+
+                    // SPOTIFLY_DEBUG_OPEN=<spotify:album:… or spotify:artist:…>: open that
+                    // page, for an id nothing in the app leads to, such as an album from
+                    // another market, which Spotify answers as not found.
+                    if let open = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_OPEN"] {
+                        debugLog("DebugAutoplay", "Opening \(open)")
+                        if let id = SpotifyURI.id(from: open, kind: "album") {
+                            navigationCoordinator.navigateToAlbumSection(albumId: id)
+                        } else if let id = SpotifyURI.id(from: open, kind: "artist") {
+                            navigationCoordinator.navigateToArtistSection(artistId: id)
                         }
                     }
 

@@ -17,7 +17,9 @@ import SwiftUI
 /// navigating away and back.
 struct InlineLoadError: View {
     let message: String
-    let retry: () async -> Void
+    /// Nil where asking again cannot help, as for an album Spotify has none of. The button
+    /// would only ever fail again.
+    let retry: (() async -> Void)?
 
     var body: some View {
         VStack(spacing: 8) {
@@ -25,8 +27,10 @@ struct InlineLoadError: View {
                 .foregroundStyle(.red)
                 .multilineTextAlignment(.center)
 
-            Button("action.try_again") {
-                Task { await retry() }
+            if let retry {
+                Button("action.try_again") {
+                    Task { await retry() }
+                }
             }
         }
         .padding()

@@ -14,6 +14,25 @@ nonisolated enum PartnerAPIError: Error, LocalizedError {
     case emptyPayload
     /// A write Spotify answered with HTTP 200 and a failure `__typename`.
     case mutationRejected(String, String)
+    /// Spotify has no such album or artist for this account, and says so with HTTP 200 and a
+    /// union whose `__typename` is `NotFound`. Measured on 2026-09-29: an album from another
+    /// market and an id that never existed answer alike, and so do both artist operations.
+    /// Asking again gets the same answer, so the views offer no retry.
+    case notFound(Entity)
+
+    enum Entity: Sendable {
+        case album
+        case artist
+    }
+
+    /// Whether asking again cannot help.
+    var isNotFound: Bool {
+        if case .notFound = self {
+            true
+        } else {
+            false
+        }
+    }
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +48,10 @@ nonisolated enum PartnerAPIError: Error, LocalizedError {
             messages.joined(separator: "; ")
         case .emptyPayload:
             "Spotify returned no data"
+        case .notFound(.album):
+            String(localized: "error.album_not_found")
+        case .notFound(.artist):
+            String(localized: "error.artist_not_found")
         }
     }
 }
@@ -63,6 +86,18 @@ private nonisolated struct PathfinderErrorEnvelope: Decodable {
     }
 
     let errors: [Failure]?
+}
+
+/// A pathfinder union, which says in `__typename` what it holds.
+nonisolated protocol PathfinderUnion {
+    var typename: String? { get }
+}
+
+nonisolated extension PathfinderUnion {
+    /// Spotify has none of what was asked for; see `PartnerAPIError.notFound`.
+    var isNotFound: Bool {
+        typename == "NotFound"
+    }
 }
 
 /// What a pathfinder *write* answers with, on both the playlist and the library operations.
@@ -245,6 +280,9 @@ nonisolated struct PartnerAPI: Sendable {
         guard let album = response.data?.albumUnion else {
             throw PartnerAPIError.emptyPayload
         }
+        guard !album.isNotFound else {
+            throw PartnerAPIError.notFound(.album)
+        }
 
         return album
     }
@@ -272,6 +310,9 @@ nonisolated struct PartnerAPI: Sendable {
 
         guard let artist = response.data?.artistUnion else {
             throw PartnerAPIError.emptyPayload
+        }
+        guard !artist.isNotFound else {
+            throw PartnerAPIError.notFound(.artist)
         }
 
         return artist

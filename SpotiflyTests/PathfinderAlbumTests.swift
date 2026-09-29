@@ -57,6 +57,9 @@ struct PathfinderAlbumTests {
     @Test func `the album envelope decodes down to its tracks`() throws {
         let album = try decodeDiscovery()
 
+        #expect(album.typename == "Album")
+        #expect(!album.isNotFound)
+
         #expect(album.id == "2noRn2Aes5aoNVsU6iWThc")
         #expect(album.name == "Discovery")
         #expect(album.type == "ALBUM")

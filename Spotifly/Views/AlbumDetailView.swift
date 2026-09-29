@@ -20,6 +20,8 @@ struct AlbumDetailView: View {
 
     @State private var isLoading = false
     @State private var errorMessage: String?
+    /// False when Spotify has no such album, where trying again would only fail again.
+    @State private var canRetry = true
     @State private var showRemoveConfirmation = false
 
     /// The album from the store — the only copy. Whatever a load puts there shows
@@ -38,9 +40,7 @@ struct AlbumDetailView: View {
             if let album {
                 albumContent(album)
             } else if let errorMessage {
-                InlineLoadError(message: errorMessage) {
-                    await loadAlbum()
-                }
+                InlineLoadError(message: errorMessage, retry: canRetry ? { await loadAlbum() } : nil)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -158,9 +158,7 @@ struct AlbumDetailView: View {
                     ProgressView("loading.tracks")
                         .padding()
                 } else if let errorMessage {
-                    InlineLoadError(message: errorMessage) {
-                        await loadAlbum()
-                    }
+                    InlineLoadError(message: errorMessage, retry: canRetry ? { await loadAlbum() } : nil)
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(tracks.enumerated(), id: \.offset) { index, track in
@@ -207,6 +205,7 @@ struct AlbumDetailView: View {
         // a cached album must not flash a spinner over its tracks.
         isLoading = album?.tracksLoaded != true
         errorMessage = nil
+        canRetry = true
 
         do {
             try await albumService.ensureAlbumLoaded(albumId: albumId)
@@ -215,6 +214,7 @@ struct AlbumDetailView: View {
             // running and its result is in the store for whatever replaces us.
             if !isCancellation(error) {
                 errorMessage = error.localizedDescription
+                canRetry = (error as? PartnerAPIError)?.isNotFound != true
             }
         }
 

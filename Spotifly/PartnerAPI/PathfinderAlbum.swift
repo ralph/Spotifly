@@ -24,7 +24,7 @@ nonisolated struct PathfinderAlbumResponse: Decodable, Sendable {
 /// A partial view of what `getAlbum` returns, which also carries extracted cover-art colours,
 /// `moreAlbumsByArtist`, `watchFeedEntrypoint`, sharing info and pre-release scheduling. Decoding
 /// fields nothing renders only creates work the next time Spotify adds one.
-nonisolated struct PathfinderAlbumUnion: Decodable, Sendable {
+nonisolated struct PathfinderAlbumUnion: Decodable, Sendable, PathfinderUnion {
     struct ReleaseDate: Decodable, Sendable {
         let isoString: String?
 
@@ -60,6 +60,8 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable {
         let totalCount: Int?
     }
 
+    /// `Album`, or `NotFound` for an album this account cannot see.
+    let typename: String?
     let uri: String?
     let name: String?
     let type: String?
@@ -67,6 +69,11 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable {
     let coverArt: PathfinderImage?
     let artists: ArtistList?
     let tracksV2: TrackList?
+
+    private enum CodingKeys: String, CodingKey {
+        case typename = "__typename"
+        case uri, name, type, date, coverArt, artists, tracksV2
+    }
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))

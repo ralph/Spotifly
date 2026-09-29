@@ -17,6 +17,8 @@ struct ArtistDetailView: View {
 
     @State private var isLoadingAlbums = false
     @State private var errorMessage: String?
+    /// False when Spotify has no such artist, where trying again would only fail again.
+    @State private var canRetry = true
     @State private var showAllAlbums = false
     @State private var showUnfollowConfirmation = false
 
@@ -36,9 +38,7 @@ struct ArtistDetailView: View {
             if let artist {
                 artistContent(artist)
             } else if let errorMessage {
-                InlineLoadError(message: errorMessage) {
-                    await loadArtist()
-                }
+                InlineLoadError(message: errorMessage, retry: canRetry ? { await loadArtist() } : nil)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -101,9 +101,7 @@ struct ArtistDetailView: View {
                     ProgressView("loading.albums")
                         .padding()
                 } else if let errorMessage {
-                    InlineLoadError(message: errorMessage) {
-                        await loadArtist()
-                    }
+                    InlineLoadError(message: errorMessage, retry: canRetry ? { await loadArtist() } : nil)
                 } else if !albums.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
@@ -219,6 +217,7 @@ struct ArtistDetailView: View {
         // a cached artist must not flash a spinner over their albums.
         isLoadingAlbums = store.artistAlbumIds[artistId] == nil
         errorMessage = nil
+        canRetry = true
 
         do {
             try await artistService.ensureArtistLoaded(artistId: artistId)
@@ -227,6 +226,7 @@ struct ArtistDetailView: View {
             // running and its result is in the store for whatever replaces us.
             if !isCancellation(error) {
                 errorMessage = error.localizedDescription
+                canRetry = (error as? PartnerAPIError)?.isNotFound != true
             }
         }
 
