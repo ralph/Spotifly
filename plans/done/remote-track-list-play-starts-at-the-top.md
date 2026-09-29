@@ -2,7 +2,7 @@
 
 Status: **Done** 2026-09-29 (#84). Built, unit-tested, and both live checks passed on `0dd7076`
 the same day; see Verification. The sending side has a plan of its own:
-`plans/open/plays-sent-to-a-librespot-device.md`.
+`plans/done/plays-sent-to-a-librespot-device.md`.
 Components: `Spotifly/SwiftLibrespot/Dealer/DealerConnection.swift` (`parseCommand`, `play`),
 `Spotifly/SwiftLibrespot/Dealer/DealerMessage.swift` (`PlayCommand`),
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`playTracks`, the remote `.play`

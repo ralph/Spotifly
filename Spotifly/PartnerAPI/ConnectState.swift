@@ -78,15 +78,18 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         }
 
         struct Options: Encodable, Sendable {
-            let skipTo: SkipTo
+            var skipTo: SkipTo?
 
             enum CodingKeys: String, CodingKey {
                 case skipTo = "skip_to"
             }
         }
 
-        let uri: String
-        let url: String
+        /// Nil for an inline list. Sent empty, librespot read it as a context to resolve:
+        /// its context is proto2, so `"uri": ""` parses as a uri, and only a missing one takes
+        /// the `PlayContext::Tracks` branch that plays the pages.
+        let uri: String?
+        let url: String?
         var pages: [Page]?
         let options: Options?
 
@@ -115,10 +118,24 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
 
         /// A list of tracks with no context of their own, carried inline.
         init(trackUris: [String]) {
-            uri = ""
-            url = ""
+            uri = nil
+            url = nil
             pages = [Page(tracks: trackUris.map { Track(uri: $0) })]
             options = nil
+        }
+    }
+
+    /// Where a play came from, which librespot requires of every `play`: its
+    /// `PlayCommand.play_origin` has no default, and neither has `options`, so a play without
+    /// either did not parse there, if Spotify relays the command as sent. The web player sends
+    /// both on every play. Named after the app, as go-librespot names itself.
+    struct PlayOrigin: Encodable, Sendable {
+        let featureIdentifier = "spotifly"
+        let featureVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+
+        enum CodingKeys: String, CodingKey {
+            case featureIdentifier = "feature_identifier"
+            case featureVersion = "feature_version"
         }
     }
 
@@ -155,6 +172,7 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         case loggingParams = "logging_params"
         case value
         case context
+        case playOrigin = "play_origin"
         case options
         case track
     }
@@ -169,10 +187,12 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         }
 
         // `play` puts the context beside the endpoint and its skip_to under `options`, rather
-        // than nesting one inside the other.
+        // than nesting one inside the other. `options` and `play_origin` go with every play,
+        // an empty `options` where there is nothing to skip to; see `PlayOrigin`.
         if let context {
             try container.encode(context, forKey: .context)
-            try container.encodeIfPresent(context.options, forKey: .options)
+            try container.encode(PlayOrigin(), forKey: .playOrigin)
+            try container.encode(context.options ?? Context.Options(), forKey: .options)
         }
         try container.encodeIfPresent(track, forKey: .track)
         try container.encodeIfPresent(skipTarget, forKey: .track)
