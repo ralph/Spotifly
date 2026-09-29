@@ -257,6 +257,7 @@ public actor LibrespotClient {
         publish {
             $0.devices = nil
             $0.queue = nil
+            $0.withheld = []
             $0.activeDeviceId = ""
             $0.clusterRevision += 1
         }
@@ -644,6 +645,16 @@ public actor LibrespotClient {
         Task { [audioPipeline] in await audioPipeline?.setNextTrack(next) }
     }
 
+    /// A track Spotify withholds, found out by loading it or by fetching it ahead: the queue
+    /// steps over it from now on, the fetch-ahead moves past it, and the app greys it, since
+    /// no list said so.
+    private func markUnplayable(_ uri: String) {
+        failedUnplayable.insert(uri)
+        let withheld = failedUnplayable
+        publish { $0.withheld = withheld }
+        announceNextTrack()
+    }
+
     /// Replaces the tracks the app's lists said will not play.
     public func setUnplayable(_ uris: Set<String>) {
         guard uris != listedUnplayable else { return }
@@ -812,9 +823,8 @@ public actor LibrespotClient {
         do {
             try await audioPipeline.playTrack(uri: uri, positionMs: positionMs, paused: paused)
         } catch {
-            // Known from here on, so the queue steps over it next time round.
             if case LibrespotError.trackUnavailable = error {
-                failedUnplayable.insert(uri)
+                markUnplayable(uri)
             }
             throw error
         }
@@ -933,10 +943,7 @@ public actor LibrespotClient {
             case let .endOfTrack(uri):
                 handleEndOfTrack(uri)
             case let .withheldAhead(uri):
-                // Known from here on, as a failed load is, and the pipeline told the track
-                // after it, which the change of track then steps to.
-                failedUnplayable.insert(uri)
-                announceNextTrack()
+                markUnplayable(uri)
             case let .error(error):
                 debugLog("LibrespotClient", "Audio pipeline error: \(error.localizedDescription)")
                 await playbackFailed(error)

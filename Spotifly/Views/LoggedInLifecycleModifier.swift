@@ -194,6 +194,10 @@ struct LoggedInLifecycleModifier: ViewModifier {
             .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
                 SpotifyPlayer.setUnplayable(uris)
             }
+            // And the other way: what playback found withheld, which no list said, is greyed.
+            .onChange(of: player.withheld, initial: true) { _, uris in
+                store.setWithheld(uris)
+            }
             // Connection handling is driven by whether the session is connected, not by
             // which device is active. Activation and connection are different facts:
             // another device taking over says nothing about whether the session is

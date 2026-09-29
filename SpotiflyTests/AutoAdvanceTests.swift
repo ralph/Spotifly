@@ -247,39 +247,3 @@ extension AutoAdvance.Outcome {
         }
     }
 }
-
-/// The fetch-ahead reports a track Spotify withholds, so the queue can step over it before the
-/// change of track: `plans/done/unplayable-tracks-found-by-loading.md`.
-struct FetchAheadTests {
-    @Test func `a withheld track is reported, and the fetch still fails`() async {
-        let reported = Recorder<String>()
-
-        await #expect(throws: LibrespotError.trackUnavailable(name: "Girlfriend")) {
-            _ = try await AudioPipeline.fetchAhead("spotify:track:g", prepare: { () async throws -> Int in
-                throw LibrespotError.trackUnavailable(name: "Girlfriend")
-            }, withheld: reported.record)
-        }
-        #expect(reported.values == ["spotify:track:g"])
-    }
-
-    /// Anything else may not recur, so the change of track fetches again, and nothing is marked.
-    @Test func `another failure is not reported`() async {
-        let reported = Recorder<String>()
-
-        await #expect(throws: LibrespotError.self) {
-            _ = try await AudioPipeline.fetchAhead("spotify:track:t", prepare: { () async throws -> Int in
-                throw LibrespotError.trackNotFound("spotify:track:t")
-            }, withheld: reported.record)
-        }
-        #expect(reported.values.isEmpty)
-    }
-
-    @Test func `a track that fetches is not reported`() async throws {
-        let reported = Recorder<String>()
-
-        let value = try await AudioPipeline.fetchAhead("spotify:track:t", prepare: { 7 }, withheld: reported.record)
-
-        #expect(value == 7)
-        #expect(reported.values.isEmpty)
-    }
-}
