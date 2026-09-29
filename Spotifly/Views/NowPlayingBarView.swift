@@ -25,6 +25,8 @@ struct NowPlayingBarView: View {
     @State private var showNewPlaylistDialog = false
     @State private var showPlaylistAddedSuccess = false
 
+    @State private var showFullErrorMessage = false
+
     /// Whether something is currently playing or queued
     private var hasPlayback: Bool {
         playbackViewModel.currentTrackUri != nil
@@ -216,7 +218,28 @@ struct NowPlayingBarView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
-                    .help(message)
+                    // Without it the row offers one line's height, and the second line the
+                    // bar has room for went unused.
+                    .fixedSize(horizontal: false, vertical: true)
+                    // The full text at once, not as a tooltip: a tooltip waits for the
+                    // pointer to rest, and the error was often gone before it appeared.
+                    .onHover { hovering in
+                        playbackViewModel.isErrorMessageHeld = hovering
+                        showFullErrorMessage = hovering
+                    }
+                    // Removed under the pointer, as when a new play clears the error, the
+                    // label gets no hover exit, and a hold left on would keep later errors up.
+                    .onDisappear {
+                        playbackViewModel.isErrorMessageHeld = false
+                        showFullErrorMessage = false
+                    }
+                    .popover(isPresented: $showFullErrorMessage, arrowEdge: .top) {
+                        Text(message)
+                            .font(.callout)
+                            .frame(width: 280, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(12)
+                    }
             } else if let track = currentTrack {
                 Text(track.name)
                     .font(.subheadline.weight(.medium))

@@ -59,12 +59,15 @@ struct TrackContextMenu: View {
         } label: {
             Label("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward")
         }
+        // A track Spotify will not play starts nothing.
+        .disabled(!track.isPlayable)
 
         Button {
             startSongRadio()
         } label: {
             Label("track.menu.start_radio", systemImage: "antenna.radiowaves.left.and.right")
         }
+        .disabled(!track.isPlayable)
 
         Divider()
 

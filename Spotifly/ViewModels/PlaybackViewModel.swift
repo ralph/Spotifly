@@ -52,16 +52,34 @@ final class PlaybackViewModel {
     var errorMessage: String? {
         didSet {
             guard let errorMessage, errorMessage != oldValue else { return }
+            errorMessageExpired = false
             // A caption changing in place is not announced by itself.
             AccessibilityNotification.Announcement(errorMessage).post()
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(5))
-                if self?.errorMessage == errorMessage {
-                    self?.errorMessage = nil
+                guard let self, self.errorMessage == errorMessage else { return }
+                if isErrorMessageHeld {
+                    errorMessageExpired = true
+                } else {
+                    self.errorMessage = nil
                 }
             }
         }
     }
+
+    /// Set by the bar while the pointer is on the error. The bar cuts off what does not fit,
+    /// and the error is read in full by pointing at it, so it stays past its five seconds
+    /// until the pointer leaves.
+    var isErrorMessageHeld = false {
+        didSet {
+            if !isErrorMessageHeld, errorMessageExpired {
+                errorMessage = nil
+            }
+        }
+    }
+
+    /// Whether the error's five seconds ran out while it was held.
+    private var errorMessageExpired = false
 
     /// Returns the URI of the currently playing track (alias for currentTrackUri)
     var currentlyPlayingURI: String? {
@@ -441,6 +459,13 @@ final class PlaybackViewModel {
     /// anyway and its failure discarded with it, so track cards and context menus silently
     /// did nothing; asking for authorization is the honest answer.
     func playRadio(trackUri: String) async {
+        // A track Spotify will not play starts nothing, radio included, wherever it is
+        // clicked: a search card, a row or its menu.
+        if let message = SpotifyAPI.parseTrackURI(trackUri).flatMap({ store?.tracks[$0] })?.unplayableMessage {
+            errorMessage = message
+            return
+        }
+
         if !isInitialized {
             await initializeIfNeeded()
         }
@@ -1089,8 +1114,9 @@ final class PlaybackViewModel {
 
     // MARK: - Player State
 
-    /// Follows the connection, the playback state and the volume in the player model. Each
-    /// observation gives the value as it stands, then every change, on the main actor.
+    /// Follows the connection, the playback state, the volume and the interruptions in the
+    /// player model. Each observation gives the value as it stands, then every change, on the
+    /// main actor.
     ///
     /// The playback state is how external control shows up: a phone pausing *this* device
     /// sends a Connect command over the dealer, which pauses the pipeline, whose state
@@ -1110,6 +1136,13 @@ final class PlaybackViewModel {
             for await volume in Observations({ player.volume }) {
                 if let volume {
                     self?.handleVolumeChange(volume)
+                }
+            }
+        }
+        Task { [weak self, player] in
+            for await interruption in Observations({ player.interruption }) {
+                if let interruption {
+                    self?.errorMessage = interruption.message
                 }
             }
         }
