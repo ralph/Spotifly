@@ -511,18 +511,17 @@ public actor LibrespotClient {
         }
     }
 
-    /// Plays `uri`, the `position`th of the next tracks this client publishes,
-    /// as a double-click on its queue row asks, without resolving the context
-    /// again: the history, the queued tracks and the shuffle order stay. See
+    /// Plays `uri` from the next tracks this client publishes, the copy
+    /// nearest `position`, without resolving the context again. See
     /// `PlaybackQueue.skip(toUpcoming:uri:)`.
-    public func skip(toNext position: Int, uri: String) async throws {
+    public func skip(toNext position: Int?, uri: String) async throws {
         defer { publishQueue() }
         guard let next = playbackQueue.skip(toUpcoming: position, uri: uri) else { return }
         try await loadAndPlay(next)
     }
 
-    /// Plays `uri`, the `index`th of the previous tracks this client
-    /// publishes, as Previous would, pressed that many times.
+    /// Plays `uri` from the previous tracks this client publishes, as Previous
+    /// would, pressed that many times. See `PlaybackQueue.stepBack(toRecent:uri:)`.
     public func skip(toPrevious index: Int, uri: String) async throws {
         defer { publishQueue() }
         guard let previous = playbackQueue.stepBack(toRecent: index, uri: uri) else { return }
@@ -1170,8 +1169,14 @@ public actor LibrespotClient {
         case let .seekTo(positionMs):
             try? await audioPipeline?.seek(positionMs: positionMs)
 
-        case .next:
-            try? await advanceUserInitiated()
+        case let .next(trackUri):
+            // A queue row clicked on another device names its track, and the
+            // jump goes to its first copy ahead, as librespot's `handle_next`.
+            if let trackUri {
+                try? await skip(toNext: nil, uri: trackUri)
+            } else {
+                try? await advanceUserInitiated()
+            }
 
         case .prev:
             try? await previous()

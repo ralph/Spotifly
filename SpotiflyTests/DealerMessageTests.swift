@@ -300,3 +300,23 @@ struct PlayCommandTests {
         #expect(command.context == .uri("spotify:track:t1"))
     }
 }
+
+/// `skip_next` from another device: a plain Next, or a queue row clicked there.
+struct SkipNextCommandTests {
+    @Test func `a skip names the track of the row clicked`() {
+        let json: [String: Any] = ["endpoint": "skip_next", "track": ["uri": "spotify:track:t4", "uid": "c3e1a9d6"]]
+        guard case let .next(trackUri) = DealerConnection.parseCommand(endpoint: "skip_next", json: json) else {
+            Issue.record("not read as skip_next")
+            return
+        }
+        #expect(trackUri == "spotify:track:t4")
+    }
+
+    @Test func `a plain skip names none`() {
+        guard case let .next(trackUri) = DealerConnection.parseCommand(endpoint: "skip_next", json: ["endpoint": "skip_next"]) else {
+            Issue.record("not read as skip_next")
+            return
+        }
+        #expect(trackUri == nil)
+    }
+}

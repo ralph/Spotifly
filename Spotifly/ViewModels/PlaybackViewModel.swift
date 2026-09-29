@@ -773,18 +773,7 @@ final class PlaybackViewModel {
     }
 
     func next() {
-        guard sendTransportCommand(
-            "next()",
-            promisesPosition: true,
-            local: { try await SpotifyPlayer.next() },
-            remote: { try await SpclientAPI().sendCommand(.next, from: $0, to: $1) },
-        ) else {
-            return
-        }
-
-        // Immediately reset position to 0 for responsive UI
-        anchorPosition(0, optimistic: true)
-        updateNowPlayingInfo()
+        skip("next()", local: { try await SpotifyPlayer.next() }, remote: .next)
     }
 
     /// Previous track, or the start of this one.
@@ -795,66 +784,61 @@ final class PlaybackViewModel {
     /// `403 no_prev_track`, which left the button enabled and doing nothing while an error
     /// banner blamed Spotify. So the refusal is answered with the seek it stood for.
     func previous() {
-        guard sendTransportCommand(
-            "previous()",
-            promisesPosition: true,
-            local: { try await SpotifyPlayer.previous() },
-            remote: { try await SpclientAPI().sendCommand(.previous, from: $0, to: $1) },
-            declined: { [weak self] error in
-                guard error.isNoPreviousTrack else { return }
-                self?.seek(to: 0)
-            },
-        ) else {
-            return
+        skip("previous()", local: { try await SpotifyPlayer.previous() }, remote: .previous) { [weak self] error in
+            guard error.isNoPreviousTrack else { return }
+            self?.seek(to: 0)
         }
-
-        // Immediately reset position to 0 for responsive UI
-        anchorPosition(0, optimistic: true)
-        updateNowPlayingInfo()
     }
 
     /// A row of the queue, as a double-click names it: which list, where in it, and its track.
     enum QueueRow {
-        /// One of the queue's previous tracks. `contextUri` is where another device starts it.
-        case previous(index: Int, trackUri: String, contextUri: String?)
+        case previous(index: Int, trackUri: String)
         case current
         /// One of the next tracks, with the cluster's uid when another device plays.
         case next(index: Int, trackUri: String, uid: String?)
     }
 
-    /// Plays a row of the queue and keeps the queue: the history, the queued tracks and the
-    /// shuffle order. It used to start the queue's context over from the row's track.
-    ///
-    /// Another device gets the web player's `skip_next` naming the row. Connect has no way
-    /// back to a named track, so there a previous row still starts the context from it.
+    /// Plays a row of the queue and keeps the queue. Another device gets the web player's
+    /// `skip_next` naming the row. Connect has no way back to a named track, so there a
+    /// previous row starts the context from it.
     func play(queueRow row: QueueRow) {
-        let sent: Bool
         switch row {
         case .current:
             seek(to: 0)
             if !isPlaying {
                 resume()
             }
-            return
         case let .next(index, uri, uid):
-            sent = sendTransportCommand(
+            skip(
                 "skip(toNext:)",
-                promisesPosition: true,
                 local: { try await SpotifyPlayer.skip(toNext: index, uri: uri) },
-                remote: { try await SpclientAPI().sendCommand(.skipNext(to: uri, uid: uid), from: $0, to: $1) },
+                remote: .skipNext(to: uri, uid: uid),
             )
-        case let .previous(index, uri, contextUri):
-            sent = sendTransportCommand(
+        case let .previous(index, uri):
+            skip(
                 "skip(toPrevious:)",
-                promisesPosition: true,
                 local: { try await SpotifyPlayer.skip(toPrevious: index, uri: uri) },
-                remote: {
-                    let start = contextUri.map { ConnectCommand.play(uri: $0, trackUri: uri) } ?? .play(uri: uri)
-                    try await SpclientAPI().sendCommand(start, from: $0, to: $1)
-                },
+                remote: .play(uri: store?.queue.contextUri ?? uri, trackUri: uri),
             )
         }
-        guard sent else { return }
+    }
+
+    /// A command that moves to another track, whose start the display shows at once.
+    private func skip(
+        _ name: String,
+        local: @escaping () async throws -> Void,
+        remote command: ConnectCommand,
+        declined: @escaping (SpclientError) -> Void = { _ in },
+    ) {
+        guard sendTransportCommand(
+            name,
+            promisesPosition: true,
+            local: local,
+            remote: { try await SpclientAPI().sendCommand(command, from: $0, to: $1) },
+            declined: declined,
+        ) else {
+            return
+        }
 
         anchorPosition(0, optimistic: true)
         updateNowPlayingInfo()

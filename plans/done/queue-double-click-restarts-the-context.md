@@ -5,7 +5,8 @@ Verification. Starting a *context* by uid is not done; see Solution.
 Components: `Spotifly/Views/QueueListView.swift`, `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`
 (`skip(toUpcoming:uri:)`, `stepBack(toRecent:uri:)`),
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`skip(toNext:uri:)`,
-`skip(toPrevious:uri:)`, the mirrored queue), `Spotifly/ViewModels/PlaybackViewModel.swift`
+`skip(toPrevious:uri:)`, the mirrored queue, the remote `.next` command),
+`Spotifly/SwiftLibrespot/Dealer/DealerConnection.swift` (`skip_next`), `Spotifly/ViewModels/PlaybackViewModel.swift`
 (`play(queueRow:)`), `Spotifly/PartnerAPI/ConnectState.swift` (`skipNext(to:uid:)`),
 `Spotifly/SpotifyPlayer.swift` (`QueueItem.uid`), `Spotifly/Store/AppStore.swift`
 (`QueueEntry.uid`), `Spotifly/Store/Services/QueueService.swift`
@@ -63,9 +64,17 @@ context again.
    (`ConnectCommand.skipNext(to:uid:)`). The uid comes from the cluster's `ProvidedTrack.uid`,
    now kept on the mirrored `QueueItem` and on `QueueEntry`. A previous row still plays the
    context from its track, as every row did before, since Connect has nothing better.
-5. **The current row** restarts its track, and resumes it if paused.
-6. `PlaybackViewModel.play(queueRow:)` takes all of it, through the same local-or-remote route
-   as Next.
+5. **The other way round**, a `skip_next` another device sends here with a `track` jumps to
+   that track, the first copy ahead, as librespot's `handle_next` does. It was read as a plain
+   Next, so a row clicked in the web player's view of this Mac's queue skipped one track.
+6. **The current row** restarts its track, and resumes it if paused.
+7. `PlaybackViewModel.play(queueRow:)` takes all of it, through the same local-or-remote route
+   as Next. Next, Previous and the jumps share one `skip` helper there, which moves the display
+   to the track's start.
+
+The (index, uri) addressing is a stopgap: no row in the queue has an identity. That, and the
+queue published after the track, which is what lets the view's split lag, are
+`plans/open/queue-rows-have-no-identity.md`.
 
 Not done: **starting a context by uid.** The resolver's tracks carry a `uid`, the same one
 `fetchPlaylistContents` gives a playlist item (`"uid":"87ced089511bc3c325f3"` for the first
@@ -82,11 +91,12 @@ looks the row up through `recent()`, so it holds in either order.
 
 ## Verification
 
-- [x] Unit tests, `QueueJumpTests`, seven cases: a context row ahead (history gains the tracks
+- [x] Unit tests, `QueueJumpTests`, eight cases: a context row ahead (history gains the tracks
       passed over), queued tracks kept past a context row, a queued row, shuffle order kept,
-      copies picked by the index, a row no longer listed, and a step back to a history row.
-- [x] `skip_next` carries the track and uid, and the uri alone without one. A mirrored row
-      keeps its uid into the store.
+      copies picked by the index, the first copy without one, a row no longer listed, and a
+      step back to a history row.
+- [x] `skip_next` carries the track and uid, and the uri alone without one; one received is
+      read with its track, or without. A mirrored row keeps its uid into the store.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, 2026-09-29.
 - [ ] Live, local: start an album at track 1 and queue two tracks by hand. Double-click the
       album's track 5 in the queue. It plays; both queued tracks are still next; the history
@@ -98,3 +108,5 @@ looks the row up through `recent()`, so it holds in either order.
 - [ ] Live, local: double-click a history row. It plays; the rows after it are next again.
 - [ ] Live, remote: with the web player playing an album, double-click a later row in this
       app's queue. The web player plays that row, without starting the album over.
+- [ ] Live, the other way: with this Mac playing an album, click a later row in the web
+      player's queue panel. The Mac plays that row.

@@ -180,12 +180,9 @@ struct ConnectCommandTests {
         let track = try #require(command["track"] as? [String: Any])
         #expect(track["uri"] as? String == "spotify:track:t4")
         #expect(track["uid"] as? String == "c3e1a9d6")
-    }
 
-    @Test func `a skip without a uid sends the uri alone`() throws {
-        let track = try #require(fields(.skipNext(to: "spotify:track:t4", uid: nil))["track"] as? [String: Any])
-
-        #expect(Set(track.keys) == ["uri"])
+        let withoutUid = try #require(fields(.skipNext(to: "spotify:track:t4", uid: nil))["track"] as? [String: Any])
+        #expect(Set(withoutUid.keys) == ["uri"])
     }
 
     @Test func `a negative seek is clamped rather than sent`() throws {

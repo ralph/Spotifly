@@ -243,9 +243,9 @@ struct ContextStartTests {
 
 /// A double-click on a queue row: the queue moves to that row and keeps what it had.
 struct QueueJumpTests {
-    private func queue(_ tracks: [String], startingAt index: Int = 0) -> PlaybackQueue {
+    private func queue(_ tracks: [String]) -> PlaybackQueue {
         let queue = PlaybackQueue()
-        queue.setContext(uri: "spotify:album:a", tracks: tracks, startIndex: index)
+        queue.setContext(uri: "spotify:album:a", tracks: tracks, startIndex: 0)
         return queue
     }
 
@@ -306,6 +306,15 @@ struct QueueJumpTests {
 
         #expect(queue.skip(toUpcoming: 2, uri: "a") == "a")
         #expect(queue.contextPosition == 4)
+    }
+
+    /// A `skip_next` from another device names a track and no index: librespot steps to the
+    /// first copy ahead.
+    @Test func `without an index, the first copy ahead plays`() {
+        let queue = queue(["a", "b", "a", "c", "a"])
+
+        #expect(queue.skip(toUpcoming: nil, uri: "a") == "a")
+        #expect(queue.contextPosition == 2)
     }
 
     @Test func `a row no longer listed plays nothing and moves nothing`() {

@@ -554,7 +554,7 @@ public actor DealerConnection {
             return .seekTo(positionMs: position.uint64Value)
 
         case "skip_next":
-            return .next
+            return .next(trackUri: (json["track"] as? [String: Any])?["uri"] as? String)
 
         case "skip_prev":
             return .prev

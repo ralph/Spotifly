@@ -253,7 +253,7 @@ enum SpotifyPlayer {
     }
 
     /// Plays one of the queue's next tracks, keeping the queue.
-    static func skip(toNext position: Int, uri: String) async throws {
+    static func skip(toNext position: Int?, uri: String) async throws {
         try await LibrespotClient.shared.skip(toNext: position, uri: uri)
     }
 
