@@ -85,6 +85,9 @@ final class TrackService {
     // MARK: - Favorites (Saved Tracks)
 
     /// Load the next page of the user's saved tracks, or the first if none is loaded.
+    ///
+    /// Read from the Liked Songs playlist, which is also what the favorites view plays, so the
+    /// row a listener double-clicks is the track at that index of the context (`LikedSongs`).
     func loadFavorites(forceRefresh: Bool = false) async throws {
         // The list can be reported as loaded while holding nothing — a page whose
         // load was interrupted. Recover by starting over rather than by trusting it.
@@ -106,7 +109,7 @@ final class TrackService {
 
         try await listRequests.run(Self.listKey) {
             try await self.store.loadLibraryPage(\.favoritesPagination) { offset in
-                let page = try await self.partnerAPI.libraryTracks(offset: offset, limit: 50)
+                let page = try await self.partnerAPI.likedSongs(offset: offset)
                 // See AlbumService.loadUserAlbums: a superseded run must not write.
                 try Task.checkCancellation()
 

@@ -98,8 +98,20 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     /// with no tracks, or tracks with no names, rather than an error.
     static let fetchPlaylist = PathfinderOperation(
         name: "fetchPlaylist",
-        sha256Hash: "243c0ba2736f16da721e3a227004bbcdb8df6c846f198bd478172e00aa1faf42",
+        sha256Hash: playlistQueryHash,
     )
+
+    /// A playlist's contents *without* its details: `playlistV2` carries `content` and nothing
+    /// else. The items are the ones `fetchPlaylist` returns for the same page, in the same order,
+    /// down to every field the decoders read. This is what the web player pages Liked Songs
+    /// with, and so does this app.
+    static let fetchPlaylistContents = PathfinderOperation(
+        name: "fetchPlaylistContents",
+        sha256Hash: playlistQueryHash,
+    )
+
+    private static let playlistQueryHash =
+        "243c0ba2736f16da721e3a227004bbcdb8df6c846f198bd478172e00aa1faf42"
 
     /// The playlist mutations, which likewise share one hash and differ by name.
     ///
@@ -127,17 +139,11 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
 
     /// The user's library — playlists, albums and followed artists — selected by `filters`.
     ///
-    /// Three Web API endpoints in one document. Saved *tracks* are not part of it; they have
-    /// their own operation below.
+    /// Three Web API endpoints in one document. Saved *tracks* are not part of it; they are read
+    /// as the Liked Songs playlist (`LikedSongs`), through `fetchPlaylistContents`.
     static let libraryV3 = PathfinderOperation(
         name: "libraryV3",
         sha256Hash: "390c78e5b951029bad359785e69b07b536a509c581cbcd0aded5e5067f187455",
-    )
-
-    /// The saved tracks, replacing `/me/tracks`.
-    static let fetchLibraryTracks = PathfinderOperation(
-        name: "fetchLibraryTracks",
-        sha256Hash: "087278b20b743578a6262c2b0b4bcd20d879c503cc359a2285baf083ef944240",
     )
 
     /// "Is each of these in the library?", replacing `/me/tracks/contains`. Answers positionally.

@@ -401,18 +401,24 @@ nonisolated struct PartnerAPI: Sendable {
         return page
     }
 
-    /// One page of the user's saved tracks.
-    func libraryTracks(offset: Int, limit: Int = 50) async throws -> PathfinderLibraryTrackPage {
-        let response: PathfinderLibraryTracksResponse = try await query(
-            .fetchLibraryTracks,
-            variables: PathfinderLibraryTracksVariables(offset: offset, limit: limit),
+    /// One page of Liked Songs, newest first, read as the playlist the web player reads it as.
+    ///
+    /// `fetchPlaylistContents` rather than `fetchPlaylist`: the same stored document and the
+    /// same items, without the playlist's own details, which a page of favorites never shows.
+    func likedSongs(
+        offset: Int,
+        limit: Int = LikedSongs.pageLimit,
+    ) async throws -> PathfinderPlaylistUnion.Content {
+        let response: PathfinderPlaylistResponse = try await query(
+            .fetchPlaylistContents,
+            variables: PathfinderPlaylistVariables(uri: LikedSongs.uri, offset: offset, limit: limit),
         )
 
-        guard let page = response.page else {
+        guard let content = response.data?.playlistV2?.content else {
             throw PartnerAPIError.emptyPayload
         }
 
-        return page
+        return content
     }
 
     /// Which of these are in the library, keyed by id.

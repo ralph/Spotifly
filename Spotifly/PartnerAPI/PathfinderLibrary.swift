@@ -55,8 +55,7 @@ nonisolated struct PathfinderLibraryPage<Entity: Decodable & Sendable>: Decodabl
 ///
 /// The uri sits on the wrapper as `_uri` *beside* the entity rather than inside it, which is why
 /// this type exists at all instead of the page holding entities directly. The entity does carry
-/// its own `uri` for the three kinds the app stores, so the wrapper's copy is not read — but it
-/// is the shape to remember, because `fetchLibraryTracks` below has only the wrapper's.
+/// its own `uri` for the three kinds the app stores, so the wrapper's copy is not read.
 nonisolated struct PathfinderLibraryItem<Entity: Decodable & Sendable>: Decodable, Sendable {
     struct Wrapper: Decodable, Sendable {
         let data: Entity?
@@ -72,59 +71,37 @@ nonisolated struct PathfinderTimestamp: Decodable, Sendable {
     let isoString: String?
 }
 
-// MARK: - fetchLibraryTracks
+// MARK: - Liked Songs
 
-/// `{ "data": { "me": { "library": { "tracks": { … } } } } }`
+/// Liked Songs, read as the playlist Spotify's own clients now read it as.
 ///
-/// Saved tracks are *not* part of `libraryV3` — they have their own operation and their own
-/// nesting, one level deeper than the rest of the library.
-nonisolated struct PathfinderLibraryTracksResponse: Decodable, Sendable {
-    struct Library: Decodable, Sendable {
-        let tracks: PathfinderLibraryTrackPage?
-    }
-
-    struct Me: Decodable, Sendable {
-        let library: Library?
-    }
-
-    struct Payload: Decodable, Sendable {
-        let me: Me?
-    }
-
-    let data: Payload?
-
-    var page: PathfinderLibraryTrackPage? {
-        data?.me?.library?.tracks
-    }
-}
-
-nonisolated struct PathfinderLibraryTrackPage: Decodable, Sendable {
-    let totalCount: Int?
-    let items: [PathfinderLibraryTrackItem]?
-}
-
-/// One saved track.
+/// **One uri, not one per account.** `spotify:playlist:37i9dQZF1F5p3rmiWPIYgZ` is a constant in
+/// the web player's bundle (beside "Your Episodes", `37i9dQZF1FgnTBfUlzkeKt`), so every
+/// account's web player asks for the same one and the service answers with the caller's own
+/// songs. The web player switched to it behind two flags, `enableLikedSongsListPlatform` and
+/// `enableLikedSongsAsPlaylist`, both on by default: `/collection/tracks` pages with
+/// `fetchPlaylist`/`fetchPlaylistContents`, and playing Liked Songs swaps
+/// `spotify:collection:tracks` for this uri. The `fetchLibraryTracks` operation this replaces is
+/// still in the bundle and still answers, but the web client no longer calls it.
 ///
-/// **The track does not carry its own uri here**, which is the one thing that makes this shape
-/// different from every other track-bearing response: `track.data` holds the name, album, artists
-/// and duration, and the uri lives on `track._uri` beside it. A decoder that read `data.uri`
-/// would get nil for every row and drop the whole list — so the uri is passed into the
-/// conversion rather than looked for inside the entity.
-nonisolated struct PathfinderLibraryTrackItem: Decodable, Sendable {
-    struct Wrapper: Decodable, Sendable {
-        let data: PathfinderTrack?
+/// **The list and the playback context have to be the same thing**, because the favorites view
+/// starts playback by index. Measured on 2026-09-29 against 609 saved tracks: this playlist,
+/// `fetchLibraryTracks` and the context resolver all return the same tracks under the same ids,
+/// newest first, but they break ties differently, and eight batches of up to 114 songs share an
+/// `addedAt` to the second. Resolving `spotify:collection:tracks` differed from
+/// `fetchLibraryTracks` in 121 positions, so a double-click there could start a different song
+/// than the row clicked. This
+/// playlist resolves as a context in exactly the order `fetchPlaylistContents` pages it, so the
+/// list and the player agree at every index.
+///
+/// Writes stay on `addToLibrary`/`removeFromLibrary`: the playlist is a view of the collection,
+/// not a playlist anyone edits.
+nonisolated enum LikedSongs {
+    static let uri = "spotify:playlist:37i9dQZF1F5p3rmiWPIYgZ"
 
-        /// Spotify's own name for the field, underscore included.
-        let uri: String?
-
-        private enum CodingKeys: String, CodingKey {
-            case data
-            case uri = "_uri"
-        }
-    }
-
-    let addedAt: PathfinderTimestamp?
-    let track: Wrapper?
+    /// One page of the favorites list. Only a page, not the whole list: the view loads more as
+    /// it scrolls.
+    static let pageLimit = 50
 }
 
 // MARK: - areEntitiesInLibrary
@@ -226,13 +203,6 @@ nonisolated enum LibraryFilter {
     /// `limit: 50`, and `offset: 50` returned the remaining 10 — so the list pages by offset and
     /// this is a ceiling rather than a preference.
     static let pageLimit = 50
-}
-
-/// The variables `fetchLibraryTracks` takes. It pages the same way, and reports its own
-/// `pagingInfo` back.
-nonisolated struct PathfinderLibraryTracksVariables: Encodable, Sendable {
-    var offset: Int = 0
-    var limit: Int = 50
 }
 
 /// The variables `areEntitiesInLibrary` takes — declared `[ID!]!`, so it is the one library
