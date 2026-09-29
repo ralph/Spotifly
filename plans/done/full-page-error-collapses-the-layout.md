@@ -72,6 +72,9 @@ cause. The cause is that `HSplitView` takes the height its panes ask for, so **a
 content is rigid collapses the region: the three error branches, and just as well
 `LibraryListView`'s own loading, error and empty `VStack`s in the list column.
 
+The review of the change found one more: `LoggedInDetailRouterView`'s "Select an album" (artist,
+playlist) placeholder, shown when nothing is selected, is a bare `Text` in the detail pane.
+
 So the panes fill, whatever they show, in `LoggedInView.contentRegion`:
 
 - the list pane gets `maxHeight: .infinity` beside its width limits;
@@ -79,7 +82,9 @@ So the panes fill, whatever they show, in `LoggedInView.contentRegion`:
 - the whole region gets `.frame(maxWidth: .infinity, maxHeight: .infinity)`, so the single-column
   sections fill too, and the bar's `.overlay(alignment: .bottom)` sits at the window's bottom.
 
-The error view itself stays as it is: inside a pane that fills, the detail views' `ZStack`
+The list pane's content is a `NavigationStack`, which fills by itself, so its frame and the
+region's may well be redundant inside the split; they stay as the one place that says the region
+fills, and so where the bar sits. The error view itself stays as it is: inside a pane that fills, the detail views' `ZStack`
 centers it, and the section errors inside a loaded page keep their size.
 
 ## Verification
