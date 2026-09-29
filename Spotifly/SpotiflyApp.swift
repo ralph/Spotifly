@@ -33,16 +33,29 @@ extension FocusedValues {
 // MARK: - App Delegate
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationWillTerminate(_: Notification) {
-        // Shut down Spirc to send goodbye to other Spotify Connect devices.
-        //
-        // Detached on purpose: an inheriting task would queue behind this delegate callback
-        // on the main actor and could not start until it returns, by which point AppKit is
-        // already tearing the process down. Detached at least lets it begin immediately.
-        // Nothing here can guarantee it finishes — AppKit does not wait for a synchronous
-        // `applicationWillTerminate` to spawn work, and only `applicationShouldTerminate`
-        // with `.terminateLater` could.
-        Task.detached(priority: .userInitiated) { await SpotifyPlayer.shutdown() }
+    private var allowedTermination = false
+
+    /// Holds the quit until the player has shut down: it tells Spotify where playback
+    /// stopped and says goodbye to the other Connect devices. Started from
+    /// `applicationWillTerminate`, as it was, neither got out before the process ended, so
+    /// the next launch mirrored the track from wherever Spotify last heard of it, often its
+    /// start. Two seconds at most, since a PutState on a dead network waits fifteen.
+    func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
+        Task.detached(priority: .userInitiated) {
+            await SpotifyPlayer.shutdown()
+            await self.allowTermination()
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            allowTermination()
+        }
+        return .terminateLater
+    }
+
+    private func allowTermination() {
+        guard !allowedTermination else { return }
+        allowedTermination = true
+        NSApp.reply(toApplicationShouldTerminate: true)
     }
 }
 
