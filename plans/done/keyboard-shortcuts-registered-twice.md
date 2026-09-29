@@ -3,8 +3,7 @@
 Status: **Done** 2026-09-29. The one question only a running app settles, Space in a text
 field, measured in the test host, which builds the app's menus; the rest not yet tried in the
 running app; see Verification.
-Components: `Spotifly/Views/KeyboardShortcuts.swift` (now `ToolbarSearchField.swift`),
-`Spotifly/SpotiflyApp.swift`, `Spotifly/Views/LoggedInContentRouterView.swift`,
+Components: `Spotifly/Views/KeyboardShortcuts.swift` (deleted), `Spotifly/SpotiflyApp.swift`, `Spotifly/Views/LoggedInContentRouterView.swift`,
 `Spotifly/Views/LoggedInView.swift`
 Found: 2026-08-15, in a review of the plans. Re-checked 2026-09-29.
 
@@ -42,12 +41,15 @@ a text field, which gets its space, and it can be the one registration.
 ### What changed
 
 - `PlaybackShortcutsView`, `LibraryNavigationShortcutsView` and `SearchShortcutsView`, and the
-  view modifiers that attached them, are deleted. `KeyboardShortcuts.swift` kept only
-  `focusToolbarSearchField`, which the menu's ⌘F calls, and is renamed after it.
+  view modifiers that attached them, are deleted, and with them `KeyboardShortcuts.swift`.
+  `focusToolbarSearchField`, which the menu's ⌘F calls, moved into `SpotiflyApp.swift`, its
+  only caller.
 - **The menu's ⌘1–⌘4 and Refresh read the navigation as scene values.** `LoggedInView` published
   it with `.focusedValue`, which the menu sees only while a view inside it has focus; the hidden
   buttons had worked whatever had focus. With `.focusedSceneValue` the menu sees it whenever the
   window is key.
+- **Those items are greyed where there is nothing to act on**, as at the login screen or with
+  Settings key, instead of enabled and doing nothing (from the review).
 
 ## Verification
 
@@ -59,3 +61,4 @@ a text field, which gets its space, and it can be the one registration.
       focuses the search field. Each does its thing once.
 - [ ] Live: in search results, where the hidden buttons were never attached, the same shortcuts
       work. And in the mini player, Space plays and pauses.
+- [ ] Live: at the login screen, the Navigate menu's Favorites to Artists and Refresh are greyed.
