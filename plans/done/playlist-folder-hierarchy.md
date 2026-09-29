@@ -110,6 +110,13 @@ has its answer: the hierarchy arrives in **one** offset-paged list once every fo
   selection is its first visible playlist, never one inside a closed folder, and it shows no
   load-more spinner, since the flat pages behind it are not what it shows. Refresh loads both
   lists again, side by side.
+- **Two things the code review found.** A load already in flight when a playlist is created
+  answers without it, and used to replace the outline that had it at the top: the store now
+  keeps what was added since the outline was last set, and puts back at the top what a load
+  missed. And the first selection is usually made from the flat list, which arrives before the
+  outline, so it could be a playlist inside a folder the outline shows closed: the list now
+  opens the folders around the selection whenever the outline or the selection changes, as a
+  Finder window reveals what it selects.
 
 Selecting a folder expands it in place, the plan's cheaper answer: no folder page. The trap the
 plan named stays shut: `PathfinderPlaylist.id` still refuses a folder's uri, so no folder becomes
@@ -121,7 +128,8 @@ a playlist row.
 - [x] Unit tests: a first pass that finds a folder is followed by one that names it, and the
       outline has the folder's playlist at depth 1; an account with no folders costs one request
       and has no outline; a playlist added to the library goes at the top of the outline, one
-      removed leaves it, and without folders none is made.
+      removed leaves it, and without folders none is made; one added while a load was in
+      flight is put back, once; the folders around a nested entry are found, outermost first.
 - [x] Rendered in the test host (a temporary test, deleted after): a playlist at the top, the
       selected one, an open folder with its playlist indented under it and the chevron down, a
       closed folder with its playlist hidden and the chevron right, and a last playlist.

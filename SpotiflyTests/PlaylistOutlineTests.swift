@@ -134,3 +134,40 @@ struct PlaylistOutlineLibraryTests {
         #expect(PlaylistsListView.outline([], playlists: store.playlists) == nil)
     }
 }
+
+@MainActor
+struct PlaylistOutlineRaceAndRevealTests {
+    /// A load already in flight when a playlist was created answers without it; the store puts
+    /// it back at the top.
+    @Test func `a playlist added while a load was in flight stays in the outline`() {
+        let store = AppStore()
+        store.setPlaylistOutline([PlaylistOutlineRow(item: .playlist(id: "p1"), depth: 0)])
+
+        store.addPlaylistToUserLibrary(playlist(id: "new"))
+        store.setPlaylistOutline([
+            PlaylistOutlineRow(item: .playlist(id: "p1"), depth: 0),
+            PlaylistOutlineRow(item: .folder(uri: folder, name: "Folder"), depth: 0),
+        ])
+
+        #expect(store.playlistOutline.map(\.item.playlistId) == ["new", "p1", nil])
+
+        // And only once: the next load saw it.
+        store.setPlaylistOutline([PlaylistOutlineRow(item: .playlist(id: "new"), depth: 0)])
+        #expect(store.playlistOutline.map(\.item.playlistId) == ["new"])
+    }
+
+    @Test func `the folders around a nested entry are found, outermost first`() {
+        let inner = "spotify:user:someone:folder:inner"
+        let outline: [LibraryOutlineRow<Playlist>] = [
+            .entity(playlist(id: "p1"), depth: 0),
+            .folder(uri: folder, name: "Outer", depth: 0),
+            .folder(uri: inner, name: "Inner", depth: 1),
+            .entity(playlist(id: "deep"), depth: 2),
+            .entity(playlist(id: "p2"), depth: 0),
+        ]
+
+        #expect(LibraryListView<Playlist>.folders(around: "deep", in: outline) == [folder, inner])
+        #expect(LibraryListView<Playlist>.folders(around: "p2", in: outline).isEmpty)
+        #expect(LibraryListView<Playlist>.folders(around: "missing", in: outline).isEmpty)
+    }
+}

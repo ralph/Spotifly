@@ -69,7 +69,7 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     let style: LibrarySectionStyle
     let playbackViewModel: PlaybackViewModel
     /// The entries in their folders, shown instead of `items` where the section has folders.
-    /// `items` still decides what loads, and what is selected first.
+    /// `items` still decides what loads.
     var outline: [LibraryOutlineRow<Entity>]?
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
@@ -213,6 +213,11 @@ struct LibraryListView<Entity: LibraryEntity>: View {
         .onChange(of: items) { _, _ in
             selectFirstIfNeeded()
         }
+        // The selection can be inside a closed folder: chosen from the flat list before the
+        // outline arrived, or opened from elsewhere. Its folders open, so its row shows.
+        .onChange(of: [selectedId] + (outline?.map(\.id) ?? []), initial: true) {
+            revealSelection()
+        }
     }
 
     private func row(for entity: Entity) -> some View {
@@ -257,6 +262,32 @@ struct LibraryListView<Entity: LibraryEntity>: View {
             }
             return true
         }
+    }
+
+    /// The folders an entry sits in, outermost first: the folders above it at each depth less
+    /// than its own.
+    static func folders(around entityId: String, in outline: [LibraryOutlineRow<Entity>]) -> [String] {
+        var enclosing: [String] = []
+        for row in outline {
+            enclosing = Array(enclosing.prefix(row.depth))
+            switch row {
+            case let .folder(uri, _, _):
+                enclosing.append(uri)
+            case let .entity(entity, _) where entity.id == entityId:
+                return enclosing
+            case .entity:
+                break
+            }
+        }
+        return []
+    }
+
+    private func revealSelection() {
+        guard let outline, let selectedId else { return }
+        let open = openFolders
+        let closed = Self.folders(around: selectedId, in: outline).filter { !open.contains($0) }
+        guard !closed.isEmpty else { return }
+        openFolderList = open.union(closed).sorted().joined(separator: "\n")
     }
 
     private func folderRow(uri: String, name: String) -> some View {

@@ -86,6 +86,9 @@ final class AppStore {
     private(set) var userPlaylistIds: [String] = []
     /// The same playlists in their folders; see `setPlaylistOutline(_:)`.
     private(set) var playlistOutline: [PlaylistOutlineRow] = []
+    /// Playlists added to the library since the outline was last set, which a load already in
+    /// flight could not have seen.
+    private var addedSinceOutline: [String] = []
 
     /// User's saved album IDs in display order
     private(set) var userAlbumIds: [String] = []
@@ -406,11 +409,16 @@ final class AppStore {
     /// full, where the flat list pages as it is scrolled, so it is the section's list whenever
     /// there is one, and the library changes made here edit it too.
     func setPlaylistOutline(_ rows: [PlaylistOutlineRow]) {
-        playlistOutline = rows
+        let missed = rows.isEmpty ? [] : addedSinceOutline.filter { id in
+            !rows.contains { $0.item.playlistId == id }
+        }
+        playlistOutline = missed.map { PlaylistOutlineRow(item: .playlist(id: $0), depth: 0) } + rows
+        addedSinceOutline = []
     }
 
     /// A playlist added to the library goes at the top of the outline, where Spotify puts it.
     private func addToPlaylistOutline(_ playlistId: String) {
+        addedSinceOutline.insert(playlistId, at: 0)
         guard !playlistOutline.isEmpty, !playlistOutline.contains(where: { $0.item.playlistId == playlistId }) else { return }
         playlistOutline.insert(PlaylistOutlineRow(item: .playlist(id: playlistId), depth: 0), at: 0)
     }
@@ -568,6 +576,7 @@ final class AppStore {
     func removePlaylistFromUserLibrary(_ playlistId: String) {
         userPlaylistIds.removeAll { $0 == playlistId }
         playlistOutline.removeAll { $0.item.playlistId == playlistId }
+        addedSinceOutline.removeAll { $0 == playlistId }
         playlists.removeValue(forKey: playlistId)
         deletedEntitySelections.insert(.playlist(id: playlistId))
     }
