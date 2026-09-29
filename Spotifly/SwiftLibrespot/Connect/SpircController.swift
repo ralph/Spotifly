@@ -204,8 +204,10 @@ public actor SpircController {
     private func startHeartbeat() {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.heartbeatInterval)
+            // A cancelled sleep ends the loop. It used to fall through to one
+            // more heartbeat, which went out whenever the shutdown awaited
+            // anything between cancelling it and clearing `isReady`.
+            while await (try? Task.sleep(for: Self.heartbeatInterval)) != nil {
                 await self?.publishState(reason: nil)
             }
         }
