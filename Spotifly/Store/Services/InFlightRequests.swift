@@ -86,10 +86,41 @@ func isCancellation(_ error: Error) -> Bool {
 ///
 /// Not for something Spotify has none of: it answers the same every time
 /// (`PartnerAPIError.notFound`).
-func isRetryable(_ error: Error) -> Bool {
+nonisolated func isRetryable(_ error: Error) -> Bool {
     if case PartnerAPIError.notFound = error {
         false
     } else {
         true
+    }
+}
+
+/// The albums, artists or playlists Spotify answered `NotFound` for, this session.
+///
+/// Asking again gets the same answer, and each visit to the page asked: nothing recorded the
+/// miss, and a service's `ensure…Loaded` only checks whether the entity is in the store. So a
+/// miss is remembered, and the next ask for it fails at once, as `TrackService` does for tracks
+/// spclient has none of. Only `NotFound` is: any other failure may pass.
+@MainActor
+final class NotFoundMemory {
+    private let kind: PartnerAPIError.Entity
+    private var ids: Set<String> = []
+
+    init(_ kind: PartnerAPIError.Entity) {
+        self.kind = kind
+    }
+
+    /// Runs `load` for `id`, unless Spotify has already said it has no such thing.
+    func load(_ id: String, _ load: () async throws -> Void) async throws {
+        guard !ids.contains(id) else {
+            throw PartnerAPIError.notFound(kind)
+        }
+        do {
+            try await load()
+        } catch {
+            if case PartnerAPIError.notFound = error {
+                ids.insert(id)
+            }
+            throw error
+        }
     }
 }

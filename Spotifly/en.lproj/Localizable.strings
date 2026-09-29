@@ -87,6 +87,9 @@
 "error.album_not_found" = "Spotify can't find this album. It may not be available in your country.";
 "error.artist_not_found" = "Spotify can't find this artist.";
 "error.playlist_not_found" = "Spotify can't find this playlist.";
+"error.album_failed" = "Spotify could not load this album.";
+"error.artist_failed" = "Spotify could not load this artist.";
+"error.playlist_failed" = "Spotify could not load this playlist.";
 "error.track_unavailable %@" = "Not available on Spotify: “%@”";
 "error.track_unavailable_in_country %@" = "Not available in your country: “%@”";
 "playback.skipped_unavailable %@" = "Skipped, not available: “%@”";

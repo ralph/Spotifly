@@ -23,7 +23,7 @@ nonisolated struct PathfinderPlaylistResponse: Decodable, Sendable {
 /// between them. Measured on 2026-08-13 against a one-track playlist: metadata answered in 3062
 /// bytes with tracks reduced to a uri and a duration, contents in 4396 with no playlist fields
 /// at all, and `fetchPlaylist` in 7144 with both. The app wants both, so it asks for both.
-nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable {
+nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable, PathfinderEntityUnion {
     struct Owner: Decodable, Sendable {
         struct Data: Decodable, Sendable {
             let username: String?
@@ -45,6 +45,7 @@ nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable {
 
     /// `Playlist`, or `NotFound` for a playlist Spotify has none of.
     let typename: String?
+    let message: String?
     let uri: String?
     let name: String?
     let description: String?
@@ -54,7 +55,7 @@ nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case typename = "__typename"
-        case uri, name, description, ownerV2, images, content
+        case message, uri, name, description, ownerV2, images, content
     }
 
     var id: String? {
@@ -68,6 +69,7 @@ nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable {
     func withItems(_ items: [PathfinderPlaylistItem]) -> PathfinderPlaylistUnion {
         PathfinderPlaylistUnion(
             typename: typename,
+            message: message,
             uri: uri,
             name: name,
             description: description,

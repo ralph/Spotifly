@@ -19,6 +19,11 @@ nonisolated enum PartnerAPIError: Error, LocalizedError, Equatable {
     /// another market and an id that never existed answer alike. Asking again gets the same
     /// answer, so the views offer no retry; see `isRetryable(_:)`.
     case notFound(Entity)
+    /// Spotify answered the album, artist or playlist with a failure `__typename` other than
+    /// `NotFound`, carrying its own message. Measured on 2026-09-29: a malformed playlist id
+    /// answers HTTP 200 with `GenericError`, "Failed to fetch playlist for uri …, status code:
+    /// 400 BAD_REQUEST". It may be passing, so the views offer a retry.
+    case entityFailed(Entity, String)
 
     enum Entity: Sendable {
         case album
@@ -46,6 +51,12 @@ nonisolated enum PartnerAPIError: Error, LocalizedError, Equatable {
             String(localized: "error.artist_not_found")
         case .notFound(.playlist):
             String(localized: "error.playlist_not_found")
+        case .entityFailed(.album, _):
+            String(localized: "error.album_failed")
+        case .entityFailed(.artist, _):
+            String(localized: "error.artist_failed")
+        case .entityFailed(.playlist, _):
+            String(localized: "error.playlist_failed")
         }
     }
 }
@@ -110,6 +121,16 @@ nonisolated struct PathfinderMutationResult: Decodable, Sendable {
 
         return result.message.map { "\(typename): \($0)" } ?? typename
     }
+}
+
+/// An album, artist or playlist union: the entity, or what Spotify answered instead of it. See
+/// `PartnerAPI.entity(_:kind:)`.
+nonisolated protocol PathfinderEntityUnion {
+    /// `Album`, `Artist` or `Playlist`, their kin such as `PreRelease`, or a failure such as
+    /// `NotFound`.
+    var typename: String? { get }
+    /// What a failure says about itself.
+    var message: String? { get }
 }
 
 /// The credentials every request to Spotify's own APIs carries, and the retry that keeps them
@@ -259,14 +280,7 @@ nonisolated struct PartnerAPI: Sendable {
             variables: PathfinderAlbumVariables(uri: "spotify:album:\(id)"),
         )
 
-        guard let album = response.data?.albumUnion else {
-            throw PartnerAPIError.emptyPayload
-        }
-        guard album.typename != "NotFound" else {
-            throw PartnerAPIError.notFound(.album)
-        }
-
-        return album
+        return try Self.entity(response.data?.albumUnion, kind: .album)
     }
 
     // MARK: - Artist
@@ -290,14 +304,7 @@ nonisolated struct PartnerAPI: Sendable {
             variables: PathfinderArtistVariables(uri: "spotify:artist:\(id)"),
         )
 
-        guard let artist = response.data?.artistUnion else {
-            throw PartnerAPIError.emptyPayload
-        }
-        guard artist.typename != "NotFound" else {
-            throw PartnerAPIError.notFound(.artist)
-        }
-
-        return artist
+        return try Self.entity(response.data?.artistUnion, kind: .artist)
     }
 
     // MARK: - Playlist
@@ -335,14 +342,33 @@ nonisolated struct PartnerAPI: Sendable {
     ) async throws -> PathfinderPlaylistUnion {
         let response: PathfinderPlaylistResponse = try await query(operation, variables: variables)
 
-        guard let playlist = response.data?.playlistV2 else {
+        return try Self.entity(response.data?.playlistV2, kind: .playlist)
+    }
+
+    /// The album, artist or playlist a union holds, or the error for what Spotify answered
+    /// instead.
+    ///
+    /// The failures are named, not the successes. The web player's own code switches these
+    /// unions on `PreRelease`, `PseudoPlaylist`, `RestrictedContent` and `UnknownType` besides
+    /// `Album`, `Artist` and `Playlist` (read from its bundle on 2026-09-29), so accepting only
+    /// the three would turn pages Spotify serves into errors. A kind that carries no entity is
+    /// still caught by the services, as "Spotify returned no data".
+    private static func entity<Union: PathfinderEntityUnion>(
+        _ union: Union?,
+        kind: PartnerAPIError.Entity,
+    ) throws -> Union {
+        guard let union else {
             throw PartnerAPIError.emptyPayload
         }
-        guard playlist.typename != "NotFound" else {
-            throw PartnerAPIError.notFound(.playlist)
+        switch union.typename {
+        case "NotFound":
+            throw PartnerAPIError.notFound(kind)
+        case "GenericError":
+            debugLog("PartnerAPI", "\(kind) failed: \(union.message ?? "no message")")
+            throw PartnerAPIError.entityFailed(kind, union.message ?? "")
+        default:
+            return union
         }
-
-        return playlist
     }
 
     func addToPlaylist(
