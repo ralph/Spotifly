@@ -108,7 +108,7 @@ struct PlaybackQueueTests {
         #expect(queue.history == ["t0"])
     }
 
-    /// `plans/done/queue-rows-have-no-identity.md`: `backward()` went back to the first copy
+    /// `plans/open/queue-rows-have-no-identity.md`: `backward()` went back to the first copy
     /// of a track the context holds twice, whichever copy had played.
     @Test func `Previous returns to the copy of a repeated track that played`() {
         let queue = PlaybackQueue()
