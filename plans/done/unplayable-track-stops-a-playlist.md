@@ -27,7 +27,7 @@ error that names the wrong cause, and Spotify Connect goes on reporting the trac
 **Now:** auto-advance goes past a track Spotify withholds and the bar says "Skipped, not
 available: “…”". Any other load error still stops playback, and the bar says why. A
 failed load lets go of the active role, so other devices stop showing this Mac as playing.
-What is left is in `plans/open/unplayable-tracks-look-playable.md`.
+What is left is in `plans/done/unplayable-tracks-look-playable.md`.
 
 ## Problem
 
@@ -229,7 +229,7 @@ superseded load neither skips nor stops.
 
 ### Not in this plan
 
-These are in `plans/open/unplayable-tracks-look-playable.md`:
+These are in `plans/done/unplayable-tracks-look-playable.md`:
 
 - Greying unplayable tracks in lists and in the queue, from the `playability` pathfinder
   already sends.

@@ -1,7 +1,7 @@
 # A playlist Spotify cannot find answers HTTP 500
 
-Status: **Done** 2026-09-29. Re-measured, and handled like albums and artists. Built and
-unit-tested; not yet seen in the running app; see Verification.
+Status: **Done** 2026-09-29 (#85). Re-measured, and handled like albums and artists. Built,
+unit-tested, and the live checks passed on `4b02ecc` the same day; see Verification.
 Components: `Spotifly/PartnerAPI/PartnerAPI.swift` (`playlistPage`, `PartnerAPIError`),
 `Spotifly/PartnerAPI/PathfinderPlaylist.swift` (`PathfinderPlaylistUnion.typename`),
 `Spotifly/Views/PlaylistDetailView.swift`, `Spotifly/Views/LoggedInLifecycleModifier.swift`
