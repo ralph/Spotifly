@@ -1,7 +1,7 @@
 # Unit tests sign in as this Mac
 
-Status: **Done** 2026-09-29. Confirmed with a probe test, fixed, and the fix seen by the same
-probe; see Verification.
+Status: **Done** 2026-09-29 (#88). Confirmed with a probe test, fixed, and the fix seen by the
+same probe; see Verification.
 Components: `Spotifly/SpotiflyApp.swift`, `DEVELOPMENT.md`
 Found: 2026-09-29, while probing the Connect registration for #58 from the test host
 
