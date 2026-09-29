@@ -1,7 +1,7 @@
 # A free account gets no explanation
 
-Status: **Open**, priority 2. The plan is on #58, branch `plan/free-account-exit`. Decided
-2026-09-29: a free account browses, without local playback.
+Status: **Open**, priority 2. Planned, not started (#58, branch `plan/free-account-exit`).
+Decided 2026-09-29: a free account browses, without local playback.
 Components: `Spotifly/SwiftLibrespot/Network/Accesspoint.swift` (`handlePacket`),
 `Spotifly/SpotifyPlayer.swift` (`LibrespotConnectionState`),
 `Spotifly/ViewModels/PlaybackViewModel.swift`
@@ -44,10 +44,65 @@ librespot ended the process for any account whose type was not `premium`, in
 ## Solution
 
 Decided 2026-09-29: browse-only. A free account keeps the library, search and playlists, and
-this Mac plays no audio for it. The plan on #58 reads the account type, keeps a refused login
-out of the recovery loop, turns off local playback and the Connect speaker, and shows a notice
-with Logout.
+this Mac plays no audio for it. Controlling another device already runs on the grant, and this
+plan leaves it as it is.
+
+### Task 1: read the account type
+
+- [ ] **Capture the real payload first.** Add a `debugLog` of the `ProductInfo` payload,
+      run once, and keep the XML as the test fixture. Do not write one from librespot's
+      parser. An invented fixture only certifies the guess.
+- [ ] Parse `type` from it in `Accesspoint.handlePacket`, next to `countryCode`, which is
+      handled the same way. Keep it on the session. Foundation's `XMLParser` is enough for a
+      flat list of elements.
+- [ ] Expose it to the app through `LibrespotConnectionState` as one field, for example
+      `accountType: String?`, nil until the packet arrives. The UI decides what counts as
+      premium, not the client.
+
+### Task 2: make a refused login terminal
+
+- [ ] If the accesspoint does refuse with `premiumAccountRequired`, set the same state as
+      `type != premium`. Do not leave it to the recovery path: `.failed` arms
+      `startAutoRecoveryIfNeeded`, which would reconnect against a refusal that will never
+      change. Check whether an initial-login failure can reach that path before adding any
+      guard for it. If it cannot, write that down and add nothing.
+
+### Task 3: browse-only
+
+- [ ] **Turn off local playback, not the library.** When `accountType` is not premium, a
+      play aimed at this Mac says why, instead of failing with a raw error. That covers a
+      double-click on a track, Play on an album or playlist, and the bar's transport controls
+      while no other device is active. It is one check where `PlaybackViewModel` routes a
+      play to the local player. It is not a guard in every view.
+- [ ] **Tell the user once, and offer Logout.** A notice, not a screen that replaces the app,
+      because the library still works. It says local playback needs Premium and offers
+      Logout for switching accounts. `PremiumRequiredView` was deleted in `ff87034` because
+      nothing could reach it, so bring back only what this needs, once Task 1 can reach it.
+- [ ] **Do not offer this Mac as a speaker.** A phone that sees Spotifly in its device list
+      will transfer playback to it, and the transfer will fail. First check whether the
+      device list and the remote commands depend on the Connect registration
+      (`SpircController.registerDevice`). If they do not, skip the registration for a free
+      account. If they do, register in a way that refuses transfers, and write down which.
+- [ ] New localization keys go in `de`, `en` and `fr`.
+
+### Not in this plan
+
+- **A subscription that lapses mid-session.** librespot handled attribute pushes over Spirc.
+  The Swift stack reads `ProductInfo` at login only, so the change shows on the next launch.
+  That is a known, bounded gap, and closing it is not worth a dealer subscription.
 
 ## Verification
 
-Defined with the plan on #58. None of it needs a free account: a debug override sets the type.
+Nobody here has a free account, so the checks that matter need none:
+
+- [ ] A unit test that parses the captured `ProductInfo` fixture, plus a copy of it edited to
+      `free`.
+- [ ] Live, Debug build: `SPOTIFLY_DEBUG_ACCOUNT_TYPE=free` overrides the parsed value. Launch
+      with it: the library loads, a play on this Mac shows the notice instead of an error,
+      Logout works, and a phone does not list this Mac as a speaker. Without it, nothing
+      changes. Paste the `Accesspoint` line that shows the parsed type.
+- [ ] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, run bare with the exit
+      code checked.
+- [ ] If a free account can be borrowed, run the real case and record what happens,
+      including whether login succeeds. That settles the question this plan can only reason
+      about.
