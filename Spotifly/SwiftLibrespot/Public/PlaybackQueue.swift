@@ -32,8 +32,8 @@ final nonisolated class PlaybackQueue {
 
     /// Where the context tracks already played sit in the context, most recent last, for
     /// skip-backwards. Queued tracks are not kept, as in librespot, which puts "only songs from
-    /// our context" in `prev_tracks`. Positions rather than uris, so a track the context holds
-    /// twice is gone back to at the copy that played; `setContext` clears them with the
+    /// our context" in `prev_tracks`. Positions rather than uris, so Previous returns to the
+    /// copy that played of a track the context holds twice; `setContext` clears them with the
     /// context they point into.
     private var historyPositions: [Int] = []
 
@@ -269,13 +269,11 @@ final nonisolated class PlaybackQueue {
     ///
     /// - Returns: the uri to play, or nil when the list has no such track.
     func stepBack(toRecent index: Int, uri: String) -> String? {
-        let positions = recentPositions(limit: Self.recentLimit)
-        guard let row = positions.nearestIndex(to: index, where: { contextTracks[historyPositions[$0]] == uri }) else {
-            return nil
-        }
+        let rows = recent().map(\.uri)
+        guard let row = rows.nearestIndex(to: index, where: { $0 == uri }) else { return nil }
 
         var played: String?
-        for _ in positions[row] ..< historyPositions.count {
+        for _ in row ..< rows.count {
             played = backward()
         }
         return played
@@ -339,12 +337,6 @@ final nonisolated class PlaybackQueue {
     /// keeps it, and the queue view, which lists these above the current
     /// track. See `plans/done/queue-history-listed-newest-first.md`.
     func recent(limit: Int = PlaybackQueue.recentLimit) -> [(uri: String, provider: String)] {
-        recentPositions(limit: limit).map { (contextTracks[historyPositions[$0]], "context") }
-    }
-
-    /// Where each track `recent(limit:)` lists sits in the history, in its
-    /// order, so a row of the published list can be found again.
-    private func recentPositions(limit: Int) -> [Int] {
-        Array(historyPositions.indices.suffix(limit))
+        history.suffix(limit).map { ($0, "context") }
     }
 }
