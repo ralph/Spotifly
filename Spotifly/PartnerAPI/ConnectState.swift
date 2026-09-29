@@ -44,6 +44,14 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         let provider = "queue"
     }
 
+    /// The queue row a `skip_next` jumps to. The web player's queue row sends
+    /// `skipToNext({uri, uid})`, read from its bundle on 2026-09-29; librespot
+    /// steps forward to the uri, go-librespot seeks to the uid, else the uri.
+    struct SkipTarget: Encodable, Sendable {
+        let uri: String
+        let uid: String?
+    }
+
     /// Where a `play` command starts.
     ///
     /// **This endpoint plays contexts, not tracks**, which is the one place the Web API was
@@ -139,6 +147,8 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
     var boolValue: Bool?
     var context: Context?
     var track: QueuedTrack?
+    /// Sent under the same `track` key as `track`; only one is ever set.
+    var skipTarget: SkipTarget?
 
     enum CodingKeys: String, CodingKey {
         case endpoint
@@ -165,12 +175,18 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
             try container.encodeIfPresent(context.options, forKey: .options)
         }
         try container.encodeIfPresent(track, forKey: .track)
+        try container.encodeIfPresent(skipTarget, forKey: .track)
     }
 
     static let pause = ConnectCommand(endpoint: .pause)
     static let resume = ConnectCommand(endpoint: .resume)
     static let next = ConnectCommand(endpoint: .skipNext)
     static let previous = ConnectCommand(endpoint: .skipPrev)
+
+    /// Skips ahead to a row of the queue, and plays it.
+    static func skipNext(to uri: String, uid: String?) -> ConnectCommand {
+        ConnectCommand(endpoint: .skipNext, skipTarget: SkipTarget(uri: uri, uid: uid))
+    }
 
     static func seek(toMs positionMs: Int) -> ConnectCommand {
         ConnectCommand(endpoint: .seekTo, value: max(0, positionMs))

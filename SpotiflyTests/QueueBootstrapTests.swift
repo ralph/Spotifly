@@ -68,6 +68,17 @@ struct QueueBootstrapTests {
         #expect(update.next.isEmpty)
     }
 
+    /// Another device's rows keep the cluster's uid, which a skip to one of them names.
+    @Test func `a row keeps its uid`() throws {
+        var next = item("next")
+        next.uid = "c3e1a9d6"
+        let snapshot = QueueState(contextUri: "", currentTrack: item("playing"), nextTracks: [next], previousTracks: [])
+        let update = try #require(QueueService.queueUpdate(from: snapshot))
+
+        #expect(update.next.map(\.uid) == ["c3e1a9d6"])
+        #expect(update.current?.uid == nil)
+    }
+
     @Test func `pending tracks alone carry playback`() throws {
         // Nothing is playing but the cluster still knows what is queued — that is an answer,
         // not the absence of one, so it may be applied.

@@ -813,6 +813,53 @@ final class PlaybackViewModel {
         updateNowPlayingInfo()
     }
 
+    /// A row of the queue, as a double-click names it: which list, where in it, and its track.
+    enum QueueRow {
+        /// One of the queue's previous tracks. `contextUri` is where another device starts it.
+        case previous(index: Int, trackUri: String, contextUri: String?)
+        case current
+        /// One of the next tracks, with the cluster's uid when another device plays.
+        case next(index: Int, trackUri: String, uid: String?)
+    }
+
+    /// Plays a row of the queue and keeps the queue: the history, the queued tracks and the
+    /// shuffle order. It used to start the queue's context over from the row's track.
+    ///
+    /// Another device gets the web player's `skip_next` naming the row. Connect has no way
+    /// back to a named track, so there a previous row still starts the context from it.
+    func play(queueRow row: QueueRow) {
+        let sent: Bool
+        switch row {
+        case .current:
+            seek(to: 0)
+            if !isPlaying {
+                resume()
+            }
+            return
+        case let .next(index, uri, uid):
+            sent = sendTransportCommand(
+                "skip(toNext:)",
+                promisesPosition: true,
+                local: { try await SpotifyPlayer.skip(toNext: index, uri: uri) },
+                remote: { try await SpclientAPI().sendCommand(.skipNext(to: uri, uid: uid), from: $0, to: $1) },
+            )
+        case let .previous(index, uri, contextUri):
+            sent = sendTransportCommand(
+                "skip(toPrevious:)",
+                promisesPosition: true,
+                local: { try await SpotifyPlayer.skip(toPrevious: index, uri: uri) },
+                remote: {
+                    let start = contextUri.map { ConnectCommand.play(uri: $0, trackUri: uri) } ?? .play(uri: uri)
+                    try await SpclientAPI().sendCommand(start, from: $0, to: $1)
+                },
+            )
+        }
+        guard sent else { return }
+
+        anchorPosition(0, optimistic: true)
+        updateNowPlayingInfo()
+    }
+
     func seek(to positionMs: UInt32) {
         // Update anchor immediately for smooth UI feedback during scrubbing
         anchorPosition(positionMs, optimistic: true)

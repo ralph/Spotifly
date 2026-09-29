@@ -226,6 +226,53 @@ final nonisolated class PlaybackQueue {
         return previous
     }
 
+    /// Moves to a track `upcoming()` lists, as a double-click on its queue row
+    /// asks, the way pressing Next would get there: context tracks passed over
+    /// go into the history, as librespot's `skip_next` puts them in
+    /// `prev_tracks`. Queued tracks ahead of a queued target are dropped. A
+    /// context target leaves the queued tracks where they are, to play after
+    /// it, as go-librespot's does.
+    ///
+    /// The uri decides and the position picks the copy, the one nearest it, as
+    /// for a start (`start(in:index:uri:)`): the list on screen can be split a
+    /// row away from this one while the store reconciles it.
+    ///
+    /// - Returns: the uri to play, or nil when the list has no such track.
+    func skip(toUpcoming position: Int, uri: String) -> String? {
+        guard let position = upcoming().map(\.uri).nearestIndex(to: position, where: { $0 == uri }) else {
+            return nil
+        }
+
+        if position < userQueue.count {
+            userQueue.removeFirst(position)
+            return advance(respectingRepeat: false)
+        }
+
+        let queued = userQueue
+        userQueue = []
+        defer { userQueue = queued }
+        var uri: String?
+        for _ in 0 ... position - queued.count {
+            uri = advance(respectingRepeat: false)
+        }
+        return uri
+    }
+
+    /// Steps back to a track `recent(limit:)` lists, as pressing Previous that
+    /// many times would. Found as `skip(toUpcoming:uri:)` finds its track.
+    ///
+    /// - Returns: the uri to play, or nil when the list has no such track.
+    func stepBack(toRecent index: Int, uri: String, limit: Int = 10) -> String? {
+        let positions = recentPositions(limit: limit)
+        guard let row = positions.nearestIndex(to: index, where: { history[$0] == uri }) else { return nil }
+
+        var played: String?
+        for _ in positions[row] ..< history.count {
+            played = backward()
+        }
+        return played
+    }
+
     /// Where the current track sits in the context, or nil while a queued
     /// track plays — it is not part of the context at all.
     var contextPosition: Int? {
@@ -274,6 +321,12 @@ final nonisolated class PlaybackQueue {
     }
 
     func recent(limit: Int = 10) -> [(uri: String, provider: String)] {
-        history.suffix(limit).reversed().map { ($0, "context") }
+        recentPositions(limit: limit).map { (history[$0], "context") }
+    }
+
+    /// Where each track `recent(limit:)` lists sits in `history`, in its
+    /// order, so a row of the published list can be found again.
+    private func recentPositions(limit: Int) -> [Int] {
+        history.indices.suffix(limit).reversed()
     }
 }

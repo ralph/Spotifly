@@ -15,6 +15,8 @@ import SwiftUI
 struct QueueEntry: Equatable {
     let trackId: String
     let provider: TrackProvider
+    /// The cluster's name for this row, when another device's queue gave one.
+    var uid: String?
 }
 
 /// Normalized queue state storing track entries (ID + provider)

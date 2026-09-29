@@ -511,6 +511,24 @@ public actor LibrespotClient {
         }
     }
 
+    /// Plays `uri`, the `position`th of the next tracks this client publishes,
+    /// as a double-click on its queue row asks, without resolving the context
+    /// again: the history, the queued tracks and the shuffle order stay. See
+    /// `PlaybackQueue.skip(toUpcoming:uri:)`.
+    public func skip(toNext position: Int, uri: String) async throws {
+        defer { publishQueue() }
+        guard let next = playbackQueue.skip(toUpcoming: position, uri: uri) else { return }
+        try await loadAndPlay(next)
+    }
+
+    /// Plays `uri`, the `index`th of the previous tracks this client
+    /// publishes, as Previous would, pressed that many times.
+    public func skip(toPrevious index: Int, uri: String) async throws {
+        defer { publishQueue() }
+        guard let previous = playbackQueue.stepBack(toRecent: index, uri: uri) else { return }
+        try await loadAndPlay(previous)
+    }
+
     /// Queues a track, or every track of an album or playlist in order.
     public func addToQueue(uri: String) async {
         let tracks: [String]
@@ -1048,7 +1066,7 @@ public actor LibrespotClient {
         let queue = QueueState(
             contextUri: remote.contextUri,
             currentTrack: QueueItem(uri: track.uri, provider: track.provider),
-            nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid) },
             previousTracks: remote.prevTracks.reversed().map { QueueItem(uri: $0.uri, provider: $0.provider) },
         )
         publish {
@@ -1295,7 +1313,7 @@ public actor LibrespotClient {
 
 extension QueueItem {
     /// A metadata-less placeholder; names hydrate through the store.
-    nonisolated init(uri: String, provider: String) {
+    nonisolated init(uri: String, provider: String, uid: String = "") {
         self.init(
             id: uri,
             uri: uri,
@@ -1307,6 +1325,7 @@ extension QueueItem {
             artistId: nil,
             externalUrl: nil,
             provider: provider,
+            uid: uid.isEmpty ? nil : uid,
         )
     }
 }

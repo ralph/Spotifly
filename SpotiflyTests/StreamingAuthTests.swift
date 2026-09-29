@@ -172,6 +172,22 @@ struct ConnectCommandTests {
         #expect((command["logging_params"] as? [String: Any])?["command_id"] is String)
     }
 
+    /// The web player's queue row calls `skipToNext({uri, uid})`.
+    @Test func `a skip to a queue row names its track and uid`() throws {
+        let command = try fields(.skipNext(to: "spotify:track:t4", uid: "c3e1a9d6"))
+
+        #expect(command["endpoint"] as? String == "skip_next")
+        let track = try #require(command["track"] as? [String: Any])
+        #expect(track["uri"] as? String == "spotify:track:t4")
+        #expect(track["uid"] as? String == "c3e1a9d6")
+    }
+
+    @Test func `a skip without a uid sends the uri alone`() throws {
+        let track = try #require(fields(.skipNext(to: "spotify:track:t4", uid: nil))["track"] as? [String: Any])
+
+        #expect(Set(track.keys) == ["uri"])
+    }
+
     @Test func `a negative seek is clamped rather than sent`() throws {
         #expect(try encoded(.seek(toMs: -5)).contains("\"value\":0"))
     }
