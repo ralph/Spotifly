@@ -443,19 +443,30 @@ public actor LibrespotClient {
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
-    public func playTracks(_ uris: [String], positionMs: UInt64 = 0) async throws {
-        let normalized = uris.map(Self.normalizedUri)
-        guard let first = normalized.first else {
+    /// Plays a list of tracks that no album or playlist names, starting where
+    /// `trackIndex` and `startingAtUri` say; see `PlaybackQueue.start(in:index:uri:)`.
+    /// A single track is its own context, as `play(uriOrUrl:)` makes it.
+    public func playTracks(
+        _ uris: [String],
+        trackIndex: Int? = nil,
+        startingAtUri: String? = nil,
+        positionMs: UInt64 = 0,
+        paused: Bool = false,
+    ) async throws {
+        let start = PlaybackQueue.start(
+            in: uris.map(Self.normalizedUri),
+            index: trackIndex,
+            uri: startingAtUri.map(Self.normalizedUri),
+        )
+        guard let first = start.tracks.first else {
             throw LibrespotError.invalidState("No tracks to play")
         }
 
-        if normalized.count == 1, first.contains("spotify:track:") {
-            try await play(uriOrUrl: first, positionMs: positionMs)
-            return
-        }
-
-        setQueue(contextUri: "", tracks: normalized, startIndex: firstPlayable(in: normalized))
-        try await loadCurrentTrack(positionMs: positionMs)
+        // No track named, as by Play Tracks under search: the list's first that plays.
+        let index = trackIndex == nil && startingAtUri == nil ? firstPlayable(in: start.tracks) : start.index
+        let contextUri = start.tracks.count == 1 && first.contains("spotify:track:") ? first : ""
+        setQueue(contextUri: contextUri, tracks: start.tracks, startIndex: index)
+        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
     /// Song radio for a seed track, resolved through its station context.
@@ -519,6 +530,31 @@ public actor LibrespotClient {
             // Nowhere back: restart the current track, like every other client.
             try await audioPipeline?.seek(positionMs: 0)
         }
+    }
+
+    /// Plays `uri` from the next tracks this client publishes, the copy
+    /// nearest `position`, without resolving the context again. See
+    /// `PlaybackQueue.skip(toUpcoming:uri:)`.
+    ///
+    /// Throws when the track is no longer listed: the caller has already moved
+    /// the display to the start of a track, and only a failure takes that back.
+    public func skip(toNext position: Int?, uri: String) async throws {
+        defer { publishQueue() }
+        guard let next = playbackQueue.skip(toUpcoming: position, uri: uri) else {
+            throw LibrespotError.trackNotFound("\(uri) is no longer in the queue")
+        }
+        try await loadAndPlay(next)
+    }
+
+    /// Plays `uri` from the previous tracks this client publishes, as Previous
+    /// would, pressed that many times. See `PlaybackQueue.stepBack(toRecent:uri:)`.
+    /// Throws as `skip(toNext:uri:)` does.
+    public func skip(toPrevious index: Int, uri: String) async throws {
+        defer { publishQueue() }
+        guard let previous = playbackQueue.stepBack(toRecent: index, uri: uri) else {
+            throw LibrespotError.trackNotFound("\(uri) is no longer in the queue")
+        }
+        try await loadAndPlay(previous)
     }
 
     /// Queues a track, or every track of an album or playlist in order.
@@ -1001,7 +1037,7 @@ public actor LibrespotClient {
             contextIndex: playbackQueue.contextPosition,
             trackProvider: playbackQueue.currentProvider,
             nextTracks: playbackQueue.upcoming(),
-            previousTracks: Array(playbackQueue.recent().reversed()),
+            previousTracks: playbackQueue.recent(),
         )
     }
 
@@ -1149,8 +1185,10 @@ public actor LibrespotClient {
         let queue = QueueState(
             contextUri: remote.contextUri,
             currentTrack: QueueItem(uri: track.uri, provider: track.provider),
-            nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
-            previousTracks: remote.prevTracks.reversed().map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid) },
+            // In play order, as the cluster keeps them and the local queue
+            // publishes them.
+            previousTracks: remote.prevTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
         )
         publish {
             $0.playback = playback
@@ -1194,9 +1232,12 @@ public actor LibrespotClient {
                 )
             } else {
                 // Started from a bare list of uris, so the list is all there is.
-                let tracks = transfer.contextTrackUris.contains(track) ? transfer.contextTrackUris : [track]
-                setQueue(contextUri: "", tracks: tracks, startIndex: tracks.firstIndex(of: track) ?? 0)
-                try await loadCurrentTrack(positionMs: positionMs, paused: transfer.isPaused)
+                try await playTracks(
+                    transfer.contextTrackUris,
+                    startingAtUri: track,
+                    positionMs: positionMs,
+                    paused: transfer.isPaused,
+                )
             }
         } catch is CancellationError {
             // A newer load took over, and it reports for itself.
@@ -1223,17 +1264,21 @@ public actor LibrespotClient {
             // from track 4" stopped after track 4. Named with an index, the
             // track decides where, as librespot's `PlayingTrack` does.
             let positionMs = playCommand.positionMs ?? 0
-            if let contextUri = playCommand.contextUri, !contextUri.isEmpty {
+            switch playCommand.context {
+            case let .uri(uri):
                 try? await play(
-                    uriOrUrl: contextUri,
+                    uriOrUrl: uri,
                     trackIndex: playCommand.index,
                     startingAtUri: playCommand.trackUri,
                     positionMs: positionMs,
                 )
-            } else if let uris = playCommand.trackUris, uris.count > 1 {
-                try? await playTracks(uris, positionMs: positionMs)
-            } else if let single = playCommand.trackUri ?? playCommand.trackUris?.first {
-                try? await play(uriOrUrl: single, positionMs: positionMs)
+            case let .tracks(uris):
+                try? await playTracks(
+                    uris,
+                    trackIndex: playCommand.index,
+                    startingAtUri: playCommand.trackUri,
+                    positionMs: positionMs,
+                )
             }
 
         case .pause:
@@ -1245,8 +1290,14 @@ public actor LibrespotClient {
         case let .seekTo(positionMs):
             try? await audioPipeline?.seek(positionMs: positionMs)
 
-        case .next:
-            try? await advanceUserInitiated()
+        case let .next(trackUri):
+            // A queue row clicked on another device names its track, and the
+            // jump goes to its first copy ahead, as librespot's `handle_next`.
+            if let trackUri {
+                try? await skip(toNext: nil, uri: trackUri)
+            } else {
+                try? await advanceUserInitiated()
+            }
 
         case .prev:
             try? await previous()
@@ -1388,7 +1439,7 @@ public actor LibrespotClient {
 
 extension QueueItem {
     /// A metadata-less placeholder; names hydrate through the store.
-    nonisolated init(uri: String, provider: String) {
+    nonisolated init(uri: String, provider: String, uid: String = "") {
         self.init(
             id: uri,
             uri: uri,
@@ -1400,6 +1451,7 @@ extension QueueItem {
             artistId: nil,
             externalUrl: nil,
             provider: provider,
+            uid: uid.isEmpty ? nil : uid,
         )
     }
 }

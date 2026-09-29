@@ -529,17 +529,17 @@ public actor DealerConnection {
         case "play":
             let context = json["context"] as? [String: Any]
             let skipTo = options?["skip_to"] as? [String: Any]
-            let trackUri = (skipTo?["track_uri"] as? String)
-                ?? (json["uris"] as? [String])?.first
-                ?? (context?["uri"] as? String).flatMap(Self.trackUriIfTrack)
-
-            let index = (skipTo?["track_index"] as? NSNumber)?.intValue
+            // An empty uri is no uri. Without one the pages are the list to
+            // play; with one they are only a window, and the uri is resolved.
+            let uri = context?["uri"] as? String ?? ""
+            let pages = context?["pages"] as? [[String: Any]] ?? []
 
             return .play(SpircCommand.PlayCommand(
-                contextUri: context?["uri"] as? String,
-                trackUri: trackUri,
-                trackUris: json["uris"] as? [String],
-                index: index,
+                context: uri.isEmpty
+                    ? .tracks(pages.flatMap { ($0["tracks"] as? [[String: Any]] ?? []).compactMap { $0["uri"] as? String } })
+                    : .uri(uri),
+                trackUri: skipTo?["track_uri"] as? String,
+                index: (skipTo?["track_index"] as? NSNumber)?.intValue,
                 positionMs: (options?["seek_to"] as? NSNumber)?.uint64Value,
             ))
 
@@ -554,7 +554,7 @@ public actor DealerConnection {
             return .seekTo(positionMs: position.uint64Value)
 
         case "skip_next":
-            return .next
+            return .next(trackUri: (json["track"] as? [String: Any])?["uri"] as? String)
 
         case "skip_prev":
             return .prev
@@ -603,11 +603,6 @@ public actor DealerConnection {
         default:
             return .unknown(endpoint)
         }
-    }
-
-    /// A context uri that is actually a single-track context, or nil.
-    private nonisolated static func trackUriIfTrack(_ uri: String) -> String? {
-        uri.starts(with: "spotify:track:") ? uri : nil
     }
 
     // MARK: - Ping Loop

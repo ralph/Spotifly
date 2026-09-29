@@ -226,6 +226,51 @@ final nonisolated class PlaybackQueue {
         return previous
     }
 
+    /// Moves to a track `upcoming()` lists, the way pressing Next would get
+    /// there: context tracks passed over go into the history, as librespot's
+    /// `skip_next` puts them in `prev_tracks`. Queued tracks ahead of a queued
+    /// target are dropped. A context target leaves the queued tracks where
+    /// they are, to play after it, as go-librespot's does.
+    ///
+    /// `uri` decides and `position` picks the copy, as in `start(in:index:uri:)`;
+    /// without one, the first copy ahead.
+    ///
+    /// - Returns: the uri to play, or nil when the list has no such track.
+    func skip(toUpcoming position: Int?, uri: String) -> String? {
+        guard let row = upcoming().map(\.uri).nearestIndex(to: position ?? 0, where: { $0 == uri }) else {
+            return nil
+        }
+
+        if row < userQueue.count {
+            userQueue.removeFirst(row)
+            return advance(respectingRepeat: false)
+        }
+
+        let queued = userQueue
+        userQueue = []
+        defer { userQueue = queued }
+        var played: String?
+        for _ in 0 ... row - queued.count {
+            played = advance(respectingRepeat: false)
+        }
+        return played
+    }
+
+    /// Steps back to a track `recent()` lists, as pressing Previous that many
+    /// times would. Found as `skip(toUpcoming:uri:)` finds its track.
+    ///
+    /// - Returns: the uri to play, or nil when the list has no such track.
+    func stepBack(toRecent index: Int, uri: String) -> String? {
+        let positions = recentPositions(limit: Self.recentLimit)
+        guard let row = positions.nearestIndex(to: index, where: { history[$0] == uri }) else { return nil }
+
+        var played: String?
+        for _ in positions[row] ..< history.count {
+            played = backward()
+        }
+        return played
+    }
+
     /// Where the current track sits in the context, or nil while a queued
     /// track plays — it is not part of the context at all.
     var contextPosition: Int? {
@@ -273,7 +318,22 @@ final nonisolated class PlaybackQueue {
         return Array(result.prefix(limit))
     }
 
-    func recent(limit: Int = 10) -> [(uri: String, provider: String)] {
-        history.suffix(limit).reversed().map { ($0, "context") }
+    /// How many played tracks `recent()` lists.
+    static let recentLimit = 10
+
+    /// The last `limit` tracks played, in play order: the most recent last,
+    /// beside the current track.
+    ///
+    /// Both readers want that order: Connect's `prev_tracks`, as librespot
+    /// keeps it, and the queue view, which lists these above the current
+    /// track. See `plans/done/queue-history-listed-newest-first.md`.
+    func recent(limit: Int = PlaybackQueue.recentLimit) -> [(uri: String, provider: String)] {
+        recentPositions(limit: limit).map { (history[$0], "context") }
+    }
+
+    /// Where each track `recent(limit:)` lists sits in `history`, in its
+    /// order, so a row of the published list can be found again.
+    private func recentPositions(limit: Int) -> [Int] {
+        Array(history.indices.suffix(limit))
     }
 }

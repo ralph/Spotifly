@@ -1,7 +1,7 @@
 # Double-clicking a row can play another track
 
 Status: **Done** 2026-09-29 (#79). Built and unit-tested. Steps 1 and 2 are done; Step 3 is
-decided and its better half is in `plans/open/queue-double-click-restarts-the-context.md`.
+decided and its better half is in `plans/done/queue-double-click-restarts-the-context.md`.
 Checked in the running app on 2026-09-29, on `24e1dbd`; see Verification.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift` (`start(in:index:uri:)`),
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`play`, the remote `.play` command), `Spotifly/ViewModels/PlaybackViewModel.swift` (`play(uriOrUrl:trackIndex:)`),
@@ -137,13 +137,13 @@ track twice and only the position says which.
       **Decided:** resolving again stays for now, because it plays the right track everywhere
       and needs nothing new. Skipping within the queue is what the queue view should do in the
       end: it keeps the history and the user queue. That is
-      `plans/open/queue-double-click-restarts-the-context.md`.
+      `plans/done/queue-double-click-restarts-the-context.md`.
 
 ### Not in this plan
 
 - **A remote play of a bare track list**, and a handover of one, still choose their start on
-  their own: `plans/open/remote-track-list-play-starts-at-the-top.md`.
-- **Starting by uid**, now in `plans/open/queue-double-click-restarts-the-context.md` beside
+  their own: `plans/done/remote-track-list-play-starts-at-the-top.md`.
+- **Starting by uid**, now in `plans/done/queue-double-click-restarts-the-context.md` beside
   the queue skip, which needs an exact row too. The resolver's tracks carry a `uid`: the app's
   log on 2026-09-29 shows `"uid":"87ced089511bc3c325f3"` for the first Liked Songs track, the same uid
   `fetchPlaylistContents` gives that item. `parseContextReport` keeps only the uri. Starting

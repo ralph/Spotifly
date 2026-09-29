@@ -15,11 +15,14 @@ import SwiftUI
 struct QueueEntry: Equatable {
     let trackId: String
     let provider: TrackProvider
+    /// The cluster's name for this row, when another device's queue gave one.
+    var uid: String?
 }
 
 /// Normalized queue state storing track entries (ID + provider)
 struct Queue: Equatable {
-    /// Previously played tracks (from the local queue only - Web API doesn't provide this)
+    /// What played before the current track, in play order: the most recent last. From the
+    /// local queue, or from the cluster's `prev_tracks` while another device plays.
     var previousTracks: [QueueEntry] = []
     /// Current track
     var currentTrack: QueueEntry?
