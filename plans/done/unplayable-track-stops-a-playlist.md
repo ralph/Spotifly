@@ -1,10 +1,13 @@
 # An unplayable track stops a playlist, and says nothing
 
-Status: **Open**, priority 1. Planned, not started (#57, branch `plan/unavailable-tracks`).
+Status: **Done** 2026-09-29 (#57). Built, unit-tested and lint-clean. The live checks under
+Verification are not run yet.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`handleEndOfTrack`,
-`clearLocalState`), `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`prepare`),
-`Spotifly/SwiftLibrespot/Network/SPClient.swift` (`playableFiles`, `getTrackMetadata`,
-`getAudioFiles`)
+`autoAdvance`, `loadAndPlay`, `releasePlayback`), `Spotifly/SwiftLibrespot/Public/AutoAdvance.swift`,
+`Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`prepare`, `fileToPlay`),
+`Spotifly/SwiftLibrespot/Core/Errors.swift` (`trackUnavailable`),
+`Spotifly/SpotifyPlayer.swift` (`PlaybackInterruption`), `Spotifly/Store/PlayerModel.swift`,
+`Spotifly/ViewModels/PlaybackViewModel.swift` (`observePlayer`)
 Found: 2026-08-14, in `../seek-after.log`, under librespot. Re-read against the Swift stack
 on 2026-09-29, and seen the same day with a country-restricted track in Liked Songs.
 
@@ -18,6 +21,11 @@ not.
 
 A *user-started* play of an unplayable track was observed on 2026-09-29: the bar shows an
 error that names the wrong cause, and Spotify Connect goes on reporting the track as playing.
+
+**Now:** auto-advance goes past a track Spotify withholds and the bar says "Skipped: “…” is
+not available on Spotify". Any other load error still stops playback, and the bar says why. A
+failed load lets go of the active role, so other devices stop showing this Mac as playing.
+What is left is in `plans/open/unplayable-tracks-look-playable.md`.
 
 ## Problem
 
@@ -72,6 +80,13 @@ The bar showed "Track not found: No Ogg Vorbis file available" (#72) beside the 
 "1/51". The web player on another machine showed the Mac playing it. It is not a relinking
 case: a market substitute would have been returned in its place, as "The Letter" is.
 
+**What the metadata says.** `/metadata/4` for that track (as JSON, from the web player's tab)
+carries `restriction: [{ countries_allowed: "" }]`, allowed in *no* country, and no
+`alternative`. A playable track carries no `restriction`. "I Took A Pill In Ibiza" carries the
+same empty restriction *and* an alternative, which is why it plays: its files come from the
+substitute. So "not available in your country" would say more than the data does. The track
+is withheld everywhere.
+
 **It is not rare.** That day, 221 of the account's 609 Liked Songs were `COUNTRY_RESTRICTED`,
 all with the same reason, from three albums. Two albums were bulk-saved in 2019 and made up
 contiguous runs of 106 and 114 rows. With auto-advance stopping at the first unplayable
@@ -103,10 +118,14 @@ that means the track cannot play leads to a skip, so a network error still stops
 
 ### Step 1: find out what an unplayable track produces
 
-- [ ] In a Debug build, play the three librespot-era ids one at a time:
+- [x] In a Debug build, play the three librespot-era ids one at a time:
       `SPOTIFLY_DEBUG_AUTOPLAY=spotify:track:4kVIImqwUPakCujdyQ3YP2`, then
       `4771ccpHnvLwaEacV0dh9E` and `2X7Bo34Z1c375Jo6JQaVnL`. Record the `AudioPipeline` line
       for each: it plays, `No Ogg Vorbis file available`, an audio key error, or a CDN error.
+      **Read from `/metadata/4` on 2026-09-29 instead of played.** They are chapters 1 to 3 of
+      the audiobook "Mein Lotta-Leben. Alles voller Kaninchen", each with
+      `restriction { countries_allowed: "" }` and no alternative, exactly as "Girlfriend". So
+      they take the same path, and the live check under Verification covers it.
 - [x] Find a known unplayable track, in case all three play. Found 2026-09-29:
       `spotify:track:6PpbRUIbMyUbJkWHS3eQ8j`, `COUNTRY_RESTRICTED` in DE. See *Observed on
       2026-09-29*.
@@ -117,46 +136,83 @@ that error. For a country-restricted track it is
 identify it. Step 2 needs to tell that one apart from the non-200 `trackNotFound`s, with a
 dedicated error for "no playable file", for example.
 
+**Done:** `LibrespotError.trackUnavailable(name:)`, thrown by `AudioPipeline.fileToPlay` when
+the track lists no file at all, its own or a substitute's. Files that are all in formats the
+player does not decode still throw `trackNotFound("No Ogg Vorbis file available")`. That is not
+Spotify withholding the track, and it has not been seen.
+
 ### Step 2: skip on auto-advance, stop on anything else
 
-- [ ] In `handleEndOfTrack`, if the load fails with Step 1's error, and only that one, not
+- [x] In `handleEndOfTrack`, if the load fails with Step 1's error, and only that one, not
       any `trackNotFound`, advance again instead of stopping. Any other error, such as the network or a key timeout, stops playback as it
       does today. A skip must mean the track cannot play. It must never mean the network
       blinked, or a short outage would skip a playlist's worth of playable tracks.
-- [ ] The queue bounds the loop: it ends at the context's end, where `rewindContext` takes
+- [x] The queue bounds the loop: it ends at the context's end, where `rewindContext` takes
       over. A playlist of unplayable tracks costs one metadata request per track. Say so in
       the commit rather than adding a cap for it.
-- [ ] Leave Next and a remote `skip_next` as they are. They stop, and #72 shows their error.
+      **Not quite, so there is a cap.** With repeat-context on, `advance()` wraps, and a context
+      of nothing but unavailable tracks would skip forever. `AutoAdvance.run` tries at most as
+      many tracks as the queue holds, then stops with the last error. Each skip costs the
+      metadata request and the extended-metadata one.
+- [x] Leave Next and a remote `skip_next` as they are. They stop, and #72 shows their error.
       Skipping is only for auto-advance, where nobody pressed anything.
+- [x] Found while building it: a load that failed *after a newer one started* still threw its
+      own error, not a cancellation. `loadAndPlay` then cleared the newer load's state, and a
+      skip would have moved the queue under it. A load generation in `LibrespotClient` turns
+      that failure into a `CancellationError`.
+
+The rule is `AutoAdvance.run`, a static function over closures, so `AutoAdvanceTests` checks it
+without a session: an unavailable track is skipped; a `URLError`, a `trackNotFound` or an audio
+key failure stops; repeat over nothing but unavailable tracks stops after one pass; and a
+superseded load neither skips nor stops.
 
 ### Step 3: say so in the bar
 
-- [ ] The client cannot hand the UI an error it hit on its own. Add one field to
+- [x] The client cannot hand the UI an error it hit on its own. Add one field to
       `PlayerSnapshot` for the last auto-advance that failed or was skipped: the uri and the
       error. `PlaybackViewModel` puts it into `errorMessage`, which the bar already shows for
       five seconds. New localization keys go in `de`, `en` and `fr`.
-- [ ] A stop caused by an error that is not skipped shows the same way. That is the other half
-      of "says nothing".
-- [ ] Report the stop to Connect. After a failed load, `clearLocalState` should also report
+      **Done** as `PlayerSnapshot.interruption`, a `PlaybackInterruption` of the error's
+      description, whether it was skipped, and a sequence number. The number is needed because
+      `PlayerModel` passes on changes only, so the same skip twice in a row would otherwise be
+      told once. It stays in the snapshot until the next one, so the newest-only stream cannot
+      drop it. The keys are `error.track_unavailable %@` and `playback.skipped %@`.
+- [x] A stop caused by an error that is not skipped shows the same way. That is the other half
+      of "says nothing". So does a failed rewind to the context's first track, and an audio
+      pipeline error mid-track, which cleared the playback just as silently.
+- [x] Report the stop to Connect. After a failed load, `clearLocalState` should also report
       the cleared state to the cluster, so a phone stops showing the Mac as playing a track it
       never started. This applies to a user-started play too.
-- [ ] Name the real cause. "Track not found: No Ogg Vorbis file available" reads like a bug for
+      **Done** in `loadAndPlay` rather than `clearLocalState`, which a stand-down and a
+      teardown also call. `releasePlayback()` gives up the active role and reports, as a failed
+      transfer already did. `rewindContext` explains why a report with no player state is not
+      enough while the device stays active. Auto-advance holds the release back while it
+      skips, so other devices do not see the Mac stop and start again between two tracks.
+- [x] Name the real cause. "Track not found: No Ogg Vorbis file available" reads like a bug for
       a track Spotify has simply withheld. "Not available in your country" is accurate for
       `COUNTRY_RESTRICTED`.
+      **Done** as "“Girlfriend (feat. Dâm-Funk)” is not available on Spotify", and "Skipped: …"
+      in front of it for a skip. It does not say "in your country": the metadata allows the
+      track in no country (see *What the metadata says*). A play started from the app, Next or
+      Previous shows the same message through #72.
 
 ### Not in this plan
 
-- **Greying unplayable tracks in lists and in the queue.** That needs per-track availability
-  before anything plays. The responses carry it and the entities do not. Every playlist and
-  Liked Songs item has `itemV2.data.playability { playable, reason }` (measured 2026-09-29), and
-  `PathfinderPlaylistTrack` does not decode it. Album, search and spclient answers are
-  unchecked. It is a feature of its own, but it is not blocked on data. Its reason would also
-  make Step 3's message precise wherever the track came from a list.
+These are in `plans/open/unplayable-tracks-look-playable.md`:
+
+- Greying unplayable tracks in lists and in the queue, from the `playability` pathfinder
+  already sends.
+- A rewind to a context whose first track is unavailable stops there, rather than finding the
+  first one that plays.
+- A remote `play` of an unavailable track lets go of the active role but shows nothing on the
+  Mac. The device that sent it has its own UI.
+- A track whose files are all in formats the player does not decode stops auto-advance. Not
+  seen.
 
 ## Verification
 
-- [ ] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, run bare with the exit
-      code checked.
+- [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, run bare with the exit
+      code checked. 2026-09-29: build succeeded, all tests passed, lint exit 0.
 - [ ] Live: a playlist of three tracks, playable, Step 1's unplayable one, playable. From a
       DE account, `6PpbRUIbMyUbJkWHS3eQ8j` is one. Seek near
       the end of the first. The second is skipped and the bar says so, and the third plays.

@@ -60,6 +60,30 @@ struct PlayerModelTests {
         #expect(model.volume == 0.3)
     }
 
+    /// Auto-advance can skip the same track twice in a row, on a playlist that repeats, and the
+    /// model passes on changes only.
+    @Test func `the same interruption twice is told twice`() {
+        let model = PlayerModel()
+        var snapshot = PlayerSnapshot()
+        snapshot.interruption = PlaybackInterruption(reason: "Not available", skipped: true, sequence: 1)
+        model.apply(snapshot)
+
+        snapshot.interruption = PlaybackInterruption(reason: "Not available", skipped: true, sequence: 2)
+        let notified = notifies(reading: { _ = model.interruption }) { model.apply(snapshot) }
+
+        #expect(notified)
+        #expect(model.interruption?.sequence == 2)
+    }
+
+    @Test func `a skip says so, and a stop says only why`() {
+        let skipped = PlaybackInterruption(reason: "Not available", skipped: true, sequence: 1)
+        let stopped = PlaybackInterruption(reason: "Not available", skipped: false, sequence: 2)
+
+        #expect(skipped.message != skipped.reason)
+        #expect(skipped.message.contains("Not available"))
+        #expect(stopped.message == "Not available")
+    }
+
     @Test func `a transfer's guess stands until the next cluster report`() {
         let model = PlayerModel()
         model.apply(cluster(active: "phone", revision: 1))

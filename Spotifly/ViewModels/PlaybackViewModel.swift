@@ -1087,8 +1087,9 @@ final class PlaybackViewModel {
 
     // MARK: - Player State
 
-    /// Follows the connection, the playback state and the volume in the player model. Each
-    /// observation gives the value as it stands, then every change, on the main actor.
+    /// Follows the connection, the playback state, the volume and the interruptions in the
+    /// player model. Each observation gives the value as it stands, then every change, on the
+    /// main actor.
     ///
     /// The playback state is how external control shows up: a phone pausing *this* device
     /// sends a Connect command over the dealer, which pauses the pipeline, whose state
@@ -1108,6 +1109,13 @@ final class PlaybackViewModel {
             for await volume in Observations({ player.volume }) {
                 if let volume {
                     self?.handleVolumeChange(volume)
+                }
+            }
+        }
+        Task { [weak self, player] in
+            for await interruption in Observations({ player.interruption }) {
+                if let interruption {
+                    self?.errorMessage = interruption.message
                 }
             }
         }

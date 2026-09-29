@@ -84,6 +84,8 @@
 "error.no_playback_device" = "Ce Mac n'est pas connecté à Spotify et ne peut donc pas lancer la lecture ailleurs";
 "error.player_not_ready" = "Le lecteur ne s'est pas connecté à Spotify à temps";
 "error.player_not_initialized" = "Le lecteur n'est pas connecté à Spotify";
+"error.track_unavailable %@" = "« %@ » n'est pas disponible sur Spotify";
+"playback.skipped %@" = "Ignoré : %@";
 
 /* Empty States */
 "empty.select_item" = "Sélectionnez un élément dans la barre latérale";

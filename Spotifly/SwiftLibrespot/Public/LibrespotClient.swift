@@ -74,6 +74,14 @@ public actor LibrespotClient {
     /// and with it the active role.
     private var localState: PlaybackState?
 
+    /// Counts the loads started, so a load that fails after a newer one began
+    /// can tell that its failure is no longer news.
+    private var loadGeneration = 0
+
+    /// Counts the interruptions published, so the same one twice in a row
+    /// still reads as news; see `PlaybackInterruption`.
+    private var interruptions = 0
+
     // MARK: - Snapshots (what the app shows)
 
     /// The latest snapshot, which the facade's synchronous reads use.
@@ -696,10 +704,24 @@ public actor LibrespotClient {
     ///
     /// Deliberately separate from `play`: advancing through an existing queue
     /// must not rebuild it.
-    private func loadAndPlay(_ uri: String, positionMs: UInt64 = 0, paused: Bool = false) async throws {
+    ///
+    /// A load that fails leaves nothing playing, because the pipeline tore the
+    /// previous track down before fetching this one. So the device gives
+    /// playback up, unless `releasingOnFailure` is false: auto-advance loads
+    /// the next track straight after, and letting go in between would show
+    /// other devices a Mac that stopped and started again.
+    private func loadAndPlay(
+        _ uri: String,
+        positionMs: UInt64 = 0,
+        paused: Bool = false,
+        releasingOnFailure: Bool = true,
+    ) async throws {
         guard let audioPipeline else {
             throw LibrespotError.notInitialized
         }
+
+        loadGeneration += 1
+        let generation = loadGeneration
 
         // The optimistic state below must not carry the previous track's
         // length; until metadata lands, zero is the honest answer.
@@ -714,11 +736,18 @@ public actor LibrespotClient {
             // published its own state; clearing it here would erase that.
             throw CancellationError()
         } catch {
+            // The pipeline reports a newer load as a cancellation only once
+            // this one's fetch is done. One that failed first still throws its
+            // own error, and clearing, releasing or skipping on it here would
+            // undo the newer load.
+            guard generation == loadGeneration else { throw CancellationError() }
             // The optimistic state above claimed this track was playing. If
             // metadata, the key, the CDN or the decoder said otherwise, leaving
-            // it there shows a running track over silence — and auto-advance,
-            // which swallows the error, would sit on it forever.
+            // it there shows a running track over silence.
             clearLocalState()
+            if releasingOnFailure {
+                await releasePlayback()
+            }
             throw error
         }
 
@@ -729,16 +758,42 @@ public actor LibrespotClient {
     private func handleEndOfTrack(_ uri: String) {
         Task {
             if repeatMode == .track {
-                try? await loadAndPlay(uri)
+                await autoAdvance(to: uri)
                 return
             }
             if let upcoming = playbackQueue.advance() {
-                try? await loadAndPlay(upcoming)
+                await autoAdvance(to: upcoming)
             } else {
                 await rewindContext()
             }
             // The advance moved current/history/next; queue views need it.
             publishQueue()
+        }
+    }
+
+    /// Plays what auto-advance moved to, going past any track Spotify
+    /// withholds; see `AutoAdvance`. Nobody is waiting for its errors, so
+    /// each skip, and a stop, is published for the now-playing bar instead.
+    private func autoAdvance(to uri: String) async {
+        let outcome = await AutoAdvance.run(
+            from: uri,
+            attempts: max(1, playbackQueue.userQueue.count + playbackQueue.contextTracks.count),
+            load: { try await self.loadAndPlay($0, releasingOnFailure: false) },
+            advance: { self.playbackQueue.advance(respectingRepeat: false) },
+            skipped: { uri, error in
+                debugLog("LibrespotClient", "Skipping \(uri): \(error.localizedDescription)")
+                self.interrupt(error, skipped: true)
+            },
+        )
+        switch outcome {
+        case .playing, .superseded:
+            break
+        case .queueEnded:
+            await rewindContext()
+        case let .stopped(error):
+            debugLog("LibrespotClient", "Auto-advance stopped: \(error.localizedDescription)")
+            interrupt(error, skipped: false)
+            await releasePlayback()
         }
     }
 
@@ -773,7 +828,13 @@ public actor LibrespotClient {
         }
         debugLog("LibrespotClient", "End of the context; back to its first track, paused")
         playbackQueue.setContext(uri: playbackQueue.contextUri, tracks: tracks, startIndex: 0)
-        try? await loadCurrentTrack(paused: true)
+        do {
+            try await loadCurrentTrack(paused: true)
+        } catch is CancellationError {
+            // A newer load took over, and it reports for itself.
+        } catch {
+            interrupt(error, skipped: false)
+        }
     }
 
     /// Publishes the queue, with the context it plays from.
@@ -811,6 +872,8 @@ public actor LibrespotClient {
             case let .error(error):
                 debugLog("LibrespotClient", "Audio pipeline error: \(error.localizedDescription)")
                 clearLocalState()
+                await releasePlayback()
+                interrupt(error, skipped: false)
             }
         }
     }
@@ -819,6 +882,29 @@ public actor LibrespotClient {
     private func clearLocalState() {
         localState = nil
         publish { $0.playback = nil }
+    }
+
+    /// Lets go of the active role and reports that nothing plays here, after
+    /// a failure has left the pipeline empty.
+    ///
+    /// Clearing the local state alone told the cluster nothing: the last
+    /// report stood, and on 2026-09-29 every heartbeat after a failed load
+    /// went on telling the web player this Mac was playing the track at 0ms.
+    private func releasePlayback() async {
+        await session?.reportLocalActive(false)
+        reportPlaybackToCluster()
+    }
+
+    /// Tells the app that playback went past a track, or stopped, over an
+    /// error nobody was waiting for.
+    private func interrupt(_ error: any Error, skipped: Bool) {
+        interruptions += 1
+        let interruption = PlaybackInterruption(
+            reason: error.localizedDescription,
+            skipped: skipped,
+            sequence: interruptions,
+        )
+        publish { $0.interruption = interruption }
     }
 
     private func handlePipelineState(_ state: AudioPipeline.AudioPlaybackState) async {
@@ -1113,8 +1199,7 @@ public actor LibrespotClient {
             // Let the role go again, or the cluster goes on showing this device
             // as the one playing — over silence, with every control sent here.
             debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
-            await session?.reportLocalActive(false)
-            reportPlaybackToCluster()
+            await releasePlayback()
         }
     }
 

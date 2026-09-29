@@ -330,9 +330,7 @@ actor AudioPipeline {
         debugLog("AudioPipeline", "Track '\(metadata.name)': \(metadata.files.count) file(s), \(metadata.durationMs)ms")
 
         let quality = quality
-        guard let file = Self.selectVorbisFile(metadata.files, preferring: quality) else {
-            throw LibrespotError.trackNotFound("No Ogg Vorbis file available")
-        }
+        let file = try Self.fileToPlay(metadata, uri: uri, preferring: quality)
 
         // Independent requests on different transports — the key over the
         // accesspoint socket, the url over HTTP — so neither waits for the other.
@@ -744,15 +742,29 @@ actor AudioPipeline {
 
     /// Picks the best Ogg Vorbis file for the quality preference: nearest
     /// match wins, ties go to the higher quality.
-    private static func selectVorbisFile(_ files: [SPClient.TrackMetadata.AudioFile], preferring quality: Quality) -> SPClient.TrackMetadata.AudioFile? {
-        let vorbisFiles = files.filter(\.format.isVorbis)
-        guard !vorbisFiles.isEmpty else { return nil }
-
-        return vorbisFiles.min {
+    ///
+    /// No file at all is a different failure from no file this player
+    /// decodes. It is how Spotify withholds a track: measured on 2026-09-29,
+    /// a `COUNTRY_RESTRICTED` one answers `restriction { countries_allowed: "" }`,
+    /// allowed nowhere, with no files and no alternative. The same holds for
+    /// the three ids librespot refused on 2026-08-14.
+    nonisolated static func fileToPlay(
+        _ metadata: SPClient.TrackMetadata,
+        uri: String,
+        preferring quality: Quality,
+    ) throws -> SPClient.TrackMetadata.AudioFile {
+        guard !metadata.files.isEmpty else {
+            throw LibrespotError.trackUnavailable(name: metadata.name.isEmpty ? uri : metadata.name)
+        }
+        let best = metadata.files.filter(\.format.isVorbis).min {
             let d0 = abs($0.format.kbps - quality.rawValue)
             let d1 = abs($1.format.kbps - quality.rawValue)
             return d0 == d1 ? $0.format.kbps > $1.format.kbps : d0 < d1
         }
+        guard let best else {
+            throw LibrespotError.trackNotFound("No Ogg Vorbis file available")
+        }
+        return best
     }
 
     /// Finds where the actual Ogg Vorbis stream begins inside a decrypted

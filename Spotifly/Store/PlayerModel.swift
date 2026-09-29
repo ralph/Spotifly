@@ -32,6 +32,9 @@ final class PlayerModel {
     /// The logical Connect volume, 0–1; nil until one has been set.
     private(set) var volume: Double?
 
+    /// The latest skip or stop that auto-advance published.
+    private(set) var interruption: PlaybackInterruption?
+
     /// The active Connect device, or nil while none is. A transfer sets it ahead
     /// of the cluster; see `setActiveDevice(_:)`.
     private(set) var activeDeviceId: String?
@@ -83,6 +86,9 @@ final class PlayerModel {
         }
         if snapshot.volume != volume {
             volume = snapshot.volume
+        }
+        if snapshot.interruption != interruption {
+            interruption = snapshot.interruption
         }
         if snapshot.devices != reportedDevices {
             reportedDevices = snapshot.devices
