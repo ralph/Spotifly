@@ -37,8 +37,11 @@ with the greying a review of it found missing.
   (`LibrespotError.trackUnavailable`: a `Track` with no files), it sends a new event,
   `.withheldAhead(uri)`, and still fails the fetch. Any other failure may not recur, so it goes
   unreported and the change of track fetches again, as before.
-- **The client acts on it** in `markUnplayable`, which a failed load now goes through too: the
-  track goes into `failedUnplayable`, and the next track is announced again.
+- **The client acts on it.** `markUnplayable`, which a failed load now goes through too, puts the
+  track in `failedUnplayable` and publishes it, and the report alone announces the next track
+  again. A failed load does not: the code review of the change found that its announcement,
+  made mid-way through an auto-advance run, could land after the one the run makes once it has
+  moved the queue, and leave the pipeline told the track already playing.
   `upcomingPlayable(skipping:)` steps over the withheld one, so the pipeline drops its failed
   fetch (`setNextTrack` clears an `upcoming` that is no longer next) and fetches the track after
   it on the next tick.
