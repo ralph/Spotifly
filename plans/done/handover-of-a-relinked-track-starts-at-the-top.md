@@ -73,3 +73,6 @@ That, a handover while a queued track plays, and a handed-over bare list are in
       uid; the Mac played the listed `0sMI…` from 18.8 s, and fetched ahead "Girlfriend"
       (withheld, found out ahead) and then "Tilted", #197 and #198. Before, the next track was
       "Welcome to Paradise", #1.
+- [x] Live, 2026-09-30: with the Mac active, a double-click on "Gold Lion" in the web player's
+      Liked Songs sent a play whose `skip_to` named its uri, uid `195f8110b593d39eb69b` and
+      index 2; the Mac played "Gold Lion".
