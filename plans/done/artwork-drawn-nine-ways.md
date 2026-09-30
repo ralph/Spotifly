@@ -1,7 +1,7 @@
 # Artwork is drawn nine ways
 
-Status: **Done** 2026-09-30. Built, unit tests pass, and seen in the running app in dark mode;
-light mode and a failed load were not looked at (see Verification).
+Status: **Done** 2026-09-30. Built, unit tests pass, and seen in the running app in dark and light
+mode; a failed load was not induced (see Verification).
 Components: `Spotifly/Views/Components/Artwork.swift` (was `CardArtwork.swift`),
 `Spotifly/Views/Components/AlbumCard.swift`, `ArtistCard.swift`, `PlaylistCard.swift`,
 `TrackCard.swift`, `Spotifly/Views/AlbumDetailView.swift`, `Spotifly/Views/ArtistDetailView.swift`,
@@ -75,6 +75,6 @@ placeholder on failure. Seven of them now use one view, `Artwork`, which `CardAr
     glyph on a quaternary rounded square.
 - [x] Rebuilt after the review, 2026-09-30: an artist's header as a circle with its shadow, and the
       now-playing bar's placeholder glyph in grey.
-- [ ] Light mode. Not switched: the colours are the semantic `.secondary` and `.quaternary`, as
-      before.
+- [x] Light mode, through the app's own setting for one run (`--args -appearanceMode light`): the
+      Playlists list and a playlist without a cover, placeholder and artwork alike.
 - [ ] A failed load. Not induced; it shows the same placeholder as no artwork, seen above.
