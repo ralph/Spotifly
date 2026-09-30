@@ -1,7 +1,7 @@
 # An album, artist or playlist union of an unknown kind reads as "no data"
 
-Status: **Done** 2026-09-29. Built and unit-tested; not yet seen in the running app; see
-Verification.
+Status: **Done** 2026-09-29 (#96). Built and unit-tested, and seen in the running app on 2026-09-30;
+see Verification.
 Components: `Spotifly/PartnerAPI/PartnerAPI.swift` (`album(id:)`, `artistUnion`, `playlistPage`),
 `Spotifly/Views/AlbumDetailView.swift`, `Spotifly/Views/ArtistDetailView.swift`,
 `Spotifly/Views/PlaylistDetailView.swift`, `Spotifly/Views/Components/InlineLoadError.swift`,
@@ -87,7 +87,7 @@ as `TrackService.unavailableTrackIds` does for tracks. Only `NotFound` is rememb
       name; an album answered `NotFound` twice costs one request; a playlist answered
       `GenericError` twice costs two.
 - [x] Build, 445 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
-- [ ] Live: `SPOTIFLY_DEBUG_OPEN=spotify:album:2ZWlPOoWh0626oTaHrnl2a` still says the album is not
-      found, with no Try again. Choose another album and come back: the message returns at once,
-      with no `getAlbum` in the log.
-- [ ] Live: albums, artists and playlists load as before, and Liked Songs too.
+- [x] Live, 2026-09-30: `SPOTIFLY_DEBUG_OPEN=spotify:album:2ZWlPOoWh0626oTaHrnl2a` says the album is
+      not found, with no Try again, and the log has one `getAlbum`. After choosing another album and
+      going Back, the message is there at once, with no second `getAlbum` for it.
+- [x] Live, 2026-09-30: albums, an artist, a playlist and Liked Songs load as before.

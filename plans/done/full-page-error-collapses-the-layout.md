@@ -1,7 +1,8 @@
 # A page that failed to load squeezes the window
 
-Status: **Done** 2026-09-29. The cause confirmed by a layout probe, and the fix measured by the
-same probe; not yet seen in the running app, since the grant was gone by then; see Verification.
+Status: **Done** 2026-09-29 (#95). The cause confirmed by a layout probe, and the fix measured by
+the same probe; seen in the running app on 2026-09-30 for an album, not yet for an artist or a
+playlist; see Verification.
 Components: `Spotifly/Views/AlbumDetailView.swift`, `Spotifly/Views/ArtistDetailView.swift`,
 `Spotifly/Views/PlaylistDetailView.swift` (their full-page error branch),
 `Spotifly/Views/Components/InlineLoadError.swift`, `Spotifly/Views/LoggedInView.swift`
@@ -94,10 +95,11 @@ centers it, and the section errors inside a loaded page keep their size.
       as a bottom overlay. The split view came out **32 pt** tall without the frames, the height
       of one padded line, which is the collapse seen on screen, and **600 pt** with them.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
-- [ ] Live, on a German account:
+- [x] Live, 2026-09-30, on the German account:
       `SPOTIFLY_DEBUG_OPEN=spotify:album:2ZWlPOoWh0626oTaHrnl2a`. The album list fills its column
       from the top, the message is centered in the detail column, and the bar is at the bottom of
       the window.
 - [ ] Live: `SPOTIFLY_DEBUG_OPEN=spotify:artist:0000000000000000000000` and
-      `spotify:playlist:0000000000000000000000` look the same way.
-- [ ] Live: albums, artists, playlists, Favorites, the queue and Speakers look as before.
+      `spotify:playlist:0000000000000000000000` look the same way. Not run on 2026-09-30.
+- [x] Live, 2026-09-30: albums, artists, playlists, Favorites, the queue and Speakers look as
+      before, throughout the testing of #94 to #104.

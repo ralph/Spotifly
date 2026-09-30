@@ -61,6 +61,7 @@ that variable.
       readable, so the test host can reach it; it just no longer signs in with it. The probe
       was a temporary test file, deleted again.
 - [x] Build, 441 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
-- [ ] Live, by the developer: with the Debug app open and playing, run the unit tests. The app
-      keeps playing, and the phone's device list keeps showing Spotifly throughout and after.
-- [ ] Live: launch the Debug app normally. It signs in and plays as before.
+- [ ] Live, by the developer: with the Debug app open and playing, run the unit tests. The app keeps
+      playing, and the phone's device list keeps showing Spotifly throughout and after. Not run on
+      2026-09-30: the tests ran only while the app was quit.
+- [x] Live, 2026-09-30: every Debug build launched that day signed in and played.

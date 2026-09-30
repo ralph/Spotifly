@@ -48,5 +48,5 @@ becomes the other and drops what the app has no row for.
 
 - [x] Build, 441 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0. The
       compiler found no reader of the removed fields.
-- [ ] Live: the Queue section and the now-playing bar still show names and artwork, which come
-      from the store, for local playback and while another device plays.
+- [x] Live, 2026-09-30: the Queue section and the now-playing bar show names and artwork, for local
+      playback and while the web player played.
