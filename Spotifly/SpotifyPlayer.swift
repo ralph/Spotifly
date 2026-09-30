@@ -154,7 +154,17 @@ enum SpotifyPlayer {
             tokenProvider: { try await KeymasterSession.shared.accessToken() },
             clientTokenProvider: { try await ClientTokenProvider.shared.token() },
             usernameProvider: { await KeymasterSession.shared.username },
+            contextRowUids: { uri in await albumRowUids(uri) },
         )
+    }
+
+    /// An album's rows' uids, which its resolve answer leaves out and a handover names its rows
+    /// by. Nothing for anything else, or when pathfinder does not answer.
+    private nonisolated static func albumRowUids(_ uri: String) async -> [String: String] {
+        guard let id = SpotifyURI.id(from: uri, kind: "album"),
+              let album = try? await PartnerAPI().album(id: id)
+        else { return [:] }
+        return album.rowUids
     }
 
     /// Shuts down, which takes this device off Spotify Connect. Call this when the app is
