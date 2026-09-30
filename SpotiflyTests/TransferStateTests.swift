@@ -100,6 +100,16 @@ struct TransferStateTests {
         #expect(fromQueue.currentTrackUid == nil)
     }
 
+    /// The session's `current_uid` names the context row that plays after a queued track, and
+    /// only the current track again while a context track plays.
+    @Test func `playing from the queue, the session's uid names where the context goes on`() {
+        let fromQueue = TransferState(parsing: Self.transfer(queue: ["spotify:track:q1"], playingQueue: true))
+        #expect(fromQueue.contextResumeUid == "uid-current")
+
+        let fromContext = TransferState(parsing: Self.transfer(queue: ["spotify:track:q1"]))
+        #expect(fromContext.contextResumeUid == nil)
+    }
+
     @Test func `a track sent only by gid gets its uri back`() {
         // spotify:track:6rqhFgbbKwnb9MLmUQDhG6 is gid d3aca7e43e3b452cbfa9ddd2eab9497e,
         // by base-62 decoding in Python.

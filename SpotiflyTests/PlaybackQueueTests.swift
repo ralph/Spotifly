@@ -237,6 +237,39 @@ struct PlaybackQueueHandoverTests {
 
         #expect(queue.upcoming().map(\.uri) == ["q1", "q2", "t1"])
     }
+
+    /// Measured with the web player: Liked Songs playing its second row, a track queued and
+    /// skipped into, then handed over. The session's uid named the third row, where the context
+    /// goes on after the queued track.
+    @Test func `a queued track handed over plays as queued, and the context goes on at the row named`() {
+        let tracks = ["t0", "t1", "t2", "t3"]
+        let uids: [String?] = ["u0", "u1", "u2", "u3"]
+        let row = PlaybackQueue.rowBeforeResume(uid: "u2", uids: uids, count: tracks.count)
+        #expect(row == 1)
+
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:playlist:p", tracks: tracks, startIndex: row ?? 0)
+        queue.replaceUserQueue(with: ["q2"])
+        queue.playQueued("q1")
+
+        #expect(queue.currentUri == "q1")
+        #expect(queue.currentProvider == "queue")
+        #expect(queue.upcoming().map(\.uri) == ["q2", "t2", "t3"])
+        #expect(queue.history == ["t1"])
+        #expect(queue.advance() == "q2")
+        #expect(queue.advance() == "t2")
+    }
+
+    @Test func `no row before the first, and none for a uid the context does not list`() {
+        let uids: [String?] = ["u0", "u1"]
+
+        #expect(PlaybackQueue.rowBeforeResume(uid: "u0", uids: uids, count: 2) == nil)
+        #expect(PlaybackQueue.rowBeforeResume(uid: "other", uids: uids, count: 2) == nil)
+        // An album's resolve answer carries no uids.
+        #expect(PlaybackQueue.rowBeforeResume(uid: "u1", uids: [nil, nil], count: 2) == nil)
+        // Uids longer than the tracks name nothing past them.
+        #expect(PlaybackQueue.rowBeforeResume(uid: "u1", uids: uids, count: 1) == nil)
+    }
 }
 
 /// Where a context starts when a row names its index and its track. The index counts rows in

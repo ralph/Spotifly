@@ -452,15 +452,7 @@ public actor LibrespotClient {
         }
 
         // Anything else is a context that needs resolving to a track list.
-        guard let spclient else {
-            throw LibrespotError.notInitialized
-        }
-
-        debugLog("LibrespotClient", "Resolving context \(uri)")
-        let context = try await spclient.resolveContext(uri)
-        guard !context.tracks.isEmpty else {
-            throw LibrespotError.trackNotFound("Context has no tracks")
-        }
+        let context = try await resolveContext(uri)
 
         // No track named, as by Play on an album or a playlist: its first that plays.
         let start = trackIndex == nil && startingAtUri == nil
@@ -468,6 +460,18 @@ public actor LibrespotClient {
             : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: context.uids)
         setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: start.tracks, startIndex: start.index, name: context.name)
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
+    }
+
+    private func resolveContext(_ uri: String) async throws -> SPClient.ResolvedContext {
+        guard let spclient else {
+            throw LibrespotError.notInitialized
+        }
+        debugLog("LibrespotClient", "Resolving context \(uri)")
+        let context = try await spclient.resolveContext(uri)
+        guard !context.tracks.isEmpty else {
+            throw LibrespotError.trackNotFound("Context has no tracks")
+        }
+        return context
     }
 
     /// Plays a list of tracks that no album or playlist names, starting where
@@ -936,7 +940,7 @@ public actor LibrespotClient {
     private var queueState: QueueState {
         QueueState(
             contextUri: playbackQueue.contextUri,
-            currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: "context") },
+            currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: playbackQueue.currentProvider) },
             nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             contextName: contextName,
@@ -1305,7 +1309,11 @@ public actor LibrespotClient {
         playbackQueue.replaceUserQueue(with: transfer.queuedTrackUris)
 
         do {
-            if !transfer.contextUri.isEmpty {
+            if let resumeUid = transfer.contextResumeUid, !transfer.contextUri.isEmpty,
+               !transfer.contextUri.contains("spotify:track:")
+            {
+                try await takeOverQueued(track, in: transfer.contextUri, resumingAt: resumeUid, positionMs: positionMs, paused: transfer.isPaused)
+            } else if !transfer.contextUri.isEmpty {
                 try await play(
                     uriOrUrl: transfer.contextUri,
                     startingAtUri: track,
@@ -1330,6 +1338,35 @@ public actor LibrespotClient {
             debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
             await releasePlayback()
         }
+    }
+
+    /// A handover while a queued track plays. The track plays as queued, with the context on the
+    /// row before the one it goes on with after it (librespot's `finish_transfer`). Played as a
+    /// context track instead, it was put in as the context's first row, or found further on by
+    /// its uri, and the context went on from there.
+    private func takeOverQueued(
+        _ track: String,
+        in contextUri: String,
+        resumingAt resumeUid: String,
+        positionMs: UInt64,
+        paused: Bool,
+    ) async throws {
+        let context = try await resolveContext(contextUri)
+        let uri = context.uri.isEmpty ? contextUri : context.uri
+        if let row = PlaybackQueue.rowBeforeResume(uid: resumeUid, uids: context.uids, count: context.tracks.count) {
+            // Published once the queued track is current, so the row before never shows as playing.
+            contextName = context.name
+            playbackQueue.setContext(uri: uri, tracks: context.tracks, startIndex: row)
+            playbackQueue.playQueued(track)
+            publishQueue()
+        } else {
+            // The context goes on with its first row, or with a row it does not name: the track
+            // goes in where `start` puts a track the context may not list.
+            debugLog("LibrespotClient", "No row before \(resumeUid) in \(uri); placing \(track) by its uri")
+            let start = PlaybackQueue.start(in: context.tracks, index: nil, uri: track)
+            setQueue(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name)
+        }
+        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
     // MARK: - Remote Commands

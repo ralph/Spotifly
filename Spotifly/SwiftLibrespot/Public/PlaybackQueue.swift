@@ -92,6 +92,15 @@ final nonisolated class PlaybackQueue {
         return (tracks, target)
     }
 
+    /// Where a context stands while a queued track plays, from the row it goes on with after it:
+    /// the row before, as a Next into a queued track leaves `currentIndex` here too. Nil for the
+    /// first row, which has no row before it, and for a uid the context does not list, as an
+    /// album's rows carry none.
+    static func rowBeforeResume(uid: String, uids: [String?], count: Int) -> Int? {
+        guard let row = uids.firstIndex(of: uid), row > 0, row < count else { return nil }
+        return row - 1
+    }
+
     /// Replaces the whole playing context.
     func setContext(uri: String, tracks: [String], startIndex: Int) {
         contextUri = uri
@@ -107,6 +116,14 @@ final nonisolated class PlaybackQueue {
 
     func enqueue(_ uri: String) {
         userQueue.append(uri)
+    }
+
+    /// Plays a track as queued, now: after the current context track, which goes into the
+    /// history, and before the context goes on. What a handover that arrives while a queued
+    /// track plays leaves.
+    func playQueued(_ uri: String) {
+        userQueue.insert(uri, at: 0)
+        _ = advance()
     }
 
     /// Replaces the explicitly queued tracks wholesale, as a handover does:
