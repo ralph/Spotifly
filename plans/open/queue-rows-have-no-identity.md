@@ -110,6 +110,13 @@ Not defined yet.
   - **`skip_next` from the web player** names a track by uri, and a duplicate ahead resolves to
     the first copy. librespot's `handle_next` does the same (`skip_next.track.map(|t| t.uri)`);
     go-librespot matches a uid first (`tracks.ContextTrackComparator`).
+    - **Measured** 2026-10-01: a double-click on a row three ahead in the web player's queue
+      panel, while Spotifly played an album, sent
+      `{"endpoint":"skip_next","track":{"uri":"spotify:track:6n7G4IAZjZMYFY3wygXG2H","provider":"context"}}`:
+      no uid, since Spotifly reports its rows without one, but a `provider`, which the app does
+      not read. A uid could only come back once Spotifly reports its rows with uids.
+    - The `provider` alone would tell a queued copy from a context copy of the same track, which
+      `skip(toUpcoming:uri:)` cannot today.
   - **Rows the store drops.** `QueueService` keeps only track rows, so a context with episodes
     shifts the view's indices past the first one. The uri still finds the row unless the track
     repeats close by.
