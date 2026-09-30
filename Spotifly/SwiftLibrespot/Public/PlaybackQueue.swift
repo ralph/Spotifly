@@ -98,7 +98,7 @@ final nonisolated class PlaybackQueue {
     /// On the row before that, with the track to play as queued: Next into a queued track leaves
     /// `currentIndex` there too (librespot's `finish_transfer`). Before the first row there is no
     /// row to stand on, so the track goes in front of it, as a context row. Nil for a uid the
-    /// context does not list, as an album's rows carry none, which leaves the track to `start`.
+    /// context does not list, which leaves the track to `start`.
     static func start(
         in tracks: [String],
         queued uri: String,
