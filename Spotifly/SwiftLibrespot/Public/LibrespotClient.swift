@@ -1240,7 +1240,7 @@ public actor LibrespotClient {
             repeatContext: options.repeatingContext,
             timestampMs: remote.timestamp,
         )
-        let queue = Self.mirroredQueue(of: remote, current: track)
+        let queue = Self.mirroredQueue(of: remote)
         publish {
             $0.playback = playback
             $0.queue = queue
@@ -1258,11 +1258,11 @@ public actor LibrespotClient {
     /// again as its next iteration, for repeat to play: with repeat off every row from the
     /// delimiter on is `hidden`, with repeat on only the delimiters are. Shown, they listed an
     /// album again after its last track.
-    nonisolated static func mirroredQueue(of remote: PlayerState, current track: ProvidedTrack) -> QueueState {
+    nonisolated static func mirroredQueue(of remote: PlayerState) -> QueueState {
         let shown: (ProvidedTrack) -> Bool = { $0.metadata["hidden"] != "true" }
         return QueueState(
             contextUri: remote.contextUri,
-            currentTrack: QueueItem(uri: track.uri, provider: track.provider),
+            currentTrack: remote.track.map { QueueItem(uri: $0.uri, provider: $0.provider) },
             // Proto3: a row without a uid has "".
             nextTracks: remote.nextTracks.filter(shown).map { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) },
             // In play order, as the cluster keeps them and the local queue

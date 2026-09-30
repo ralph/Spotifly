@@ -44,6 +44,10 @@ player's own queue follows: with repeat off the queue ends with the context's la
 with repeat on it goes on into the next iteration, without its delimiters. The queue building
 moved out of `mirror` into that static function so it can be tested.
 
+The review of it found what the rule still takes on trust: a bare list taken over with repeat
+on, Next on a context's last track while another device has autoplay, and the rows of devices
+other than the web player. See `plans/open/mirrored-queue-beyond-the-web-player.md`.
+
 ## Verification
 
 - [x] Measured, as above.
