@@ -37,7 +37,7 @@ struct InlineLoadError: View {
         // A load that failed while the network was away is asked for again when it returns,
         // as its artwork is, rather than waiting for Try again.
         .onChange(of: network.returns) {
-            if let retry {
+            if failure.canRetry {
                 Task { await retry() }
             }
         }
