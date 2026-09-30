@@ -195,6 +195,9 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 SpotifyPlayer.setUnplayable(uris)
             }
             // And the other way: what playback found withheld, which no list said, is greyed.
+            // Launched offline, the app has no profile, and so no avatar for the sidebar
+            // until the next launch: asked for again when the network is back.
+            .retryingWhenNetworkReturns(if: store.userProfile == nil) { await loadProfile() }
             .onChange(of: player.withheld, initial: true) { _, uris in
                 store.setWithheld(uris)
             }

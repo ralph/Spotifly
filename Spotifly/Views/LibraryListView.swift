@@ -176,6 +176,7 @@ struct LibraryListView<Entity: LibraryEntity>: View {
             }
             selectFirstIfNeeded()
         }
+        .retryingWhenNetworkReturns(if: errorMessage != nil && !hasContent) { await loadItems(forceRefresh: true) }
         .onChange(of: items) { _, _ in
             selectFirstIfNeeded()
         }

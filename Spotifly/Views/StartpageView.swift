@@ -98,6 +98,7 @@ struct StartpageView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
+        .retryingWhenNetworkReturns(if: store.homeErrorMessage != nil) { await homeService.refresh() }
     }
 }
 

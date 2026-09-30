@@ -19,8 +19,6 @@ struct InlineLoadError: View {
     let failure: LoadFailure
     let retry: () async -> Void
 
-    private let network = NetworkMonitor.shared
-
     var body: some View {
         VStack(spacing: 8) {
             Text(failure.message)
@@ -34,13 +32,7 @@ struct InlineLoadError: View {
             }
         }
         .padding()
-        // A load that failed while the network was away is asked for again when it returns,
-        // as its artwork is, rather than waiting for Try again.
-        .onChange(of: network.returns) {
-            if failure.canRetry {
-                Task { await retry() }
-            }
-        }
+        .retryingWhenNetworkReturns(if: failure.canRetry, retry)
     }
 }
 
