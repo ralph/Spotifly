@@ -113,10 +113,13 @@ Not defined yet.
     - **Measured** 2026-10-01: a double-click on a row three ahead in the web player's queue
       panel, while Spotifly played an album, sent
       `{"endpoint":"skip_next","track":{"uri":"spotify:track:6n7G4IAZjZMYFY3wygXG2H","provider":"context"}}`:
-      no uid, since Spotifly reports its rows without one, but a `provider`, which the app does
-      not read. A uid could only come back once Spotifly reports its rows with uids.
-    - The `provider` alone would tell a queued copy from a context copy of the same track, which
-      `skip(toUpcoming:uri:)` cannot today.
+      no uid, since Spotifly reports its rows without one, but a `provider`. A uid could only
+      come back once Spotifly reports its rows with uids.
+    - **The `provider` does not tell the copies apart.** Measured the same day with a track both
+      queued and further on in the album: a double-click on the album's own copy in the web
+      player's queue panel sent `"provider":"queue"`, twice, with two tracks. The web player
+      looks the row up by uri and names the first match, the queued one. A branch that picked the
+      row by provider was built, measured, and dropped.
   - **Rows the store drops.** `QueueService` keeps only track rows, so a context with episodes
     shifts the view's indices past the first one. The uri still finds the row unless the track
     repeats close by.
