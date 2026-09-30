@@ -16,7 +16,6 @@ struct AlbumDetailView: View {
     @Environment(AlbumService.self) private var albumService
     @Environment(TrackService.self) private var trackService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(\.displayScale) private var displayScale
 
     @State private var isLoading = false
     @State private var failure: LoadFailure?
@@ -71,28 +70,7 @@ struct AlbumDetailView: View {
             VStack(spacing: 24) {
                 // Album art and metadata
                 VStack(spacing: 16) {
-                    if let url = album.images.url(for: 200, scale: displayScale) {
-                        RetryingAsyncImage(url: url) { phase in
-                            switch phase {
-                            case .empty:
-                                ProgressView()
-                                    .frame(width: 200, height: 200)
-                            case let .success(image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 200, height: 200)
-                                    .clipShape(.rect(cornerRadius: 8))
-                                    .shadow(radius: 10)
-                            case .failure:
-                                albumArtworkPlaceholder
-                            @unknown default:
-                                EmptyView()
-                            }
-                        }
-                    } else {
-                        albumArtworkPlaceholder
-                    }
+                    Artwork.header(album.images, symbol: "music.note")
 
                     VStack(spacing: 8) {
                         Text(album.name)
@@ -191,14 +169,6 @@ struct AlbumDetailView: View {
                 }
             }
         }
-    }
-
-    private var albumArtworkPlaceholder: some View {
-        Image(systemName: "music.note")
-            .font(.system(size: 60))
-            .frame(width: 200, height: 200)
-            .background(.quaternary)
-            .clipShape(.rect(cornerRadius: 8))
     }
 
     private func loadAlbum() async {
