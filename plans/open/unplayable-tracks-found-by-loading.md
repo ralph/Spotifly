@@ -22,11 +22,12 @@ All read from the code; none has been observed since the follow-up.
   that the next track is withheld, and nothing acts on it. The change of track then loads the
   one after it cold, where it could have been gapless. The pipeline could report the failed
   fetch-ahead, so the client marks it and names the next one.
-- **A run costs two requests each, with no cap.** `AutoAdvance.run` tries as many tracks as the
-  queue holds, each with `/metadata/4` and extended-metadata in turn.
+- **A run costs a request each, with no cap.** `AutoAdvance.run` tries as many tracks as the
+  queue holds, each with an extended-metadata request (one since
+  `plans/done/track-load-waits-on-two-metadata-requests.md`; it was `/metadata/4` too).
 - **Each attempt shows the track and reports it.** `startTrack` publishes an optimistic
   "playing" state for every track it tries, and the pipeline's `.loading` event reports it to
-  the cluster, for as long as its metadata requests take.
+  the cluster, for as long as its metadata request takes.
 - **spclient's metadata is not read for it.** A track hydrated only through spclient, such as
   a queue entry from a context the app never listed, is not greyed. `/metadata/4` has
   `restriction { countries_allowed: "" }` and no `alternative` for a withheld track, but a
