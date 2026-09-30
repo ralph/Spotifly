@@ -191,6 +191,11 @@ final class NavigationCoordinator {
         navigate(to: Route(section: .playlists, selection: .playlist(id: playlistId)))
     }
 
+    /// Opens a route made elsewhere, such as the page of a context uri (`Route(contextUri:)`).
+    func open(_ route: Route) {
+        navigate(to: route)
+    }
+
     /// Navigate directly to the queue.
     func navigateToQueue() {
         selectNavigationItem(.queue)
