@@ -198,7 +198,6 @@ struct AutoAdvanceTests {
 struct TrackFileChoiceTests {
     private func metadata(name: String = "Song", _ formats: [SPClient.TrackMetadata.AudioFormat]) -> SPClient.TrackMetadata {
         SPClient.TrackMetadata(
-            gid: Data(),
             name: name,
             durationMs: 201_073,
             files: formats.enumerated().map { .init(fileId: Data([UInt8($0.offset)]), format: $0.element) },

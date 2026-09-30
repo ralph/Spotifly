@@ -246,17 +246,20 @@ struct SPClientParsingTests {
         }
     }
 
-    /// A `Track` wrapped the way the extended-metadata endpoint answers with one.
-    private static func extendedMetadataResponse(track: Data) -> Data {
+    /// A `Track` wrapped the way the extended-metadata endpoint answers with one, or, without
+    /// one, the way it answers for an entity it has none of.
+    private static func extendedMetadataResponse(track: Data?, status: Int = 200) -> Data {
         ProtobufWriter.message {
             $0.message(field: 2) { array in // extended_metadata
                 array.varint(field: 2, 10) // extension_kind: TRACK_V4
                 array.message(field: 3) { entry in // extension_data
-                    entry.message(field: 1) { $0.varint(field: 1, 200) } // header.status_code
+                    entry.message(field: 1) { $0.varint(field: 1, status) } // header.status_code
                     entry.string(field: 2, "spotify:track:abc") // entity_uri
-                    entry.message(field: 3) { any in // google.protobuf.Any
-                        any.string(field: 1, "type.googleapis.com/spotify.metadata.Track")
-                        any.bytes(field: 2, track)
+                    if let track {
+                        entry.message(field: 3) { any in // google.protobuf.Any
+                            any.string(field: 1, "type.googleapis.com/spotify.metadata.Track")
+                            any.bytes(field: 2, track)
+                        }
                     }
                 }
             }
@@ -267,20 +270,61 @@ struct SPClientParsingTests {
         files.map { $0.fileId.first ?? 0 }
     }
 
-    @Test func `the extended-metadata answer yields the wrapped track's files`() {
+    private static func parse(_ track: Data) -> SPClient.TrackMetadata? {
+        SPClient.parseTrackResponse(extendedMetadataResponse(track: track))
+    }
+
+    @Test func `the extended-metadata answer yields the wrapped track's files`() throws {
         let track = ProtobufWriter.message {
             $0.string(field: 2, "Song") // name
             Self.file(&$0, id: 1, format: 1) // OGG_VORBIS_160
             Self.file(&$0, id: 2, format: 2) // OGG_VORBIS_320
         }
 
-        let files = SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))
+        let files = try #require(Self.parse(track)).files
 
         #expect(Self.ids(files) == [1, 2])
         #expect(files.map(\.format) == [.oggVorbis160, .oggVorbis320])
     }
 
-    @Test func `a relinked track's files come from its alternative`() {
+    /// Measured on 2026-09-29: the wrapped `Track` names the track and says how long it is, which
+    /// is why `/metadata/4` is no longer asked.
+    @Test func `the wrapped track carries its name and duration`() throws {
+        let track = ProtobufWriter.message {
+            $0.string(field: 2, "Not Bad for New Jersey")
+            $0.varint(field: 7, 430_410) // sint32 215205, as measured
+            Self.file(&$0, id: 1, format: 1)
+        }
+
+        let metadata = try #require(Self.parse(track))
+
+        #expect(metadata.name == "Not Bad for New Jersey")
+        #expect(metadata.durationMs == 215_205)
+    }
+
+    /// A track that does not exist: HTTP 200, a 404 in the entity's header, and no `Track`,
+    /// measured with `spotify:track:0000000000000000000000`.
+    @Test func `an entity without a track is none`() {
+        #expect(SPClient.parseTrackResponse(Self.extendedMetadataResponse(track: nil, status: 404)) == nil)
+    }
+
+    /// "Girlfriend", which Spotify withholds in DE, measured the same day: a `Track` with its name,
+    /// its duration and a restriction (11), and no files, of its own or an alternative's. So it
+    /// still reads as withheld, and auto-advance still steps over it.
+    @Test func `a withheld track has its name and no files`() throws {
+        let track = ProtobufWriter.message {
+            $0.string(field: 2, "Girlfriend (feat. Dâm-Funk)")
+            $0.varint(field: 7, 402_146) // sint32 201073
+            $0.message(field: 11) { $0.string(field: 2, "") } // restriction
+        }
+
+        let metadata = try #require(Self.parse(track))
+
+        #expect(metadata.name == "Girlfriend (feat. Dâm-Funk)")
+        #expect(metadata.files.isEmpty)
+    }
+
+    @Test func `a relinked track's files come from its alternative`() throws {
         let track = ProtobufWriter.message {
             $0.string(field: 2, "Song")
             $0.message(field: 13) { alternative in
@@ -288,10 +332,8 @@ struct SPClientParsingTests {
             }
         }
 
-        let extended = SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))
-        let metadata = SPClient.parseTrackMetadata(track, gid: Data())
+        let metadata = try #require(Self.parse(track))
 
-        #expect(Self.ids(extended) == [3])
         #expect(Self.ids(metadata.files) == [3])
         #expect(metadata.files.map(\.format) == [.oggVorbis96])
         #expect(metadata.name == "Song")
@@ -299,58 +341,51 @@ struct SPClientParsingTests {
 
     /// `Track.duration` is a `sint32`. The wire value here is the one a live `/metadata/4`
     /// answer carried for "Pearls" on 2026-09-26, read raw as 403518 ms; the decoder counted
-    /// 8,897,582 frames of it at 44.1 kHz, which is 201.76 s.
-    @Test func `the duration is read as the zigzag sint32 it is`() {
+    /// 8,897,582 frames of it at 44.1 kHz, which is 201.76 s. It is the same `Track` message
+    /// extended metadata wraps.
+    @Test func `the duration is read as the zigzag sint32 it is`() throws {
         let track = ProtobufWriter.message { $0.varint(field: 7, 403_518) }
 
-        #expect(SPClient.parseTrackMetadata(track, gid: Data()).durationMs == 201_759)
+        #expect(try #require(Self.parse(track)).durationMs == 201_759)
     }
 
-    @Test func `own files win over the alternative's`() {
+    @Test func `own files win over the alternative's`() throws {
         let track = ProtobufWriter.message {
             Self.file(&$0, id: 1, format: 1)
             $0.message(field: 13) { Self.file(&$0, id: 3, format: 0) }
         }
 
-        #expect(Self.ids(SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))) == [1])
-        #expect(Self.ids(SPClient.parseTrackMetadata(track, gid: Data()).files) == [1])
+        #expect(try Self.ids(#require(Self.parse(track)).files) == [1])
     }
 
-    /// The two paths have always treated a format `AudioFormat` does not name differently,
-    /// and the codec change keeps it that way.
-    @Test func `extended metadata drops unnamed formats before falling back, metadata 4 keeps them`() {
+    @Test func `unnamed formats are dropped before falling back to the alternative`() throws {
         let track = ProtobufWriter.message {
             Self.file(&$0, id: 1, format: 16) // FLAC_FLAC, which AudioFormat does not name
             $0.message(field: 13) { Self.file(&$0, id: 3, format: 0) }
         }
 
-        let extended = SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))
-        let metadata = SPClient.parseTrackMetadata(track, gid: Data())
-
-        #expect(Self.ids(extended) == [3])
-        #expect(Self.ids(metadata.files) == [1])
-        #expect(metadata.files.map(\.format) == [.unknown])
+        #expect(try Self.ids(#require(Self.parse(track)).files) == [3])
     }
 
     /// Found in review. Dropped before the empty check, a track with nothing but such formats
     /// read as having no files at all, which is how Spotify withholds a track, so auto-advance
     /// skipped it and the bar called it unavailable.
-    @Test func `extended metadata keeps unnamed formats when they are all there is`() {
+    @Test func `unnamed formats are kept when they are all there is`() throws {
         let track = ProtobufWriter.message {
             Self.file(&$0, id: 1, format: 16) // FLAC_FLAC
         }
 
-        let extended = SPClient.parseAudioFilesResponse(Self.extendedMetadataResponse(track: track))
+        let files = try #require(Self.parse(track)).files
 
-        #expect(Self.ids(extended) == [1])
-        #expect(extended.map(\.format) == [.unknown])
+        #expect(Self.ids(files) == [1])
+        #expect(files.map(\.format) == [.unknown])
     }
 
-    @Test func `a file without an id is skipped`() {
+    @Test func `a file without an id is skipped`() throws {
         let track = ProtobufWriter.message {
             $0.message(field: 12) { $0.varint(field: 2, 1) }
         }
 
-        #expect(SPClient.parseTrackMetadata(track, gid: Data()).files.isEmpty)
+        #expect(try #require(Self.parse(track)).files.isEmpty)
     }
 }

@@ -52,6 +52,9 @@ actor AudioPipeline {
         /// Sent once when a track has fully played out — the hook auto-advance
         /// uses. Not sent for stop, skip, or replacement.
         case endOfTrack(String)
+        /// The track being fetched ahead is one Spotify withholds, found out before the change
+        /// of track needs it, so the queue can step over it in time.
+        case withheldAhead(String)
         case error(LibrespotError)
     }
 
@@ -329,21 +332,15 @@ actor AudioPipeline {
         return try await prepare(uri)
     }
 
-    /// Metadata, then the audio key and the CDN url side by side, then the
-    /// download and decryption.
+    /// Metadata, in one request, then the audio key and the CDN url side by
+    /// side, then the download and decryption.
     private func prepare(_ uri: String) async throws -> PreparedTrack {
         guard let spclient else {
             throw LibrespotError.invalidState("SPClient not configured")
         }
 
         let trackId = try Self.trackGid(fromUri: uri)
-        var metadata = try await spclient.getTrackMetadata(trackId: trackId)
-
-        // /metadata/4 answers a stub without files; the playable list comes
-        // from extended-metadata.
-        if metadata.files.isEmpty {
-            metadata.files = try await spclient.getAudioFiles(entityUri: uri)
-        }
+        let metadata = try await spclient.getTrack(uri: uri)
 
         debugLog("AudioPipeline", "Track '\(metadata.name)': \(metadata.files.count) file(s), \(metadata.durationMs)ms")
 
@@ -381,9 +378,19 @@ actor AudioPipeline {
         else { return }
 
         debugLog("AudioPipeline", "Fetching \(next) ahead")
-        upcoming = (next, Task { [weak self] in
+        upcoming = (next, Task { [weak self, eventSink] in
             guard let self else { throw CancellationError() }
-            return try await prepare(next)
+            do {
+                return try await prepare(next)
+            } catch {
+                // Said, so the queue steps over it before the change of track. Any other failure
+                // may not recur, and the change of track fetches again.
+                if case LibrespotError.trackUnavailable = error {
+                    debugLog("AudioPipeline", "\(next) is withheld, found out ahead")
+                    eventSink.yield(.withheldAhead(next))
+                }
+                throw error
+            }
         })
     }
 

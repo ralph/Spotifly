@@ -78,15 +78,17 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         }
 
         struct Options: Encodable, Sendable {
-            let skipTo: SkipTo
+            var skipTo: SkipTo?
 
             enum CodingKeys: String, CodingKey {
                 case skipTo = "skip_to"
             }
         }
 
-        let uri: String
-        let url: String
+        /// Nil for an inline list: librespot resolves `"uri": ""` as a context, and plays the
+        /// pages only without a uri.
+        let uri: String?
+        let url: String?
         var pages: [Page]?
         let options: Options?
 
@@ -115,10 +117,22 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
 
         /// A list of tracks with no context of their own, carried inline.
         init(trackUris: [String]) {
-            uri = ""
-            url = ""
+            uri = nil
+            url = nil
             pages = [Page(tracks: trackUris.map { Track(uri: $0) })]
             options = nil
+        }
+    }
+
+    /// Where a play came from. librespot's `PlayCommand` requires it, and `options`, and the
+    /// web player sends both on every play.
+    struct PlayOrigin: Encodable, Sendable {
+        let featureIdentifier = "spotifly"
+        let featureVersion = DeviceInfo.appVersion
+
+        enum CodingKeys: String, CodingKey {
+            case featureIdentifier = "feature_identifier"
+            case featureVersion = "feature_version"
         }
     }
 
@@ -155,6 +169,7 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         case loggingParams = "logging_params"
         case value
         case context
+        case playOrigin = "play_origin"
         case options
         case track
     }
@@ -169,10 +184,12 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         }
 
         // `play` puts the context beside the endpoint and its skip_to under `options`, rather
-        // than nesting one inside the other.
+        // than nesting one inside the other. `options` and `play_origin` go with every play,
+        // an empty `options` where there is nothing to skip to; see `PlayOrigin`.
         if let context {
             try container.encode(context, forKey: .context)
-            try container.encodeIfPresent(context.options, forKey: .options)
+            try container.encode(PlayOrigin(), forKey: .playOrigin)
+            try container.encode(context.options ?? Context.Options(), forKey: .options)
         }
         try container.encodeIfPresent(track, forKey: .track)
         try container.encodeIfPresent(skipTarget, forKey: .track)

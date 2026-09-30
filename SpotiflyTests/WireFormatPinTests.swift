@@ -109,6 +109,6 @@ struct WireFormatPinTests {
         playing.lastCommandMessageId = 7
         Self.check("putState-playing", playing.serialize())
 
-        Self.check("audioFilesRequest", SPClient.buildAudioFilesRequest(entityUri: "spotify:track:abc", country: "DE", catalogue: "premium"))
+        Self.check("audioFilesRequest", SPClient.buildTrackRequest(entityUri: "spotify:track:abc", country: "DE", catalogue: "premium"))
     }
 }

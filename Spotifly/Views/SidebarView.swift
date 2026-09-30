@@ -196,12 +196,14 @@ struct ProfileAvatarView: View {
 
     var body: some View {
         if let imageURL = userProfile?.imageURL {
-            AsyncImage(url: imageURL) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-            } placeholder: {
-                initialsView(for: userProfile?.displayName)
+            RetryingAsyncImage(url: imageURL) { phase in
+                if let image = phase.image {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    initialsView(for: userProfile?.displayName)
+                }
             }
             .frame(width: size, height: size)
             .clipShape(Circle())

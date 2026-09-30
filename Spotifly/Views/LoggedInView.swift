@@ -105,7 +105,6 @@ struct LoggedInView: View {
             }
         }
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
-        .searchShortcuts()
         .environment(deviceService)
         .environment(queueService)
         .environment(homeService)
@@ -116,8 +115,10 @@ struct LoggedInView: View {
         .environment(playlistService)
         .environment(albumService)
         .environment(artistService)
-        .focusedValue(\.navigationSelection, navigationSelectionBinding)
-        .focusedValue(\.homeService, homeService)
+        // Scene values, which the menu sees whenever the window is key, whatever has focus
+        // inside it. The Navigate menu's ⌘1–⌘4 are the only registration of those shortcuts.
+        .focusedSceneValue(\.navigationSelection, navigationSelectionBinding)
+        .focusedSceneValue(\.homeService, homeService)
         .modifier(
             LoggedInLifecycleModifier(
                 store: store,

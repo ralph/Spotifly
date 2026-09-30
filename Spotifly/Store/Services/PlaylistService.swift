@@ -23,6 +23,7 @@ final class PlaylistService {
     /// One pass per level of folders inside folders.
     private static let outlinePassLimit = 6
     private var outlineLoaded = false
+    private let notFound = NotFoundMemory(.playlist)
 
     /// The account's own profile, which the library writes address the rootlist by.
     private let profileRequests = InFlightRequests<Void>()
@@ -164,8 +165,10 @@ final class PlaylistService {
     func ensurePlaylistLoaded(playlistId: String) async throws {
         guard store.playlists[playlistId]?.tracksLoaded != true else { return }
 
-        try await playlistRequests.run(playlistId) {
-            try await self.loadPlaylist(playlistId: playlistId)
+        try await notFound.load(playlistId) {
+            try await playlistRequests.run(playlistId) {
+                try await self.loadPlaylist(playlistId: playlistId)
+            }
         }
     }
 
