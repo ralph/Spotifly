@@ -1,7 +1,7 @@
 # A page that failed to load squeezes the window
 
-Status: **Open**, not planned. Seen 2026-09-29 while testing #82. The cause below is read from
-the code and the screen, not yet confirmed by a change.
+Status: **Done** 2026-09-29. The cause confirmed by a layout probe, and the fix measured by the
+same probe; not yet seen in the running app, since the grant was gone by then; see Verification.
 Components: `Spotifly/Views/AlbumDetailView.swift`, `Spotifly/Views/ArtistDetailView.swift`,
 `Spotifly/Views/PlaylistDetailView.swift` (their full-page error branch),
 `Spotifly/Views/Components/InlineLoadError.swift`, `Spotifly/Views/LoggedInView.swift`
@@ -66,24 +66,38 @@ another section is chosen, but it looks broken.
 
 ## Solution
 
-Not planned. The likely change: give the full-page error branch the spinner's
-`.frame(maxWidth: .infinity, maxHeight: .infinity)` at the three call sites
-(`AlbumDetailView`, `ArtistDetailView`, `PlaylistDetailView`). Or have `InlineLoadError` fill
-when it stands for the whole page, for example with a flag or a second initializer, so the
-section uses keep their size. Check `LibraryListView`'s states while there.
+The plan offered two depths: give the full-page error branch the spinner's flexible frame at
+the three call sites, or pin the bar so that no content state can move it. Neither alone was the
+cause. The cause is that `HSplitView` takes the height its panes ask for, so **any** pane whose
+content is rigid collapses the region: the three error branches, and just as well
+`LibraryListView`'s own loading, error and empty `VStack`s in the list column.
 
-A deeper option is to pin the now-playing bar to the window, or to the split view's full
-height, rather than to whatever height the content takes. Then no content state can move it.
+The review of the change found one more: `LoggedInDetailRouterView`'s "Select an album" (artist,
+playlist) placeholder, shown when nothing is selected, is a bare `Text` in the detail pane.
+
+So the panes fill, whatever they show, in `LoggedInView.contentRegion`:
+
+- the list pane gets `maxHeight: .infinity` beside its width limits;
+- the detail pane gets `maxWidth: .infinity, maxHeight: .infinity`;
+- the whole region gets `.frame(maxWidth: .infinity, maxHeight: .infinity)`, so the single-column
+  sections fill too, and the bar's `.overlay(alignment: .bottom)` sits at the window's bottom.
+
+The list pane's content is a `NavigationStack`, which fills by itself, so its frame and the
+region's may well be redundant inside the split; they stay as the one place that says the region
+fills, and so where the bar sits. The error view itself stays as it is: inside a pane that fills, the detail views' `ZStack`
+centers it, and the section errors inside a loaded page keep their size.
 
 ## Verification
 
-Not planned. To reproduce, on a German account (the `SPOTIFLY_DEBUG_OPEN` hook came with #82):
-
-```bash
-SPOTIFLY_DEBUG_OPEN=spotify:album:2ZWlPOoWh0626oTaHrnl2a "$(xcodebuild -scheme Spotifly -showBuildSettings 2>/dev/null | awk '/ BUILT_PRODUCTS_DIR /{print $3}')/Spotifly.app/Contents/MacOS/Spotifly"
-```
-
-Or turn Wi-Fi off and open an album that has not been opened before. After the fix:
-- the list column still fills from the top;
-- the message is centred in the detail column;
-- the bar is at the bottom of the window.
+- [x] A layout probe (a temporary test, deleted after): an `NSHostingView` of 800 × 600 around the
+      region's shape, an `HSplitView` of a list and a pane holding only an error text, with the bar
+      as a bottom overlay. The split view came out **32 pt** tall without the frames, the height
+      of one padded line, which is the collapse seen on screen, and **600 pt** with them.
+- [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
+- [ ] Live, on a German account:
+      `SPOTIFLY_DEBUG_OPEN=spotify:album:2ZWlPOoWh0626oTaHrnl2a`. The album list fills its column
+      from the top, the message is centered in the detail column, and the bar is at the bottom of
+      the window.
+- [ ] Live: `SPOTIFLY_DEBUG_OPEN=spotify:artist:0000000000000000000000` and
+      `spotify:playlist:0000000000000000000000` look the same way.
+- [ ] Live: albums, artists, playlists, Favorites, the queue and Speakers look as before.

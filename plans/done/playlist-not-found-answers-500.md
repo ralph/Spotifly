@@ -84,6 +84,6 @@ Not changed, and recorded in `plans/done/entity-unions-accept-any-typename.md`:
       `SPOTIFLY_DEBUG_OPEN=spotify:playlist:0000000000000000000000` from a DE account. The
       playlist page says "Playlist wurde nicht gefunden." and has no Try again button.
       **Passed** on `4b02ecc`, which has #82's loop fix. The window's layout squeezed around
-      the message, as recorded in `plans/open/full-page-error-collapses-the-layout.md`.
+      the message, as recorded in `plans/done/full-page-error-collapses-the-layout.md`.
 - [x] Live: open any playlist of the library. It loads as before. **Passed**, same build.
 - [x] Live: Liked Songs still loads. **Passed**, same build.
