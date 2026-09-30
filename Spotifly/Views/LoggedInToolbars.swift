@@ -11,7 +11,8 @@ import SwiftUI
 struct LoggedInContentToolbar: ToolbarContent {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-    let refreshAction: @MainActor @Sendable () async -> Void
+    /// Nil where the section has nothing to refresh, which shows no button.
+    let refreshAction: (@MainActor @Sendable () async -> Void)?
 
     @ToolbarContentBuilder
     var body: some ToolbarContent {
@@ -19,7 +20,7 @@ struct LoggedInContentToolbar: ToolbarContent {
             NavigationHistoryToolbarControl()
         }
         ToolbarItem(placement: .navigation) {
-            if navigationCoordinator.canRefreshCurrentSection {
+            if let refreshAction {
                 Button {
                     Task {
                         await refreshAction()
