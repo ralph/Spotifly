@@ -64,5 +64,6 @@ A bare list of tracks still names nothing: it has no context.
 - [x] Live, 2026-09-30: playing Liked Songs, the header says "Wiedergabe von „Favoriten“ auf
       Spotifly", and the name opens Favorites. An album still reads "Wiedergabe von „Not Bad for
       New Jersey“ auf Spotifly".
-- [ ] Live: another device plays a playlist the Mac has not loaded, and the header names it. Not
-      run; the mirrored name is unit-tested from the measured metadata.
+- [x] Live, 2026-09-30: the web player plays "Today's Top Hits", which the Mac has not loaded,
+      and the header says "Wiedergabe von „Today's Top Hits“ auf Web Player (Chrome)". The name
+      opens the playlist's page.
