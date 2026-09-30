@@ -1239,22 +1239,35 @@ public actor LibrespotClient {
             repeatContext: options.repeatingContext,
             timestampMs: remote.timestamp,
         )
-        // The context goes with the queue, as for local playback: the queue's
-        // heading and a double-click on one of its rows play from it. Without
-        // it they named the last local context.
-        let queue = QueueState(
-            contextUri: remote.contextUri,
-            currentTrack: QueueItem(uri: track.uri, provider: track.provider),
-            // Proto3: a row without a uid has "".
-            nextTracks: remote.nextTracks.map { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) },
-            // In play order, as the cluster keeps them and the local queue
-            // publishes them.
-            previousTracks: remote.prevTracks.map { QueueItem(uri: $0.uri, provider: $0.provider) },
-        )
+        let queue = Self.mirroredQueue(of: remote)
         publish {
             $0.playback = playback
             $0.queue = queue
         }
+    }
+
+    /// The queue another device reports, as the Queue section shows it.
+    ///
+    /// The context goes with it, as for local playback: the queue's heading and a
+    /// double-click on one of its rows play from it. Without it they named the last local
+    /// context.
+    ///
+    /// Rows the sender marks hidden are left out, as its own queue leaves them out. After a
+    /// context's last track the web player sends a `spotify:delimiter` row, then the context
+    /// again as its next iteration, for repeat to play: with repeat off every row from the
+    /// delimiter on is `hidden`, with repeat on only the delimiters are. Shown, they listed an
+    /// album again after its last track.
+    nonisolated static func mirroredQueue(of remote: PlayerState) -> QueueState {
+        let shown: (ProvidedTrack) -> Bool = { $0.metadata["hidden"] != "true" }
+        return QueueState(
+            contextUri: remote.contextUri,
+            currentTrack: remote.track.map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            // Proto3: a row without a uid has "".
+            nextTracks: remote.nextTracks.filter(shown).map { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) },
+            // In play order, as the cluster keeps them and the local queue
+            // publishes them.
+            previousTracks: remote.prevTracks.filter(shown).map { QueueItem(uri: $0.uri, provider: $0.provider) },
+        )
     }
 
     /// Picks up playback another device handed over — librespot's
