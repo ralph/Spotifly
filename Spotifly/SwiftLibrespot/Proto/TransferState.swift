@@ -27,6 +27,9 @@ public nonisolated struct TransferState: Sendable {
     var contextTrackUris: [String] = []
     /// The track that was playing.
     var currentTrackUri: String?
+    /// Its row's uid in the context, which names the row when the track plays under another id
+    /// than the context lists, as a relinked track does. Nil when it plays from the queue.
+    var currentTrackUid: String?
     /// Tracks the user queued on the sending device, which play before the
     /// context continues.
     var queuedTrackUris: [String] = []
@@ -59,7 +62,10 @@ public nonisolated struct TransferState: Sendable {
                     case 1: timestamp = playback.int64
                     case 2: positionAsOfTimestamp = Int64(Int32(truncatingIfNeeded: playback.value))
                     case 4: isPaused = playback.bool
-                    case 5: currentTrackUri = Self.trackUri(playback.fields)
+                    case 5:
+                        let track = playback.fields
+                        currentTrackUri = Self.trackUri(track)
+                        currentTrackUid = track.last(2).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
                     default: break
                     }
                 }
@@ -99,6 +105,7 @@ public nonisolated struct TransferState: Sendable {
         // (librespot's `current_track_from_transfer`).
         if playingQueue, !queuedTrackUris.isEmpty {
             currentTrackUri = queuedTrackUris.removeFirst()
+            currentTrackUid = nil
         }
 
         // A context started from a bare list of uris is sent as "-" or nothing.

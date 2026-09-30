@@ -539,6 +539,7 @@ public actor DealerConnection {
                     ? .tracks(pages.flatMap { ($0["tracks"] as? [[String: Any]] ?? []).compactMap { $0["uri"] as? String } })
                     : .uri(uri),
                 trackUri: skipTo?["track_uri"] as? String,
+                trackUid: (skipTo?["track_uid"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 index: (skipTo?["track_index"] as? NSNumber)?.intValue,
                 positionMs: (options?["seek_to"] as? NSNumber)?.uint64Value,
             ))

@@ -45,8 +45,9 @@ Not planned yet. Two parts, either first:
    the wait. Then see whether `Queue.reconciled` and both `reconcileQueueCurrentTrack` callers
    can go.
 2. **Give rows an identity**, as librespot does: `q<n>` uids for queued tracks (`tracks.rs`),
-   the resolver's uid or the context index for context tracks (`parseContextReport` drops the
-   uid today), and history kept as entries rather than uris. Report the uids in the cluster
+   the resolver's uid or the context index for context tracks (the resolver's uids reach `play`
+   since the handover fix, but `PlaybackQueue` does not keep them), and history kept as entries
+   rather than uris. Report the uids in the cluster
    state. The queue view's rows would then name a uid, the three `nearestIndex` re-finds would
    go, and a `skip_next` from the web player would name the exact copy.
 
@@ -113,11 +114,15 @@ Not defined yet.
     shifts the view's indices past the first one. The uri still finds the row unless the track
     repeats close by.
   - What it would take: `q<n>` uids for queued tracks as librespot's `add_to_queue` makes them;
-    the resolver's uid for context rows, which `parseContextReport` drops. **Measured**
+    the resolver's uid for context rows, which reaches `play` as `ResolvedContext.uids` but is
+    not kept in `PlaybackQueue`. **Measured**
     2026-09-30 from the app's own log of context-resolve answers: a playlist's rows carry a
     `uid` each (Liked Songs `"uid":"95942ae3715ec9d21e76"`, a user's playlist
     `"uid":"53ff0e713d18ef43"`), an album's carry none. librespot's `context.rs` generates a
-    UUID when one is missing. The same uids would place a transferred relinked track; see
-    `plans/open/handover-of-a-relinked-track-starts-at-the-top.md`. Inventing uids for the rows other devices see risks confusing a
+    UUID when one is missing. The same uids now place a handed-over track, relinked or
+    repeated; see `plans/done/handover-of-a-relinked-track-starts-at-the-top.md`. Once
+    `PlaybackQueue` keeps them, the parallel `tracks` and `uids` arrays of `start` and
+    `ResolvedContext` should become one list of rows, so an inserted track keeps them aligned.
+    Inventing uids for the rows other devices see risks confusing a
     receiving device's own matching (`context.rs` copies a transferred uid onto its context
     track), so measure first.
