@@ -33,7 +33,7 @@ struct CardArtwork: View {
 
     var body: some View {
         if let url = images.url(for: Self.size, scale: displayScale) {
-            AsyncImage(url: url) { phase in
+            RetryingAsyncImage(url: url) { phase in
                 switch phase {
                 case .empty:
                     ProgressView()

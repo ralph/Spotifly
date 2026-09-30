@@ -87,6 +87,9 @@
 "error.album_not_found" = "Album introuvable. Il n'est peut-être pas disponible dans votre pays.";
 "error.artist_not_found" = "Artiste introuvable.";
 "error.playlist_not_found" = "Playlist introuvable.";
+"error.album_failed" = "Spotify n'a pas pu charger cet album.";
+"error.artist_failed" = "Spotify n'a pas pu charger cet artiste.";
+"error.playlist_failed" = "Spotify n'a pas pu charger cette playlist.";
 "error.track_unavailable %@" = "Non disponible sur Spotify : « %@ »";
 "error.track_unavailable_in_country %@" = "Non disponible dans votre pays : « %@ »";
 "playback.skipped_unavailable %@" = "Ignoré, non disponible : « %@ »";

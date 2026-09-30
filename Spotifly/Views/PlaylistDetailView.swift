@@ -19,8 +19,7 @@ struct PlaylistDetailView: View {
     @Environment(\.displayScale) private var displayScale
 
     @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var canRetry = true
+    @State private var failure: LoadFailure?
     @State private var showEditDetailsDialog = false
     @State private var showDeleteConfirmation = false
     @State private var showUnfollowConfirmation = false
@@ -72,8 +71,8 @@ struct PlaylistDetailView: View {
         ZStack {
             if let playlist {
                 playlistContent(playlist)
-            } else if let errorMessage {
-                InlineLoadError(message: errorMessage, retry: canRetry ? { await loadPlaylist() } : nil)
+            } else if let failure {
+                InlineLoadError(failure: failure) { await loadPlaylist() }
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -152,7 +151,7 @@ struct PlaylistDetailView: View {
     @ViewBuilder
     private func playlistArtwork(_ playlist: Playlist) -> some View {
         if let url = playlist.images.url(for: 200, scale: displayScale) {
-            AsyncImage(url: url) { phase in
+            RetryingAsyncImage(url: url) { phase in
                 switch phase {
                 case .empty:
                     ProgressView()
@@ -231,8 +230,8 @@ struct PlaylistDetailView: View {
         if isLoading {
             ProgressView("loading.tracks")
                 .padding()
-        } else if let errorMessage {
-            InlineLoadError(message: errorMessage, retry: canRetry ? { await reloadTracks() } : nil)
+        } else if let failure {
+            InlineLoadError(failure: failure) { await reloadTracks() }
         } else if !tracks.isEmpty {
             trackList
         }
@@ -296,7 +295,7 @@ struct PlaylistDetailView: View {
                         playlistId: playlistId,
                         draggedUid: $draggedUid,
                         draggedFromIndex: $draggedFromIndex,
-                        errorMessage: $errorMessage,
+                        failure: $failure,
                         store: store,
                         playlistService: playlistService,
                     ),
@@ -313,7 +312,7 @@ struct PlaylistDetailView: View {
                 // Navigate away from the deleted playlist
                 navigationCoordinator.clearPlaylistSelection()
             } catch {
-                errorMessage = String(localized: "error.delete_playlist \(error.localizedDescription)")
+                failure = LoadFailure(message: String(localized: "error.delete_playlist \(error.localizedDescription)"))
             }
         }
     }
@@ -325,7 +324,7 @@ struct PlaylistDetailView: View {
                 // Navigate away from the unfollowed playlist
                 navigationCoordinator.clearPlaylistSelection()
             } catch {
-                errorMessage = String(localized: "error.unfollow_playlist \(error.localizedDescription)")
+                failure = LoadFailure(message: String(localized: "error.unfollow_playlist \(error.localizedDescription)"))
             }
         }
     }
@@ -342,7 +341,7 @@ struct PlaylistDetailView: View {
                     description: editingPlaylistDescription,
                 )
             } catch {
-                errorMessage = String(localized: "error.update_playlist \(error.localizedDescription)")
+                failure = LoadFailure(message: String(localized: "error.update_playlist \(error.localizedDescription)"))
             }
             editingPlaylistName = ""
             editingPlaylistDescription = ""
@@ -359,8 +358,7 @@ struct PlaylistDetailView: View {
         // Only claim to be loading when the track list is actually missing —
         // a cached playlist must not flash a spinner over its tracks.
         isLoading = playlist?.tracksLoaded != true
-        errorMessage = nil
-        canRetry = true
+        failure = nil
 
         do {
             try await playlistService.ensurePlaylistLoaded(playlistId: playlistId)
@@ -368,8 +366,7 @@ struct PlaylistDetailView: View {
             // A cancellation is this view going away, not a failure: the load keeps
             // running and its result is in the store for whatever replaces us.
             if !isCancellation(error) {
-                errorMessage = error.localizedDescription
-                canRetry = isRetryable(error)
+                failure = LoadFailure(error)
             }
         }
 
@@ -382,14 +379,13 @@ struct PlaylistDetailView: View {
     /// wrong, so the cache-respecting call would fetch nothing.
     private func reloadTracks() async {
         isLoading = true
-        errorMessage = nil
+        failure = nil
 
         do {
             try await playlistService.reloadPlaylistTracks(playlistId: playlistId)
         } catch {
             if !isCancellation(error) {
-                errorMessage = error.localizedDescription
-                canRetry = isRetryable(error)
+                failure = LoadFailure(error)
             }
         }
 
@@ -414,7 +410,7 @@ struct PlaylistReorderDropDelegate: DropDelegate {
     let playlistId: String
     @Binding var draggedUid: String?
     @Binding var draggedFromIndex: Int?
-    @Binding var errorMessage: String?
+    @Binding var failure: LoadFailure?
     let store: AppStore
     let playlistService: PlaylistService
 
@@ -468,7 +464,7 @@ struct PlaylistReorderDropDelegate: DropDelegate {
                 do {
                     try await playlistService.reloadPlaylistTracks(playlistId: playlistId)
                 } catch {
-                    errorMessage = String(localized: "error.reorder_tracks \(error.localizedDescription)")
+                    failure = LoadFailure(message: String(localized: "error.reorder_tracks \(error.localizedDescription)"))
                 }
             }
         }
