@@ -24,7 +24,7 @@ nonisolated struct PathfinderAlbumResponse: Decodable, Sendable {
 /// A partial view of what `getAlbum` returns, which also carries extracted cover-art colours,
 /// `moreAlbumsByArtist`, `watchFeedEntrypoint`, sharing info and pre-release scheduling. Decoding
 /// fields nothing renders only creates work the next time Spotify adds one.
-nonisolated struct PathfinderAlbumUnion: Decodable, Sendable {
+nonisolated struct PathfinderAlbumUnion: Decodable, Sendable, PathfinderEntityUnion {
     struct ReleaseDate: Decodable, Sendable {
         let isoString: String?
 
@@ -63,6 +63,7 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable {
     /// `Album`, or `NotFound` for an album this account cannot see; see
     /// `PartnerAPIError.notFound`.
     let typename: String?
+    let message: String?
     let uri: String?
     let name: String?
     let type: String?
@@ -73,7 +74,7 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case typename = "__typename"
-        case uri, name, type, date, coverArt, artists, tracksV2
+        case message, uri, name, type, date, coverArt, artists, tracksV2
     }
 
     var id: String? {

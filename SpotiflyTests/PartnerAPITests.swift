@@ -269,6 +269,38 @@ struct PathfinderResponseTests {
         }
     }
 
+    /// Measured from the web player on 2026-09-29: a malformed playlist id answers HTTP 200 with
+    /// `GenericError`. It read as "Spotify returned no data", which named nothing Spotify said.
+    @Test func `a failure other than not found is an error that can be retried`() async throws {
+        let api = partnerAPI { _ in
+            (
+                Data(#"{"data":{"playlistV2":{"__typename":"GenericError","message":"Failed to fetch playlist for uri spotify:playlist:x, status code: 400 BAD_REQUEST"}}}"#.utf8),
+                httpResponse(200),
+            )
+        }
+
+        await #expect(throws: PartnerAPIError.entityFailed(.playlist)) {
+            _ = try await api.playlist(id: "x")
+        }
+        #expect(isRetryable(PartnerAPIError.entityFailed(.playlist)))
+        #expect(!isRetryable(PartnerAPIError.notFound(.playlist)))
+    }
+
+    /// The web player's own code switches the album union on `PreRelease` besides `Album`, so a
+    /// kind the app does not name decodes as before rather than becoming an error.
+    @Test func `a kind the app does not name still decodes`() async throws {
+        let api = partnerAPI { _ in
+            (
+                Data(#"{"data":{"albumUnion":{"__typename":"PreRelease","uri":"spotify:album:2noRn2Aes5aoNVsU6iWThc","name":"Soon"}}}"#.utf8),
+                httpResponse(200),
+            )
+        }
+
+        let album = try await api.album(id: "2noRn2Aes5aoNVsU6iWThc")
+        #expect(album.typename == "PreRelease")
+        #expect(album.name == "Soon")
+    }
+
     @Test func `a non-200 is an error before the body is trusted`() async throws {
         let api = partnerAPI { _ in (Data(), httpResponse(403)) }
 
@@ -425,5 +457,41 @@ struct SpotifyURITests {
         #expect(SpotifyURI.id(from: "https://open.spotify.com/track/x") == nil)
         #expect(SpotifyURI.id(from: "spotify:track:") == nil)
         #expect(SpotifyURI.id(from: "") == nil)
+    }
+}
+
+/// A page Spotify has none of is asked for once a session: every visit asked again, for the
+/// same answer.
+@MainActor
+struct NotFoundMemoryTests {
+    @Test func `an album Spotify has none of is asked for once`() async {
+        let requests = Tally()
+        let service = AlbumService(store: AppStore(), partnerAPI: partnerAPI { _ in
+            requests.increment()
+            return (Data(#"{"data":{"albumUnion":{"__typename":"NotFound"}}}"#.utf8), httpResponse(200))
+        })
+
+        for _ in 0 ..< 2 {
+            await #expect(throws: PartnerAPIError.notFound(.album)) {
+                try await service.ensureAlbumLoaded(albumId: "2ZWlPOoWh0626oTaHrnl2a")
+            }
+        }
+        #expect(requests.count == 1)
+    }
+
+    /// Only a `NotFound` is remembered: any other failure may pass, so the next visit asks.
+    @Test func `a failure that may pass is asked for again`() async {
+        let requests = Tally()
+        let service = PlaylistService(store: AppStore(), partnerAPI: partnerAPI { _ in
+            requests.increment()
+            return (Data(#"{"data":{"playlistV2":{"__typename":"GenericError","message":"503"}}}"#.utf8), httpResponse(200))
+        })
+
+        for _ in 0 ..< 2 {
+            await #expect(throws: PartnerAPIError.entityFailed(.playlist)) {
+                try await service.ensurePlaylistLoaded(playlistId: "x")
+            }
+        }
+        #expect(requests.count == 2)
     }
 }
