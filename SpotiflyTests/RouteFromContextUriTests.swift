@@ -23,7 +23,7 @@ struct RouteFromContextUriTests {
 
     @Test func `a uri with no page opens nothing`() {
         #expect(Route(contextUri: "spotify:station:track:t1") == nil)
-        #expect(Route(contextUri: "spotify:user:u:collection") == nil)
+        #expect(Route(contextUri: "spotify:user:u:folder:f1") == nil)
         #expect(Route(contextUri: "spotify:album:") == nil)
     }
 }

@@ -94,11 +94,10 @@ struct QueueListView: View {
         guard let queue = player.queue, let uri = queue.context else { return nil }
 
         let route = Route(contextUri: uri)
-        let ownName: String? = switch route?.selection {
-        case let .album(id): store.albums[id]?.name
-        case let .artist(id): store.artists[id]?.name
-        case let .playlist(id): store.playlists[id]?.name
-        case nil: route?.section?.title
+        let ownName = if let selection = route?.selection {
+            store.name(of: selection)
+        } else {
+            route?.section?.title
         }
 
         guard let name = ownName ?? queue.contextName else { return nil }
@@ -169,7 +168,7 @@ struct QueueListView: View {
 
                 if let route = context.route {
                     Button {
-                        navigationCoordinator.open(route)
+                        navigationCoordinator.navigate(to: route)
                     } label: {
                         Text("\"\(context.name)\"")
                             .foregroundStyle(.green)

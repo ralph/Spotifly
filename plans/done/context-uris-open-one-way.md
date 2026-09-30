@@ -3,9 +3,10 @@
 Status: **Done** 2026-09-30, for the mapping. Built and unit-tested; see Verification. The other
 half of the plan, this Mac naming its own context to the cluster, moved to
 `plans/open/own-context-name-not-reported.md`.
-Components: `Spotifly/Models/Route.swift` (`Route(contextUri:)`),
-`Spotifly/ViewModels/NavigationCoordinator.swift` (`open(_:)`), `Spotifly/Views/QueueListView.swift`
-(`contextInfo`), `Spotifly/Views/LoggedInLifecycleModifier.swift` (`SPOTIFLY_DEBUG_OPEN`)
+Components: `Spotifly/Models/Route.swift` (`Route(contextUri:)`, `Route(showing:)`),
+`Spotifly/ViewModels/NavigationCoordinator.swift` (`navigate(to:)`), `Spotifly/Store/AppStore.swift`
+(`name(of:)`), `Spotifly/Views/QueueListView.swift` (`contextInfo`),
+`Spotifly/Views/LoggedInLifecycleModifier.swift` (`SPOTIFLY_DEBUG_OPEN`)
 Found: 2026-09-30, in the altitude review of `plans/done/queue-header-names-no-liked-songs.md`
 
 ## Summary
@@ -26,13 +27,28 @@ only the header knew that Liked Songs is Favorites. Now both use `Route(contextU
 
 - `Route(contextUri:)`, beside `Route`, maps an album, artist or playlist uri to its section and
   selection, `LikedSongs.uri` to Favorites, and anything else to nil.
-- `NavigationCoordinator.open(_:)` opens a route made elsewhere.
+- `NavigationCoordinator.navigate(to:)`, which was private, opens it.
 - The queue header takes its link from the route and its own name from the route's selection,
   or, for Liked Songs, the section's title. `ContextLink` is gone.
 - `SPOTIFLY_DEBUG_OPEN` opens whatever route the uri gives.
+- Two facts the header had copied are now written once. `AppStore.name(of:)` names a selection's
+  entity, for the header and for the coordinator's Back and Forward titles. `Selection.section`
+  says which section lists each kind, for `Route(showing:)`, which `Route(contextUri:)` and the
+  three `navigateTo…Section` methods build their routes with.
+
+### Not done
+
+- **One way to open an entity's page.** The three `navigateTo…Section(id:)` methods could become
+  `navigate(to: Route(showing:))` at their ten call sites. Mechanical, and nothing is wrong
+  meanwhile.
+- **Liked Songs in other spellings.** `Route` knows Liked Songs only as `LikedSongs.uri`. Another
+  device naming it `spotify:user:<u>:collection` or `spotify:collection:tracks` would get no
+  Favorites link, and the Home resolver (`PathfinderEntities.swift`, `resolve(entity:)`) would
+  make a playlist card of `LikedSongs.uri`. Neither spelling has been seen to arrive; if one does,
+  a `LikedSongs` check both use belongs there.
 
 ## Verification
 
 - [x] Unit tests: an album, an artist and a playlist open their pages; Liked Songs opens
-      Favorites; a station, a collection uri and a malformed uri open nothing.
+      Favorites; a station, a folder uri and a malformed uri open nothing.
 - [x] Build, 464 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.

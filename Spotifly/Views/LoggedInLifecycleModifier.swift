@@ -164,7 +164,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     if let open = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_OPEN"] {
                         debugLog("DebugAutoplay", "Opening \(open)")
                         if let route = Route(contextUri: open) {
-                            navigationCoordinator.open(route)
+                            navigationCoordinator.navigate(to: route)
                         }
                     }
 
