@@ -81,9 +81,11 @@ struct QueueListView: View {
         return items
     }
 
-    /// Context info parsed from context URI
+    /// Context info parsed from context URI. Read from the player, which says what it plays
+    /// from with every queue it publishes: a copy in the store kept the last non-empty one, so
+    /// a bare list of tracks played under the name of the album before it.
     private var contextInfo: (type: ContextType, id: String, name: String)? {
-        guard let uri = store.queue.contextUri else { return nil }
+        guard let uri = player.queue?.context else { return nil }
 
         if uri.hasPrefix("spotify:album:") {
             let id = String(uri.dropFirst("spotify:album:".count))
@@ -165,27 +167,27 @@ struct QueueListView: View {
 
     @ViewBuilder
     private func playingFromText(device: Device) -> some View {
-        let context = contextInfo
-        let contextName = context?.name ?? String(localized: "queue.title")
         let deviceIcon = deviceService.deviceIcon(for: device.type)
 
         HStack(spacing: 4) {
-            Text("queue.playing_from")
+            if let context = contextInfo {
+                Text("queue.playing_from")
 
-            if let context {
                 // Context name is a tappable link
                 Button {
                     navigateToContext(type: context.type, id: context.id)
                 } label: {
-                    Text("\"\(contextName)\"")
+                    Text("\"\(context.name)\"")
                         .foregroundStyle(.green)
                 }
                 .buttonStyle(.plain)
+
+                Text("queue.on_device")
             } else {
-                Text("\"\(contextName)\"")
+                // A bare list of tracks, or a context the store has no name for.
+                Text("queue.playing_on")
             }
 
-            Text("queue.on_device")
             Image(systemName: deviceIcon)
             Text(device.name)
         }
