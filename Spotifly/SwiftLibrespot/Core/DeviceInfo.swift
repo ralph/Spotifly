@@ -100,7 +100,7 @@ public nonisolated struct DeviceInfo: Sendable {
             deviceType: .computer,
             brandName: "Apple",
             modelName: getMacModel(),
-            softwareVersion: getAppVersion(),
+            softwareVersion: appVersion,
         )
     }
 
@@ -141,8 +141,8 @@ public nonisolated struct DeviceInfo: Sendable {
         #endif
     }
 
-    /// Gets the app version
-    private static func getAppVersion() -> String {
+    /// The app's version, as this device and its play commands report it.
+    static var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
     }
 }

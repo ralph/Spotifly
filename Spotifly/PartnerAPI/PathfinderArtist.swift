@@ -27,7 +27,7 @@ nonisolated struct PathfinderArtistResponse: Decodable, Sendable {
 /// Web API's `/artists/{id}` returns `genres` and none of the client's own APIs do. Spotify's
 /// own artist pages do not show them either. So `Artist` no longer carries a genre list; the
 /// row that displayed one is gone rather than permanently empty.
-nonisolated struct PathfinderArtistUnion: Decodable, Sendable {
+nonisolated struct PathfinderArtistUnion: Decodable, Sendable, PathfinderEntityUnion {
     struct Profile: Decodable, Sendable {
         let name: String?
     }
@@ -51,6 +51,7 @@ nonisolated struct PathfinderArtistUnion: Decodable, Sendable {
     /// `Artist`, or `NotFound` for an artist this account cannot see; see
     /// `PartnerAPIError.notFound`.
     let typename: String?
+    let message: String?
     let uri: String?
     let id: String?
     let profile: Profile?
@@ -59,7 +60,7 @@ nonisolated struct PathfinderArtistUnion: Decodable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case typename = "__typename"
-        case uri, id, profile, visuals, discography
+        case message, uri, id, profile, visuals, discography
     }
 
     var artistId: String? {

@@ -19,6 +19,7 @@ final class ArtistService {
     /// The followed-artists list, whose pages are one run at a time under one key.
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-artists"
+    private let notFound = NotFoundMemory(.artist)
 
     /// Every artist path now runs on the keymaster grant, which `PartnerAPI` holds itself, so
     /// this service no longer takes a Web API token.
@@ -90,8 +91,10 @@ final class ArtistService {
     func ensureArtistLoaded(artistId: String) async throws {
         guard store.artists[artistId] == nil || store.artistAlbumIds[artistId] == nil else { return }
 
-        try await artistRequests.run(artistId) {
-            try await self.loadArtist(artistId: artistId)
+        try await notFound.load(artistId) {
+            try await artistRequests.run(artistId) {
+                try await self.loadArtist(artistId: artistId)
+            }
         }
     }
 

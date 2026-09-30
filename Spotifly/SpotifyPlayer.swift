@@ -108,6 +108,8 @@ nonisolated struct PlayerSnapshot: Equatable {
     /// Whichever device is playing: this one, or another one, mirrored.
     var playback: PlaybackState?
     var queue: QueueState?
+    /// The tracks playback found Spotify withholds this login, which no list had said.
+    var withheld: Set<String> = []
     /// The logical Connect volume, 0–1; nil until one has been set.
     var volume: Double?
     /// The latest interruption. It stays until the next one, so a consumer that falls behind
