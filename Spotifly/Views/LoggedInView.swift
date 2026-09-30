@@ -211,7 +211,7 @@ struct LoggedInView: View {
             onLogout: handleLogout,
         )
         .toolbar {
-            LoggedInContentToolbar(refreshAction: refreshCurrentSection)
+            LoggedInContentToolbar(refreshAction: refreshAction(for: navigationCoordinator.selectedNavigationItem))
         }
     }
 
@@ -265,49 +265,56 @@ struct LoggedInView: View {
         }
     }
 
-    private func refreshCurrentSection() async {
-        switch navigationCoordinator.selectedNavigationItem {
+    /// What the toolbar's refresh button does in a section, or nil where there is nothing to
+    /// fetch again, and so no button: the queue and Speakers are pushed by the player and the
+    /// cluster. One switch for both, so a section cannot show a button that does nothing.
+    private func refreshAction(for section: NavigationItem?) -> (@MainActor @Sendable () async -> Void)? {
+        switch section {
         case .playlists:
-            let previousSelection = navigationCoordinator.selectedPlaylistId
-            store.playlistsPagination.reset()
-            store.setUserPlaylistIds([])
-            try? await playlistService.loadUserPlaylists(forceRefresh: true)
-            navigationCoordinator.restorePlaylistSelection(
-                previous: previousSelection,
-                available: store.userPlaylistIds,
-            )
+            {
+                let previousSelection = navigationCoordinator.selectedPlaylistId
+                store.playlistsPagination.reset()
+                store.setUserPlaylistIds([])
+                try? await playlistService.loadUserPlaylists(forceRefresh: true)
+                navigationCoordinator.restorePlaylistSelection(
+                    previous: previousSelection,
+                    available: store.userPlaylistIds,
+                )
+            }
 
         case .albums:
-            let previousSelection = navigationCoordinator.selectedAlbumId
-            store.albumsPagination.reset()
-            store.setUserAlbumIds([])
-            try? await albumService.loadUserAlbums(forceRefresh: true)
-            navigationCoordinator.restoreAlbumSelection(
-                previous: previousSelection,
-                available: store.userAlbumIds,
-            )
+            {
+                let previousSelection = navigationCoordinator.selectedAlbumId
+                store.albumsPagination.reset()
+                store.setUserAlbumIds([])
+                try? await albumService.loadUserAlbums(forceRefresh: true)
+                navigationCoordinator.restoreAlbumSelection(
+                    previous: previousSelection,
+                    available: store.userAlbumIds,
+                )
+            }
 
         case .artists:
-            let previousSelection = navigationCoordinator.selectedArtistId
-            store.artistsPagination.reset()
-            store.setUserArtistIds([])
-            try? await artistService.loadUserArtists(forceRefresh: true)
-            navigationCoordinator.restoreArtistSelection(
-                previous: previousSelection,
-                available: store.userArtistIds,
-            )
+            {
+                let previousSelection = navigationCoordinator.selectedArtistId
+                store.artistsPagination.reset()
+                store.setUserArtistIds([])
+                try? await artistService.loadUserArtists(forceRefresh: true)
+                navigationCoordinator.restoreArtistSelection(
+                    previous: previousSelection,
+                    available: store.userArtistIds,
+                )
+            }
 
         case .favorites:
-            store.favoritesPagination.reset()
-            store.setSavedTrackIds([])
-            try? await trackService.loadFavorites(forceRefresh: true)
+            {
+                store.favoritesPagination.reset()
+                store.setSavedTrackIds([])
+                try? await trackService.loadFavorites(forceRefresh: true)
+            }
 
-        case .speakers:
-            // Nothing to refresh: the device list is pushed from the cluster.
-            break
-
-        default:
-            break
+        case .startpage, .searchResults, .queue, .speakers, .profile, nil:
+            nil
         }
     }
 
