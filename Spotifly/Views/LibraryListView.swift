@@ -234,7 +234,7 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
     var body: some View {
         HStack(spacing: 10) {
             if let url = entity.images.url(for: imageSize, scale: displayScale) {
-                AsyncImage(url: url) { phase in
+                RetryingAsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
                         placeholder

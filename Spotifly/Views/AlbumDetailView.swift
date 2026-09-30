@@ -72,7 +72,7 @@ struct AlbumDetailView: View {
                 // Album art and metadata
                 VStack(spacing: 16) {
                     if let url = album.images.url(for: 200, scale: displayScale) {
-                        AsyncImage(url: url) { phase in
+                        RetryingAsyncImage(url: url) { phase in
                             switch phase {
                             case .empty:
                                 ProgressView()

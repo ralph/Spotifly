@@ -67,7 +67,7 @@ struct ArtistDetailView: View {
                 // Artist image and metadata
                 VStack(spacing: 16) {
                     if let url = artist.images.url(for: 200, scale: displayScale) {
-                        AsyncImage(url: url) { phase in
+                        RetryingAsyncImage(url: url) { phase in
                             switch phase {
                             case .empty:
                                 ProgressView()
@@ -162,7 +162,7 @@ struct ArtistDetailView: View {
             Button(action: onTap) {
                 VStack(alignment: .leading, spacing: 8) {
                     if let url = album.images.url(for: 150, scale: displayScale) {
-                        AsyncImage(url: url) { phase in
+                        RetryingAsyncImage(url: url) { phase in
                             switch phase {
                             case .empty:
                                 ProgressView()
