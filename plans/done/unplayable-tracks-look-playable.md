@@ -1,7 +1,7 @@
 # An unplayable track looks like any other until it is played
 
 Status: **Done** 2026-09-29 (#87). The eight checks in the PR passed in the app the same day, on `b0344a6`.
-What this left is in `plans/open/unplayable-tracks-found-by-loading.md`.
+What this left is in `plans/done/unplayable-tracks-found-by-loading.md`.
 Components: `Spotifly/PartnerAPI/PathfinderSearch.swift` (`PathfinderPlayability`),
 `Spotifly/PartnerAPI/PathfinderPlaylist.swift`, `Spotifly/PartnerAPI/PathfinderAlbum.swift`,
 `Spotifly/PartnerAPI/PathfinderEntities.swift`, `Spotifly/Store/Entities.swift` (`Track`,

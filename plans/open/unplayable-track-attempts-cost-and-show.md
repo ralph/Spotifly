@@ -1,27 +1,19 @@
-# Tracks the app has not listed are found unplayable only by loading them
+# Trying a track Spotify withholds still costs a request, and shows it
 
-Status: **Open**, not planned. Recorded 2026-09-29, left over from
-`plans/done/unplayable-tracks-look-playable.md` and #57.
-Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`autoAdvance`, `takeOver`),
-`Spotifly/SwiftLibrespot/Public/AutoAdvance.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
-`Spotifly/PartnerAPI/SpclientEntities.swift`
+Status: **Open**, not planned. What is left of `plans/done/unplayable-tracks-found-by-loading.md`
+once the fetch-ahead reported a withheld track. Read from the code; nothing observed.
+Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`startTrack`, `takeOver`),
+`Spotifly/SwiftLibrespot/Public/AutoAdvance.swift`, `Spotifly/PartnerAPI/SpclientEntities.swift`
 Found: 2026-09-29, in the reviews of #57 and of its follow-up
 
 ## Summary
 
-Playback now steps over a track Spotify withholds without loading it, but only when it knows:
-from a list the app has shown, or from an earlier load that failed. The context resolver says
-nothing about playability. So a context the app never listed (one started from a phone, a radio
-station, a playlist not opened here) is still found out one load at a time, with #57's costs.
+The fetch-ahead now finds a withheld next track before the change of track needs it. A track
+nobody fetched ahead, such as the one a double-click or a Next in a track's first ten seconds
+lands on, is still found out by loading it, and each such attempt costs a request and shows.
 
 ## Problem
 
-All read from the code; none has been observed since the follow-up.
-
-- **The skip waits for the end of the track.** The fetch-ahead learns 10 to 30 seconds early
-  that the next track is withheld, and nothing acts on it. The change of track then loads the
-  one after it cold, where it could have been gapless. The pipeline could report the failed
-  fetch-ahead, so the client marks it and names the next one.
 - **A run costs a request each, with no cap.** `AutoAdvance.run` tries as many tracks as the
   queue holds, each with an extended-metadata request (one since
   `plans/done/track-load-waits-on-two-metadata-requests.md`; it was `/metadata/4` too).
@@ -41,8 +33,8 @@ All read from the code; none has been observed since the follow-up.
 
 ## Solution
 
-Not planned. The fetch-ahead report is the one that pays most: it would make the first pass
-through an unlisted context behave like a listed one.
+Not planned. The first two are one change: an attempt could learn the track is withheld from its
+metadata before publishing it as playing. The third needs the account's country.
 
 ## Verification
 

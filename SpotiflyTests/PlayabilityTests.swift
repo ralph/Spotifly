@@ -70,3 +70,29 @@ struct PlayabilityTests {
             == String(localized: "error.track_unavailable \("Girlfriend")"))
     }
 }
+
+/// What playback found withheld, which no list had said, is greyed:
+/// `plans/done/unplayable-tracks-found-by-loading.md`.
+@MainActor
+struct WithheldTrackTests {
+    @Test func `a track playback found withheld is greyed`() {
+        let store = AppStore()
+        store.upsertTracks([track(id: "girlfriend"), track(id: "other")])
+
+        store.setWithheld(["spotify:track:girlfriend"])
+
+        #expect(store.tracks["girlfriend"]?.isPlayable == false)
+        #expect(store.tracks["other"]?.isPlayable == true)
+        #expect(store.unplayableTrackUris == ["spotify:track:girlfriend"])
+    }
+
+    /// A queue entry from a context the app never listed is hydrated after playback found it out.
+    @Test func `a track the store gets later is greyed as it arrives`() {
+        let store = AppStore()
+        store.setWithheld(["spotify:track:girlfriend"])
+
+        store.upsertTracks([track(id: "girlfriend")])
+
+        #expect(store.tracks["girlfriend"]?.isPlayable == false)
+    }
+}
