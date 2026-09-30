@@ -28,8 +28,6 @@ struct Queue: Equatable {
     var currentTrack: QueueEntry?
     /// Next tracks in queue
     var nextTracks: [QueueEntry] = []
-    /// Context URI (e.g., "spotify:album:123" or "spotify:playlist:456")
-    var contextUri: String?
 }
 
 // MARK: - App Store
@@ -638,16 +636,12 @@ final class AppStore {
     // MARK: - Queue Actions
 
     /// Set queue state with queue entries. If `previous` is nil, preserves existing (Web API doesn't provide history).
-    func setQueue(previous: [QueueEntry]?, current: QueueEntry?, next: [QueueEntry], contextUri: String? = nil) {
+    func setQueue(previous: [QueueEntry]?, current: QueueEntry?, next: [QueueEntry]) {
         if let previous {
             queue.previousTracks = previous
         }
         queue.currentTrack = current
         queue.nextTracks = next
-        // Only update contextUri if provided (non-nil and non-empty)
-        if let uri = contextUri, !uri.isEmpty {
-            queue.contextUri = uri
-        }
     }
 
     // MARK: - User Profile Actions
