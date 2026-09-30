@@ -44,7 +44,7 @@ nonisolated struct QueueState: Equatable {
     let previousTracks: [QueueItem]
     /// What the context calls itself, where it says: the resolver's name for local playback,
     /// the cluster's while another device plays. The queue's header prefers the store's.
-    var contextName: String? = nil
+    var contextName: String?
 
     /// The context the queue plays from, or nil for a bare list of tracks.
     var context: String? {
