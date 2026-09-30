@@ -24,8 +24,6 @@ struct LoggedInContentRouterView: View {
                         .navigationTitle("nav.search_results")
                 } else {
                     contentView
-                        .playbackShortcuts(playbackViewModel: playbackViewModel)
-                        .libraryNavigationShortcuts(selection: Bindable(navigationCoordinator).selectedNavigationItem)
                 }
             }
             .navigationDestination(for: NavigationDestination.self) { destination in

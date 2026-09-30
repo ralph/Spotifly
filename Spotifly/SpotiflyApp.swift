@@ -170,21 +170,25 @@ struct SpotiflyCommands: Commands {
                 navigationSelection?.wrappedValue = .favorites
             }
             .keyboardShortcut("1", modifiers: .command)
+            .disabled(navigationSelection == nil)
 
             Button("menu.playlists") {
                 navigationSelection?.wrappedValue = .playlists
             }
             .keyboardShortcut("2", modifiers: .command)
+            .disabled(navigationSelection == nil)
 
             Button("menu.albums") {
                 navigationSelection?.wrappedValue = .albums
             }
             .keyboardShortcut("3", modifiers: .command)
+            .disabled(navigationSelection == nil)
 
             Button("menu.artists") {
                 navigationSelection?.wrappedValue = .artists
             }
             .keyboardShortcut("4", modifiers: .command)
+            .disabled(navigationSelection == nil)
 
             Divider()
 
@@ -200,6 +204,9 @@ struct SpotiflyCommands: Commands {
                 }
             }
             .keyboardShortcut("r", modifiers: .command)
+            // Greyed where there is nothing to act on, as at the login screen or with Settings
+            // key, rather than enabled and doing nothing.
+            .disabled(homeService == nil)
         }
 
         #if DEBUG
@@ -221,4 +228,34 @@ struct SpotiflyCommands: Commands {
             }
         #endif
     }
+}
+
+// MARK: - Search Field Focus
+
+/// Focuses the toolbar's always-visible `.searchable` field. SwiftUI offers no API
+/// to focus an always-visible search field, so we make the underlying NSSearchField
+/// the window's first responder. No-op if the field can't be found.
+@MainActor
+private func focusToolbarSearchField() {
+    let windows = NSApp.windows.sorted { $0.isKeyWindow && !$1.isKeyWindow }
+    for window in windows where window.isVisible {
+        // The toolbar lives in the window frame view, above contentView.
+        if let field = firstSearchField(in: window.contentView?.superview ?? window.contentView) {
+            window.makeFirstResponder(field)
+            return
+        }
+    }
+}
+
+private func firstSearchField(in view: NSView?) -> NSSearchField? {
+    guard let view else { return nil }
+    if let field = view as? NSSearchField {
+        return field
+    }
+    for subview in view.subviews {
+        if let field = firstSearchField(in: subview) {
+            return field
+        }
+    }
+    return nil
 }
