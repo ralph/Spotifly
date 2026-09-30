@@ -40,6 +40,10 @@ public actor LibrespotClient {
     /// The account the session plays as.
     private var usernameProvider: (@Sendable () async -> String?)?
 
+    /// Each row's uid by its track's uri, for a context the resolver lists without them: an
+    /// album. A handover names its row by uid, and pathfinder's album answer has them.
+    private var contextRowUids: (@Sendable (String) async -> [String: String])?
+
     /// Whether this Mac may play for the account, as the last login found.
     private var streams = true
 
@@ -134,10 +138,12 @@ public actor LibrespotClient {
         tokenProvider provider: @escaping @Sendable () async throws -> String,
         clientTokenProvider: (@Sendable () async throws -> String)? = nil,
         usernameProvider: @escaping @Sendable () async -> String?,
+        contextRowUids: (@Sendable (String) async -> [String: String])? = nil,
     ) async throws {
         tokenProvider = provider
         self.clientTokenProvider = clientTokenProvider
         self.usernameProvider = usernameProvider
+        self.contextRowUids = contextRowUids
         shuttingDown = false
         let generation = lifecycleGeneration
 
@@ -466,15 +472,25 @@ public actor LibrespotClient {
             throw LibrespotError.trackNotFound("Context has no tracks")
         }
 
+        // Asked of `contextRowUids` only where the uri cannot place the start: a queued track,
+        // whose uid names the row after it, or a track the context does not list by that uri.
+        // Anywhere else the uri finds the row, and waiting on a second request delays the audio.
+        var uids = context.uids
+        let uriPlaces = resumingAtUid == nil && startingAtUri.map(context.tracks.contains) != false
+        if let named = resumingAtUid ?? startingAtUid, !uriPlaces, !uids.contains(named), let contextRowUids {
+            let listed = await contextRowUids(uri)
+            uids = context.tracks.map { listed[$0] }
+        }
+
         if let resumingAtUid, let queued = startingAtUri,
-           let start = PlaybackQueue.start(in: context.tracks, queued: queued, resumingAt: resumingAtUid, uids: context.uids)
+           let start = PlaybackQueue.start(in: context.tracks, queued: queued, resumingAt: resumingAtUid, uids: uids)
         {
             setQueue(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name, playingQueued: start.queued)
         } else {
             // No track named, as by Play on an album or a playlist: its first that plays.
             let start = trackIndex == nil && startingAtUri == nil
                 ? (tracks: context.tracks, index: firstPlayable(in: context.tracks))
-                : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: context.uids)
+                : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: uids)
             setQueue(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name)
         }
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)

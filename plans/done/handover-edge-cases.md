@@ -1,8 +1,9 @@
 # Handovers the uid does not place: a queued track, an album's relinked track, a bare list
 
 Status: **Done** 2026-09-30, for a queued track in a playlist or Liked Songs, seen in the running
-app. An album's relinked track was measured to need nothing. What is left, a queued track in an
-album and a bare list, is `plans/open/queued-track-handover-in-an-album.md`.
+app. An album's relinked track was measured to need nothing. A queued track in an album followed
+in `plans/done/queued-track-handover-in-an-album.md`; a bare list is
+`plans/open/queued-track-handover-in-a-bare-list.md`.
 Components: `Spotifly/SwiftLibrespot/Proto/TransferState.swift` (`contextResumeUid`),
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`play`, `setQueue`, `takeOver`, `resume`,
 `queueState`), `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`
