@@ -124,6 +124,15 @@ struct QueueBootstrapTests {
         #expect(update.next.first?.provider == .queue)
     }
 
+    /// A bare list of tracks has an empty context uri, and names no context.
+    @Test func `a queue names its context, and a bare list none`() {
+        let album = QueueState(contextUri: "spotify:album:alive", currentTrack: item("a1"), nextTracks: [], previousTracks: [])
+        let bareList = QueueState(contextUri: "", currentTrack: item("t1"), nextTracks: [], previousTracks: [])
+
+        #expect(album.context == "spotify:album:alive")
+        #expect(bareList.context == nil)
+    }
+
     @Test func `a paused local queue is exactly what an empty snapshot would destroy`() {
         // The state this bug was found in: history, a current track, and pending tracks.
         let store = AppStore()
