@@ -36,8 +36,9 @@ hand now goes through it.
   and Favorites' full-page error. A failed later page is left to the next scroll, as before.
 - **At app level**, in `LoggedInLifecycleModifier`, where the two launch loads start: the start
   page while `store.homeErrorMessage` is set, and the profile while `store.userProfile` is nil.
-  Not on the start page itself, which may not be on screen when the network returns.
-  `loadProfile` sends no second request while one is out.
+  Not on the start page itself, which may not be on screen when the network returns. A return
+  while the launch's profile request is still out sends a second; skipping it, as a first
+  version did, lost the only retry when the first then failed.
 - **Artwork**, `RetryingAsyncImage`, while its image has not arrived.
 
 ### Left for later
