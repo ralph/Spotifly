@@ -38,9 +38,12 @@ are pathfinder's, and Spotifly asks for them when a handover names one the resol
   uri, which the app sets to `SpotifyPlayer.albumRowUids`, a `getAlbum` for an album uri and
   nothing for anything else. The client knows no pathfinder, as it knows no keymaster grant but
   through its token provider.
-- **`play()` asks it only when a handover names a uid the resolver's answer does not list**, and
-  places the start with those uids instead. A playlist, whose answer lists them, and every play
-  that names no uid cost no second request.
+- **`play()` asks it only where the uri cannot place the start**: a queued track, whose uid names
+  the row after it, or a named track the context does not list by that uri; and only when the
+  resolver's answer does not list the uid. Every other album handover, remote play and mirror
+  take-over finds its row by the uri, as before, without waiting on a second request before the
+  audio. Both take-overs of a queued track use it: a handover, and Play on a queued track
+  another device left.
 
 ## Verification
 
@@ -51,3 +54,6 @@ are pathfinder's, and Spotifly asks for them when a handover names one the resol
       the queued Energy Song, and handed over. Spotifly asked `getAlbum` once and showed
       Messages in the history, Energy Song playing, marked Q, then Pockets Of Peace, Fortune
       Teller, Energy Song and The Mother: the web player's own queue, row for row.
+- [x] After the review narrowed when it asks: a plain handover of the album's third row asked no
+      `getAlbum`, started its audio 26 ms after the take-over, and showed Pockets Of Peace
+      playing, then Fortune Teller.

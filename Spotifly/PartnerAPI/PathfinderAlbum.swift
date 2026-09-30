@@ -91,13 +91,13 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable, PathfinderEntityUn
         (tracksV2?.items ?? []).compactMap(\.track)
     }
 
-    /// Each row's uid by its track's uri. The context resolver's answer for an album carries
-    /// none, and a handover names an album's rows by these (measured 2026-10-01).
+    /// Each row's uid by its track's uri; of a track listed twice, the first row's.
     var rowUids: [String: String] {
-        let rows = (tracksV2?.items ?? []).compactMap { item in
-            item.track?.uri.flatMap { uri in item.uid.map { (uri, $0) } }
+        let rows = (tracksV2?.items ?? []).compactMap { item -> (String, String)? in
+            guard let uri = item.track?.uri, let uid = item.uid else { return nil }
+            return (uri, uid)
         }
-        return Dictionary(rows, uniquingKeysWith: { first, _ in first })
+        return Dictionary(rows) { first, _ in first }
     }
 }
 

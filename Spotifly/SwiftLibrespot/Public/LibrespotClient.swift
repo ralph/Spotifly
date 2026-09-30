@@ -472,10 +472,12 @@ public actor LibrespotClient {
             throw LibrespotError.trackNotFound("Context has no tracks")
         }
 
-        // A uid the resolver's answer does not list is asked of `contextRowUids`, which knows an
-        // album's; only then, so a play costs no second request.
+        // Asked of `contextRowUids` only where the uri cannot place the start: a queued track,
+        // whose uid names the row after it, or a track the context does not list by that uri.
+        // Anywhere else the uri finds the row, and waiting on a second request delays the audio.
         var uids = context.uids
-        if let named = resumingAtUid ?? startingAtUid, !uids.contains(named), let contextRowUids {
+        let uriPlaces = resumingAtUid == nil && startingAtUri.map(context.tracks.contains) != false
+        if let named = resumingAtUid ?? startingAtUid, !uriPlaces, !uids.contains(named), let contextRowUids {
             let listed = await contextRowUids(uri)
             uids = context.tracks.map { listed[$0] }
         }
