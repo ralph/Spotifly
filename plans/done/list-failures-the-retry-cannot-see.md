@@ -56,6 +56,8 @@ it.
   - a forced refresh that fails, as the toolbar's does with `try?`, leaves its failure for the
     list.
 - [x] Build, 472 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
+- [x] Online, in the running app, 2026-10-01: Favorites paged through `LoadMoreRow` (three page
+      requests, rows past 100), and the toolbar's refresh on Playlists brought the list back.
 - [ ] Offline, by hand, with the network-return retry it is stacked on:
   - Wi-Fi off, the toolbar's refresh on Playlists shows the error, not "no playlists";
   - Wi-Fi on again, the list comes back by itself.
