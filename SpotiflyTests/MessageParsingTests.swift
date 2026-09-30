@@ -397,6 +397,14 @@ struct SPClientParsingTests {
 
         #expect(report.name == "Lieblingssongs")
         #expect(report.tracks == ["spotify:track:2vaVAZtZ6p2bC1gBrUwrPA"])
+        #expect(report.uids == ["95942ae3715ec9d21e76"])
+    }
+
+    /// An album's answer, as measured for "Cold Fact", has no uids.
+    @Test func `a context resolve answer without uids keeps a nil beside each track`() {
+        let json = #"{"pages":[{"tracks":[{"uri":"spotify:track:a"},{"uri":"spotify:track:b"}]}]}"#
+
+        #expect(SPClient.parseContextReport(Data(json.utf8)).uids == [nil, nil])
     }
 
     @Test func `a context resolve answer with an empty description names nothing`() {

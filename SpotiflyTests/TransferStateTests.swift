@@ -14,8 +14,13 @@ import Testing
 /// context_page, context_track and queue messages it nests) — schema-built,
 /// not captured from a real transfer.
 struct TransferStateTests {
-    private static func contextTrack(uri: String) -> (inout ProtobufWriter) -> Void {
-        { $0.string(field: 1, uri) }
+    private static func contextTrack(uri: String, uid: String? = nil) -> (inout ProtobufWriter) -> Void {
+        {
+            $0.string(field: 1, uri)
+            if let uid {
+                $0.string(field: 2, uid)
+            }
+        }
     }
 
     private static func transfer(
@@ -85,6 +90,14 @@ struct TransferStateTests {
         state.positionAsOfTimestamp = 0
 
         #expect(state.position(atMs: 1_790_000_048_000) == 48000)
+    }
+
+    @Test func `the current track's uid comes through, and not a queued track's`() {
+        let track = Self.contextTrack(uri: "spotify:track:current", uid: "uid-current")
+
+        #expect(TransferState(parsing: Self.transfer(currentTrack: track)).currentTrackUid == "uid-current")
+        let fromQueue = TransferState(parsing: Self.transfer(currentTrack: track, queue: ["spotify:track:q1"], playingQueue: true))
+        #expect(fromQueue.currentTrackUid == nil)
     }
 
     @Test func `a track sent only by gid gets its uri back`() {

@@ -259,6 +259,7 @@ struct PlayCommandTests {
 
         #expect(command.context == .uri("spotify:album:a1"))
         #expect(command.trackUri == "spotify:track:t4")
+        #expect(command.trackUid == "u4")
         #expect(command.index == 3)
         #expect(command.positionMs == 1500)
     }

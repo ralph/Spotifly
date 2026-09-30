@@ -439,6 +439,7 @@ public actor LibrespotClient {
         uriOrUrl: String,
         trackIndex: Int? = nil,
         startingAtUri: String? = nil,
+        startingAtUid: String? = nil,
         positionMs: UInt64 = 0,
         paused: Bool = false,
     ) async throws {
@@ -464,7 +465,7 @@ public actor LibrespotClient {
         // No track named, as by Play on an album or a playlist: its first that plays.
         let start = trackIndex == nil && startingAtUri == nil
             ? (tracks: context.tracks, index: firstPlayable(in: context.tracks))
-            : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri)
+            : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: context.uids)
         setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: start.tracks, startIndex: start.index, name: context.name)
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
@@ -531,7 +532,7 @@ public actor LibrespotClient {
             // Started from a bare list of uris, so the list is all there is.
             try await playTracks([mirrored.trackUri] + (queue?.nextTracks.map(\.uri) ?? []), positionMs: positionMs)
         } else {
-            try await play(uriOrUrl: contextUri, startingAtUri: mirrored.trackUri, positionMs: positionMs)
+            try await play(uriOrUrl: contextUri, startingAtUri: mirrored.trackUri, startingAtUid: queue?.currentTrack?.uid, positionMs: positionMs)
         }
     }
 
@@ -1264,11 +1265,12 @@ public actor LibrespotClient {
     /// album again after its last track.
     nonisolated static func mirroredQueue(of remote: PlayerState) -> QueueState {
         let shown: (ProvidedTrack) -> Bool = { $0.metadata["hidden"] != "true" }
+        // Proto3: a row without a uid has "".
+        let item: (ProvidedTrack) -> QueueItem = { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) }
         return QueueState(
             contextUri: remote.contextUri,
-            currentTrack: remote.track.map { QueueItem(uri: $0.uri, provider: $0.provider) },
-            // Proto3: a row without a uid has "".
-            nextTracks: remote.nextTracks.filter(shown).map { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) },
+            currentTrack: remote.track.map(item),
+            nextTracks: remote.nextTracks.filter(shown).map(item),
             // In play order, as the cluster keeps them and the local queue
             // publishes them.
             previousTracks: remote.prevTracks.filter(shown).map { QueueItem(uri: $0.uri, provider: $0.provider) },
@@ -1307,6 +1309,7 @@ public actor LibrespotClient {
                 try await play(
                     uriOrUrl: transfer.contextUri,
                     startingAtUri: track,
+                    startingAtUid: transfer.currentTrackUid,
                     positionMs: positionMs,
                     paused: transfer.isPaused,
                 )
@@ -1350,6 +1353,7 @@ public actor LibrespotClient {
                     uriOrUrl: uri,
                     trackIndex: playCommand.index,
                     startingAtUri: playCommand.trackUri,
+                    startingAtUid: playCommand.trackUid,
                     positionMs: positionMs,
                 )
             case let .tracks(uris):

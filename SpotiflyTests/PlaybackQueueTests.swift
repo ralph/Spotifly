@@ -253,6 +253,30 @@ struct ContextStartTests {
         #expect(start.tracks == tracks)
     }
 
+    /// The handover of 2026-09-30: "Today Is a Gift" handed over as the relinked
+    /// `7dF8hsVoSdDWT6GlJZpBPm`, which Liked Songs lists as `0sMImBteCIVUKNhcyx3Cyx`.
+    @Test func `a uid names the row a relinked track plays from`() {
+        let uids: [String?] = ["u-a", "u-b", "u-c", "u-b2", "u-d"]
+
+        let start = PlaybackQueue.start(in: tracks, index: nil, uri: "relinked", uid: "u-c", uids: uids)
+
+        #expect(start.index == 2)
+        #expect(start.tracks == tracks)
+    }
+
+    /// Without an index, the uri alone took the first copy of a track the context holds twice.
+    @Test func `a uid names which copy of a repeated track was handed over`() {
+        let uids: [String?] = ["u-a", "u-b", "u-c", "u-b2", "u-d"]
+
+        #expect(PlaybackQueue.start(in: tracks, index: nil, uri: "b", uid: "u-b2", uids: uids).index == 3)
+    }
+
+    @Test func `a uid the context does not list leaves the uri to decide`() {
+        let uids: [String?] = [nil, nil, nil, nil, nil]
+
+        #expect(PlaybackQueue.start(in: tracks, index: nil, uri: "c", uid: "u-c", uids: uids).index == 2)
+    }
+
     /// The Liked Songs case before #77: the list and the context in another order.
     @Test func `a stale index finds the track wherever it is`() {
         #expect(PlaybackQueue.start(in: tracks, index: 0, uri: "c").index == 2)
