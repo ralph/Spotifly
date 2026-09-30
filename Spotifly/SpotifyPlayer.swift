@@ -42,8 +42,7 @@ nonisolated struct QueueState: Equatable {
     let nextTracks: [QueueItem]
     /// What played before the current track, in play order: the most recent last.
     let previousTracks: [QueueItem]
-    /// What the context calls itself, where it says: the resolver's name for local playback,
-    /// the cluster's while another device plays. The queue's header prefers the store's.
+    /// The context's own name: the resolver's locally, the cluster's while another device plays.
     var contextName: String?
 
     /// The context the queue plays from, or nil for a bare list of tracks.

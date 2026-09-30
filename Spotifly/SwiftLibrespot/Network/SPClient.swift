@@ -276,8 +276,7 @@ public actor SPClient {
     public struct ResolvedContext: Sendable {
         public let uri: String
         public let tracks: [String]
-        /// The answer's `metadata.context_description`: an album's or a playlist's name, and
-        /// "Lieblingssongs" for Liked Songs.
+        /// The answer's `metadata.context_description`.
         public let name: String?
     }
 
@@ -331,7 +330,7 @@ public actor SPClient {
 
     /// Parses the context resolver's answer. Despite the protobuf `Accept`
     /// header the endpoint replies **JSON**: `{metadata, pages: [{tracks:
-    /// [{uri}], next_page_url}], uri}`. `metadata.context_description` names the context.
+    /// [{uri}], next_page_url}], uri}`.
     ///
     /// The top-level `uri` is the context's own, not a track's, so nothing
     /// here can say which track to start at. A start index was computed from
@@ -355,8 +354,8 @@ public actor SPClient {
             }
         }
 
-        let name = (json["metadata"] as? [String: Any])?["context_description"] as? String
-        return (tracks, nextPageUrl, name?.isEmpty == false ? name : nil)
+        let name = ((json["metadata"] as? [String: Any])?["context_description"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return (tracks, nextPageUrl, name)
     }
 
     // MARK: - Timeout

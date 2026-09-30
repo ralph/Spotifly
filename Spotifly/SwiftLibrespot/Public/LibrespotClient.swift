@@ -49,6 +49,9 @@ public actor LibrespotClient {
     // MARK: - Queue & Playback Bookkeeping
 
     private var playbackQueue = PlaybackQueue()
+    /// What the playing context calls itself, from the resolver; set with the context in
+    /// `setQueue`, and nil for a bare list.
+    private var contextName: String?
 
     /// Logical Connect volume (0…65535), mirrored into player state.
     private var logicalVolume: UInt32 = 32767
@@ -766,7 +769,8 @@ public actor LibrespotClient {
     // MARK: - Queue Plumbing
 
     private func setQueue(contextUri: String, tracks: [String], startIndex: Int, name: String? = nil) {
-        playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex, name: name)
+        contextName = name
+        playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex)
         publishQueue()
     }
 
@@ -908,7 +912,7 @@ public actor LibrespotClient {
             return
         }
         debugLog("LibrespotClient", "End of the context; back to its first track, paused")
-        playbackQueue.setContext(uri: playbackQueue.contextUri, tracks: tracks, startIndex: firstPlayable(in: tracks), name: playbackQueue.contextName)
+        playbackQueue.setContext(uri: playbackQueue.contextUri, tracks: tracks, startIndex: firstPlayable(in: tracks))
         // A failure is reported by `loadAndPlay`, and there is no caller to
         // throw it to.
         try? await loadCurrentTrack(paused: true)
@@ -934,7 +938,7 @@ public actor LibrespotClient {
             currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: "context") },
             nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
-            contextName: playbackQueue.contextName,
+            contextName: contextName,
         )
     }
 

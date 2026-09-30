@@ -81,39 +81,38 @@ struct QueueListView: View {
         return items
     }
 
-    /// The context the queue plays from: its name, and the page the name opens. Read from the
-    /// player, which says what it plays from with every queue it publishes: a copy in the store
-    /// kept the last non-empty one, so a bare list of tracks played under the name of the album
-    /// before it.
+    /// The context the queue plays from: its name, and the page the name opens, where it has
+    /// one. Read from the player, which says what it plays from with every queue it publishes:
+    /// a copy in the store kept the last non-empty one, so a bare list of tracks played under
+    /// the name of the album before it.
     ///
-    /// The store's name comes first, as the one the app shows everywhere else. The player's,
-    /// from the resolver or the cluster, names what the store has not loaded, and Liked Songs,
-    /// which plays as a playlist the store has no entry for.
-    private var contextInfo: (link: ContextLink, name: String)? {
+    /// The app's own name comes first, as the one it shows everywhere else: the store's, and
+    /// for Liked Songs, which plays as a playlist the store has no entry for, the section's.
+    /// The player's, from the resolver or the cluster, names the rest, such as a playlist
+    /// started on another device or a radio station, which has no page to open.
+    private var contextInfo: (link: ContextLink?, name: String)? {
         guard let queue = player.queue, let uri = queue.context else { return nil }
 
-        let link: ContextLink
-        let storedName: String?
+        let link: ContextLink?
+        let ownName: String?
         if uri == LikedSongs.uri {
             link = .favorites
-            storedName = nil
-        } else if uri.hasPrefix("spotify:album:") {
-            let id = String(uri.dropFirst("spotify:album:".count))
+            ownName = NavigationItem.favorites.title
+        } else if let id = SpotifyURI.id(from: uri, kind: "album") {
             link = .album(id)
-            storedName = store.albums[id]?.name
-        } else if uri.hasPrefix("spotify:playlist:") {
-            let id = String(uri.dropFirst("spotify:playlist:".count))
+            ownName = store.albums[id]?.name
+        } else if let id = SpotifyURI.id(from: uri, kind: "playlist") {
             link = .playlist(id)
-            storedName = store.playlists[id]?.name
-        } else if uri.hasPrefix("spotify:artist:") {
-            let id = String(uri.dropFirst("spotify:artist:".count))
+            ownName = store.playlists[id]?.name
+        } else if let id = SpotifyURI.id(from: uri, kind: "artist") {
             link = .artist(id)
-            storedName = store.artists[id]?.name
+            ownName = store.artists[id]?.name
         } else {
-            return nil
+            link = nil
+            ownName = nil
         }
 
-        guard let name = storedName ?? queue.contextName else { return nil }
+        guard let name = ownName ?? queue.contextName else { return nil }
         return (link, name)
     }
 
@@ -183,14 +182,17 @@ struct QueueListView: View {
             if let context = contextInfo {
                 Text("queue.playing_from")
 
-                // Context name is a tappable link
-                Button {
-                    navigate(to: context.link)
-                } label: {
+                if let link = context.link {
+                    Button {
+                        navigate(to: link)
+                    } label: {
+                        Text("\"\(context.name)\"")
+                            .foregroundStyle(.green)
+                    }
+                    .buttonStyle(.plain)
+                } else {
                     Text("\"\(context.name)\"")
-                        .foregroundStyle(.green)
                 }
-                .buttonStyle(.plain)
 
                 Text("queue.on_device")
             } else {
