@@ -1,6 +1,7 @@
 # Queue rows have no identity, so every jump finds its row again by uri
 
-Status: **Open.** Recorded, not planned. Read from the code in review; nothing observed.
+Status: **In progress.** Read from the code in review; nothing observed. The history's part of
+it is done; see Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
@@ -48,10 +49,23 @@ Not planned yet. Two parts, either first:
    state. The queue view's rows would then name a uid, the three `nearestIndex` re-finds would
    go, and a `skip_next` from the web player would name the exact copy.
 
-Part 2 changes the `PlaybackQueue` model, and belongs with
-`plans/open/history-repeats-the-track-before-a-queued-one.md`, which needs "was this entry
-queued?" stored too.
+Part 2 changes the `PlaybackQueue` model. Its history needs no "was this entry queued?":
+since `plans/done/history-repeats-the-track-before-a-queued-one.md` it holds context tracks
+only, as librespot's does. So keeping it as entries can be `history: [Int]`, context indices,
+which `setContext` already clears whenever the context changes. That alone fixes the
+Duplicates bullet, and can land before the uids.
 
 ## Verification
 
 Not defined yet.
+
+## Progress
+
+- **The history as context positions** (2026-09-29, stacked on #92). `PlaybackQueue` keeps
+  `historyPositions: [Int]`, where each context track that played sits in the context, and
+  `history` maps them to uris for its readers. `backward()` returns to that position instead of
+  `contextTracks.firstIndex(of:)`, and `stepBack(toRecent:uri:)` and `recent()` read through
+  them. `setContext` is the only writer of `contextTracks` and clears the positions with it, so
+  none can point into another context. A unit test: in `a b a c`, playing from the second `a`
+  and pressing Previous comes back to position 2, and the context goes on with `c`; before, it
+  went back to position 0, and on with `b`. That settles the Duplicates bullet.

@@ -114,7 +114,6 @@
 "queue.on_device" = "sur";
 "queue.song_count %lld %lld" = "%lld titres (%lld à venir)";
 "queue.scroll_to_current" = "Aller au titre en cours";
-"queue.refresh" = "Actualiser la file d'attente";
 "queue.clear" = "Supprimer les titres à venir";
 "queue.clear.confirm.title" = "Vider la file d'attente";
 "queue.clear.confirm.message %lld" = "Cette action supprimera %lld titres à venir de la file d'attente.";
