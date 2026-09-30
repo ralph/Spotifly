@@ -28,22 +28,6 @@ struct Queue: Equatable {
     var currentTrack: QueueEntry?
     /// Next tracks in queue
     var nextTracks: [QueueEntry] = []
-
-    /// Returns the same queue ordering, split around the occurrence of `trackId` nearest
-    /// the currently reported split. librespot can report a stale split while its ordering
-    /// is already correct, so the playing track's logical identity is authoritative.
-    func reconciled(currentTrackId trackId: String) -> Queue {
-        let allTracks = previousTracks + (currentTrack.map { [$0] } ?? []) + nextTracks
-        guard let currentIndex = allTracks.nearestIndex(to: previousTracks.count, where: { $0.trackId == trackId }) else {
-            return self
-        }
-
-        var result = self
-        result.previousTracks = Array(allTracks[..<currentIndex])
-        result.currentTrack = allTracks[currentIndex]
-        result.nextTracks = Array(allTracks[(currentIndex + 1)...])
-        return result
-    }
 }
 
 // MARK: - App Store
@@ -672,16 +656,6 @@ final class AppStore {
         }
         queue.currentTrack = current
         queue.nextTracks = next
-    }
-
-    /// Aligns the queue's current pointer with the authoritative logical track identity.
-    /// Returns whether the split changed.
-    @discardableResult
-    func reconcileQueueCurrentTrack(with trackId: String) -> Bool {
-        let reconciledQueue = queue.reconciled(currentTrackId: trackId)
-        guard reconciledQueue != queue else { return false }
-        queue = reconciledQueue
-        return true
     }
 
     // MARK: - User Profile Actions

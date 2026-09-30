@@ -148,8 +148,6 @@ struct QueueBootstrapTests {
         #expect(store.queue.previousTracks.map(\.trackId) == ["played"])
         #expect(store.queue.currentTrack == nil)
         #expect(store.queue.nextTracks.isEmpty)
-        // And the pointer is now unrepairable: the track is no longer in the list.
-        #expect(!store.reconcileQueueCurrentTrack(with: "playing"))
     }
 }
 
