@@ -156,32 +156,16 @@ struct ArtistDetailView: View {
         let album: Album
         let onTap: () -> Void
 
-        @Environment(\.displayScale) private var displayScale
-
         var body: some View {
             Button(action: onTap) {
                 VStack(alignment: .leading, spacing: 8) {
-                    if let url = album.images.url(for: 150, scale: displayScale) {
-                        RetryingAsyncImage(url: url) { phase in
-                            switch phase {
-                            case .empty:
-                                ProgressView()
-                                    .frame(width: 150, height: 150)
-                            case let .success(image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 150, height: 150)
-                                    .clipShape(.rect(cornerRadius: 8))
-                            case .failure:
-                                albumPlaceholder
-                            @unknown default:
-                                EmptyView()
-                            }
-                        }
-                    } else {
-                        albumPlaceholder
-                    }
+                    Artwork(
+                        images: album.images,
+                        size: 150,
+                        shape: AnyShape(.rect(cornerRadius: 8)),
+                        symbol: "music.note",
+                        symbolFont: .system(size: 40),
+                    )
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(album.name)
@@ -195,15 +179,6 @@ struct ArtistDetailView: View {
                 }
             }
             .buttonStyle(.plain)
-        }
-
-        private var albumPlaceholder: some View {
-            Image(systemName: "music.note")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-                .frame(width: 150, height: 150)
-                .background(.quaternary)
-                .clipShape(.rect(cornerRadius: 8))
         }
 
         private func formatReleaseYear(_ dateString: String?) -> String {

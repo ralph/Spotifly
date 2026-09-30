@@ -16,7 +16,6 @@ struct PlaylistDetailView: View {
     @Environment(TrackService.self) private var trackService
     @Environment(PlaylistService.self) private var playlistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(\.displayScale) private var displayScale
 
     @State private var isLoading = false
     @State private var failure: LoadFailure?
@@ -148,38 +147,15 @@ struct PlaylistDetailView: View {
         .padding(.top, 24)
     }
 
-    @ViewBuilder
     private func playlistArtwork(_ playlist: Playlist) -> some View {
-        if let url = playlist.images.url(for: 200, scale: displayScale) {
-            RetryingAsyncImage(url: url) { phase in
-                switch phase {
-                case .empty:
-                    ProgressView()
-                        .frame(width: 200, height: 200)
-                case let .success(image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 200, height: 200)
-                        .clipShape(.rect(cornerRadius: 8))
-                        .shadow(radius: 10)
-                case .failure:
-                    playlistArtworkPlaceholder
-                @unknown default:
-                    EmptyView()
-                }
-            }
-        } else {
-            playlistArtworkPlaceholder
-        }
-    }
-
-    private var playlistArtworkPlaceholder: some View {
-        Image(systemName: "music.note.list")
-            .font(.system(size: 60))
-            .frame(width: 200, height: 200)
-            .background(.quaternary)
-            .clipShape(.rect(cornerRadius: 8))
+        Artwork(
+            images: playlist.images,
+            size: 200,
+            shape: AnyShape(.rect(cornerRadius: 8)),
+            symbol: "music.note.list",
+            symbolFont: .system(size: 60),
+            shadowRadius: 10,
+        )
     }
 
     private func playlistMetadata(_ playlist: Playlist) -> some View {

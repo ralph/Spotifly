@@ -51,7 +51,6 @@ struct TrackRow: View {
 
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
-    @Environment(\.displayScale) private var displayScale
 
     @State private var isTogglingFavorite = false
     @State private var showNewPlaylistDialog = false
@@ -132,29 +131,15 @@ struct TrackRow: View {
             .font(.caption)
             .frame(width: 30, alignment: showTrackNumber ? .trailing : .center)
 
-            // Album art (if available)
-            if let url = track.images.url(for: 40, scale: displayScale) {
-                RetryingAsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .frame(width: 40, height: 40)
-                    case let .success(image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 40, height: 40)
-                            .clipShape(.rect(cornerRadius: 4))
-                    case .failure:
-                        Image(systemName: "music.note")
-                            .font(.caption)
-                            .frame(width: 40, height: 40)
-                            .background(.quaternary)
-                            .clipShape(.rect(cornerRadius: 4))
-                    @unknown default:
-                        EmptyView()
-                    }
-                }
+            // Album art. A track with none leaves the column out rather than show a placeholder.
+            if !track.images.isEmpty {
+                Artwork(
+                    images: track.images,
+                    size: 40,
+                    shape: AnyShape(.rect(cornerRadius: 4)),
+                    symbol: "music.note",
+                    symbolFont: .caption,
+                )
             }
 
             // Track info

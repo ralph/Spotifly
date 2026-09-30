@@ -21,7 +21,7 @@ struct TrackCard: View {
             }
         } label: {
             VStack(spacing: 8) {
-                CardArtwork(images: track.images, outline: .roundedSquare, symbol: "music.note", symbolSize: 40)
+                Artwork.card(track.images, symbol: "music.note", symbolSize: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.name)
@@ -32,7 +32,7 @@ struct TrackCard: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                .frame(width: CardArtwork.size, alignment: .leading)
+                .frame(width: Artwork.cardSize, alignment: .leading)
             }
         }
         .buttonStyle(.plain)

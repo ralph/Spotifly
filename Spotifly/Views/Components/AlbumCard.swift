@@ -20,7 +20,7 @@ struct AlbumCard: View {
             navigationCoordinator.navigateToAlbumSection(albumId: id)
         } label: {
             VStack(spacing: 8) {
-                CardArtwork(images: images, outline: .roundedSquare, symbol: "music.note", symbolSize: 40)
+                Artwork.card(images, symbol: "music.note", symbolSize: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
@@ -31,7 +31,7 @@ struct AlbumCard: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                .frame(width: CardArtwork.size, alignment: .leading)
+                .frame(width: Artwork.cardSize, alignment: .leading)
             }
         }
         .buttonStyle(.plain)
