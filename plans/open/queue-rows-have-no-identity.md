@@ -1,7 +1,7 @@
 # Queue rows have no identity, so every jump finds its row again by uri
 
-Status: **In progress.** Read from the code in review; nothing observed. The history's part of
-it is done; see Progress.
+Status: **In progress.** Read from the code in review; nothing observed. The history and part 1
+are done; part 2 is open, and smaller than it was; see Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
@@ -69,3 +69,44 @@ Not defined yet.
   none can point into another context. A unit test: in `a b a c`, playing from the second `a`
   and pressing Previous comes back to position 2, and the context goes on with `c`; before, it
   went back to position 0, and on with `b`. That settles the Duplicates bullet.
+- **Part 1: the queue is published with the track** (2026-09-29, stacked on the above).
+  `startTrack` publishes the playback state and the queue in one snapshot, before the wait for
+  metadata, key and CDN, through a `queue:` parameter on `publishPlaybackState`. `publishQueue`
+  still runs after the load, in the same `defer`s, for one reason found on the way: it also
+  announces the track to fetch ahead, and announcing it before the load cancels a fetched-ahead
+  copy of the very track being loaded (`AudioPipeline.setNextTrack` drops an `upcoming` that is
+  not the new next). Its second publish of the same queue changes nothing, since `PlayerModel`
+  writes only what changed.
+  - With queue and track always agreeing, `Queue.reconciled`, `AppStore.reconcileQueueCurrentTrack`
+    and both callers are gone, with `QueueReconciliationTests`. The one gap left is the hop
+    between `QueueService`'s and `PlaybackViewModel`'s observations of the same snapshot, which
+    lasts until the next main-actor turn: the store's lists and the bar's track come from one
+    snapshot and meet on the next turn.
+  - Every other publisher already agreed: the mirror publishes queue and playback together; a
+    queue change without a track change (Add to Queue, `set_queue`, shuffle) publishes the queue
+    alone; and a rewind or a new context goes through `startTrack` too.
+  - The review of it found three places where a track could still be published against a queue
+    that had moved on, which the re-split used to paper over:
+    - `handleEndOfTrack` acted on the ended track's uri in a task of its own. A Next landing in
+      between had moved the queue already, so the task advanced again, passing over the track
+      Next had started, or under repeat-one played the old track again under the new queue. It
+      now returns when the queue's current track is no longer the one that ended.
+    - `handlePipelineState` and `publishPlaybackStateRefresh` read the track, then await the
+      position. A skip in that wait published its own track, which the stale state then
+      overwrote until the new track's `.playing` came. Both drop a state whose track is no
+      longer current.
+- **Part 2, uids: not done, and what is left of it** (2026-09-29). With the queue published
+  with its track, the view's list is split where the player's is, so a row's index names the
+  exact row and `nearestIndex` finds it at that index. What uids would still fix:
+  - **`skip_next` from the web player** names a track by uri, and a duplicate ahead resolves to
+    the first copy. librespot's `handle_next` does the same (`skip_next.track.map(|t| t.uri)`);
+    go-librespot matches a uid first (`tracks.ContextTrackComparator`).
+  - **Rows the store drops.** `QueueService` keeps only track rows, so a context with episodes
+    shifts the view's indices past the first one. The uri still finds the row unless the track
+    repeats close by.
+  - What it would take: `q<n>` uids for queued tracks as librespot's `add_to_queue` makes them;
+    the resolver's uid for context rows, which `parseContextReport` drops. Whether context-resolve
+    answers carry a `uid` per track is **not measured**; librespot's `context.rs` generates a
+    UUID when one is missing. Inventing uids for the rows other devices see risks confusing a
+    receiving device's own matching (`context.rs` copies a transferred uid onto its context
+    track), so measure first.
