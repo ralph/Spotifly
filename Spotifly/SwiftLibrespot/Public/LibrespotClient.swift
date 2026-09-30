@@ -807,7 +807,9 @@ public actor LibrespotClient {
         // length; until metadata lands, zero is the honest answer.
         knownDurationMs = 0
         let position = UInt32(clamping: positionMs)
-        publishPlaybackState(for: uri, playing: !paused, paused: paused, positionMs: Int64(position))
+        // With the queue that moved to it, in one snapshot. Published after the load, as it
+        // was, the store held the new track in the old lists for the whole wait.
+        publishPlaybackState(for: uri, playing: !paused, paused: paused, positionMs: Int64(position), queue: queueState)
 
         do {
             try await audioPipeline.playTrack(uri: uri, positionMs: positionMs, paused: paused)
@@ -825,6 +827,10 @@ public actor LibrespotClient {
     /// Auto-advance at end of track.
     private func handleEndOfTrack(_ uri: String) {
         Task {
+            // A skip that landed between the event and this task has moved on already:
+            // advancing again passed over its track, and repeat-one played the old one again
+            // under the new one's queue.
+            guard uri == playbackQueue.currentUri else { return }
             if repeatMode == .track {
                 await autoAdvance(to: uri)
                 return
@@ -900,16 +906,27 @@ public actor LibrespotClient {
         try? await loadCurrentTrack(paused: true)
     }
 
-    /// Publishes the queue, with the context it plays from.
+    /// Publishes the queue, with the context it plays from, and tells the pipeline which
+    /// track to fetch ahead.
+    ///
+    /// A load publishes the queue itself, with its track; see `startTrack`. The fetch ahead
+    /// waits until the load is done: announcing the next track before it would cancel a
+    /// fetched-ahead copy of the very track being loaded.
     private func publishQueue() {
         announceNextTrack()
-        let queue = QueueState(
+        let queue = queueState
+        publish { $0.queue = queue }
+    }
+
+    /// The queue as the app sees it: the context, the current track, and the tracks either
+    /// side of it.
+    private var queueState: QueueState {
+        QueueState(
             contextUri: playbackQueue.contextUri,
             currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: "context") },
             nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
         )
-        publish { $0.queue = queue }
     }
 
     // MARK: - Pipeline Wiring
@@ -984,13 +1001,14 @@ public actor LibrespotClient {
 
         case let .playing(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
-            // Torn down or replaced while this waited: the track is no one's now.
-            guard !Task.isCancelled else { return }
+            // Torn down or replaced while this waited: the track is no one's now. Or a skip
+            // started loading another while this waited, and published it with its queue.
+            guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
             publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position))
 
         case let .paused(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
             publishPlaybackState(for: trackUri, playing: false, paused: true, positionMs: Int64(position))
         }
 
@@ -1393,6 +1411,7 @@ public actor LibrespotClient {
         playing: Bool,
         paused: Bool,
         positionMs: Int64,
+        queue: QueueState? = nil,
     ) {
         let state = PlaybackState(
             isPlaying: playing && !paused,
@@ -1406,7 +1425,12 @@ public actor LibrespotClient {
             timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
         )
         localState = state
-        publish { $0.playback = state }
+        publish {
+            $0.playback = state
+            if let queue {
+                $0.queue = queue
+            }
+        }
     }
 
     /// Re-emits the last playback state — used after option changes (shuffle,
@@ -1419,6 +1443,8 @@ public actor LibrespotClient {
     private func publishPlaybackStateRefresh() async {
         guard let current = localState else { return }
         let position = await audioPipeline?.currentPositionMs() ?? UInt64(max(0, current.positionMs))
+        // A load that started while this waited has published its own state.
+        guard localState?.trackUri == current.trackUri else { return }
         publishPlaybackState(
             for: current.trackUri,
             playing: current.isPlaying,
