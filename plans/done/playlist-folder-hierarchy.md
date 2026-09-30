@@ -1,8 +1,8 @@
 # Playlist folders: show the hierarchy Spotify has
 
 Status: **Done** 2026-09-29. The variables measured from the web player's session; built,
-unit-tested, and the section rendered in the test host; not yet seen in the running app; see
-Verification.
+unit-tested, and the section rendered in the test host; seen in the running app on 2026-09-30, all
+but creating and deleting a playlist; see Verification.
 Components: `Spotifly/PartnerAPI/PathfinderLibrary.swift` (`depth`), `Spotifly/PartnerAPI/PathfinderSearch.swift`
 (`PathfinderPlaylist.folderUri`), `Spotifly/PartnerAPI/PartnerAPI.swift` (`libraryPlaylistOutline`),
 `Spotifly/Store/Services/PlaylistService.swift` (`loadPlaylistOutline`), `Spotifly/Store/AppStore.swift`
@@ -134,9 +134,12 @@ a playlist row.
       selected one, an open folder with its playlist indented under it and the chevron down, a
       closed folder with its playlist hidden and the chevron right, and a last playlist.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
-- [ ] Live: the Playlists section shows the account's folders, closed. Opening one shows its
-      playlists indented; it stays open after a relaunch. Selecting a playlist in a folder opens
-      it as any other.
-- [ ] Live: a new playlist appears at the top; a deleted one disappears. Refresh keeps the
-      folders.
+- [x] Live, 2026-09-30: the Playlists section shows the account's four folders, closed, among the
+      playlists. Opening one shows its playlists indented, with the chevron down; clicking it again
+      hides them. A folder left open stays open after a relaunch. Selecting a playlist in a folder
+      opens it as any other. A track's "Zu Playlist hinzufügen" menu lists the playlists inside a
+      closed folder.
+- [x] Live, 2026-09-30: Refresh keeps the folders and the selection.
+- [ ] Live: a new playlist appears at the top; a deleted one disappears. Not run: it changes the
+      library.
 - [ ] Live, an account or a check with no folders: the section looks as it did.
