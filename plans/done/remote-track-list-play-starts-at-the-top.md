@@ -104,4 +104,4 @@ Not changed:
       to, with the other two tracks after it in the queue.
 - Seen along the way: the queue's header went on naming the album played before ("Alive"),
   since `AppStore.setQueue` ignores an empty context uri. Recorded as
-  `plans/open/queue-header-names-the-previous-context.md`.
+  `plans/done/queue-header-names-the-previous-context.md`.

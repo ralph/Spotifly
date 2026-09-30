@@ -102,11 +102,11 @@ final class QueueService {
         let nextEntries = state.nextTracks.compactMap(Self.queueEntry(from:))
         let previousEntries = state.previousTracks.compactMap(Self.queueEntry(from:))
 
-        let contextInfo = state.contextUri.isEmpty ? "" : " context=\(state.contextUri),"
+        let contextInfo = state.context.map { " context=\($0)," } ?? ""
         log("Queue updated from the player:\(contextInfo) prev=\(previousEntries.count), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
 
         store.noteLiveStateReceived()
-        store.setQueue(previous: previousEntries, current: currentEntry, next: nextEntries, contextUri: state.contextUri)
+        store.setQueue(previous: previousEntries, current: currentEntry, next: nextEntries)
         reconcileQueueCurrentTrack()
 
         fetchTrackMetadata(for: Self.trackIds(previousEntries, currentEntry, nextEntries))
