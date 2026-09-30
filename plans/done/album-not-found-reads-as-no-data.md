@@ -111,7 +111,7 @@ request, ran one task, and showed "Album wurde nicht gefunden…" with no Try ag
       and has no Try again button. **The first run looped** (see "Found in live testing"
       above). **Passed** on `2eb2f4b`: the message, no Try again, and `getAlbum` once. The
       window's layout squeezed around the message; that is recorded as
-      `plans/open/full-page-error-collapses-the-layout.md`.
+      `plans/done/full-page-error-collapses-the-layout.md`.
 - [x] Live, artist: `SPOTIFLY_DEBUG_OPEN=spotify:artist:0000000000000000000000`. The artist page
       says "Künstler wurde nicht gefunden." with no Try again. **Passed**, same build, with the
       same layout.
