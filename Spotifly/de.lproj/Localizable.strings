@@ -115,6 +115,7 @@
 "queue.open" = "Warteschlange öffnen";
 "queue.playing_from" = "Wiedergabe von";
 "queue.on_device" = "auf";
+"queue.playing_on" = "Wiedergabe auf";
 "queue.song_count %lld %lld" = "%lld Songs (%lld ausstehend)";
 "queue.scroll_to_current" = "Zum aktuellen Track scrollen";
 "queue.clear" = "Ausstehende Tracks löschen";
