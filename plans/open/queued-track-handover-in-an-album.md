@@ -20,9 +20,12 @@ row is not found, and the queued track is placed by its uri as before.
     has no uids to match it against.
   - Spotifly found Energy Song by its uri at row 5, and the context went on with row 6,
     passing over rows 3 and 4.
-  - The web player's uids for the album's rows look like a playlist's, 20 hex characters. It got
-    them from somewhere: perhaps its own resolve request, perhaps pathfinder's album tracks.
-    Neither was checked.
+  - The web player's uids for the album's rows come from pathfinder's `getAlbum`. Measured on
+    2026-10-01 by watching the web player's own requests while it opened the album: each
+    `albumUnion.tracksV2.items[]` entry is `{track, uid}`, and the third row, Pockets Of Peace,
+    carries `641b0e01bced253ac901`, the uid the handover named. The first two carry
+    `5222ba0634a72c2f7ce3` and `234c241ed2b13766c70e`, the uids the transfers named for The
+    Letter and Messages. Our `PathfinderAlbum.TrackList.Item` decodes only `track`.
 - **A second way in.** Every transfer measured carried an undocumented field 6, which is not
   in librespot's `transfer_state.proto`. It looks like a play history: repeated entries with a
   uid (field 1), a uri (field 6) and a timestamp (field 9), the queued track among them with
@@ -34,9 +37,13 @@ row is not found, and the queued track is placed by its uri as before.
 
 ## Solution
 
-Not planned. Either give an album's rows the web player's uids, which first needs finding where
-it gets them, or read field 6 for the last context track, which leans on a field no proto
-documents.
+Not planned. Two ways:
+
+- **Pathfinder's uids for an album's rows.** Decode `uid` beside `track`, and let the context
+  start find the resume row among them when the resolve answer has none. The handover happens
+  inside `LibrespotClient`, which resolves through spclient and knows no pathfinder, so the app
+  would have to hand it the uids, or the client ask pathfinder itself.
+- **Field 6**, for the last context track. It leans on a field no proto documents.
 
 ## Verification
 
