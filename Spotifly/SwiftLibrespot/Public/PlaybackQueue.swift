@@ -30,8 +30,17 @@ final nonisolated class PlaybackQueue {
     /// context resumes.
     private(set) var userQueue: [String] = []
 
-    /// Tracks already played, most recent last, for skip-backwards.
-    private(set) var history: [String] = []
+    /// Where the context tracks already played sit in the context, most recent last, for
+    /// skip-backwards. Queued tracks are not kept, as in librespot, which puts "only songs from
+    /// our context" in `prev_tracks`. Positions rather than uris, so Previous returns to the
+    /// copy that played of a track the context holds twice; `setContext` clears them with the
+    /// context they point into.
+    private var historyPositions: [Int] = []
+
+    /// The context tracks already played, most recent last.
+    var history: [String] {
+        historyPositions.map { contextTracks[$0] }
+    }
 
     /// A user-queue track that is playing now. It sits outside the context,
     /// so `currentUri` reports it until playback returns to the context.
@@ -75,7 +84,7 @@ final nonisolated class PlaybackQueue {
         contextUri = uri
         contextTracks = tracks
         currentIndex = max(0, min(startIndex, tracks.count - 1))
-        history = []
+        historyPositions = []
         userQueueCurrent = nil
         reshuffleIfNeeded()
         if shuffleEnabled {
@@ -162,7 +171,9 @@ final nonisolated class PlaybackQueue {
             userQueueCurrent = next
             return next
         }
-        userQueueCurrent = nil
+        // Back to the context once this move is made, so the push below still sees a queued
+        // track playing and records nothing for it.
+        defer { userQueueCurrent = nil }
 
         guard !contextTracks.isEmpty else { return nil }
 
@@ -209,21 +220,18 @@ final nonisolated class PlaybackQueue {
         // when the override started names the context track to return to.
         userQueueCurrent = nil
 
-        guard let previous = history.popLast() else { return nil }
+        guard let previous = historyPositions.popLast() else { return nil }
+        currentIndex = previous
 
-        if let idx = contextTracks.firstIndex(of: previous) {
-            currentIndex = idx
-
-            // The shuffle cursor has to come back too. Moving `currentIndex`
-            // alone left `shufflePosition` on the track we just stepped away
-            // from, so the next advance carried on from there — skipping
-            // forward again, or ending the context early.
-            if shuffleEnabled, let position = shuffleOrder.firstIndex(of: idx) {
-                shufflePosition = position
-            }
+        // The shuffle cursor has to come back too. Moving `currentIndex`
+        // alone left `shufflePosition` on the track we just stepped away
+        // from, so the next advance carried on from there — skipping
+        // forward again, or ending the context early.
+        if shuffleEnabled, let position = shuffleOrder.firstIndex(of: previous) {
+            shufflePosition = position
         }
 
-        return previous
+        return contextTracks[previous]
     }
 
     /// Moves to a track `upcoming()` lists, the way pressing Next would get
@@ -261,11 +269,11 @@ final nonisolated class PlaybackQueue {
     ///
     /// - Returns: the uri to play, or nil when the list has no such track.
     func stepBack(toRecent index: Int, uri: String) -> String? {
-        let positions = recentPositions(limit: Self.recentLimit)
-        guard let row = positions.nearestIndex(to: index, where: { history[$0] == uri }) else { return nil }
+        let rows = recent().map(\.uri)
+        guard let row = rows.nearestIndex(to: index, where: { $0 == uri }) else { return nil }
 
         var played: String?
-        for _ in positions[row] ..< history.count {
+        for _ in row ..< rows.count {
             played = backward()
         }
         return played
@@ -286,15 +294,16 @@ final nonisolated class PlaybackQueue {
     /// Whether going backwards has anywhere to go besides restarting the
     /// current track.
     var canGoBackward: Bool {
-        !history.isEmpty
+        !historyPositions.isEmpty
     }
 
+    /// Records the context track playing now. Nothing while a queued track plays: it is not
+    /// kept, and the context track it interrupted went in when it started.
     private func pushHistory() {
-        if let current = currentUri {
-            history.append(current)
-            if history.count > 50 {
-                history.removeFirst()
-            }
+        guard let position = contextPosition else { return }
+        historyPositions.append(position)
+        if historyPositions.count > 50 {
+            historyPositions.removeFirst()
         }
     }
 
@@ -328,12 +337,6 @@ final nonisolated class PlaybackQueue {
     /// keeps it, and the queue view, which lists these above the current
     /// track. See `plans/done/queue-history-listed-newest-first.md`.
     func recent(limit: Int = PlaybackQueue.recentLimit) -> [(uri: String, provider: String)] {
-        recentPositions(limit: limit).map { (history[$0], "context") }
-    }
-
-    /// Where each track `recent(limit:)` lists sits in `history`, in its
-    /// order, so a row of the published list can be found again.
-    private func recentPositions(limit: Int) -> [Int] {
-        Array(history.indices.suffix(limit))
+        history.suffix(limit).map { ($0, "context") }
     }
 }
