@@ -238,7 +238,6 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.navigationPath.isEmpty)
         #expect(coordinator.viewingAlbumId == nil)
         #expect(coordinator.backNavigationTitle == NavigationItem.albums.title)
-        #expect(coordinator.canRefreshCurrentSection)
     }
 
     @Test func `history cap drops oldest entries and back still works`() {

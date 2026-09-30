@@ -115,7 +115,6 @@
 "queue.playing_on" = "Playing on";
 "queue.song_count %lld %lld" = "%lld songs (%lld upcoming)";
 "queue.scroll_to_current" = "Scroll to current track";
-"queue.refresh" = "Refresh queue";
 "queue.clear" = "Clear upcoming tracks";
 "queue.clear.confirm.title" = "Clear Queue";
 "queue.clear.confirm.message %lld" = "This will remove %lld upcoming tracks from the queue.";

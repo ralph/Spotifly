@@ -115,7 +115,6 @@
 "queue.playing_on" = "Wiedergabe auf";
 "queue.song_count %lld %lld" = "%lld Songs (%lld ausstehend)";
 "queue.scroll_to_current" = "Zum aktuellen Track scrollen";
-"queue.refresh" = "Warteschlange aktualisieren";
 "queue.clear" = "Ausstehende Tracks löschen";
 "queue.clear.confirm.title" = "Warteschlange leeren";
 "queue.clear.confirm.message %lld" = "Dies entfernt %lld ausstehende Tracks aus der Warteschlange.";

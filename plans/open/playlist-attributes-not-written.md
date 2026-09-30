@@ -1,7 +1,8 @@
 # Playlist attributes Spotifly cannot write
 
-Status: **Open.** Recorded, not planned, so that the absence is deliberate rather than
-discovered.
+Status: **Open**, planned as far as the requests go and deliberately not built: no screen asks
+for any of the three. The web client's bundle read on 2026-09-29, which settled what each would
+take; see Solution.
 Components: `Spotifly/PartnerAPI/PlaylistChanges.swift`, `Spotifly/PartnerAPI/SpclientAPI.swift`,
 `Spotifly/Store/Services/PlaylistService.swift`
 Found: 2026-08-13, splitting the "not built" note out of task 12c in
@@ -55,27 +56,46 @@ then building a UI on top of it.
 
 ## Solution
 
-### What each would take
+### What the web client does, read from its bundle
 
-**`collaborative` and `pl3_version` are the cheap half.** Both are fields on the same
-`ListAttributes` message that `name` and `description` already ride in, so adding them is two
-optional properties on `Attributes` plus a service method — no new endpoint, no new shape to
-measure. Neither has a screen, so the work is the UI, not the request.
+Read on 2026-09-29 from the web player's scripts (`web-player.*.js`), with nothing sent: the code
+that builds these requests, not a capture of one being made. Watching one would have meant
+changing a playlist of the account.
 
-**The cover image is a different job.** It does *not* go in the attributes message: Spotify takes
-a playlist image through a separate upload endpoint, and this app has never sent one. That
-endpoint's method, path, content type and size limits are all **unmeasured** — nothing here has
-been verified against the service, and none of it should be guessed. The way to find out is the
-one that settled task 12c: change a playlist's cover in the web client with DevTools open on
-Network → Fetch/XHR, and read the request off it. See
-[[measure-from-the-web-client-devtools]] — that costs no re-login, where `libspot-probe` revokes
-the app's grant every run.
+- **The message carries all three.** The client's own `ListAttributes` decoder names `name`,
+  `description`, `picture` (field 3, bytes), `collaborative` (field 4), `pl3Version`,
+  `deletedByOwner`, `clientId`, `format`, `formatAttributes`, `pictureSize` and more. So they
+  are fields of the message this app already sends in `UPDATE_LIST_ATTRIBUTES`.
+- **It never writes `collaborative`.** Nothing in the bundle sets it; it appears only in the
+  decoder's defaults (`collaborative: false`). Collaboration in the current client is "Invite
+  collaborators" (`inviteCollaboratorsButton` in its context menu), which goes to a separate
+  service, `playlist-permission/v1`, with invitations rather than a flag.
+- **Nor `pl3_version`**, outside the same defaults.
+- **The cover is three requests, all `POST`:**
+  1. the image to `image-upload.spotify.com`, endpoint `image-upload/v4/playlist`, as
+     `Content-Type: image/jpeg`, which answers with an `uploadToken`;
+  2. `{uploadToken}` to `playlist/{id}/register-image`, which answers with the image's id as
+     `picture`;
+  3. that id as `picture` in an `UPDATE_LIST_ATTRIBUTES` change to `playlist/{id}/changes`, the
+     request `changePlaylistAttributes` already sends for a rename.
 
-Whoever picks this up should also expect an image write to need a **re-read**, the way
-`addTracksToPlaylist` does: the mutation is unlikely to answer with the CDN urls of the sizes
-Spotify generated, and a row holding a stale `ImageSet` is a cover that does not change until
-the next launch.
+  Size limits, and the headers the upload host wants, are not in what was read.
+
+### What each would take now
+
+- **`collaborative`: not as an attribute.** Setting the flag is what the Web API once did and the
+  current client does not, so building it would copy a path Spotify's own client has left. The
+  feature, if wanted, is invitations through `playlist-permission/v1`, which is unmeasured and
+  a screen of its own.
+- **`pl3_version`: nothing to build.** No client sets it.
+- **The cover:** `Attributes` gains `picture` (base64, as proto3's JSON mapping renders bytes),
+  and a service method runs the three requests in order. Before building it, capture one real
+  upload from the web client for the headers and limits, on a playlist made for it. And expect
+  the write to need a **re-read**, the way `addTracksToPlaylist` does: the change does not answer
+  with the CDN urls of the sizes Spotify generates, and a row holding a stale `ImageSet` is a
+  cover that does not change until the next launch.
 
 ## Verification
 
-Not defined until this is planned.
+When the cover is built: upload a JPEG as a playlist's cover from the app, see it in the web
+player, and see the app's row and page show it without a relaunch.
