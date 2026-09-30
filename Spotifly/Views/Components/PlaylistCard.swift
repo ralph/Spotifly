@@ -19,7 +19,7 @@ struct PlaylistCard: View {
             navigationCoordinator.navigateToPlaylistSection(playlistId: id)
         } label: {
             VStack(spacing: 8) {
-                Artwork.card(images, symbol: "music.note.list", symbolSize: 40)
+                Artwork.card(images, symbol: "music.note.list")
 
                 Text(name)
                     .font(.caption.weight(.medium))

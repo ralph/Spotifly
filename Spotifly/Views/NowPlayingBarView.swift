@@ -203,6 +203,7 @@ struct NowPlayingBarView: View {
     private func placeholderAlbumArt(size: CGFloat) -> some View {
         Image(systemName: "music.note")
             .font(.title3)
+            .foregroundStyle(.secondary)
             .frame(width: size, height: size)
             .background(.quaternary)
             .clipShape(.rect(cornerRadius: 4))

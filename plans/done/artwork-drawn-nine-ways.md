@@ -13,7 +13,7 @@ Found: 2026-09-29, in the reuse review of `plans/done/artwork-stuck-after-networ
 
 Every artwork in the app loads through `RetryingAsyncImage`, but each of nine sites wrote out
 its own phase switch: a spinner while loading, the image resized, filled, framed and clipped, a
-placeholder on failure. Six of them now use one view, `Artwork`, which `CardArtwork` became.
+placeholder on failure. Seven of them now use one view, `Artwork`, which `CardArtwork` became.
 
 ## Problem
 
@@ -38,13 +38,28 @@ placeholder on failure. Six of them now use one view, `Artwork`, which `CardArtw
 - **`Artwork.card(_:shape:symbol:symbolSize:)`** is what `CardArtwork` was: 120 points, a
   rounded square or a circle, a shadow of 2. `Artwork.cardSize` replaces `CardArtwork.size`
   for the captions.
-- **The five sites** pass what they differ in. `TrackRow` still leaves the column out for a
-  track with no images at all, as it did.
+- **`Artwork.header(_:shape:symbol:symbolSize:)`** is the 200-point artwork at the top of an
+  album's, an artist's and a playlist's page, with a shadow of 10.
+- **The discography, `TrackRow` and `LibraryListView`** pass what they differ in. `TrackRow`
+  still leaves the column out for a track with no images at all, as it did, and hands every row
+  one shape made once.
+- **The artist's own image** fits after all, as a header with a circle: its placeholder was the
+  one difference, and it now matches the artist cards'.
 - **One look for the placeholder:** a secondary glyph on a quaternary fill of the artwork's
-  shape. The album and playlist headers and a track row's failed artwork drew their glyph in the
-  primary colour, which the cards, the discography and the library lists did not. This is the
-  one visible change.
-- The three that do not fit keep their own switch around `RetryingAsyncImage`.
+  shape. The visible changes:
+  - the album and playlist headers, a track row's failed artwork and the now-playing bar drew
+    their glyph in the primary colour; the bar keeps its own view but now draws it secondary;
+  - the artist header's placeholder was a large tertiary person glyph with no fill.
+- **Left out:** the now-playing bar, which keeps its loaded image in state, and the profile
+  avatar, which falls back to initials. Each keeps its own switch around `RetryingAsyncImage`.
+
+### Not done
+
+- `ArtistDetailView` keeps a private `AlbumCard` for the discography, 150 points with the
+  release year, beside `Components/AlbumCard`. One card with a caption option would remove it
+  and its set of artwork values. A design question more than a duplicate.
+- Whether the now-playing bar's cached image still earns its keep. It came with a change about
+  resizing the bar, and the bar has one call site now; if not, the bar fits `Artwork` too.
 
 ## Verification
 
@@ -53,10 +68,13 @@ placeholder on failure. Six of them now use one view, `Artwork`, which `CardArtw
   - the start page's cards, square and round, with their shadow;
   - the Albums and Artists lists (36 points, rounded and round);
   - an album's header (200 points, radius 8, shadow);
+  - an artist's header (200 points, a circle, shadow);
   - an artist's discography (150 points, radius 8, no shadow);
   - a playlist's track rows (40 points, radius 4);
   - the placeholder, in the header and the list row of a playlist without a cover: a secondary
     glyph on a quaternary rounded square.
+- [x] Rebuilt after the review, 2026-09-30: an artist's header as a circle with its shadow, and the
+      now-playing bar's placeholder glyph in grey.
 - [ ] Light mode. Not switched: the colours are the semantic `.secondary` and `.quaternary`, as
       before.
 - [ ] A failed load. Not induced; it shows the same placeholder as no artwork, seen above.

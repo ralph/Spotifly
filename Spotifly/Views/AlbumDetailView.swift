@@ -70,14 +70,7 @@ struct AlbumDetailView: View {
             VStack(spacing: 24) {
                 // Album art and metadata
                 VStack(spacing: 16) {
-                    Artwork(
-                        images: album.images,
-                        size: 200,
-                        shape: AnyShape(.rect(cornerRadius: 8)),
-                        symbol: "music.note",
-                        symbolFont: .system(size: 60),
-                        shadowRadius: 10,
-                    )
+                    Artwork.header(album.images, symbol: "music.note")
 
                     VStack(spacing: 8) {
                         Text(album.name)

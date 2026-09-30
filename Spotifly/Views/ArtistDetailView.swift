@@ -13,7 +13,6 @@ struct ArtistDetailView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(AppStore.self) private var store
     @Environment(ArtistService.self) private var artistService
-    @Environment(\.displayScale) private var displayScale
 
     @State private var isLoadingAlbums = false
     @State private var failure: LoadFailure?
@@ -66,28 +65,7 @@ struct ArtistDetailView: View {
             VStack(spacing: 24) {
                 // Artist image and metadata
                 VStack(spacing: 16) {
-                    if let url = artist.images.url(for: 200, scale: displayScale) {
-                        RetryingAsyncImage(url: url) { phase in
-                            switch phase {
-                            case .empty:
-                                ProgressView()
-                                    .frame(width: 200, height: 200)
-                            case let .success(image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 200, height: 200)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 10)
-                            case .failure:
-                                artistImagePlaceholder
-                            @unknown default:
-                                EmptyView()
-                            }
-                        }
-                    } else {
-                        artistImagePlaceholder
-                    }
+                    Artwork.header(artist.images, shape: AnyShape(.circle), symbol: "person.circle.fill", symbolSize: 100)
 
                     Text(artist.name)
                         .font(.title)
@@ -142,13 +120,6 @@ struct ArtistDetailView: View {
             }
             .padding(.bottom, 100)
         }
-    }
-
-    private var artistImagePlaceholder: some View {
-        Image(systemName: "person.circle.fill")
-            .resizable()
-            .frame(width: 200, height: 200)
-            .foregroundStyle(.tertiary)
     }
 
     /// A card view for displaying an album in the grid

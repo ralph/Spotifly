@@ -20,7 +20,7 @@ struct AlbumCard: View {
             navigationCoordinator.navigateToAlbumSection(albumId: id)
         } label: {
             VStack(spacing: 8) {
-                Artwork.card(images, symbol: "music.note", symbolSize: 40)
+                Artwork.card(images, symbol: "music.note")
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)

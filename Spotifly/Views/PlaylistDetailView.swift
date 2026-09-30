@@ -140,22 +140,11 @@ struct PlaylistDetailView: View {
 
     private func playlistHeader(_ playlist: Playlist) -> some View {
         VStack(spacing: 16) {
-            playlistArtwork(playlist)
+            Artwork.header(playlist.images, symbol: "music.note.list")
             playlistMetadata(playlist)
             playlistActions()
         }
         .padding(.top, 24)
-    }
-
-    private func playlistArtwork(_ playlist: Playlist) -> some View {
-        Artwork(
-            images: playlist.images,
-            size: 200,
-            shape: AnyShape(.rect(cornerRadius: 8)),
-            symbol: "music.note.list",
-            symbolFont: .system(size: 60),
-            shadowRadius: 10,
-        )
     }
 
     private func playlistMetadata(_ playlist: Playlist) -> some View {

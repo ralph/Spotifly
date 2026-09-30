@@ -21,7 +21,7 @@ struct TrackCard: View {
             }
         } label: {
             VStack(spacing: 8) {
-                Artwork.card(track.images, symbol: "music.note", symbolSize: 40)
+                Artwork.card(track.images, symbol: "music.note")
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.name)

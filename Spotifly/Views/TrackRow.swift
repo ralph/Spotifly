@@ -49,6 +49,10 @@ struct TrackRow: View {
     let itemUid: String?
     let onDoubleTap: (@MainActor () async -> Void)? // Playback action on double-tap
 
+    /// Made once, not in every row's body, so a row hands its artwork the same shape each time
+    /// the list redraws.
+    private static let artworkShape = AnyShape(.rect(cornerRadius: 4))
+
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
 
@@ -136,7 +140,7 @@ struct TrackRow: View {
                 Artwork(
                     images: track.images,
                     size: 40,
-                    shape: AnyShape(.rect(cornerRadius: 4)),
+                    shape: Self.artworkShape,
                     symbol: "music.note",
                     symbolFont: .caption,
                 )

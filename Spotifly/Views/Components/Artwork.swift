@@ -9,12 +9,6 @@ import SwiftUI
 
 /// A square artwork: a spinner while it loads, the image clipped to its shape, and a glyph
 /// placeholder when there is no artwork or it fails to load.
-///
-/// The cards, the album and playlist headers, an artist's discography, the track rows and the
-/// library lists each wrote this out themselves, differing only in what they pass here. What
-/// does not fit keeps its own switch around `RetryingAsyncImage`: an artist's own image, whose
-/// placeholder is a person, the now-playing bar, which keeps the last image through a change of
-/// track, and the profile's avatar, which falls back to initials.
 struct Artwork: View {
     let images: ImageSet
     /// The side of the square, in points; it also picks the image variant to load.
@@ -26,8 +20,7 @@ struct Artwork: View {
     let symbolFont: Font
     /// A shadow under the loaded image; the placeholder has none.
     var shadowRadius: CGFloat?
-    /// Shows the placeholder instead of a spinner while the image loads, for a list's rows,
-    /// where a spinner in every row would be noise.
+    /// Shows the placeholder instead of a spinner while the image loads, as the library lists do.
     var placeholderWhileLoading = false
 
     @Environment(\.displayScale) private var displayScale
@@ -87,7 +80,7 @@ extension Artwork {
         _ images: ImageSet,
         shape: AnyShape = AnyShape(.rect(cornerRadius: 4)),
         symbol: String,
-        symbolSize: CGFloat,
+        symbolSize: CGFloat = 40,
     ) -> Artwork {
         Artwork(
             images: images,
@@ -96,6 +89,23 @@ extension Artwork {
             symbol: symbol,
             symbolFont: .system(size: symbolSize),
             shadowRadius: 2,
+        )
+    }
+
+    /// The artwork at the top of an album's, an artist's or a playlist's page.
+    static func header(
+        _ images: ImageSet,
+        shape: AnyShape = AnyShape(.rect(cornerRadius: 8)),
+        symbol: String,
+        symbolSize: CGFloat = 60,
+    ) -> Artwork {
+        Artwork(
+            images: images,
+            size: 200,
+            shape: shape,
+            symbol: symbol,
+            symbolFont: .system(size: symbolSize),
+            shadowRadius: 10,
         )
     }
 }
