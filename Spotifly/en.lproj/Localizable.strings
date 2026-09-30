@@ -112,6 +112,7 @@
 "queue.open" = "Open queue";
 "queue.playing_from" = "Playing from";
 "queue.on_device" = "on";
+"queue.playing_on" = "Playing on";
 "queue.song_count %lld %lld" = "%lld songs (%lld upcoming)";
 "queue.scroll_to_current" = "Scroll to current track";
 "queue.clear" = "Clear upcoming tracks";

@@ -896,7 +896,7 @@ final class PlaybackViewModel {
             skip(
                 "skip(toPrevious:)",
                 local: { try await SpotifyPlayer.skip(toPrevious: index, uri: uri) },
-                remote: .play(uri: store?.queue.contextUri ?? uri, trackUri: uri),
+                remote: .play(uri: player.queue?.context ?? uri, trackUri: uri),
             )
         }
     }
