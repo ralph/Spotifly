@@ -16,23 +16,51 @@ import SwiftUI
 /// red text, or in the artist's case nothing at all, and the only retry was
 /// navigating away and back.
 struct InlineLoadError: View {
-    let message: String
-    /// Nil where asking again cannot help, as for an album Spotify has none of. The button
-    /// would only ever fail again.
-    let retry: (() async -> Void)?
+    let failure: LoadFailure
+    let retry: () async -> Void
+
+    private let network = NetworkMonitor.shared
 
     var body: some View {
         VStack(spacing: 8) {
-            Text(message)
+            Text(failure.message)
                 .foregroundStyle(.red)
                 .multilineTextAlignment(.center)
 
-            if let retry {
+            if failure.canRetry {
                 Button("action.try_again") {
                     Task { await retry() }
                 }
             }
         }
         .padding()
+        // A load that failed while the network was away is asked for again when it returns,
+        // as its artwork is, rather than waiting for Try again.
+        .onChange(of: network.returns) {
+            if failure.canRetry {
+                Task { await retry() }
+            }
+        }
+    }
+}
+
+/// What a detail page says went wrong, and whether its Try again could end differently.
+struct LoadFailure {
+    let message: String
+    /// False where asking again gets the same answer, as for an album Spotify has none of: the
+    /// button would only ever fail again. See `isRetryable(_:)`.
+    let canRetry: Bool
+
+    /// A load that failed.
+    init(_ error: Error) {
+        message = error.localizedDescription
+        canRetry = isRetryable(error)
+    }
+
+    /// An action on the page that failed, such as a rename. Try again reloads the page, which
+    /// is what brings its contents back after the message took their place.
+    init(message: String) {
+        self.message = message
+        canRetry = true
     }
 }

@@ -19,6 +19,7 @@ final class PlaylistService {
     /// The user's playlist list, whose pages are one run at a time under one key.
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-playlists"
+    private let notFound = NotFoundMemory(.playlist)
 
     /// The account's own profile, which the library writes address the rootlist by.
     private let profileRequests = InFlightRequests<Void>()
@@ -100,8 +101,10 @@ final class PlaylistService {
     func ensurePlaylistLoaded(playlistId: String) async throws {
         guard store.playlists[playlistId]?.tracksLoaded != true else { return }
 
-        try await playlistRequests.run(playlistId) {
-            try await self.loadPlaylist(playlistId: playlistId)
+        try await notFound.load(playlistId) {
+            try await playlistRequests.run(playlistId) {
+                try await self.loadPlaylist(playlistId: playlistId)
+            }
         }
     }
 

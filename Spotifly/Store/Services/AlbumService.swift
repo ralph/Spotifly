@@ -24,6 +24,7 @@ final class AlbumService {
     /// The saved-albums list, whose pages are one run at a time under one key.
     private let listRequests = InFlightRequests<Void>()
     private static let listKey = "user-albums"
+    private let notFound = NotFoundMemory(.album)
 
     init(
         store: AppStore,
@@ -92,8 +93,10 @@ final class AlbumService {
             return
         }
 
-        try await albumRequests.run(albumId) {
-            try await self.loadAlbum(albumId: albumId)
+        try await notFound.load(albumId) {
+            try await albumRequests.run(albumId) {
+                try await self.loadAlbum(albumId: albumId)
+            }
         }
     }
 

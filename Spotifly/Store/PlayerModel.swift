@@ -29,6 +29,9 @@ final class PlayerModel {
     /// The queue around the current track, and the context it plays from.
     private(set) var queue: QueueState?
 
+    /// The tracks playback found Spotify withholds this login, which no list had said.
+    private(set) var withheld: Set<String> = []
+
     /// The logical Connect volume, 0–1; nil until one has been set.
     private(set) var volume: Double?
 
@@ -83,6 +86,9 @@ final class PlayerModel {
         }
         if snapshot.queue != queue {
             queue = snapshot.queue
+        }
+        if snapshot.withheld != withheld {
+            withheld = snapshot.withheld
         }
         if snapshot.volume != volume {
             volume = snapshot.volume

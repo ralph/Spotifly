@@ -68,7 +68,7 @@ As for albums and artists in #82:
    again when `isRetryable` says so, on both of its error lines.
 5. `SPOTIFLY_DEBUG_OPEN` opens a `spotify:playlist:` page too, to see it.
 
-Not changed, and recorded in `plans/open/entity-unions-accept-any-typename.md`:
+Not changed, and recorded in `plans/done/entity-unions-accept-any-typename.md`:
 
 - A `GenericError` union still reads as "Spotify returned no data", with a retry. The three
   guards single out `NotFound` rather than accept only the success name.
