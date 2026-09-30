@@ -10,55 +10,53 @@ import Foundation
 import Testing
 
 struct MirroredQueueTests {
-    private func row(_ id: String, hidden: Bool = false, iteration: Int = 0) -> ProvidedTrack {
-        var track = ProvidedTrack(uri: "spotify:track:\(id)", uid: "uid-\(id)-\(iteration)")
-        track.metadata = ["iteration": "\(iteration)"]
-        if hidden {
-            track.metadata["hidden"] = "true"
-        }
+    private func row(_ id: String, hidden: Bool = false) -> ProvidedTrack {
+        var track = ProvidedTrack(uri: "spotify:track:\(id)")
+        track.metadata = hidden ? ["hidden": "true"] : [:]
         return track
     }
 
-    private func delimiter(iteration: Int) -> ProvidedTrack {
-        var track = ProvidedTrack(uri: "spotify:delimiter", uid: "delimiter\(iteration)")
-        track.metadata = ["hidden": "true", "iteration": "\(iteration)"]
+    private let delimiter: ProvidedTrack = {
+        var track = ProvidedTrack(uri: "spotify:delimiter")
+        track.metadata = ["hidden": "true"]
         return track
-    }
+    }()
 
     /// The shape the web player sent on 2026-09-30 for an album: its rows, a delimiter, then
     /// the album again as the next iteration.
     private func album(nextIterationHidden: Bool) -> PlayerState {
         var state = PlayerState()
         state.contextUri = "spotify:album:a"
-        state.nextTracks = [row("t2"), row("t3"), delimiter(iteration: 0)]
-            + ["t1", "t2", "t3"].map { row($0, hidden: nextIterationHidden, iteration: 1) }
-            + [delimiter(iteration: 1)]
+        state.track = row("t1")
+        state.nextTracks = [row("t2"), row("t3"), delimiter]
+            + ["t1", "t2", "t3"].map { row($0, hidden: nextIterationHidden) }
+            + [delimiter]
         return state
     }
 
+    private func uris(_ ids: String...) -> [String] {
+        ids.map { "spotify:track:\($0)" }
+    }
+
     @Test func `with repeat off, the queue ends with the context's last track`() {
-        let state = album(nextIterationHidden: true)
+        let queue = LibrespotClient.mirroredQueue(of: album(nextIterationHidden: true))
 
-        let queue = LibrespotClient.mirroredQueue(of: state, current: row("t1"))
-
-        #expect(queue.nextTracks.map(\.uri) == ["spotify:track:t2", "spotify:track:t3"])
+        #expect(queue.nextTracks.map(\.uri) == uris("t2", "t3"))
+        #expect(queue.currentTrack?.uri == "spotify:track:t1")
         #expect(queue.context == "spotify:album:a")
     }
 
     @Test func `with repeat on, the next iteration shows, without its delimiters`() {
-        let state = album(nextIterationHidden: false)
+        let queue = LibrespotClient.mirroredQueue(of: album(nextIterationHidden: false))
 
-        let queue = LibrespotClient.mirroredQueue(of: state, current: row("t1"))
-
-        #expect(queue.nextTracks.map(\.uri) == ["t2", "t3", "t1", "t2", "t3"].map { "spotify:track:\($0)" })
+        #expect(queue.nextTracks.map(\.uri) == uris("t2", "t3", "t1", "t2", "t3"))
     }
 
     @Test func `a hidden row before the current track is left out too`() {
         var state = PlayerState()
-        state.prevTracks = [row("t1"), delimiter(iteration: 0)]
+        state.track = row("t2")
+        state.prevTracks = [row("t1"), delimiter]
 
-        let queue = LibrespotClient.mirroredQueue(of: state, current: row("t2"))
-
-        #expect(queue.previousTracks.map(\.uri) == ["spotify:track:t1"])
+        #expect(LibrespotClient.mirroredQueue(of: state).previousTracks.map(\.uri) == uris("t1"))
     }
 }
