@@ -90,34 +90,18 @@ struct QueueListView: View {
     /// for Liked Songs, which plays as a playlist the store has no entry for, the section's.
     /// The player's, from the resolver or the cluster, names the rest, such as a playlist
     /// started on another device or a radio station, which has no page to open.
-    private var contextInfo: (link: ContextLink?, name: String)? {
+    private var contextInfo: (route: Route?, name: String)? {
         guard let queue = player.queue, let uri = queue.context else { return nil }
 
-        let link: ContextLink?
-        let ownName: String?
-        if uri == LikedSongs.uri {
-            link = .favorites
-            ownName = NavigationItem.favorites.title
-        } else if let id = SpotifyURI.id(from: uri, kind: "album") {
-            link = .album(id)
-            ownName = store.albums[id]?.name
-        } else if let id = SpotifyURI.id(from: uri, kind: "playlist") {
-            link = .playlist(id)
-            ownName = store.playlists[id]?.name
-        } else if let id = SpotifyURI.id(from: uri, kind: "artist") {
-            link = .artist(id)
-            ownName = store.artists[id]?.name
+        let route = Route(contextUri: uri)
+        let ownName = if let selection = route?.selection {
+            store.name(of: selection)
         } else {
-            link = nil
-            ownName = nil
+            route?.section?.title
         }
 
         guard let name = ownName ?? queue.contextName else { return nil }
-        return (link, name)
-    }
-
-    private enum ContextLink {
-        case album(String), playlist(String), artist(String), favorites
+        return (route, name)
     }
 
     var body: some View {
@@ -182,9 +166,9 @@ struct QueueListView: View {
             if let context = contextInfo {
                 Text("queue.playing_from")
 
-                if let link = context.link {
+                if let route = context.route {
                     Button {
-                        navigate(to: link)
+                        navigationCoordinator.navigate(to: route)
                     } label: {
                         Text("\"\(context.name)\"")
                             .foregroundStyle(.green)
@@ -202,19 +186,6 @@ struct QueueListView: View {
 
             Image(systemName: deviceIcon)
             Text(device.name)
-        }
-    }
-
-    private func navigate(to link: ContextLink) {
-        switch link {
-        case let .album(id):
-            navigationCoordinator.navigateToAlbumSection(albumId: id)
-        case let .playlist(id):
-            navigationCoordinator.navigateToPlaylistSection(playlistId: id)
-        case let .artist(id):
-            navigationCoordinator.navigateToArtistSection(artistId: id)
-        case .favorites:
-            navigationCoordinator.selectNavigationItem(.favorites)
         }
     }
 

@@ -178,17 +178,17 @@ final class NavigationCoordinator {
 
     /// Navigate directly to the Albums section and a specific album.
     func navigateToAlbumSection(albumId: String) {
-        navigate(to: Route(section: .albums, selection: .album(id: albumId)))
+        navigate(to: Route(showing: .album(id: albumId)))
     }
 
     /// Navigate directly to the Artists section and a specific artist.
     func navigateToArtistSection(artistId: String) {
-        navigate(to: Route(section: .artists, selection: .artist(id: artistId)))
+        navigate(to: Route(showing: .artist(id: artistId)))
     }
 
     /// Navigate directly to the Playlists section and a specific playlist.
     func navigateToPlaylistSection(playlistId: String) {
-        navigate(to: Route(section: .playlists, selection: .playlist(id: playlistId)))
+        navigate(to: Route(showing: .playlist(id: playlistId)))
     }
 
     /// Navigate directly to the queue.
@@ -303,7 +303,9 @@ final class NavigationCoordinator {
         }
     }
 
-    private func navigate(to route: Route) {
+    /// Goes to a route as a new location, such as the page of a context uri
+    /// (`Route(contextUri:)`).
+    func navigate(to route: Route) {
         historyRestoreTarget = nil
         if route != current {
             appendToBack(current)
@@ -427,25 +429,14 @@ final class NavigationCoordinator {
             case .searchTracks:
                 return String(localized: "section.tracks")
             case let .artist(id):
-                return name(of: .artist(id: id)) ?? sectionTitle
+                return store?.name(of: .artist(id: id)) ?? sectionTitle
             case let .album(id):
-                return name(of: .album(id: id)) ?? sectionTitle
+                return store?.name(of: .album(id: id)) ?? sectionTitle
             case let .playlist(id):
-                return name(of: .playlist(id: id)) ?? sectionTitle
+                return store?.name(of: .playlist(id: id)) ?? sectionTitle
             }
         }
 
-        return route.selection.flatMap(name(of:)) ?? sectionTitle
-    }
-
-    private func name(of selection: Selection) -> String? {
-        switch selection {
-        case let .album(id):
-            store?.albums[id]?.name
-        case let .artist(id):
-            store?.artists[id]?.name
-        case let .playlist(id):
-            store?.playlists[id]?.name
-        }
+        return route.selection.flatMap { store?.name(of: $0) } ?? sectionTitle
     }
 }
