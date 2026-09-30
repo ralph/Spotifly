@@ -19,13 +19,13 @@ struct ArtistCard: View {
             navigationCoordinator.navigateToArtistSection(artistId: id)
         } label: {
             VStack(spacing: 8) {
-                CardArtwork(images: images, outline: .circle, symbol: "person.circle.fill", symbolSize: 60)
+                Artwork.card(images, shape: AnyShape(.circle), symbol: "person.circle.fill", symbolSize: 60)
 
                 Text(name)
                     .font(.caption.weight(.medium))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .frame(width: CardArtwork.size)
+                    .frame(width: Artwork.cardSize)
             }
         }
         .buttonStyle(.plain)

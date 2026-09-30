@@ -13,7 +13,6 @@ struct ArtistDetailView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(AppStore.self) private var store
     @Environment(ArtistService.self) private var artistService
-    @Environment(\.displayScale) private var displayScale
 
     @State private var isLoadingAlbums = false
     @State private var failure: LoadFailure?
@@ -66,28 +65,7 @@ struct ArtistDetailView: View {
             VStack(spacing: 24) {
                 // Artist image and metadata
                 VStack(spacing: 16) {
-                    if let url = artist.images.url(for: 200, scale: displayScale) {
-                        RetryingAsyncImage(url: url) { phase in
-                            switch phase {
-                            case .empty:
-                                ProgressView()
-                                    .frame(width: 200, height: 200)
-                            case let .success(image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 200, height: 200)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 10)
-                            case .failure:
-                                artistImagePlaceholder
-                            @unknown default:
-                                EmptyView()
-                            }
-                        }
-                    } else {
-                        artistImagePlaceholder
-                    }
+                    Artwork.header(artist.images, shape: AnyShape(.circle), symbol: "person.circle.fill", symbolSize: 100)
 
                     Text(artist.name)
                         .font(.title)
@@ -144,44 +122,21 @@ struct ArtistDetailView: View {
         }
     }
 
-    private var artistImagePlaceholder: some View {
-        Image(systemName: "person.circle.fill")
-            .resizable()
-            .frame(width: 200, height: 200)
-            .foregroundStyle(.tertiary)
-    }
-
     /// A card view for displaying an album in the grid
     private struct AlbumCard: View {
         let album: Album
         let onTap: () -> Void
 
-        @Environment(\.displayScale) private var displayScale
-
         var body: some View {
             Button(action: onTap) {
                 VStack(alignment: .leading, spacing: 8) {
-                    if let url = album.images.url(for: 150, scale: displayScale) {
-                        RetryingAsyncImage(url: url) { phase in
-                            switch phase {
-                            case .empty:
-                                ProgressView()
-                                    .frame(width: 150, height: 150)
-                            case let .success(image):
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 150, height: 150)
-                                    .clipShape(.rect(cornerRadius: 8))
-                            case .failure:
-                                albumPlaceholder
-                            @unknown default:
-                                EmptyView()
-                            }
-                        }
-                    } else {
-                        albumPlaceholder
-                    }
+                    Artwork(
+                        images: album.images,
+                        size: 150,
+                        shape: AnyShape(.rect(cornerRadius: 8)),
+                        symbol: "music.note",
+                        symbolFont: .system(size: 40),
+                    )
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(album.name)
@@ -195,15 +150,6 @@ struct ArtistDetailView: View {
                 }
             }
             .buttonStyle(.plain)
-        }
-
-        private var albumPlaceholder: some View {
-            Image(systemName: "music.note")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-                .frame(width: 150, height: 150)
-                .background(.quaternary)
-                .clipShape(.rect(cornerRadius: 8))
         }
 
         private func formatReleaseYear(_ dateString: String?) -> String {

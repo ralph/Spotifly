@@ -433,6 +433,9 @@ public actor LibrespotClient {
     ///   - trackIndex: where in the context to start; nil for its start.
     ///   - startingAtUri: the track to start on. With an index as well, the
     ///     track decides; see `PlaybackQueue.start(in:index:uri:)`.
+    ///   - resumingAtUid: the context row that plays after `startingAtUri`, which plays as
+    ///     queued, as a handover names it while a queued track plays; see
+    ///     `PlaybackQueue.start(in:queued:resumingAt:uids:)`.
     ///   - positionMs: where in that track to start.
     ///   - paused: load it without starting playout, as a paused handover does.
     public func play(
@@ -440,6 +443,7 @@ public actor LibrespotClient {
         trackIndex: Int? = nil,
         startingAtUri: String? = nil,
         startingAtUid: String? = nil,
+        resumingAtUid: String? = nil,
         positionMs: UInt64 = 0,
         paused: Bool = false,
     ) async throws {
@@ -462,11 +466,17 @@ public actor LibrespotClient {
             throw LibrespotError.trackNotFound("Context has no tracks")
         }
 
-        // No track named, as by Play on an album or a playlist: its first that plays.
-        let start = trackIndex == nil && startingAtUri == nil
-            ? (tracks: context.tracks, index: firstPlayable(in: context.tracks))
-            : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: context.uids)
-        setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: start.tracks, startIndex: start.index, name: context.name)
+        if let resumingAtUid, let queued = startingAtUri,
+           let start = PlaybackQueue.start(in: context.tracks, queued: queued, resumingAt: resumingAtUid, uids: context.uids)
+        {
+            setQueue(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name, playingQueued: start.queued)
+        } else {
+            // No track named, as by Play on an album or a playlist: its first that plays.
+            let start = trackIndex == nil && startingAtUri == nil
+                ? (tracks: context.tracks, index: firstPlayable(in: context.tracks))
+                : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: context.uids)
+            setQueue(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name)
+        }
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
@@ -531,6 +541,13 @@ public actor LibrespotClient {
         if contextUri.isEmpty {
             // Started from a bare list of uris, so the list is all there is.
             try await playTracks([mirrored.trackUri] + (queue?.nextTracks.map(\.uri) ?? []), positionMs: positionMs)
+        } else if queue?.currentTrack?.provider == "queue" {
+            // A queued track plays as queued here too: the queued rows after it stay queued, and the
+            // context goes on with the row the other device had next, as a handover leaves them.
+            let next = queue?.nextTracks ?? []
+            playbackQueue.replaceUserQueue(with: next.prefix { $0.provider == "queue" }.map(\.uri))
+            let resume = next.first { $0.provider != "queue" }?.uid
+            try await play(uriOrUrl: contextUri, startingAtUri: mirrored.trackUri, resumingAtUid: resume, positionMs: positionMs)
         } else {
             try await play(uriOrUrl: contextUri, startingAtUri: mirrored.trackUri, startingAtUid: queue?.currentTrack?.uid, positionMs: positionMs)
         }
@@ -769,9 +786,14 @@ public actor LibrespotClient {
 
     // MARK: - Queue Plumbing
 
-    private func setQueue(contextUri: String, tracks: [String], startIndex: Int, name: String? = nil) {
+    /// - Parameter queued: a track to play as queued, after the context's start row.
+    private func setQueue(contextUri: String, tracks: [String], startIndex: Int, name: String? = nil, playingQueued queued: String? = nil) {
         contextName = name
         playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex)
+        // Before the publish, so the row before it never shows as the one playing.
+        if let queued {
+            playbackQueue.playQueued(queued)
+        }
         publishQueue()
     }
 
@@ -936,7 +958,7 @@ public actor LibrespotClient {
     private var queueState: QueueState {
         QueueState(
             contextUri: playbackQueue.contextUri,
-            currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: "context") },
+            currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: playbackQueue.currentProvider) },
             nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             contextName: contextName,
@@ -1310,6 +1332,7 @@ public actor LibrespotClient {
                     uriOrUrl: transfer.contextUri,
                     startingAtUri: track,
                     startingAtUid: transfer.currentTrackUid,
+                    resumingAtUid: transfer.contextResumeUid,
                     positionMs: positionMs,
                     paused: transfer.isPaused,
                 )

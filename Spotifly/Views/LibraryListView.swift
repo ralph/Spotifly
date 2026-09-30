@@ -229,33 +229,18 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
     let isSelected: Bool
     let onSelect: () -> Void
 
-    @Environment(\.displayScale) private var displayScale
     @State private var isHovering = false
-
-    private let imageSize: CGFloat = 36
 
     var body: some View {
         HStack(spacing: 10) {
-            if let url = entity.images.url(for: imageSize, scale: displayScale) {
-                RetryingAsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        placeholder
-                    case let .success(image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: imageSize, height: imageSize)
-                            .clipShape(style.artworkShape)
-                    case .failure:
-                        placeholder
-                    @unknown default:
-                        EmptyView()
-                    }
-                }
-            } else {
-                placeholder
-            }
+            Artwork(
+                images: entity.images,
+                size: 36,
+                shape: style.artworkShape,
+                symbol: style.placeholderGlyph,
+                symbolFont: .system(size: 16),
+                placeholderWhileLoading: true,
+            )
 
             Text(entity.name)
                 .font(.system(size: 13))
@@ -288,14 +273,5 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
         .onHover { hovering in
             isHovering = hovering
         }
-    }
-
-    private var placeholder: some View {
-        Image(systemName: style.placeholderGlyph)
-            .font(.system(size: 16))
-            .foregroundStyle(.secondary)
-            .frame(width: imageSize, height: imageSize)
-            .background(.quaternary)
-            .clipShape(style.artworkShape)
     }
 }

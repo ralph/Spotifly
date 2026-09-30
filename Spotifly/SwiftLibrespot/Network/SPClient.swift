@@ -274,7 +274,6 @@ public actor SPClient {
 
     /// An ordered track list resolved from a context uri.
     public struct ResolvedContext: Sendable {
-        public let uri: String
         public let tracks: [String]
         /// Each track's `uid`, beside `tracks`, or nil where the answer has none. A playlist's
         /// tracks have one, an album's none (measured 2026-09-30).
@@ -330,7 +329,7 @@ public actor SPClient {
 
         debugLog("SPClient", "Context resolved: \(allTracks.count) track(s)")
 
-        return ResolvedContext(uri: contextUri, tracks: allTracks, uids: allUids, name: name)
+        return ResolvedContext(tracks: allTracks, uids: allUids, name: name)
     }
 
     /// Parses the context resolver's answer. Despite the protobuf `Accept`

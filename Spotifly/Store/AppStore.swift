@@ -157,6 +157,15 @@ final class AppStore {
         savedTrackIds.compactMap { tracks[$0] }
     }
 
+    /// The name of a selection's entity, nil while the store does not hold it.
+    func name(of selection: Selection) -> String? {
+        switch selection {
+        case let .album(id): albums[id]?.name
+        case let .artist(id): artists[id]?.name
+        case let .playlist(id): playlists[id]?.name
+        }
+    }
+
     // MARK: - Queue Computed Properties
 
     /// Current track entity from the tracks store
