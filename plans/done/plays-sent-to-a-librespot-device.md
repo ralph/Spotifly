@@ -1,8 +1,8 @@
 # A play sent to a librespot device may not parse
 
-Status: **Done** 2026-09-29. Read from librespot's code; the new shape checked against Spotify's
-backend; not yet seen reaching a librespot device, which needs one signed in to the account;
-see Verification.
+Status: **Done** 2026-09-29 (#101). Read from librespot's code; the new shape checked against
+Spotify's backend, and a play seen reaching the web player on 2026-09-30; not yet seen reaching a
+librespot device, which needs one signed in to the account; see Verification.
 Components: `Spotifly/PartnerAPI/ConnectState.swift` (`ConnectCommand`, `Context`)
 Found: 2026-09-29, while fixing `plans/done/remote-track-list-play-starts-at-the-top.md`
 
@@ -81,8 +81,16 @@ the web player's say, and what Spotify's backend accepts.
       `uri` or `url`; the existing play tests pass unchanged.
 - [x] Spotify's backend accepts both new shapes, as above.
 - [x] Build, 443 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
-- [ ] Live, with the app signed in: play an album on the phone from the app, and Play Tracks
-      under Search's "Show all tracks" on the phone. Both play as before.
+- [ ] ~~Live, with the app signed in: play an album on the phone from the app, and Play Tracks under
+      Search's "Show all tracks" on the phone. Both play as before.~~ **Withdrawn: the expectation
+      was wrong**, as in `plans/done/clicked-row-plays-another-track.md`. When this Mac can play, a
+      play started on it plays here (`PlaybackViewModel.playbackTarget`). A `play` goes to another
+      device from a row of the Queue section's history while that device plays, or when this Mac
+      cannot play for the account.
+- [x] Live, 2026-09-30, with the web player as the other device: double-clicking "Sugar Man" in the
+      Queue section's history sent `player/command`, and the web player played it in the album's
+      context. Nothing came back refused. The inline list was not sent: only a Mac that cannot play
+      sends one.
 - [ ] Live, with librespot (`cargo run` from its checkout, signed in to the same account) as a
-      Connect device: the same two plays start there. librespot's log shows no
-      `failed to deserialize` for the `play` command.
+      Connect device: the same two plays start there. librespot's log shows no `failed to
+      deserialize` for the `play` command. Not run: librespot needs its own sign-in.

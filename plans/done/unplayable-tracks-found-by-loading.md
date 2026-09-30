@@ -1,7 +1,7 @@
 # Tracks the app has not listed are found unplayable only by loading them
 
-Status: **Done** 2026-09-29, for its main item, the fetch-ahead report. Built and unit-tested;
-not yet seen in the running app; see Verification. The other items moved to
+Status: **Done** 2026-09-29 (#100), for its main item, the fetch-ahead report. Built and
+unit-tested, and seen in the running app on 2026-09-30; see Verification. The other items moved to
 `plans/open/unplayable-track-attempts-cost-and-show.md`. Recorded 2026-09-29, left over from
 `plans/done/unplayable-tracks-look-playable.md` and #57.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`fetchNextIfDue`,
@@ -64,8 +64,11 @@ A withheld track still has to be fetched ahead once to be found out.
       and one the store only gets afterwards is greyed as it arrives. The pipeline's report is
       a `catch` in the fetch-ahead task, not unit-tested.
 - [x] Build, 446 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
-- [ ] Live: play a context the app has not listed that holds a withheld track, such as Liked
-      Songs started on the phone and taken over here, with "Girlfriend" coming up. During the
-      track before it, the log shows `… is withheld, found out ahead` and then `Fetching <the one
-      after> ahead`, and the queue greys "Girlfriend". At the change, the track after it plays
-      from the fetch (`Using … fetched ahead`), with no load of the withheld one.
+- [x] Live, 2026-09-30, with the web player instead of a phone: Liked Songs started from it played
+      on the Mac from #195 and on into #196, the track before "Girlfriend". During #196 the log
+      showed `Girlfriend …: 0 file(s)`, `… is withheld, found out ahead` and `Fetching <Tilted>
+      ahead`, and the Queue section greyed "Girlfriend". At the change "Tilted" followed without a
+      gap, and there was no `Playing` line for "Girlfriend". Liked Songs started on the Mac stepped
+      over it as before. The handover route placed a relinked current track wrong, so the Mac was
+      started by a play from the web player instead; see
+      `plans/open/handover-of-a-relinked-track-starts-at-the-top.md`.
