@@ -388,4 +388,20 @@ struct SPClientParsingTests {
 
         #expect(try #require(Self.parse(track)).files.isEmpty)
     }
+
+    @Test func `a context resolve answer names its context`() {
+        // The shape measured for Liked Songs on 2026-09-30, cut to one track.
+        let json = #"{"metadata":{"format_list_type":"liked-songs","context_description":"Lieblingssongs"},"pages":[{"tracks":[{"uri":"spotify:track:2vaVAZtZ6p2bC1gBrUwrPA","uid":"95942ae3715ec9d21e76"}]}]}"#
+
+        let report = SPClient.parseContextReport(Data(json.utf8))
+
+        #expect(report.name == "Lieblingssongs")
+        #expect(report.tracks == ["spotify:track:2vaVAZtZ6p2bC1gBrUwrPA"])
+    }
+
+    @Test func `a context resolve answer with an empty description names nothing`() {
+        let json = #"{"metadata":{"context_description":""},"pages":[{"tracks":[{"uri":"spotify:track:a"}]}]}"#
+
+        #expect(SPClient.parseContextReport(Data(json.utf8)).name == nil)
+    }
 }

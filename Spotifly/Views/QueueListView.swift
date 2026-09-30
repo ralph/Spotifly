@@ -81,34 +81,44 @@ struct QueueListView: View {
         return items
     }
 
-    /// Context info parsed from context URI. Read from the player, which says what it plays
-    /// from with every queue it publishes: a copy in the store kept the last non-empty one, so
-    /// a bare list of tracks played under the name of the album before it.
-    private var contextInfo: (type: ContextType, id: String, name: String)? {
-        guard let uri = player.queue?.context else { return nil }
+    /// The context the queue plays from: its name, and the page the name opens. Read from the
+    /// player, which says what it plays from with every queue it publishes: a copy in the store
+    /// kept the last non-empty one, so a bare list of tracks played under the name of the album
+    /// before it.
+    ///
+    /// The store's name comes first, as the one the app shows everywhere else. The player's,
+    /// from the resolver or the cluster, names what the store has not loaded, and Liked Songs,
+    /// which plays as a playlist the store has no entry for.
+    private var contextInfo: (link: ContextLink, name: String)? {
+        guard let queue = player.queue, let uri = queue.context else { return nil }
 
-        if uri.hasPrefix("spotify:album:") {
+        let link: ContextLink
+        let storedName: String?
+        if uri == LikedSongs.uri {
+            link = .favorites
+            storedName = nil
+        } else if uri.hasPrefix("spotify:album:") {
             let id = String(uri.dropFirst("spotify:album:".count))
-            if let album = store.albums[id] {
-                return (.album, id, album.name)
-            }
+            link = .album(id)
+            storedName = store.albums[id]?.name
         } else if uri.hasPrefix("spotify:playlist:") {
             let id = String(uri.dropFirst("spotify:playlist:".count))
-            if let playlist = store.playlists[id] {
-                return (.playlist, id, playlist.name)
-            }
+            link = .playlist(id)
+            storedName = store.playlists[id]?.name
         } else if uri.hasPrefix("spotify:artist:") {
             let id = String(uri.dropFirst("spotify:artist:".count))
-            if let artist = store.artists[id] {
-                return (.artist, id, artist.name)
-            }
+            link = .artist(id)
+            storedName = store.artists[id]?.name
+        } else {
+            return nil
         }
 
-        return nil
+        guard let name = storedName ?? queue.contextName else { return nil }
+        return (link, name)
     }
 
-    private enum ContextType {
-        case album, playlist, artist
+    private enum ContextLink {
+        case album(String), playlist(String), artist(String), favorites
     }
 
     var body: some View {
@@ -175,7 +185,7 @@ struct QueueListView: View {
 
                 // Context name is a tappable link
                 Button {
-                    navigateToContext(type: context.type, id: context.id)
+                    navigate(to: context.link)
                 } label: {
                     Text("\"\(context.name)\"")
                         .foregroundStyle(.green)
@@ -184,7 +194,7 @@ struct QueueListView: View {
 
                 Text("queue.on_device")
             } else {
-                // A bare list of tracks, or a context the store has no name for.
+                // A bare list of tracks, or a context nothing names.
                 Text("queue.playing_on")
             }
 
@@ -193,14 +203,16 @@ struct QueueListView: View {
         }
     }
 
-    private func navigateToContext(type: ContextType, id: String) {
-        switch type {
-        case .album:
+    private func navigate(to link: ContextLink) {
+        switch link {
+        case let .album(id):
             navigationCoordinator.navigateToAlbumSection(albumId: id)
-        case .playlist:
+        case let .playlist(id):
             navigationCoordinator.navigateToPlaylistSection(playlistId: id)
-        case .artist:
+        case let .artist(id):
             navigationCoordinator.navigateToArtistSection(artistId: id)
+        case .favorites:
+            navigationCoordinator.selectNavigationItem(.favorites)
         }
     }
 

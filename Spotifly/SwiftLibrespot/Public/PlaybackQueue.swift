@@ -23,6 +23,9 @@ final nonisolated class PlaybackQueue {
     }
 
     private(set) var contextUri = ""
+    /// What the context calls itself, from the resolver: for Liked Songs, which the store
+    /// has under no name, "Lieblingssongs". Nil for a bare list of tracks.
+    private(set) var contextName: String?
     private(set) var contextTracks: [String] = []
     private(set) var currentIndex = 0
 
@@ -80,8 +83,9 @@ final nonisolated class PlaybackQueue {
     }
 
     /// Replaces the whole playing context.
-    func setContext(uri: String, tracks: [String], startIndex: Int) {
+    func setContext(uri: String, tracks: [String], startIndex: Int, name: String? = nil) {
         contextUri = uri
+        contextName = name
         contextTracks = tracks
         currentIndex = max(0, min(startIndex, tracks.count - 1))
         historyPositions = []

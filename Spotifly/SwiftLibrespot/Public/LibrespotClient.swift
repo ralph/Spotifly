@@ -462,7 +462,7 @@ public actor LibrespotClient {
         let start = trackIndex == nil && startingAtUri == nil
             ? (tracks: context.tracks, index: firstPlayable(in: context.tracks))
             : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri)
-        setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: start.tracks, startIndex: start.index)
+        setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: start.tracks, startIndex: start.index, name: context.name)
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
@@ -765,8 +765,8 @@ public actor LibrespotClient {
 
     // MARK: - Queue Plumbing
 
-    private func setQueue(contextUri: String, tracks: [String], startIndex: Int) {
-        playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex)
+    private func setQueue(contextUri: String, tracks: [String], startIndex: Int, name: String? = nil) {
+        playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex, name: name)
         publishQueue()
     }
 
@@ -908,7 +908,7 @@ public actor LibrespotClient {
             return
         }
         debugLog("LibrespotClient", "End of the context; back to its first track, paused")
-        playbackQueue.setContext(uri: playbackQueue.contextUri, tracks: tracks, startIndex: firstPlayable(in: tracks))
+        playbackQueue.setContext(uri: playbackQueue.contextUri, tracks: tracks, startIndex: firstPlayable(in: tracks), name: playbackQueue.contextName)
         // A failure is reported by `loadAndPlay`, and there is no caller to
         // throw it to.
         try? await loadCurrentTrack(paused: true)
@@ -934,6 +934,7 @@ public actor LibrespotClient {
             currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: "context") },
             nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            contextName: playbackQueue.contextName,
         )
     }
 
@@ -1267,6 +1268,7 @@ public actor LibrespotClient {
             // In play order, as the cluster keeps them and the local queue
             // publishes them.
             previousTracks: remote.prevTracks.filter(shown).map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            contextName: remote.contextMetadata["context_description"].flatMap { $0.isEmpty ? nil : $0 },
         )
     }
 
