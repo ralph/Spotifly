@@ -67,14 +67,14 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                     Text(style.loadingText)
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = pagination.failure, !hasContent {
+            } else if let failure = pagination.failure, !hasContent {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
                     Text(style.errorTitle)
                         .font(.headline)
-                    Text(error)
+                    Text(failure.message)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
@@ -153,22 +153,7 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                             }
                         }
 
-                        // Load more indicator, or why the next page did not come
-                        if pagination.hasMore {
-                            if let failure = pagination.failure {
-                                InlineLoadError(failure: LoadFailure(message: failure)) {
-                                    await loadMoreItems()
-                                }
-                            } else {
-                                ProgressView()
-                                    .padding()
-                                    .onAppear {
-                                        Task {
-                                            await loadMoreItems()
-                                        }
-                                    }
-                            }
-                        }
+                        LoadMoreRow(pagination: pagination, loadMore: loadMoreItems)
                     }
                     .padding()
                 }

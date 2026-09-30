@@ -391,20 +391,19 @@ final class AppStore {
             }
         }
 
-        let page: (received: Int, total: Int)
         do {
-            page = try await load(offset)
+            let page = try await load(offset)
+            try Task.checkCancellation()
+
+            self[keyPath: pagination].isLoaded = true
+            self[keyPath: pagination].advance(by: page.received, total: page.total)
         } catch {
             // A superseded run's error is its replacement's business, not the list's.
-            if !Task.isCancelled, !(error is CancellationError) {
-                self[keyPath: pagination].failure = error.localizedDescription
+            if !Task.isCancelled, !isCancellation(error) {
+                self[keyPath: pagination].failure = LoadFailure(error)
             }
             throw error
         }
-        try Task.checkCancellation()
-
-        self[keyPath: pagination].isLoaded = true
-        self[keyPath: pagination].advance(by: page.received, total: page.total)
     }
 
     // MARK: - User Library Mutations

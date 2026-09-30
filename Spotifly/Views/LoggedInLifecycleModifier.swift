@@ -15,8 +15,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
     let queueService: QueueService
     let deviceService: DeviceService
     let homeService: HomeService
-    /// Loads the profile, through the one request the playlist writes share.
-    let playlistService: PlaylistService
     /// Only the debug hooks use it. Passed in, because `LoggedInView` puts it into the
     /// environment of the content this modifies, not of the modifier.
     let navigationCoordinator: NavigationCoordinator
@@ -253,11 +251,13 @@ struct LoggedInLifecycleModifier: ViewModifier {
     /// Who is logged in. Failure is swallowed, because nothing on this path should block on it:
     /// an app that cannot say who you are is still an app that plays music.
     ///
-    /// Through `PlaylistService.requireProfile`, which the playlist library writes call too, since
-    /// they address the rootlist by username: a load here and one there share one request.
+    /// It is no longer only the settings screen that reads it, though — the playlist library
+    /// writes address the rootlist by username — so `PlaylistService.requireProfile` fetches it
+    /// itself when it is missing rather than trusting this one attempt.
     private func loadProfile() async {
         do {
-            _ = try await playlistService.requireProfile()
+            let profile = try await PartnerAPI().profile()
+            store.setUserProfile(UserProfile(pathfinder: profile))
         } catch {
             debugLog("LoggedInLifecycle", "Profile unavailable: \(error.localizedDescription)")
         }

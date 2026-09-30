@@ -1,19 +1,19 @@
 # List failures the network-return retry cannot see
 
-Status: **Done** 2026-10-01 for the lists and the profile, unit-tested; offline behaviour not seen,
-see Verification. Search is `plans/open/search-failure-not-shown.md`. Stacked on the network-return
-retry (`plans/done/failed-loads-wait-for-try-again.md`).
+Status: **Done** 2026-10-01 for the lists, unit-tested; offline behaviour not seen, see
+Verification. Search is `plans/open/search-failure-not-shown.md`; the two profile loaders stay, see
+Solution. Stacked on the network-return retry (`plans/done/failed-loads-wait-for-try-again.md`).
 Components: `Spotifly/Store/Entities.swift` (`PaginationState.failure`), `Spotifly/Store/AppStore.swift`
 (`loadLibraryPage`), `Spotifly/Views/LibraryListView.swift`, `Spotifly/Views/FavoritesListView.swift`,
-`Spotifly/Views/LoggedInLifecycleModifier.swift` (`loadProfile`),
-`Spotifly/Store/Services/PlaylistService.swift` (`requireProfile`)
+`Spotifly/Views/Components/LoadMoreRow.swift`, `Spotifly/Views/Components/InlineLoadError.swift`
+(`LoadFailure`)
 Found: 2026-09-30, in the review of the network-return retry
 
 ## Summary
 
 The retry follows the failures the views show. Some failures were not shown, or not where it
 looked. A library list's failure is now recorded where every caller that loads the list leaves
-it, and the profile has one loader.
+it.
 
 ## Problem
 
@@ -31,15 +31,21 @@ it, and the profile has one loader.
 
 ## Solution
 
-- **`PaginationState.failure`**: why the last page failed, set in `AppStore.loadLibraryPage`, the
-  one path all four lists share, and cleared when the list's next load starts or it is reset. A
-  run a refresh cancelled records nothing.
+- **`PaginationState.failure`**: a `LoadFailure`, as the detail pages keep one, set in
+  `AppStore.loadLibraryPage`, the one path all four lists share, and cleared when the list's
+  next load starts or it is reset. A run a refresh cancelled records nothing (`isCancellation`).
 - **The list views read it** instead of an `errorMessage` of their own. With nothing to show, the
-  full-page error and its Try again, which the network's return presses too. Past the first page,
-  the loading row gives way to `InlineLoadError`, whose Try again loads the next page, again also
-  when the network returns.
-- **The profile loads through `requireProfile`**, which is no longer private: the launch's load,
-  its retry when the network returns, and the playlist writes share one request.
+  full-page error and its Try again, which the network's return presses too.
+- **`LoadMoreRow`**, shared by both views: the spinner that loads the next page, or, once that
+  page failed, `InlineLoadError`, whose Try again loads it again, also when the network returns.
+
+### Not done
+
+- **The two profile loaders stay.** Sharing `requireProfile`'s request would make the
+  network-return retry join a request the launch started offline, and fail with it: the reason
+  the retry's own review removed an in-flight guard from the profile. A retry that starts a fresh
+  request, as a list's refresh cancels and restarts, would allow one loader; it belongs with a
+  profile of its own rather than inside `PlaylistService`.
 
 ## Verification
 

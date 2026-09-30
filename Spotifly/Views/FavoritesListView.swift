@@ -22,14 +22,14 @@ struct FavoritesListView: View {
                     Text("loading.favorites")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = store.favoritesPagination.failure, store.favoriteTracks.isEmpty {
+            } else if let failure = store.favoritesPagination.failure, store.favoriteTracks.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
                     Text("error.load_favorites")
                         .font(.headline)
-                    Text(error)
+                    Text(failure.message)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
@@ -81,22 +81,7 @@ struct FavoritesListView: View {
                             )
                         }
 
-                        // Load more indicator, or why the next page did not come
-                        if store.favoritesPagination.hasMore {
-                            if let failure = store.favoritesPagination.failure {
-                                InlineLoadError(failure: LoadFailure(message: failure)) {
-                                    await loadMoreFavorites()
-                                }
-                            } else {
-                                ProgressView()
-                                    .padding()
-                                    .onAppear {
-                                        Task {
-                                            await loadMoreFavorites()
-                                        }
-                                    }
-                            }
-                        }
+                        LoadMoreRow(pagination: store.favoritesPagination, loadMore: loadMoreFavorites)
                     }
                     .padding()
                 }

@@ -36,8 +36,8 @@ struct InlineLoadError: View {
     }
 }
 
-/// What a detail page says went wrong, and whether its Try again could end differently.
-struct LoadFailure {
+/// What a page or a list says went wrong, and whether its Try again could end differently.
+struct LoadFailure: Encodable {
     let message: String
     /// False where asking again gets the same answer, as for an album Spotify has none of: the
     /// button would only ever fail again. See `isRetryable(_:)`.

@@ -45,7 +45,7 @@ struct LibraryPageFailureTests {
         #expect(store.favoritesPagination.failure == nil)
     }
 
-    /// The toolbar's refresh loads with `try?`: its failure now lands where the list reads it.
+    /// The toolbar's refresh loads with `try?`: its failure lands where the list reads it.
     @Test func `a refresh that fails leaves its failure for the list`() async {
         let store = AppStore()
         let service = AlbumService(store: store, partnerAPI: partnerAPI { _ in throw URLError(.notConnectedToInternet) })
