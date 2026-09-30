@@ -72,6 +72,55 @@ struct PlaybackQueueTests {
         #expect(queue.advance() == "spotify:track:t1")
     }
 
+    /// `plans/done/history-repeats-the-track-before-a-queued-one.md`: the context track before
+    /// a queued one went into the history twice.
+    @Test func `a queued track leaves the context track before it in the history once`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["t0", "t1", "t2"], startIndex: 0)
+        queue.enqueue("q0")
+
+        #expect(queue.advance() == "q0")
+        #expect(queue.advance() == "t1")
+        #expect(queue.history == ["t0"])
+        #expect(queue.recent().map(\.uri) == ["t0"])
+
+        #expect(queue.backward() == "t0")
+        #expect(queue.currentUri == "t0")
+        #expect(queue.backward() == nil)
+    }
+
+    /// The history held `[t0, q1, t0]`: a queued track followed by another was kept, the last
+    /// of a run was not, and t0 went in twice.
+    @Test func `a run of queued tracks keeps none of them in the history`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["t0", "t1", "t2"], startIndex: 0)
+        queue.enqueue("q1")
+        queue.enqueue("q2")
+
+        #expect(queue.advance() == "q1")
+        #expect(queue.advance() == "q2")
+        #expect(queue.history == ["t0"])
+        #expect(queue.backward() == "t0")
+        #expect(queue.currentUri == "t0")
+
+        _ = queue.advance()
+        #expect(queue.currentUri == "t1")
+        #expect(queue.history == ["t0"])
+    }
+
+    /// `plans/open/queue-rows-have-no-identity.md`: `backward()` went back to the first copy
+    /// of a track the context holds twice, whichever copy had played.
+    @Test func `Previous returns to the copy of a repeated track that played`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["a", "b", "a", "c"], startIndex: 2)
+        _ = queue.advance()
+
+        #expect(queue.backward() == "a")
+        #expect(queue.contextPosition == 2)
+        // And the context carries on from there, not from the first copy.
+        #expect(queue.advance() == "c")
+    }
+
     @Test func `backward returns along history`() {
         let queue = PlaybackQueue()
         queue.setContext(uri: "spotify:album:a", tracks: album(3), startIndex: 0)
