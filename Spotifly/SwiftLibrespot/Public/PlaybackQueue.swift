@@ -92,13 +92,22 @@ final nonisolated class PlaybackQueue {
         return (tracks, target)
     }
 
-    /// Where a context stands while a queued track plays, from the row it goes on with after it:
-    /// the row before, as a Next into a queued track leaves `currentIndex` here too. Nil for the
-    /// first row, which has no row before it, and for a uid the context does not list, as an
-    /// album's rows carry none.
-    static func rowBeforeResume(uid: String, uids: [String?], count: Int) -> Int? {
-        guard let row = uids.firstIndex(of: uid), row > 0, row < count else { return nil }
-        return row - 1
+    /// Where a context starts when a queued track plays first, from the row the context goes on
+    /// with after it, as a handover names it while a queued track plays.
+    ///
+    /// On the row before that, with the track to play as queued: Next into a queued track leaves
+    /// `currentIndex` there too (librespot's `finish_transfer`). Before the first row there is no
+    /// row to stand on, so the track goes in front of it, as a context row. Nil for a uid the
+    /// context does not list, as an album's rows carry none, which leaves the track to `start`.
+    static func start(
+        in tracks: [String],
+        queued uri: String,
+        resumingAt uid: String,
+        uids: [String?],
+    ) -> (tracks: [String], index: Int, queued: String?)? {
+        guard let row = uids.firstIndex(of: uid), row < tracks.count else { return nil }
+        guard row > 0 else { return ([uri] + tracks, 0, nil) }
+        return (tracks, row - 1, uri)
     }
 
     /// Replaces the whole playing context.

@@ -76,8 +76,9 @@ public nonisolated struct TransferState: Sendable {
                     }
                 }
             case 3:
-                sessionUid = field.fields.last(3).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
-                for context in field.fields where context.number == 2 {
+                let session = field.fields
+                sessionUid = session.last(3).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
+                for context in session where context.number == 2 {
                     for part in context.fields {
                         switch part.number {
                         case 1:
