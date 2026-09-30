@@ -362,8 +362,8 @@ struct QueueJumpTests {
         #expect(upcoming(queue) == Array(before.dropFirst(4)))
     }
 
-    /// The queue view's list can be split a row away from the client's while the store
-    /// reconciles it, so the index alone could name the neighbour.
+    /// A list can hold the same track more than once, so the row's track decides and its
+    /// index says which copy.
     @Test func `the track decides, and the index picks the copy nearest it`() {
         let queue = queue(["a", "b", "a", "c", "a"])
 

@@ -79,18 +79,6 @@ final class QueueService {
 
     // MARK: - Queue Updates
 
-    /// Queue and playback callbacks arrive through independent main-actor hops. Reconcile
-    /// after every usable queue update as well as when PlaybackViewModel changes the URI,
-    /// so whichever signal arrives second repairs the split.
-    private func reconcileQueueCurrentTrack() {
-        guard let currentTrackUri = PlaybackViewModel.shared.currentTrackUri,
-              let trackId = SpotifyAPI.parseTrackURI(currentTrackUri),
-              store.reconcileQueueCurrentTrack(with: trackId)
-        else { return }
-
-        log("Reconciled queue current pointer to \(trackId) at index \(store.currentIndex)")
-    }
-
     /// Handle a queue update published by the client.
     private func handleQueueUpdate(_ queueState: QueueState?) {
         guard let state = queueState else {
@@ -107,7 +95,6 @@ final class QueueService {
 
         store.noteLiveStateReceived()
         store.setQueue(previous: previousEntries, current: currentEntry, next: nextEntries)
-        reconcileQueueCurrentTrack()
 
         fetchTrackMetadata(for: Self.trackIds(previousEntries, currentEntry, nextEntries))
     }
@@ -186,7 +173,6 @@ final class QueueService {
         }
 
         store.setQueue(previous: update.previous, current: update.current, next: update.next)
-        reconcileQueueCurrentTrack()
 
         log("Initial queue: prev=\(update.previous.count), current=\(update.current != nil ? 1 : 0), next=\(update.next.count)")
 
