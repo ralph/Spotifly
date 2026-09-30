@@ -87,6 +87,17 @@ struct TransferStateTests {
         #expect(state.position(atMs: 1_790_000_048_000) == 48000)
     }
 
+    @Test func `the current track's uid comes through, and not a queued track's`() {
+        let track: (inout ProtobufWriter) -> Void = {
+            $0.string(field: 1, "spotify:track:current")
+            $0.string(field: 2, "uid-current")
+        }
+
+        #expect(TransferState(parsing: Self.transfer(currentTrack: track)).currentTrackUid == "uid-current")
+        let fromQueue = TransferState(parsing: Self.transfer(currentTrack: track, queue: ["spotify:track:q1"], playingQueue: true))
+        #expect(fromQueue.currentTrackUid == nil)
+    }
+
     @Test func `a track sent only by gid gets its uri back`() {
         // spotify:track:6rqhFgbbKwnb9MLmUQDhG6 is gid d3aca7e43e3b452cbfa9ddd2eab9497e,
         // by base-62 decoding in Python.

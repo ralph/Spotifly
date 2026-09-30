@@ -11,7 +11,7 @@ import Testing
 
 struct MirroredQueueTests {
     private func row(_ id: String, hidden: Bool = false) -> ProvidedTrack {
-        var track = ProvidedTrack(uri: "spotify:track:\(id)")
+        var track = ProvidedTrack(uri: "spotify:track:\(id)", uid: "uid-\(id)")
         track.metadata = hidden ? ["hidden": "true"] : [:]
         return track
     }
@@ -43,6 +43,7 @@ struct MirroredQueueTests {
 
         #expect(queue.nextTracks.map(\.uri) == uris("t2", "t3"))
         #expect(queue.currentTrack?.uri == "spotify:track:t1")
+        #expect(queue.currentTrack?.uid == "uid-t1")
         #expect(queue.context == "spotify:album:a")
     }
 

@@ -276,6 +276,9 @@ public actor SPClient {
     public struct ResolvedContext: Sendable {
         public let uri: String
         public let tracks: [String]
+        /// Each track's `uid`, beside `tracks`, or nil where the answer has none. A playlist's
+        /// tracks have one, an album's none (measured 2026-09-30).
+        public let uids: [String?]
         /// The answer's `metadata.context_description`.
         public let name: String?
     }
@@ -290,6 +293,7 @@ public actor SPClient {
         debugLog("SPClient", "Resolving context: \(contextUri)")
 
         var allTracks: [String] = []
+        var allUids: [String?] = []
         var name: String?
         var nextPage: String? = "/context-resolve/v1/\(encodedUri)?device_id=\(deviceId)"
         var pageLimit = 10
@@ -319,43 +323,49 @@ public actor SPClient {
             #endif
             let report = Self.parseContextReport(data)
             allTracks.append(contentsOf: report.tracks)
+            allUids.append(contentsOf: report.uids)
             name = name ?? report.name
             nextPage = report.nextPageUrl.map { "/context-resolve/v1/\($0)" }
         }
 
         debugLog("SPClient", "Context resolved: \(allTracks.count) track(s)")
 
-        return ResolvedContext(uri: contextUri, tracks: allTracks, name: name)
+        return ResolvedContext(uri: contextUri, tracks: allTracks, uids: allUids, name: name)
     }
 
     /// Parses the context resolver's answer. Despite the protobuf `Accept`
     /// header the endpoint replies **JSON**: `{metadata, pages: [{tracks:
-    /// [{uri}], next_page_url}], uri}`.
+    /// [{uri, uid}], next_page_url}], uri}`.
     ///
     /// The top-level `uri` is the context's own, not a track's, so nothing
     /// here can say which track to start at. A start index was computed from
     /// it and was always 0 — the guard ran after the append, and a context uri
     /// never matches a track uri anyway. Removed rather than guessed at: which
     /// field, if any, carries a resume point has to come off a real response.
-    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], nextPageUrl: String?, name: String?) {
+    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], uids: [String?], nextPageUrl: String?, name: String?) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return ([], nil, nil)
+            return ([], [], nil, nil)
         }
 
         var tracks: [String] = []
+        var uids: [String?] = []
         var nextPageUrl: String?
 
         let pages = json["pages"] as? [[String: Any]] ?? []
         for page in pages {
             let pageTracks = page["tracks"] as? [[String: Any]] ?? []
-            tracks.append(contentsOf: pageTracks.compactMap { $0["uri"] as? String })
+            for track in pageTracks {
+                guard let uri = track["uri"] as? String else { continue }
+                tracks.append(uri)
+                uids.append((track["uid"] as? String).flatMap { $0.isEmpty ? nil : $0 })
+            }
             if nextPageUrl == nil {
                 nextPageUrl = page["next_page_url"] as? String
             }
         }
 
         let name = ((json["metadata"] as? [String: Any])?["context_description"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        return (tracks, nextPageUrl, name)
+        return (tracks, uids, nextPageUrl, name)
     }
 
     // MARK: - Timeout
