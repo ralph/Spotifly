@@ -20,7 +20,6 @@ struct RetryingAsyncImage<Content: View>: View {
     let url: URL
     @ViewBuilder let content: (AsyncImagePhase) -> Content
 
-    private let network = NetworkMonitor.shared
     @State private var attempt = 0
     @State private var loaded = false
 
@@ -33,10 +32,6 @@ struct RetryingAsyncImage<Content: View>: View {
                 }
         }
         .id(attempt)
-        .onChange(of: network.returns) {
-            if !loaded {
-                attempt += 1
-            }
-        }
+        .retryingWhenNetworkReturns(if: !loaded) { attempt += 1 }
     }
 }

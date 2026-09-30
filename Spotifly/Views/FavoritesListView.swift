@@ -40,6 +40,9 @@ struct FavoritesListView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .retryingWhenNetworkReturns {
+                        await loadFavorites(forceRefresh: true)
+                    }
                 }
                 .padding()
             } else if store.favoriteTracks.isEmpty {
@@ -103,7 +106,6 @@ struct FavoritesListView: View {
                 await loadFavorites()
             }
         }
-        .retryingWhenNetworkReturns(if: errorMessage != nil && store.favoriteTracks.isEmpty) { await loadFavorites(forceRefresh: true) }
     }
 
     private func loadFavorites(forceRefresh: Bool = false) async {

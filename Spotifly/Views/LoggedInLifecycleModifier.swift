@@ -23,6 +23,9 @@ struct LoggedInLifecycleModifier: ViewModifier {
 
     /// Whether readiness has been lost since the last re-sync.
     @State private var connectionDropped = false
+    /// Whether the profile is being asked for, so a network return during the launch's request
+    /// does not send a second.
+    @State private var loadingProfile = false
 
     func body(content: Content) -> some View {
         content
@@ -191,13 +194,16 @@ struct LoggedInLifecycleModifier: ViewModifier {
             }
             // Playback steps over what the lists said will not play. Initially too, which
             // sends an empty set at login, so nothing of the previous account's is left.
+            // The two loads started here, asked for again when the network is back. Launched
+            // offline, the start page shows its error, and the sidebar has no profile and so no
+            // avatar, until the next launch. Here rather than on the start page, which may not
+            // be on screen when the network returns.
+            .retryingWhenNetworkReturns(if: store.homeErrorMessage != nil) { await homeService.refresh() }
+            .retryingWhenNetworkReturns(if: store.userProfile == nil) { await loadProfile() }
             .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
                 SpotifyPlayer.setUnplayable(uris)
             }
             // And the other way: what playback found withheld, which no list said, is greyed.
-            // Launched offline, the app has no profile, and so no avatar for the sidebar
-            // until the next launch: asked for again when the network is back.
-            .retryingWhenNetworkReturns(if: store.userProfile == nil) { await loadProfile() }
             .onChange(of: player.withheld, initial: true) { _, uris in
                 store.setWithheld(uris)
             }
@@ -254,6 +260,9 @@ struct LoggedInLifecycleModifier: ViewModifier {
     /// writes address the rootlist by username — so `PlaylistService.requireProfile` fetches it
     /// itself when it is missing rather than trusting this one attempt.
     private func loadProfile() async {
+        guard !loadingProfile else { return }
+        loadingProfile = true
+        defer { loadingProfile = false }
         do {
             let profile = try await PartnerAPI().profile()
             store.setUserProfile(UserProfile(pathfinder: profile))

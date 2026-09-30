@@ -85,6 +85,9 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .retryingWhenNetworkReturns {
+                        await loadItems(forceRefresh: true)
+                    }
                 }
                 .padding()
             } else if !hasContent {
@@ -176,7 +179,6 @@ struct LibraryListView<Entity: LibraryEntity>: View {
             }
             selectFirstIfNeeded()
         }
-        .retryingWhenNetworkReturns(if: errorMessage != nil && !hasContent) { await loadItems(forceRefresh: true) }
         .onChange(of: items) { _, _ in
             selectFirstIfNeeded()
         }

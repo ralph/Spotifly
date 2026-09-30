@@ -10,8 +10,9 @@ import Network
 import SwiftUI
 
 /// Counts the network's returns, for work that failed or stalled while it was away and that
-/// nothing else would start again: artwork (`RetryingAsyncImage`), and the loads that show an
-/// error with Try again (`retryingWhenNetworkReturns`).
+/// nothing else would start again, through `retryingWhenNetworkReturns`: artwork
+/// (`RetryingAsyncImage`), the loads that show an error with Try again, and the start page and
+/// profile at launch.
 @MainActor
 @Observable
 final class NetworkMonitor {
@@ -49,8 +50,9 @@ final class NetworkMonitor {
 extension View {
     /// Runs `retry` each time the network comes back while `failed` holds: a load that failed
     /// while the network was away is asked for again when it returns, rather than waiting for a
-    /// Try again nobody presses.
-    func retryingWhenNetworkReturns(if failed: Bool, _ retry: @escaping () async -> Void) -> some View {
+    /// Try again nobody presses. On a Try again button, which is there only while its error
+    /// shows, the button's presence is the condition.
+    func retryingWhenNetworkReturns(if failed: Bool = true, _ retry: @escaping () async -> Void) -> some View {
         modifier(RetryWhenNetworkReturns(failed: failed, retry: retry))
     }
 }

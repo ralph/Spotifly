@@ -29,10 +29,10 @@ struct InlineLoadError: View {
                 Button("action.try_again") {
                     Task { await retry() }
                 }
+                .retryingWhenNetworkReturns(retry)
             }
         }
         .padding()
-        .retryingWhenNetworkReturns(if: failure.canRetry, retry)
     }
 }
 
