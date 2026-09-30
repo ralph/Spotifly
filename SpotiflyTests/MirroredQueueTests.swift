@@ -59,4 +59,18 @@ struct MirroredQueueTests {
 
         #expect(LibrespotClient.mirroredQueue(of: state).previousTracks.map(\.uri) == uris("t1"))
     }
+
+    @Test func `the queue carries the name the cluster gives its context`() {
+        var state = album(nextIterationHidden: true)
+        state.contextMetadata = ["context_description": "Not Bad for New Jersey"]
+
+        #expect(LibrespotClient.mirroredQueue(of: state).contextName == "Not Bad for New Jersey")
+    }
+
+    @Test func `an empty context description names nothing`() {
+        var state = album(nextIterationHidden: true)
+        state.contextMetadata = ["context_description": ""]
+
+        #expect(LibrespotClient.mirroredQueue(of: state).contextName == nil)
+    }
 }

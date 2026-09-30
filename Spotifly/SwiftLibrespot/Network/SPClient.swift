@@ -276,6 +276,8 @@ public actor SPClient {
     public struct ResolvedContext: Sendable {
         public let uri: String
         public let tracks: [String]
+        /// The answer's `metadata.context_description`.
+        public let name: String?
     }
 
     /// Resolves an album, playlist, artist, or station uri into its tracks,
@@ -288,6 +290,7 @@ public actor SPClient {
         debugLog("SPClient", "Resolving context: \(contextUri)")
 
         var allTracks: [String] = []
+        var name: String?
         var nextPage: String? = "/context-resolve/v1/\(encodedUri)?device_id=\(deviceId)"
         var pageLimit = 10
 
@@ -316,12 +319,13 @@ public actor SPClient {
             #endif
             let report = Self.parseContextReport(data)
             allTracks.append(contentsOf: report.tracks)
+            name = name ?? report.name
             nextPage = report.nextPageUrl.map { "/context-resolve/v1/\($0)" }
         }
 
         debugLog("SPClient", "Context resolved: \(allTracks.count) track(s)")
 
-        return ResolvedContext(uri: contextUri, tracks: allTracks)
+        return ResolvedContext(uri: contextUri, tracks: allTracks, name: name)
     }
 
     /// Parses the context resolver's answer. Despite the protobuf `Accept`
@@ -333,9 +337,9 @@ public actor SPClient {
     /// it and was always 0 — the guard ran after the append, and a context uri
     /// never matches a track uri anyway. Removed rather than guessed at: which
     /// field, if any, carries a resume point has to come off a real response.
-    private nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], nextPageUrl: String?) {
+    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], nextPageUrl: String?, name: String?) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return ([], nil)
+            return ([], nil, nil)
         }
 
         var tracks: [String] = []
@@ -350,7 +354,8 @@ public actor SPClient {
             }
         }
 
-        return (tracks, nextPageUrl)
+        let name = ((json["metadata"] as? [String: Any])?["context_description"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return (tracks, nextPageUrl, name)
     }
 
     // MARK: - Timeout

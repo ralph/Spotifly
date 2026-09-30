@@ -49,6 +49,9 @@ public actor LibrespotClient {
     // MARK: - Queue & Playback Bookkeeping
 
     private var playbackQueue = PlaybackQueue()
+    /// What the playing context calls itself, from the resolver; set with the context in
+    /// `setQueue`, and nil for a bare list.
+    private var contextName: String?
 
     /// Logical Connect volume (0…65535), mirrored into player state.
     private var logicalVolume: UInt32 = 32767
@@ -462,7 +465,7 @@ public actor LibrespotClient {
         let start = trackIndex == nil && startingAtUri == nil
             ? (tracks: context.tracks, index: firstPlayable(in: context.tracks))
             : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri)
-        setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: start.tracks, startIndex: start.index)
+        setQueue(contextUri: context.uri.isEmpty ? uri : context.uri, tracks: start.tracks, startIndex: start.index, name: context.name)
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
@@ -765,7 +768,8 @@ public actor LibrespotClient {
 
     // MARK: - Queue Plumbing
 
-    private func setQueue(contextUri: String, tracks: [String], startIndex: Int) {
+    private func setQueue(contextUri: String, tracks: [String], startIndex: Int, name: String? = nil) {
+        contextName = name
         playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex)
         publishQueue()
     }
@@ -934,6 +938,7 @@ public actor LibrespotClient {
             currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: "context") },
             nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
             previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            contextName: contextName,
         )
     }
 
@@ -1267,6 +1272,7 @@ public actor LibrespotClient {
             // In play order, as the cluster keeps them and the local queue
             // publishes them.
             previousTracks: remote.prevTracks.filter(shown).map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            contextName: remote.contextMetadata["context_description"].flatMap { $0.isEmpty ? nil : $0 },
         )
     }
 
