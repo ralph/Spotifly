@@ -264,6 +264,13 @@ struct ContextStartTests {
         #expect(start.tracks == tracks)
     }
 
+    /// Without an index, the uri alone took the first copy of a track the context holds twice.
+    @Test func `a uid names which copy of a repeated track was handed over`() {
+        let uids: [String?] = ["u-a", "u-b", "u-c", "u-b2", "u-d"]
+
+        #expect(PlaybackQueue.start(in: tracks, index: nil, uri: "b", uid: "u-b2", uids: uids).index == 3)
+    }
+
     @Test func `a uid the context does not list leaves the uri to decide`() {
         let uids: [String?] = [nil, nil, nil, nil, nil]
 

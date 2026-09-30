@@ -63,8 +63,9 @@ public nonisolated struct TransferState: Sendable {
                     case 2: positionAsOfTimestamp = Int64(Int32(truncatingIfNeeded: playback.value))
                     case 4: isPaused = playback.bool
                     case 5:
-                        currentTrackUri = Self.trackUri(playback.fields)
-                        currentTrackUid = playback.fields.first(where: { $0.number == 2 }).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
+                        let track = playback.fields
+                        currentTrackUri = Self.trackUri(track)
+                        currentTrackUid = track.last(2).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
                     default: break
                     }
                 }

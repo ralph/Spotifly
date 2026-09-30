@@ -36,8 +36,9 @@ by its uid, and the queue goes on from there.
   (from the app's own log of resolve answers).
 - librespot finds the transferred track by uri *or* uid (`connect/src/state/transfer.rs`).
 
-A remote play command was not affected: it names the row's index, and `start` keeps the copy
-nearest it.
+A remote play command was not affected: the web player names the id the context lists, as
+measured for `plans/done/clicked-row-plays-another-track.md`. Its `skip_to` also carries the
+row's uid, which is now passed on too.
 
 ## Solution
 
@@ -48,21 +49,25 @@ nearest it.
 - `PlaybackQueue.start` takes a uid and the context's uids. A uid the context lists names the
   row and comes first; otherwise the uri decides as before. The row keeps the context's own uri:
   a relinked track plays through its alternatives either way.
-- `play(uriOrUrl:…startingAtUid:)` passes it through, from the transfer's take-over and from the
-  take-over of a mirrored queue, whose current track now keeps its uid.
+- `play(uriOrUrl:…startingAtUid:)` passes it through: from the transfer's take-over, from the
+  take-over of a mirrored queue, whose current track now keeps its uid, and from a remote play
+  command's `skip_to.track_uid`.
+- The same uid also picks the right copy of a track a playlist holds twice, which the uri alone,
+  without an index, took as the first.
 
 An album's relinked track is still placed by uri alone, since its resolve answer has no uids.
-The transfer's own page of context tracks could give the index then; not built, since it was
-not seen.
+That, a handover while a queued track plays, and a handed-over bare list are in
+`plans/open/handover-edge-cases.md`.
 
 ## Verification
 
 - [x] Measured, as above.
-- [x] Unit tests: a uid names the row a relinked track plays from; a uid the context does not
-      list leaves the uri to decide; the transfer's current uid comes through, and not a queued
-      track's; a resolve answer's uids are kept, and an album's are nil; the mirrored current
-      track keeps its uid.
-- [x] Build, 460 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
+- [x] Unit tests: a uid names the row a relinked track plays from, and which copy of a repeated
+      track; a uid the context does not list leaves the uri to decide; the transfer's current
+      uid comes through, and not a queued track's; a remote play's `skip_to` uid is read; a
+      resolve answer's uids are kept, and an album's are nil; the mirrored current track keeps
+      its uid.
+- [x] Build, 461 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
 - [x] Live, 2026-09-30: Liked Songs played in the web player at #196, "today is a gift", and
       handed to the Mac from the web player's Connect menu. The transfer named `7dF8…` with its
       uid; the Mac played the listed `0sMI…` from 18.8 s, and fetched ahead "Girlfriend"

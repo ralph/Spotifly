@@ -146,8 +146,10 @@ public enum SpircCommand: Sendable {
         }
 
         public let context: Context
-        /// `skip_to`'s track, where to start. See `PlaybackQueue.start(in:index:uri:)`.
+        /// `skip_to`'s track, where to start. See `PlaybackQueue.start(in:index:uri:uid:uids:)`.
         public let trackUri: String?
+        /// `skip_to`'s uid for that row, which names it where the context lists it.
+        public let trackUid: String?
         /// `skip_to`'s index, as the sender counted.
         public let index: Int?
         public let positionMs: UInt64?
