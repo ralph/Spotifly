@@ -19,9 +19,7 @@ struct AlbumDetailView: View {
     @Environment(\.displayScale) private var displayScale
 
     @State private var isLoading = false
-    @State private var errorMessage: String?
-    /// False when Spotify has no such album, where trying again would only fail again.
-    @State private var canRetry = true
+    @State private var failure: LoadFailure?
     @State private var showRemoveConfirmation = false
 
     /// The album from the store — the only copy. Whatever a load puts there shows
@@ -41,8 +39,8 @@ struct AlbumDetailView: View {
         ZStack {
             if let album {
                 albumContent(album)
-            } else if let errorMessage {
-                InlineLoadError(message: errorMessage, retry: canRetry ? { await loadAlbum() } : nil)
+            } else if let failure {
+                InlineLoadError(failure: failure) { await loadAlbum() }
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -159,8 +157,8 @@ struct AlbumDetailView: View {
                 if isLoading {
                     ProgressView("loading.tracks")
                         .padding()
-                } else if let errorMessage {
-                    InlineLoadError(message: errorMessage, retry: canRetry ? { await loadAlbum() } : nil)
+                } else if let failure {
+                    InlineLoadError(failure: failure) { await loadAlbum() }
                 } else if !tracks.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(tracks.enumerated(), id: \.offset) { index, track in
@@ -207,8 +205,7 @@ struct AlbumDetailView: View {
         // Only claim to be loading when the track list is actually missing —
         // a cached album must not flash a spinner over its tracks.
         isLoading = album?.tracksLoaded != true
-        errorMessage = nil
-        canRetry = true
+        failure = nil
 
         do {
             try await albumService.ensureAlbumLoaded(albumId: albumId)
@@ -216,8 +213,7 @@ struct AlbumDetailView: View {
             // A cancellation is this view going away, not a failure: the load keeps
             // running and its result is in the store for whatever replaces us.
             if !isCancellation(error) {
-                errorMessage = error.localizedDescription
-                canRetry = isRetryable(error)
+                failure = LoadFailure(error)
             }
         }
 
@@ -246,7 +242,7 @@ struct AlbumDetailView: View {
                 // Navigate away from the removed album
                 navigationCoordinator.clearAlbumSelection()
             } catch {
-                errorMessage = String(localized: "error.remove_album \(error.localizedDescription)")
+                failure = LoadFailure(message: String(localized: "error.remove_album \(error.localizedDescription)"))
             }
         }
     }
