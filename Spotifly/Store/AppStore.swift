@@ -384,13 +384,23 @@ final class AppStore {
     ) async throws {
         let offset = self[keyPath: pagination].nextOffset ?? 0
         self[keyPath: pagination].isLoading = true
+        self[keyPath: pagination].failure = nil
         defer {
             if !Task.isCancelled {
                 self[keyPath: pagination].isLoading = false
             }
         }
 
-        let page = try await load(offset)
+        let page: (received: Int, total: Int)
+        do {
+            page = try await load(offset)
+        } catch {
+            // A superseded run's error is its replacement's business, not the list's.
+            if !Task.isCancelled, !(error is CancellationError) {
+                self[keyPath: pagination].failure = error.localizedDescription
+            }
+            throw error
+        }
         try Task.checkCancellation()
 
         self[keyPath: pagination].isLoaded = true

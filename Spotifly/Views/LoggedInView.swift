@@ -126,6 +126,7 @@ struct LoggedInView: View {
                 queueService: queueService,
                 deviceService: deviceService,
                 homeService: homeService,
+                playlistService: playlistService,
                 navigationCoordinator: navigationCoordinator,
             ),
         )

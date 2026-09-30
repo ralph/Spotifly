@@ -52,8 +52,6 @@ struct LibraryListView<Entity: LibraryEntity>: View {
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-    @State private var errorMessage: String?
-
     /// Whether we have content to show (either the ephemeral entity or the library)
     private var hasContent: Bool {
         ephemeral != nil || !items.isEmpty
@@ -69,7 +67,7 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                     Text(style.loadingText)
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = errorMessage, !hasContent {
+            } else if let error = pagination.failure, !hasContent {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
@@ -155,15 +153,21 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                             }
                         }
 
-                        // Load more indicator
+                        // Load more indicator, or why the next page did not come
                         if pagination.hasMore {
-                            ProgressView()
-                                .padding()
-                                .onAppear {
-                                    Task {
-                                        await loadMoreItems()
-                                    }
+                            if let failure = pagination.failure {
+                                InlineLoadError(failure: LoadFailure(message: failure)) {
+                                    await loadMoreItems()
                                 }
+                            } else {
+                                ProgressView()
+                                    .padding()
+                                    .onAppear {
+                                        Task {
+                                            await loadMoreItems()
+                                        }
+                                    }
+                            }
                         }
                     }
                     .padding()
@@ -204,21 +208,13 @@ struct LibraryListView<Entity: LibraryEntity>: View {
         select(first.id, false)
     }
 
+    /// A failure is recorded on `pagination`, where the toolbar's refresh leaves it too.
     private func loadItems(forceRefresh: Bool = false) async {
-        errorMessage = nil
-        do {
-            try await load(forceRefresh)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        try? await load(forceRefresh)
     }
 
     private func loadMoreItems() async {
-        do {
-            try await loadMore()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        try? await loadMore()
     }
 }
 

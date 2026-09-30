@@ -266,13 +266,12 @@ final class PlaylistService {
     /// changed before the profile has loaded. `UserProfile.id` *is* the username — see
     /// `UserProfile.init(pathfinder:)`, which takes it straight from `profileAttributes`.
     ///
-    /// **Fetches it rather than refusing.** The profile is loaded once at startup, on a path
-    /// that deliberately swallows its own failure — an app that cannot say who you are is still
-    /// an app that plays music — and nothing retried it. So one transient failure there left
-    /// create, delete, follow and unfollow throwing `accountUnknown` until the app was
-    /// relaunched, for a request none of them had ever made themselves. Through the registry,
-    /// so several writes arriving at once ask for it once.
-    private func requireProfile() async throws -> UserProfile {
+    /// **Fetches it rather than refusing.** The launch loads it through here too, and swallows a
+    /// failure — an app that cannot say who you are is still an app that plays music. When
+    /// nothing asked again, one transient failure there left create, delete, follow and unfollow
+    /// throwing `accountUnknown` until the app was relaunched. Through the registry, so the
+    /// launch's load and several writes arriving at once ask for it once.
+    func requireProfile() async throws -> UserProfile {
         if let profile = store.userProfile {
             return profile
         }
