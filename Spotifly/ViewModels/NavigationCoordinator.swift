@@ -107,15 +107,6 @@ final class NavigationCoordinator {
         forward.last.map(title(for:))
     }
 
-    var canRefreshCurrentSection: Bool {
-        switch current.section {
-        case .playlists, .albums, .artists, .favorites, .speakers, .queue:
-            true
-        default:
-            false
-        }
-    }
-
     // MARK: - Navigation
 
     func selectNavigationItem(_ section: NavigationItem?) {
