@@ -10,8 +10,8 @@ import Foundation
 import Testing
 
 struct MirroredQueueTests {
-    private func row(_ id: String, hidden: Bool = false) -> ProvidedTrack {
-        var track = ProvidedTrack(uri: "spotify:track:\(id)", uid: "uid-\(id)")
+    private func row(_ id: String, provider: String = "context", hidden: Bool = false) -> ProvidedTrack {
+        var track = ProvidedTrack(uri: "spotify:track:\(id)", uid: "uid-\(id)", provider: provider)
         track.metadata = hidden ? ["hidden": "true"] : [:]
         return track
     }
@@ -73,5 +73,59 @@ struct MirroredQueueTests {
         state.contextMetadata = ["context_description": ""]
 
         #expect(LibrespotClient.mirroredQueue(of: state).contextName == nil)
+    }
+}
+
+/// A bare list another device plays, as this Mac takes it over.
+extension MirroredQueueTests {
+    /// With repeat on, the list goes on after a delimiter as its next iteration. Taken whole, it
+    /// held its tracks twice, and local repeat looped that.
+    @Test func `the list stops at the first delimiter, and starts with the tracks before`() throws {
+        var state = PlayerState()
+        state.prevTracks = [row("t1")]
+        state.track = row("t2")
+        state.nextTracks = [row("t3"), delimiter, row("t1"), row("t2"), row("t3"), delimiter]
+
+        let list = try #require(LibrespotClient.takeOverList(of: state))
+
+        #expect(list.tracks == uris("t1", "t2", "t3"))
+        #expect(list.index == 1)
+        #expect(list.queued.isEmpty)
+    }
+
+    /// Should a device keep the iteration before in its previous tracks, behind a delimiter.
+    @Test func `the tracks before stop at the last delimiter behind`() throws {
+        var state = PlayerState()
+        state.prevTracks = [row("t1"), row("t2"), delimiter, row("t1")]
+        state.track = row("t2")
+
+        let list = try #require(LibrespotClient.takeOverList(of: state))
+
+        #expect(list.tracks == uris("t1", "t2"))
+        #expect(list.index == 1)
+    }
+
+    @Test func `queued rows go to the queue, not into the list`() throws {
+        var state = PlayerState()
+        state.track = row("t1")
+        state.nextTracks = [row("q", provider: "queue"), row("t2"), delimiter, row("t1", hidden: true)]
+
+        let list = try #require(LibrespotClient.takeOverList(of: state))
+
+        #expect(list.tracks == uris("t1", "t2"))
+        #expect(list.index == 0)
+        #expect(list.queued == uris("q"))
+    }
+
+    @Test func `without a delimiter the list is every row after the current one`() throws {
+        var state = PlayerState()
+        state.track = row("t1")
+        state.nextTracks = [row("t2"), row("t3")]
+
+        #expect(try #require(LibrespotClient.takeOverList(of: state)).tracks == uris("t1", "t2", "t3"))
+    }
+
+    @Test func `nothing playing is nothing to take over`() {
+        #expect(LibrespotClient.takeOverList(of: PlayerState()) == nil)
     }
 }
