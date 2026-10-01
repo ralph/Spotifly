@@ -259,6 +259,13 @@ public nonisolated struct ProvidedTrack: Sendable {
         self.provider = provider
     }
 
+    /// Whether other devices leave the row out of the queue they show: a delimiter, or a row
+    /// the context will not play. Kept in `metadata`, as `"hidden": "true"`.
+    public var isHidden: Bool {
+        get { metadata["hidden"] == "true" }
+        set { metadata["hidden"] = newValue ? "true" : nil }
+    }
+
     public func serialize() -> Data {
         ProtobufWriter.message {
             $0.string(field: 1, uri)

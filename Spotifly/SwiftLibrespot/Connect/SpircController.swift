@@ -395,7 +395,11 @@ public actor SpircController {
                 playerStateProto.index = ContextIndex(page: 0, track: UInt32(index))
             }
             // Proto3: a row without a uid sends "".
-            let provided: (QueueItem) -> ProvidedTrack = { ProvidedTrack(uri: $0.uri, uid: $0.uid ?? "", provider: $0.provider) }
+            let provided: (QueueItem) -> ProvidedTrack = { item in
+                var track = ProvidedTrack(uri: item.uri, uid: item.uid ?? "", provider: item.provider)
+                track.isHidden = item.hidden
+                return track
+            }
             playerStateProto.nextTracks = ps.nextTracks.map(provided)
             playerStateProto.queueRevision = Self.queueRevision(of: ps.nextTracks.map(\.uri))
             playerStateProto.prevTracks = ps.previousTracks.map(provided)
