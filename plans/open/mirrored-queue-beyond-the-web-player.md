@@ -22,6 +22,11 @@ taken on trust.
   list should stop at the first delimiter, take the previous tracks as its start, and send
   queued rows to `replaceUserQueue`. Rare: a bare list is Play Tracks under search, or a list
   sent from another device.
+  - Not reachable with the web player, measured 2026-10-01. Spotifly played a five-track bare
+    list and the web player took it over (its queue listed the five under "Als Nächstes", with no
+    context named). Its repeat did not respond, neither while it held the list nor while it
+    controlled Spotifly playing it, and Spotifly has no repeat control of its own. Without
+    repeat, taking the mirrored list back over played the same five tracks.
 - **Next on a context's last track.** While mirroring with repeat off, `nextTracks` is now empty
   on the context's last track, so `hasNext` greys the bar's Next. That matches the web player's
   visible queue. But a device with autoplay on would go on into autoplay, and the Mac can no
