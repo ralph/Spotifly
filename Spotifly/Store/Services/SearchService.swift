@@ -28,7 +28,6 @@ final class SearchService {
         guard !query.isEmpty, !store.searchIsLoading else { return }
 
         store.searchIsLoading = true
-        store.searchErrorMessage = nil
 
         do {
             let results = try await partnerSearch(query: query)
@@ -41,7 +40,7 @@ final class SearchService {
             store.upsertArtists(results.artists)
             store.upsertPlaylists(results.playlists)
         } catch {
-            store.searchErrorMessage = error.localizedDescription
+            store.setSearchFailure(error, for: query)
         }
 
         store.searchIsLoading = false

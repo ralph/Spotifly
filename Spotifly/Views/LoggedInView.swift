@@ -132,6 +132,10 @@ struct LoggedInView: View {
         .onChange(of: store.searchCacheEvictionRevision) {
             navigationCoordinator.invalidateUnviewableRoutes()
         }
+        // A failed search's page goes with its failure, from the history too.
+        .onChange(of: store.failedSearch?.query) {
+            navigationCoordinator.invalidateUnviewableRoutes()
+        }
         .onChange(of: store.deletedEntitySelections) {
             navigationCoordinator.invalidateUnviewableRoutes()
         }
@@ -223,7 +227,9 @@ struct LoggedInView: View {
     private func sidebarView() -> some View {
         SidebarView(
             selection: navigationSelectionBinding,
-            hasSearchResults: store.lastDisplayedSearchQuery.flatMap(store.searchResults(for:)) != nil,
+            // Or a failed search's page, while it shows: the selection is there.
+            hasSearchResults: store.lastDisplayedSearchQuery.flatMap(store.searchResults(for:)) != nil
+                || navigationCoordinator.displayedSearchQuery != nil,
             userProfile: store.userProfile,
         )
         .navigationSplitViewColumnWidth(
@@ -251,11 +257,11 @@ struct LoggedInView: View {
         Task {
             debugLog("Search", "Starting search for: \(query)")
             await searchService.search(query: query)
-            let hasResults = store.searchResults(for: query) != nil
-            debugLog("Search", "After search - results: \(hasResults), error: \(store.searchErrorMessage ?? "nil")")
-            // The field can be cleared while the request is in flight, which already left
-            // the results view; do not navigate back into it behind the user.
-            if hasResults, !searchText.isEmpty {
+            debugLog("Search", "After search - results: \(store.searchResults(for: query) != nil), error: \(store.failedSearch?.failure.message ?? "nil")")
+            // The page opens for a failure too, to say so. The field can be cleared while the
+            // request is in flight, which already left the results view; do not navigate back
+            // into it behind the user.
+            if !searchText.isEmpty {
                 navigationCoordinator.navigateToSearchResults(query: query)
             }
         }
@@ -263,7 +269,7 @@ struct LoggedInView: View {
 
     private func handleSearchTextChange(_ newValue: String) {
         guard newValue.isEmpty else { return }
-        store.clearSearchError()
+        store.clearSearchFailure()
 
         if navigationCoordinator.selectedNavigationItem == .searchResults {
             navigationCoordinator.selectNavigationItem(.startpage)
