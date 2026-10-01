@@ -1,12 +1,11 @@
 # After a handover, the seek bar can fall back to 0 while the track plays on
 
-Status: **Open**, planned, not built. Seen by hand on 2026-10-01 while testing #135, which did not
-cause it: the pieces date from #71 (2026-09-28) and e711146 (2026-08-14). The cause is read from
-the log and the code; the fix is not tried yet.
-Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`playTrack`, `startDecoding`,
-`tick`, `teardownAndGoIdle`), `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`
-(`positionCache`, `handle(_:)`), `Spotifly/ViewModels/PlaybackViewModel.swift`
-(`checkDriftAndSync`)
+Status: **Done** 2026-10-01. Seen by hand while testing #135, which did not cause it: the pieces
+date from #71 (2026-09-28) and e711146 (2026-08-14). Reproduced and seen fixed live with a
+drift check made to run every 50 ms; see Verification. No unit test: the client is a singleton.
+Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`positionCache`,
+`publishPlaybackState`); read: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`tick`,
+`teardownAndGoIdle`), `Spotifly/ViewModels/PlaybackViewModel.swift` (`checkDriftAndSync`)
 Found: 2026-10-01, handing playback from a phone back to the Mac
 
 ## Summary
@@ -74,29 +73,30 @@ one-second grace.
 
 ## Solution
 
-Planned, not built. **Fix the stale cache, at its source:** the pipeline publishes the position
-a load starts at, so the cache never claims 0 for a track that starts elsewhere.
+**The cache takes every position local playback publishes.** `publishPlaybackState` is the one
+place a local position goes out, the `.loading` of a load at an offset, the `.playing` and
+`.paused` after a load or a seek, and the reload after sleep among them, and the bar anchors at
+what it publishes. It now writes the same position into `positionCache`, so the cache and the
+bar agree from the moment a load is announced, rather than from the first tick a quarter second
+after the decode starts. The ticks go on feeding it as before. Mirrored playback does not go
+through it, and the drift check does not run while this Mac only mirrors.
 
-- `playTrack` sends `.position(positionMs)` with its `.loading` announcement, and
-  `startDecoding` sends the frame it starts from, in the same order as the state it publishes,
-  since one stream carries both (`LibrespotClient.handle(_:)`).
-- A unit test on the pipeline's events: a load at 65 s sends no `.position` below 65 s before
-  its first tick.
+That also covers a seek while paused: the cache stood at the old position until a tick after
+the resume, and the drift check could take the bar back there once the seek's grace had passed.
 
-**Optional, not needed for the fix:** correct a bar that is far behind the player, say more than
-five seconds, as a safety net. The render buffer that justified leaving "behind" alone is under
-a second, so a gap of seconds is never it. That direction has not been re-measured against the
-current clock (`AudioRenderer.playedFrames`), which the comment in `checkDriftAndSync` says
-too.
+**Considered and not done:**
+- The pipeline sending `.position` with `.loading` and from `startDecoding`: two places to keep
+  in step where one publishes every local position already.
+- Correcting a bar far behind the player as a safety net: with the cache right, nothing put it
+  there, and the render buffer reasoning for leaving "behind" alone (e711146) is unchanged.
 
 ## Verification
 
-Not run yet. When built:
-
-- The unit test above.
-- **Live, with a phone:** hand playback from the phone to the Mac mid-track five times or more.
-  The bar should show the phone's position each time, and the log should have no
-  `Drift correction: … -> 0`.
-- **Live without a phone:** let the web player play, then launch the Debug build with
-  `SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER=<seconds>`. Repeat it a few times, since the race only
-  hits about half the time.
+- [x] **Reproduced live without the fix** (2026-10-01), a throwaway build whose drift check ran
+      every 50 ms, so that it always lands in the window: the web player played "Not Bad for New
+      Jersey", and `SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER=15` pulled it here. `Taking over … at
+      30433ms`, then `Drift correction: 30548 -> 0` and again `30542 -> 0`.
+- [x] **Fixed, the same throwaway with the fix:** `Taking over … at 29854ms`, the anchor at 29854,
+      and no drift correction in the 12 s watched.
+- [x] Build, unit tests and the lint.
+- [ ] By hand with a phone, as found: hand playback back mid-track a few times and watch the bar.
