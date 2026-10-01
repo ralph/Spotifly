@@ -68,5 +68,12 @@ come from somewhere else. The backward run is unit-tested.
     without loading it.
   - **A play starting on Girlfriend:** passed over, Tilted playing 18 ms later.
   - **The end of "Today Is a Gift"**, gapless: the fetch-ahead had found Girlfriend withheld,
-    and Tilted followed without a gap. With gapless off, the end of a track goes through
-    `autoAdvance`; not run live.
+    and Tilted followed without a gap. With gapless off, for one launch
+    (`-gaplessPlayback '<false/>'`, nothing stored), the end went through `autoAdvance`, and
+    Tilted played 1 ms after it.
+  - **The single "Girlfriend (feat. Dâm-Funk)"**, played as an album: its first track passed
+    over, its second played.
+  - All of the above again on the final commit, after the review's fixes.
+- [ ] Not seen: the stop for a context in which nothing plays (it needs one entirely
+      withheld), and auto-advance refused for Premium (it needs the account to stop
+      streaming mid-session).
