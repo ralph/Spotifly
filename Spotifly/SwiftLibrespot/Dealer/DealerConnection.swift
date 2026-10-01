@@ -205,8 +205,8 @@ public actor DealerConnection {
 
         httpRequest.httpBody = payload
 
-        // A 401 is asked again with a fresh client token, but no server error: a report asked
-        // again later could land after the newer one that replaced it.
+        // A refused client token is asked again with a fresh one, but no server error: a report
+        // asked again later could land after the newer one that replaced it.
         let (data, status) = try await credentials.send(httpRequest)
 
         guard (200 ..< 300).contains(status) else {

@@ -141,8 +141,8 @@ final class Recorder<Value: Sendable>: @unchecked Sendable {
 
 // MARK: - Stubbed clients
 
-func httpResponse(_ status: Int, url: URL = PartnerAPI.endpoint) -> HTTPURLResponse {
-    HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
+func httpResponse(_ status: Int, url: URL = PartnerAPI.endpoint, headers: [String: String]? = nil) -> HTTPURLResponse {
+    HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: headers)!
 }
 
 /// Credentials answered by `transport` rather than by the network. Its default fails every

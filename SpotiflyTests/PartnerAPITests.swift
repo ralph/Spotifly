@@ -354,7 +354,7 @@ struct ClientTokenRecoveryTests {
         #expect(attempts.count == 2)
     }
 
-    @Test func `a status that is not 401 does not touch the client token`() async throws {
+    @Test func `a failure that names no client token does not touch it`() async throws {
         let rejected = Recorder<String>()
 
         let api = partnerAPI(invalidateClientToken: { rejected.record($0) }) { _ in

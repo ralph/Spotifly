@@ -23,20 +23,31 @@ struct SPClientRequestTests {
     {"metadata":{"context_description":"Album"},"pages":[{"tracks":[{"uri":"spotify:track:a","uid":"u1"}]}]}
     """#.utf8)
 
+    /// How Spotify refuses a client token it will not take, measured 2026-10-01.
+    private static let refusal = (status: 400, headers: ["client-token-error": "INVALID_CLIENTTOKEN"])
+
     /// Answers each request in turn with `statuses`, the last one for every request after it, and
-    /// with `body` when the status is a 200. Records the requests it was sent.
-    private func scripted(_ statuses: [Int], body: Data = Data(), sent: Recorder<URLRequest>) -> SpotifyCredentials.Transport {
+    /// with `body` when the status is a 200, `failureHeaders` when it is not. Records the requests
+    /// it was sent.
+    private func scripted(
+        _ statuses: [Int],
+        body: Data = Data(),
+        failureHeaders: [String: String]? = nil,
+        sent: Recorder<URLRequest>,
+    ) -> SpotifyCredentials.Transport {
         { request in
             // Read before the request is recorded, so the first request gets the first status.
             let status = statuses[min(sent.values.count, statuses.count - 1)]
             sent.record(request)
-            return (status == 200 ? body : Data(), httpResponse(status, url: request.url!))
+            let headers = status == 200 ? nil : failureHeaders
+            return (status == 200 ? body : Data(), httpResponse(status, url: request.url!, headers: headers))
         }
     }
 
     private func spclient(
         _ statuses: [Int],
         body: Data,
+        failureHeaders: [String: String]? = nil,
         sent: Recorder<URLRequest>,
         pauses: Recorder<Duration> = Recorder(),
         rejected: Recorder<String> = Recorder(),
@@ -44,7 +55,7 @@ struct SPClientRequestTests {
         let credentials = spotifyCredentials(
             invalidateClientToken: { rejected.record($0) },
             pause: { pauses.record($0) },
-            transport: scripted(statuses, body: body, sent: sent),
+            transport: scripted(statuses, body: body, failureHeaders: failureHeaders, sent: sent),
         )
         return SPClient(credentials: credentials, deviceId: "device")
     }
@@ -77,17 +88,32 @@ struct SPClientRequestTests {
     }
 
     /// The client token is cached for a fortnight, so a revoked one failed playback until the app
-    /// was relaunched.
+    /// was relaunched. Spotify refuses one with a 401, or with a header naming it.
     @Test func `a refused client token is dropped, and the request asked again`() async throws {
+        for (status, headers) in [(401, nil), (Self.refusal.status, Self.refusal.headers)] {
+            let sent = Recorder<URLRequest>()
+            let rejected = Recorder<String>()
+            let client = spclient([status, 200], body: cdnAnswer, failureHeaders: headers, sent: sent, rejected: rejected)
+
+            let cdn = try await client.resolveCDNUrl(fileId: Data([0xAB]))
+
+            #expect(cdn.url.absoluteString == "https://audio.example/file")
+            #expect(rejected.values == ["ct"], "\(status)")
+            #expect(sent.values.count == 2, "\(status)")
+        }
+    }
+
+    /// A 400 is also a bad request, which asking again would not mend.
+    @Test func `a 400 that does not name the client token is not asked again`() async throws {
         let sent = Recorder<URLRequest>()
         let rejected = Recorder<String>()
-        let client = spclient([401, 200], body: cdnAnswer, sent: sent, rejected: rejected)
+        let client = spclient([400, 200], body: cdnAnswer, sent: sent, rejected: rejected)
 
-        let cdn = try await client.resolveCDNUrl(fileId: Data([0xAB]))
-
-        #expect(cdn.url.absoluteString == "https://audio.example/file")
-        #expect(rejected.values == ["ct"])
-        #expect(sent.values.count == 2)
+        await #expect(throws: LibrespotError.requestFailed("Storage resolve", status: 400)) {
+            _ = try await client.resolveCDNUrl(fileId: Data([0xAB]))
+        }
+        #expect(rejected.values.isEmpty)
+        #expect(sent.values.count == 1)
     }
 
     @Test func `a context page that meets a server error is asked for again`() async throws {
@@ -117,10 +143,15 @@ struct SPClientRequestTests {
 
     /// The dealer's state report: a report asked again later could land after the newer one that
     /// replaced it.
-    @Test func `a write is asked again after a 401, and not after a server error`() async throws {
-        for (statuses, expected) in [([401, 200], 2), ([503, 200], 1)] {
+    @Test func `a write is asked again after a refused client token, and not after a server error`() async throws {
+        let cases: [(statuses: [Int], headers: [String: String]?, expected: Int)] = [
+            ([401, 200], nil, 2),
+            ([Self.refusal.status, 200], Self.refusal.headers, 2),
+            ([503, 200], nil, 1),
+        ]
+        for (statuses, headers, expected) in cases {
             let sent = Recorder<URLRequest>()
-            let credentials = spotifyCredentials(invalidateClientToken: { _ in }, transport: scripted(statuses, sent: sent))
+            let credentials = spotifyCredentials(invalidateClientToken: { _ in }, transport: scripted(statuses, failureHeaders: headers, sent: sent))
 
             _ = try await credentials.send(URLRequest(url: #require(URL(string: "https://spclient.example/connect-state"))))
 

@@ -20,8 +20,9 @@ nonisolated struct SpotifyCredentials: Sendable {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
     typealias Pause = @Sendable (Duration) async throws -> Void
 
-    /// One attempt's outcome, naming the client token it carried so a refusal can name it too.
-    typealias Attempt = (body: Data, status: Int, clientToken: String?)
+    /// One attempt's outcome, naming the client token it carried so a refusal can name it too,
+    /// and what Spotify said was wrong with that token, if it said anything.
+    typealias Attempt = (body: Data, status: Int, clientToken: String?, clientTokenError: String?)
 
     /// The headers the desktop client sends. `App-Platform` and the xpui origin are not
     /// cosmetic — neither host is a public API, and the requests that work are the ones shaped
@@ -77,7 +78,12 @@ nonisolated struct SpotifyCredentials: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
-        return (data, http.statusCode, signed.value(forHTTPHeaderField: "Client-Token"))
+        return (
+            data,
+            http.statusCode,
+            signed.value(forHTTPHeaderField: "Client-Token"),
+            http.value(forHTTPHeaderField: "client-token-error"),
+        )
     }
 
     /// Sends a write, signed afresh for a second attempt if Spotify refuses its client token.
@@ -94,12 +100,18 @@ nonisolated struct SpotifyCredentials: Sendable {
     }
 
     /// Runs the attempt, and runs it once more against a fresh client token when Spotify refuses
-    /// the first with a 401.
+    /// the first: with a `client-token-error` header, or with a 401.
     ///
-    /// A 401 can be either credential, and the client token is the one nothing else would
-    /// notice: it is cached for the fortnight Spotify says it is good for, so a token revoked
-    /// before its stated expiry fails every request until the app is relaunched. The bearer
-    /// refreshes itself, so this costs one wasted retry at worst.
+    /// The client token is the credential nothing else would notice: it is cached for the
+    /// fortnight Spotify says it is good for, so a token refused before then would fail every
+    /// request until the app is relaunched.
+    ///
+    /// - **A `client-token-error` header** on a failure is Spotify naming the client token as the
+    ///   fault: a token it would not take was answered 400 with it
+    ///   (`plans/done/refused-client-token-answers-400.md`). A 400 without it is a bad request,
+    ///   which asking again would not mend.
+    /// - **A 401** can be either credential. The bearer refreshes itself, so this costs one
+    ///   wasted retry at worst.
     ///
     /// The token the request actually carried is named, not just "the current one" — concurrent
     /// requests share a token, so one dead token is refused several times over and the later
@@ -108,13 +120,18 @@ nonisolated struct SpotifyCredentials: Sendable {
         _ attempt: () async throws -> Attempt,
     ) async throws -> (body: Data, status: Int) {
         let sent = try await attempt()
-        guard sent.status == 401 else { return (sent.body, sent.status) }
+        let refused = sent.status == 401 || (sent.clientTokenError != nil && !(200 ..< 300).contains(sent.status))
+        guard refused else { return (sent.body, sent.status) }
+        debugLog("SpotifyCredentials", "HTTP \(sent.status)\(sent.clientTokenError.map { " (\($0))" } ?? ""); asking again with a new client token")
 
         if let rejected = sent.clientToken {
             await invalidateClientToken(rejected)
         }
 
         let retried = try await attempt()
+        if let error = retried.clientTokenError, !(200 ..< 300).contains(retried.status) {
+            debugLog("SpotifyCredentials", "HTTP \(retried.status) (\(error)) for the new client token too")
+        }
         return (retried.body, retried.status)
     }
 
