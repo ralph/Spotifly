@@ -48,6 +48,10 @@ struct NowPlayingBarView: View {
     private let barWidth: CGFloat = 700
     private let barHeight: CGFloat = 60
 
+    /// The room a scrolling page leaves under its end, which the bar floats over: the bar's
+    /// height, the 20 points under it, and 20 to spare.
+    static let contentClearance: CGFloat = 100
+
     var body: some View {
         playerLayout
             .frame(width: windowState.isMiniPlayerMode ? nil : barWidth, height: windowState.isMiniPlayerMode ? nil : barHeight)
