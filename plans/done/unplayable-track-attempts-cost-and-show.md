@@ -35,14 +35,19 @@ As recorded, read from the code:
 
 **The pipeline decides when a load is announced, and the client shows what it announces.**
 
-- **`AudioPipeline.playTrack` asks for the metadata first**, through `playableMetadata(for:)`,
-  while what plays goes on playing. A track with no files throws `trackUnavailable` there,
-  before anything is published. What played before is then torn down, as it was when a load
-  failed after its announcement, so a failed start leaves nothing playing, as before. The
-  metadata is handed on to `prepare`, so the load still makes one metadata request.
-- **The loaded track and the one fetched ahead are not asked about again**: the first played,
-  and the fetch-ahead asked already, or is asking, and reports a withheld one itself
-  (`.withheldAhead`). So a Next onto the fetched-ahead track, the usual case, waits for nothing.
+- **`AudioPipeline.playTrack` asks for the metadata first**, through `resolveFile(for:)`, the
+  first half of what `prepare` did, while what plays goes on playing. A track with no files
+  throws `trackUnavailable` there, before anything is published. What played before is then
+  torn down, as it was when a load failed after its announcement, so a failed start leaves
+  nothing playing, as before. That happens in the pipeline, under the load's generation,
+  rather than as a stop in the client's failure path, which could land on a newer load. The
+  file found is handed to `download(_:of:)`, the second half, so the load still makes one
+  metadata request.
+- **A track with a copy in memory is not asked about** (`hasCopy(of:)`): the loaded track, the
+  one decoding behind it for a gapless change, and the one fetched ahead, which asked already,
+  or is asking, and reports a withheld one itself (`.withheldAhead`). So a Next onto the
+  fetched-ahead track, the usual case, waits for nothing. A Next that lands in the moment
+  while the fetch ahead's own metadata request is out still announces the track first.
 - **The load generation is taken when the load starts**, not after the teardown: a stop or a
   newer load that comes during the metadata request supersedes it, and it throws
   `CancellationError` without announcing anything.
@@ -52,8 +57,16 @@ As recorded, read from the code:
   are handled in order, so a stop that comes later cannot be overtaken by a late publish.
 - **A track that followed on without a gap is never `.loading`**, so its `.playing` now
   publishes with the queue too, which `startTrack`'s optimistic state used to carry.
+- **A new context's queue is published after its load**, as the skips' already was
+  (`play(contextUri:…)`, which replaces `setQueue`). Published before, it showed the new track as
+  the current row while the bar still showed the old one, for the length of the metadata
+  request, and its announcement of the next track could cancel a fetched-ahead copy of the
+  track being loaded.
 - **Recovery's reload** calls `playTrack` directly, and now publishes its track and position from
   the same event.
+- **What still sees the moved queue early:** a cluster report sent during the metadata request,
+  such as a remote command's acknowledgement, pairs the old track with the new queue around
+  it, until the announcement reports again 16 to 44 ms later.
 
 **The bar waits for one metadata request** on a start nobody fetched ahead. Measured in this
 session's logs: 16 to 44 ms from the request to its answer (`I Took A Pill In Ibiza` 20 ms,

@@ -456,8 +456,7 @@ public actor LibrespotClient {
         let uri = Self.normalizedUri(uriOrUrl)
 
         if uri.contains("spotify:track:") {
-            setQueue(contextUri: uri, tracks: [uri], startIndex: 0)
-            try await loadCurrentTrack(positionMs: positionMs, paused: paused)
+            try await play(contextUri: uri, tracks: [uri], startIndex: 0, positionMs: positionMs, paused: paused)
             return
         }
 
@@ -485,15 +484,14 @@ public actor LibrespotClient {
         if let resumingAtUid, let queued = startingAtUri,
            let start = PlaybackQueue.start(in: context.tracks, queued: queued, resumingAt: resumingAtUid, uids: uids)
         {
-            setQueue(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name, playingQueued: start.queued)
+            try await play(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name, playingQueued: start.queued, positionMs: positionMs, paused: paused)
         } else {
             // No track named, as by Play on an album or a playlist: its first that plays.
             let start = trackIndex == nil && startingAtUri == nil
                 ? (tracks: context.tracks, index: firstPlayable(in: context.tracks))
                 : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: uids)
-            setQueue(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name)
+            try await play(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name, positionMs: positionMs, paused: paused)
         }
-        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
     /// Plays a list of tracks that no album or playlist names, starting where
@@ -518,8 +516,7 @@ public actor LibrespotClient {
         // No track named, as by Play Tracks under search: the list's first that plays.
         let index = trackIndex == nil && startingAtUri == nil ? firstPlayable(in: start.tracks) : start.index
         let contextUri = start.tracks.count == 1 && first.contains("spotify:track:") ? first : ""
-        setQueue(contextUri: contextUri, tracks: start.tracks, startIndex: index)
-        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
+        try await play(contextUri: contextUri, tracks: start.tracks, startIndex: index, positionMs: positionMs, paused: paused)
     }
 
     /// Song radio for a seed track, resolved through its station context.
@@ -803,14 +800,26 @@ public actor LibrespotClient {
     // MARK: - Queue Plumbing
 
     /// - Parameter queued: a track to play as queued, after the context's start row.
-    private func setQueue(contextUri: String, tracks: [String], startIndex: Int, name: String? = nil, playingQueued queued: String? = nil) {
+    /// Plays from a new context. The queue goes out with the track when the load announces it,
+    /// and is published again afterwards, as the skips do: announcing the next track any sooner
+    /// would cancel a fetched-ahead copy of this one.
+    private func play(
+        contextUri: String,
+        tracks: [String],
+        startIndex: Int,
+        name: String? = nil,
+        playingQueued queued: String? = nil,
+        positionMs: UInt64,
+        paused: Bool,
+    ) async throws {
         contextName = name
         playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex)
-        // Before the publish, so the row before it never shows as the one playing.
+        // Before the load, so the row before it never shows as the one playing.
         if let queued {
             playbackQueue.playQueued(queued)
         }
-        publishQueue()
+        defer { publishQueue() }
+        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
     private func loadCurrentTrack(positionMs: UInt64 = 0, paused: Bool = false) async throws {
@@ -821,8 +830,9 @@ public actor LibrespotClient {
     }
 
     /// Starts audio for a uri that is already the queue's current track, and
-    /// gives playback up if it cannot: the pipeline tore the previous track
-    /// down before fetching this one, so a failed load leaves nothing playing.
+    /// gives playback up if it cannot: the pipeline tears the previous track
+    /// down when it announces this one, or when this one fails before that, so
+    /// a failed load leaves nothing playing.
     ///
     /// Deliberately separate from `play`: advancing through an existing queue
     /// must not rebuild it.
@@ -836,8 +846,8 @@ public actor LibrespotClient {
         do {
             try await startTrack(uri, positionMs: positionMs, paused: paused)
         } catch is CancellationError {
-            // A newer load took over while this one waited, and has already
-            // published its own state; clearing it here would erase that.
+            // A newer load took over while this one waited, and publishes its
+            // own state; clearing it here would erase that.
             throw CancellationError()
         } catch {
             await playbackFailed(error)
@@ -954,7 +964,8 @@ public actor LibrespotClient {
     /// Publishes the queue, with the context it plays from, and tells the pipeline which
     /// track to fetch ahead.
     ///
-    /// A load publishes the queue itself, with its track; see `startTrack`. The fetch ahead
+    /// A load publishes the queue itself, with its track, when the pipeline announces it; see
+    /// `handlePipelineState`. The fetch ahead
     /// waits until the load is done: announcing the next track before it would cancel a
     /// fetched-ahead copy of the very track being loaded.
     private func publishQueue() {
@@ -1064,7 +1075,7 @@ public actor LibrespotClient {
         case let .playing(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
             // Torn down or replaced while this waited: the track is no one's now. Or a skip
-            // started loading another while this waited, and published it with its queue.
+            // moved the queue on to another while this waited, which it announces.
             guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
             // With its queue too: a track that followed on without a gap is never `.loading`.
             publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position), queue: queueState)
@@ -1524,7 +1535,7 @@ public actor LibrespotClient {
     private func publishPlaybackStateRefresh() async {
         guard let current = localState else { return }
         let position = await audioPipeline?.currentPositionMs() ?? UInt64(max(0, current.positionMs))
-        // A load that started while this waited has published its own state.
+        // A load announced while this waited has published its own state.
         guard localState?.trackUri == current.trackUri else { return }
         publishPlaybackState(
             for: current.trackUri,
