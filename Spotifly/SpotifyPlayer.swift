@@ -163,10 +163,10 @@ enum SpotifyPlayer {
     }
 
     /// An album's row uids from pathfinder; nothing for anything else, or when it does not answer.
-    private nonisolated static func albumRowUids(_ uri: String) async -> [String: String] {
+    private nonisolated static func albumRowUids(_ uri: String) async -> [(uri: String, uid: String)] {
         guard let id = SpotifyURI.id(from: uri, kind: "album"),
               let album = try? await PartnerAPI().album(id: id)
-        else { return [:] }
+        else { return [] }
         return album.rowUids
     }
 
