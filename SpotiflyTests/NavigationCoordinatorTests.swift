@@ -3,6 +3,7 @@
 //  SpotiflyTests
 //
 
+import Foundation
 @testable import Spotifly
 import Testing
 
@@ -318,6 +319,36 @@ struct NavigationCoordinatorTests {
 
         coordinator.selectNavigationItem(.playlists)
         #expect(coordinator.current.selection == nil)
+    }
+
+    /// A search that failed has a page too, saying why, with Try again.
+    @Test func `a failed search opens its page, until results replace the failure`() {
+        let store = AppStore()
+        let coordinator = NavigationCoordinator(store: store)
+        store.setSearchFailure(URLError(.notConnectedToInternet), for: "q")
+
+        coordinator.navigateToSearchResults(query: "q")
+        #expect(coordinator.displayedSearchQuery == "q")
+        #expect(store.searchFailure(for: "q")?.canRetry == true)
+
+        store.setSearchResults(emptySearchResults, for: "q")
+        coordinator.invalidateUnviewableRoutes()
+        #expect(store.searchFailure(for: "q") == nil)
+        #expect(coordinator.displayedSearchQuery == "q")
+    }
+
+    @Test func `a failed search leaves the history with its failure`() {
+        let store = AppStore()
+        let coordinator = NavigationCoordinator(store: store)
+        store.setSearchFailure(URLError(.notConnectedToInternet), for: "q")
+        coordinator.navigateToSearchResults(query: "q")
+        coordinator.selectNavigationItem(.albums)
+
+        store.clearSearchFailure()
+        coordinator.invalidateUnviewableRoutes()
+
+        #expect(coordinator.current.section == .albums)
+        #expect(!coordinator.back.contains { $0.query == "q" })
     }
 
     @Test func `invalidation removes an evicted search from the whole history`() {
