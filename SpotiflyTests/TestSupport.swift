@@ -154,14 +154,14 @@ func httpResponse(_ status: Int, url: URL = PartnerAPI.endpoint) -> HTTPURLRespo
 func partnerAPI(
     accessToken: String = "at",
     clientToken: String = "ct",
-    invalidateClientToken: (@Sendable (String) async -> Void)? = nil,
-    pause: @escaping @Sendable (Duration) async throws -> Void = { _ in },
+    invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
+    pause: @escaping SpotifyCredentials.Pause = { _ in },
     transport: @escaping PartnerAPI.Transport,
 ) -> PartnerAPI {
     PartnerAPI(
         accessToken: { accessToken },
         clientToken: { clientToken },
-        invalidateClientToken: invalidateClientToken ?? SpotifyCredentials.invalidateShared,
+        invalidateClientToken: invalidateClientToken,
         transport: transport,
         pause: pause,
     )
@@ -171,14 +171,14 @@ func partnerAPI(
 func spclientAPI(
     accessToken: String = "at",
     clientToken: String = "ct",
-    invalidateClientToken: (@Sendable (String) async -> Void)? = nil,
-    pause: @escaping @Sendable (Duration) async throws -> Void = { _ in },
+    invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
+    pause: @escaping SpotifyCredentials.Pause = { _ in },
     transport: @escaping SpclientAPI.Transport,
 ) -> SpclientAPI {
     SpclientAPI(
         accessToken: { accessToken },
         clientToken: { clientToken },
-        invalidateClientToken: invalidateClientToken ?? SpotifyCredentials.invalidateShared,
+        invalidateClientToken: invalidateClientToken,
         transport: transport,
         pause: pause,
     )

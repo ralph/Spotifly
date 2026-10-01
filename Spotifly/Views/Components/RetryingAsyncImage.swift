@@ -30,35 +30,51 @@ struct RetryingAsyncImage<Content: View>: View {
         [.seconds(5), .seconds(30), .seconds(180)]
     }
 
+    private enum Status {
+        case loading, loaded, failed
+    }
+
     @State private var attempt = 0
-    @State private var loaded = false
-    @State private var failed = false
+    @State private var status = Status.loading
     /// The retries after a failure so far, for this url since the network last returned.
     @State private var retries = 0
 
     var body: some View {
         AsyncImage(url: url) { phase in
             content(phase)
-                // Follows the phase, a new url's included, which starts over empty.
-                .onChange(of: phase.image != nil, initial: true) { _, arrived in
-                    loaded = arrived
-                }
-                .onChange(of: phase.error != nil, initial: true) { _, isFailure in
-                    failed = isFailure
+                // Follows the phase, a new url's included, which starts over empty. A failure
+                // with no network at all waits for its return.
+                .onChange(of: Self.status(of: phase), initial: true) { _, now in
+                    status = now
                 }
         }
         .id(attempt)
-        .retryingWhenNetworkReturns(if: !loaded) {
+        .retryingWhenNetworkReturns(if: status != .loaded) {
             retries = 0
             attempt += 1
         }
-        .task(id: failed) {
-            guard failed, retries < Self.retryPauses.count else { return }
-            // Cancelled when the image arrives, or the view goes.
-            guard await (try? Task.sleep(for: Self.retryPauses[retries])) != nil else { return }
+        .task(id: status) {
+            guard status == .failed, retries < Self.retryPauses.count else { return }
+            // Cancelled when a return or a new url starts the image over, or the view goes.
+            do {
+                try await Task.sleep(for: Self.retryPauses[retries])
+            } catch {
+                return
+            }
             retries += 1
             attempt += 1
         }
         .onChange(of: url) { retries = 0 }
+    }
+
+    /// An image with no network at all counts as loading: the network's return asks again.
+    private static func status(of phase: AsyncImagePhase) -> Status {
+        if phase.image != nil {
+            return .loaded
+        }
+        guard let error = phase.error, (error as? URLError)?.code != .notConnectedToInternet else {
+            return .loading
+        }
+        return .failed
     }
 }

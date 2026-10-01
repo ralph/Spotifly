@@ -142,7 +142,7 @@ nonisolated struct SpclientAPI: Sendable {
         },
         invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
-        pause: @escaping @Sendable (Duration) async throws -> Void = SpotifyCredentials.sleep,
+        pause: @escaping SpotifyCredentials.Pause = { try await Task.sleep(for: $0) },
     ) {
         credentials = SpotifyCredentials(
             accessToken: accessToken,
