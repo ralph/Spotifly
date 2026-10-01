@@ -234,6 +234,15 @@ public nonisolated struct ConnectDeviceInfo: Sendable {
 // MARK: - ProvidedTrack
 
 /// Track in player state
+/// A context's metadata, as the resolver answers it and a player state's `context_metadata`
+/// carries it.
+public nonisolated extension [String: String] {
+    /// What the context calls itself: `context_description`, where it is not empty.
+    var contextName: String? {
+        self["context_description"].flatMap { $0.isEmpty ? nil : $0 }
+    }
+}
+
 public nonisolated struct ProvidedTrack: Sendable {
     public var uri: String = ""
     public var uid: String = ""
