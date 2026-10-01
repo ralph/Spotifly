@@ -166,6 +166,11 @@ nonisolated struct SpotifyCredentials: Sendable {
     let clientToken: @Sendable () async throws -> String
     let invalidateClientToken: @Sendable (String) async -> Void
     let transport: Transport
+    /// Waits before a read is asked for again; see `retryingPassingFailures(_:)`. Injected so
+    /// tests do not wait.
+    let pause: @Sendable (Duration) async throws -> Void
+
+    static let sleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
 
     /// Signs a request as the desktop client: both credentials, and the headers naming which
     /// client is asking. Both, always — the bearer identifies the user, the client token the
@@ -202,6 +207,50 @@ nonisolated struct SpotifyCredentials: Sendable {
         let retried = try await attempt()
         return (retried.body, retried.status)
     }
+
+    /// The pauses before a read is asked for again, one per retry.
+    static let retryPauses: [Duration] = [.seconds(1), .seconds(3)]
+
+    /// Runs a read, and runs it again after a pause when it failed in a way that may pass on its
+    /// own: the server's 5xx or 429, or a connection that timed out, dropped or could not be
+    /// made. Those leave the network up, so `NetworkMonitor` never sees a return, and the page or
+    /// list showed its error until Try again was pressed.
+    ///
+    /// Reads only: a write that timed out may have happened, and must not happen twice. Nothing
+    /// that answers the same each time is asked again, such as a 404, and neither is a request
+    /// made with no network at all, which the network's return retries.
+    func retryingPassingFailures(
+        _ read: () async throws -> (body: Data, status: Int),
+    ) async throws -> (body: Data, status: Int) {
+        for pause in Self.retryPauses {
+            do {
+                let sent = try await read()
+                guard Self.mayPass(status: sent.status) else { return sent }
+                debugLog("SpotifyCredentials", "HTTP \(sent.status); asking again in \(pause)")
+            } catch where Self.mayPass(error) {
+                debugLog("SpotifyCredentials", "\(error.localizedDescription); asking again in \(pause)")
+            }
+            try await self.pause(pause)
+        }
+        return try await read()
+    }
+
+    nonisolated static func mayPass(status: Int) -> Bool {
+        status == 429 || (500 ... 599).contains(status)
+    }
+
+    /// A connection that timed out, dropped or could not be made, or spclient's preflight
+    /// refused with a status that may pass, which comes before the read it clears.
+    nonisolated static func mayPass(_ error: Error) -> Bool {
+        switch error {
+        case let error as URLError:
+            [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(error.code)
+        case let SpclientError.preflightRejected(status):
+            mayPass(status: status)
+        default:
+            false
+        }
+    }
 }
 
 /// Sends persisted queries to `api-partner.spotify.com`.
@@ -223,12 +272,14 @@ nonisolated struct PartnerAPI: Sendable {
         },
         invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
+        pause: @escaping @Sendable (Duration) async throws -> Void = SpotifyCredentials.sleep,
     ) {
         credentials = SpotifyCredentials(
             accessToken: accessToken,
             clientToken: clientToken,
             invalidateClientToken: invalidateClientToken,
             transport: transport,
+            pause: pause,
         )
     }
 
@@ -558,7 +609,7 @@ nonisolated struct PartnerAPI: Sendable {
         _ operation: PathfinderOperation,
         variables: some Encodable & Sendable,
     ) async throws {
-        let response: PathfinderMutationResponse = try await query(operation, variables: variables)
+        let response: PathfinderMutationResponse = try await query(operation, variables: variables, isRead: false)
 
         if let failure = response.failure {
             throw PartnerAPIError.mutationRejected(operation.name, failure)
@@ -570,13 +621,20 @@ nonisolated struct PartnerAPI: Sendable {
     /// Generic over the whole envelope rather than over a search payload: `getAlbum` answers
     /// with `data.albumUnion`, not `data.searchV2`, so the shape below `data` is the
     /// operation's business. Search call sites name `PathfinderResponse<…>` and are unchanged.
+    ///
+    /// A read that fails in a way that may pass is asked for again; a mutation, `isRead` false,
+    /// is not. See `SpotifyCredentials.retryingPassingFailures(_:)`.
     func query<Envelope: Decodable & Sendable>(
         _ operation: PathfinderOperation,
         variables: some Encodable & Sendable,
+        isRead: Bool = true,
     ) async throws -> Envelope {
-        let sent = try await credentials.retryingRefusedToken {
-            try await send(operation, variables: variables)
+        let attempt = {
+            try await credentials.retryingRefusedToken {
+                try await send(operation, variables: variables)
+            }
         }
+        let sent = try await isRead ? credentials.retryingPassingFailures(attempt) : attempt()
 
         guard sent.status == 200 else {
             throw Self.failure(operation: operation, status: sent.status, body: sent.body)

@@ -142,12 +142,14 @@ nonisolated struct SpclientAPI: Sendable {
         },
         invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
         transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
+        pause: @escaping @Sendable (Duration) async throws -> Void = SpotifyCredentials.sleep,
     ) {
         credentials = SpotifyCredentials(
             accessToken: accessToken,
             clientToken: clientToken,
             invalidateClientToken: invalidateClientToken,
             transport: transport,
+            pause: pause,
         )
     }
 
@@ -411,7 +413,11 @@ nonisolated struct SpclientAPI: Sendable {
     // MARK: - Transport
 
     private func get(_ url: URL) async throws -> Data {
-        let sent = try await credentials.retryingRefusedToken { try await getOnce(url) }
+        // A read, so one that fails in a way that may pass is asked for again; `send`'s writes
+        // are not.
+        let sent = try await credentials.retryingPassingFailures {
+            try await credentials.retryingRefusedToken { try await getOnce(url) }
+        }
 
         guard sent.status == 200 else {
             throw SpclientError.requestFailed(sent.status, "")

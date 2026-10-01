@@ -34,7 +34,7 @@ private final class Calls: @unchecked Sendable {
     func profile() -> (Data, URLResponse) {
         lock.withLock {
             profileRequests += 1
-            let status = profileRequests <= failuresBeforeSuccess ? 500 : 200
+            let status = profileRequests <= failuresBeforeSuccess ? 403 : 200
             return (profileJSON, httpResponse(status))
         }
     }

@@ -149,24 +149,21 @@ func httpResponse(_ status: Int, url: URL = PartnerAPI.endpoint) -> HTTPURLRespo
 ///
 /// `invalidateClientToken` is left at the production default unless a test passes one, so a
 /// test that is not about the client token behaves exactly as the app does.
+///
+/// A read retried after a failure that may pass does not wait, unless `pause` is given.
 func partnerAPI(
     accessToken: String = "at",
     clientToken: String = "ct",
     invalidateClientToken: (@Sendable (String) async -> Void)? = nil,
+    pause: @escaping @Sendable (Duration) async throws -> Void = { _ in },
     transport: @escaping PartnerAPI.Transport,
 ) -> PartnerAPI {
-    guard let invalidateClientToken else {
-        return PartnerAPI(
-            accessToken: { accessToken },
-            clientToken: { clientToken },
-            transport: transport,
-        )
-    }
-    return PartnerAPI(
+    PartnerAPI(
         accessToken: { accessToken },
         clientToken: { clientToken },
-        invalidateClientToken: invalidateClientToken,
+        invalidateClientToken: invalidateClientToken ?? SpotifyCredentials.invalidateShared,
         transport: transport,
+        pause: pause,
     )
 }
 
@@ -175,20 +172,15 @@ func spclientAPI(
     accessToken: String = "at",
     clientToken: String = "ct",
     invalidateClientToken: (@Sendable (String) async -> Void)? = nil,
+    pause: @escaping @Sendable (Duration) async throws -> Void = { _ in },
     transport: @escaping SpclientAPI.Transport,
 ) -> SpclientAPI {
-    guard let invalidateClientToken else {
-        return SpclientAPI(
-            accessToken: { accessToken },
-            clientToken: { clientToken },
-            transport: transport,
-        )
-    }
-    return SpclientAPI(
+    SpclientAPI(
         accessToken: { accessToken },
         clientToken: { clientToken },
-        invalidateClientToken: invalidateClientToken,
+        invalidateClientToken: invalidateClientToken ?? SpotifyCredentials.invalidateShared,
         transport: transport,
+        pause: pause,
     )
 }
 
