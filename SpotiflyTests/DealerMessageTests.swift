@@ -306,18 +306,20 @@ struct PlayCommandTests {
 struct SkipNextCommandTests {
     @Test func `a skip names the track of the row clicked`() {
         let json: [String: Any] = ["endpoint": "skip_next", "track": ["uri": "spotify:track:t4", "uid": "c3e1a9d6"]]
-        guard case let .next(trackUri) = DealerConnection.parseCommand(endpoint: "skip_next", json: json) else {
+        guard case let .next(trackUri, uid) = DealerConnection.parseCommand(endpoint: "skip_next", json: json) else {
             Issue.record("not read as skip_next")
             return
         }
         #expect(trackUri == "spotify:track:t4")
+        #expect(uid == "c3e1a9d6")
     }
 
     @Test func `a plain skip names none`() {
-        guard case let .next(trackUri) = DealerConnection.parseCommand(endpoint: "skip_next", json: ["endpoint": "skip_next"]) else {
+        guard case let .next(trackUri, uid) = DealerConnection.parseCommand(endpoint: "skip_next", json: ["endpoint": "skip_next"]) else {
             Issue.record("not read as skip_next")
             return
         }
         #expect(trackUri == nil)
+        #expect(uid == nil)
     }
 }

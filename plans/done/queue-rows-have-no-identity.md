@@ -1,8 +1,8 @@
 # Queue rows have no identity, so every jump finds its row again by uri
 
-Status: **In progress.** Read from the code in review. The history and part 1 are done (#105,
-#94), and part 1 was seen in the running app on 2026-09-30; part 2 is open, and smaller than it
-was; see Progress.
+Status: **Done** 2026-10-01. The history and part 1 (#105, #94), seen in the running app on
+2026-09-30; part 2, the rows' uids, built and unit-tested, its measurement against the web
+player pending; see Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
@@ -136,3 +136,29 @@ Not defined yet.
     Inventing uids for the rows other devices see risks confusing a
     receiving device's own matching (`context.rs` copies a transferred uid onto its context
     track), so measure first.
+- **Part 2, built** (2026-10-01). Every row the queue lists can carry a uid, and the queue,
+  the cluster and a jump all use it:
+  - **Queued tracks are named `q0`, `q1` and on** (`PlaybackQueue.QueuedTrack`), as librespot's
+    `add_to_queue` names them, and keep the name while they play. The count goes on across the
+    queue's life, so no two rows of one queue share one.
+  - **Context rows carry the resolver's uids**, kept beside `contextTracks` as `contextUids`.
+    A playlist's rows have them; an album's do not, unless the handover fetched pathfinder's
+    (#116), and none is invented for them, which the plan warned could confuse a receiving
+    device's own matching. `start` returns the uids aligned with the tracks, with none for a
+    track put in, so a relinked or missing track no longer shifts the uids after it.
+  - **Reported**: the current track, the next tracks and the previous tracks go out with their
+    uids (`SpircPlayerState.trackUid`, the rows' `uid`), as librespot reports them.
+  - **A `skip_next` naming a uid** goes to that row, where a row ahead has that uid and that
+    track (go-librespot's `ContextTrackComparator`), and otherwise falls back to the uri, as
+    before. That is the case the provider could not settle: a track queued and further on in
+    the context.
+  - **The queue view's rows carry them too** (`QueueItem.uid`), so a double-click on this Mac's
+    queue names its row by uid. A context with episodes, whose rows the store drops, no longer
+    shifts which row that is, wherever the rows have uids.
+  - **Not done:** the parallel `tracks` and `uids` of `start` and `ResolvedContext` did not become
+    one list of rows; `start` keeps them aligned instead. And an album's rows still go by uri,
+    unless their pathfinder uids were fetched.
+  - **Measurement pending** (needs this build running beside the web player): whether a
+    double-click in the web player's queue panel now sends the uid of the row clicked, for a
+    queued copy and the context's copy of the same track; and that a handover from the Mac to
+    the web player, with uids reported, starts on the right row.

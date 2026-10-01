@@ -17,8 +17,9 @@ nonisolated struct QueueItem: Equatable {
     let uri: String
     /// Track provider: "context", "queue", "autoplay", or "unavailable"
     let provider: String
-    /// The cluster's name for this row, which a `skip_next` can jump to. Only
-    /// another device's queue has them; this client's own rows go by position.
+    /// The row's uid, which a jump to it names: the cluster's, while another device plays,
+    /// and this client's own otherwise (`PlaybackQueue.Row`). A row with none goes by its
+    /// position and its track.
     var uid: String?
 }
 
@@ -285,8 +286,8 @@ enum SpotifyPlayer {
     }
 
     /// Plays one of the queue's next tracks, keeping the queue.
-    static func skip(toNext position: Int?, uri: String) async throws {
-        try await LibrespotClient.shared.skip(toNext: position, uri: uri)
+    static func skip(toNext position: Int?, uri: String, uid: String?) async throws {
+        try await LibrespotClient.shared.skip(toNext: position, uri: uri, uid: uid)
     }
 
     /// Plays one of the queue's previous tracks, keeping the queue.
