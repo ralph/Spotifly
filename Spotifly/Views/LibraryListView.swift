@@ -78,8 +78,6 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     /// clients keep theirs. A folder starts closed.
     @AppStorage("openLibraryFolders") private var openFolderList = ""
 
-    @State private var errorMessage: String?
-
     /// Whether we have content to show (either the ephemeral entity or the library)
     private var hasContent: Bool {
         ephemeral != nil || !items.isEmpty
@@ -95,14 +93,14 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                     Text(style.loadingText)
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = errorMessage, !hasContent {
+            } else if let failure = pagination.failure, !hasContent {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
                     Text(style.errorTitle)
                         .font(.headline)
-                    Text(error)
+                    Text(failure.message)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
@@ -111,6 +109,9 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .retryingWhenNetworkReturns {
+                        await loadItems(forceRefresh: true)
+                    }
                 }
                 .padding()
             } else if !hasContent {
@@ -185,16 +186,10 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                             }
                         }
 
-                        // Load more indicator. An outline is loaded whole, and the flat pages
-                        // behind it are not what it shows.
-                        if pagination.hasMore, outline == nil {
-                            ProgressView()
-                                .padding()
-                                .onAppear {
-                                    Task {
-                                        await loadMoreItems()
-                                    }
-                                }
+                        // An outline is loaded whole, and the flat pages behind it are not
+                        // what it shows.
+                        if outline == nil {
+                            LoadMoreRow(pagination: pagination, loadMore: loadMoreItems)
                         }
                     }
                     .padding()
@@ -345,21 +340,13 @@ struct LibraryListView<Entity: LibraryEntity>: View {
         select(first.id, false)
     }
 
+    /// A failure is recorded on `pagination`, where the toolbar's refresh leaves it too.
     private func loadItems(forceRefresh: Bool = false) async {
-        errorMessage = nil
-        do {
-            try await load(forceRefresh)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        try? await load(forceRefresh)
     }
 
     private func loadMoreItems() async {
-        do {
-            try await loadMore()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        try? await loadMore()
     }
 }
 
@@ -370,33 +357,18 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
     let isSelected: Bool
     let onSelect: () -> Void
 
-    @Environment(\.displayScale) private var displayScale
     @State private var isHovering = false
-
-    private let imageSize: CGFloat = 36
 
     var body: some View {
         HStack(spacing: 10) {
-            if let url = entity.images.url(for: imageSize, scale: displayScale) {
-                RetryingAsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        placeholder
-                    case let .success(image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: imageSize, height: imageSize)
-                            .clipShape(style.artworkShape)
-                    case .failure:
-                        placeholder
-                    @unknown default:
-                        EmptyView()
-                    }
-                }
-            } else {
-                placeholder
-            }
+            Artwork(
+                images: entity.images,
+                size: 36,
+                shape: style.artworkShape,
+                symbol: style.placeholderGlyph,
+                symbolFont: .system(size: 16),
+                placeholderWhileLoading: true,
+            )
 
             Text(entity.name)
                 .font(.system(size: 13))
@@ -429,14 +401,5 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
         .onHover { hovering in
             isHovering = hovering
         }
-    }
-
-    private var placeholder: some View {
-        Image(systemName: style.placeholderGlyph)
-            .font(.system(size: 16))
-            .foregroundStyle(.secondary)
-            .frame(width: imageSize, height: imageSize)
-            .background(.quaternary)
-            .clipShape(style.artworkShape)
     }
 }

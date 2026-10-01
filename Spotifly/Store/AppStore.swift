@@ -162,6 +162,15 @@ final class AppStore {
         savedTrackIds.compactMap { tracks[$0] }
     }
 
+    /// The name of a selection's entity, nil while the store does not hold it.
+    func name(of selection: Selection) -> String? {
+        switch selection {
+        case let .album(id): albums[id]?.name
+        case let .artist(id): artists[id]?.name
+        case let .playlist(id): playlists[id]?.name
+        }
+    }
+
     // MARK: - Queue Computed Properties
 
     /// Current track entity from the tracks store
@@ -380,17 +389,26 @@ final class AppStore {
     ) async throws {
         let offset = self[keyPath: pagination].nextOffset ?? 0
         self[keyPath: pagination].isLoading = true
+        self[keyPath: pagination].failure = nil
         defer {
             if !Task.isCancelled {
                 self[keyPath: pagination].isLoading = false
             }
         }
 
-        let page = try await load(offset)
-        try Task.checkCancellation()
+        do {
+            let page = try await load(offset)
+            try Task.checkCancellation()
 
-        self[keyPath: pagination].isLoaded = true
-        self[keyPath: pagination].advance(by: page.received, total: page.total)
+            self[keyPath: pagination].isLoaded = true
+            self[keyPath: pagination].advance(by: page.received, total: page.total)
+        } catch {
+            // A superseded run's error is its replacement's business, not the list's.
+            if !Task.isCancelled, !isCancellation(error) {
+                self[keyPath: pagination].failure = LoadFailure(error)
+            }
+            throw error
+        }
     }
 
     // MARK: - User Library Mutations

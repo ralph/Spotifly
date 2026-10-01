@@ -1,7 +1,8 @@
 # A track load waits on two metadata requests, one after the other
 
-Status: **Done** 2026-09-29. Measured from the web player's session, built and unit-tested; the
-time saved not yet measured in the running app; see Verification.
+Status: **Done** 2026-09-29 (#99). Measured from the web player's session, built and unit-tested,
+and seen in the running app on 2026-09-30; the time saved not compared with `main`; see
+Verification.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`prepare`),
 `Spotifly/SwiftLibrespot/Network/SPClient.swift` (`getTrackMetadata` and `getAudioFiles`, now
 `getTrack`; `parseAudioFilesResponse` and `parseTrackMetadata`, now `parseTrackResponse`)
@@ -83,7 +84,9 @@ The first step of the plan, both requests at once, is moot with one request.
       its name and no files; the file rules (own files, the alternative, unnamed formats,
       a file without an id), now through the one parser.
 - [x] Build, 443 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
-- [ ] Live: the `AudioPipeline` log shows one `[POST] extended-metadata` and no
-      `[GET] …/metadata/4/track/…` before `Decoder open` for a double-click, and the time from
-      `Playing <uri>` to `Decoder open` for a load not fetched ahead drops by about one round
-      trip. Tracks play, and a withheld track is still stepped over.
+- [x] Live, 2026-09-30: for a double-click on "Sugar Man", the log shows one `[POST]
+      extended-metadata` and no `[GET] …/metadata/4/track/…` before `Decoder open`, 260 ms after
+      `Playing <uri>`. Not compared with `main`. Tracks play, the relinked "The Letter" too, and the
+      next track is fetched ahead and follows without a gap. The withheld "Girlfriend" is stepped
+      over, but the player already knew it and never loaded it, so the load-level case rests on the
+      unit test.

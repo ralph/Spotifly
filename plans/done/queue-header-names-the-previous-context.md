@@ -1,7 +1,7 @@
 # The queue names the previous album while a bare list plays
 
-Status: **Done** 2026-09-29. Built and unit-tested; not yet seen in the running app; see
-Verification.
+Status: **Done** 2026-09-29 (#91). Built and unit-tested; the album case seen in the running app on
+2026-09-30, the bare list not yet; see Verification.
 Components: `Spotifly/Store/AppStore.swift` (`Queue.contextUri`, `setQueue`),
 `Spotifly/SpotifyPlayer.swift` (`QueueState.context`), `Spotifly/Views/QueueListView.swift`
 (`contextInfo`, `playingFromText`), `Spotifly/ViewModels/PlaybackViewModel.swift` (`play(queueRow:)`)
@@ -64,6 +64,8 @@ name the old album.
 - [x] Unit test: `QueueState.context` names an album's uri, and nil for a bare list.
 - [x] Build, 442 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
 - [ ] Live: play an album, then Play Tracks under Search's "Show all tracks". The queue's header
-      says "Wiedergabe auf …" with no album named and no link.
-- [ ] Live: play an album again. The header names it, and the name links to it.
-- [ ] Live: relaunch while an album plays. The header names the album at once.
+      says "Wiedergabe auf …" with no album named and no link. Not run on 2026-09-30.
+- [x] Live, 2026-09-30: playing an album, the header names it ("Wiedergabe von „Alive“ auf …"). The
+      link was not tried.
+- [ ] Live: relaunch while an album plays. The header names the album at once. Not run on
+      2026-09-30.

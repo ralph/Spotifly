@@ -1,7 +1,7 @@
 # The refresh button does nothing in the Queue section
 
-Status: **Done** 2026-09-29. Built and unit-tested; not yet seen in the running app; see
-Verification.
+Status: **Done** 2026-09-29 (#89). Built and unit-tested, and seen in the running app on 2026-09-30;
+see Verification.
 Components: `Spotifly/ViewModels/NavigationCoordinator.swift` (`canRefreshCurrentSection`),
 `Spotifly/Views/LoggedInView.swift` (`refreshCurrentSection`), `Spotifly/Views/LoggedInToolbars.swift`
 Found: 2026-08-15, in a review of the plans. Re-checked 2026-09-29.
@@ -37,6 +37,6 @@ nothing used.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0. The coordinator
       test that asserted Favorites could refresh went with the property; the switch is what
       decides now, and the compiler checks it.
-- [ ] Live: the Queue and Speakers sections show no refresh button in the toolbar. The Queue
-      keeps its scroll-to-current button. Playlists, Albums, Artists and Favorites still show
-      the refresh button, and it reloads the list.
+- [x] Live, 2026-09-30: the Queue section shows its scroll-to-current button and no refresh button,
+      and Speakers shows none. Playlists and Albums show it, and in Playlists it reloads the list
+      and keeps the selection.

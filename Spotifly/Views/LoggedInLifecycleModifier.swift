@@ -163,12 +163,8 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     // an id nothing in the app leads to, such as an album from another market.
                     if let open = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_OPEN"] {
                         debugLog("DebugAutoplay", "Opening \(open)")
-                        if let id = SpotifyURI.id(from: open, kind: "album") {
-                            navigationCoordinator.navigateToAlbumSection(albumId: id)
-                        } else if let id = SpotifyURI.id(from: open, kind: "artist") {
-                            navigationCoordinator.navigateToArtistSection(artistId: id)
-                        } else if let id = SpotifyURI.id(from: open, kind: "playlist") {
-                            navigationCoordinator.navigateToPlaylistSection(playlistId: id)
+                        if let route = Route(contextUri: open) {
+                            navigationCoordinator.navigate(to: route)
                         }
                     }
 
@@ -189,6 +185,14 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     }
                 #endif
             }
+            // The two loads started here, asked for again when the network is back. Launched
+            // offline, the start page shows its error, and the sidebar has no profile and so no
+            // avatar, until the next launch. Here rather than on the start page, which may not
+            // be on screen when the network returns. A second profile request, from a return
+            // while the launch's is still out, is harmless; skipping it lost the only retry
+            // when that one then failed.
+            .retryingWhenNetworkReturns(if: store.homeErrorMessage != nil) { await homeService.refresh() }
+            .retryingWhenNetworkReturns(if: store.userProfile == nil) { await loadProfile() }
             // Playback steps over what the lists said will not play. Initially too, which
             // sends an empty set at login, so nothing of the previous account's is left.
             .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in

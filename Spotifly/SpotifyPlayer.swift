@@ -42,6 +42,8 @@ nonisolated struct QueueState: Equatable {
     let nextTracks: [QueueItem]
     /// What played before the current track, in play order: the most recent last.
     let previousTracks: [QueueItem]
+    /// The context's own name: the resolver's locally, the cluster's while another device plays.
+    var contextName: String?
 
     /// The context the queue plays from, or nil for a bare list of tracks.
     var context: String? {
@@ -152,7 +154,16 @@ enum SpotifyPlayer {
             tokenProvider: { try await KeymasterSession.shared.accessToken() },
             clientTokenProvider: { try await ClientTokenProvider.shared.token() },
             usernameProvider: { await KeymasterSession.shared.username },
+            contextRowUids: { uri in await albumRowUids(uri) },
         )
+    }
+
+    /// An album's row uids from pathfinder; nothing for anything else, or when it does not answer.
+    private nonisolated static func albumRowUids(_ uri: String) async -> [String: String] {
+        guard let id = SpotifyURI.id(from: uri, kind: "album"),
+              let album = try? await PartnerAPI().album(id: id)
+        else { return [:] }
+        return album.rowUids
     }
 
     /// Shuts down, which takes this device off Spotify Connect. Call this when the app is

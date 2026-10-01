@@ -66,9 +66,22 @@ final nonisolated class PlaybackQueue {
     /// the index, where what follows is what followed its row, or in front without one. An
     /// index alone is clamped to the context, as it always was.
     ///
+    /// A uid, where the sender gave one and the context lists it, names the row itself and comes
+    /// first: a relinked track is handed over under another id than the context lists it by
+    /// (`plans/done/handover-of-a-relinked-track-starts-at-the-top.md`).
+    ///
     /// - Returns: the tracks to play, the named track put in when it was missing, and the
     ///   index to start at.
-    static func start(in tracks: [String], index: Int?, uri: String?) -> (tracks: [String], index: Int) {
+    static func start(
+        in tracks: [String],
+        index: Int?,
+        uri: String?,
+        uid: String? = nil,
+        uids: [String?] = [],
+    ) -> (tracks: [String], index: Int) {
+        if let uid, let row = uids.firstIndex(of: uid), row < tracks.count {
+            return (tracks, row)
+        }
         let target = min(max(index ?? 0, 0), max(tracks.count - 1, 0))
         guard let uri else { return (tracks, target) }
         if let nearest = tracks.nearestIndex(to: target, where: { $0 == uri }) {
@@ -77,6 +90,24 @@ final nonisolated class PlaybackQueue {
         var tracks = tracks
         tracks.insert(uri, at: target)
         return (tracks, target)
+    }
+
+    /// Where a context starts when a queued track plays first, from the row the context goes on
+    /// with after it, as a handover names it while a queued track plays.
+    ///
+    /// On the row before that, with the track to play as queued: Next into a queued track leaves
+    /// `currentIndex` there too (librespot's `finish_transfer`). Before the first row there is no
+    /// row to stand on, so the track goes in front of it, as a context row. Nil for a uid the
+    /// context does not list, which leaves the track to `start`.
+    static func start(
+        in tracks: [String],
+        queued uri: String,
+        resumingAt uid: String,
+        uids: [String?],
+    ) -> (tracks: [String], index: Int, queued: String?)? {
+        guard let row = uids.firstIndex(of: uid), row < tracks.count else { return nil }
+        guard row > 0 else { return ([uri] + tracks, 0, nil) }
+        return (tracks, row - 1, uri)
     }
 
     /// Replaces the whole playing context.
@@ -94,6 +125,14 @@ final nonisolated class PlaybackQueue {
 
     func enqueue(_ uri: String) {
         userQueue.append(uri)
+    }
+
+    /// Plays a track as queued, now: after the current context track, which goes into the
+    /// history, and before the context goes on. What a handover that arrives while a queued
+    /// track plays leaves.
+    func playQueued(_ uri: String) {
+        userQueue.insert(uri, at: 0)
+        _ = advance()
     }
 
     /// Replaces the explicitly queued tracks wholesale, as a handover does:

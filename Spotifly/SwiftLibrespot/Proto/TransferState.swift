@@ -27,9 +27,17 @@ public nonisolated struct TransferState: Sendable {
     var contextTrackUris: [String] = []
     /// The track that was playing.
     var currentTrackUri: String?
+    /// Its row's uid in the context, which names the row when the track plays under another id
+    /// than the context lists, as a relinked track does. Nil when it plays from the queue.
+    var currentTrackUid: String?
     /// Tracks the user queued on the sending device, which play before the
     /// context continues.
     var queuedTrackUris: [String] = []
+    /// While a queued track plays, the uid of the context row that plays after it: the session's
+    /// `current_uid`. Measured on 2026-09-30 with the web player, it names the row the context
+    /// goes on with, and librespot's `finish_transfer` reads it the same way. Nil while a context
+    /// track plays, when it only names that track again.
+    var contextResumeUid: String?
 
     var positionAsOfTimestamp: Int64 = 0
     var timestamp: Int64 = 0
@@ -41,6 +49,7 @@ public nonisolated struct TransferState: Sendable {
 
     init(parsing data: Data) {
         var playingQueue = false
+        var sessionUid: String?
 
         for field in ProtobufReader.fields(in: data) {
             switch field.number {
@@ -59,12 +68,17 @@ public nonisolated struct TransferState: Sendable {
                     case 1: timestamp = playback.int64
                     case 2: positionAsOfTimestamp = Int64(Int32(truncatingIfNeeded: playback.value))
                     case 4: isPaused = playback.bool
-                    case 5: currentTrackUri = Self.trackUri(playback.fields)
+                    case 5:
+                        let track = playback.fields
+                        currentTrackUri = Self.trackUri(track)
+                        currentTrackUid = track.last(2).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
                     default: break
                     }
                 }
             case 3:
-                for context in field.fields where context.number == 2 {
+                let session = field.fields
+                sessionUid = session.last(3).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
+                for context in session where context.number == 2 {
                     for part in context.fields {
                         switch part.number {
                         case 1:
@@ -99,6 +113,8 @@ public nonisolated struct TransferState: Sendable {
         // (librespot's `current_track_from_transfer`).
         if playingQueue, !queuedTrackUris.isEmpty {
             currentTrackUri = queuedTrackUris.removeFirst()
+            currentTrackUid = nil
+            contextResumeUid = sessionUid
         }
 
         // A context started from a bare list of uris is sent as "-" or nothing.

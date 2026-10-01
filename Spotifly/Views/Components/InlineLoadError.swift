@@ -19,8 +19,6 @@ struct InlineLoadError: View {
     let failure: LoadFailure
     let retry: () async -> Void
 
-    private let network = NetworkMonitor.shared
-
     var body: some View {
         VStack(spacing: 8) {
             Text(failure.message)
@@ -31,21 +29,15 @@ struct InlineLoadError: View {
                 Button("action.try_again") {
                     Task { await retry() }
                 }
+                .retryingWhenNetworkReturns(retry)
             }
         }
         .padding()
-        // A load that failed while the network was away is asked for again when it returns,
-        // as its artwork is, rather than waiting for Try again.
-        .onChange(of: network.returns) {
-            if failure.canRetry {
-                Task { await retry() }
-            }
-        }
     }
 }
 
-/// What a detail page says went wrong, and whether its Try again could end differently.
-struct LoadFailure {
+/// What a page or a list says went wrong, and whether its Try again could end differently.
+struct LoadFailure: Encodable {
     let message: String
     /// False where asking again gets the same answer, as for an album Spotify has none of: the
     /// button would only ever fail again. See `isRetryable(_:)`.

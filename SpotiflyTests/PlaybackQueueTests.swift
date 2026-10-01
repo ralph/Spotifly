@@ -237,6 +237,45 @@ struct PlaybackQueueHandoverTests {
 
         #expect(queue.upcoming().map(\.uri) == ["q1", "q2", "t1"])
     }
+
+    /// Measured with the web player: Liked Songs playing its second row, a track queued and
+    /// skipped into, then handed over. The session's uid named the third row, where the context
+    /// goes on after the queued track.
+    @Test func `a queued track handed over plays as queued, and the context goes on at the row named`() throws {
+        let tracks = ["t0", "t1", "t2", "t3"]
+        let start = try #require(PlaybackQueue.start(in: tracks, queued: "q1", resumingAt: "u2", uids: ["u0", "u1", "u2", "u3"]))
+        #expect(start.tracks == tracks)
+        #expect(start.index == 1)
+        #expect(start.queued == "q1")
+
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:playlist:p", tracks: start.tracks, startIndex: start.index)
+        queue.replaceUserQueue(with: ["q2"])
+        queue.playQueued("q1")
+
+        #expect(queue.currentUri == "q1")
+        #expect(queue.currentProvider == "queue")
+        #expect(queue.upcoming().map(\.uri) == ["q2", "t2", "t3"])
+        #expect(queue.history == ["t1"])
+        #expect(queue.advance() == "q2")
+        #expect(queue.advance() == "t2")
+    }
+
+    /// Found by its uri instead, a queued track the context also lists moved the context to
+    /// that row, passing over the rows before it.
+    @Test func `before the first row, the queued track goes in front, not where the context lists it`() throws {
+        let start = try #require(PlaybackQueue.start(in: ["t0", "q1", "t2"], queued: "q1", resumingAt: "u0", uids: ["u0", "u1", "u2"]))
+
+        #expect(start.tracks == ["q1", "t0", "q1", "t2"])
+        #expect(start.index == 0)
+        #expect(start.queued == nil)
+    }
+
+    @Test func `a uid the context does not list leaves the queued track to start`() {
+        #expect(PlaybackQueue.start(in: ["t0", "t1"], queued: "q1", resumingAt: "other", uids: ["u0", "u1"]) == nil)
+        // An album's resolve answer carries no uids.
+        #expect(PlaybackQueue.start(in: ["t0", "t1"], queued: "q1", resumingAt: "u1", uids: [nil, nil]) == nil)
+    }
 }
 
 /// Where a context starts when a row names its index and its track. The index counts rows in
@@ -251,6 +290,30 @@ struct ContextStartTests {
 
         #expect(start.index == 3)
         #expect(start.tracks == tracks)
+    }
+
+    /// The handover of 2026-09-30: "Today Is a Gift" handed over as the relinked
+    /// `7dF8hsVoSdDWT6GlJZpBPm`, which Liked Songs lists as `0sMImBteCIVUKNhcyx3Cyx`.
+    @Test func `a uid names the row a relinked track plays from`() {
+        let uids: [String?] = ["u-a", "u-b", "u-c", "u-b2", "u-d"]
+
+        let start = PlaybackQueue.start(in: tracks, index: nil, uri: "relinked", uid: "u-c", uids: uids)
+
+        #expect(start.index == 2)
+        #expect(start.tracks == tracks)
+    }
+
+    /// Without an index, the uri alone took the first copy of a track the context holds twice.
+    @Test func `a uid names which copy of a repeated track was handed over`() {
+        let uids: [String?] = ["u-a", "u-b", "u-c", "u-b2", "u-d"]
+
+        #expect(PlaybackQueue.start(in: tracks, index: nil, uri: "b", uid: "u-b2", uids: uids).index == 3)
+    }
+
+    @Test func `a uid the context does not list leaves the uri to decide`() {
+        let uids: [String?] = [nil, nil, nil, nil, nil]
+
+        #expect(PlaybackQueue.start(in: tracks, index: nil, uri: "c", uid: "u-c", uids: uids).index == 2)
     }
 
     /// The Liked Songs case before #77: the list and the context in another order.

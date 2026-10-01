@@ -1,7 +1,8 @@
 # Queue rows have no identity, so every jump finds its row again by uri
 
-Status: **In progress.** Read from the code in review; nothing observed. The history and part 1
-are done; part 2 is open, and smaller than it was; see Progress.
+Status: **In progress.** Read from the code in review. The history and part 1 are done (#105,
+#94), and part 1 was seen in the running app on 2026-09-30; part 2 is open, and smaller than it
+was; see Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
@@ -44,8 +45,9 @@ Not planned yet. Two parts, either first:
    the wait. Then see whether `Queue.reconciled` and both `reconcileQueueCurrentTrack` callers
    can go.
 2. **Give rows an identity**, as librespot does: `q<n>` uids for queued tracks (`tracks.rs`),
-   the resolver's uid or the context index for context tracks (`parseContextReport` drops the
-   uid today), and history kept as entries rather than uris. Report the uids in the cluster
+   the resolver's uid or the context index for context tracks (the resolver's uids reach `play`
+   since the handover fix, but `PlaybackQueue` does not keep them), and history kept as entries
+   rather than uris. Report the uids in the cluster
    state. The queue view's rows would then name a uid, the three `nearestIndex` re-finds would
    go, and a `skip_next` from the web player would name the exact copy.
 
@@ -95,18 +97,42 @@ Not defined yet.
       position. A skip in that wait published its own track, which the stale state then
       overwrote until the new track's `.playing` came. Both drop a state whose track is no
       longer current.
+  - Seen in the running app, 2026-09-30, with the web player as the other device. Four quick
+    Nexts, a double-click several rows ahead, Previous twice, and tracks running out by
+    themselves: the queue and the bar agreed each time, within 0.4 s. Next in the last second
+    and a half of a track played the track after it and never the one after that, also with
+    repeat-one on, where the old track did not come back. The mirrored queue followed the web
+    player's with the right current row. The history as positions (#105) was not tried live: it
+    needs a context holding a track twice.
 - **Part 2, uids: not done, and what is left of it** (2026-09-29). With the queue published
   with its track, the view's list is split where the player's is, so a row's index names the
   exact row and `nearestIndex` finds it at that index. What uids would still fix:
   - **`skip_next` from the web player** names a track by uri, and a duplicate ahead resolves to
     the first copy. librespot's `handle_next` does the same (`skip_next.track.map(|t| t.uri)`);
     go-librespot matches a uid first (`tracks.ContextTrackComparator`).
+    - **Measured** 2026-10-01: a double-click on a row three ahead in the web player's queue
+      panel, while Spotifly played an album, sent
+      `{"endpoint":"skip_next","track":{"uri":"spotify:track:6n7G4IAZjZMYFY3wygXG2H","provider":"context"}}`:
+      no uid, since Spotifly reports its rows without one, but a `provider`. A uid could only
+      come back once Spotifly reports its rows with uids.
+    - **The `provider` does not tell the copies apart.** Measured the same day with a track both
+      queued and further on in the album: a double-click on the album's own copy in the web
+      player's queue panel sent `"provider":"queue"`, twice, with two tracks. The web player
+      looks the row up by uri and names the first match, the queued one. A branch that picked the
+      row by provider was built, measured, and dropped.
   - **Rows the store drops.** `QueueService` keeps only track rows, so a context with episodes
     shifts the view's indices past the first one. The uri still finds the row unless the track
     repeats close by.
   - What it would take: `q<n>` uids for queued tracks as librespot's `add_to_queue` makes them;
-    the resolver's uid for context rows, which `parseContextReport` drops. Whether context-resolve
-    answers carry a `uid` per track is **not measured**; librespot's `context.rs` generates a
-    UUID when one is missing. Inventing uids for the rows other devices see risks confusing a
+    the resolver's uid for context rows, which reaches `play` as `ResolvedContext.uids` but is
+    not kept in `PlaybackQueue`. **Measured**
+    2026-09-30 from the app's own log of context-resolve answers: a playlist's rows carry a
+    `uid` each (Liked Songs `"uid":"95942ae3715ec9d21e76"`, a user's playlist
+    `"uid":"53ff0e713d18ef43"`), an album's carry none. librespot's `context.rs` generates a
+    UUID when one is missing. The same uids now place a handed-over track, relinked or
+    repeated; see `plans/done/handover-of-a-relinked-track-starts-at-the-top.md`. Once
+    `PlaybackQueue` keeps them, the parallel `tracks` and `uids` arrays of `start` and
+    `ResolvedContext` should become one list of rows, so an inserted track keeps them aligned.
+    Inventing uids for the rows other devices see risks confusing a
     receiving device's own matching (`context.rs` copies a transferred uid onto its context
     track), so measure first.

@@ -1,8 +1,8 @@
 # Nine keyboard shortcuts are registered twice
 
-Status: **Done** 2026-09-29. The one question only a running app settles, Space in a text
-field, measured in the test host, which builds the app's menus; the rest not yet tried in the
-running app; see Verification.
+Status: **Done** 2026-09-29 (#102). Space in a text field measured in the test host, which builds
+the app's menus; the shortcuts tried in the running app on 2026-09-30, all but the login screen; see
+Verification.
 Components: `Spotifly/Views/KeyboardShortcuts.swift` (deleted), `Spotifly/SpotiflyApp.swift`, `Spotifly/Views/LoggedInContentRouterView.swift`,
 `Spotifly/Views/LoggedInView.swift`
 Found: 2026-08-15, in a review of the plans. Re-checked 2026-09-29.
@@ -55,10 +55,12 @@ a text field, which gets its space, and it can be the one registration.
 
 - [x] The probe above: Space in a focused text field types a space; the menu matches Space.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
-- [ ] Live, with focus in the sidebar, then a track list, then the search field: Space plays and
-      pauses (in the search field it types a space), ⌘← and ⌘→ go back and forward a track, ⌘L
-      likes the current track, ⌘1 to ⌘4 open Favorites, Playlists, Albums and Artists, and ⌘F
-      focuses the search field. Each does its thing once.
-- [ ] Live: in search results, where the hidden buttons were never attached, the same shortcuts
-      work. And in the mini player, Space plays and pauses.
+- [x] Live, 2026-09-30: Space plays and pauses with focus in the sidebar and in a track list, and in
+      the search field types a space and leaves playback alone. From the sidebar and from the search
+      field, ⌘→ and ⌘← go forward and back one track, ⌘L likes and unlikes the current track, ⌘1 to
+      ⌘4 open Favorites, Playlists, Albums and Artists, and ⌘F focuses the search field. Each did
+      its thing once.
+- [x] Live, 2026-09-30: with search results showing, ⌘→, ⌘←, ⌘2 and ⌘3 work. Focus stays in the
+      search field there, so Space types. In the mini player, Space plays and pauses.
 - [ ] Live: at the login screen, the Navigate menu's Favorites to Artists and Refresh are greyed.
+      Not run: it needs signing out.

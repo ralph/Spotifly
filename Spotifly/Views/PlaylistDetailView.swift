@@ -16,7 +16,6 @@ struct PlaylistDetailView: View {
     @Environment(TrackService.self) private var trackService
     @Environment(PlaylistService.self) private var playlistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(\.displayScale) private var displayScale
 
     @State private var isLoading = false
     @State private var failure: LoadFailure?
@@ -141,45 +140,11 @@ struct PlaylistDetailView: View {
 
     private func playlistHeader(_ playlist: Playlist) -> some View {
         VStack(spacing: 16) {
-            playlistArtwork(playlist)
+            Artwork.header(playlist.images, symbol: "music.note.list")
             playlistMetadata(playlist)
             playlistActions()
         }
         .padding(.top, 24)
-    }
-
-    @ViewBuilder
-    private func playlistArtwork(_ playlist: Playlist) -> some View {
-        if let url = playlist.images.url(for: 200, scale: displayScale) {
-            RetryingAsyncImage(url: url) { phase in
-                switch phase {
-                case .empty:
-                    ProgressView()
-                        .frame(width: 200, height: 200)
-                case let .success(image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 200, height: 200)
-                        .clipShape(.rect(cornerRadius: 8))
-                        .shadow(radius: 10)
-                case .failure:
-                    playlistArtworkPlaceholder
-                @unknown default:
-                    EmptyView()
-                }
-            }
-        } else {
-            playlistArtworkPlaceholder
-        }
-    }
-
-    private var playlistArtworkPlaceholder: some View {
-        Image(systemName: "music.note.list")
-            .font(.system(size: 60))
-            .frame(width: 200, height: 200)
-            .background(.quaternary)
-            .clipShape(.rect(cornerRadius: 8))
     }
 
     private func playlistMetadata(_ playlist: Playlist) -> some View {

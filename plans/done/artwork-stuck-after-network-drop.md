@@ -1,7 +1,7 @@
 # Artwork that did not load keeps spinning after the network is back
 
-Status: **Done** 2026-09-29. The mechanism checked with a probe against a local server; not yet
-seen with the network actually dropped; see Verification.
+Status: **Done** 2026-09-29 (#98). The mechanism checked with a probe against a local server; not
+yet seen with the network actually dropped; see Verification.
 Components: every `AsyncImage` in `Spotifly/Views`: `AlbumDetailView`, `ArtistDetailView`
 (twice), `PlaylistDetailView`, `LibraryListView`, `TrackRow`, `NowPlayingBarView`,
 `Components/CardArtwork.swift`, `SidebarView`; new: `Spotifly/NetworkMonitor.swift`,
@@ -82,7 +82,8 @@ wait for a manual retry, and failures while the network stays up, are recorded i
       true), only the failed one was asked again, and succeeded. After a second return, neither
       was asked again.
 - [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
-- [ ] Live: turn Wi-Fi off, open an album from the library that has not been opened this
-      session, turn Wi-Fi on. Within a few seconds the cover appears and the track list loads,
-      without leaving the page or pressing Try again. Covers that had loaded before do not
-      flash.
+- [ ] Live: turn Wi-Fi off, open an album from the library that has not been opened this session,
+      turn Wi-Fi on. Within a few seconds the cover appears and the track list loads, without
+      leaving the page or pressing Try again. Covers that had loaded before do not flash. Not run on
+      2026-09-30: it needs Wi-Fi off. With the network on, artwork on the start page, in albums,
+      playlists and search loads as before.
