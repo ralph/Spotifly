@@ -102,6 +102,14 @@ final nonisolated class PlaybackQueue {
         return (tracks, inserted, target)
     }
 
+    /// Each row's uid from `listed`, another list of the context's rows: the n-th copy of a track
+    /// takes the n-th uid listed for it. Matched by track, not by place, as a row put in at the
+    /// start, or a list of another length, would move every uid after it onto another row.
+    static func rowUids(_ listed: [(uri: String, uid: String)], of tracks: [String]) -> [String?] {
+        var left = Dictionary(grouping: listed) { $0.uri }.mapValues { $0.map(\.uid)[...] }
+        return tracks.map { left[$0]?.popFirst() }
+    }
+
     /// `uids` as long as `tracks`: cut, or padded with none.
     private static func aligned(_ uids: [String?], to tracks: [String]) -> [String?] {
         guard uids.count != tracks.count else { return uids }
@@ -152,6 +160,17 @@ final nonisolated class PlaybackQueue {
         if shuffleEnabled {
             shufflePosition = shuffleOrder.firstIndex(of: currentIndex) ?? 0
         }
+    }
+
+    /// Gives the rows of the context `uri` the uids `listed` names, where none of its rows has
+    /// one yet: an album's, which the context resolver leaves out. Nothing for another context,
+    /// which has replaced it since the uids were asked for.
+    ///
+    /// - Returns: whether any row has a uid now.
+    func adoptRowUids(_ listed: [(uri: String, uid: String)], ofContext uri: String) -> Bool {
+        guard uri == contextUri, !contextUids.contains(where: { $0 != nil }) else { return false }
+        contextUids = Self.rowUids(listed, of: contextTracks)
+        return contextUids.contains { $0 != nil }
     }
 
     func enqueue(_ uri: String) {

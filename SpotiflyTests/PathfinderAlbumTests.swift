@@ -68,13 +68,11 @@ struct PathfinderAlbumTests {
     }
 
     /// A handover names an album's row by the uid pathfinder lists beside it.
-    @Test func `each row's uid is kept by its track's uri`() throws {
+    @Test func `each row's uid is kept with its track, in order`() throws {
         let album = try decodeDiscovery()
 
-        #expect(album.rowUids == [
-            "spotify:track:0DiWol3AO6WpXZgp0goxAV": "a1",
-            "spotify:track:3H3cOQ6LBLSvmcaV7QkZEu": "a2",
-        ])
+        #expect(album.rowUids.map(\.uri) == ["spotify:track:0DiWol3AO6WpXZgp0goxAV", "spotify:track:3H3cOQ6LBLSvmcaV7QkZEu"])
+        #expect(album.rowUids.map(\.uid) == ["a1", "a2"])
     }
 
     /// `tracksV2`, not `tracks`. The other album operation, `getAlbumNameAndTracks`, uses the

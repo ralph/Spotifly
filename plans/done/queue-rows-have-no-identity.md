@@ -3,7 +3,7 @@
 Status: **Done** 2026-10-01. The history and part 1 (#105, #94), seen in the running app on
 2026-09-30; part 2, the rows' uids, built and seen against the web player on 2026-10-01. A
 queued copy of an album's track is still named by uri, which needs a phone to settle:
-`plans/open/queued-copy-of-an-album-track.md`. See Progress.
+`plans/done/queued-copy-of-an-album-track.md`. See Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
