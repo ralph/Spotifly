@@ -10,6 +10,7 @@ import SwiftUI
 struct LoggedInContentRouterView: View {
     @Environment(AppStore.self) private var store
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(SearchService.self) private var searchService
 
     let playbackViewModel: PlaybackViewModel
     let onLogout: () -> Void
@@ -21,6 +22,12 @@ struct LoggedInContentRouterView: View {
                    let searchResults = store.searchResults(for: query)
                 {
                     SearchResultsView(searchResults: searchResults, playbackViewModel: playbackViewModel)
+                        .navigationTitle("nav.search_results")
+                } else if let query = navigationCoordinator.displayedSearchQuery,
+                          let failure = store.searchFailure(for: query)
+                {
+                    InlineLoadError(failure: failure) { await searchService.search(query: query) }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .navigationTitle("nav.search_results")
                 } else {
                     contentView
