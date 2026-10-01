@@ -1,9 +1,10 @@
 # What the mirrored queue still takes on trust: repeat on a bare list, autoplay, other devices
 
-Status: **Open**, in part. Next on a context's last track is done and seen with the web player
-(2026-10-01). The take-over of a bare list is built and unit-tested, but not seen, since the web
-player gives a bare list no repeat. See Progress; the rest needs a phone or another device. From
-the altitude review of `plans/done/mirrored-queue-runs-past-the-context.md`.
+Status: **Open**, in part. Next on a context's last track, and this Mac's own report of the next
+round under repeat, are done and seen (the latter on a phone too, 2026-10-01). The take-over of a
+bare list is built and unit-tested, but not seen, since the web player gives a bare list no
+repeat. See Progress; the rest needs a phone or another device. From the altitude review of
+`plans/done/mirrored-queue-runs-past-the-context.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`mirroredQueue`, the take-over
 of a mirrored bare list), `Spotifly/ViewModels/PlaybackViewModel.swift` (`hasNext`),
 `Spotifly/SwiftLibrespot/Connect/SpircController.swift` (this Mac's own report)
@@ -33,9 +34,9 @@ taken on trust.
 - **Other devices' rows.** librespot, as the other device, fills autoplay after a delimiter
   "to only display the current context" (`connect/src/state/tracks.rs`), and those autoplay
   rows may not be hidden. A phone was not measured either.
-- **This Mac's own report**, for completeness: `PlaybackQueue.upcoming()` stops at the end of
-  the context, even with repeat on, so other devices show no next iteration for the Mac, where
-  librespot reports a delimiter and the next iteration. A gap, not a fault.
+- **This Mac's own report:** done; see Progress. `PlaybackQueue.upcoming()` stopped at the end
+  of the context, even with repeat on, so other devices were shown no next iteration for the
+  Mac, where librespot reports a delimiter and the next iteration.
 
 ## Solution
 
@@ -97,3 +98,27 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
     And a queued track playing when the list is taken over goes into the list as one of its
     rows, as the handover's `playTracks` puts it in, where a context's take-over plays it as
     queued (`play(uriOrUrl:resumingAtUid:)`). Giving `playTracks` that start would serve both.
+- **This Mac's own report of the next round** (2026-10-01).
+  - Under repeat, other devices are told the context again after its end, as librespot's
+    `fill_up_next_tracks` tells them: a hidden `spotify:delimiter` row named `delimiter0`, then
+    the context from its start, as often as the 50 rows leave room for
+    (`PlaybackQueue.upcoming(rounds: .asReported)`; the row is `QueueItem.hidden`, sent as
+    `ProvidedTrack.isHidden`). Shuffled, the next round's order is drawn only when it starts,
+    so it is not listed.
+  - A jump another device names goes into the next round too, where a track behind the current
+    one used to be found nowhere ahead (`skip(toUpcoming:uri:uid:)`).
+  - The fetch-ahead gets the first track on the last one, so the wrap is gapless; it used to
+    get nothing there.
+  - The app's own queue lists one round, as before, as the web player's own queue panel does
+    (below); the bar's "n/m" counts its rows. The mirror of another device still lists the next
+    round where that device does not hide it, as `MirroredQueueTests` has it, so the two differ:
+    left open.
+  - **Seen:** "Not Bad for New Jersey" on the Mac, its last track, repeat on from the web player.
+    A throwaway log, never committed, showed the report: `delimiter0` with `hidden: true`, then
+    track 1, 2, 3 with their row uids. "Fetching … ahead" named track 1 right after the
+    handover, and the end of the last track went on to track 1 without a gap.
+  - **What the web player shows:** no next round, even of its own playback on the same track
+    with repeat on, so its queue panel could not show the Mac's either.
+  - **Seen on a phone** (2026-10-01, by hand): on an album's last track with repeat on, the
+    phone's queue listed the album again after it, and a track tapped there played on the Mac.
+

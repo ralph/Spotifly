@@ -412,7 +412,7 @@ struct SPClientParsingTests {
 
         let report = SPClient.parseContextReport(Data(json.utf8))
 
-        #expect(report.name == "Lieblingssongs")
+        #expect(report.metadata == ["format_list_type": "liked-songs", "context_description": "Lieblingssongs"])
         #expect(report.tracks == ["spotify:track:2vaVAZtZ6p2bC1gBrUwrPA"])
         #expect(report.uids == ["95942ae3715ec9d21e76"])
     }
@@ -427,6 +427,6 @@ struct SPClientParsingTests {
     @Test func `a context resolve answer with an empty description names nothing`() {
         let json = #"{"metadata":{"context_description":""},"pages":[{"tracks":[{"uri":"spotify:track:a"}]}]}"#
 
-        #expect(SPClient.parseContextReport(Data(json.utf8)).name == nil)
+        #expect(SPClient.parseContextReport(Data(json.utf8)).metadata.contextName == nil)
     }
 }

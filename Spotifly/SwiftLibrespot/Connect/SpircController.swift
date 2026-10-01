@@ -82,6 +82,8 @@ public actor SpircController {
         /// The context playing, and where the track sits in it. Another device
         /// taking over resolves the same context and continues from there.
         public var contextUri: String
+        /// The resolver's metadata of the context, sent as `context_metadata`.
+        public var contextMetadata: [String: String] = [:]
         public var contextIndex: Int?
         /// "context", or "queue" for a track the user queued.
         public var trackProvider: String
@@ -385,6 +387,7 @@ public actor SpircController {
                 playerStateProto.track = ProvidedTrack(uri: uri, uid: ps.trackUid ?? "", provider: ps.trackProvider)
             }
             playerStateProto.contextUri = ps.contextUri
+            playerStateProto.contextMetadata = ps.contextMetadata
             if !ps.contextUri.isEmpty {
                 playerStateProto.contextUrl = "context://\(ps.contextUri)"
             }
@@ -392,7 +395,11 @@ public actor SpircController {
                 playerStateProto.index = ContextIndex(page: 0, track: UInt32(index))
             }
             // Proto3: a row without a uid sends "".
-            let provided: (QueueItem) -> ProvidedTrack = { ProvidedTrack(uri: $0.uri, uid: $0.uid ?? "", provider: $0.provider) }
+            let provided: (QueueItem) -> ProvidedTrack = { item in
+                var track = ProvidedTrack(uri: item.uri, uid: item.uid ?? "", provider: item.provider)
+                track.isHidden = item.hidden
+                return track
+            }
             playerStateProto.nextTracks = ps.nextTracks.map(provided)
             playerStateProto.queueRevision = Self.queueRevision(of: ps.nextTracks.map(\.uri))
             playerStateProto.prevTracks = ps.previousTracks.map(provided)

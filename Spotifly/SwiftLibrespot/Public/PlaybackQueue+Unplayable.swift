@@ -42,6 +42,6 @@ nonisolated extension PlaybackQueue {
 
     /// What auto-advance will reach next, without moving there.
     func upcomingPlayable(skipping isUnplayable: (String) -> Bool) -> String? {
-        upcoming().first { !isUnplayable($0.uri) }?.uri
+        upcoming(rounds: .asPlayed).first { !isUnplayable($0.uri) }?.uri
     }
 }
