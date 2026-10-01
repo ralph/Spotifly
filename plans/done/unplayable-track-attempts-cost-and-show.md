@@ -3,7 +3,7 @@
 Status: **Done** 2026-10-01, for the item that shows: a withheld track is found out before
 anything says it plays. Seen in the running app; see Verification. The other items
 moved to `plans/open/withheld-tracks-left-to-find-out.md`, and a problem found on the way to
-`plans/open/skip-onto-a-withheld-track-stops-playback.md`. What was left of
+`plans/done/skip-onto-a-withheld-track-stops-playback.md`. What was left of
 `plans/done/unplayable-tracks-found-by-loading.md` once the fetch-ahead reported a withheld track.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`playTrack`, `playableMetadata`,
 `AudioPlaybackState.loading`), `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`
@@ -90,7 +90,7 @@ falling silent.
     `Track 'Girlfriend (feat. Dâm-Funk)': 0 file(s)` 19 ms after its metadata request, no
     `Playing` line and no state update naming it, and no PutState but the release ("no player
     state"). Next then reported it not available, which
-    `plans/open/skip-onto-a-withheld-track-stops-playback.md` is about.
+    `plans/done/skip-onto-a-withheld-track-stops-playback.md` is about.
   - **Next onto the fetched-ahead track:** `Playing` straight after the press, no metadata
     request; the bar's track and the queue in the same millisecond.
   - **A remote play of an uncached track:** metadata 18 ms, then the announcement with the

@@ -585,7 +585,7 @@ public actor LibrespotClient {
         defer { publishQueue() }
 
         if let previous = playbackQueue.back(skipping: knownUnplayable) {
-            try await loadAndPlay(previous)
+            try await loadAndPlay(previous, going: .backward)
         } else {
             // Nowhere back: restart the current track, like every other client.
             try await audioPipeline?.seek(positionMs: 0)
@@ -614,7 +614,7 @@ public actor LibrespotClient {
         guard let previous = playbackQueue.stepBack(toRecent: index, uri: uri, uid: uid) else {
             throw LibrespotError.trackNotFound("\(uri) is no longer in the queue")
         }
-        try await loadAndPlay(previous)
+        try await loadAndPlay(previous, going: .backward)
     }
 
     /// Queues a track, or every track of an album or playlist in order.
@@ -834,27 +834,54 @@ public actor LibrespotClient {
         try await loadAndPlay(uri, positionMs: positionMs, paused: paused)
     }
 
-    /// Starts audio for a uri that is already the queue's current track, and
-    /// gives playback up if it cannot: the pipeline tears the previous track
-    /// down when it announces this one, or when this one fails before that, so
-    /// a failed load leaves nothing playing.
+    /// Starts audio for a uri the queue has just moved to, and goes on past it in `direction`
+    /// while Spotify withholds what it reaches; see `AutoAdvance`. Any other failure gives
+    /// playback up: the pipeline tears the previous track down when it announces this one, or
+    /// when this one fails before that, so a failed load leaves nothing playing.
     ///
     /// Deliberately separate from `play`: advancing through an existing queue
     /// must not rebuild it.
-    private func loadAndPlay(_ uri: String, positionMs: UInt64 = 0, paused: Bool = false) async throws {
+    ///
+    /// - Parameters:
+    ///   - positionMs: where in `uri` to start. A track it goes on to starts at the top.
+    ///   - paused: load without starting playout, as a paused handover does.
+    ///   - direction: back for Previous and a jump to a previous track.
+    private func loadAndPlay(
+        _ uri: String,
+        positionMs: UInt64 = 0,
+        paused: Bool = false,
+        going direction: AutoAdvance.Direction = .forward,
+    ) async throws {
         // The app routes plays elsewhere for such an account; every local start passes here
         // (auto-advance only follows one), so anything it misses is refused with the reason,
         // not a raw error from the audio key or the CDN.
         guard streams else {
             throw LibrespotError.premiumRequired
         }
-        do {
-            try await startTrack(uri, positionMs: positionMs, paused: paused)
-        } catch is CancellationError {
+        let outcome = await AutoAdvance.run(
+            from: uri,
+            in: playbackQueue,
+            going: direction,
+            isUnplayable: knownUnplayable,
+            // The position is the named track's, which the run may have stepped over unloaded.
+            load: { try await self.startTrack($0, positionMs: $0 == uri ? positionMs : 0, paused: paused) },
+            skipped: { self.reportSkipped($0, name: $1) },
+        )
+        switch outcome {
+        case .playing:
+            break
+        case .superseded:
             // A newer load took over while this one waited, and publishes its
             // own state; clearing it here would erase that.
             throw CancellationError()
-        } catch {
+        case .queueEnded where direction == .forward:
+            // Past the context's end, as a Next on its last track.
+            await rewindContext()
+        case .queueEnded:
+            // Nothing further back plays: on from the withheld track, as Next would, which
+            // gets back to the track Previous was pressed on.
+            try await advanceUserInitiated()
+        case let .stopped(error):
             await playbackFailed(error)
             throw error
         }
@@ -864,9 +891,9 @@ public actor LibrespotClient {
     /// it, once its metadata has said Spotify has a file for it (`handlePipelineState`), so a
     /// withheld track is passed over without ever being shown.
     ///
-    /// Auto-advance calls this directly and gives up once, after its last
-    /// attempt, so other devices do not see the Mac stop and start again
-    /// between two tracks. Everything else goes through `loadAndPlay`.
+    /// `loadAndPlay` runs every load through it and gives up once, after its
+    /// last attempt, so other devices do not see the Mac stop and start again
+    /// between two tracks.
     private func startTrack(_ uri: String, positionMs: UInt64 = 0, paused: Bool = false) async throws {
         guard let audioPipeline else {
             throw LibrespotError.notInitialized
@@ -903,29 +930,26 @@ public actor LibrespotClient {
         }
     }
 
-    /// Plays what auto-advance moved to, going past any track Spotify
-    /// withholds; see `AutoAdvance`. Nobody is waiting for its errors, so
-    /// each skip, and a stop, is published for the now-playing bar instead.
+    /// Plays what auto-advance moved to. Nobody is waiting for its errors:
+    /// `loadAndPlay` publishes each skip, and a stop, for the now-playing bar.
     private func autoAdvance(to uri: String) async {
-        let outcome = await AutoAdvance.run(
-            from: uri,
-            in: playbackQueue,
-            isUnplayable: knownUnplayable,
-            load: { try await self.startTrack($0) },
-            skipped: { uri, name in
-                debugLog("LibrespotClient", "Skipping \(uri), \(name): not available")
-                self.interrupt(String(localized: "playback.skipped_unavailable \(name)"))
-            },
-        )
-        switch outcome {
-        case .playing, .superseded:
-            break
-        case .queueEnded:
-            await rewindContext()
-        case let .stopped(error):
+        do {
+            try await loadAndPlay(uri)
+        } catch is CancellationError {
+            // A newer load took over, and it reports for itself.
+        } catch LibrespotError.premiumRequired {
+            // Refused before any load, with the ended track still held: the account stopped
+            // streaming here since it started, as a reconnect can find.
+            await playbackFailed(LibrespotError.premiumRequired)
+        } catch {
             debugLog("LibrespotClient", "Auto-advance stopped: \(error.localizedDescription)")
-            await playbackFailed(error)
         }
+    }
+
+    /// The bar says a track was passed over because Spotify withholds it.
+    private func reportSkipped(_ uri: String, name: String) {
+        debugLog("LibrespotClient", "Skipping \(uri), \(name): not available")
+        interrupt(String(localized: "playback.skipped_unavailable \(name)"))
     }
 
     /// Manual skip: always moves somewhere, wrapping past the end when repeat
@@ -951,14 +975,21 @@ public actor LibrespotClient {
     /// went on showing this Mac playing the last second of the last track,
     /// its play button sending pause.
     private func rewindContext() async {
-        let tracks = playbackQueue.contextTracks
-        guard !tracks.isEmpty else {
+        let isUnplayable = knownUnplayable
+        // Nothing in the context plays: a load would go past its end again, and back here. A
+        // track found out on the way has said so; an album or a playlist says it of itself.
+        guard let first = playbackQueue.contextTracks.firstIndex(where: { !isUnplayable($0) }) else {
             await audioPipeline?.stop()
-            clearLocalState()
+            if let contextName {
+                await playbackFailed(LibrespotError.trackUnavailable(name: contextName))
+            } else {
+                clearLocalState()
+                await releasePlayback()
+            }
             return
         }
         debugLog("LibrespotClient", "End of the context; back to its first track, paused")
-        playbackQueue.rewind(to: firstPlayable(in: tracks))
+        playbackQueue.rewind(to: first)
         // A failure is reported by `loadAndPlay`, and there is no caller to
         // throw it to.
         try? await loadCurrentTrack(paused: true)
