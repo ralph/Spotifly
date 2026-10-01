@@ -1,8 +1,9 @@
-# What the mirrored queue still takes on trust: repeat on a bare list, autoplay, other devices
+# What the mirrored queue still takes on trust: autoplay, other devices
 
 Status: **Open**, in part. Next on a context's last track, this Mac's own report of the next
 round under repeat, and the take-over of a bare list are done and seen, the last two on a phone
-(2026-10-01). See Progress; what is left needs autoplay on, or librespot as the other device. From the altitude review of
+(2026-10-01); see Progress. What is left needs autoplay on, a device that names a reason not to
+skip next, or librespot as the other device. From the altitude review of
 `plans/done/mirrored-queue-runs-past-the-context.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`mirroredQueue`, the take-over
 of a mirrored bare list), `Spotifly/ViewModels/PlaybackViewModel.swift` (`hasNext`),
@@ -11,14 +12,15 @@ Found: 2026-09-30, in the review of the fix for the mirrored queue
 
 ## Summary
 
-The mirrored queue now leaves out the rows another device marks hidden, which is the rule the
-web player's own queue follows. Only the web player's rows were measured. Three things are
-taken on trust.
+The mirrored queue leaves out the rows another device marks hidden, which is the rule the web
+player's own queue follows. The web player's rows were measured, and a phone's were seen working
+for a bare list and for the next round under repeat. What is still taken on trust: autoplay rows,
+a device that refuses Next, and the next round of another device's context.
 
 ## Problem
 
-- **A bare list taken over with repeat on** (built; see Progress). Taking over a mirrored bare
-  list played `[the current track] + nextTracks`. With repeat on, the next iterations are not
+- **A bare list taken over with repeat on:** done, seen on a phone; see Progress. Taking over a
+  mirrored bare list played `[the current track] + nextTracks`. With repeat on, the next iterations are not
   hidden, so the list held the tracks two or three times, and local repeat then looped that
   longer list. The list should stop at the first delimiter, take the previous tracks as its
   start, and send queued rows to `replaceUserQueue`. Rare: a bare list is Play Tracks under search, or a list
@@ -32,14 +34,18 @@ taken on trust.
   autoplay on, and one that does name a reason not to skip next, neither seen.
 - **Other devices' rows.** librespot, as the other device, fills autoplay after a delimiter
   "to only display the current context" (`connect/src/state/tracks.rs`), and those autoplay
-  rows may not be hidden. A phone was not measured either.
+  rows may not be hidden. A phone's rows were not logged either; only what its queue showed.
+- **The next round of another device's context.** The mirror lists it where that device does
+  not hide it, as `MirroredQueueTests` has it, while this Mac's own queue lists one round, as the
+  web player's queue panel does. The two differ; whether the mirror should stop at the first
+  delimiter, as the take-over now does, is not decided.
 - **This Mac's own report:** done; see Progress. `PlaybackQueue.upcoming()` stopped at the end
   of the context, even with repeat on, so other devices were shown no next iteration for the
   Mac, where librespot reports a delimiter and the next iteration.
 
 ## Solution
 
-The first is a change to the take-over, now built; see Progress. The others need a measurement
+The take-over and this Mac's report are built; see Progress. The others need a measurement
 first: the cluster's rows and restrictions from a phone and from librespot, on a context's last
 track, with autoplay on. The web player's restrictions there can be read with this Mac
 mirroring it; librespot never sets `disallow_skipping_next_reasons`
@@ -47,11 +53,10 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
 
 ## Verification
 
-- The take-over: unit tests (`BareListTakeOverTests`). Seen in the running app only once a device
-  gives a bare list repeat: Spotifly plays Play Tracks under search, the device takes it over,
-  repeat on, a few tracks in, and the Mac takes it back. The queue lists each track once, and
-  repeat reaches the tracks before the current one; Previous restarts the track.
-- Next on the last track: see Progress.
+- The take-over: unit tests (`BareListTakeOverTests`), and seen on a phone; see Progress.
+- Next on the last track, and the next round under repeat: see Progress.
+- What is left: a device with autoplay on, on a context's last track, mirrored by this Mac with
+  its rows and restrictions logged.
 
 ## Progress
 

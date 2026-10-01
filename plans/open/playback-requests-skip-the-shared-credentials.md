@@ -1,6 +1,7 @@
 # Playback's requests to spclient sign themselves, and miss both retries
 
-Status: **Open**, not planned. Read from the code; nothing observed.
+Status: **Open**, not planned. Read from the code; nothing observed. Ready to take up: the retries
+it would reuse are on main since #123 (2026-10-01).
 Components: `Spotifly/SwiftLibrespot/Network/SPClient.swift` (`authorizedRequest`, `getTrack`,
 `resolveContext`, `resolveCDNUrl`), `Spotifly/PartnerAPI/PartnerAPI.swift` (`SpotifyCredentials`)
 Found: 2026-10-01, in the altitude review of `plans/done/loads-that-fail-while-online.md`
