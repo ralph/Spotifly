@@ -954,15 +954,10 @@ final class PlaybackViewModel {
         )
     }
 
-    /// Whether Next goes anywhere: wherever a track is current, unless the device playing it
-    /// says no. On a context's last track it goes back to the first, paused, as the web player's
-    /// does; it used to be greyed there, because the queue listed nothing after the track.
+    /// Whether Next goes anywhere; see `PlaybackState.canSkipNext`.
     var hasNext: Bool {
-        currentTrackUri != nil && canSkipNext
+        currentTrackUri != nil && player.playback?.canSkipNext != false
     }
-
-    /// The playing device's word on Next; see `PlaybackState.canSkipNext`.
-    private var canSkipNext = true
 
     /// Returns true if there are tracks before the current track or if we're past the start of the track
     var hasPrevious: Bool {
@@ -1337,7 +1332,6 @@ final class PlaybackViewModel {
             state.isPlaying && !state.isPaused
         }
         isPlaying = newIsPlaying
-        canSkipNext = state.canSkipNext
 
         // Update track if changed
         let trackChanged = !state.trackUri.isEmpty && state.trackUri != lastHandledTrackUri

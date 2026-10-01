@@ -27,12 +27,8 @@ taken on trust.
     context named). Its repeat did not respond, neither while it held the list nor while it
     controlled Spotifly playing it, and Spotifly has no repeat control of its own. Without
     repeat, taking the mirrored list back over played the same five tracks.
-- **Next on a context's last track** (done; see Progress). While mirroring with repeat off,
-  `nextTracks` is now empty on the context's last track, so `hasNext` greys the bar's Next.
-  That matches the web player's visible queue. But a device with autoplay on would go on into
-  autoplay, and the Mac can no longer ask it to. The cluster's `restrictions`
-  (`disallow_skipping_next_reasons`) would say for sure, and the app does not parse them. Not
-  checked what the web player allows there.
+- **Next on a context's last track:** done; see Progress. What is left of it: a device with
+  autoplay on, and one that does name a reason not to skip next, neither seen.
 - **Other devices' rows.** librespot, as the other device, fills autoplay after a delimiter
   "to only display the current context" (`connect/src/state/tracks.rs`), and those autoplay
   rows may not be hidden. A phone was not measured either.
@@ -73,3 +69,8 @@ Not defined yet, beyond Progress.
     first track, paused. Played on the Mac, Next on the last track went back to the first,
     paused.
   - **Not seen:** a device that does name a reason, and autoplay on.
+  - **Previous, not changed:** another device's restrictions name `no_prev_track` on a first
+    track (field 6), where the mirrored previous rows are empty too, so `hasPrevious` agrees
+    with it there. Reading field 6 into a `canSkipPrevious` would let Previous restart the
+    track at once for a device that refuses, where it now sends `skip_prev`, is refused, and
+    seeks; and it would cover repeat wrapping back from a first track. Neither is measured.

@@ -434,7 +434,7 @@ public nonisolated struct PlayerState: Sendable {
             case 14: state.isBuffering = field.bool
             case 15: state.isSystemInitiated = field.bool
             case 16: state.options = ContextPlayerOptions.parse(from: field.bytes)
-            case 17: state.disallowsSkippingNext = ProtobufReader.fields(in: field.bytes).contains { $0.number == 7 }
+            case 17: state.disallowsSkippingNext = field.fields.contains { $0.number == 7 }
             case 19: state.prevTracks.append(ProvidedTrack.parse(from: field.bytes))
             case 20: state.nextTracks.append(ProvidedTrack.parse(from: field.bytes))
             case 21:
