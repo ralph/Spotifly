@@ -95,8 +95,8 @@ a spinner while a load runs, so a timer there would start over at its first paus
       lint, and a build without warnings in the app's own code.
 - [x] The offline placeholder by hand (2026-10-01): with Wi-Fi off, an album's cover that had
       not loaded showed the grey placeholder, not a spinner, and came back with Wi-Fi on.
-- [ ] The bar's cover offline: a track that starts while the network is away (Next onto a
-      fetched-ahead track) shows the bar's placeholder, and its cover comes with the network.
+- [x] The bar's cover offline, by hand (2026-10-01): Next onto a fetched-ahead track with Wi-Fi
+      off showed the bar's placeholder while the track played, and its cover came with Wi-Fi on.
 - [x] Artwork, in a throwaway test-host probe: `RetryingAsyncImage` rendered against a local
       server that answers a path's first request with a 500. Its phases went `empty`, `error`
       at 0.0 s, then `empty` and `image` at 5.1 s, and the server saw two requests in the nine
