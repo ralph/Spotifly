@@ -1061,12 +1061,12 @@ public actor LibrespotClient {
         case .idle:
             break // end-of-track and stop own the nil transition
 
-        case let .loading(trackUri, positionMs, paused):
+        case let .loading(trackUri, positionMs, paused, durationMs):
             // A newer start moved the queue on while this one's metadata was asked for, and it
             // announces its own.
             guard trackUri == playbackQueue.currentUri else { return }
-            // Not the previous track's length: until the load has it, zero is the honest answer.
-            knownDurationMs = 0
+            // Its own length, or zero until the load has it: never the previous track's.
+            knownDurationMs = durationMs
             // With the queue that moved to it, in one snapshot, so the store never holds the new
             // track in the old lists.
             publishPlaybackState(for: trackUri, playing: !paused, paused: paused, positionMs: Int64(clamping: positionMs), queue: queueState)
@@ -1150,7 +1150,9 @@ public actor LibrespotClient {
             isPaused: current.isPaused,
             trackUri: current.trackUri.isEmpty ? nil : current.trackUri,
             positionMs: UInt64(max(0, current.positionMs)),
-            durationMs: UInt64(max(0, (audioPipeline?.currentDurationMs) ?? current.durationMs)),
+            // The state's own: the pipeline's is the previous track's while a new one loads, and
+            // went out as the new one's, which the web player then showed until a heartbeat.
+            durationMs: UInt64(max(0, current.durationMs)),
             shuffle: current.shuffle,
             repeatMode: current.repeatTrack ? .track : (current.repeatContext ? .context : .off),
             // The moment the position was read, not now: a republish of an

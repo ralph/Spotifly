@@ -1,7 +1,7 @@
 # Trying a track Spotify withholds still costs a request, and shows it
 
 Status: **Done** 2026-10-01, for the item that shows: a withheld track is found out before
-anything says it plays. Unit tests pass; live check pending, see Verification. The other items
+anything says it plays. Seen in the running app; see Verification. The other items
 moved to `plans/open/withheld-tracks-left-to-find-out.md`, and a problem found on the way to
 `plans/open/skip-onto-a-withheld-track-stops-playback.md`. What was left of
 `plans/done/unplayable-tracks-found-by-loading.md` once the fetch-ahead reported a withheld track.
@@ -64,6 +64,12 @@ As recorded, read from the code:
   track being loaded.
 - **Recovery's reload** calls `playTrack` directly, and now publishes its track and position from
   the same event.
+- **The announcement carries the track's length** where the load knows it, from the metadata or
+  the copy it plays from, and the cluster report takes the length from the local state. Found
+  in the live check: the report read the pipeline's `durationMs`, which is the previous track's
+  until the new one has loaded, so the first report of every new track carried the old length,
+  and the web player showed "Twist in My Sobriety" as 3:53, Tilted's, where it is 4:52, until
+  the next heartbeat. That was so before this change too.
 - **What still sees the moved queue early:** a cluster report sent during the metadata request,
   such as a remote command's acknowledgement, pairs the old track with the new queue around
   it, until the announcement reports again 16 to 44 ms later.
@@ -78,7 +84,20 @@ falling silent.
 
 - [x] Build, 473 unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0. The pipeline
       needs a network for a load, so the new order is not unit-tested.
-- [ ] Live: a withheld track nobody fetched ahead, started remotely or by Next in a track's first
-      ten seconds, never appears in the bar or in a PutState, and the log shows its metadata and
-      no `Playing <it>` line. A normal Next and a double-click change the bar and the queue
-      together, and a gapless change of track shows the new track with its queue.
+- [x] Live, 2026-10-01, with the web player as the other device:
+  - **Withheld:** Liked Songs started from the web player on the Mac at "Today Is a Gift", the
+    track before "Girlfriend", and Next pressed four seconds in. The log showed
+    `Track 'Girlfriend (feat. Dâm-Funk)': 0 file(s)` 19 ms after its metadata request, no
+    `Playing` line and no state update naming it, and no PutState but the release ("no player
+    state"). Next then reported it not available, which
+    `plans/open/skip-onto-a-withheld-track-stops-playback.md` is about.
+  - **Next onto the fetched-ahead track:** `Playing` straight after the press, no metadata
+    request; the bar's track and the queue in the same millisecond.
+  - **A remote play of an uncached track:** metadata 18 ms, then the announcement with the
+    track's length; bar and queue in the same millisecond; audio 230 ms later.
+  - **Gapless:** the next track's first state update carried its own length (194186 ms) and the
+    queue moved with it; the web player showed 3:14 at once.
+  - **Paused handover** from the web player: arrived paused at 96220 ms, announced with its
+    length.
+  - **The length in the report:** after the fix, a Next showed the new track's 2:53 in the web
+    player at once.

@@ -61,8 +61,9 @@ actor AudioPipeline {
     enum AudioPlaybackState: Sendable, Equatable {
         case idle
         /// A load past its metadata, so a track Spotify has files for: what other devices and the
-        /// bar are told is starting, at `positionMs`, and held there when `paused`.
-        case loading(trackUri: String, positionMs: UInt64, paused: Bool)
+        /// bar are told is starting, at `positionMs`, and held there when `paused`, and its length
+        /// where the load knows it already, or zero.
+        case loading(trackUri: String, positionMs: UInt64, paused: Bool, durationMs: Int64)
         case playing(trackUri: String)
         case paused(trackUri: String)
     }
@@ -251,7 +252,7 @@ actor AudioPipeline {
             }
 
             debugLog("AudioPipeline", "Playing \(uri) at \(positionMs)ms")
-            publish(.loading(trackUri: uri, positionMs: positionMs, paused: paused))
+            publish(.loading(trackUri: uri, positionMs: positionMs, paused: paused, durationMs: knownDurationMs(of: uri, resolved: resolved)))
             await teardownTrack()
             return false
         }
@@ -341,6 +342,17 @@ actor AudioPipeline {
     private func hasCopy(of uri: String) -> Bool {
         [current, continuation?.track].contains { $0?.uri == uri && $0?.quality == quality }
             || upcoming?.uri == uri
+    }
+
+    /// The length a load announces: from the metadata it asked for, or the copy it plays from;
+    /// zero for a fetch ahead still out. The loaded track's own `durationMs` is the previous
+    /// track's until the load is done, and was reported as the new one's.
+    private func knownDurationMs(of uri: String, resolved: ResolvedFile?) -> Int64 {
+        if let resolved {
+            return Int64(resolved.metadata.durationMs)
+        }
+        let copy = [current, continuation?.track].lazy.compactMap(\.self).first { $0.uri == uri }
+        return Int64(copy?.durationMs ?? 0)
     }
 
     /// The loaded track when it is played again, the fetched-ahead one when it
