@@ -555,7 +555,8 @@ public actor DealerConnection {
             return .seekTo(positionMs: position.uint64Value)
 
         case "skip_next":
-            return .next(trackUri: (json["track"] as? [String: Any])?["uri"] as? String)
+            let track = json["track"] as? [String: Any]
+            return .next(trackUri: track?["uri"] as? String, uid: (track?["uid"] as? String).flatMap { $0.isEmpty ? nil : $0 })
 
         case "skip_prev":
             return .prev

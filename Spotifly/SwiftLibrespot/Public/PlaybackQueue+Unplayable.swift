@@ -16,7 +16,7 @@ nonisolated extension PlaybackQueue {
     /// which repeat would otherwise make forever.
     func stepOver(_ isUnplayable: (String) -> Bool, from uri: String?, by step: () -> String?) -> String? {
         var uri = uri
-        var stepsLeft = userQueue.count + contextTracks.count
+        var stepsLeft = queued.count + contextTracks.count
         while let candidate = uri, isUnplayable(candidate) {
             guard stepsLeft > 0 else { return nil }
             stepsLeft -= 1

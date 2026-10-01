@@ -53,7 +53,7 @@ nonisolated enum AutoAdvance {
         let advance = { queue.advance(respectingRepeat: false) }
         // The context's tracks count the one the run starts from, unless the
         // queue has just taken it off the user queue.
-        var attemptsLeft = queue.userQueue.count + queue.contextTracks.count
+        var attemptsLeft = queue.queued.count + queue.contextTracks.count
             + (queue.currentProvider == "queue" ? 1 : 0)
         var next: String? = uri
         while let uri = queue.stepOver(isUnplayable, from: next, by: advance) {
