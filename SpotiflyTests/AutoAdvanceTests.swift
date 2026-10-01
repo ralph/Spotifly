@@ -31,10 +31,11 @@ struct AutoAdvanceTests {
             queue.advance()
         }
 
-        func autoAdvance() async -> AutoAdvance.Outcome {
+        func autoAdvance(going direction: AutoAdvance.Direction = .forward) async -> AutoAdvance.Outcome {
             await AutoAdvance.run(
                 from: queue.currentUri ?? "",
                 in: queue,
+                going: direction,
                 isUnplayable: unplayable.contains,
                 load: { uri in
                     self.loaded.append(uri)
@@ -182,6 +183,36 @@ struct AutoAdvanceTests {
         #expect(queue.back(skipping: unplayable.contains) == nil)
         #expect(queue.currentUri == "b")
         #expect(queue.history == ["g"])
+    }
+
+    /// Previous onto a track nobody knew was withheld goes on back past it, as Next goes on.
+    @Test func `going backward, a withheld track is skipped and the one before it plays`() async {
+        let player = Player(["a", "b", "c", "d"], failing: ["c": Self.unavailable])
+        for _ in 0 ..< 3 {
+            _ = player.endOfTrack()
+        }
+        #expect(player.queue.back(skipping: player.unplayable.contains) == "c")
+
+        let outcome = await player.autoAdvance(going: .backward)
+
+        #expect(outcome.kind == "playing")
+        #expect(player.loaded == ["c", "b"])
+        #expect(player.skipped == ["c"])
+        #expect(player.queue.currentUri == "b")
+    }
+
+    /// The client then goes on as Next would, from the withheld track, which gets back to the
+    /// track Previous was pressed on.
+    @Test func `going backward with nothing further back, the queue ends on the withheld track`() async {
+        let player = Player(["g", "b"], failing: ["g": Self.unavailable])
+        _ = player.endOfTrack()
+        #expect(player.queue.back(skipping: player.unplayable.contains) == "g")
+
+        let outcome = await player.autoAdvance(going: .backward)
+
+        #expect(outcome.kind == "queueEnded")
+        #expect(player.loaded == ["g"])
+        #expect(player.queue.currentUri == "g")
     }
 
     @Test func `a newer load taking over is neither skipped nor a stop`() async {
