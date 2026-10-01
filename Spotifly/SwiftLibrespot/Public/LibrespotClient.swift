@@ -99,7 +99,9 @@ public actor LibrespotClient {
     private var localState: PlaybackState?
 
     /// The other device's player state as last mirrored, rows the queue view leaves out
-    /// included: a take-over of a bare list reads where its iteration ends from them.
+    /// included: a take-over of a bare list reads where its iteration ends from them. Written
+    /// with the snapshot's playback, so whenever the snapshot shows mirrored playback, this is
+    /// its state.
     private var mirroredRemote: PlayerState?
 
     // MARK: - Snapshots (what the app shows)
@@ -296,6 +298,7 @@ public actor LibrespotClient {
         let stopped = localState
         reportDue = false
         clearLocalState()
+        mirroredRemote = nil
         await pipeline?.stop()
         await session?.disconnect(stopped: stopReport(of: stopped))
         session = nil
@@ -560,8 +563,7 @@ public actor LibrespotClient {
         playbackQueue.setRepeat(repeatMode)
         if contextUri.isEmpty {
             // Started from a bare list of uris, so the list is all there is.
-            let list = mirroredRemote.flatMap { $0.track?.uri == mirrored.trackUri ? Self.takeOverList(of: $0) : nil }
-                ?? ([mirrored.trackUri] + (queue?.nextTracks.map(\.uri) ?? []), 0, [])
+            let list = mirroredRemote.flatMap(Self.takeOverList) ?? ([mirrored.trackUri], 0, [])
             playbackQueue.replaceUserQueue(with: list.queued)
             try await playTracks(list.tracks, trackIndex: list.index, startingAtUri: mirrored.trackUri, positionMs: positionMs)
         } else if queue?.currentTrack?.provider == "queue" {
@@ -1299,21 +1301,28 @@ public actor LibrespotClient {
     }
 
     /// A mirrored bare list as this Mac takes it over: the tracks played before the current one,
-    /// the current one, and those after it up to the first `spotify:delimiter`, where with
-    /// repeat on the list starts again as its next iteration. Taken whole, with the iterations,
-    /// the list held its tracks two or three times, and local repeat looped that. The tracks
-    /// before go in so repeat comes back to them. Queued rows go to the queue, and rows the
-    /// sender hides are left out, as `mirroredQueue` leaves them out.
+    /// since the last `spotify:delimiter`, the current one, and those after it up to the next,
+    /// where with repeat on the list starts again as its next iteration. Taken whole, with the
+    /// iterations, the list held its tracks two or three times, and local repeat looped that.
+    /// The tracks before go in so repeat comes back to them. Queued rows ahead go to the queue,
+    /// those already played are left out, and so are rows the sender hides, as `mirroredQueue`
+    /// leaves them out.
     nonisolated static func takeOverList(of remote: PlayerState) -> (tracks: [String], index: Int, queued: [String])? {
         guard let current = remote.track?.uri, !current.isEmpty else { return nil }
-        let shown: (ProvidedTrack) -> Bool = { $0.metadata["hidden"] != "true" && $0.uri != "spotify:delimiter" }
-        let before = remote.prevTracks.filter { shown($0) && $0.provider != "queue" }.map(\.uri)
-        let ahead = remote.nextTracks.prefix { $0.uri != "spotify:delimiter" }.filter(shown)
+        let before = remote.prevTracks.reversed().prefix { $0.uri != "spotify:delimiter" }.reversed()
+            .filter { isShown($0) && $0.provider != "queue" }.map(\.uri)
+        let ahead = remote.nextTracks.prefix { $0.uri != "spotify:delimiter" }.filter(isShown)
         return (
             before + [current] + ahead.filter { $0.provider != "queue" }.map(\.uri),
             before.count,
             ahead.filter { $0.provider == "queue" }.map(\.uri),
         )
+    }
+
+    /// Whether the sending device shows a row in its own queue; see `mirroredQueue(of:)`. Its
+    /// delimiters are hidden too.
+    private nonisolated static func isShown(_ track: ProvidedTrack) -> Bool {
+        track.metadata["hidden"] != "true"
     }
 
     /// The queue another device reports, as the Queue section shows it.
@@ -1328,16 +1337,15 @@ public actor LibrespotClient {
     /// delimiter on is `hidden`, with repeat on only the delimiters are. Shown, they listed an
     /// album again after its last track.
     nonisolated static func mirroredQueue(of remote: PlayerState) -> QueueState {
-        let shown: (ProvidedTrack) -> Bool = { $0.metadata["hidden"] != "true" }
         // Proto3: a row without a uid has "".
         let item: (ProvidedTrack) -> QueueItem = { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) }
         return QueueState(
             contextUri: remote.contextUri,
             currentTrack: remote.track.map(item),
-            nextTracks: remote.nextTracks.filter(shown).map(item),
+            nextTracks: remote.nextTracks.filter(isShown).map(item),
             // In play order, as the cluster keeps them and the local queue
             // publishes them.
-            previousTracks: remote.prevTracks.filter(shown).map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            previousTracks: remote.prevTracks.filter(isShown).map { QueueItem(uri: $0.uri, provider: $0.provider) },
             contextName: remote.contextMetadata["context_description"].flatMap { $0.isEmpty ? nil : $0 },
         )
     }
