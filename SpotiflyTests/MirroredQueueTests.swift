@@ -75,3 +75,31 @@ struct MirroredQueueTests {
         #expect(LibrespotClient.mirroredQueue(of: state).contextName == nil)
     }
 }
+
+/// Whether another device lets Next be pressed, from its player state's restrictions.
+struct SkipNextRestrictionTests {
+    private func state(restrictions: [Int: String]) -> PlayerState {
+        let data = ProtobufWriter.message { message in
+            message.string(field: 2, "spotify:album:a")
+            message.bytes(field: 17, ProtobufWriter.message { restriction in
+                for (field, reason) in restrictions.sorted(by: { $0.key < $1.key }) {
+                    restriction.string(field: field, reason)
+                }
+            })
+        }
+        return PlayerState.parse(from: data)
+    }
+
+    /// Measured on the web player, 2026-10-01: an album's last track with repeat off names
+    /// reasons for other things, and none for Next.
+    @Test func `other restrictions leave Next allowed`() {
+        let remote = state(restrictions: [2: "not_paused", 6: "no_prev_track", 31: "no_sleep_timer_set"])
+
+        #expect(!remote.disallowsSkippingNext)
+        #expect(remote.contextUri == "spotify:album:a")
+    }
+
+    @Test func `a reason not to skip next disallows it`() {
+        #expect(state(restrictions: [7: "no_next_track"]).disallowsSkippingNext)
+    }
+}

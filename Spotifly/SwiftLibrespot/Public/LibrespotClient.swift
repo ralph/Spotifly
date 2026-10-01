@@ -1309,6 +1309,10 @@ public actor LibrespotClient {
             repeatTrack: options.repeatingTrack,
             repeatContext: options.repeatingContext,
             timestampMs: remote.timestamp,
+            // Its queue can be empty with Next still going somewhere: on an album's last track
+            // with repeat off the web player lists only hidden rows, and Next takes it back to
+            // the first track, paused (measured 2026-10-01). Only its restrictions say no.
+            canSkipNext: !remote.disallowsSkippingNext,
         )
         let queue = Self.mirroredQueue(of: remote)
         publish {
