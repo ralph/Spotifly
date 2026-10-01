@@ -355,6 +355,12 @@ public actor DealerConnection {
                 {
                     debugLog("DealerConnection", "Unhandled command: \(String(decoding: raw, as: UTF8.self))")
                 }
+                // A handover's state whole, as the base64 `TransferState` it came as, since the
+                // parsed one keeps only what this player acts on. `base64 -d | protoc
+                // --decode_raw` reads it.
+                if case .transfer = command, let data = commandJson["data"] as? String {
+                    debugLog("DealerConnection", "Transfer data: \(data)")
+                }
                 commandSubject.send(SpircRemoteCommand(command: command, messageId: messageId, sentByDeviceId: sentBy))
             } else if uri.starts(with: "hm://connect-state/v1/connect/volume"),
                       let volume = json["volume"] as? NSNumber

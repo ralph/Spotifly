@@ -1,7 +1,8 @@
 # A queued track handed over in a bare list is placed by its uri
 
 Status: **Open**, not planned. Not reachable with the web player (measured); a phone queues into a
-bare list (seen 2026-10-01), so it can be measured with one. What is left of
+bare list (seen 2026-10-01), so it can be measured with one, and a Debug build now logs what a
+handover carries, so no throwaway build is needed. What is left of
 `plans/done/queued-track-handover-in-an-album.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`takeOver`, `playTracks`),
 `Spotifly/SwiftLibrespot/Proto/TransferState.swift`
@@ -32,9 +33,23 @@ What a transfer of a bare list carries in `context.pages`, and whether the sessi
 
 ## Solution
 
-Not planned. Measure first, with a phone, which queues into a bare list: play one on it, queue a
-track, Next into it, pick the Mac as the device, and log the transfer with a throwaway build
-(`context.pages`, the session's `current_uid`, the queue). It needs someone with the phone.
+Not planned. Measure first, with a phone, which queues into a bare list. It needs someone with
+the phone:
+
+1. Run a Debug build of the Mac app, with its stderr kept (`open --stderr <file>`).
+2. On the phone, start a bare list: search, then Play on the tracks section, or a list another
+   device sent.
+3. Queue a track on the phone and press Next until it plays.
+4. Pick the Mac as the device on the phone.
+5. Read the log's `DealerConnection] Transfer data: …` line, the transfer's `TransferState`
+   whole as base64 (since 2026-10-01), and decode it: `echo <data> | base64 -d | protoc
+   --decode_raw` (`brew install protobuf`). `3.2.5` are the context's pages, each with its
+   tracks' uris and uids (`4.1`, `4.2`) or a `page_url`; `3.3` is the session's `current_uid`;
+   `4.1` the queue and `4.2` whether a queued track plays. The parsed `TransferState` is logged
+   next to it, as `SpircController] Command received: transfer(…)`.
+
+If no context tracks come, the Mac has no list to play but the current track; if the session's
+uid names a row, it is what the take-over could resume the list at.
 
 ## Verification
 
