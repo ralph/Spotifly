@@ -18,6 +18,7 @@ struct NowPlayingBarView: View {
     let windowState: WindowState
 
     @State private var cachedAlbumArtImage: Image?
+    private let network = NetworkMonitor.shared
     @State private var cachedAlbumArtURL: String?
     @State private var showVolumePopover = false
     @State private var showAlbumArtMenu = false
@@ -180,8 +181,13 @@ struct NowPlayingBarView: View {
                 RetryingAsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
-                        ProgressView()
-                            .frame(width: size, height: size)
+                        // Offline, nothing loads until the network returns; see `Artwork`.
+                        if network.isOnline {
+                            ProgressView()
+                                .frame(width: size, height: size)
+                        } else {
+                            placeholderAlbumArt(size: size)
+                        }
                     case let .success(image):
                         image
                             .resizable()

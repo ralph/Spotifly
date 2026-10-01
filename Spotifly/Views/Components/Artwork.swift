@@ -8,7 +8,7 @@
 import SwiftUI
 
 /// A square artwork: a spinner while it loads, the image clipped to its shape, and a glyph
-/// placeholder when there is no artwork or it fails to load.
+/// placeholder when there is no artwork, it fails to load, or the network is away.
 struct Artwork: View {
     let images: ImageSet
     /// The side of the square, in points; it also picks the image variant to load.
@@ -25,12 +25,16 @@ struct Artwork: View {
 
     @Environment(\.displayScale) private var displayScale
 
+    private let network = NetworkMonitor.shared
+
     var body: some View {
         if let url = images.url(for: size, scale: displayScale) {
             RetryingAsyncImage(url: url) { phase in
                 switch phase {
                 case .empty:
-                    if placeholderWhileLoading {
+                    // Offline, the request waits for a connection that is gone, and nothing loads
+                    // until it returns, when `RetryingAsyncImage` asks again.
+                    if placeholderWhileLoading || !network.isOnline {
                         placeholder
                     } else {
                         ProgressView()
