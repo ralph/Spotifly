@@ -27,6 +27,18 @@ struct NetworkMonitorTests {
         #expect(monitor.returns == 1)
     }
 
+    /// What artwork reads to show its placeholder rather than a spinner.
+    @Test func `it says whether the network is there`() {
+        let monitor = NetworkMonitor(satisfied: true)
+        #expect(monitor.isOnline)
+
+        monitor.update(satisfied: false)
+        #expect(!monitor.isOnline)
+
+        monitor.update(satisfied: true)
+        #expect(monitor.isOnline)
+    }
+
     /// Launched offline, the first report is a return as soon as the network is there.
     @Test func `launched offline, coming online is a return`() {
         let monitor = NetworkMonitor(satisfied: false)

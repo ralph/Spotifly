@@ -2,7 +2,7 @@
 //  NetworkMonitor.swift
 //  Spotifly
 //
-//  Tells views when the network has come back.
+//  Tells views whether the network is there, and when it has come back.
 //
 
 import Foundation
@@ -21,9 +21,10 @@ final class NetworkMonitor {
     /// Goes up each time the network is usable again after it was not.
     private(set) var returns = 0
 
-    /// Whether the last path was usable. Starts true, so the first report, which describes the
-    /// path as it is at launch, counts only if it is a way back from being offline.
-    @ObservationIgnored private var satisfied = true
+    /// Whether the last path was usable: artwork shows its placeholder rather than a spinner while
+    /// it is not. Starts true, so the first report, which describes the path as it is at launch,
+    /// counts only if it is a way back from being offline.
+    private(set) var isOnline = true
 
     private init() {
         Task {
@@ -35,15 +36,17 @@ final class NetworkMonitor {
 
     /// For tests, which cannot take the network away.
     init(satisfied: Bool) {
-        self.satisfied = satisfied
+        isOnline = satisfied
     }
 
     func update(satisfied now: Bool) {
-        if now, !satisfied {
+        if now, !isOnline {
             returns += 1
             debugLog("NetworkMonitor", "The network is back")
         }
-        satisfied = now
+        if isOnline != now {
+            isOnline = now
+        }
     }
 }
 
