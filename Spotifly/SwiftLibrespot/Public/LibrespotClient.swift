@@ -42,7 +42,7 @@ public actor LibrespotClient {
 
     /// Each row's uid by its track's uri, for a context the resolver lists without them: an
     /// album. A handover names its row by uid, and pathfinder's album answer has them.
-    private var contextRowUids: (@Sendable (String) async -> [String: String])?
+    private var contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])?
 
     /// Whether this Mac may play for the account, as the last login found.
     private var streams = true
@@ -138,7 +138,7 @@ public actor LibrespotClient {
         tokenProvider provider: @escaping @Sendable () async throws -> String,
         clientTokenProvider: (@Sendable () async throws -> String)? = nil,
         usernameProvider: @escaping @Sendable () async -> String?,
-        contextRowUids: (@Sendable (String) async -> [String: String])? = nil,
+        contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])? = nil,
     ) async throws {
         tokenProvider = provider
         self.clientTokenProvider = clientTokenProvider
@@ -466,22 +466,20 @@ public actor LibrespotClient {
         }
 
         debugLog("LibrespotClient", "Resolving context \(uri)")
+        // Beside the resolve, which gives an album's rows no uids. Only an album asks.
+        let rowUids = contextRowUids.map { fetch in Task { await fetch(uri) } }
         let context = try await spclient.resolveContext(uri)
         guard !context.tracks.isEmpty else {
             throw LibrespotError.trackNotFound("Context has no tracks")
         }
 
-        // Asked of `contextRowUids` only where the uri cannot place the start: a queued track,
-        // whose uid names the row after it, or a track the context does not list by that uri.
-        // Anywhere else the uri finds the row, and waiting on a second request delays the audio.
+        // Waited for only where the uri cannot place the start: a queued track, whose uid names
+        // the row after it, or a track the context does not list by that uri. Anywhere else the
+        // uri finds the row, and the audio does not wait for a second request.
         var uids = context.uids
         let uriPlaces = resumingAtUid == nil && startingAtUri.map(context.tracks.contains) != false
-        if let named = resumingAtUid ?? startingAtUid, !uriPlaces, !uids.contains(named), let contextRowUids {
-            let listed = await contextRowUids(uri)
-            // Keyed by uri, so a track the album lists twice has one uid: it names the first
-            // copy only, or the queue would report two rows under one uid.
-            var seen = Set<String>()
-            uids = context.tracks.map { seen.insert($0).inserted ? listed[$0] : nil }
+        if let named = resumingAtUid ?? startingAtUid, !uriPlaces, !uids.contains(named), let rowUids {
+            uids = await PlaybackQueue.rowUids(rowUids.value, of: context.tracks)
         }
 
         if let resumingAtUid, let queued = startingAtUri,
@@ -494,6 +492,26 @@ public actor LibrespotClient {
                 ? (tracks: context.tracks, uids: uids, index: firstPlayable(in: context.tracks))
                 : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: uids)
             try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, name: context.name, positionMs: positionMs, paused: paused)
+        }
+        // Otherwise the rows take them when they come: a jump that names a row's uid then
+        // reaches that row, not a queued copy of its track.
+        if !uids.contains(where: { $0 != nil }), let rowUids {
+            Task { await self.adoptRowUids(rowUids, ofContext: uri) }
+        }
+    }
+
+    /// Gives the playing context's rows the uids `rowUids` lists, and tells the app and other
+    /// devices; see `PlaybackQueue.adoptRowUids(_:ofContext:)`.
+    private func adoptRowUids(_ rowUids: Task<[(uri: String, uid: String)], Never>, ofContext uri: String) async {
+        guard await playbackQueue.adoptRowUids(rowUids.value, ofContext: uri) else { return }
+        debugLog("LibrespotClient", "Rows of \(uri) named by uid")
+        // The queue only: uids do not change the next track, and announcing it during a load
+        // could cancel a fetched-ahead copy of the track being loaded. A load under way reports
+        // the uids with its own track.
+        let queue = queueState
+        publish { $0.queue = queue }
+        if let localState, localState.trackUri == playbackQueue.currentUri {
+            reportPlaybackToCluster()
         }
     }
 

@@ -98,6 +98,29 @@ nonisolated struct SpclientTrack: Decodable, Sendable {
         }
     }
 
+    /// Where the track may play. Asked for with `market=from_token`, the answer is already the
+    /// account's: a track its market does not have lists a restriction allowed in no country.
+    struct Restriction: Decodable, Sendable {
+        let countriesAllowed: String?
+        /// The tiers it is for, as librespot reads them; none named in any answer seen.
+        let catalogues: [String]?
+
+        enum CodingKeys: String, CodingKey {
+            case countriesAllowed = "countries_allowed"
+            case catalogues = "catalogue_str"
+        }
+
+        /// Whether it keeps a Premium account, the only kind that plays here, from the track
+        /// everywhere. One for another tier does not, as librespot counts only the account's.
+        var withholds: Bool {
+            countriesAllowed == "" && catalogues.map { $0.contains("premium") } != false
+        }
+    }
+
+    /// Another release of the track that does play in the account's market, which Spotify's
+    /// clients play in its place: relinking. Only whether there is one matters here.
+    struct Alternative: Decodable, Sendable {}
+
     let gid: String?
     let name: String?
     let album: Album?
@@ -105,6 +128,8 @@ nonisolated struct SpclientTrack: Decodable, Sendable {
     let duration: Int?
     let number: Int?
     let discNumber: Int?
+    let restriction: [Restriction]?
+    let alternative: [Alternative]?
 
     enum CodingKeys: String, CodingKey {
         case gid
@@ -114,10 +139,22 @@ nonisolated struct SpclientTrack: Decodable, Sendable {
         case duration
         case number
         case discNumber = "disc_number"
+        case restriction
+        case alternative
     }
 
     var artistNames: [String] {
         (artist ?? []).compactMap(\.name)
+    }
+
+    /// Whether Spotify withholds the track from the account: a restriction allows it nowhere,
+    /// and no alternative plays in its place.
+    ///
+    /// Measured 2026-10-01 on 52 tracks of a library: 18 had `countries_allowed: ""`, 17 of them
+    /// with an alternative, and those play, relinked. The one without was "Girlfriend (feat.
+    /// Dâm-Funk)", which pathfinder calls `COUNTRY_RESTRICTED` and which has no file to play.
+    var isWithheld: Bool {
+        (restriction ?? []).contains(where: \.withholds) && (alternative ?? []).isEmpty
     }
 }
 

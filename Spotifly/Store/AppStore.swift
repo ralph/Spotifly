@@ -207,9 +207,9 @@ final class AppStore {
         resolvedFavoriteTrackIds.contains(trackId)
     }
 
-    /// Upsert tracks, keeping `unplayableTrackUris` in step. Every answer that replaces a track
-    /// here says whether it plays, except spclient's, which only fills in tracks the store
-    /// lacks.
+    /// Upsert tracks, keeping `unplayableTrackUris` in step. Every answer here says whether a
+    /// track plays: pathfinder's `playability`, and spclient's restriction and alternatives
+    /// (`SpclientTrack.isWithheld`).
     func upsertTracks(_ newTracks: [Track]) {
         var unplayable = unplayableTrackUris
         for var track in newTracks {
