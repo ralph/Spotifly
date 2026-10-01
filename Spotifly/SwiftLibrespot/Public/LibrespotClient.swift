@@ -845,7 +845,9 @@ public actor LibrespotClient {
         }
     }
 
-    /// One attempt at a track: the optimistic state, then the pipeline.
+    /// One attempt at a track. The bar and other devices hear of it when the pipeline announces
+    /// it, once its metadata has said Spotify has a file for it (`handlePipelineState`), so a
+    /// withheld track is passed over without ever being shown.
     ///
     /// Auto-advance calls this directly and gives up once, after its last
     /// attempt, so other devices do not see the Mac stop and start again
@@ -854,14 +856,6 @@ public actor LibrespotClient {
         guard let audioPipeline else {
             throw LibrespotError.notInitialized
         }
-
-        // The optimistic state below must not carry the previous track's
-        // length; until metadata lands, zero is the honest answer.
-        knownDurationMs = 0
-        let position = UInt32(clamping: positionMs)
-        // With the queue that moved to it, in one snapshot. Published after the load, as it
-        // was, the store held the new track in the old lists for the whole wait.
-        publishPlaybackState(for: uri, playing: !paused, paused: paused, positionMs: Int64(position), queue: queueState)
 
         do {
             try await audioPipeline.playTrack(uri: uri, positionMs: positionMs, paused: paused)
@@ -1054,15 +1048,26 @@ public actor LibrespotClient {
 
     private func handlePipelineState(_ state: AudioPipeline.AudioPlaybackState) async {
         switch state {
-        case .idle, .loading:
-            break // end-of-track and stop own the nil transition, and a load publishes its own
+        case .idle:
+            break // end-of-track and stop own the nil transition
+
+        case let .loading(trackUri, positionMs, paused):
+            // A newer start moved the queue on while this one's metadata was asked for, and it
+            // announces its own.
+            guard trackUri == playbackQueue.currentUri else { return }
+            // Not the previous track's length: until the load has it, zero is the honest answer.
+            knownDurationMs = 0
+            // With the queue that moved to it, in one snapshot, so the store never holds the new
+            // track in the old lists.
+            publishPlaybackState(for: trackUri, playing: !paused, paused: paused, positionMs: Int64(clamping: positionMs), queue: queueState)
 
         case let .playing(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
             // Torn down or replaced while this waited: the track is no one's now. Or a skip
             // started loading another while this waited, and published it with its queue.
             guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
-            publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position))
+            // With its queue too: a track that followed on without a gap is never `.loading`.
+            publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position), queue: queueState)
 
         case let .paused(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0

@@ -60,7 +60,9 @@ actor AudioPipeline {
 
     enum AudioPlaybackState: Sendable, Equatable {
         case idle
-        case loading(trackUri: String)
+        /// A load past its metadata, so a track Spotify has files for: what other devices and the
+        /// bar are told is starting, at `positionMs`, and held there when `paused`.
+        case loading(trackUri: String, positionMs: UInt64, paused: Bool)
         case playing(trackUri: String)
         case paused(trackUri: String)
     }
@@ -210,11 +212,33 @@ actor AudioPipeline {
     /// nor a newer load waits for the network: the newer load bumps the
     /// generation, and this one then gives way.
     ///
+    /// **The metadata comes first**, while what plays goes on playing, and only a track Spotify
+    /// has files for is announced as `.loading`. A withheld one was announced, shown in the bar
+    /// and reported to other devices, for as long as its metadata request took, before the load
+    /// found it out and the queue moved on.
+    ///
     /// - Parameter paused: load and position the track but hold playout until
     ///   `resume()`, as a handover of paused playback needs.
     func playTrack(uri: String, positionMs: UInt64 = 0, paused: Bool = false) async throws {
-        var generation = 0
-        let alreadyPlaying = await transition {
+        loadGeneration += 1
+        let generation = loadGeneration
+
+        let metadata: SPClient.TrackMetadata?
+        do {
+            metadata = try await playableMetadata(for: uri)
+        } catch {
+            guard generation == loadGeneration else { throw CancellationError() }
+            // What played before stops, as it did when a load failed after its announcement.
+            await transition {
+                if generation == loadGeneration {
+                    await teardownTrack()
+                }
+            }
+            throw error
+        }
+
+        let alreadyPlaying = try await transition {
+            guard generation == loadGeneration else { throw CancellationError() }
             let continued = continuedUri
             continuedUri = nil
             if continued == uri, currentTrackUri == uri, positionMs == 0, !paused, isPlaying, !isPaused {
@@ -225,10 +249,7 @@ actor AudioPipeline {
             }
 
             debugLog("AudioPipeline", "Playing \(uri) at \(positionMs)ms")
-            publish(.loading(trackUri: uri))
-
-            loadGeneration += 1
-            generation = loadGeneration
+            publish(.loading(trackUri: uri, positionMs: positionMs, paused: paused))
             await teardownTrack()
             return false
         }
@@ -237,7 +258,7 @@ actor AudioPipeline {
         let track: PreparedTrack
         let vorbis: VorbisDecoder
         do {
-            track = try await preparedTrack(for: uri)
+            track = try await preparedTrack(for: uri, metadata: metadata)
             vorbis = try VorbisDecoder(bytes: track.ogg)
         } catch {
             // A newer load or a stop came while this one fetched. Its failure
@@ -308,9 +329,22 @@ actor AudioPipeline {
         }
     }
 
+    /// The metadata a load starts with, once it has said there is a file to play: nil for the
+    /// loaded track and the one fetched ahead, whose fetch already asked, or is asking.
+    private func playableMetadata(for uri: String) async throws -> SPClient.TrackMetadata? {
+        guard current?.uri != uri, upcoming?.uri != uri else { return nil }
+        guard let spclient else {
+            throw LibrespotError.invalidState("SPClient not configured")
+        }
+        let metadata = try await spclient.getTrack(uri: uri)
+        _ = try Self.fileToPlay(metadata, uri: uri, preferring: quality)
+        return metadata
+    }
+
     /// The loaded track when it is played again, the fetched-ahead one when it
-    /// is the one expected, and otherwise a fresh fetch.
-    private func preparedTrack(for uri: String) async throws -> PreparedTrack {
+    /// is the one expected, and otherwise a fresh fetch, from `metadata` when
+    /// the load has it.
+    private func preparedTrack(for uri: String, metadata: SPClient.TrackMetadata? = nil) async throws -> PreparedTrack {
         if let current, current.uri == uri, current.quality == quality {
             return current
         }
@@ -329,18 +363,22 @@ actor AudioPipeline {
                 // Anything else may not recur, so it is fetched again below.
             }
         }
-        return try await prepare(uri)
+        return try await prepare(uri, metadata: metadata)
     }
 
-    /// Metadata, in one request, then the audio key and the CDN url side by
-    /// side, then the download and decryption.
-    private func prepare(_ uri: String) async throws -> PreparedTrack {
+    /// Metadata, in one request unless the load brings it, then the audio key and the CDN url
+    /// side by side, then the download and decryption.
+    private func prepare(_ uri: String, metadata known: SPClient.TrackMetadata? = nil) async throws -> PreparedTrack {
         guard let spclient else {
             throw LibrespotError.invalidState("SPClient not configured")
         }
 
         let trackId = try Self.trackGid(fromUri: uri)
-        let metadata = try await spclient.getTrack(uri: uri)
+        let metadata = if let known {
+            known
+        } else {
+            try await spclient.getTrack(uri: uri)
+        }
 
         debugLog("AudioPipeline", "Track '\(metadata.name)': \(metadata.files.count) file(s), \(metadata.durationMs)ms")
 
