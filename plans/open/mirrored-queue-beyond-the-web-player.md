@@ -95,6 +95,7 @@ Not defined yet, beyond Progress.
     track 1, 2, 3 with their row uids. "Fetching … ahead" named track 1 right after the
     handover, and the end of the last track went on to track 1 without a gap.
   - **What the web player shows:** no next round, even of its own playback on the same track
-    with repeat on, so its queue panel could not show the Mac's either, and a jump into the next
-    round was not tried live; it is unit-tested.
+    with repeat on, so its queue panel could not show the Mac's either.
+  - **Seen on a phone** (2026-10-01, by hand): on an album's last track with repeat on, the
+    phone's queue listed the album again after it, and a track tapped there played on the Mac.
 
