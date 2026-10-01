@@ -2,7 +2,7 @@
 
 Status: **Done** 2026-09-30, for the loads that fail offline. Built, linted and unit-tested; not
 seen with the network actually dropped, which needs Wi-Fi off; see Verification. Failures while
-the network stays up moved to `plans/open/loads-that-fail-while-online.md`.
+the network stays up moved to `plans/done/loads-that-fail-while-online.md`.
 Components: `Spotifly/NetworkMonitor.swift` (`retryingWhenNetworkReturns`),
 `Spotifly/Views/LoggedInLifecycleModifier.swift` (the start page and `loadProfile`),
 `Spotifly/Views/LibraryListView.swift`, `Spotifly/Views/FavoritesListView.swift`,

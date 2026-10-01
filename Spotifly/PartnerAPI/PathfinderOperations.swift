@@ -38,6 +38,11 @@ import Foundation
 nonisolated struct PathfinderOperation: Sendable, Equatable {
     let name: String
     let sha256Hash: String
+    /// Whether a failure that may pass is asked for again
+    /// (`SpotifyCredentials.retryingPassingFailures`). Not for a mutation, which may have
+    /// happened, and must not happen twice; nor for `areEntitiesInLibrary`, which every heart on
+    /// screen asks on its own, and whose failure leaves the heart as it was.
+    var retriesPassingFailures = true
 
     static let searchTracks = PathfinderOperation(
         name: "searchTracks",
@@ -119,16 +124,19 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     static let addToPlaylist = PathfinderOperation(
         name: "addToPlaylist",
         sha256Hash: playlistMutationHash,
+        retriesPassingFailures: false,
     )
 
     static let removeFromPlaylist = PathfinderOperation(
         name: "removeFromPlaylist",
         sha256Hash: playlistMutationHash,
+        retriesPassingFailures: false,
     )
 
     static let moveItemsInPlaylist = PathfinderOperation(
         name: "moveItemsInPlaylist",
         sha256Hash: playlistMutationHash,
+        retriesPassingFailures: false,
     )
 
     private static let playlistMutationHash =
@@ -147,6 +155,7 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     static let areEntitiesInLibrary = PathfinderOperation(
         name: "areEntitiesInLibrary",
         sha256Hash: "134337999233cc6fdd6b1e6dbf94841409f04a946c5c7b744b09ba0dfe5a85ed",
+        retriesPassingFailures: false,
     )
 
     /// The library writes, which share one hash and differ by name — and which take uris of
@@ -155,11 +164,13 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     static let addToLibrary = PathfinderOperation(
         name: "addToLibrary",
         sha256Hash: libraryMutationHash,
+        retriesPassingFailures: false,
     )
 
     static let removeFromLibrary = PathfinderOperation(
         name: "removeFromLibrary",
         sha256Hash: libraryMutationHash,
+        retriesPassingFailures: false,
     )
 
     /// Shared with pin/unpin, which this app does not use.
