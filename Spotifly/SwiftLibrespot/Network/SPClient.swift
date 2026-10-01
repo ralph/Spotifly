@@ -278,8 +278,8 @@ public actor SPClient {
         /// Each track's `uid`, beside `tracks`, or nil where the answer has none. A playlist's
         /// tracks have one, an album's none (measured 2026-09-30).
         public let uids: [String?]
-        /// The answer's `metadata.context_description`.
-        public let name: String?
+        /// The answer's `metadata`, the context's name among it (`contextName`).
+        public let metadata: [String: String]
     }
 
     /// Resolves an album, playlist, artist, or station uri into its tracks,
@@ -293,7 +293,7 @@ public actor SPClient {
 
         var allTracks: [String] = []
         var allUids: [String?] = []
-        var name: String?
+        var metadata: [String: String] = [:]
         var nextPage: String? = "/context-resolve/v1/\(encodedUri)?device_id=\(deviceId)"
         var pageLimit = 10
 
@@ -323,13 +323,13 @@ public actor SPClient {
             let report = Self.parseContextReport(data)
             allTracks.append(contentsOf: report.tracks)
             allUids.append(contentsOf: report.uids)
-            name = name ?? report.name
+            metadata.merge(report.metadata) { first, _ in first }
             nextPage = report.nextPageUrl.map { "/context-resolve/v1/\($0)" }
         }
 
         debugLog("SPClient", "Context resolved: \(allTracks.count) track(s)")
 
-        return ResolvedContext(tracks: allTracks, uids: allUids, name: name)
+        return ResolvedContext(tracks: allTracks, uids: allUids, metadata: metadata)
     }
 
     /// Parses the context resolver's answer. Despite the protobuf `Accept`
@@ -341,9 +341,9 @@ public actor SPClient {
     /// it and was always 0 — the guard ran after the append, and a context uri
     /// never matches a track uri anyway. Removed rather than guessed at: which
     /// field, if any, carries a resume point has to come off a real response.
-    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], uids: [String?], nextPageUrl: String?, name: String?) {
+    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], uids: [String?], nextPageUrl: String?, metadata: [String: String]) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return ([], [], nil, nil)
+            return ([], [], nil, [:])
         }
 
         var tracks: [String] = []
@@ -363,8 +363,9 @@ public actor SPClient {
             }
         }
 
-        let name = ((json["metadata"] as? [String: Any])?["context_description"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        return (tracks, uids, nextPageUrl, name)
+        // String values only, as the player state's `context_metadata` is a map of strings.
+        let metadata = (json["metadata"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+        return (tracks, uids, nextPageUrl, metadata)
     }
 
     // MARK: - Timeout

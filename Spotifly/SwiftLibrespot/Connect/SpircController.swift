@@ -82,6 +82,8 @@ public actor SpircController {
         /// The context playing, and where the track sits in it. Another device
         /// taking over resolves the same context and continues from there.
         public var contextUri: String
+        /// The resolver's metadata of the context, sent as `context_metadata`.
+        public var contextMetadata: [String: String] = [:]
         public var contextIndex: Int?
         /// "context", or "queue" for a track the user queued.
         public var trackProvider: String
@@ -385,6 +387,7 @@ public actor SpircController {
                 playerStateProto.track = ProvidedTrack(uri: uri, uid: ps.trackUid ?? "", provider: ps.trackProvider)
             }
             playerStateProto.contextUri = ps.contextUri
+            playerStateProto.contextMetadata = ps.contextMetadata
             if !ps.contextUri.isEmpty {
                 playerStateProto.contextUrl = "context://\(ps.contextUri)"
             }
