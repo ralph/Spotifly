@@ -34,7 +34,6 @@ struct StartpageView: View {
             }
             .padding(.vertical)
         }
-        .contentMargins(.bottom, 100)
         .refreshable {
             await homeService.refresh()
         }

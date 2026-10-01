@@ -467,3 +467,95 @@ struct QueueJumpTests {
         #expect(upcoming(queue) == ["t2", "t3", "t4"])
     }
 }
+
+/// Rows named by uid, as Connect names them: a queued track's own, and a context row's from
+/// the resolver, so another device can name one copy of a track apart from another.
+struct QueueRowUidTests {
+    private func uids(_ rows: [QueueItem]) -> [String?] {
+        rows.map(\.uid)
+    }
+
+    @Test func `queued tracks are named q0, q1 and on, and keep the name while they play`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["t0", "t1"], startIndex: 0)
+        queue.enqueue("x")
+        queue.enqueue("y")
+
+        #expect(uids(queue.upcoming()) == ["q0", "q1", nil])
+
+        _ = queue.advance()
+        #expect(queue.currentUri == "x")
+        #expect(queue.current?.uid == "q0")
+        #expect(uids(queue.upcoming()) == ["q1", nil])
+
+        // Queued later, a new name: the count goes on.
+        queue.enqueue("z")
+        #expect(uids(queue.upcoming()) == ["q1", "q2", nil])
+    }
+
+    @Test func `context rows carry the resolver's uids, ahead, current and behind`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:playlist:p", tracks: ["a", "b", "c"], uids: ["u0", "u1", "u2"], startIndex: 1)
+
+        #expect(queue.current?.uid == "u1")
+        #expect(uids(queue.upcoming()) == ["u2"])
+
+        _ = queue.advance()
+        #expect(uids(queue.recent()) == ["u1"])
+    }
+
+    @Test func `a context without uids has none, and short uids are padded`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["a", "b", "c"], uids: ["u0"], startIndex: 0)
+
+        #expect(queue.current?.uid == "u0")
+        #expect(uids(queue.upcoming()) == [nil, nil])
+    }
+
+    /// The case the web player's provider could not tell apart, measured 2026-10-01: a track
+    /// queued, and the same track further on in the context.
+    @Test func `a uid names the context's copy of a track that is also queued`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:playlist:p", tracks: ["a", "b", "x", "c"], uids: ["u0", "u1", "u2", "u3"], startIndex: 0)
+        queue.enqueue("x")
+
+        #expect(queue.skip(toUpcoming: nil, uri: "x", uid: "u2") == "x")
+        #expect(queue.contextPosition == 2)
+        #expect(queue.current?.uid == "u2")
+        // The queued copy stays queued, as a context target leaves it.
+        #expect(queue.upcoming().map(\.uri) == ["x", "c"])
+    }
+
+    @Test func `a uid names the queued copy too`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:playlist:p", tracks: ["a", "x"], uids: ["u0", "u1"], startIndex: 0)
+        queue.enqueue("x")
+
+        #expect(queue.skip(toUpcoming: nil, uri: "x", uid: "q0") == "x")
+        #expect(queue.currentProvider == "queue")
+    }
+
+    /// A uid that names nothing ahead, or names another track, falls back to the uri.
+    @Test func `a uid that names no row ahead leaves the uri to decide`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:playlist:p", tracks: ["a", "b", "c"], uids: ["u0", "u1", "u2"], startIndex: 0)
+
+        #expect(queue.skip(toUpcoming: nil, uri: "c", uid: "u1") == "c")
+        #expect(queue.current?.uid == "u2")
+    }
+
+    @Test func `a track put in where the context lacks it has no uid, and the rest keep theirs`() {
+        let start = PlaybackQueue.start(in: ["a", "b"], index: 1, uri: "x", uids: ["u0", "u1"])
+
+        #expect(start.tracks == ["a", "x", "b"])
+        #expect(start.uids == ["u0", nil, "u1"])
+        #expect(start.index == 1)
+    }
+
+    @Test func `a queued track put in front of the context leaves the context's uids in place`() throws {
+        let start = try #require(PlaybackQueue.start(in: ["a", "b"], queued: "x", resumingAt: "u0", uids: ["u0", "u1"]))
+
+        #expect(start.tracks == ["x", "a", "b"])
+        #expect(start.uids == [nil, "u0", "u1"])
+    }
+}

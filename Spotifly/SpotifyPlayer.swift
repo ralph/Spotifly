@@ -11,14 +11,15 @@
 
 import Foundation
 
-/// A row of the player's queue. Only its uri and provider: names, artwork and durations come
-/// from the store, which hydrates them by track id.
+/// A row of the player's queue: its track, where it comes from, and its uid. Names, artwork and
+/// durations come from the store, which hydrates them by track id.
 nonisolated struct QueueItem: Equatable {
     let uri: String
     /// Track provider: "context", "queue", "autoplay", or "unavailable"
     let provider: String
-    /// The cluster's name for this row, which a `skip_next` can jump to. Only
-    /// another device's queue has them; this client's own rows go by position.
+    /// The row's uid, which a jump to it names: the cluster's, while another device plays,
+    /// and this client's own otherwise (`PlaybackQueue`). A row with none goes by its position
+    /// and its track.
     var uid: String?
 }
 
@@ -63,6 +64,9 @@ nonisolated struct PlaybackState: Equatable {
     let repeatContext: Bool
     /// Timestamp (ms since epoch) when positionMs was recorded - for computing current position
     let timestampMs: Int64
+    /// Whether Next goes anywhere. Always for this Mac, where Next on a context's last track
+    /// goes back to its first, paused; for another device, unless its `restrictions` say no.
+    var canSkipNext = true
 }
 
 /// Playback that went past a track, or stopped, over an error.
@@ -285,13 +289,13 @@ enum SpotifyPlayer {
     }
 
     /// Plays one of the queue's next tracks, keeping the queue.
-    static func skip(toNext position: Int?, uri: String) async throws {
-        try await LibrespotClient.shared.skip(toNext: position, uri: uri)
+    static func skip(toNext position: Int?, uri: String, uid: String?) async throws {
+        try await LibrespotClient.shared.skip(toNext: position, uri: uri, uid: uid)
     }
 
     /// Plays one of the queue's previous tracks, keeping the queue.
-    static func skip(toPrevious index: Int, uri: String) async throws {
-        try await LibrespotClient.shared.skip(toPrevious: index, uri: uri)
+    static func skip(toPrevious index: Int, uri: String, uid: String?) async throws {
+        try await LibrespotClient.shared.skip(toPrevious: index, uri: uri, uid: uid)
     }
 
     /// Seeks to the given position in milliseconds.

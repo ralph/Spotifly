@@ -170,6 +170,10 @@ struct LoggedInView: View {
         // height its panes asked for, so a page showing only an error message squeezed the
         // window to its few lines, and the bar below followed it into the window's middle.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Room under every scrolling page, so its end and its scroll bar stay clear of the bar
+        // laid over it. It reaches the outermost scroll view of each pane, not the shelves inside,
+        // and no `List`, which on macOS takes no content margins: Speakers leaves its own room.
+        .contentMargins(.bottom, NowPlayingBarView.contentClearance)
         .overlay(alignment: .bottom) {
             NowPlayingBarView(
                 playbackViewModel: playbackViewModel,
