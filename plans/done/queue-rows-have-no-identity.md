@@ -1,8 +1,9 @@
 # Queue rows have no identity, so every jump finds its row again by uri
 
-Status: **In progress.** The history and part 1 are done (#105, #94), and part 1 was seen in
-the running app on 2026-09-30. Part 2, the rows' uids, is built and unit-tested (2026-10-01);
-its measurement against the web player is pending, and decides the album case; see Progress.
+Status: **Done** 2026-10-01. The history and part 1 (#105, #94), seen in the running app on
+2026-09-30; part 2, the rows' uids, built and seen against the web player on 2026-10-01. A
+queued copy of an album's track is still named by uri, which needs a phone to settle:
+`plans/open/queued-copy-of-an-album-track.md`. See Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
@@ -173,7 +174,21 @@ Not defined yet.
       a value, nil matching nil, would settle the queued-and-in-the-album case without
       inventing or fetching anything, if the web player turns out to send a uid only for rows
       that have one.
-  - **Measurement pending** (needs this build running beside the web player): whether a
-    double-click in the web player's queue panel now sends the uid of the row clicked, for a
-    queued copy and the context's copy of the same track; and that a handover from the Mac to
-    the web player, with uids reported, starts on the right row.
+  - **Measured** 2026-10-01, this build beside the web player, Liked Songs playing on the Mac
+    from row 199 and row 202, "Drag My Body", queued as well:
+    - A double-click on the playlist's copy in the web player's queue panel sent
+      `next(trackUri: …0bEwPQwwgFyCvsqLkVOWhh, uid: "e5df41f3708dea21f113")`, the row's uid
+      from the resolver. The Mac played row 202, three tracks went into the history, and the
+      queued copy stayed queued. Before, the same click played the queued copy.
+    - A double-click on the queued copy sent `uid: "q0"`, and the Mac played it as queued.
+    - Handed to the web player while the queued copy played, the web player went on with row
+      203 after it; handed back, the Mac took the queued copy (under its other, relinked id,
+      `3yZJDgC3…`, which the web player's queue held) over as queued, with the context
+      resuming at 203 by the transfer's uid. Handed to the web player mid-playlist after a Next,
+      it went on with the right row too.
+    - On this Mac's own queue, a double-click on a next row and on a played row went to those
+      rows.
+    - **An album's row has no uid, and the web player sends none for it**: a double-click on a
+      row of "Fashion Nugget" in its queue panel sent `uid: nil`. So a track queued and
+      further on in an album is still taken from the queue when its album copy is clicked; see
+      the open plan named in Status.
