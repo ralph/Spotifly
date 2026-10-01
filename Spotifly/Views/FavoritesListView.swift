@@ -40,6 +40,9 @@ struct FavoritesListView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .retryingWhenNetworkReturns {
+                        await loadFavorites(forceRefresh: true)
+                    }
                 }
                 .padding()
             } else if store.favoriteTracks.isEmpty {

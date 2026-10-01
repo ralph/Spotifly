@@ -85,6 +85,9 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .retryingWhenNetworkReturns {
+                        await loadItems(forceRefresh: true)
+                    }
                 }
                 .padding()
             } else if !hasContent {
