@@ -1,7 +1,7 @@
 # List failures the network-return retry cannot see
 
 Status: **Done** 2026-10-01 for the lists, unit-tested; offline behaviour not seen, see
-Verification. Search is `plans/open/search-failure-not-shown.md`; the two profile loaders stay, see
+Verification. Search is `plans/done/search-failure-not-shown.md`; the two profile loaders stay, see
 Solution. Stacked on the network-return retry (`plans/done/failed-loads-wait-for-try-again.md`).
 Components: `Spotifly/Store/Entities.swift` (`PaginationState.failure`), `Spotifly/Store/AppStore.swift`
 (`loadLibraryPage`), `Spotifly/Views/LibraryListView.swift`, `Spotifly/Views/FavoritesListView.swift`,
