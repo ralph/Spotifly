@@ -225,7 +225,6 @@ struct QueueListView: View {
             .scrollTargetLayout()
         }
         .scrollPosition($scrollPosition)
-        .contentMargins(.bottom, 100)
     }
 
     // MARK: - Empty State
