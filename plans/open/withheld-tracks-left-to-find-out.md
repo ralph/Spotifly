@@ -11,9 +11,11 @@ Found: 2026-09-29, in the reviews of #57 and of its follow-up
 
 ## Summary
 
-A track nobody fetched ahead is still found out by its metadata request, one per attempt. Since
-the done plan above that is all an attempt costs, and nothing is shown or reported for it. Four
-smaller things remain.
+A track no list and no queue hydration has called withheld, and nobody fetched ahead, is still
+found out by its metadata request, one per attempt: since the done plan above, that is all an
+attempt costs, and nothing is shown or reported for it. spclient's metadata now greys a queue's
+tracks before a run reaches them (see Progress). Three smaller things are left, weighed in
+Progress and not built.
 
 ## Problem
 
@@ -24,18 +26,20 @@ smaller things remain.
 - **spclient's metadata is not read for it:** done; see Progress. A track hydrated only through
   spclient, such as a queue entry from a context the app never listed, was not greyed.
 - **Files the player cannot decode.** A track whose files are all MP3, AAC or FLAC throws
-  `trackNotFound("No Ogg Vorbis file available")`, which is not skipped, so auto-advance
-  stops there. Spotify has not been seen to serve such a track to a Premium account.
+  `trackNotFound("No Ogg Vorbis file available")`, which is not skipped, so playback stops
+  there, however the track was reached: every load goes on past only a withheld track
+  (`plans/done/skip-onto-a-withheld-track-stops-playback.md`). Spotify has not been seen to
+  serve such a track to a Premium account.
 - **A failed transfer reports twice.** `loadAndPlay` gives up playback through
   `playbackFailed`, and `takeOver`'s catch releases again. The cost is one extra PutState.
 
 ## Solution
 
-Not planned.
+spclient's metadata: built; see Progress. The other three are left, for the reasons there.
 
 ## Verification
 
-Not defined yet.
+spclient's metadata: see Progress. The others: not defined.
 
 ## Progress
 
