@@ -2,7 +2,7 @@
 
 Status: **Done** 2026-09-30, for the mapping. Built and unit-tested; see Verification. The other
 half of the plan, this Mac naming its own context to the cluster, moved to
-`plans/open/own-context-name-not-reported.md`.
+`plans/done/own-context-name-not-reported.md`.
 Components: `Spotifly/Models/Route.swift` (`Route(contextUri:)`, `Route(showing:)`),
 `Spotifly/ViewModels/NavigationCoordinator.swift` (`navigate(to:)`), `Spotifly/Store/AppStore.swift`
 (`name(of:)`), `Spotifly/Views/QueueListView.swift` (`contextInfo`),

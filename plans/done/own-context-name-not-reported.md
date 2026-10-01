@@ -1,7 +1,7 @@
 # This Mac's cluster state names no context
 
-Status: **Open**, built and sent, not yet seen anywhere it would show: whether a phone names a
-context differently for it needs a phone. See Progress. Split from
+Status: **Done** 2026-10-01. This Mac reports the resolved context's metadata, as librespot does,
+and a phone names the playlist and the album it plays from; see Progress. Split from
 `plans/done/context-uris-open-one-way.md`.
 Components: `Spotifly/SwiftLibrespot/Connect/SpircController.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`SpircPlayerState`)
@@ -41,6 +41,7 @@ Not defined yet.
 - **Seen sent:** a throwaway log, never committed, of the reported state: Liked Songs carried
   `context_description: "Lieblingssongs"`, `format_list_type: "liked-songs"`, `context_owner`
   and `playlist.revision`; "Not Bad for New Jersey" carried its name and `image_url`.
-- **Not seen:** any difference on another device. The web player names contexts itself, as it
-  did before. A phone is the check left.
+- **Seen on a phone** (2026-10-01, by hand): with a playlist and then an album playing on the
+  Mac, the phone named each as what it plays from. Whether it named them before this was not
+  compared. The web player names contexts itself, as it did before.
 
