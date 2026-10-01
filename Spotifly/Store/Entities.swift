@@ -473,6 +473,9 @@ struct PaginationState: Encodable {
     var hasMore = true
     var nextOffset: Int? = 0
     var total: Int = 0
+    /// Why the last page failed to load, until the list's next load starts. Here rather than in
+    /// the list's view, because the toolbar's refresh loads the list too.
+    var failure: LoadFailure?
 
     mutating func reset() {
         isLoaded = false
@@ -480,6 +483,7 @@ struct PaginationState: Encodable {
         hasMore = true
         nextOffset = 0
         total = 0
+        failure = nil
     }
 
     /// Records a page that has arrived, and works out whether to ask for another.

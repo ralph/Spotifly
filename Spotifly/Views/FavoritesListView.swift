@@ -12,8 +12,6 @@ struct FavoritesListView: View {
     @Environment(TrackService.self) private var trackService
     let playbackViewModel: PlaybackViewModel
 
-    @State private var errorMessage: String?
-
     var body: some View {
         // A ZStack, not a Group: a Group hands its `.task` to each branch, so switching
         // between loading and the error started the load again, forever.
@@ -24,14 +22,14 @@ struct FavoritesListView: View {
                     Text("loading.favorites")
                         .foregroundStyle(.secondary)
                 }
-            } else if let error = errorMessage, store.favoriteTracks.isEmpty {
+            } else if let failure = store.favoritesPagination.failure, store.favoriteTracks.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 40))
                         .foregroundStyle(.secondary)
                     Text("error.load_favorites")
                         .font(.headline)
-                    Text(error)
+                    Text(failure.message)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     Button("action.try_again") {
@@ -83,16 +81,7 @@ struct FavoritesListView: View {
                             )
                         }
 
-                        // Load more indicator
-                        if store.favoritesPagination.hasMore {
-                            ProgressView()
-                                .padding()
-                                .onAppear {
-                                    Task {
-                                        await loadMoreFavorites()
-                                    }
-                                }
-                        }
+                        LoadMoreRow(pagination: store.favoritesPagination, loadMore: loadMoreFavorites)
                     }
                     .padding()
                 }
@@ -108,21 +97,12 @@ struct FavoritesListView: View {
         }
     }
 
+    /// A failure is recorded on `favoritesPagination`, where the toolbar's refresh leaves it too.
     private func loadFavorites(forceRefresh: Bool = false) async {
-        errorMessage = nil
-
-        do {
-            try await trackService.loadFavorites(forceRefresh: forceRefresh)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        try? await trackService.loadFavorites(forceRefresh: forceRefresh)
     }
 
     private func loadMoreFavorites() async {
-        do {
-            try await trackService.loadMoreFavorites()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        try? await trackService.loadMoreFavorites()
     }
 }
