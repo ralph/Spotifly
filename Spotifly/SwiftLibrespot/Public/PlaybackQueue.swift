@@ -26,24 +26,14 @@ final nonisolated class PlaybackQueue {
     private(set) var contextTracks: [String] = []
     /// Each context row's uid, beside `contextTracks`: the resolver's, where it gives one, as it
     /// does for a playlist's rows. An album's rows have none, and are named by uri alone.
-    private(set) var contextUids: [String?] = []
+    private var contextUids: [String?] = []
     private(set) var currentIndex = 0
 
-    /// A track queued explicitly, and the uid that names its row: `q0`, `q1` and on, as
+    /// Tracks queued explicitly ("add to queue"), which play before the
+    /// context resumes. Each row is named by a uid of its own: `q0`, `q1` and on, as
     /// librespot's `add_to_queue` makes them, so another device can name a queued copy apart
     /// from the same track further on in the context.
-    struct QueuedTrack: Equatable {
-        let uri: String
-        let uid: String
-    }
-
-    /// Tracks queued explicitly ("add to queue"), which play before the
-    /// context resumes.
-    private(set) var queued: [QueuedTrack] = []
-
-    var userQueue: [String] {
-        queued.map(\.uri)
-    }
+    private(set) var queued: [QueueItem] = []
 
     /// How many tracks have been queued, for the next one's uid.
     private var queuedCount = 0
@@ -62,7 +52,7 @@ final nonisolated class PlaybackQueue {
 
     /// A user-queue track that is playing now. It sits outside the context,
     /// so `currentUri` reports it until playback returns to the context.
-    private var userQueueCurrent: QueuedTrack?
+    private var userQueueCurrent: QueueItem?
 
     private(set) var shuffleEnabled = false
     private(set) var repeatMode: RepeatMode = .off
@@ -114,7 +104,8 @@ final nonisolated class PlaybackQueue {
 
     /// `uids` as long as `tracks`: cut, or padded with none.
     private static func aligned(_ uids: [String?], to tracks: [String]) -> [String?] {
-        Array(uids.prefix(tracks.count)) + Array(repeating: nil, count: max(0, tracks.count - uids.count))
+        guard uids.count != tracks.count else { return uids }
+        return Array(uids.prefix(tracks.count)) + Array(repeating: nil, count: max(0, tracks.count - uids.count))
     }
 
     /// Where a context starts when a queued track plays first, from the row the context goes on
@@ -136,6 +127,19 @@ final nonisolated class PlaybackQueue {
         return (tracks, uids, row - 1, uri)
     }
 
+    /// The row a jump names: the one with its uid, where a row has that uid and that track, and
+    /// otherwise the copy of the track nearest `position`.
+    private static func row(of uri: String, uid: String?, nearest position: Int, in rows: [QueueItem]) -> Int? {
+        rows.firstIndex { uid != nil && $0.uid == uid && $0.uri == uri }
+            ?? rows.nearestIndex(to: position) { $0.uri == uri }
+    }
+
+    /// Starts the context over at `startIndex`, with the rows it has: the end of it, played
+    /// through with nothing to repeat.
+    func rewind(to startIndex: Int) {
+        setContext(uri: contextUri, tracks: contextTracks, uids: contextUids, startIndex: startIndex)
+    }
+
     /// Replaces the whole playing context, with its rows' uids where it has them.
     func setContext(uri: String, tracks: [String], uids: [String?] = [], startIndex: Int) {
         contextUri = uri
@@ -155,9 +159,9 @@ final nonisolated class PlaybackQueue {
     }
 
     /// The next queued track's row, under a uid of its own.
-    private func queuedTrack(_ uri: String) -> QueuedTrack {
+    private func queuedTrack(_ uri: String) -> QueueItem {
         defer { queuedCount += 1 }
-        return QueuedTrack(uri: uri, uid: "q\(queuedCount)")
+        return QueueItem(uri: uri, provider: "queue", uid: "q\(queuedCount)")
     }
 
     /// Plays a track as queued, now: after the current context track, which goes into the
@@ -172,6 +176,9 @@ final nonisolated class PlaybackQueue {
     /// the sender's queue is the queue now, and whatever was left here from
     /// before the playback went away has played elsewhere since. A remote
     /// `set_queue` does the same with the queue another device has edited.
+    ///
+    /// The rows are named afresh, as librespot's `set_next_tracks` names them: "technically we
+    /// could preserve the queue-uid here, but it seems to work without that".
     func replaceUserQueue(with uris: [String]) {
         queued = uris.map(queuedTrack)
     }
@@ -227,12 +234,7 @@ final nonisolated class PlaybackQueue {
 
     /// The current track uri, or nil when nothing is loaded.
     var currentUri: String? {
-        userQueueCurrent?.uri ?? (currentIndex < contextTracks.count ? contextTracks[currentIndex] : nil)
-    }
-
-    /// The current row's uid, where it has one.
-    var currentUid: String? {
-        userQueueCurrent?.uid ?? (currentIndex < contextUids.count ? contextUids[currentIndex] : nil)
+        current?.uri
     }
 
     /// Advances and returns the next uri to play, or nil when the queue ended.
@@ -323,10 +325,7 @@ final nonisolated class PlaybackQueue {
     ///
     /// - Returns: the uri to play, or nil when the list has no such track.
     func skip(toUpcoming position: Int?, uri: String, uid: String? = nil) -> String? {
-        let rows = upcoming()
-        guard let row = uid.flatMap({ uid in rows.firstIndex { $0.uri == uri && $0.uid == uid } })
-            ?? rows.map(\.uri).nearestIndex(to: position ?? 0, where: { $0 == uri })
-        else {
+        guard let row = Self.row(of: uri, uid: uid, nearest: position ?? 0, in: upcoming()) else {
             return nil
         }
 
@@ -346,12 +345,12 @@ final nonisolated class PlaybackQueue {
     }
 
     /// Steps back to a track `recent()` lists, as pressing Previous that many
-    /// times would. Found as `skip(toUpcoming:uri:)` finds its track.
+    /// times would. Found as `skip(toUpcoming:uri:uid:)` finds its track.
     ///
     /// - Returns: the uri to play, or nil when the list has no such track.
-    func stepBack(toRecent index: Int, uri: String) -> String? {
-        let rows = recent().map(\.uri)
-        guard let row = rows.nearestIndex(to: index, where: { $0 == uri }) else { return nil }
+    func stepBack(toRecent index: Int, uri: String, uid: String? = nil) -> String? {
+        let rows = recent()
+        guard let row = Self.row(of: uri, uid: uid, nearest: index, in: rows) else { return nil }
 
         var played: String?
         for _ in row ..< rows.count {
@@ -390,12 +389,9 @@ final nonisolated class PlaybackQueue {
 
     // MARK: - Snapshots
 
-    /// A row as Connect lists it: the track, where it comes from, and its uid where it has one.
-    typealias Row = (uri: String, provider: String, uid: String?)
-
     /// The upcoming tracks: user queue first, then remaining context.
-    func upcoming(limit: Int = 50) -> [Row] {
-        var result: [Row] = queued.map { ($0.uri, "queue", $0.uid) }
+    func upcoming(limit: Int = 50) -> [QueueItem] {
+        var result = Array(queued.prefix(limit))
         // `dropFirst` rather than a range slice: it clamps, where
         // `shuffleOrder[(shufflePosition + 1)...]` traps the moment the
         // position sits on the last entry.
@@ -407,7 +403,7 @@ final nonisolated class PlaybackQueue {
             Array(contextTracks.indices.dropFirst(currentIndex + 1).prefix(limit))
         }
 
-        result.append(contentsOf: afterCurrent.map { (contextTracks[$0], "context", contextUids[$0]) })
+        result.append(contentsOf: afterCurrent.map(contextRow))
         return Array(result.prefix(limit))
     }
 
@@ -420,7 +416,17 @@ final nonisolated class PlaybackQueue {
     /// Both readers want that order: Connect's `prev_tracks`, as librespot
     /// keeps it, and the queue view, which lists these above the current
     /// track. See `plans/done/queue-history-listed-newest-first.md`.
-    func recent(limit: Int = PlaybackQueue.recentLimit) -> [Row] {
-        historyPositions.suffix(limit).map { (contextTracks[$0], "context", contextUids[$0]) }
+    func recent(limit: Int = PlaybackQueue.recentLimit) -> [QueueItem] {
+        historyPositions.suffix(limit).map(contextRow)
+    }
+
+    /// The row at `index` in the context, as Connect lists it.
+    private func contextRow(_ index: Int) -> QueueItem {
+        QueueItem(uri: contextTracks[index], provider: "context", uid: contextUids[index])
+    }
+
+    /// The current track's row, as the queue lists it.
+    var current: QueueItem? {
+        userQueueCurrent ?? contextPosition.map(contextRow)
     }
 }

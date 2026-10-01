@@ -857,7 +857,7 @@ final class PlaybackViewModel {
 
     /// A row of the queue, as a double-click names it: which list, where in it, and its track.
     enum QueueRow {
-        case previous(index: Int, trackUri: String)
+        case previous(index: Int, trackUri: String, uid: String?)
         case current
         /// One of the next tracks, with its row's uid where it has one.
         case next(index: Int, trackUri: String, uid: String?)
@@ -879,10 +879,10 @@ final class PlaybackViewModel {
                 local: { try await SpotifyPlayer.skip(toNext: index, uri: uri, uid: uid) },
                 remote: .skipNext(to: uri, uid: uid),
             )
-        case let .previous(index, uri):
+        case let .previous(index, uri, uid):
             skip(
                 "skip(toPrevious:)",
-                local: { try await SpotifyPlayer.skip(toPrevious: index, uri: uri) },
+                local: { try await SpotifyPlayer.skip(toPrevious: index, uri: uri, uid: uid) },
                 remote: .play(uri: player.queue?.context ?? uri, trackUri: uri),
             )
         }

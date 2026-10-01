@@ -15,7 +15,8 @@ import SwiftUI
 struct QueueEntry: Equatable {
     let trackId: String
     let provider: TrackProvider
-    /// The cluster's name for this row, when another device's queue gave one.
+    /// The row's uid, where it has one: from the cluster while another device plays, and from
+    /// this Mac's own queue otherwise.
     var uid: String?
 }
 

@@ -90,8 +90,8 @@ public actor SpircController {
         /// What plays next — queued tracks first — and what played before,
         /// oldest first. A transfer hands both to the receiving device. Each row's uid names
         /// it, so another device can name one copy of a track apart from another.
-        public var nextTracks: [(uri: String, provider: String, uid: String?)]
-        public var previousTracks: [(uri: String, provider: String, uid: String?)]
+        var nextTracks: [QueueItem]
+        var previousTracks: [QueueItem]
 
         public enum SpircRepeatMode: Sendable, Equatable {
             case off
@@ -391,9 +391,11 @@ public actor SpircController {
             if let index = ps.contextIndex {
                 playerStateProto.index = ContextIndex(page: 0, track: UInt32(index))
             }
-            playerStateProto.nextTracks = ps.nextTracks.map { ProvidedTrack(uri: $0.uri, uid: $0.uid ?? "", provider: $0.provider) }
+            // Proto3: a row without a uid sends "".
+            let provided: (QueueItem) -> ProvidedTrack = { ProvidedTrack(uri: $0.uri, uid: $0.uid ?? "", provider: $0.provider) }
+            playerStateProto.nextTracks = ps.nextTracks.map(provided)
             playerStateProto.queueRevision = Self.queueRevision(of: ps.nextTracks.map(\.uri))
-            playerStateProto.prevTracks = ps.previousTracks.map { ProvidedTrack(uri: $0.uri, uid: $0.uid ?? "", provider: $0.provider) }
+            playerStateProto.prevTracks = ps.previousTracks.map(provided)
 
             var options = ContextPlayerOptions()
             options.shufflingContext = ps.shuffle

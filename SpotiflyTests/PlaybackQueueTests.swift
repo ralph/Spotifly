@@ -471,7 +471,7 @@ struct QueueJumpTests {
 /// Rows named by uid, as Connect names them: a queued track's own, and a context row's from
 /// the resolver, so another device can name one copy of a track apart from another.
 struct QueueRowUidTests {
-    private func uids(_ rows: [PlaybackQueue.Row]) -> [String?] {
+    private func uids(_ rows: [QueueItem]) -> [String?] {
         rows.map(\.uid)
     }
 
@@ -485,7 +485,7 @@ struct QueueRowUidTests {
 
         _ = queue.advance()
         #expect(queue.currentUri == "x")
-        #expect(queue.currentUid == "q0")
+        #expect(queue.current?.uid == "q0")
         #expect(uids(queue.upcoming()) == ["q1", nil])
 
         // Queued later, a new name: the count goes on.
@@ -497,7 +497,7 @@ struct QueueRowUidTests {
         let queue = PlaybackQueue()
         queue.setContext(uri: "spotify:playlist:p", tracks: ["a", "b", "c"], uids: ["u0", "u1", "u2"], startIndex: 1)
 
-        #expect(queue.currentUid == "u1")
+        #expect(queue.current?.uid == "u1")
         #expect(uids(queue.upcoming()) == ["u2"])
 
         _ = queue.advance()
@@ -508,7 +508,7 @@ struct QueueRowUidTests {
         let queue = PlaybackQueue()
         queue.setContext(uri: "spotify:album:a", tracks: ["a", "b", "c"], uids: ["u0"], startIndex: 0)
 
-        #expect(queue.currentUid == "u0")
+        #expect(queue.current?.uid == "u0")
         #expect(uids(queue.upcoming()) == [nil, nil])
     }
 
@@ -521,7 +521,7 @@ struct QueueRowUidTests {
 
         #expect(queue.skip(toUpcoming: nil, uri: "x", uid: "u2") == "x")
         #expect(queue.contextPosition == 2)
-        #expect(queue.currentUid == "u2")
+        #expect(queue.current?.uid == "u2")
         // The queued copy stays queued, as a context target leaves it.
         #expect(queue.upcoming().map(\.uri) == ["x", "c"])
     }
@@ -541,7 +541,7 @@ struct QueueRowUidTests {
         queue.setContext(uri: "spotify:playlist:p", tracks: ["a", "b", "c"], uids: ["u0", "u1", "u2"], startIndex: 0)
 
         #expect(queue.skip(toUpcoming: nil, uri: "c", uid: "u1") == "c")
-        #expect(queue.currentUid == "u2")
+        #expect(queue.current?.uid == "u2")
     }
 
     @Test func `a track put in where the context lacks it has no uid, and the rest keep theirs`() {
