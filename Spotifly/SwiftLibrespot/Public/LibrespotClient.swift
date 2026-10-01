@@ -98,6 +98,10 @@ public actor LibrespotClient {
     /// and with it the active role.
     private var localState: PlaybackState?
 
+    /// The other device's player state as last mirrored, rows the queue view leaves out
+    /// included: a take-over of a bare list reads where its iteration ends from them.
+    private var mirroredRemote: PlayerState?
+
     // MARK: - Snapshots (what the app shows)
 
     /// The latest snapshot, which the facade's synchronous reads use.
@@ -556,7 +560,10 @@ public actor LibrespotClient {
         playbackQueue.setRepeat(repeatMode)
         if contextUri.isEmpty {
             // Started from a bare list of uris, so the list is all there is.
-            try await playTracks([mirrored.trackUri] + (queue?.nextTracks.map(\.uri) ?? []), positionMs: positionMs)
+            let list = mirroredRemote.flatMap { $0.track?.uri == mirrored.trackUri ? Self.takeOverList(of: $0) : nil }
+                ?? ([mirrored.trackUri] + (queue?.nextTracks.map(\.uri) ?? []), 0, [])
+            playbackQueue.replaceUserQueue(with: list.queued)
+            try await playTracks(list.tracks, trackIndex: list.index, startingAtUri: mirrored.trackUri, positionMs: positionMs)
         } else if queue?.currentTrack?.provider == "queue" {
             // A queued track plays as queued here too: the queued rows after it stay queued, and the
             // context goes on with the row the other device had next, as a handover leaves them.
@@ -1284,10 +1291,29 @@ public actor LibrespotClient {
             timestampMs: remote.timestamp,
         )
         let queue = Self.mirroredQueue(of: remote)
+        mirroredRemote = remote
         publish {
             $0.playback = playback
             $0.queue = queue
         }
+    }
+
+    /// A mirrored bare list as this Mac takes it over: the tracks played before the current one,
+    /// the current one, and those after it up to the first `spotify:delimiter`, where with
+    /// repeat on the list starts again as its next iteration. Taken whole, with the iterations,
+    /// the list held its tracks two or three times, and local repeat looped that. The tracks
+    /// before go in so repeat comes back to them. Queued rows go to the queue, and rows the
+    /// sender hides are left out, as `mirroredQueue` leaves them out.
+    nonisolated static func takeOverList(of remote: PlayerState) -> (tracks: [String], index: Int, queued: [String])? {
+        guard let current = remote.track?.uri, !current.isEmpty else { return nil }
+        let shown: (ProvidedTrack) -> Bool = { $0.metadata["hidden"] != "true" && $0.uri != "spotify:delimiter" }
+        let before = remote.prevTracks.filter { shown($0) && $0.provider != "queue" }.map(\.uri)
+        let ahead = remote.nextTracks.prefix { $0.uri != "spotify:delimiter" }.filter(shown)
+        return (
+            before + [current] + ahead.filter { $0.provider != "queue" }.map(\.uri),
+            before.count,
+            ahead.filter { $0.provider == "queue" }.map(\.uri),
+        )
     }
 
     /// The queue another device reports, as the Queue section shows it.

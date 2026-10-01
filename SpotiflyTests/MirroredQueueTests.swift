@@ -75,3 +75,61 @@ struct MirroredQueueTests {
         #expect(LibrespotClient.mirroredQueue(of: state).contextName == nil)
     }
 }
+
+/// A bare list another device plays, as this Mac takes it over.
+struct BareListTakeOverTests {
+    private func row(_ id: String, provider: String = "context", hidden: Bool = false) -> ProvidedTrack {
+        var track = ProvidedTrack(uri: "spotify:track:\(id)", provider: provider)
+        track.metadata = hidden ? ["hidden": "true"] : [:]
+        return track
+    }
+
+    private let delimiter: ProvidedTrack = {
+        var track = ProvidedTrack(uri: "spotify:delimiter")
+        track.metadata = ["hidden": "true"]
+        return track
+    }()
+
+    private func uris(_ ids: String...) -> [String] {
+        ids.map { "spotify:track:\($0)" }
+    }
+
+    /// With repeat on, the list goes on after a delimiter as its next iteration. Taken whole, it
+    /// held its tracks twice, and local repeat looped that.
+    @Test func `the list stops at the first delimiter, and starts with the tracks before`() throws {
+        var state = PlayerState()
+        state.prevTracks = [row("t1")]
+        state.track = row("t2")
+        state.nextTracks = [row("t3"), delimiter, row("t1"), row("t2"), row("t3"), delimiter]
+
+        let list = try #require(LibrespotClient.takeOverList(of: state))
+
+        #expect(list.tracks == uris("t1", "t2", "t3"))
+        #expect(list.index == 1)
+        #expect(list.queued.isEmpty)
+    }
+
+    @Test func `queued rows go to the queue, not into the list`() throws {
+        var state = PlayerState()
+        state.track = row("t1")
+        state.nextTracks = [row("q", provider: "queue"), row("t2"), delimiter, row("t1", hidden: true)]
+
+        let list = try #require(LibrespotClient.takeOverList(of: state))
+
+        #expect(list.tracks == uris("t1", "t2"))
+        #expect(list.index == 0)
+        #expect(list.queued == uris("q"))
+    }
+
+    @Test func `without a delimiter the list is every row after the current one`() throws {
+        var state = PlayerState()
+        state.track = row("t1")
+        state.nextTracks = [row("t2"), row("t3")]
+
+        #expect(try #require(LibrespotClient.takeOverList(of: state)).tracks == uris("t1", "t2", "t3"))
+    }
+
+    @Test func `nothing playing is nothing to take over`() {
+        #expect(LibrespotClient.takeOverList(of: PlayerState()) == nil)
+    }
+}
