@@ -129,6 +129,23 @@ struct SpclientAPITests {
         #expect(track.album?.coverGroup?.image?.first?.fileId == "f1")
     }
 
+    @MainActor
+    @Test func `a track allowed nowhere and with no alternative is withheld`() throws {
+        func track(_ extra: String) throws -> SpclientTrack {
+            try JSONDecoder().decode(SpclientTrack.self, from: Data(#"{"name":"n"\#(extra)}"#.utf8))
+        }
+        let withheld = try track(#","restriction":[{"countries_allowed":""}]"#)
+        let relinked = try track(#","restriction":[{"countries_allowed":""}],"alternative":[{}]"#)
+        let freeTierOnly = try track(#","restriction":[{"countries_allowed":"","catalogue_str":["free"]}]"#)
+        let unrestricted = try track("")
+
+        #expect(withheld.isWithheld)
+        #expect(Track(spclient: withheld, id: "x")?.playability == .unplayable(reason: Playability.countryRestricted))
+        #expect(!relinked.isWithheld)
+        #expect(!freeTierOnly.isWithheld)
+        #expect(Track(spclient: unrestricted, id: "x")?.playability == .playable)
+    }
+
     @Test func `the preflight goes first, then the GET`() async throws {
         // The endpoint is served to the web client's origin, so the sequence is mimicked
         // rather than the request sent bare.

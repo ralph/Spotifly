@@ -9,8 +9,9 @@ import Foundation
 
 /// # Identity
 ///
-/// spclient is **id-faithful**: asked for a track it returns that track, relinking nothing and
-/// exposing no relationship between a recording and its market substitute. So it hydrates
+/// spclient is **id-faithful**: asked for a track it returns that track, relinking nothing. It
+/// says that a market substitute exists (`alternative`), which only decides whether the track
+/// plays, never which id the store keeps. So it hydrates
 /// whatever identity the caller already holds without ever introducing a second one, which is
 /// what makes it the right endpoint for `ensureTracksLoaded` — that path exists to fill in ids
 /// the store already has.
@@ -37,6 +38,7 @@ extension Track {
             artistName: track.artistNames.first ?? "Unknown",
             albumName: track.album?.name,
             images: ImageSet(spclientImages: track.album?.coverGroup?.image),
+            playability: track.isWithheld ? .unplayable(reason: Playability.countryRestricted) : .playable,
         )
     }
 }
