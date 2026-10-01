@@ -1,9 +1,8 @@
 # What the mirrored queue still takes on trust: repeat on a bare list, autoplay, other devices
 
-Status: **Open**, in part. Next on a context's last track, and this Mac's own report of the next
-round under repeat, are done and seen (the latter on a phone too, 2026-10-01). The take-over of a
-bare list is built and unit-tested, but not seen, since the web player gives a bare list no
-repeat. See Progress; the rest needs a phone or another device. From the altitude review of
+Status: **Open**, in part. Next on a context's last track, this Mac's own report of the next
+round under repeat, and the take-over of a bare list are done and seen, the last two on a phone
+(2026-10-01). See Progress; what is left needs autoplay on, or librespot as the other device. From the altitude review of
 `plans/done/mirrored-queue-runs-past-the-context.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`mirroredQueue`, the take-over
 of a mirrored bare list), `Spotifly/ViewModels/PlaybackViewModel.swift` (`hasNext`),
@@ -98,6 +97,10 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
     And a queued track playing when the list is taken over goes into the list as one of its
     rows, as the handover's `playTracks` puts it in, where a context's take-over plays it as
     queued (`play(uriOrUrl:resumingAtUid:)`). Giving `playTracks` that start would serve both.
+  - **Seen on a phone** (2026-10-01, by hand): a list from search's Play Tracks, handed to the
+    phone with repeat on and skipped twice, then taken back with Play on the Mac: each track was
+    listed once and repeat came back to the first. A track queued on the phone first was in the
+    Mac's queue after the take-over, not in the list.
 - **This Mac's own report of the next round** (2026-10-01).
   - Under repeat, other devices are told the context again after its end, as librespot's
     `fill_up_next_tracks` tells them: a hidden `spotify:delimiter` row named `delimiter0`, then
