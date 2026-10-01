@@ -775,8 +775,11 @@ public actor LibrespotClient {
         latest.withLock { $0.activeDeviceId == deviceInfo.deviceId }
     }
 
-    /// Position cache, fed by the pipeline's position ticks and read from
-    /// anywhere.
+    /// Position cache, fed by the pipeline's position ticks and by every position
+    /// local playback publishes (`publishPlaybackState`), and read from anywhere.
+    /// Ticks alone left it at the last stop's position for the quarter second
+    /// before a load's first tick, long enough for the drift check to pull the bar
+    /// back there (`plans/done/seek-bar-behind-after-a-handover.md`).
     private nonisolated let positionCache = Mutex<UInt64>(0)
 
     /// Starts rebuilding the session if it is down, without blocking: the
@@ -1600,6 +1603,7 @@ public actor LibrespotClient {
             timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
         )
         localState = state
+        positionCache.withLock { $0 = UInt64(max(0, positionMs)) }
         publish {
             $0.playback = state
             if let queue {

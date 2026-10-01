@@ -1541,7 +1541,8 @@ final class PlaybackViewModel {
     /// Sync the position anchor with the player - call after seek, play, resume, track change
     private func syncPositionAnchor() {
         let playerPosition = SpotifyPlayer.positionMs
-        // Don't overwrite a valid position with 0 - the pipeline may not have ticked yet
+        // Don't overwrite a valid position with 0: the player says 0 while nothing is loaded
+        // here, as after another device took playback.
         if playerPosition == 0, positionAnchorMs > 0 {
             debugLog("PlaybackViewModel", "syncPositionAnchor: skipping - playerPosition=0 but have valid anchor=\(positionAnchorMs)")
             return
