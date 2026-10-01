@@ -158,8 +158,7 @@ enum SpotifyPlayer {
     /// path immediately rebuilds through `initialize`.
     private static func connectClient() async throws {
         try await LibrespotClient.shared.initialize(
-            tokenProvider: { try await KeymasterSession.shared.accessToken() },
-            clientTokenProvider: { try await ClientTokenProvider.shared.token() },
+            httpCredentials: .live,
             usernameProvider: { await KeymasterSession.shared.username },
             contextRowUids: { uri in await albumRowUids(uri) },
         )

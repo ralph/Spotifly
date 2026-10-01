@@ -170,24 +170,8 @@ nonisolated struct SpclientAPI: Sendable {
 
     private let credentials: SpotifyCredentials
 
-    init(
-        accessToken: @escaping @Sendable () async throws -> String = {
-            try await KeymasterSession.shared.accessToken()
-        },
-        clientToken: @escaping @Sendable () async throws -> String = {
-            try await ClientTokenProvider.shared.token()
-        },
-        invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
-        transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
-        pause: @escaping SpotifyCredentials.Pause = { try await Task.sleep(for: $0) },
-    ) {
-        credentials = SpotifyCredentials(
-            accessToken: accessToken,
-            clientToken: clientToken,
-            invalidateClientToken: invalidateClientToken,
-            transport: transport,
-            pause: pause,
-        )
+    init(credentials: SpotifyCredentials = .live) {
+        self.credentials = credentials
     }
 
     /// Track metadata for a base62 id, the form the rest of the app uses.
@@ -404,9 +388,16 @@ nonisolated struct SpclientAPI: Sendable {
         path: String,
         encoded: Data?,
     ) async throws -> Data {
-        let sent = try await credentials.retryingRefusedToken {
-            try await sendOnce(method: method, path: path, body: encoded)
+        var request = URLRequest(url: Self.baseURL.appending(path: path))
+        request.httpMethod = method
+        request.httpBody = encoded
+        if encoded != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        debugLog("SpclientAPI", "[\(method)] \(request.url?.absoluteString ?? path)")
+
+        let sent = try await credentials.send(request)
 
         guard (200 ..< 300).contains(sent.status) else {
             debugLog(
@@ -420,31 +411,6 @@ nonisolated struct SpclientAPI: Sendable {
         }
 
         return sent.body
-    }
-
-    private func sendOnce(
-        method: String,
-        path: String,
-        body: Data?,
-    ) async throws -> SpotifyCredentials.Attempt {
-        var request = URLRequest(url: Self.baseURL.appending(path: path))
-        request.httpMethod = method
-        request.httpBody = body
-        try await credentials.sign(&request)
-        if body != nil {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        let urlString = request.url?.absoluteString ?? path
-        debugLog("SpclientAPI", "[\(method)] \(urlString)")
-
-        let (data, response) = try await credentials.transport(request)
-        guard let http = response as? HTTPURLResponse else {
-            throw SpclientError.malformedResponse
-        }
-
-        return (data, http.statusCode, request.value(forHTTPHeaderField: "Client-Token"))
     }
 
     // MARK: - Transport
@@ -471,17 +437,11 @@ nonisolated struct SpclientAPI: Sendable {
 
         var request = URLRequest(url: Self.withMarket(url))
         request.httpMethod = "GET"
-        try await credentials.sign(&request)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         debugLog("SpclientAPI", "[GET] \(request.url?.absoluteString ?? url.absoluteString)")
 
-        let (data, response) = try await credentials.transport(request)
-        guard let http = response as? HTTPURLResponse else {
-            throw SpclientError.malformedResponse
-        }
-
-        return (data, http.statusCode, request.value(forHTTPHeaderField: "Client-Token"))
+        return try await credentials.attempt(request)
     }
 
     func preflight(_ url: URL) async throws {
