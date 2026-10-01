@@ -6,7 +6,8 @@ could a 401: Spotify answered a client token it rejected with a 400. See Verific
 `plans/open/refused-client-token-answers-400.md`.
 Components: `Spotifly/SwiftLibrespot/Network/SPClient.swift` (`getTrack`, `resolveContext`,
 `resolveCDNUrl`), `Spotifly/SwiftLibrespot/Dealer/DealerConnection.swift` (`putState`),
-`Spotifly/PartnerAPI/PartnerAPI.swift` (`SpotifyCredentials`),
+`Spotifly/Auth/SpotifyCredentials.swift`, `Spotifly/PartnerAPI/PartnerAPI.swift`,
+`Spotifly/PartnerAPI/SpclientAPI.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`initialize`),
 `Spotifly/SwiftLibrespot/Core/Errors.swift` (`requestFailed`)
 Found: 2026-10-01, in the altitude review of `plans/done/loads-that-fail-while-online.md`
@@ -38,15 +39,23 @@ closure, and passes it to `SPClient` and, through the session, to `DealerConnect
 token and its invalidation, `URLSession` and `Task.sleep`. The accesspoint login and the
 dealer's socket still read the bearer from it.
 
-**Two helpers on `SpotifyCredentials`**, which sign each attempt afresh, so a retry after a 401
+**Three helpers on `SpotifyCredentials`**, which sign each attempt afresh, so a retry after a 401
 carries the new client token:
 
+- `attempt(_:)` signs and sends once, and names the client token it carried.
 - `send(_:)` asks again once after a 401 (`retryingRefusedToken`): for writes.
-- `read(_:pausing:)` also asks again after a failure that may pass (`retryingPassingFailures`),
-  which now takes its pauses as an argument.
+- `read(_:)` also asks again after a failure that may pass (`retryingPassingFailures`).
+
+The pages' clients use them too, where each wrote out the same signing and sending:
+`PartnerAPI.query` reads or sends by its operation's rule, `SpclientAPI`'s writes send, and its
+reads still run the CORS preflight before each attempt. `PartnerAPI` and `SpclientAPI` take a
+`SpotifyCredentials`, `.live` by default, so the app's credentials are written once.
+`SpotifyCredentials` moved out of `PartnerAPI.swift` into `Spotifly/Auth/`, since the playback
+stack holds it too.
 
 **Playback reads with shorter pauses**: 0.25 s and 1 s (`SPClient.retryPauses`), where a page
-waits 1 s and 3 s. A track's start waits on them, and a Next that meets a lasting outage says
+waits 1 s and 3 s. They are the credentials' own (`retryPauses`), set once when `SPClient` is
+made, so no playback read can fall back to a page's. A track's start waits on them, and a Next that meets a lasting outage says
 so after about 1.3 s rather than 4. librespot asks again with no pause at all, up to ten times,
 and moves to another spclient host every third try (`SpClient::request_with_options`, read
 2026-10-01). `getTrack` is a read sent as a POST, and is asked again as one, body and all. The
@@ -60,7 +69,8 @@ with no `Track`, which is what a track Spotify has no entry for gets. Auto-advan
 on both: only `trackUnavailable` is skipped.
 
 **The dealer's state report gets the 401 retry only.** A report asked again after a pause could
-land after the newer one that replaced it, so a server error fails it as before.
+land after the newer one that replaced it, so a server error fails it as before, now as
+`requestFailed("PutState", status:)`.
 
 ### Not done
 
@@ -88,6 +98,7 @@ land after the newer one that replaced it, so a server error fails it as before.
 - [ ] A retry against Spotify itself: not seen. No server error was at hand, and a throwaway
       build that sent a rejected client token got a **400 with an empty body**, not a 401, from
       the state report, the track metadata and the CDN url, both for a made-up token and for the
-      real one with one character changed. So that refusal is not retried; the failed Next said
+      real one with one character changed. Its headers said why: `client-token-error:
+      INVALID_CLIENTTOKEN`. So that refusal is not retried; the failed Next said
       "Storage resolve failed: HTTP 400". The context resolver answered the made-up token with a
       400 too, and answered 200 with no client token at all. Followed up in `plans/open/refused-client-token-answers-400.md`.

@@ -137,7 +137,7 @@ public actor LibrespotClient {
     /// registration, and the audio pipeline.
     ///
     /// Credentials are resolved inside: a previously captured reusable login
-    /// comes first, falling back to a fresh token from the provider. A
+    /// comes first, falling back to a fresh bearer from `httpCredentials`. A
     /// successful token login stores its reusable credentials for next time.
     func initialize(
         httpCredentials: SpotifyCredentials,

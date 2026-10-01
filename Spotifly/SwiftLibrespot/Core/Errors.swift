@@ -39,7 +39,8 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
     case decryptionFailed(String)
     case decodingFailed(String)
     case cdnError(String)
-    /// A request playback makes to spclient was answered with an error, after its retries.
+    /// A request the playback stack makes to spclient was answered with an error, after its
+    /// retries.
     case requestFailed(String, status: Int)
 
     // MARK: - SPIRC/Connect Errors

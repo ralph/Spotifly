@@ -61,14 +61,15 @@ struct PathfinderRequestTests {
     }
 
     @Test func `the request carries both tokens and the client's own headers`() async throws {
-        let api = partnerAPI(accessToken: "the-bearer", clientToken: "the-client-token") { _ in
-            (Data(), httpResponse(200))
+        let sent = Recorder<URLRequest>()
+        let api = partnerAPI(accessToken: "the-bearer", clientToken: "the-client-token") { request in
+            sent.record(request)
+            return (Data(), httpResponse(200))
         }
 
-        let request = try await api.makeRequest(
-            .searchTracks,
-            variables: PathfinderSearchVariables(searchTerm: "x"),
-        )
+        _ = try? await api.searchTracks("x")
+
+        let request = try #require(sent.values.first)
 
         // The bearer alone is a 401 on this host.
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer the-bearer")

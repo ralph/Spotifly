@@ -27,23 +27,29 @@ Measured on 2026-10-01 with a throwaway build that changed the token on one requ
 | `GET storage-resolve/…` | – | 400 | – |
 | `GET context-resolve/…` | 400 | – | 200 |
 
-Every 400 had an empty body. A changed token is not a revoked one: Spotify may well answer a
+Every 400 had an empty body, and a header saying why: `client-token-error: INVALID_CLIENTTOKEN`
+(logged for the state report and the context resolver). A changed token is not a revoked one: Spotify may well answer a
 token it issued and has since revoked, or one past its expiry, with a 401. Neither could be
 brought about: there is no revoked token at hand, and one expires after two weeks.
 
 pathfinder (`api-partner`) was not measured. Its 400s for a bad request name the variable they
 wanted, in the body.
 
+The web player's own scripts were no help: none of the 70 it loaded names `client-token-error`
+or `CLIENTTOKEN` (searched 2026-10-01).
+
 ## Solution
 
 Not planned. Options, once what a revoked token gets is known:
 
 - If it is a 401, nothing to do; record it here and close this.
-- If it is a 400, treat a 400 **with an empty body** as a possible refusal, as a 401 is now.
-  A bad request to pathfinder names its fault in the body, so it would not be retried; one to
-  spclient could cost a second request and a new client token.
-- Either way, the client token's age could be shortened, so a revoked one lives days rather than
-  a fortnight. It costs one more request to clienttoken.spotify.com per period.
+- If it is a 400, treat a response with a `client-token-error` header as a refusal, as a 401 is
+  now. That is Spotify naming the client token as the fault, so unlike a bare 400 it cannot be
+  a bad request. `SpotifyCredentials.attempt` would carry the header out with the status.
+- Either way, renew the token sooner. `ClientTokenRequest.decode` keeps it for
+  `expires_after_seconds` (field 2), the fortnight. The granted token is said to carry
+  `refresh_after_seconds` (field 3) as well, which librespot is said to renew on; neither is
+  checked. If the field is on the wire, renewing on it uses Spotify's own number.
 
 The measurement that would decide it: keep a client token from one launch and use it after it
 expires, or after Spotify's clients have been signed out of the account, and log the status.

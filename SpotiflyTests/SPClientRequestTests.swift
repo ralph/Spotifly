@@ -25,6 +25,15 @@ struct SPClientRequestTests {
 
     /// Answers each request in turn with `statuses`, the last one for every request after it, and
     /// with `body` when the status is a 200. Records the requests it was sent.
+    private func scripted(_ statuses: [Int], body: Data = Data(), sent: Recorder<URLRequest>) -> SpotifyCredentials.Transport {
+        { request in
+            // Read before the request is recorded, so the first request gets the first status.
+            let status = statuses[min(sent.values.count, statuses.count - 1)]
+            sent.record(request)
+            return (status == 200 ? body : Data(), httpResponse(status, url: request.url!))
+        }
+    }
+
     private func spclient(
         _ statuses: [Int],
         body: Data,
@@ -35,11 +44,7 @@ struct SPClientRequestTests {
         let credentials = spotifyCredentials(
             invalidateClientToken: { rejected.record($0) },
             pause: { pauses.record($0) },
-            transport: { request in
-                let status = statuses[min(sent.values.count, statuses.count - 1)]
-                sent.record(request)
-                return (status == 200 ? body : Data(), httpResponse(status, url: request.url!))
-            },
+            transport: scripted(statuses, body: body, sent: sent),
         )
         return SPClient(credentials: credentials, deviceId: "device")
     }
@@ -115,11 +120,7 @@ struct SPClientRequestTests {
     @Test func `a write is asked again after a 401, and not after a server error`() async throws {
         for (statuses, expected) in [([401, 200], 2), ([503, 200], 1)] {
             let sent = Recorder<URLRequest>()
-            let credentials = spotifyCredentials(invalidateClientToken: { _ in }, transport: { request in
-                let status = statuses[min(sent.values.count, statuses.count - 1)]
-                sent.record(request)
-                return (Data(), httpResponse(status, url: request.url!))
-            })
+            let credentials = spotifyCredentials(invalidateClientToken: { _ in }, transport: scripted(statuses, sent: sent))
 
             _ = try await credentials.send(URLRequest(url: #require(URL(string: "https://spclient.example/connect-state"))))
 

@@ -13,7 +13,8 @@ public actor SPClient {
     // MARK: - Properties
 
     /// Signs each request like the desktop client, as the app's pages are signed, and shares
-    /// their retries: once after a refused client token, and after a failure that may pass.
+    /// their retries: once after a refused client token, and after a failure that may pass, with
+    /// `retryPauses`.
     private let credentials: SpotifyCredentials
     private var spclientHost: String?
     private let deviceId: String
@@ -38,11 +39,23 @@ public actor SPClient {
         spclientHost: String? = nil,
         deviceId: String,
     ) {
+        var credentials = credentials
+        credentials.retryPauses = Self.retryPauses
         self.credentials = credentials
         self.spclientHost = spclientHost
         self.deviceId = deviceId
 
         debugLog("SPClient", "Initialized")
+    }
+
+    /// Reads a request, and throws `requestFailed` naming it unless it is answered 200.
+    private nonisolated func fetch(_ request: URLRequest, named name: String) async throws -> Data {
+        let (data, status) = try await credentials.read(request)
+        guard status == 200 else {
+            debugLog("SPClient", "\(name) failed: HTTP \(status), body: \(String(data: data.prefix(200), encoding: .utf8) ?? "?")")
+            throw LibrespotError.requestFailed(name, status: status)
+        }
+        return data
     }
 
     // MARK: - Track Metadata
@@ -106,14 +119,9 @@ public actor SPClient {
         request.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
         request.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
         request.httpBody = Self.buildTrackRequest(entityUri: entityUri, country: countryCode, catalogue: catalogue)
-        let (data, status) = try await credentials.read(request, pausing: Self.retryPauses)
-
-        // Not `trackNotFound`: a server error that outlasted the retries is no fact about the
-        // track.
-        guard status == 200 else {
-            debugLog("SPClient", "Extended metadata failed: HTTP \(status), body: \(String(data: data.prefix(160), encoding: .utf8) ?? "?")")
-            throw LibrespotError.requestFailed("Track metadata", status: status)
-        }
+        // Not `trackNotFound` when it fails: a server error that outlasted the retries is no
+        // fact about the track.
+        let data = try await fetch(request, named: "Track metadata")
 
         // A track that does not exist answers HTTP 200 with no `Track`, and 404 in the entity's
         // own header: not found, not withheld. A withheld one has a `Track` with no files.
@@ -183,11 +191,7 @@ public actor SPClient {
 
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, status) = try await credentials.read(request, pausing: Self.retryPauses)
-
-        guard status == 200 else {
-            throw LibrespotError.requestFailed("Storage resolve", status: status)
-        }
+        let data = try await fetch(request, named: "Storage resolve")
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let cdnUrls = json["cdnurl"] as? [String],
@@ -282,15 +286,10 @@ public actor SPClient {
             var request = URLRequest(url: url)
             request.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
             // The deadline is the page's, its retries included.
-            let (data, status) = try await Self.withTimeout(seconds: 20) { [credentials, request] in
-                try await credentials.read(request, pausing: Self.retryPauses)
+            let data = try await Self.withTimeout(seconds: 20) { [self, request] in
+                try await fetch(request, named: "Context resolve")
             }
             debugLog("SPClient", "Context response received")
-
-            guard status == 200 else {
-                debugLog("SPClient", "Context resolve FAILED: HTTP \(status), body: \(String(data: data.prefix(200), encoding: .utf8) ?? "?")")
-                throw LibrespotError.requestFailed("Context resolve", status: status)
-            }
 
             #if DEBUG
                 debugLog("SPClient", "Context response \(data.count) bytes: \(data.prefix(400).map { String(format: "%02x", $0) }.joined())")

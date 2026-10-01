@@ -15,11 +15,9 @@ public actor DealerConnection {
     // MARK: - Properties
 
     private let endpoint: String
-    /// Asked for the bearer token on every use. A token held from the start
-    /// expired an hour into the session, and every PutState after that was
-    /// answered 401 while playback, which asks for its own, went on. PutState
-    /// is signed with them like the app's pages, and asked again once with a
-    /// fresh client token if Spotify refuses it.
+    /// Sign the socket's URL and PutState, as the app's pages are signed. Asked
+    /// for the bearer on every use: a token held from the start expired an
+    /// hour into the session, and every PutState after that was answered 401.
     private let credentials: SpotifyCredentials
     /// Where connect-state lives. It is *not* the dealer host, which is what
     /// PutState was aimed at until every one of them came back 403.
@@ -212,7 +210,7 @@ public actor DealerConnection {
         let (data, status) = try await credentials.send(httpRequest)
 
         guard (200 ..< 300).contains(status) else {
-            throw LibrespotError.commandFailed("PutState failed: HTTP \(status)")
+            throw LibrespotError.requestFailed("PutState", status: status)
         }
 
         debugLog("DealerConnection", "PutState accepted (HTTP \(status), \(data.count) bytes back)")
