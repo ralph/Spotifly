@@ -1200,14 +1200,14 @@ public actor LibrespotClient {
     /// What a deliberate disconnect hands Spirc to report as stopped:
     /// `current`, unless the session is down, where a PutState could only
     /// wait out its timeout.
-    private func stopReport(of current: PlaybackState?) async -> SpircController.SpircPlayerState? {
+    private func stopReport(of current: PlaybackState?) -> SpircController.SpircPlayerState? {
         guard let current, currentConnectionState?.sessionConnected == true else { return nil }
-        return await spircState(of: current)
+        return spircState(of: current)
     }
 
     /// `current` as Spirc reports it, with the queue around it.
-    private func spircState(of current: PlaybackState) async -> SpircController.SpircPlayerState {
-        await SpircController.SpircPlayerState(
+    private func spircState(of current: PlaybackState) -> SpircController.SpircPlayerState {
+        SpircController.SpircPlayerState(
             isPlaying: current.isPlaying,
             isPaused: current.isPaused,
             trackUri: current.trackUri.isEmpty ? nil : current.trackUri,
