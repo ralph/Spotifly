@@ -165,7 +165,6 @@ struct AlbumDetailView: View {
                     .background(Color(NSColor.controlBackgroundColor))
                     .clipShape(.rect(cornerRadius: 8))
                     .padding(.horizontal)
-                    .padding(.bottom, 100)
                 }
             }
         }
