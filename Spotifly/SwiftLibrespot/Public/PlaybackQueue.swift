@@ -332,8 +332,9 @@ final nonisolated class PlaybackQueue {
         return contextTracks[previous]
     }
 
-    /// Moves to a track `upcoming()` lists, the way pressing Next would get
-    /// there: context tracks passed over go into the history, as librespot's
+    /// Moves to a track `upcoming(rounds: .asPlayed)` lists, the next round under
+    /// repeat included, the way pressing Next would get there: context tracks
+    /// passed over go into the history, as librespot's
     /// `skip_next` puts them in `prev_tracks`. Queued tracks ahead of a queued
     /// target are dropped. A context target leaves the queued tracks where
     /// they are, to play after it, as go-librespot's does.
@@ -344,7 +345,7 @@ final nonisolated class PlaybackQueue {
     ///
     /// - Returns: the uri to play, or nil when the list has no such track.
     func skip(toUpcoming position: Int?, uri: String, uid: String? = nil) -> String? {
-        guard let row = Self.row(of: uri, uid: uid, nearest: position ?? 0, in: upcoming()) else {
+        guard let row = Self.row(of: uri, uid: uid, nearest: position ?? 0, in: upcoming(rounds: .asPlayed)) else {
             return nil
         }
 
@@ -408,8 +409,26 @@ final nonisolated class PlaybackQueue {
 
     // MARK: - Snapshots
 
-    /// The upcoming tracks: user queue first, then remaining context.
-    func upcoming(limit: Int = 50) -> [QueueItem] {
+    /// The uri of the row librespot and the web player put where the context starts over.
+    static let delimiterUri = "spotify:delimiter"
+
+    /// How many rounds of the context `upcoming(limit:rounds:)` lists.
+    enum Rounds {
+        /// The rest of this one. The queue view lists that much, as the web player's own queue
+        /// panel does under repeat (measured 2026-10-01), and the bar counts its rows.
+        case one
+        /// Under repeat, the context again from its start until `limit` is reached: the order
+        /// auto-advance plays. Shuffled, the next round's order is drawn only when it starts,
+        /// so none is listed.
+        case asPlayed
+        /// As played, with a hidden `spotify:delimiter` row, uid `delimiter<n>`, where the
+        /// context starts over, as librespot's `fill_up_next_tracks` tells other devices.
+        case asReported
+    }
+
+    /// The upcoming tracks: user queue first, then the rest of the context, and as many more
+    /// rounds of it as `rounds` says.
+    func upcoming(limit: Int = 50, rounds: Rounds = .one) -> [QueueItem] {
         var result = Array(queued.prefix(limit))
         // `dropFirst` rather than a range slice: it clamps, where
         // `shuffleOrder[(shufflePosition + 1)...]` traps the moment the
@@ -423,6 +442,16 @@ final nonisolated class PlaybackQueue {
         }
 
         result.append(contentsOf: afterCurrent.map(contextRow))
+        if rounds != .one, repeatMode == .context, !shuffleEnabled, !contextTracks.isEmpty {
+            var round = 0
+            while result.count < limit {
+                if rounds == .asReported {
+                    result.append(QueueItem(uri: Self.delimiterUri, provider: "context", uid: "delimiter\(round)", hidden: true))
+                }
+                round += 1
+                result.append(contentsOf: contextTracks.indices.prefix(limit - result.count).map(contextRow))
+            }
+        }
         return Array(result.prefix(limit))
     }
 

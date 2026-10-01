@@ -53,9 +53,9 @@ public actor LibrespotClient {
     // MARK: - Queue & Playback Bookkeeping
 
     private var playbackQueue = PlaybackQueue()
-    /// What the playing context calls itself, from the resolver; set with the context in
-    /// `setQueue`, and nil for a bare list.
-    private var contextName: String?
+    /// The resolver's metadata of the playing context, reported as `context_metadata`, as
+    /// librespot does. Set with the context, and empty for a bare list.
+    private var contextMetadata: [String: String] = [:]
 
     /// Logical Connect volume (0…65535), mirrored into player state.
     private var logicalVolume: UInt32 = 32767
@@ -97,6 +97,12 @@ public actor LibrespotClient {
     /// reporting the mirror would claim another device's playback as ours,
     /// and with it the active role.
     private var localState: PlaybackState?
+
+    /// The other device's player state as last mirrored, rows the queue view leaves out
+    /// included: a take-over of a bare list reads where its iteration ends from them. Written
+    /// with the snapshot's playback, so whenever the snapshot shows mirrored playback, this is
+    /// its state.
+    private var mirroredRemote: PlayerState?
 
     // MARK: - Snapshots (what the app shows)
 
@@ -292,6 +298,7 @@ public actor LibrespotClient {
         let stopped = localState
         reportDue = false
         clearLocalState()
+        mirroredRemote = nil
         await pipeline?.stop()
         await session?.disconnect(stopped: stopReport(of: stopped))
         session = nil
@@ -485,13 +492,13 @@ public actor LibrespotClient {
         if let resumingAtUid, let queued = startingAtUri,
            let start = PlaybackQueue.start(in: context.tracks, queued: queued, resumingAt: resumingAtUid, uids: uids)
         {
-            try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, name: context.name, playingQueued: start.queued, positionMs: positionMs, paused: paused)
+            try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, playingQueued: start.queued, positionMs: positionMs, paused: paused)
         } else {
             // No track named, as by Play on an album or a playlist: its first that plays.
             let start = trackIndex == nil && startingAtUri == nil
                 ? (tracks: context.tracks, uids: uids, index: firstPlayable(in: context.tracks))
                 : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: uids)
-            try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, name: context.name, positionMs: positionMs, paused: paused)
+            try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, positionMs: positionMs, paused: paused)
         }
         // Otherwise the rows take them when they come: a jump that names a row's uid then
         // reaches that row, not a queued copy of its track.
@@ -574,7 +581,9 @@ public actor LibrespotClient {
         playbackQueue.setRepeat(repeatMode)
         if contextUri.isEmpty {
             // Started from a bare list of uris, so the list is all there is.
-            try await playTracks([mirrored.trackUri] + (queue?.nextTracks.map(\.uri) ?? []), positionMs: positionMs)
+            let list = mirroredRemote.flatMap(Self.takeOverList) ?? ([mirrored.trackUri], 0, [])
+            playbackQueue.replaceUserQueue(with: list.queued)
+            try await playTracks(list.tracks, trackIndex: list.index, startingAtUri: mirrored.trackUri, positionMs: positionMs)
         } else if queue?.currentTrack?.provider == "queue" {
             // A queued track plays as queued here too: the queued rows after it stay queued, and the
             // context goes on with the row the other device had next, as a handover leaves them.
@@ -830,12 +839,12 @@ public actor LibrespotClient {
         tracks: [String],
         uids: [String?] = [],
         startIndex: Int,
-        name: String? = nil,
+        metadata: [String: String] = [:],
         playingQueued queued: String? = nil,
         positionMs: UInt64,
         paused: Bool,
     ) async throws {
-        contextName = name
+        contextMetadata = metadata
         playbackQueue.setContext(uri: contextUri, tracks: tracks, uids: uids, startIndex: startIndex)
         // Before the load, so the row before it never shows as the one playing.
         if let queued {
@@ -998,7 +1007,7 @@ public actor LibrespotClient {
         // track found out on the way has said so; an album or a playlist says it of itself.
         guard let first = playbackQueue.contextTracks.firstIndex(where: { !isUnplayable($0) }) else {
             await audioPipeline?.stop()
-            if let contextName {
+            if let contextName = contextMetadata.contextName {
                 await playbackFailed(LibrespotError.trackUnavailable(name: contextName))
             } else {
                 clearLocalState()
@@ -1034,7 +1043,7 @@ public actor LibrespotClient {
             currentTrack: playbackQueue.current,
             nextTracks: playbackQueue.upcoming(),
             previousTracks: playbackQueue.recent(),
-            contextName: contextName,
+            contextName: contextMetadata.contextName,
         )
     }
 
@@ -1213,10 +1222,11 @@ public actor LibrespotClient {
             // back to where it was when that state was taken.
             timestamp: UInt64(max(0, current.timestampMs)),
             contextUri: playbackQueue.contextUri,
+            contextMetadata: contextMetadata,
             contextIndex: playbackQueue.contextPosition,
             trackProvider: playbackQueue.currentProvider,
             trackUid: playbackQueue.current?.uid,
-            nextTracks: playbackQueue.upcoming(),
+            nextTracks: playbackQueue.upcoming(rounds: .asReported),
             previousTracks: playbackQueue.recent(),
         )
     }
@@ -1363,10 +1373,36 @@ public actor LibrespotClient {
             canSkipNext: !remote.disallowsSkippingNext,
         )
         let queue = Self.mirroredQueue(of: remote)
+        mirroredRemote = remote
         publish {
             $0.playback = playback
             $0.queue = queue
         }
+    }
+
+    /// A mirrored bare list as this Mac takes it over: the tracks played before the current one,
+    /// since the last `spotify:delimiter`, the current one, and those after it up to the next,
+    /// where with repeat on the list starts again as its next iteration. Taken whole, with the
+    /// iterations, the list held its tracks two or three times, and local repeat looped that.
+    /// The tracks before go in so repeat comes back to them. Queued rows ahead go to the queue,
+    /// those already played are left out, and so are rows the sender hides, as `mirroredQueue`
+    /// leaves them out.
+    nonisolated static func takeOverList(of remote: PlayerState) -> (tracks: [String], index: Int, queued: [String])? {
+        guard let current = remote.track?.uri, !current.isEmpty else { return nil }
+        let before = remote.prevTracks.reversed().prefix { $0.uri != "spotify:delimiter" }.reversed()
+            .filter { isShown($0) && $0.provider != "queue" }.map(\.uri)
+        let ahead = remote.nextTracks.prefix { $0.uri != PlaybackQueue.delimiterUri }.filter(isShown)
+        return (
+            before + [current] + ahead.filter { $0.provider != "queue" }.map(\.uri),
+            before.count,
+            ahead.filter { $0.provider == "queue" }.map(\.uri),
+        )
+    }
+
+    /// Whether the sending device shows a row in its own queue; see `mirroredQueue(of:)`. Its
+    /// delimiters are hidden too.
+    private nonisolated static func isShown(_ track: ProvidedTrack) -> Bool {
+        !track.isHidden
     }
 
     /// The queue another device reports, as the Queue section shows it.
@@ -1381,17 +1417,16 @@ public actor LibrespotClient {
     /// delimiter on is `hidden`, with repeat on only the delimiters are. Shown, they listed an
     /// album again after its last track.
     nonisolated static func mirroredQueue(of remote: PlayerState) -> QueueState {
-        let shown: (ProvidedTrack) -> Bool = { $0.metadata["hidden"] != "true" }
         // Proto3: a row without a uid has "".
         let item: (ProvidedTrack) -> QueueItem = { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) }
         return QueueState(
             contextUri: remote.contextUri,
             currentTrack: remote.track.map(item),
-            nextTracks: remote.nextTracks.filter(shown).map(item),
+            nextTracks: remote.nextTracks.filter(isShown).map(item),
             // In play order, as the cluster keeps them and the local queue
             // publishes them.
-            previousTracks: remote.prevTracks.filter(shown).map(item),
-            contextName: remote.contextMetadata["context_description"].flatMap { $0.isEmpty ? nil : $0 },
+            previousTracks: remote.prevTracks.filter(isShown).map(item),
+            contextName: remote.contextMetadata.contextName,
         )
     }
 

@@ -21,6 +21,9 @@ nonisolated struct QueueItem: Equatable {
     /// and this client's own otherwise (`PlaybackQueue`). A row with none goes by its position
     /// and its track.
     var uid: String?
+    /// Left out of the queue other devices show, as the delimiter this client reports between
+    /// two rounds of a context; see `ProvidedTrack.isHidden`.
+    var hidden = false
 }
 
 /// Outcome of the one-time streaming authorization.
