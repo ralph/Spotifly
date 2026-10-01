@@ -799,10 +799,11 @@ public actor LibrespotClient {
 
     // MARK: - Queue Plumbing
 
-    /// - Parameter queued: a track to play as queued, after the context's start row.
     /// Plays from a new context. The queue goes out with the track when the load announces it,
     /// and is published again afterwards, as the skips do: announcing the next track any sooner
     /// would cancel a fetched-ahead copy of this one.
+    ///
+    /// - Parameter queued: a track to play as queued, after the context's start row.
     private func play(
         contextUri: String,
         tracks: [String],
@@ -875,8 +876,6 @@ public actor LibrespotClient {
             }
             throw error
         }
-
-        knownDurationMs = await audioPipeline.currentDurationMs
     }
 
     /// Auto-advance at end of track.
@@ -1074,15 +1073,20 @@ public actor LibrespotClient {
 
         case let .playing(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
+            let duration = await audioPipeline?.currentDurationMs ?? 0
             // Torn down or replaced while this waited: the track is no one's now. Or a skip
             // moved the queue on to another while this waited, which it announces.
             guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
-            // With its queue too: a track that followed on without a gap is never `.loading`.
+            // Every load ends here or in `.paused`. A track that followed on without a gap is
+            // never `.loading`, so its length and its queue go out here too.
+            knownDurationMs = duration
             publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position), queue: queueState)
 
         case let .paused(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
+            let duration = await audioPipeline?.currentDurationMs ?? 0
             guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
+            knownDurationMs = duration
             publishPlaybackState(for: trackUri, playing: false, paused: true, positionMs: Int64(position))
         }
 
