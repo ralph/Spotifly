@@ -601,3 +601,57 @@ struct QueueRowUidTests {
         #expect(queue.current?.uid == "p0")
     }
 }
+
+/// The next round of a context under repeat, which other devices are shown and a jump can reach,
+/// as librespot's `fill_up_next_tracks` lists it.
+struct RepeatRoundTests {
+    private func album(at index: Int, repeat mode: PlaybackQueue.RepeatMode = .context) -> PlaybackQueue {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["a", "b", "c"], uids: ["u0", "u1", "u2"], startIndex: index)
+        queue.setRepeat(mode)
+        return queue
+    }
+
+    @Test func `under repeat, the context starts again after its end, as often as there is room`() {
+        let queue = album(at: 1)
+
+        #expect(queue.upcoming(limit: 6, rounds: .asPlayed).map(\.uri) == ["c", "a", "b", "c", "a", "b"])
+        // The queue view lists one round, and its count says how long the album is.
+        #expect(queue.upcoming().map(\.uri) == ["c"])
+    }
+
+    @Test func `other devices are told where it starts over, as librespot tells them`() {
+        let queue = album(at: 2)
+        queue.enqueue("q")
+
+        let rows = queue.upcoming(limit: 6, rounds: .asReported)
+
+        #expect(rows.map(\.uri) == ["q", PlaybackQueue.delimiterUri, "a", "b", "c", PlaybackQueue.delimiterUri])
+        #expect(rows.map(\.uid) == ["q0", "delimiter0", "u0", "u1", "u2", "delimiter1"])
+        #expect(rows.map(\.hidden) == [false, true, false, false, false, true])
+    }
+
+    @Test func `without repeat, or shuffled, there is no next round`() {
+        #expect(album(at: 2, repeat: .off).upcoming(rounds: .asPlayed).isEmpty)
+        #expect(album(at: 2, repeat: .track).upcoming(rounds: .asPlayed).isEmpty)
+
+        let shuffled = album(at: 0)
+        shuffled.setShuffle(true)
+        #expect(shuffled.upcoming(rounds: .asPlayed).count == 2)
+    }
+
+    /// Before, a track behind the current one was listed nowhere ahead, and the jump failed.
+    @Test func `a jump reaches a track in the next round`() {
+        let queue = album(at: 2)
+
+        #expect(queue.skip(toUpcoming: nil, uri: "a", uid: "u0") == "a")
+        #expect(queue.contextPosition == 0)
+        #expect(queue.history == ["c"])
+    }
+
+    /// So the fetch-ahead has the first track ready when the last one ends.
+    @Test func `on the last track, the next one is the first`() {
+        #expect(album(at: 2).upcomingPlayable(skipping: { _ in false }) == "a")
+        #expect(album(at: 2, repeat: .off).upcomingPlayable(skipping: { _ in false }) == nil)
+    }
+}

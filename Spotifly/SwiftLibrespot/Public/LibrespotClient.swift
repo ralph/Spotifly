@@ -1216,7 +1216,7 @@ public actor LibrespotClient {
             contextIndex: playbackQueue.contextPosition,
             trackProvider: playbackQueue.currentProvider,
             trackUid: playbackQueue.current?.uid,
-            nextTracks: playbackQueue.upcoming(),
+            nextTracks: playbackQueue.upcoming(rounds: .asReported),
             previousTracks: playbackQueue.recent(),
         )
     }
@@ -1381,7 +1381,7 @@ public actor LibrespotClient {
     /// delimiter on is `hidden`, with repeat on only the delimiters are. Shown, they listed an
     /// album again after its last track.
     nonisolated static func mirroredQueue(of remote: PlayerState) -> QueueState {
-        let shown: (ProvidedTrack) -> Bool = { $0.metadata["hidden"] != "true" }
+        let shown: (ProvidedTrack) -> Bool = { !$0.isHidden }
         // Proto3: a row without a uid has "".
         let item: (ProvidedTrack) -> QueueItem = { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) }
         return QueueState(
