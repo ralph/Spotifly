@@ -80,7 +80,7 @@ struct Track: Identifiable, Hashable, Encodable {
     let images: ImageSet
 
     /// Whether Spotify will play this track for the account. `.playable` unless the answer it
-    /// came from said otherwise; spclient's metadata does not say.
+    /// came from said otherwise: pathfinder's `playability`, or spclient's restrictions.
     var playability = Playability.playable
 
     var durationFormatted: String {
@@ -95,7 +95,7 @@ struct Track: Identifiable, Hashable, Encodable {
     /// their country, where that is Spotify's reason, and otherwise that it is not available.
     var unplayableMessage: String? {
         guard case let .unplayable(reason) = playability else { return nil }
-        return reason == "COUNTRY_RESTRICTED"
+        return reason == Playability.countryRestricted
             ? String(localized: "error.track_unavailable_in_country \(name)")
             : String(localized: "error.track_unavailable \(name)")
     }
@@ -107,6 +107,9 @@ struct Track: Identifiable, Hashable, Encodable {
 enum Playability: Hashable, Encodable {
     case playable
     case unplayable(reason: String?)
+
+    /// Pathfinder's reason for a track withheld in the account's country.
+    static let countryRestricted = "COUNTRY_RESTRICTED"
 }
 
 // MARK: - Album

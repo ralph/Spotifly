@@ -108,7 +108,7 @@ struct PlaybackQueueTests {
         #expect(queue.history == ["t0"])
     }
 
-    /// `plans/open/queue-rows-have-no-identity.md`: `backward()` went back to the first copy
+    /// `plans/done/queue-rows-have-no-identity.md`: `backward()` went back to the first copy
     /// of a track the context holds twice, whichever copy had played.
     @Test func `Previous returns to the copy of a repeated track that played`() {
         let queue = PlaybackQueue()
@@ -557,5 +557,47 @@ struct QueueRowUidTests {
 
         #expect(start.tracks == ["x", "a", "b"])
         #expect(start.uids == [nil, "u0", "u1"])
+    }
+
+    /// The album's rows from pathfinder, after the resolver gave none: the case of
+    /// `plans/done/queued-copy-of-an-album-track.md`, the queued copy of a track further on.
+    @Test func `an album's rows take the uids listed for them, and a jump names its copy`() {
+        let album = PlaybackQueue()
+        album.setContext(uri: "spotify:album:a", tracks: ["a", "b", "x", "c"], startIndex: 0)
+        album.enqueue("x")
+
+        #expect(album.adoptRowUids([("a", "u0"), ("b", "u1"), ("x", "u2"), ("c", "u3")], ofContext: "spotify:album:a"))
+        #expect(album.current?.uid == "u0")
+        #expect(uids(album.upcoming()) == ["q0", "u1", "u2", "u3"])
+        #expect(album.skip(toUpcoming: nil, uri: "x", uid: "u2") == "x")
+        #expect(album.contextPosition == 2)
+    }
+
+    @Test func `a track the album lists twice gets each copy's uid`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: ["a", "b", "a"], startIndex: 0)
+
+        #expect(queue.adoptRowUids([("a", "u0"), ("b", "u1"), ("a", "u2")], ofContext: "spotify:album:a"))
+        #expect(queue.current?.uid == "u0")
+        #expect(uids(queue.upcoming()) == ["u1", "u2"])
+    }
+
+    /// A row put in at the start, as a queued track a handover names goes in front: matched by
+    /// place, every uid after it would move a row on.
+    @Test func `uids follow their tracks, not their places`() {
+        #expect(PlaybackQueue.rowUids([("a", "u0"), ("b", "u1")], of: ["x", "a", "b", "c"]) == [nil, "u0", "u1", nil])
+    }
+
+    /// Asked for after the track started: by then another context may play, or the rows have
+    /// uids of their own.
+    @Test func `uids are not taken for another context, nor over the rows' own`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:b", tracks: ["a", "b"], startIndex: 0)
+        #expect(!queue.adoptRowUids([("a", "u0")], ofContext: "spotify:album:a"))
+        #expect(queue.current?.uid == nil)
+
+        queue.setContext(uri: "spotify:playlist:p", tracks: ["a", "b"], uids: ["p0", "p1"], startIndex: 0)
+        #expect(!queue.adoptRowUids([("a", "u0")], ofContext: "spotify:playlist:p"))
+        #expect(queue.current?.uid == "p0")
     }
 }

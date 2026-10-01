@@ -107,7 +107,9 @@ final class AppStore {
     private(set) var lastDisplayedSearchQuery: String?
     private(set) var searchCacheEvictionRevision: UInt64 = 0
     var searchIsLoading = false
-    var searchErrorMessage: String?
+    /// The last submitted search that failed, which its results page shows in their place,
+    /// with Try again. Replaced by the next answer, and gone when the field is emptied.
+    private(set) var failedSearch: FailedSearch?
 
     /// Entities explicitly deleted during this session. Missing entities are not
     /// enough to invalidate a route because a deep-linked entity may still be loading.
@@ -212,9 +214,9 @@ final class AppStore {
         resolvedFavoriteTrackIds.contains(trackId)
     }
 
-    /// Upsert tracks, keeping `unplayableTrackUris` in step. Every answer that replaces a track
-    /// here says whether it plays, except spclient's, which only fills in tracks the store
-    /// lacks.
+    /// Upsert tracks, keeping `unplayableTrackUris` in step. Every answer here says whether a
+    /// track plays: pathfinder's `playability`, and spclient's restriction and alternatives
+    /// (`SpclientTrack.isWithheld`).
     func upsertTracks(_ newTracks: [Track]) {
         var unplayable = unplayableTrackUris
         for var track in newTracks {
@@ -633,6 +635,9 @@ final class AppStore {
     }
 
     func setSearchResults(_ results: SearchResults, for query: String) {
+        if searchFailure(for: query) != nil {
+            failedSearch = nil
+        }
         searchResultsByQuery[query] = results
         searchResultQueries.removeAll { $0 == query }
         searchResultQueries.append(query)
@@ -648,13 +653,29 @@ final class AppStore {
         searchCacheEvictionRevision &+= 1
     }
 
+    /// The query the sidebar's search row reopens to: one with results, never a failed one.
     func markSearchQueryDisplayed(_ query: String) {
         guard searchResultsByQuery[query] != nil else { return }
         lastDisplayedSearchQuery = query
     }
 
-    func clearSearchError() {
-        searchErrorMessage = nil
+    /// Why the last search for `query` failed, where it was the last to fail.
+    func searchFailure(for query: String) -> LoadFailure? {
+        failedSearch?.query == query ? failedSearch?.failure : nil
+    }
+
+    func setSearchFailure(_ error: any Error, for query: String) {
+        failedSearch = FailedSearch(query: query, failure: LoadFailure(error))
+    }
+
+    func clearSearchFailure() {
+        failedSearch = nil
+    }
+
+    /// Whether the search results page has something to show for `query`: its results, or
+    /// why it has none.
+    func canShowSearch(for query: String) -> Bool {
+        searchResults(for: query) != nil || searchFailure(for: query) != nil
     }
 
     // MARK: - Start Page Actions
@@ -796,4 +817,9 @@ final class AppStore {
             }
         }
     #endif
+}
+
+struct FailedSearch {
+    let query: String
+    let failure: LoadFailure
 }
