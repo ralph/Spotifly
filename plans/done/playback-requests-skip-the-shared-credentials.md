@@ -3,7 +3,7 @@
 Status: **Done** 2026-10-01. Unit tests for the retries; live, playback through the new signing
 and one finding about refusals. A server error could not be brought about live, and neither
 could a 401: Spotify answered a client token it rejected with a 400. See Verification and
-`plans/open/refused-client-token-answers-400.md`.
+`plans/done/refused-client-token-answers-400.md`.
 Components: `Spotifly/SwiftLibrespot/Network/SPClient.swift` (`getTrack`, `resolveContext`,
 `resolveCDNUrl`), `Spotifly/SwiftLibrespot/Dealer/DealerConnection.swift` (`putState`),
 `Spotifly/Auth/SpotifyCredentials.swift`, `Spotifly/PartnerAPI/PartnerAPI.swift`,
@@ -101,4 +101,4 @@ land after the newer one that replaced it, so a server error fails it as before,
       real one with one character changed. Its headers said why: `client-token-error:
       INVALID_CLIENTTOKEN`. So that refusal is not retried; the failed Next said
       "Storage resolve failed: HTTP 400". The context resolver answered the made-up token with a
-      400 too, and answered 200 with no client token at all. Followed up in `plans/open/refused-client-token-answers-400.md`.
+      400 too, and answered 200 with no client token at all. Followed up in `plans/done/refused-client-token-answers-400.md`.
