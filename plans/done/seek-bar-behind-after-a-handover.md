@@ -4,8 +4,9 @@ Status: **Done** 2026-10-01. Seen by hand while testing #135, which did not caus
 date from #71 (2026-09-28) and e711146 (2026-08-14). Reproduced and seen fixed live with a
 drift check made to run every 50 ms; see Verification. No unit test: the client is a singleton.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`positionCache`,
-`publishPlaybackState`); read: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`tick`,
-`teardownAndGoIdle`), `Spotifly/ViewModels/PlaybackViewModel.swift` (`checkDriftAndSync`)
+`publishPlaybackState`), `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`
+(`loadingPositionMs`, `currentPositionMs`), `Spotifly/ViewModels/PlaybackViewModel.swift`
+(`checkDriftAndSync`, `syncPositionAnchor`)
 Found: 2026-10-01, handing playback from a phone back to the Mac
 
 ## Summary
@@ -40,7 +41,7 @@ four minutes later (`Position anchor: 0 -> 104` at 19:20:04).
 
 ### Why
 
-1. **The player's position is a cache fed only by the pipeline's ticks.**
+1. **The player's position was a cache fed only by the pipeline's ticks.**
    `SpotifyPlayer.positionMs` reads `LibrespotClient.positionCache`, which only `.position`
    events set. The pipeline sends one every 250 ms while it plays (`tick`), and a 0 when it
    goes idle (`teardownAndGoIdle`).
@@ -68,8 +69,9 @@ left at another track's position:
 - Play on mirrored playback (`resume()` taking it over);
 - the recovery's reload after sleep (`Recovery reloading … at …ms`).
 
-A seek is not affected: it marks the anchor optimistic, and the drift check waits out its
-one-second grace.
+A seek had the same window: its `.playing` or `.paused` state anchors the bar as a
+measurement, which ends the optimistic grace, while the cache still held the old position until
+a tick, a quarter second later, or after the resume of a paused seek.
 
 ## Solution
 
@@ -81,12 +83,26 @@ bar agree from the moment a load is announced, rather than from the first tick a
 after the decode starts. The ticks go on feeding it as before. Mirrored playback does not go
 through it, and the drift check does not run while this Mac only mirrors.
 
-That also covers a seek while paused: the cache stood at the old position until a tick after
-the resume, and the drift check could take the bar back there once the seek's grace had passed.
+That also covers seeks, whose state now writes the target into the cache with it, playing or
+paused.
+
+**The pipeline knows where a load starts, too.** Its own answer, `currentPositionMs()`, said 0
+from `.loading` until the decode started, since the teardown before a load zeroes the sink's
+clock. Nothing in the reported case read it then, but a shuffle or repeat toggled during a
+handover's download published the track at 0 (`publishPlaybackStateRefresh`), now into the cache
+as well, and sleep then would have kept it as paused at 0 for the wake to reload from. The
+pipeline now keeps the position a `.loading` announces (`loadingPositionMs`) until the decode
+starts, the load fails or a teardown comes, and answers with it.
 
 **Considered and not done:**
-- The pipeline sending `.position` with `.loading` and from `startDecoding`: two places to keep
-  in step where one publishes every local position already.
+- The pipeline sending `.position` with `.loading` and from `startDecoding`: two more writers of
+  the cache, where `publishPlaybackState` already writes every local position.
+- **A cache that can say "nothing loaded here".** It is a bare position, and a stop writes 0, so
+  "nothing loaded" reads as 0:00. A handover reports this Mac active before its load is
+  announced, so a cluster update naming it in between would let the drift check compare the
+  mirrored bar with that 0 and correct it, until the `.loading` a moment later anchors it again:
+  a flash, not the stuck bar, and not seen. An optional cache, nil after a stop, would end it,
+  and with it the "skip 0" in `syncPositionAnchor`.
 - Correcting a bar far behind the player as a safety net: with the cache right, nothing put it
   there, and the render buffer reasoning for leaving "behind" alone (e711146) is unchanged.
 
@@ -97,6 +113,8 @@ the resume, and the drift check could take the bar back there once the seek's gr
       Jersey", and `SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER=15` pulled it here. `Taking over … at
       30433ms`, then `Drift correction: 30548 -> 0` and again `30542 -> 0`.
 - [x] **Fixed, the same throwaway with the fix:** `Taking over … at 29854ms`, the anchor at 29854,
-      and no drift correction in the 12 s watched.
+      and no drift correction in the 12 s watched. Again with the pipeline's `loadingPositionMs`
+      added: `Taking over … at 30431ms`, the anchor at 30431, then 30432 once the decoder opened,
+      and no drift correction in 12 s.
 - [x] Build, unit tests and the lint.
 - [ ] By hand with a phone, as found: hand playback back mid-track a few times and watch the bar.

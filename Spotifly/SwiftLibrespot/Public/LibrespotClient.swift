@@ -775,14 +775,11 @@ public actor LibrespotClient {
         latest.withLock { $0.activeDeviceId == deviceInfo.deviceId }
     }
 
-    /// Position cache, read from anywhere: the pipeline's position ticks, and
-    /// every position local playback publishes.
-    ///
-    /// The ticks alone left it behind a load: they start a quarter second after
-    /// the decode does, and until then it held the 0 of the stop before. A
-    /// handover at 1:05 showed the bar at 1:05, and the drift check, finding the
-    /// player at 0 and the bar 65 s ahead, put the bar at 0, a minute behind the
-    /// audio until the next track (`plans/done/seek-bar-behind-after-a-handover.md`).
+    /// Position cache, fed by the pipeline's position ticks and by every position
+    /// local playback publishes (`publishPlaybackState`), and read from anywhere.
+    /// Ticks alone left it at the last stop's position for the quarter second
+    /// before a load's first tick, long enough for the drift check to pull the bar
+    /// back there (`plans/done/seek-bar-behind-after-a-handover.md`).
     private nonisolated let positionCache = Mutex<UInt64>(0)
 
     /// Starts rebuilding the session if it is down, without blocking: the
@@ -1587,9 +1584,6 @@ public actor LibrespotClient {
     ///
     /// Every state the facade sees is built here, so the options and the
     /// duration cannot be carried by one emission and dropped by the next.
-    ///
-    /// The position cache takes the position too, so the two never disagree; see
-    /// `positionCache`.
     private func publishPlaybackState(
         for trackUri: String,
         playing: Bool,
