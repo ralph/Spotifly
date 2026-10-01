@@ -256,7 +256,7 @@ struct ConnectMessageParsingTests {
 @MainActor
 struct SPClientParsingTests {
     /// `Track.file (12)`: `AudioFile { 1: file_id, 2: format }`, the id twenty bytes of `id`.
-    private static func file(_ track: inout ProtobufWriter, id: UInt8, format: Int) {
+    static func file(_ track: inout ProtobufWriter, id: UInt8, format: Int) {
         track.message(field: 12) {
             $0.bytes(field: 1, Data(repeating: id, count: 20))
             $0.varint(field: 2, format)
@@ -265,7 +265,7 @@ struct SPClientParsingTests {
 
     /// A `Track` wrapped the way the extended-metadata endpoint answers with one, or, without
     /// one, the way it answers for an entity it has none of.
-    private static func extendedMetadataResponse(track: Data?, status: Int = 200) -> Data {
+    static func extendedMetadataResponse(track: Data?, status: Int = 200) -> Data {
         ProtobufWriter.message {
             $0.message(field: 2) { array in // extended_metadata
                 array.varint(field: 2, 10) // extension_kind: TRACK_V4

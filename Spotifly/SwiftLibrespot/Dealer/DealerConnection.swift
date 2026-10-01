@@ -17,14 +17,15 @@ public actor DealerConnection {
     private let endpoint: String
     /// Asked for the bearer token on every use. A token held from the start
     /// expired an hour into the session, and every PutState after that was
-    /// answered 401 while playback, which asks for its own, went on.
-    private let tokenProvider: @Sendable () async throws -> String
+    /// answered 401 while playback, which asks for its own, went on. PutState
+    /// is signed with them like the app's pages, and asked again once with a
+    /// fresh client token if Spotify refuses it.
+    private let credentials: SpotifyCredentials
     /// Where connect-state lives. It is *not* the dealer host, which is what
     /// PutState was aimed at until every one of them came back 403.
     private let spclientHost: String
     /// The device's own id — the connect-state resource this session owns.
     private let deviceId: String
-    private var clientTokenProvider: (@Sendable () async throws -> String)?
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
     private var connectionId: String?
@@ -58,21 +59,17 @@ public actor DealerConnection {
 
     // MARK: - Initialization
 
-    public init(
+    init(
         endpoint: String,
-        tokenProvider: @escaping @Sendable () async throws -> String,
+        credentials: SpotifyCredentials,
         spclientHost: String,
         deviceId: String,
     ) {
         self.endpoint = endpoint
-        self.tokenProvider = tokenProvider
+        self.credentials = credentials
         self.spclientHost = spclientHost
         self.deviceId = deviceId
         debugLog("DealerConnection", "Created for endpoint: \(endpoint)")
-    }
-
-    func setClientTokenProvider(_ provider: @escaping @Sendable () async throws -> String) {
-        clientTokenProvider = provider
     }
 
     // MARK: - Connection
@@ -82,7 +79,7 @@ public actor DealerConnection {
         debugLog("DealerConnection", "Connecting to dealer...")
 
         // Build WebSocket URL with access token
-        let wsURL = try await buildWebSocketURL(accessToken: tokenProvider())
+        let wsURL = try await buildWebSocketURL(accessToken: credentials.accessToken())
 
         // Create WebSocket task
         let session = URLSession(configuration: .default)
@@ -206,27 +203,19 @@ public actor DealerConnection {
         httpRequest.httpMethod = "PUT"
         httpRequest.timeoutInterval = 15
         httpRequest.setValue(connId, forHTTPHeaderField: "X-Spotify-Connection-Id")
-        try await httpRequest.setValue("Bearer \(tokenProvider())", forHTTPHeaderField: "Authorization")
-        if let clientTokenProvider {
-            try await httpRequest.setValue(clientTokenProvider(), forHTTPHeaderField: "Client-Token")
-        }
-        httpRequest.setValue("OSX_ARM64", forHTTPHeaderField: "App-Platform")
-        httpRequest.setValue("https://xpui.app.spotify.com", forHTTPHeaderField: "Origin")
         httpRequest.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
 
         httpRequest.httpBody = payload
 
-        let (data, response) = try await URLSession.shared.data(for: httpRequest)
+        // A 401 is asked again with a fresh client token, but no server error: a report asked
+        // again later could land after the newer one that replaced it.
+        let (data, status) = try await credentials.send(httpRequest)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw LibrespotError.commandFailed("PutState failed: no response")
+        guard (200 ..< 300).contains(status) else {
+            throw LibrespotError.commandFailed("PutState failed: HTTP \(status)")
         }
 
-        guard (200 ..< 300).contains(httpResponse.statusCode) else {
-            throw LibrespotError.commandFailed("PutState failed: HTTP \(httpResponse.statusCode)")
-        }
-
-        debugLog("DealerConnection", "PutState accepted (HTTP \(httpResponse.statusCode), \(data.count) bytes back)")
+        debugLog("DealerConnection", "PutState accepted (HTTP \(status), \(data.count) bytes back)")
         return try? Cluster.parse(from: data)
     }
 

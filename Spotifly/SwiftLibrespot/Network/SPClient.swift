@@ -12,10 +12,9 @@ import Foundation
 public actor SPClient {
     // MARK: - Properties
 
-    /// Produces a current bearer token on demand, so long-lived sessions
-    /// survive the hour-long lifetime of any single token.
-    private let tokenProvider: @Sendable () async throws -> String
-    private let clientTokenProvider: (@Sendable () async throws -> String)?
+    /// Signs each request like the desktop client, as the app's pages are signed, and shares
+    /// their retries: once after a refused client token, and after a failure that may pass.
+    private let credentials: SpotifyCredentials
     private var spclientHost: String?
     private let deviceId: String
     /// Market and catalogue the batched-metadata requests must name.
@@ -26,39 +25,24 @@ public actor SPClient {
         countryCode = code
     }
 
+    /// The pauses before a request that failed in a way that may pass is asked for again,
+    /// shorter than a page's (`SpotifyCredentials.retryPauses`): a track's start waits on them,
+    /// and a Next should not hang for seconds before it says it failed. librespot asks again
+    /// with no pause at all.
+    static let retryPauses: [Duration] = [.milliseconds(250), .seconds(1)]
+
     // MARK: - Initialization
 
-    public init(
-        tokenProvider: @escaping @Sendable () async throws -> String,
-        clientTokenProvider: (@Sendable () async throws -> String)? = nil,
+    init(
+        credentials: SpotifyCredentials,
         spclientHost: String? = nil,
         deviceId: String,
     ) {
-        self.tokenProvider = tokenProvider
-        self.clientTokenProvider = clientTokenProvider
+        self.credentials = credentials
         self.spclientHost = spclientHost
         self.deviceId = deviceId
 
         debugLog("SPClient", "Initialized")
-    }
-
-    /// Signs like the desktop client does: these hosts are no public API, and
-    /// the requests they answer are the ones shaped like the client's own —
-    /// bearer for the user, client token for the application, plus the
-    /// platform/origin markers.
-    private func authorizedRequest(url: URL, accept: String) async throws -> URLRequest {
-        var request = URLRequest(url: url)
-        request.setValue("OSX_ARM64", forHTTPHeaderField: "App-Platform")
-        request.setValue("https://xpui.app.spotify.com", forHTTPHeaderField: "Origin")
-        request.setValue("https://xpui.app.spotify.com/", forHTTPHeaderField: "Referer")
-
-        let token = try await tokenProvider()
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        if let clientTokenProvider {
-            try await request.setValue(clientTokenProvider(), forHTTPHeaderField: "Client-Token")
-        }
-        request.setValue(accept, forHTTPHeaderField: "Accept")
-        return request
     }
 
     // MARK: - Track Metadata
@@ -116,24 +100,19 @@ public actor SPClient {
 
         debugLog("SPClient", "[POST] extended-metadata \(entityUri)")
 
-        var request = try await authorizedRequest(url: url, accept: "application/x-protobuf")
+        // A read sent as a POST, and asked again as one.
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
         request.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Self.buildTrackRequest(
-            entityUri: entityUri,
-            country: countryCode,
-            catalogue: catalogue,
-        )
+        request.httpBody = Self.buildTrackRequest(entityUri: entityUri, country: countryCode, catalogue: catalogue)
+        let (data, status) = try await credentials.read(request, pausing: Self.retryPauses)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw LibrespotError.cdnError("Invalid extended-metadata response")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            debugLog("SPClient", "Extended metadata failed: HTTP \(httpResponse.statusCode), body: \(String(data: data.prefix(160), encoding: .utf8) ?? "?")")
-            throw LibrespotError.trackNotFound(entityUri)
+        // Not `trackNotFound`: a server error that outlasted the retries is no fact about the
+        // track.
+        guard status == 200 else {
+            debugLog("SPClient", "Extended metadata failed: HTTP \(status), body: \(String(data: data.prefix(160), encoding: .utf8) ?? "?")")
+            throw LibrespotError.requestFailed("Track metadata", status: status)
         }
 
         // A track that does not exist answers HTTP 200 with no `Track`, and 404 in the entity's
@@ -202,14 +181,12 @@ public actor SPClient {
 
         debugLog("SPClient", "[GET] storage-resolve for \(fileIdHex.prefix(16))…")
 
-        let request = try await authorizedRequest(url: url, accept: "application/json")
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, status) = try await credentials.read(request, pausing: Self.retryPauses)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200
-        else {
-            throw LibrespotError.cdnError("Storage resolve failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+        guard status == 200 else {
+            throw LibrespotError.requestFailed("Storage resolve", status: status)
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -302,19 +279,17 @@ public actor SPClient {
 
             let url = URL(string: "https://\(host)\(path)")!
             debugLog("SPClient", "[GET] \(url.absoluteString.prefix(120))")
-            debugLog("SPClient", "Signing context request…")
-            let request = try await authorizedRequest(url: url, accept: "application/x-protobuf")
-            debugLog("SPClient", "Sending context request…")
-
-            let (data, response) = try await Self.withTimeout(seconds: 20) {
-                try await URLSession.shared.data(for: request)
+            var request = URLRequest(url: url)
+            request.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
+            // The deadline is the page's, its retries included.
+            let (data, status) = try await Self.withTimeout(seconds: 20) { [credentials, request] in
+                try await credentials.read(request, pausing: Self.retryPauses)
             }
             debugLog("SPClient", "Context response received")
 
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            guard status == 200 else {
                 debugLog("SPClient", "Context resolve FAILED: HTTP \(status), body: \(String(data: data.prefix(200), encoding: .utf8) ?? "?")")
-                throw LibrespotError.cdnError("Context resolve failed: HTTP \(status)")
+                throw LibrespotError.requestFailed("Context resolve", status: status)
             }
 
             #if DEBUG

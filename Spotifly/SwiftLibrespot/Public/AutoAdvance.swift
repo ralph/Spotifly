@@ -16,9 +16,9 @@ import Foundation
 /// of a track.
 ///
 /// **Only `trackUnavailable` is skipped.** It is the one error that belongs to the track. A
-/// network error, a key that timed out, or a `trackNotFound` from a failed metadata request
-/// stops playback instead: skipping those would pass over a playlist's worth of playable tracks
-/// while the network blinked.
+/// network error, a key that timed out, or a metadata request that failed stops playback
+/// instead: skipping those would pass over a playlist's worth of playable tracks while the
+/// network blinked.
 ///
 /// It runs on the client's `PlaybackQueue` and two closures, so the rule is tested against a real
 /// queue and no session.

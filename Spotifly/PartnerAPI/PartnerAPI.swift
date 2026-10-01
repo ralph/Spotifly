@@ -182,6 +182,42 @@ nonisolated struct SpotifyCredentials: Sendable {
         try await request.setValue(clientToken(), forHTTPHeaderField: "Client-Token")
     }
 
+    /// The app's own: the signed-in account's bearer and the shared client token, over the
+    /// network.
+    static var live: SpotifyCredentials {
+        SpotifyCredentials(
+            accessToken: { try await KeymasterSession.shared.accessToken() },
+            clientToken: { try await ClientTokenProvider.shared.token() },
+            invalidateClientToken: invalidateShared,
+            transport: { try await URLSession.shared.data(for: $0) },
+            pause: { try await Task.sleep(for: $0) },
+        )
+    }
+
+    /// Signs a request and sends it, naming the client token it carried.
+    func attempt(_ request: URLRequest) async throws -> Attempt {
+        var signed = request
+        try await sign(&signed)
+        let (data, response) = try await transport(signed)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        return (data, http.statusCode, signed.value(forHTTPHeaderField: "Client-Token"))
+    }
+
+    /// Sends a write, signed afresh for a second attempt if Spotify refuses its client token.
+    func send(_ request: URLRequest) async throws -> (body: Data, status: Int) {
+        try await retryingRefusedToken { try await attempt(request) }
+    }
+
+    /// Sends a read, signed afresh for each attempt, and asks again after a refused client token
+    /// or a failure that may pass, after `pauses`.
+    func read(_ request: URLRequest, pausing pauses: [Duration] = retryPauses) async throws -> (body: Data, status: Int) {
+        try await retryingPassingFailures(pausing: pauses) {
+            try await send(request)
+        }
+    }
+
     /// Runs the attempt, and runs it once more against a fresh client token when Spotify refuses
     /// the first with a 401.
     ///
@@ -207,7 +243,7 @@ nonisolated struct SpotifyCredentials: Sendable {
         return (retried.body, retried.status)
     }
 
-    /// The pauses before a read is asked for again, one per retry.
+    /// The pauses before a page's read is asked for again, one per retry.
     static let retryPauses: [Duration] = [.seconds(1), .seconds(3)]
 
     /// Runs a read, and runs it again after a pause when it failed in a way that may pass on its
@@ -221,9 +257,10 @@ nonisolated struct SpotifyCredentials: Sendable {
     /// again; a timeout, which has already waited a minute; and a 429, since a rate limit is the
     /// whole client's, and asking again at once only adds to it.
     func retryingPassingFailures(
+        pausing pauses: [Duration] = retryPauses,
         _ read: () async throws -> (body: Data, status: Int),
     ) async throws -> (body: Data, status: Int) {
-        for delay in Self.retryPauses {
+        for delay in pauses {
             do {
                 let sent = try await read()
                 guard Self.mayPass(status: sent.status) else { return sent }

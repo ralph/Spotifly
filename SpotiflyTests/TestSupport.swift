@@ -184,6 +184,23 @@ func spclientAPI(
     )
 }
 
+/// Credentials as playback's requests carry them, answered by `transport`. Its default fails
+/// every request, for a test that sends none.
+func spotifyCredentials(
+    clientToken: String = "ct",
+    invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
+    pause: @escaping SpotifyCredentials.Pause = { _ in },
+    transport: @escaping SpotifyCredentials.Transport = { _ in throw URLError(.notConnectedToInternet) },
+) -> SpotifyCredentials {
+    SpotifyCredentials(
+        accessToken: { "at" },
+        clientToken: { clientToken },
+        invalidateClientToken: invalidateClientToken,
+        transport: transport,
+        pause: pause,
+    )
+}
+
 // MARK: - Fixtures
 
 /// Anchors `Bundle(for:)` to the test bundle, which carries `Fixtures/`.
