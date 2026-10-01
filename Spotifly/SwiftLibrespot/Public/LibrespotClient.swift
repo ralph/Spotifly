@@ -1389,14 +1389,20 @@ public actor LibrespotClient {
     /// leaves them out.
     nonisolated static func takeOverList(of remote: PlayerState) -> (tracks: [String], index: Int, queued: [String])? {
         guard let current = remote.track?.uri, !current.isEmpty else { return nil }
-        let before = remote.prevTracks.reversed().prefix { $0.uri != "spotify:delimiter" }.reversed()
+        let before = remote.prevTracks.reversed().prefix { $0.uri != PlaybackQueue.delimiterUri }.reversed()
             .filter { isShown($0) && $0.provider != "queue" }.map(\.uri)
-        let ahead = remote.nextTracks.prefix { $0.uri != PlaybackQueue.delimiterUri }.filter(isShown)
+        let ahead = thisRound(of: remote.nextTracks).filter(isShown)
         return (
             before + [current] + ahead.filter { $0.provider != "queue" }.map(\.uri),
             before.count,
             ahead.filter { $0.provider == "queue" }.map(\.uri),
         )
+    }
+
+    /// The rows ahead up to the first `spotify:delimiter`, after which a device under repeat
+    /// lists its context again; the take-over and the mirror read one round the same way.
+    private nonisolated static func thisRound(of rows: [ProvidedTrack]) -> ArraySlice<ProvidedTrack> {
+        rows.prefix { $0.uri != PlaybackQueue.delimiterUri }
     }
 
     /// Whether the sending device shows a row in its own queue; see `mirroredQueue(of:)`. Its
@@ -1414,15 +1420,20 @@ public actor LibrespotClient {
     /// Rows the sender marks hidden are left out, as its own queue leaves them out. After a
     /// context's last track the web player sends a `spotify:delimiter` row, then the context
     /// again as its next iteration, for repeat to play: with repeat off every row from the
-    /// delimiter on is `hidden`, with repeat on only the delimiters are. Shown, they listed an
-    /// album again after its last track.
+    /// delimiter on is `hidden`, with repeat on only the delimiters are. So the context's rows
+    /// after the first delimiter are left out, hidden or not: one round, as this Mac's own queue
+    /// lists (`PlaybackQueue.Rounds.one`). Rows after it that are not the context stay, since a
+    /// device may list autoplay there (librespot does; unmeasured).
     nonisolated static func mirroredQueue(of remote: PlayerState) -> QueueState {
         // Proto3: a row without a uid has "".
         let item: (ProvidedTrack) -> QueueItem = { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) }
+        let round = thisRound(of: remote.nextTracks)
+        let beyond = remote.nextTracks.dropFirst(round.count).filter { $0.provider != "context" && $0.uri != PlaybackQueue.delimiterUri }
+        let ahead = round + beyond
         return QueueState(
             contextUri: remote.contextUri,
             currentTrack: remote.track.map(item),
-            nextTracks: remote.nextTracks.filter(isShown).map(item),
+            nextTracks: ahead.filter(isShown).map(item),
             // In play order, as the cluster keeps them and the local queue
             // publishes them.
             previousTracks: remote.prevTracks.filter(isShown).map(item),

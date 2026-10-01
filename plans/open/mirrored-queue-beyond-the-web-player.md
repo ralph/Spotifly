@@ -2,8 +2,9 @@
 
 Status: **Open**, in part. Next on a context's last track, this Mac's own report of the next
 round under repeat, and the take-over of a bare list are done and seen, the last two on a phone
-(2026-10-01); see Progress. What is left needs autoplay on, a device that names a reason not to
-skip next, or librespot as the other device. From the altitude review of
+(2026-10-01); see Progress. The mirror lists one round under repeat, seen with the web player
+(2026-10-01). What is left needs autoplay on, a device that names a reason not to skip next,
+or librespot as the other device. From the altitude review of
 `plans/done/mirrored-queue-runs-past-the-context.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`mirroredQueue`, the take-over
 of a mirrored bare list), `Spotifly/ViewModels/PlaybackViewModel.swift` (`hasNext`),
@@ -35,10 +36,9 @@ a device that refuses Next, and the next round of another device's context.
 - **Other devices' rows.** librespot, as the other device, fills autoplay after a delimiter
   "to only display the current context" (`connect/src/state/tracks.rs`), and those autoplay
   rows may not be hidden. A phone's rows were not logged either; only what its queue showed.
-- **The next round of another device's context.** The mirror lists it where that device does
-  not hide it, as `MirroredQueueTests` has it, while this Mac's own queue lists one round, as the
-  web player's queue panel does. The two differ; whether the mirror should stop at the first
-  delimiter, as the take-over now does, is not decided.
+- **The next round of another device's context:** done, one round under repeat; see Progress.
+  The mirror listed it where that device does not hide it, while this Mac's own queue lists one
+  round, as the web player's queue panel does.
 - **This Mac's own report:** done; see Progress. `PlaybackQueue.upcoming()` stopped at the end
   of the context, even with repeat on, so other devices were shown no next iteration for the
   Mac, where librespot reports a delimiter and the next iteration.
@@ -129,4 +129,16 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
     with repeat on, so its queue panel could not show the Mac's either.
   - **Seen on a phone** (2026-10-01, by hand): on an album's last track with repeat on, the
     phone's queue listed the album again after it, and a track tapped there played on the Mac.
-
+- **One round in the mirror under repeat** (2026-10-01).
+  - `mirroredQueue(of:)` leaves out the context's rows after the first `spotify:delimiter`,
+    hidden or not, as the take-over already cuts there (`thisRound(of:)`), and as this Mac's own
+    queue (`PlaybackQueue.Rounds.one`) and the web player's queue panel list. Rows after it that
+    are not the context stay, since a device with autoplay on may list autoplay there
+    (librespot does), which is unmeasured. It reads the rows, not the repeat option, so a
+    device's repeat-one needs no rule of its own.
+  - **Seen** with a throwaway log, the web player playing "Not Bad for New Jersey" from its
+    first track: with repeat on it sent 80 next rows, 74 shown and 6 delimiters, and the mirror
+    listed 10, the rest of the album, where it listed 74. With repeat off it sent the same 80,
+    10 shown, and the mirror listed 10.
+  - A phone's queue lists the next round (seen 2026-10-01), so the mirror now differs from a
+    phone's own queue, and agrees with the Mac's and the web player's.
