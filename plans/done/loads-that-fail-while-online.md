@@ -64,7 +64,10 @@ network at all counts as loading, and waits for the network's return rather than
 `AsyncImage`'s request waits for a connection that is gone, so its phase stayed empty and
 `Artwork` spun for as long as nothing could load: found by hand while testing this. `NetworkMonitor`
 now publishes whether the path is usable (`isOnline`), and `Artwork` shows the same glyph
-placeholder as for a track without artwork while it is not. The network's return asks again, as
+placeholder as for a track without artwork while it is not, and so does the now-playing bar's
+cover, the one artwork drawn outside `Artwork`. The other spinners stay: a page's load fails at
+once offline and shows its error, a list's next page turns into its error, and the reconnect and
+authorize spinners last only as long as their action. The network's return asks again, as
 before, so the cover replaces the placeholder by itself. No warning sign: the page says it is
 offline already, and one on every cover of a list would be noise.
 
@@ -90,8 +93,10 @@ a spinner while a load runs, so a timer there would start over at its first paus
 - [x] Build, 482 unit tests and the lint.
 - [x] `NetworkMonitor.isOnline` follows the path (`NetworkMonitorTests`); 511 unit tests, the
       lint, and a build without warnings in the app's own code.
-- [ ] The offline placeholder by hand: with Wi-Fi off, an album's cover that had not loaded shows
-      the grey placeholder, not a spinner, and the cover comes back with Wi-Fi on.
+- [x] The offline placeholder by hand (2026-10-01): with Wi-Fi off, an album's cover that had
+      not loaded showed the grey placeholder, not a spinner, and came back with Wi-Fi on.
+- [ ] The bar's cover offline: a track that starts while the network is away (Next onto a
+      fetched-ahead track) shows the bar's placeholder, and its cover comes with the network.
 - [x] Artwork, in a throwaway test-host probe: `RetryingAsyncImage` rendered against a local
       server that answers a path's first request with a 500. Its phases went `empty`, `error`
       at 0.0 s, then `empty` and `image` at 5.1 s, and the server saw two requests in the nine
