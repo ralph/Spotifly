@@ -31,11 +31,10 @@ public actor LibrespotClient {
     private var spclient: SPClient?
     private var audioPipeline: AudioPipeline?
 
-    /// Produces valid bearer tokens for HTTP endpoints (dealer, spclient,
-    /// Web API fallbacks). Injected by the facade, which binds it to the
-    /// app's keymaster grant.
-    private var tokenProvider: (@Sendable () async throws -> String)?
-    private var clientTokenProvider: (@Sendable () async throws -> String)?
+    /// What the HTTP requests carry (dealer, spclient), the bearer for a token
+    /// login among it. Injected by the facade, which binds it to the app's
+    /// keymaster grant.
+    private var httpCredentials: SpotifyCredentials?
 
     /// The account the session plays as.
     private var usernameProvider: (@Sendable () async -> String?)?
@@ -138,16 +137,14 @@ public actor LibrespotClient {
     /// registration, and the audio pipeline.
     ///
     /// Credentials are resolved inside: a previously captured reusable login
-    /// comes first, falling back to a fresh token from the provider. A
+    /// comes first, falling back to a fresh bearer from `httpCredentials`. A
     /// successful token login stores its reusable credentials for next time.
-    public func initialize(
-        tokenProvider provider: @escaping @Sendable () async throws -> String,
-        clientTokenProvider: (@Sendable () async throws -> String)? = nil,
+    func initialize(
+        httpCredentials: SpotifyCredentials,
         usernameProvider: @escaping @Sendable () async -> String?,
         contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])? = nil,
     ) async throws {
-        tokenProvider = provider
-        self.clientTokenProvider = clientTokenProvider
+        self.httpCredentials = httpCredentials
         self.usernameProvider = usernameProvider
         self.contextRowUids = contextRowUids
         shuttingDown = false
@@ -170,12 +167,7 @@ public actor LibrespotClient {
 
         let welcome: APWelcome
         do {
-            welcome = try await newSession.connect(credentials: credentials) {
-                try await provider()
-            } clientTokenProvider: { [clientTokenProvider] in
-                guard let clientTokenProvider else { throw LibrespotError.notInitialized }
-                return try await clientTokenProvider()
-            }
+            welcome = try await newSession.connect(credentials: credentials, signing: httpCredentials)
         } catch LibrespotError.premiumRequired {
             // A logout that landed meanwhile has moved on to the next account, which this
             // must not be said of.
@@ -240,10 +232,10 @@ public actor LibrespotClient {
             return .stored(username: stored.username, authData: stored.authData)
         }
 
-        guard let tokenProvider else {
+        guard let httpCredentials else {
             throw LibrespotError.notInitialized
         }
-        let token = try await tokenProvider()
+        let token = try await httpCredentials.accessToken()
         guard let username = await usernameProvider?(), !username.isEmpty else {
             throw LibrespotError.authenticationFailed("No account name available for streaming login")
         }
@@ -349,19 +341,14 @@ public actor LibrespotClient {
     private func runRecovery() async {
         defer { flags.withLock { $0.recovering = false } }
         guard !shuttingDown else { return }
-        guard let session, let credentials = await session.currentCredentials, let tokenProvider else { return }
+        guard let session, let credentials = await session.currentCredentials, let httpCredentials else { return }
 
         // What to come back to, read before reconnecting: the new session's
         // first cluster can arrive while it is still being set up.
         let was = localState
 
         do {
-            _ = try await session.connect(credentials: credentials) { [tokenProvider] in
-                try await tokenProvider()
-            } clientTokenProvider: { [clientTokenProvider] in
-                guard let clientTokenProvider else { throw LibrespotError.notInitialized }
-                return try await clientTokenProvider()
-            }
+            _ = try await session.connect(credentials: credentials, signing: httpCredentials)
 
             await attachTransport()
 
@@ -395,15 +382,11 @@ public actor LibrespotClient {
     /// keeps both: neither holds the socket, and the pipeline asks the session
     /// for it each time it needs an audio key.
     private func attachTransport() async {
-        guard let tokenProvider, let session else { return }
+        guard let httpCredentials, let session else { return }
 
         if spclient == nil {
             spclient = await SPClient(
-                tokenProvider: { [tokenProvider] in try await tokenProvider() },
-                clientTokenProvider: { [clientTokenProvider] in
-                    guard let clientTokenProvider else { throw LibrespotError.notInitialized }
-                    return try await clientTokenProvider()
-                },
+                credentials: httpCredentials,
                 spclientHost: session.spclientHost,
                 deviceId: deviceInfo.deviceId,
             )

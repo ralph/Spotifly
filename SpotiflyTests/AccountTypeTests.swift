@@ -45,7 +45,7 @@ struct AccountTypeTests {
         let controller = SpircController(
             deviceInfo: DeviceInfo(deviceId: deviceId, deviceName: "Spotifly", supportsPlayback: false),
             accesspoint: Accesspoint(endpoint: "127.0.0.1:1"),
-            dealerConnection: DealerConnection(endpoint: "127.0.0.1:1", tokenProvider: { "" }, spclientHost: "", deviceId: deviceId),
+            dealerConnection: DealerConnection(endpoint: "127.0.0.1:1", credentials: spotifyCredentials(), spclientHost: "", deviceId: deviceId),
         )
         let device = await controller.buildDevice().deviceInfo
 

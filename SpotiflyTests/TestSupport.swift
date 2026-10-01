@@ -145,20 +145,21 @@ func httpResponse(_ status: Int, url: URL = PartnerAPI.endpoint) -> HTTPURLRespo
     HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
 }
 
-/// A `PartnerAPI` answered by `transport` rather than by the network.
+/// Credentials answered by `transport` rather than by the network. Its default fails every
+/// request, for a test that sends none.
 ///
 /// `invalidateClientToken` is left at the production default unless a test passes one, so a
 /// test that is not about the client token behaves exactly as the app does.
 ///
 /// A read retried after a failure that may pass does not wait, unless `pause` is given.
-func partnerAPI(
+func spotifyCredentials(
     accessToken: String = "at",
     clientToken: String = "ct",
     invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
     pause: @escaping SpotifyCredentials.Pause = { _ in },
-    transport: @escaping PartnerAPI.Transport,
-) -> PartnerAPI {
-    PartnerAPI(
+    transport: @escaping SpotifyCredentials.Transport = { _ in throw URLError(.notConnectedToInternet) },
+) -> SpotifyCredentials {
+    SpotifyCredentials(
         accessToken: { accessToken },
         clientToken: { clientToken },
         invalidateClientToken: invalidateClientToken,
@@ -167,21 +168,30 @@ func partnerAPI(
     )
 }
 
-/// The same for the REST half.
-func spclientAPI(
+/// A `PartnerAPI` answered by `transport`; see `spotifyCredentials`.
+func partnerAPI(
     accessToken: String = "at",
     clientToken: String = "ct",
     invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
     pause: @escaping SpotifyCredentials.Pause = { _ in },
+    transport: @escaping PartnerAPI.Transport,
+) -> PartnerAPI {
+    PartnerAPI(credentials: spotifyCredentials(
+        accessToken: accessToken,
+        clientToken: clientToken,
+        invalidateClientToken: invalidateClientToken,
+        pause: pause,
+        transport: transport,
+    ))
+}
+
+/// The same for the REST half.
+func spclientAPI(
+    invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
+    pause: @escaping SpotifyCredentials.Pause = { _ in },
     transport: @escaping SpclientAPI.Transport,
 ) -> SpclientAPI {
-    SpclientAPI(
-        accessToken: { accessToken },
-        clientToken: { clientToken },
-        invalidateClientToken: invalidateClientToken,
-        transport: transport,
-        pause: pause,
-    )
+    SpclientAPI(credentials: spotifyCredentials(invalidateClientToken: invalidateClientToken, pause: pause, transport: transport))
 }
 
 // MARK: - Fixtures
