@@ -45,20 +45,20 @@ struct NowPlayingBarView: View {
     }
 
     // Fixed dimensions for the now playing bar (in points)
-    private let barWidth: CGFloat = 700
-    private let barHeight: CGFloat = 60
+    private static let barWidth: CGFloat = 700
+    private static let barHeight: CGFloat = 60
+    private static let barBottomPadding: CGFloat = 20
 
-    /// The room a scrolling page leaves under its end, which the bar floats over: the bar's
-    /// height, the 20 points under it, and 20 to spare.
-    static let contentClearance: CGFloat = 100
+    /// The room a scrolling page leaves under its end, which the bar floats over, with 20 to spare.
+    static let contentClearance = barHeight + barBottomPadding + 20
 
     var body: some View {
         playerLayout
-            .frame(width: windowState.isMiniPlayerMode ? nil : barWidth, height: windowState.isMiniPlayerMode ? nil : barHeight)
+            .frame(width: windowState.isMiniPlayerMode ? nil : Self.barWidth, height: windowState.isMiniPlayerMode ? nil : Self.barHeight)
             .frame(maxWidth: windowState.isMiniPlayerMode ? .infinity : nil, maxHeight: windowState.isMiniPlayerMode ? .infinity : nil)
             .modifier(NowPlayingBarBackground(isMiniPlayerMode: windowState.isMiniPlayerMode))
             .padding([.leading, .trailing], windowState.isMiniPlayerMode ? 0 : 40)
-            .padding([.bottom], windowState.isMiniPlayerMode ? 0 : 20)
+            .padding([.bottom], windowState.isMiniPlayerMode ? 0 : Self.barBottomPadding)
             .newPlaylistPrompt(
                 isPresented: $showNewPlaylistDialog,
                 trackId: currentTrack?.id,
