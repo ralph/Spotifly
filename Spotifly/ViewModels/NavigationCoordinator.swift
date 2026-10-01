@@ -130,7 +130,7 @@ final class NavigationCoordinator {
     }
 
     func navigateToSearchResults(query: String) {
-        guard store?.searchResults(for: query) != nil else { return }
+        guard store?.canShowSearch(for: query) == true else { return }
         navigate(to: Route(section: .searchResults, query: query))
     }
 
@@ -405,7 +405,7 @@ final class NavigationCoordinator {
 
     private func isViewable(_ route: Route) -> Bool {
         if route.section == .searchResults {
-            guard let query = route.query, store?.searchResults(for: query) != nil else { return false }
+            guard let query = route.query, store?.canShowSearch(for: query) == true else { return false }
         }
 
         if let selection = route.selection, store?.deletedEntitySelections.contains(selection) == true {
