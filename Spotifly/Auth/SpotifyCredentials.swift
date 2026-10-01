@@ -106,11 +106,10 @@ nonisolated struct SpotifyCredentials: Sendable {
     /// fortnight Spotify says it is good for, so a token refused before then would fail every
     /// request until the app is relaunched.
     ///
-    /// - **The header** is Spotify naming the client token as the fault. A token it would not
-    ///   take was answered `400` with `client-token-error: INVALID_CLIENTTOKEN` and an empty body,
-    ///   by the state report, the track metadata, the CDN url and the context resolver alike
-    ///   (measured 2026-10-01, `plans/done/refused-client-token-answers-400.md`). So the status
-    ///   is not what tells: a 400 is also a bad request, which asking again would not mend.
+    /// - **A `client-token-error` header** on a failure is Spotify naming the client token as the
+    ///   fault: a token it would not take was answered 400 with it
+    ///   (`plans/done/refused-client-token-answers-400.md`). A 400 without it is a bad request,
+    ///   which asking again would not mend.
     /// - **A 401** can be either credential. The bearer refreshes itself, so this costs one
     ///   wasted retry at worst.
     ///
@@ -121,16 +120,18 @@ nonisolated struct SpotifyCredentials: Sendable {
         _ attempt: () async throws -> Attempt,
     ) async throws -> (body: Data, status: Int) {
         let sent = try await attempt()
-        guard sent.status == 401 || sent.clientTokenError != nil else { return (sent.body, sent.status) }
-        if let error = sent.clientTokenError {
-            debugLog("SpotifyCredentials", "HTTP \(sent.status), client token refused (\(error)); asking again with a new one")
-        }
+        let refused = sent.status == 401 || (sent.clientTokenError != nil && !(200 ..< 300).contains(sent.status))
+        guard refused else { return (sent.body, sent.status) }
+        debugLog("SpotifyCredentials", "HTTP \(sent.status)\(sent.clientTokenError.map { " (\($0))" } ?? ""); asking again with a new client token")
 
         if let rejected = sent.clientToken {
             await invalidateClientToken(rejected)
         }
 
         let retried = try await attempt()
+        if let error = retried.clientTokenError, !(200 ..< 300).contains(retried.status) {
+            debugLog("SpotifyCredentials", "HTTP \(retried.status) (\(error)) for the new client token too")
+        }
         return (retried.body, retried.status)
     }
 

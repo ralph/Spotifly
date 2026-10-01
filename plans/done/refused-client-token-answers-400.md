@@ -41,7 +41,13 @@ help: none of the 70 it loaded names `client-token-error` or `CLIENTTOKEN`.
 from the response into the `Attempt`, and `retryingRefusedToken` drops the token the request
 carried and asks once more, with a fresh one, when the header is there, as it does after a 401.
 A 400 without it is a bad request, which asking again would not mend, so it is not retried.
-Every client goes through it: the pages, playback's reads and the dealer's state report.
+Only a failure counts: a header on a 2xx would not drop a token that worked. Every client goes
+through it: the pages, playback's reads and the dealer's state report.
+
+**Not done: a 401 still drops the client token.** A 401 can be either credential, and the only
+one recorded here was the bearer's. Dropping the bearer instead, when no header names the
+client token, would need `KeymasterSession` to drop a refused bearer, which it cannot yet. Left
+until a 401 is seen that is not the bearer's expiry.
 
 **Not done: renewing the token sooner.** The granted token carries `refresh_after_seconds`
 (field 3) besides `expires_after_seconds` (field 2): 1,209,600 and 1,216,800 when measured, two
@@ -52,15 +58,15 @@ expiry, and renewing two hours earlier would not shorten the life of a revoked o
 
 ## Verification
 
-- [x] Unit tests (`SPClientRequestTests`, 3 more): a 400 with `client-token-error` drops the
-      client token it carried and the CDN url is asked again; a 400 without it is
-      `requestFailed(…, 400)` after one request, with nothing dropped; a write (`send`) whose
-      token is refused is asked again.
-- [x] Build, 520 unit tests and the lint.
+- [x] Unit tests (`SPClientRequestTests`): the refused-token test runs over a 401 and over a
+      400 with `client-token-error`, each dropping the client token it carried and asking the
+      CDN url again; a 400 without it is `requestFailed(…, 400)` after one request, with
+      nothing dropped; the write table has a row for the refusal, asked again too.
+- [x] Build, 518 unit tests and the lint.
 - [x] Live (2026-10-01), a throwaway build that changed the client token on the first request
       to each path, with `SPOTIFLY_DEBUG_AUTOPLAY=1` and two Nexts: pathfinder's first query, the
       first state report, the context resolve, the first track metadata and each CDN url were
-      answered 400 with `INVALID_CLIENTTOKEN`, logged "client token refused; asking again with a
-      new one", and answered 200 on the second attempt. All three tracks played.
+      answered 400 with `INVALID_CLIENTTOKEN`, logged as refused, and answered 200 on the second
+      attempt. All three tracks played.
 - [ ] A token Spotify revoked or let expire: not at hand. If its refusal carries no
       `client-token-error`, and is no 401, it still fails until the app relaunches.

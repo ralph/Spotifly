@@ -198,7 +198,7 @@ struct ClientTokenProviderTests {
     }
 
     @Test func `invalidating forces a fresh token even though the old one had time left`() async throws {
-        // What a 401 means: the token is dead before its stated expiry.
+        // What a refusal means: the token is dead before its stated expiry.
         let counter = FetchCounter()
         let expiry = now.addingTimeInterval(3600)
         let provider = ClientTokenProvider(deviceIdStore: store, fetcher: { _ in counter.fetch(expiresAt: expiry) })
