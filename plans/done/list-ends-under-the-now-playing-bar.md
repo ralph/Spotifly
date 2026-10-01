@@ -1,6 +1,6 @@
 # The end of a list sits under the now-playing bar
 
-Status: **Done** (2026-10-01). Seen by hand on 2026-10-01, testing `plans/done/list-failures-the-retry-cannot-see.md`.
+Status: **Done** (2026-10-01), seen in the running app; see Verification. Seen by hand on 2026-10-01, testing `plans/done/list-failures-the-retry-cannot-see.md`.
 Components: `Spotifly/Views/LoggedInView.swift` (the bar's overlay, and now the room for it),
 `Spotifly/Views/NowPlayingBarView.swift` (`contentClearance`), `Spotifly/Views/SpeakersView.swift`,
 and the five views that each left room themselves
@@ -52,8 +52,11 @@ the bar too, as the queue's and start page's already did.
 
 - Unit tests and the lint pass.
 - The probes above, for each mechanism.
-- By hand: scroll each list to its end with the bar showing a track: Favorites, Playlists,
-  Albums, Artists, search results and search's all tracks, the profile, Speakers, the queue, the
-  start page and an album, artist and playlist page. The last row is above the bar and can be
-  clicked. Offline, the end of Favorites with its Try again is above the bar. The shelves on
-  the start page and in search are no taller than before.
+- Seen in the running app, 2026-10-01, with a track in the bar: Favorites scrolled to its last
+  row (321), and at the end of its first page the load-more spinner, both above the bar with
+  room to spare; the Playlists, Albums and Artists lists to their ends, and in the other column
+  a playlist's, an album's and an artist's page to theirs; the queue; the start page to its
+  last shelf, its shelves no taller than before; the profile.
+- Not seen: Speakers, whose inset only went from 80 to the shared 100; search's two views,
+  whose field takes no Return from the background tools used; and Favorites offline. Its error
+  and Try again take the load-more spinner's place, which ended above the bar.
