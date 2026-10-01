@@ -1,8 +1,9 @@
 # Queue rows have no identity, so every jump finds its row again by uri
 
-Status: **In progress.** Read from the code in review. The history and part 1 are done (#105,
-#94), and part 1 was seen in the running app on 2026-09-30; part 2 is open, and smaller than it
-was; see Progress.
+Status: **Done** 2026-10-01. The history and part 1 (#105, #94), seen in the running app on
+2026-09-30; part 2, the rows' uids, built and seen against the web player on 2026-10-01. A
+queued copy of an album's track is still named by uri, which needs a phone to settle:
+`plans/open/queued-copy-of-an-album-track.md`. See Progress.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`loadAndPlay`, `publishQueue`),
 `Spotifly/Store/AppStore.swift` (`Queue.reconciled`), `Spotifly/Store/Services/QueueService.swift`,
@@ -136,3 +137,58 @@ Not defined yet.
     Inventing uids for the rows other devices see risks confusing a
     receiving device's own matching (`context.rs` copies a transferred uid onto its context
     track), so measure first.
+- **Part 2, built** (2026-10-01). Every row the queue lists can carry a uid, and the queue,
+  the cluster and a jump all use it:
+  - **Queued tracks are named `q0`, `q1` and on** (`PlaybackQueue.queued`, rows as `QueueItem`),
+    as librespot's `add_to_queue` names them, and keep the name while they play. The count goes
+    on across the queue's life, so no two rows of one queue share one. A handover's or a
+    `set_queue`'s rows are named afresh, as librespot's `set_next_tracks` names them.
+  - **Context rows carry the resolver's uids**, kept beside `contextTracks` as `contextUids`.
+    A playlist's rows have them; an album's do not, unless the handover fetched pathfinder's
+    (#116), and none is invented for them, which the plan warned could confuse a receiving
+    device's own matching. `start` returns the uids aligned with the tracks, with none for a
+    track put in, so a relinked or missing track no longer shifts the uids after it.
+  - **Reported**: the current track, the next tracks and the previous tracks go out with their
+    uids (`SpircPlayerState.trackUid`, the rows' `uid`), as librespot reports them.
+  - **A `skip_next` naming a uid** goes to that row, where a row ahead has that uid and that
+    track, and otherwise falls back to the uri, as before. (go-librespot takes the first row
+    whose uid *or* uri matches, `ContextTrackComparator`.) For a playlist, that is the case the
+    provider could not settle: a track queued and further on in the context. For an album,
+    whose rows have no uid, it settles nothing until the measurement below says what the web
+    player sends for a row without one.
+  - **The queue view's rows carry them too** (`QueueItem.uid`), next and previous, so a
+    double-click on this Mac's queue names its row by uid, and `stepBack(toRecent:uri:uid:)`
+    finds a previous row as `skip(toUpcoming:uri:uid:)` finds a next one. A context with
+    episodes, whose rows the store drops, no longer shifts which row that is, wherever the rows
+    have uids. The mirrored previous rows keep the cluster's uids too.
+  - **The rewind at the end of a context keeps its rows** (`PlaybackQueue.rewind(to:)`), so its
+    uids are not lost or passed back in by the client.
+  - **Not done:**
+    - The parallel `tracks` and `uids` of `start` and `ResolvedContext` did not become one list
+      of rows; `start` keeps them aligned instead. A list of rows would touch every reader of
+      `contextTracks` and the resolver for no change in behaviour.
+    - The three `nearestIndex` re-finds the Solution expected to go stay, as the fallback for
+      a row without a uid: `start`, `skip(toUpcoming:)` and `stepBack(toRecent:)`.
+    - An album's rows go by uri, unless their pathfinder uids were fetched (#116), and those
+      are keyed by uri, so an album's repeated track would share one. Treating a missing uid as
+      a value, nil matching nil, would settle the queued-and-in-the-album case without
+      inventing or fetching anything, if the web player turns out to send a uid only for rows
+      that have one.
+  - **Measured** 2026-10-01, this build beside the web player, Liked Songs playing on the Mac
+    from row 199 and row 202, "Drag My Body", queued as well:
+    - A double-click on the playlist's copy in the web player's queue panel sent
+      `next(trackUri: …0bEwPQwwgFyCvsqLkVOWhh, uid: "e5df41f3708dea21f113")`, the row's uid
+      from the resolver. The Mac played row 202, three tracks went into the history, and the
+      queued copy stayed queued. Before, the same click played the queued copy.
+    - A double-click on the queued copy sent `uid: "q0"`, and the Mac played it as queued.
+    - Handed to the web player while the queued copy played, the web player went on with row
+      203 after it; handed back, the Mac took the queued copy (under its other, relinked id,
+      `3yZJDgC3…`, which the web player's queue held) over as queued, with the context
+      resuming at 203 by the transfer's uid. Handed to the web player mid-playlist after a Next,
+      it went on with the right row too.
+    - On this Mac's own queue, a double-click on a next row and on a played row went to those
+      rows.
+    - **An album's row has no uid, and the web player sends none for it**: a double-click on a
+      row of "Fashion Nugget" in its queue panel sent `uid: nil`. So a track queued and
+      further on in an album is still taken from the queue when its album copy is clicked; see
+      the open plan named in Status.

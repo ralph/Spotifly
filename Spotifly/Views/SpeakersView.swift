@@ -135,8 +135,9 @@ struct SpeakersView: View {
                 }
             }
             .listStyle(.inset)
+            // A `List` takes no content margins on macOS, so it leaves the bar's room itself.
             .safeAreaInset(edge: .bottom) {
-                Spacer().frame(height: 80)
+                Spacer().frame(height: NowPlayingBarView.contentClearance)
             }
         }
     }

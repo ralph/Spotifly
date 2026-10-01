@@ -219,7 +219,6 @@ struct PlaylistDetailView: View {
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(.rect(cornerRadius: 8))
         .padding(.horizontal)
-        .padding(.bottom, 100)
     }
 
     @ViewBuilder

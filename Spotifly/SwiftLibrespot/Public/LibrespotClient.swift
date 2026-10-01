@@ -456,8 +456,7 @@ public actor LibrespotClient {
         let uri = Self.normalizedUri(uriOrUrl)
 
         if uri.contains("spotify:track:") {
-            setQueue(contextUri: uri, tracks: [uri], startIndex: 0)
-            try await loadCurrentTrack(positionMs: positionMs, paused: paused)
+            try await play(contextUri: uri, tracks: [uri], startIndex: 0, positionMs: positionMs, paused: paused)
             return
         }
 
@@ -479,21 +478,23 @@ public actor LibrespotClient {
         let uriPlaces = resumingAtUid == nil && startingAtUri.map(context.tracks.contains) != false
         if let named = resumingAtUid ?? startingAtUid, !uriPlaces, !uids.contains(named), let contextRowUids {
             let listed = await contextRowUids(uri)
-            uids = context.tracks.map { listed[$0] }
+            // Keyed by uri, so a track the album lists twice has one uid: it names the first
+            // copy only, or the queue would report two rows under one uid.
+            var seen = Set<String>()
+            uids = context.tracks.map { seen.insert($0).inserted ? listed[$0] : nil }
         }
 
         if let resumingAtUid, let queued = startingAtUri,
            let start = PlaybackQueue.start(in: context.tracks, queued: queued, resumingAt: resumingAtUid, uids: uids)
         {
-            setQueue(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name, playingQueued: start.queued)
+            try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, name: context.name, playingQueued: start.queued, positionMs: positionMs, paused: paused)
         } else {
             // No track named, as by Play on an album or a playlist: its first that plays.
             let start = trackIndex == nil && startingAtUri == nil
-                ? (tracks: context.tracks, index: firstPlayable(in: context.tracks))
+                ? (tracks: context.tracks, uids: uids, index: firstPlayable(in: context.tracks))
                 : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: uids)
-            setQueue(contextUri: uri, tracks: start.tracks, startIndex: start.index, name: context.name)
+            try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, name: context.name, positionMs: positionMs, paused: paused)
         }
-        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
     /// Plays a list of tracks that no album or playlist names, starting where
@@ -518,8 +519,7 @@ public actor LibrespotClient {
         // No track named, as by Play Tracks under search: the list's first that plays.
         let index = trackIndex == nil && startingAtUri == nil ? firstPlayable(in: start.tracks) : start.index
         let contextUri = start.tracks.count == 1 && first.contains("spotify:track:") ? first : ""
-        setQueue(contextUri: contextUri, tracks: start.tracks, startIndex: index)
-        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
+        try await play(contextUri: contextUri, tracks: start.tracks, uids: start.uids, startIndex: index, positionMs: positionMs, paused: paused)
     }
 
     /// Song radio for a seed track, resolved through its station context.
@@ -592,15 +592,15 @@ public actor LibrespotClient {
         }
     }
 
-    /// Plays `uri` from the next tracks this client publishes, the copy
-    /// nearest `position`, without resolving the context again. See
-    /// `PlaybackQueue.skip(toUpcoming:uri:)`.
+    /// Plays `uri` from the next tracks this client publishes, the row `uid`
+    /// names, or else the copy nearest `position`, without resolving the context
+    /// again. See `PlaybackQueue.skip(toUpcoming:uri:uid:)`.
     ///
     /// Throws when the track is no longer listed: the caller has already moved
     /// the display to the start of a track, and only a failure takes that back.
-    public func skip(toNext position: Int?, uri: String) async throws {
+    public func skip(toNext position: Int?, uri: String, uid: String?) async throws {
         defer { publishQueue() }
-        guard let next = playbackQueue.skip(toUpcoming: position, uri: uri) else {
+        guard let next = playbackQueue.skip(toUpcoming: position, uri: uri, uid: uid) else {
             throw LibrespotError.trackNotFound("\(uri) is no longer in the queue")
         }
         try await loadAndPlay(next)
@@ -609,9 +609,9 @@ public actor LibrespotClient {
     /// Plays `uri` from the previous tracks this client publishes, as Previous
     /// would, pressed that many times. See `PlaybackQueue.stepBack(toRecent:uri:)`.
     /// Throws as `skip(toNext:uri:)` does.
-    public func skip(toPrevious index: Int, uri: String) async throws {
+    public func skip(toPrevious index: Int, uri: String, uid: String?) async throws {
         defer { publishQueue() }
-        guard let previous = playbackQueue.stepBack(toRecent: index, uri: uri) else {
+        guard let previous = playbackQueue.stepBack(toRecent: index, uri: uri, uid: uid) else {
             throw LibrespotError.trackNotFound("\(uri) is no longer in the queue")
         }
         try await loadAndPlay(previous)
@@ -802,15 +802,29 @@ public actor LibrespotClient {
 
     // MARK: - Queue Plumbing
 
+    /// Plays from a new context. The queue goes out with the track when the load announces it,
+    /// and is published again afterwards, as the skips do: announcing the next track any sooner
+    /// would cancel a fetched-ahead copy of this one.
+    ///
     /// - Parameter queued: a track to play as queued, after the context's start row.
-    private func setQueue(contextUri: String, tracks: [String], startIndex: Int, name: String? = nil, playingQueued queued: String? = nil) {
+    private func play(
+        contextUri: String,
+        tracks: [String],
+        uids: [String?] = [],
+        startIndex: Int,
+        name: String? = nil,
+        playingQueued queued: String? = nil,
+        positionMs: UInt64,
+        paused: Bool,
+    ) async throws {
         contextName = name
-        playbackQueue.setContext(uri: contextUri, tracks: tracks, startIndex: startIndex)
-        // Before the publish, so the row before it never shows as the one playing.
+        playbackQueue.setContext(uri: contextUri, tracks: tracks, uids: uids, startIndex: startIndex)
+        // Before the load, so the row before it never shows as the one playing.
         if let queued {
             playbackQueue.playQueued(queued)
         }
-        publishQueue()
+        defer { publishQueue() }
+        try await loadCurrentTrack(positionMs: positionMs, paused: paused)
     }
 
     private func loadCurrentTrack(positionMs: UInt64 = 0, paused: Bool = false) async throws {
@@ -821,8 +835,9 @@ public actor LibrespotClient {
     }
 
     /// Starts audio for a uri that is already the queue's current track, and
-    /// gives playback up if it cannot: the pipeline tore the previous track
-    /// down before fetching this one, so a failed load leaves nothing playing.
+    /// gives playback up if it cannot: the pipeline tears the previous track
+    /// down when it announces this one, or when this one fails before that, so
+    /// a failed load leaves nothing playing.
     ///
     /// Deliberately separate from `play`: advancing through an existing queue
     /// must not rebuild it.
@@ -836,8 +851,8 @@ public actor LibrespotClient {
         do {
             try await startTrack(uri, positionMs: positionMs, paused: paused)
         } catch is CancellationError {
-            // A newer load took over while this one waited, and has already
-            // published its own state; clearing it here would erase that.
+            // A newer load took over while this one waited, and publishes its
+            // own state; clearing it here would erase that.
             throw CancellationError()
         } catch {
             await playbackFailed(error)
@@ -845,7 +860,9 @@ public actor LibrespotClient {
         }
     }
 
-    /// One attempt at a track: the optimistic state, then the pipeline.
+    /// One attempt at a track. The bar and other devices hear of it when the pipeline announces
+    /// it, once its metadata has said Spotify has a file for it (`handlePipelineState`), so a
+    /// withheld track is passed over without ever being shown.
     ///
     /// Auto-advance calls this directly and gives up once, after its last
     /// attempt, so other devices do not see the Mac stop and start again
@@ -855,14 +872,6 @@ public actor LibrespotClient {
             throw LibrespotError.notInitialized
         }
 
-        // The optimistic state below must not carry the previous track's
-        // length; until metadata lands, zero is the honest answer.
-        knownDurationMs = 0
-        let position = UInt32(clamping: positionMs)
-        // With the queue that moved to it, in one snapshot. Published after the load, as it
-        // was, the store held the new track in the old lists for the whole wait.
-        publishPlaybackState(for: uri, playing: !paused, paused: paused, positionMs: Int64(position), queue: queueState)
-
         do {
             try await audioPipeline.playTrack(uri: uri, positionMs: positionMs, paused: paused)
         } catch {
@@ -871,8 +880,6 @@ public actor LibrespotClient {
             }
             throw error
         }
-
-        knownDurationMs = await audioPipeline.currentDurationMs
     }
 
     /// Auto-advance at end of track.
@@ -951,7 +958,7 @@ public actor LibrespotClient {
             return
         }
         debugLog("LibrespotClient", "End of the context; back to its first track, paused")
-        playbackQueue.setContext(uri: playbackQueue.contextUri, tracks: tracks, startIndex: firstPlayable(in: tracks))
+        playbackQueue.rewind(to: firstPlayable(in: tracks))
         // A failure is reported by `loadAndPlay`, and there is no caller to
         // throw it to.
         try? await loadCurrentTrack(paused: true)
@@ -960,7 +967,8 @@ public actor LibrespotClient {
     /// Publishes the queue, with the context it plays from, and tells the pipeline which
     /// track to fetch ahead.
     ///
-    /// A load publishes the queue itself, with its track; see `startTrack`. The fetch ahead
+    /// A load publishes the queue itself, with its track, when the pipeline announces it; see
+    /// `handlePipelineState`. The fetch ahead
     /// waits until the load is done: announcing the next track before it would cancel a
     /// fetched-ahead copy of the very track being loaded.
     private func publishQueue() {
@@ -974,9 +982,9 @@ public actor LibrespotClient {
     private var queueState: QueueState {
         QueueState(
             contextUri: playbackQueue.contextUri,
-            currentTrack: playbackQueue.currentUri.map { QueueItem(uri: $0, provider: playbackQueue.currentProvider) },
-            nextTracks: playbackQueue.upcoming().map { QueueItem(uri: $0.uri, provider: $0.provider) },
-            previousTracks: playbackQueue.recent().map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            currentTrack: playbackQueue.current,
+            nextTracks: playbackQueue.upcoming(),
+            previousTracks: playbackQueue.recent(),
             contextName: contextName,
         )
     }
@@ -1054,19 +1062,35 @@ public actor LibrespotClient {
 
     private func handlePipelineState(_ state: AudioPipeline.AudioPlaybackState) async {
         switch state {
-        case .idle, .loading:
-            break // end-of-track and stop own the nil transition, and a load publishes its own
+        case .idle:
+            break // end-of-track and stop own the nil transition
+
+        case let .loading(trackUri, positionMs, paused, durationMs):
+            // A newer start moved the queue on while this one's metadata was asked for, and it
+            // announces its own.
+            guard trackUri == playbackQueue.currentUri else { return }
+            // Its own length, or zero until the load has it: never the previous track's.
+            knownDurationMs = durationMs
+            // With the queue that moved to it, in one snapshot, so the store never holds the new
+            // track in the old lists.
+            publishPlaybackState(for: trackUri, playing: !paused, paused: paused, positionMs: Int64(clamping: positionMs), queue: queueState)
 
         case let .playing(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
+            let duration = await audioPipeline?.currentDurationMs ?? 0
             // Torn down or replaced while this waited: the track is no one's now. Or a skip
-            // started loading another while this waited, and published it with its queue.
+            // moved the queue on to another while this waited, which it announces.
             guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
-            publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position))
+            // Every load ends here or in `.paused`. A track that followed on without a gap is
+            // never `.loading`, so its length and its queue go out here too.
+            knownDurationMs = duration
+            publishPlaybackState(for: trackUri, playing: true, paused: false, positionMs: Int64(position), queue: queueState)
 
         case let .paused(trackUri):
             let position = await audioPipeline?.currentPositionMs() ?? 0
+            let duration = await audioPipeline?.currentDurationMs ?? 0
             guard !Task.isCancelled, trackUri == playbackQueue.currentUri else { return }
+            knownDurationMs = duration
             publishPlaybackState(for: trackUri, playing: false, paused: true, positionMs: Int64(position))
         }
 
@@ -1130,7 +1154,9 @@ public actor LibrespotClient {
             isPaused: current.isPaused,
             trackUri: current.trackUri.isEmpty ? nil : current.trackUri,
             positionMs: UInt64(max(0, current.positionMs)),
-            durationMs: UInt64(max(0, (audioPipeline?.currentDurationMs) ?? current.durationMs)),
+            // The state's own: the pipeline's is the previous track's while a new one loads, and
+            // went out as the new one's, which the web player then showed until a heartbeat.
+            durationMs: UInt64(max(0, current.durationMs)),
             shuffle: current.shuffle,
             repeatMode: current.repeatTrack ? .track : (current.repeatContext ? .context : .off),
             // The moment the position was read, not now: a republish of an
@@ -1140,6 +1166,7 @@ public actor LibrespotClient {
             contextUri: playbackQueue.contextUri,
             contextIndex: playbackQueue.contextPosition,
             trackProvider: playbackQueue.currentProvider,
+            trackUid: playbackQueue.current?.uid,
             nextTracks: playbackQueue.upcoming(),
             previousTracks: playbackQueue.recent(),
         )
@@ -1311,7 +1338,7 @@ public actor LibrespotClient {
             nextTracks: remote.nextTracks.filter(shown).map(item),
             // In play order, as the cluster keeps them and the local queue
             // publishes them.
-            previousTracks: remote.prevTracks.filter(shown).map { QueueItem(uri: $0.uri, provider: $0.provider) },
+            previousTracks: remote.prevTracks.filter(shown).map(item),
             contextName: remote.contextMetadata["context_description"].flatMap { $0.isEmpty ? nil : $0 },
         )
     }
@@ -1413,11 +1440,13 @@ public actor LibrespotClient {
         case let .seekTo(positionMs):
             try? await audioPipeline?.seek(positionMs: positionMs)
 
-        case let .next(trackUri):
-            // A queue row clicked on another device names its track, and the
-            // jump goes to its first copy ahead, as librespot's `handle_next`.
+        case let .next(trackUri, uid):
+            // A queue row clicked on another device names its track, and its uid where this
+            // device reported one, which names the row. Without one the jump goes to the
+            // track's first copy ahead, as librespot's `handle_next`. (go-librespot takes the
+            // first row whose uid or uri matches, `ContextTrackComparator`.)
             if let trackUri {
-                try? await skip(toNext: nil, uri: trackUri)
+                try? await skip(toNext: nil, uri: trackUri, uid: uid)
             } else {
                 try? await advanceUserInitiated()
             }
@@ -1519,7 +1548,7 @@ public actor LibrespotClient {
     private func publishPlaybackStateRefresh() async {
         guard let current = localState else { return }
         let position = await audioPipeline?.currentPositionMs() ?? UInt64(max(0, current.positionMs))
-        // A load that started while this waited has published its own state.
+        // A load announced while this waited has published its own state.
         guard localState?.trackUri == current.trackUri else { return }
         publishPlaybackState(
             for: current.trackUri,

@@ -113,8 +113,9 @@ public enum SpircCommand: Sendable {
     case pause
     case resume
     case seekTo(positionMs: UInt64)
-    /// `skip_next`, naming the track to skip to when a queue row was clicked.
-    case next(trackUri: String?)
+    /// `skip_next`, naming the track to skip to when a queue row was clicked, and its row's uid
+    /// where the row had one.
+    case next(trackUri: String?, uid: String?)
     case prev
     case setVolume(UInt32)
     case setShuffle(Bool)
