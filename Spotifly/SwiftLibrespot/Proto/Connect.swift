@@ -372,6 +372,9 @@ public nonisolated struct PlayerState: Sendable {
     public var sessionId: String = ""
     public var queueRevision: String = ""
     public var position: Int64 = 0
+    /// Whether the device says Next cannot be pressed: its `restrictions` (field 17) name a
+    /// `disallow_skipping_next_reason` (their field 7). Read, never written.
+    public var disallowsSkippingNext = false
 
     public init() {}
 
@@ -431,6 +434,7 @@ public nonisolated struct PlayerState: Sendable {
             case 14: state.isBuffering = field.bool
             case 15: state.isSystemInitiated = field.bool
             case 16: state.options = ContextPlayerOptions.parse(from: field.bytes)
+            case 17: state.disallowsSkippingNext = field.fields.contains { $0.number == 7 }
             case 19: state.prevTracks.append(ProvidedTrack.parse(from: field.bytes))
             case 20: state.nextTracks.append(ProvidedTrack.parse(from: field.bytes))
             case 21:

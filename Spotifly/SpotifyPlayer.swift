@@ -64,6 +64,9 @@ nonisolated struct PlaybackState: Equatable {
     let repeatContext: Bool
     /// Timestamp (ms since epoch) when positionMs was recorded - for computing current position
     let timestampMs: Int64
+    /// Whether Next goes anywhere. Always for this Mac, where Next on a context's last track
+    /// goes back to its first, paused; for another device, unless its `restrictions` say no.
+    var canSkipNext = true
 }
 
 /// Playback that went past a track, or stopped, over an error.

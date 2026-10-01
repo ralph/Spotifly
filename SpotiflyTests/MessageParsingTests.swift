@@ -164,6 +164,23 @@ struct ConnectMessageParsingTests {
         #expect(player.nextTracks.map(\.uri) == ["spotify:track:next"])
     }
 
+    /// Measured on the web player, 2026-10-01: an album's last track with repeat off names reasons
+    /// for other things, and none for Next.
+    @Test func `a reason not to skip next is read from the restrictions, and others are not one`() {
+        let other = PlayerState.parse(from: ProtobufWriter.message {
+            $0.message(field: 17) { restrictions in
+                restrictions.string(field: 2, "not_paused")
+                restrictions.string(field: 6, "no_prev_track")
+            }
+        })
+        let next = PlayerState.parse(from: ProtobufWriter.message {
+            $0.message(field: 17) { $0.string(field: 7, "no_next_track") }
+        })
+
+        #expect(!other.disallowsSkippingNext)
+        #expect(next.disallowsSkippingNext)
+    }
+
     @Test func `the context fields are read at player.proto's numbers`() {
         let data = ProtobufWriter.message {
             $0.string(field: 3, "context://spotify:album:abc") // context_url
