@@ -479,7 +479,10 @@ public actor LibrespotClient {
         let uriPlaces = resumingAtUid == nil && startingAtUri.map(context.tracks.contains) != false
         if let named = resumingAtUid ?? startingAtUid, !uriPlaces, !uids.contains(named), let contextRowUids {
             let listed = await contextRowUids(uri)
-            uids = context.tracks.map { listed[$0] }
+            // Keyed by uri, so a track the album lists twice has one uid: it names the first
+            // copy only, or the queue would report two rows under one uid.
+            var named = Set<String>()
+            uids = context.tracks.map { named.insert($0).inserted ? listed[$0] : nil }
         }
 
         if let resumingAtUid, let queued = startingAtUri,
