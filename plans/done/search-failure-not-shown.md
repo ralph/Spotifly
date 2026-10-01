@@ -46,6 +46,8 @@ results page, which says why in their place, with Try again.
       "Erneut versuchen", the sidebar's row selected; Try again sent the four searches and the
       results took the error's place. A real offline failure was not tried: that would mean
       switching the Mac's network off.
-- [ ] Emptying the field while the page shows: not seen. The accessibility press on the field's
-      clear button emptied it without reaching SwiftUI's binding, so the handler, unchanged by
-      this, did not run. Covered by the navigation test.
+- [x] Emptying the field while the page shows: not seen in my runs (the accessibility press on
+      the field's clear button did not reach SwiftUI's binding), but seen by hand, below.
+- [x] By hand, 2026-10-01, all passed: with Wi-Fi off a search opened the page with the offline
+      error and Try again; with Wi-Fi back the results came; emptying the field went to the
+      start page, and Back did not lead to the failed page.
