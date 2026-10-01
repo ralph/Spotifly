@@ -954,10 +954,9 @@ final class PlaybackViewModel {
         )
     }
 
-    /// Returns true if there are tracks in the queue after the current track
+    /// Whether Next goes anywhere; see `PlaybackState.canSkipNext`.
     var hasNext: Bool {
-        guard let store else { return false }
-        return !store.queue.nextTracks.isEmpty
+        currentTrackUri != nil && player.playback?.canSkipNext != false
     }
 
     /// Returns true if there are tracks before the current track or if we're past the start of the track
