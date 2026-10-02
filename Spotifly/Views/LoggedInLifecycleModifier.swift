@@ -14,13 +14,10 @@ struct LoggedInLifecycleModifier: ViewModifier {
     @Environment(PlayerModel.self) private var player
     @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(QueueService.self) private var queueService
-    @Environment(DeviceService.self) private var deviceService
     @Environment(HomeService.self) private var homeService
-    /// Only the debug hooks use it.
+    /// Only the debug hooks use these two.
+    @Environment(DeviceService.self) private var deviceService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-
-    /// Whether readiness has been lost since the last re-sync.
-    @State private var connectionDropped = false
 
     func body(content: Content) -> some View {
         content
@@ -35,7 +32,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // player is unobserved.
                 queueService.activate()
                 playbackViewModel.setStore(store)
-                playbackViewModel.setQueueService(queueService)
 
                 #if DEBUG
                     AppStore.current = store
@@ -49,7 +45,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 _ = await (profile, home)
 
                 await playbackViewModel.initializeIfNeeded()
-                queueService.hydrate()
 
                 #if DEBUG
                     // Headless test scaffolding: SPOTIFLY_DEBUG_AUTOPLAY=1 starts
@@ -191,6 +186,10 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // when that one then failed.
             .retryingWhenNetworkReturns(if: store.homeErrorMessage != nil) { await homeService.refresh() }
             .retryingWhenNetworkReturns(if: store.userProfile == nil) { await loadProfile() }
+            // And the queue's tracks, which every change of the queue asks for: one that failed
+            // offline is not asked for again until the queue changes. A track already loaded
+            // costs no request.
+            .retryingWhenNetworkReturns { queueService.hydrate() }
             // Playback steps over what the lists said will not play. Initially too, which
             // sends an empty set at login, so nothing of the previous account's is left.
             .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
@@ -199,26 +198,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // And the other way: what playback found withheld, which no list said, is greyed.
             .onChange(of: player.withheld, initial: true) { _, uris in
                 store.setWithheld(uris)
-            }
-            // Connection handling is driven by whether the session is connected, not by
-            // which device is active. Activation and connection are different facts:
-            // another device taking over says nothing about whether the session is
-            // healthy, so a device handoff neither arms the recovery path nor refetches.
-            .onChange(of: player.connection?.isConnected == true) { _, isReady in
-                guard isReady else {
-                    connectionDropped = true
-                    return
-                }
-
-                // A reconnect is a drop followed by a rise. The rise on its own is also what
-                // a cold start looks like, and that one is handled by .task above — so
-                // treating every rise as a reconnect doubled the bootstrap on every launch.
-                guard connectionDropped else { return }
-                connectionDropped = false
-
-                // The queue itself follows the player; its metadata may have failed to load while
-                // the connection was down.
-                queueService.hydrate()
             }
             .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
                 debugLog("LoggedInLifecycle", "System will sleep, disconnecting from Spotify")

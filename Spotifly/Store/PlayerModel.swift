@@ -29,6 +29,15 @@ final class PlayerModel {
     /// The queue around the current track, and the context it plays from.
     private(set) var queue: QueueState?
 
+    /// `queue` as the app's rows, written with it in `apply(_:)`.
+    ///
+    /// Here rather than as a copy in the store: that one was written by a task after each
+    /// change, so it could describe another queue than the context named here in the same frame,
+    /// and it kept the last non-empty one when the player had moved on. Written in the same call
+    /// as `queue`, the rows and the queue's context always come from one snapshot. Kept rather
+    /// than worked out on each read, because the queue panel reads it once per row.
+    private(set) var queueEntries = Queue(nil)
+
     /// The tracks playback found Spotify withholds this login, which no list had said.
     private(set) var withheld: Set<String> = []
 
@@ -74,16 +83,6 @@ final class PlayerModel {
         connection?.deviceId
     }
 
-    /// The queue as the app's rows, worked out from `queue` on every read.
-    ///
-    /// Not kept as a copy: a copy in the store, written by a task after each change, could
-    /// describe another queue than the context this model names in the same frame, and kept the
-    /// last non-empty one when the player had moved on. Read here, the rows and the queue's
-    /// context always come from the same snapshot.
-    var queueEntries: Queue {
-        Queue(queue)
-    }
-
     /// Adopts a snapshot. Each part is written only when it changed, so what
     /// observes one part does not hear about another.
     func apply(_ snapshot: PlayerSnapshot) {
@@ -96,6 +95,7 @@ final class PlayerModel {
         }
         if snapshot.queue != queue {
             queue = snapshot.queue
+            queueEntries = Queue(snapshot.queue)
         }
         if snapshot.withheld != withheld {
             withheld = snapshot.withheld
@@ -134,16 +134,16 @@ final class PlayerModel {
 
 /// A row of the queue: a track, by its id into the store's tables, which hold its name and
 /// artwork, and where it comes from.
-struct QueueEntry: Equatable {
+struct QueueEntry {
     let trackId: String
     let provider: TrackProvider
     /// The row's uid, where it has one: from the cluster while another device plays, and from
     /// this Mac's own queue otherwise.
-    var uid: String?
+    let uid: String?
 }
 
 /// The player's queue as rows of track ids. See `PlayerModel.queueEntries`.
-struct Queue: Equatable {
+struct Queue {
     /// What played before the current track, in play order: the most recent last. From the
     /// local queue, or from the cluster's `prev_tracks` while another device plays.
     let previousTracks: [QueueEntry]

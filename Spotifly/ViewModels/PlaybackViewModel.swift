@@ -21,12 +21,9 @@ final class PlaybackViewModel {
     /// What the player last published.
     private let player = PlayerModel.shared
 
-    /// Reference to AppStore for reading current track metadata (set by LoggedInView)
+    /// Reference to AppStore for reading current track metadata (set when the logged-in view
+    /// appears).
     private weak var store: AppStore?
-
-    /// Reference to QueueService, which asks for the queue's metadata again after a remote start
-    /// (set by LoggedInView).
-    private weak var queueService: QueueService?
 
     /// Set when a play request arrived with nowhere to serve it: no local player and no
     /// active remote device. The view presents the Auth / Cancel alert on this.
@@ -599,9 +596,8 @@ final class PlaybackViewModel {
         isLoading = false
     }
 
-    /// Starts content on a remote device. The cluster reports what it plays, and the queue
-    /// follows from the player model; what is asked for here is only the metadata of a queue
-    /// that came back as it was, which a failed fetch may have left missing.
+    /// Starts content on a remote device. The cluster reports what it plays, and the bar and
+    /// the queue follow it through the player model.
     private func startRemotely(
         _ command: ConnectCommand,
         deviceId: String,
@@ -616,7 +612,6 @@ final class PlaybackViewModel {
 
         do {
             try await SpclientAPI().sendCommand(command, from: from, to: deviceId)
-            queueService?.hydrate()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -699,11 +694,6 @@ final class PlaybackViewModel {
     /// Sets the AppStore reference. Call this after AppStore is created.
     func setStore(_ store: AppStore) {
         self.store = store
-    }
-
-    /// Sets the QueueService used to resync after a remote start.
-    func setQueueService(_ queueService: QueueService) {
-        self.queueService = queueService
     }
 
     // MARK: - Playback Control (via Spirc or connect-state)
@@ -1091,7 +1081,7 @@ final class PlaybackViewModel {
     }
 
     /// Full Now Playing update — sets track metadata, duration, position, rate, and artwork.
-    /// Call on: track start, next/prev, initial Web API load.
+    /// Call on: track start, next/prev, and when the queue's metadata arrives.
     func updateNowPlayingInfo() {
         let currentTrack = currentNowPlayingTrack
 
@@ -1404,7 +1394,7 @@ final class PlaybackViewModel {
     /// position was capped at the track length.
     ///
     /// `time` defaults to now. A caller holding a snapshot that was true *earlier* — a
-    /// cluster or Web API state carrying a timestamp — passes that moment instead, so
+    /// cluster state carrying a timestamp — passes that moment instead, so
     /// interpolation accounts for the delay rather than restarting the clock.
     ///
     /// `optimistic` marks the anchors that transport commands write ahead of playback, to

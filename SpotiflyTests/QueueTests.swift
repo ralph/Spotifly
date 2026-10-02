@@ -10,13 +10,14 @@ import Foundation
 @testable import Spotifly
 import Testing
 
+@MainActor
+private func item(_ id: String, provider: String = "context") -> QueueItem {
+    QueueItem(uri: "spotify:track:\(id)", provider: provider)
+}
+
 /// The queue's rows, worked out from what the player last published.
 @MainActor
 struct QueueEntriesTests {
-    private func item(_ id: String, provider: String = "context") -> QueueItem {
-        QueueItem(uri: "spotify:track:\(id)", provider: provider)
-    }
-
     /// Before the first snapshot, and after a logout clears it.
     @Test func `no snapshot is an empty queue`() {
         let queue = Queue(nil)
@@ -91,8 +92,8 @@ struct QueueEntriesTests {
         #expect(bareList.context == nil)
     }
 
-    /// The rows are read from the snapshot the model holds, so they change with it, and a logout,
-    /// which clears the snapshot's queue, leaves none.
+    /// The rows are written with the snapshot the model holds, so they change with it, and a
+    /// logout, which clears the snapshot's queue, leaves none.
     @Test func `the model's rows follow its snapshots`() {
         let model = PlayerModel()
         var snapshot = PlayerSnapshot()
@@ -119,12 +120,12 @@ struct QueueHydrationTests {
         var snapshot = PlayerSnapshot()
         snapshot.queue = QueueState(
             contextUri: "",
-            currentTrack: QueueItem(uri: "spotify:track:playing", provider: "context"),
+            currentTrack: item("playing"),
             nextTracks: [],
             previousTracks: [],
         )
         player.apply(snapshot)
-        let attempts = Attempts()
+        let attempts = MainActorCounter()
         let trackService = TrackService(
             store: store,
             metadataFetcher: { trackIds in
@@ -138,29 +139,14 @@ struct QueueHydrationTests {
         let queueService = QueueService(store: store, trackService: trackService, player: player)
 
         queueService.activate()
-        try await waitForDebounce { attempts.count == 1 }
+        try await waitUntil { attempts.count == 1 }
+        await settle()
         #expect(store.tracks["playing"] == nil)
 
         queueService.hydrate()
-        try await waitForDebounce { store.tracks["playing"] != nil }
+        try await waitUntil { store.tracks["playing"] != nil }
         #expect(attempts.count == 2)
     }
-
-    /// Waits out the queue service's 100 ms debounce, which `waitUntil`'s yields do not.
-    private func waitForDebounce(_ condition: () -> Bool) async throws {
-        for _ in 0 ..< 200 {
-            if condition() {
-                return
-            }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        Issue.record("Condition never became true")
-    }
-}
-
-@MainActor
-private final class Attempts {
-    var count = 0
 }
 
 /// Which row of a list is drawn as playing.

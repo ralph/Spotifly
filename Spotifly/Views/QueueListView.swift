@@ -2,7 +2,7 @@
 //  QueueListView.swift
 //  Spotifly
 //
-//  Displays current playback queue (updated live from the client's queue publisher)
+//  Displays the player's queue, as `PlayerModel.queueEntries` gives it
 //
 
 import SwiftUI
