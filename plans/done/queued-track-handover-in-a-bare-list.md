@@ -76,4 +76,5 @@ does not make one.
     "Rock 'n' Roll Star", queue "Sheena Is a Punk Rocker" and Next to it, then pick the Mac.
   - **The take-over:** the Mac took over the queued track at 0:18, with "Rock 'n' Roll Star"
     behind it, and fetched "Little By Little" ahead.
-  - **Next:** played "Little By Little", then "Cigarettes & Alcohol" came, the list's order.
+  - **Next:** played "Little By Little", the row the handover named, and the Mac fetched the
+    list's next row, "Cigarettes & Alcohol", ahead of it.
