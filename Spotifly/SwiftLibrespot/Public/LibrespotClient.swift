@@ -472,17 +472,8 @@ public actor LibrespotClient {
             uids = await PlaybackQueue.rowUids(rowUids.value, of: context.tracks)
         }
 
-        if let resumingAtUid, let queued = startingAtUri,
-           let start = PlaybackQueue.start(in: context.tracks, queued: queued, resumingAt: resumingAtUid, uids: uids)
-        {
-            try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, playingQueued: start.queued, positionMs: positionMs, paused: paused)
-        } else {
-            // No track named, as by Play on an album or a playlist: its first that plays.
-            let start = trackIndex == nil && startingAtUri == nil
-                ? (tracks: context.tracks, uids: uids, index: firstPlayable(in: context.tracks))
-                : PlaybackQueue.start(in: context.tracks, index: trackIndex, uri: startingAtUri, uid: startingAtUid, uids: uids)
-            try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, positionMs: positionMs, paused: paused)
-        }
+        let start = startingPoint(in: context.tracks, uids: uids, index: trackIndex, uri: startingAtUri, uid: startingAtUid, resumingAt: resumingAtUid)
+        try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, playingQueued: start.queued, positionMs: positionMs, paused: paused)
         // Otherwise the rows take them when they come: a jump that names a row's uid then
         // reaches that row, not a queued copy of its track.
         if !uids.contains(where: { $0 != nil }), let rowUids {
@@ -505,29 +496,56 @@ public actor LibrespotClient {
         }
     }
 
-    /// Plays a list of tracks that no album or playlist names, starting where
-    /// `trackIndex` and `startingAtUri` say; see `PlaybackQueue.start(in:index:uri:)`.
+    /// Plays a list of tracks that no album or playlist names, starting where `trackIndex` and
+    /// `startingAtUri` say, or a handover's rows: `uids` beside the tracks, and the row a queued
+    /// track goes on to, `resumingAtUid`, as `play(uriOrUrl:)` takes them; see `startingPoint`.
     /// A single track is its own context, as `play(uriOrUrl:)` makes it.
     public func playTracks(
         _ uris: [String],
+        uids: [String?] = [],
         trackIndex: Int? = nil,
         startingAtUri: String? = nil,
+        startingAtUid: String? = nil,
+        resumingAtUid: String? = nil,
         positionMs: UInt64 = 0,
         paused: Bool = false,
     ) async throws {
-        let start = PlaybackQueue.start(
+        let start = startingPoint(
             in: uris.map(Self.normalizedUri),
+            uids: uids,
             index: trackIndex,
             uri: startingAtUri.map(Self.normalizedUri),
+            uid: startingAtUid,
+            resumingAt: resumingAtUid,
         )
         guard let first = start.tracks.first else {
             throw LibrespotError.invalidState("No tracks to play")
         }
 
-        // No track named, as by Play Tracks under search: the list's first that plays.
-        let index = trackIndex == nil && startingAtUri == nil ? firstPlayable(in: start.tracks) : start.index
         let contextUri = start.tracks.count == 1 && first.contains("spotify:track:") ? first : ""
-        try await play(contextUri: contextUri, tracks: start.tracks, uids: start.uids, startIndex: index, positionMs: positionMs, paused: paused)
+        try await play(contextUri: contextUri, tracks: start.tracks, uids: start.uids, startIndex: start.index, playingQueued: start.queued, positionMs: positionMs, paused: paused)
+    }
+
+    /// Where a context or a list starts, from what the caller or a handover named:
+    /// - a queued track playing, and the row the context goes on with after it, where the
+    ///   context has that row; see `PlaybackQueue.start(in:queued:resumingAt:uids:)`;
+    /// - otherwise the row or the track named; see `PlaybackQueue.start(in:index:uri:uid:uids:)`;
+    /// - with nothing named, as by Play on an album or Play Tracks under search, its first track
+    ///   that plays.
+    private func startingPoint(
+        in tracks: [String],
+        uids: [String?],
+        index: Int?,
+        uri: String?,
+        uid: String?,
+        resumingAt resumeUid: String?,
+    ) -> (tracks: [String], uids: [String?], index: Int, queued: String?) {
+        if let resumeUid, let uri, let start = PlaybackQueue.start(in: tracks, queued: uri, resumingAt: resumeUid, uids: uids) {
+            return start
+        }
+        let start = PlaybackQueue.start(in: tracks, index: index, uri: uri, uid: uid, uids: uids)
+        let row = index == nil && uri == nil ? firstPlayable(in: start.tracks) : start.index
+        return (start.tracks, start.uids, row, nil)
     }
 
     /// Song radio for a seed track, resolved through its station context.
@@ -1467,7 +1485,10 @@ public actor LibrespotClient {
                 // Started from a bare list of uris, so the list is all there is.
                 try await playTracks(
                     transfer.contextTrackUris,
+                    uids: transfer.contextTrackUids,
                     startingAtUri: track,
+                    startingAtUid: transfer.currentTrackUid,
+                    resumingAtUid: transfer.contextResumeUid,
                     positionMs: positionMs,
                     paused: transfer.isPaused,
                 )
