@@ -386,7 +386,7 @@ public actor SpircController {
             playerStateProto.isBuffering = ps.isPaused
 
             if let uri = ps.trackUri {
-                playerStateProto.track = Self.provided(uri: uri, uid: ps.trackUid, provider: ps.trackProvider, station: ps.autoplayContextUri)
+                playerStateProto.track = Self.provided(uri: uri, uid: ps.trackUid, provider: ps.trackProvider, context: ps.contextUri, station: ps.autoplayContextUri)
             }
             playerStateProto.contextUri = ps.contextUri
             playerStateProto.contextMetadata = ps.contextMetadata
@@ -397,7 +397,7 @@ public actor SpircController {
                 playerStateProto.index = ContextIndex(page: 0, track: UInt32(index))
             }
             let provided: (QueueItem) -> ProvidedTrack = { item in
-                var track = Self.provided(uri: item.uri, uid: item.uid, provider: item.provider, station: ps.autoplayContextUri)
+                var track = Self.provided(uri: item.uri, uid: item.uid, provider: item.provider, context: ps.contextUri, station: ps.autoplayContextUri)
                 track.isHidden = item.hidden
                 return track
             }
@@ -417,15 +417,24 @@ public actor SpircController {
         return device
     }
 
-    /// A row as other devices are told it. Proto3: a row without a uid sends "". An autoplay row
-    /// says so in its metadata too, with the station it came from as its `context_uri` and
-    /// `entity_uri`, as a phone's do (2026-10-02) and librespot's.
-    nonisolated static func provided(uri: String, uid: String?, provider: String, station: String? = nil) -> ProvidedTrack {
+    /// A row as other devices are told it, as librespot's and a phone's read (2026-10-02). Proto3:
+    /// a row without a uid sends "". Its metadata says where it came from: the context it belongs
+    /// to as its `context_uri` and `entity_uri` (the album for a context row, the station for an
+    /// autoplay row, which says `autoplay.is_autoplay` too), and `is_queued` for a queued row.
+    nonisolated static func provided(uri: String, uid: String?, provider: String, context: String = "", station: String? = nil) -> ProvidedTrack {
         var track = ProvidedTrack(uri: uri, uid: uid ?? "", provider: provider)
+        let belongsTo: String? = switch provider {
+        case "context": context.isEmpty ? nil : context
+        case "autoplay": station
+        default: nil
+        }
+        track.metadata["context_uri"] = belongsTo
+        track.metadata["entity_uri"] = belongsTo
         if provider == "autoplay" {
             track.metadata["autoplay.is_autoplay"] = "true"
-            track.metadata["context_uri"] = station
-            track.metadata["entity_uri"] = station
+        }
+        if provider == "queue" {
+            track.metadata["is_queued"] = "true"
         }
         return track
     }

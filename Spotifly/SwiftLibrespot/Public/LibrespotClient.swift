@@ -1593,16 +1593,22 @@ public actor LibrespotClient {
     /// from a mirror, the rows are the other device's, from `currentRow` on; a handover names none,
     /// so a station is asked for beside the context, seeded with the track and what the handover
     /// sent of the context.
+    ///
+    /// A phone hands its own autoplay over with the station as the context,
+    /// `spotify:station:album:<id>`, which resolves to nothing (404) and gets no autoplay of its own
+    /// (204), measured 2026-10-02. The context it followed is the station's uri without
+    /// `station:`, as librespot's `handle_transfer` takes it.
     private func continueAutoplay(of state: TransferState, positionMs: UInt64, paused: Bool) async throws {
         guard let spclient, let track = state.currentTrackUri else {
             throw LibrespotError.notInitialized
         }
-        let contextUri = state.contextUri
+        let contextUri = Self.contextBeforeAutoplay(state.contextUri)
+        let followsStation = contextUri != state.contextUri
         async let resolved: SPClient.ResolvedContext? = contextUri.isEmpty ? nil : try? await spclient.resolveContext(contextUri)
 
         var rows: [String]
         var uids: [String?]
-        var stationUri = state.autoplayContextUri
+        var stationUri = state.autoplayContextUri ?? (followsStation ? state.contextUri : nil)
         if let row = state.currentRow, row < state.contextTrackUris.count {
             rows = Array(state.contextTrackUris[row...])
             uids = Array(state.contextTrackUids[row...])
@@ -1626,6 +1632,12 @@ public actor LibrespotClient {
             positionMs: positionMs,
             paused: paused,
         )
+    }
+
+    /// The context autoplay followed, as a handover names it: a station's uri without
+    /// `station:`, as librespot's `handle_transfer` takes it, and any other uri as it is.
+    nonisolated static func contextBeforeAutoplay(_ uri: String) -> String {
+        uri.hasPrefix("spotify:station:") ? uri.replacingOccurrences(of: "station:", with: "") : uri
     }
 
     // MARK: - Remote Commands

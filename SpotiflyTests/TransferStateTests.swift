@@ -161,6 +161,12 @@ struct TransferStateTests {
         #expect(!TransferState(parsing: Self.transfer()).currentIsAutoplay)
     }
 
+    /// A phone handed its own autoplay over with the station as the context (2026-10-02).
+    @Test func `a handover from a station goes on after the context it followed`() {
+        #expect(LibrespotClient.contextBeforeAutoplay("spotify:station:album:a") == "spotify:album:a")
+        #expect(LibrespotClient.contextBeforeAutoplay("spotify:album:a") == "spotify:album:a")
+    }
+
     @Test func `a track sent only by gid gets its uri back`() {
         // spotify:track:6rqhFgbbKwnb9MLmUQDhG6 is gid d3aca7e43e3b452cbfa9ddd2eab9497e,
         // by base-62 decoding in Python.

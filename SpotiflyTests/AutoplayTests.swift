@@ -63,7 +63,13 @@ struct AutoplayRequestTests {
             "context_uri": "spotify:station:album:a",
             "entity_uri": "spotify:station:album:a",
         ])
-        #expect(SpircController.provided(uri: "spotify:track:a", uid: nil, provider: "context", station: "spotify:station:album:a").metadata.isEmpty)
+        #expect(SpircController.provided(uri: "spotify:track:a", uid: nil, provider: "context", context: "spotify:album:a").metadata == [
+            "context_uri": "spotify:album:a",
+            "entity_uri": "spotify:album:a",
+        ])
+        #expect(SpircController.provided(uri: "spotify:track:a", uid: "q0", provider: "queue").metadata == ["is_queued": "true"])
+        // A bare list names no context.
+        #expect(SpircController.provided(uri: "spotify:track:a", uid: nil, provider: "context").metadata.isEmpty)
     }
 }
 
