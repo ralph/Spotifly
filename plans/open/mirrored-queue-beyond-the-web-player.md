@@ -105,6 +105,13 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
     `takeOverList` now leaves it out of the rows and names the first row ahead that is not
     queued (`resumingAt`), with the rows' uids, and `playTracks` places it from those as for a
     handover. With no such row ahead, it goes into the list as before.
+  - **Seen on a phone** (2026-10-02):
+    - Play Tracks for "oasis" on the Mac. On the phone: take it over, Next once to
+      "Rock 'n' Roll Star", queue "Sheena Is a Punk Rocker" and Next to it. Then pause and
+      close the app, so no device was active.
+    - Play on the Mac took the queued track over at 0:06, where it was paused. The queue had
+      "Rock 'n' Roll Star" behind it and 18 rows ahead, the shape a handover of the same list
+      gave, and the Mac fetched "Little By Little" as next.
   - **Seen on a phone** (2026-10-01, by hand): a list from search's Play Tracks, handed to the
     phone with repeat on and skipped twice, then taken back with Play on the Mac: each track was
     listed once and repeat came back to the first. A track queued on the phone first was in the
