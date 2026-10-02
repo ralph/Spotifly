@@ -99,9 +99,10 @@ Not checked live:
 
 ### Unit tests
 
-616 pass, five of them new:
+617 pass, six of them new:
 - every window shows the one session;
 - signing out ends it;
-- an ended session is freed;
+- an ended session is freed, and so is one whose queue service was activated: its observations
+  hold the store until the service's `deinit` cancels them;
 - `QueueService` passes the store's unplayable tracks to playback, as they stand and on a change;
 - the network's return asks again for the queue's metadata a failed fetch left missing.

@@ -39,4 +39,17 @@ struct LoggedInSessionTests {
 
         #expect(store == nil)
     }
+
+    /// Activated, too: the queue service's observations hold the store until the service's
+    /// `deinit` cancels them, and a cancelled observation ends.
+    @Test func `an ended session that was activated is freed`() async throws {
+        let sessions = LoggedInSessions()
+        weak var store = sessions.session().store
+        sessions.current?.queueService.activate()
+        await settle()
+
+        sessions.end()
+
+        try await waitUntil { store == nil }
+    }
 }
