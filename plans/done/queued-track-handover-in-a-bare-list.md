@@ -1,7 +1,7 @@
 # A queued track handed over in a bare list starts the list over
 
-Status: **Done** 2026-10-02. Measured with a phone and the Debug build's handover log; fixed with
-unit tests. Seen live: not yet; see Verification. What was left of
+Status: **Done** 2026-10-02. Measured with a phone and the Debug build's handover log, and seen
+fixed with the phone; see Verification. What was left of
 `plans/done/queued-track-handover-in-an-album.md`.
 Components: `Spotifly/SwiftLibrespot/Proto/TransferState.swift` (`contextTrackUids`),
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`playTracks`, `takeOver`)
@@ -71,6 +71,9 @@ does not make one.
 - 520 unit tests and the lint pass.
 - Not changed: Play on the Mac while another device plays a bare list (`takeOverList`) still
   puts a queued track into the rows; see `plans/open/mirrored-queue-beyond-the-web-player.md`.
-- Live: to do, with the phone. Play Tracks on the Mac, take it to the phone, Next once, queue a
-  track there and Next until it plays, then hand back. After the queued track, the Mac should go
-  on with the row after the one the phone had reached.
+- **Seen with the phone** (2026-10-02):
+  - **The round:** Play Tracks for "oasis" on the Mac. On the phone: take it over, Next once to
+    "Rock 'n' Roll Star", queue "Sheena Is a Punk Rocker" and Next to it, then pick the Mac.
+  - **The take-over:** the Mac took over the queued track at 0:18, with "Rock 'n' Roll Star"
+    behind it, and fetched "Little By Little" ahead.
+  - **Next:** played "Little By Little", then "Cigarettes & Alcohol" came, the list's order.
