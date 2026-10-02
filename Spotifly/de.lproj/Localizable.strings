@@ -52,7 +52,6 @@
 /* Playback */
 "playback.play_album" = "Album abspielen";
 "playback.play_playlist" = "Playlist abspielen";
-"playback.play_track" = "Track abspielen";
 "playback.play_tracks" = "Tracks abspielen";
 
 /* Mini Player */
@@ -105,6 +104,7 @@
 "queue.open" = "Warteschlange öffnen";
 "queue.playing_from" = "Wiedergabe von";
 "queue.on_device" = "auf";
+"queue.context_name %@" = "„%@“";
 "queue.playing_on" = "Wiedergabe auf";
 "queue.song_count %lld %lld" = "%lld Songs (%lld ausstehend)";
 "queue.scroll_to_current" = "Zum aktuellen Track scrollen";
@@ -155,9 +155,6 @@
 "menu.artists" = "Künstler";
 "menu.search" = "Suchen";
 "menu.refresh" = "Aktualisieren";
-
-/* Playlist Edit Mode */
-"playlist.edit" = "Bearbeiten";
 
 /* Preferences */
 "preferences.general" = "Allgemein";

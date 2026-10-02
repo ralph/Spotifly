@@ -392,7 +392,7 @@ struct NowPlayingBarView: View {
         } label: {
             Group {
                 if store.queue.currentTrack != nil {
-                    Text("\(store.currentIndex + 1)/\(store.queueLength)")
+                    Text(verbatim: "\(store.currentIndex + 1)/\(store.queueLength)")
                 } else {
                     // The counter is the button's only label, so dropping it outright would
                     // leave an invisible control that VoiceOver announces unnamed. The glyph

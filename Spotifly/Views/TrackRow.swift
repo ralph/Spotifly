@@ -122,10 +122,10 @@ struct TrackRow: View {
                     Image(systemName: "waveform")
                         .foregroundStyle(.green)
                 } else if showTrackNumber, let trackNumber = track.trackNumber {
-                    Text("\(trackNumber)")
+                    Text(verbatim: "\(trackNumber)")
                         .foregroundStyle(.secondary)
                 } else if let index {
-                    Text("\(index + 1)")
+                    Text(verbatim: "\(index + 1)")
                         .foregroundStyle(.secondary)
                 }
                 // Otherwise no number is shown.
