@@ -60,6 +60,6 @@ too. Whether a playlist's own load says so per user isn't measured.
     that removes someone else's playlist from the library;
   - with the fix: all three stayed through three ⌘R, and Edit Details still held the description.
 - **Getting an owned playlist onto Recents:** Spotifly sends no play events, so playing it there
-  doesn't do it, and the web player sat at 0:00 when started by itself. Started in Spotifly and
-  handed to the web player (`SPOTIFLY_DEBUG_TRANSFER_TO`), it played, and the playlist was on the
-  start page by the next load.
+  doesn't do it. A double-click on its row in the web player did, though playback sat at 0:00
+  there: Spotifly's start page had it at the next launch, a minute later. Another owned playlist
+  the web player had only loaded, "relink-test abc yo", was on it too.
