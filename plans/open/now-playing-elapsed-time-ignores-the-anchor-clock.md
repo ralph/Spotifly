@@ -3,7 +3,7 @@
 Status: **Open**, not planned. Read from the code, not measured.
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift` (`applyNowPlayingTiming`,
 `hasPrevious`, `currentPositionMs`)
-Found: 2026-10-02, in the review of `plans/open/position-behind-after-a-reconnect.md`
+Found: 2026-10-02, in the review of `plans/done/position-behind-after-a-reconnect.md`
 
 ## Summary
 

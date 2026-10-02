@@ -1,8 +1,6 @@
 # After sleep, another device's position shows behind by the time the Mac slept
 
-Status: **Open**, fixed on branch `position-after-reconnect`. The build, the lint and the unit
-tests pass; the live checks (sleep and wake with a phone playing, with the window open and
-closed, and paused) are pending. Present on main, likely since
+Status: **Done** 2026-10-02, verified live. Present on main, likely since
 #71 (2026-09-28), which made the player model pass on only what changed: until then the
 reconnect's cluster push re-sent the unchanged state and re-anchored the bar by chance, as
 `withdraw`'s comment records for a failed command. That is read from the code, not reproduced on
@@ -122,10 +120,16 @@ that has slept since boot, a clock that stops in sleep fails it by the time slep
 
 ## Verification
 
-- [x] Build (`build-for-testing`, the tests included) and the lint.
+- [x] Build and lint.
 - [x] Unit tests, `PositionClockTests` among them: 586 pass.
-- [ ] **Live, as found:** a phone playing, the Mac asleep for 30–60 s, then woken. The bar
-      should match the phone.
-- [ ] The same with the window closed during the sleep, then reopened: the bar should match the
-      phone.
-- [ ] The same with the phone paused: the bar stays at the paused position.
+- [x] **Live, as found** (2026-10-02, 19:17, Ralph's phone playing, window open): the session
+      dropped for sleep at 19:17:45.100 with the position frozen at 19181 ms, the Mac woke at
+      19:18:08.909, and the session was back at 19:18:09.591 with the phone's report unchanged,
+      so no `Playback state update` followed. The bar matched the phone: the position ran on
+      across the 24 s asleep, which `CACurrentMediaTime` would have lost.
+- [x] **Window closed during the sleep**, then reopened: the bar matched the phone.
+- [x] **The phone paused** before the sleep: the bar stayed at the paused position.
+
+An earlier round of these checks was void: macOS's pause at sleep reached the phone, and the
+phone, resumed by hand during the sleep, sent a new report that re-anchored the bar on any
+clock. That pause is `plans/done/phone-pauses-when-the-mac-sleeps.md`.
