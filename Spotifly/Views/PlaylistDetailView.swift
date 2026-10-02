@@ -20,6 +20,7 @@ struct PlaylistDetailView: View {
     @State private var isLoading = false
     @State private var failure: LoadFailure?
     @State private var showEditDetailsDialog = false
+    @State private var showCoverPicker = false
     @State private var showDeleteConfirmation = false
     @State private var showUnfollowConfirmation = false
     @State private var editingPlaylistName = ""
@@ -118,6 +119,15 @@ struct PlaylistDetailView: View {
             editingPlaylistName = playlistName
             editingPlaylistDescription = playlistDescription
             showEditDetailsDialog = true
+        }
+        .fileImporter(isPresented: $showCoverPicker, allowedContentTypes: [.image]) { result in
+            changeCover(to: result)
+        }
+        .onToolbarAction(.showPlaylistCoverPicker, addressedTo: playlistId) {
+            showCoverPicker = true
+        }
+        .onToolbarAction(.removePlaylistCover, addressedTo: playlistId) {
+            removeCover()
         }
         .onToolbarAction(.showPlaylistDeleteConfirmation, addressedTo: playlistId) {
             showDeleteConfirmation = true
@@ -309,6 +319,39 @@ struct PlaylistDetailView: View {
             }
             editingPlaylistName = ""
             editingPlaylistDescription = ""
+        }
+    }
+
+    /// Sets the cover to the image picked.
+    private func changeCover(to picked: Result<URL, any Error>) {
+        Task {
+            do {
+                let data = try Self.read(picked.get())
+                try await playlistService.changePlaylistCover(playlistId: playlistId, imageData: data)
+            } catch {
+                failure = LoadFailure(message: String(localized: "error.update_playlist \(error.localizedDescription)"))
+            }
+        }
+    }
+
+    /// A picked file's contents, read while the picker's grant to it lasts.
+    private static func read(_ url: URL) throws -> Data {
+        let granted = url.startAccessingSecurityScopedResource()
+        defer {
+            if granted {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        return try Data(contentsOf: url)
+    }
+
+    private func removeCover() {
+        Task {
+            do {
+                try await playlistService.removePlaylistCover(playlistId: playlistId)
+            } catch {
+                failure = LoadFailure(message: String(localized: "error.update_playlist \(error.localizedDescription)"))
+            }
         }
     }
 

@@ -229,6 +229,9 @@
 "playlist.menu.delete" = "Supprimer la playlist";
 "playlist.menu.unfollow" = "Ne plus suivre la playlist";
 "playlist.menu.follow" = "Suivre la playlist";
+"playlist.menu.cover" = "Image de couverture";
+"playlist.menu.choose_cover" = "Choisir une image…";
+"playlist.menu.remove_cover" = "Supprimer l’image";
 "playlist.edit_details.title" = "Modifier la playlist";
 "playlist.edit_details.name" = "Nom";
 "playlist.edit_details.description" = "Description";

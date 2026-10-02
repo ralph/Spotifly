@@ -234,6 +234,9 @@
 "playlist.menu.delete" = "Playlist löschen";
 "playlist.menu.unfollow" = "Playlist entfolgen";
 "playlist.menu.follow" = "Playlist folgen";
+"playlist.menu.cover" = "Coverbild";
+"playlist.menu.choose_cover" = "Bild auswählen …";
+"playlist.menu.remove_cover" = "Bild entfernen";
 "playlist.edit_details.title" = "Playlist bearbeiten";
 "playlist.edit_details.name" = "Name";
 "playlist.edit_details.description" = "Beschreibung";

@@ -230,6 +230,24 @@ final class PlaylistService {
         )
     }
 
+    /// Sets a playlist's cover from an image file's data (`PlaylistCoverImage`), then reads the
+    /// playlist again: the change answers nothing about the sizes Spotify makes of the image, so
+    /// the store's `ImageSet` would go on showing the old cover.
+    func changePlaylistCover(playlistId: String, imageData: Data) async throws {
+        guard let jpeg = PlaylistCoverImage.jpeg(from: imageData) else {
+            throw PlaylistCoverError.notAnImage
+        }
+        try await spclientAPI.changePlaylistCover(id: playlistId, jpeg: jpeg)
+        try await reloadPlaylistTracks(playlistId: playlistId)
+    }
+
+    /// Takes a playlist's cover away, and reads the playlist again for the one Spotify shows
+    /// instead.
+    func removePlaylistCover(playlistId: String) async throws {
+        try await spclientAPI.removePlaylistCover(id: playlistId)
+        try await reloadPlaylistTracks(playlistId: playlistId)
+    }
+
     /// Deletes a playlist — which is to say, drops it from the user's library.
     ///
     /// The same call as `unfollowPlaylist` below, and the Web API said so too: `DELETE
@@ -348,5 +366,13 @@ final class PlaylistService {
 
         // Re-fetch to pick up the order the server actually applied
         try await reloadPlaylistTracks(playlistId: playlistId)
+    }
+}
+
+nonisolated enum PlaylistCoverError: Error, LocalizedError {
+    case notAnImage
+
+    var errorDescription: String? {
+        "The file is not an image Spotifly can read"
     }
 }

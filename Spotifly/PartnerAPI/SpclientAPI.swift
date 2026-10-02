@@ -330,6 +330,55 @@ nonisolated struct SpclientAPI: Sendable {
         )
     }
 
+    // MARK: - Playlist cover
+
+    /// Where a playlist's cover image goes up, as the web player sends it (2026-10-02).
+    static let imageUploadURL = URL(string: "https://image-upload.spotify.com/v4/playlist")!
+
+    /// Sets a playlist's cover to `jpeg`, in the three requests the web player makes
+    /// (2026-10-02):
+    /// 1. the image itself to `image-upload`, which answers a token;
+    /// 2. the token to the playlist's `register-image`, which answers the image's id;
+    /// 3. that id as the playlist's `picture`, in the change a rename sends.
+    func changePlaylistCover(id: String, jpeg: Data) async throws {
+        var upload = URLRequest(url: Self.imageUploadURL)
+        upload.httpMethod = "POST"
+        upload.httpBody = jpeg
+        upload.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        let token = try await decode(ImageUploadReply.self, from: send(upload)).uploadToken
+
+        let registered = try await send(
+            method: "POST",
+            path: "playlist/v2/playlist/\(id)/register-image",
+            body: ImageUploadReply(uploadToken: token),
+        )
+        let picture = try decode(RegisteredImage.self, from: registered).picture
+
+        try await send(method: "POST", path: "playlist/v2/playlist/\(id)/changes", body: PlaylistListChanges(.picture(picture)))
+    }
+
+    /// Takes a playlist's cover away, as the web player's "Remove photo" does.
+    func removePlaylistCover(id: String) async throws {
+        try await send(method: "POST", path: "playlist/v2/playlist/\(id)/changes", body: PlaylistListChanges(.removePicture))
+    }
+
+    /// `image-upload`'s answer, and `register-image`'s body: the token that names the upload.
+    private struct ImageUploadReply: Codable {
+        let uploadToken: String
+    }
+
+    /// `register-image`'s answer: the image's id, as the playlist's `picture` takes it.
+    private struct RegisteredImage: Decodable {
+        let picture: String
+    }
+
+    private func decode<Reply: Decodable>(_: Reply.Type, from data: Data) throws -> Reply {
+        guard let reply = try? JSONDecoder().decode(Reply.self, from: data) else {
+            throw SpclientError.malformedResponse
+        }
+        return reply
+    }
+
     /// Adds a playlist to the user's library — which is what following one is.
     func addPlaylistToLibrary(username: String, playlistId: String) async throws {
         try await changeRootlist(username: username, .add(uris: [Self.uri(playlistId)]))
@@ -394,7 +443,14 @@ nonisolated struct SpclientAPI: Sendable {
         if encoded != nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        return try await send(request)
+    }
+
+    /// Any write, to any of the client's hosts: an image upload goes to its own.
+    private func send(_ request: URLRequest) async throws -> Data {
+        var request = request
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let method = request.httpMethod ?? "GET", path = request.url?.path ?? ""
         debugLog("SpclientAPI", "[\(method)] \(request.url?.absoluteString ?? path)")
 
         let sent = try await credentials.send(request)

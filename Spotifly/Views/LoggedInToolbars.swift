@@ -191,6 +191,19 @@ private struct LoggedInContextToolbarActions: View {
                     NotificationCenter.default.post(name: .showPlaylistEditDetails, object: playlist.id)
                 }
 
+                Menu {
+                    Button("playlist.menu.choose_cover") {
+                        NotificationCenter.default.post(name: .showPlaylistCoverPicker, object: playlist.id)
+                    }
+                    Button("playlist.menu.remove_cover", role: .destructive) {
+                        NotificationCenter.default.post(name: .removePlaylistCover, object: playlist.id)
+                    }
+                } label: {
+                    Label("playlist.menu.cover", systemImage: "photo")
+                }
+                .labelStyle(.iconOnly)
+                .help("playlist.menu.cover")
+
                 ToolbarActionButton(title: "playlist.menu.delete", systemImage: "trash", role: .destructive) {
                     NotificationCenter.default.post(name: .showPlaylistDeleteConfirmation, object: playlist.id)
                 }
