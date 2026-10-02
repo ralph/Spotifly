@@ -229,16 +229,12 @@ struct TrackRow: View {
                 onPlaylistAdded: showSuccessFeedback,
             )
         }
-        .onTapGesture(count: 2) {
-            // A track Spotify will not play starts nothing: played, it would only fail with the
-            // same message, and search's double-click starts radio, which is refused too.
-            if let message = track.unplayableMessage {
-                playbackViewModel.errorMessage = message
-                return
-            }
-            guard let onDoubleTap else { return }
-            Task { await onDoubleTap() }
-        }
+        .onTapGesture(count: 2, perform: play)
+        // Accessibility has no double-click, so the row is a group, its heart and menu still
+        // inside it, named by its track and with Play as one of its actions.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(verbatim: "\(track.name), \(track.artistName)"))
+        .accessibilityAction(named: Text("action.play"), play)
         .task(id: track.id) {
             await resolveFavoriteStatusIfNeeded()
         }
@@ -247,6 +243,18 @@ struct TrackRow: View {
             trackId: track.id,
             onAdded: showSuccessFeedback,
         )
+    }
+
+    /// What a double-click does. A track Spotify will not play starts nothing: played, it would
+    /// only fail with the same message, and search's double-click starts radio, which is refused
+    /// too.
+    private func play() {
+        if let message = track.unplayableMessage {
+            playbackViewModel.errorMessage = message
+            return
+        }
+        guard let onDoubleTap else { return }
+        Task { await onDoubleTap() }
     }
 
     /// Toggle favorite using TrackService (optimistic update)
