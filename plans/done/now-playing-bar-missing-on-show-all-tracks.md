@@ -61,9 +61,10 @@ kept `NavigationStack` as the drill-down renderer, and reconciled it with the co
 history: `setNavigationPath` sorted the stack's writes into pushes and pops, and
 `historyRestoreTarget` swallowed the write the stack sent back after the coordinator changed the
 path. With no stack, nothing writes the path but `push`, so all of that is gone:
-`setNavigationPath`, `navigateBackward(to:)`, `isDescendant(_:of:)` and `historyRestoreTarget`, with
-the four tests of the stack's pops. `navigationPath` is read-only, and `push` navigates to the
-route with the destination appended.
+`setNavigationPath`, `navigateBackward(to:)`, `isDescendant(_:of:)`, `historyRestoreTarget` and
+`navigationPath`, the stack's binding, with the five tests of the stack's writes. `push` navigates
+to the route with the destination appended. The path itself is still an array, of which only the
+last entry is drawn; `plans/open/route-path-outlived-the-stack.md` takes that up.
 
 **What changes for the user, besides the bar:** the pushed page's back chevron is replaced by the
 history's back and forward control, which the toolbar shows on every other page. Back from "show
@@ -87,5 +88,6 @@ first section, at the top.
   - back returns to the results, and forward to the tracks page again;
   - Start page, Favorites, Playlists, Albums, Artists (the 3-column ones with their detail), Queue,
     Speakers and Profile: each shows its title, its content and the bar as before.
-- [x] Unit tests: `NavigationCoordinatorTests`, with `a drill down records history` in place of the
-      stack's tests.
+- [x] Unit tests: the five tests of the stack's writes are gone; the push and its way back stay
+      covered by `every user initiated change is reachable by back` and `back and forward restore
+      the identical route including drill down`.

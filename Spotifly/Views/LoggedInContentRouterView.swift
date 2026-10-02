@@ -16,12 +16,10 @@ struct LoggedInContentRouterView: View {
 
     /// The route's last drill-down, or else its section's page.
     ///
-    /// Drawn here rather than pushed onto a `NavigationStack`: the split view's detail column
-    /// takes over a stack's pushes and shows the pushed page in place of the whole column, so
-    /// everything `LoggedInView` lays around the router, the now-playing bar, the room under
-    /// each page, the content toolbar and the playback alerts, was missing on it.
+    /// Not a `NavigationStack`: the split view's detail column takes its pushes over and drops
+    /// everything `LoggedInView` lays around the router, the now-playing bar among it.
     var body: some View {
-        if let destination = navigationCoordinator.navigationPath.last {
+        if let destination = navigationCoordinator.current.path.last {
             destinationView(for: destination)
         } else if let query = navigationCoordinator.displayedSearchQuery,
                   let searchResults = store.searchResults(for: query)

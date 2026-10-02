@@ -72,10 +72,6 @@ final class NavigationCoordinator {
         return id
     }
 
-    var navigationPath: [NavigationDestination] {
-        current.path
-    }
-
     var displayedSearchQuery: String? {
         current.section == .searchResults ? current.query : nil
     }
@@ -246,9 +242,8 @@ final class NavigationCoordinator {
         let currentRunIndex = runs.lastIndex { $0.firstIndex <= oldCurrentIndex } ?? runs.startIndex
 
         back = runs[..<currentRunIndex].map(\.route)
-        current = runs[currentRunIndex].route
         forward = runs[(currentRunIndex + 1)...].map(\.route).reversed()
-        noteRouteDisplayed(current)
+        restore(runs[currentRunIndex].route)
     }
 
     // MARK: - Internal History Logic

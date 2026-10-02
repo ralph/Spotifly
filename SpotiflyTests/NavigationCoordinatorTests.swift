@@ -104,18 +104,6 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.current.selection == nil)
     }
 
-    @Test func `a drill down records history`() {
-        let coordinator = NavigationCoordinator(store: AppStore())
-        coordinator.selectNavigationItem(.albums)
-        let albumsRoute = coordinator.current
-
-        coordinator.push(.artist(id: "artist-a"))
-
-        #expect(coordinator.navigationPath == [.artist(id: "artist-a")])
-        coordinator.navigateBackward()
-        #expect(coordinator.current == albumsRoute)
-    }
-
     @Test func `section reentry restores remembered selection without an extra step`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.selectNavigationItem(.albums)
@@ -157,7 +145,7 @@ struct NavigationCoordinatorTests {
 
         coordinator.selectNavigationItem(.favorites)
 
-        #expect(coordinator.navigationPath.isEmpty)
+        #expect(coordinator.current.path.isEmpty)
         #expect(coordinator.viewingAlbumId == nil)
         #expect(coordinator.backNavigationTitle == NavigationItem.albums.title)
     }
