@@ -566,42 +566,19 @@ public actor LibrespotClient {
     /// shows a track, that track is another device's, mirrored, and nobody
     /// plays it: resuming then takes it over from where it was left, as Play
     /// does on Spotify's own clients, instead of resuming an empty pipeline.
+    /// It is read as a handover would carry it (`takeOverState`) and played as
+    /// one is, from the position the mirror last showed: with no device active,
+    /// nothing has played on since.
     public func resume() async throws {
-        guard localState == nil, let mirrored = latest.withLock({ $0.playback }) else {
+        guard localState == nil, latest.withLock({ $0.playback }) != nil,
+              let state = mirroredRemote.flatMap(Self.takeOverState), let track = state.currentTrackUri
+        else {
             await audioPipeline?.resume()
             return
         }
-        let queue = latest.withLock { $0.queue }
-        let contextUri = queue?.contextUri ?? ""
-        let positionMs = UInt64(max(0, mirrored.positionMs))
-        debugLog("LibrespotClient", "Taking over the mirrored \(mirrored.trackUri) in \(contextUri.isEmpty ? "a list of tracks" : contextUri) at \(positionMs)ms")
-
-        shuffleEnabled = mirrored.shuffle
-        playbackQueue.setShuffle(mirrored.shuffle)
-        repeatMode = mirrored.repeatTrack ? .track : (mirrored.repeatContext ? .context : .off)
-        playbackQueue.setRepeat(repeatMode)
-        if contextUri.isEmpty {
-            // Started from a bare list of uris, so the list is all there is.
-            let list = mirroredRemote.flatMap(Self.takeOverList) ?? ([mirrored.trackUri], [], 0, [], nil)
-            playbackQueue.replaceUserQueue(with: list.queued)
-            try await playTracks(
-                list.tracks,
-                uids: list.uids,
-                trackIndex: list.index,
-                startingAtUri: mirrored.trackUri,
-                resumingAtUid: list.resumingAt,
-                positionMs: positionMs,
-            )
-        } else if queue?.currentTrack?.provider == "queue" {
-            // A queued track plays as queued here too: the queued rows after it stay queued, and the
-            // context goes on with the row the other device had next, as a handover leaves them.
-            let next = queue?.nextTracks ?? []
-            playbackQueue.replaceUserQueue(with: next.prefix { $0.provider == "queue" }.map(\.uri))
-            let resume = next.first { $0.provider != "queue" }?.uid
-            try await play(uriOrUrl: contextUri, startingAtUri: mirrored.trackUri, resumingAtUid: resume, positionMs: positionMs)
-        } else {
-            try await play(uriOrUrl: contextUri, startingAtUri: mirrored.trackUri, startingAtUid: queue?.currentTrack?.uid, positionMs: positionMs)
-        }
+        let positionMs = UInt64(max(0, state.positionAsOfTimestamp))
+        debugLog("LibrespotClient", "Taking over the mirrored \(track) in \(state.contextUri.isEmpty ? "a list of tracks" : state.contextUri) at \(positionMs)ms")
+        try await continuePlayback(of: state, positionMs: positionMs, paused: false)
     }
 
     public func stop() async {
@@ -1391,21 +1368,21 @@ public actor LibrespotClient {
         }
     }
 
-    /// A mirrored bare list as this Mac takes it over: the tracks played before the current one,
-    /// since the last `spotify:delimiter`, the current one, and those after it up to the next,
-    /// where with repeat on the list starts again as its next iteration. Taken whole, with the
-    /// iterations, the list held its tracks two or three times, and local repeat looped that.
-    /// The tracks before go in so repeat comes back to them. Queued rows ahead go to the queue,
-    /// those already played are left out, and so are rows the sender hides, as `mirroredQueue`
-    /// leaves them out.
+    /// Another device's mirrored playback as a handover of it would carry it, for Play on this
+    /// Mac to take it over as `takeOver` takes a handover: the context, its options, the track,
+    /// the queued rows ahead, and while a queued track plays, the row the context goes on with.
+    ///
+    /// A bare list has no uri to resolve, so the rows are the list: those played before the
+    /// current one, since the last `spotify:delimiter`, the current one, and those after it up to
+    /// the next, where with repeat on the list starts again as its next iteration. Taken whole,
+    /// with the iterations, the list held its tracks two or three times, and local repeat looped
+    /// that. The tracks before go in so repeat comes back to them. Queued rows are not the
+    /// list's, and rows the sender hides are left out, as `mirroredQueue` leaves them out.
     ///
     /// A queued track playing is not one of the list's rows: it plays as queued, and the list
-    /// goes on with the row after it, `resumingAt`, as a handover leaves them
-    /// (`plans/done/queued-track-handover-in-a-bare-list.md`). With no row after it, it goes into
-    /// the list where it plays, as before.
-    nonisolated static func takeOverList(
-        of remote: PlayerState,
-    ) -> (tracks: [String], uids: [String?], index: Int, queued: [String], resumingAt: String?)? {
+    /// goes on with the row after it (`plans/done/queued-track-handover-in-a-bare-list.md`).
+    /// With no row after it, it goes into the list where it plays.
+    nonisolated static func takeOverState(of remote: PlayerState) -> TransferState? {
         guard let current = remote.track, !current.uri.isEmpty else { return nil }
         let before = remote.prevTracks.reversed().prefix { $0.uri != PlaybackQueue.delimiterUri }.reversed()
             .filter { isShown($0) && $0.provider != "queue" }
@@ -1413,13 +1390,23 @@ public actor LibrespotClient {
         let listed = ahead.filter { $0.provider != "queue" }
         let resumingAt = current.provider == "queue" ? listed.first.flatMap(rowUid) : nil
         let rows = before + (resumingAt == nil ? [current] : []) + listed
-        return (
-            rows.map(\.uri),
-            rows.map(rowUid),
-            before.count,
-            ahead.filter { $0.provider == "queue" }.map(\.uri),
-            resumingAt,
-        )
+
+        var state = TransferState()
+        state.contextUri = remote.contextUri
+        state.contextTrackUris = rows.map(\.uri)
+        state.contextTrackUids = rows.map(rowUid)
+        state.currentTrackUri = current.uri
+        state.currentRow = resumingAt == nil ? before.count : nil
+        state.currentTrackUid = current.provider == "queue" ? nil : rowUid(current)
+        state.queuedTrackUris = ahead.filter { $0.provider == "queue" }.map(\.uri)
+        state.contextResumeUid = resumingAt
+        state.shuffle = remote.options.shufflingContext
+        state.repeatContext = remote.options.repeatingContext
+        state.repeatTrack = remote.options.repeatingTrack
+        state.positionAsOfTimestamp = remote.positionAsOfTimestamp
+        state.timestamp = remote.timestamp
+        state.isPaused = remote.isPaused
+        return state
     }
 
     /// A row's uid, or none for one sent without; proto3 sends that as "".
@@ -1486,36 +1473,8 @@ public actor LibrespotClient {
         // let go, and a paused player is still the one that holds playback.
         await session?.reportLocalActive(true)
 
-        shuffleEnabled = transfer.shuffle
-        playbackQueue.setShuffle(transfer.shuffle)
-        repeatMode = transfer.repeatTrack ? .track : (transfer.repeatContext ? .context : .off)
-        playbackQueue.setRepeat(repeatMode)
-        // Before loading, so the first report and the next-track fetch already
-        // see the sender's queue.
-        playbackQueue.replaceUserQueue(with: transfer.queuedTrackUris)
-
         do {
-            if !transfer.contextUri.isEmpty {
-                try await play(
-                    uriOrUrl: transfer.contextUri,
-                    startingAtUri: track,
-                    startingAtUid: transfer.currentTrackUid,
-                    resumingAtUid: transfer.contextResumeUid,
-                    positionMs: positionMs,
-                    paused: transfer.isPaused,
-                )
-            } else {
-                // Started from a bare list of uris, so the list is all there is.
-                try await playTracks(
-                    transfer.contextTrackUris,
-                    uids: transfer.contextTrackUids,
-                    startingAtUri: track,
-                    startingAtUid: transfer.currentTrackUid,
-                    resumingAtUid: transfer.contextResumeUid,
-                    positionMs: positionMs,
-                    paused: transfer.isPaused,
-                )
-            }
+            try await continuePlayback(of: transfer, positionMs: positionMs, paused: transfer.isPaused)
         } catch is CancellationError {
             // A newer load took over, and it reports for itself.
         } catch {
@@ -1523,6 +1482,42 @@ public actor LibrespotClient {
             // as the one playing — over silence, with every control sent here.
             debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
             await releasePlayback()
+        }
+    }
+
+    /// Plays what another device had, handed over or taken over from its mirror: its options,
+    /// its queue, and the same context or list at the same track. A queued track plays as queued,
+    /// and the context goes on with the row the other device had next.
+    private func continuePlayback(of state: TransferState, positionMs: UInt64, paused: Bool) async throws {
+        shuffleEnabled = state.shuffle
+        playbackQueue.setShuffle(state.shuffle)
+        repeatMode = state.repeatTrack ? .track : (state.repeatContext ? .context : .off)
+        playbackQueue.setRepeat(repeatMode)
+        // Before loading, so the first report and the next-track fetch already
+        // see the other device's queue, and none left over from before.
+        playbackQueue.replaceUserQueue(with: state.queuedTrackUris)
+
+        if !state.contextUri.isEmpty {
+            try await play(
+                uriOrUrl: state.contextUri,
+                startingAtUri: state.currentTrackUri,
+                startingAtUid: state.currentTrackUid,
+                resumingAtUid: state.contextResumeUid,
+                positionMs: positionMs,
+                paused: paused,
+            )
+        } else {
+            // Started from a bare list of uris, so the list is all there is.
+            try await playTracks(
+                state.contextTrackUris,
+                uids: state.contextTrackUids,
+                trackIndex: state.currentRow,
+                startingAtUri: state.currentTrackUri,
+                startingAtUid: state.currentTrackUid,
+                resumingAtUid: state.contextResumeUid,
+                positionMs: positionMs,
+                paused: paused,
+            )
         }
     }
 

@@ -88,7 +88,7 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
     seeks; and it would cover repeat wrapping back from a first track. Neither is measured.
 - **The take-over of a bare list** (2026-10-01). `mirror(_:deviceActive:)` keeps the remote
   player state it mirrored (`mirroredRemote`), since the queue view's rows have lost the
-  delimiters by then. `takeOverList(of:)` reads it: the tracks played before the current one,
+  delimiters by then. `takeOverState(of:)` reads it: the tracks played before the current one,
   the current one, and the rows after it up to the first `spotify:delimiter`. Queued rows go to
   `replaceUserQueue`, as a handover's do, and rows the sender hides are left out; so are the
   tracks before the last delimiter behind it, should a device keep an iteration there.
@@ -102,7 +102,7 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
   - **A queued track playing** (2026-10-02) went into the list as one of its rows, where a
     context's take-over plays it as queued (`play(uriOrUrl:resumingAtUid:)`), and the handover
     of a bare list now does too (`plans/done/queued-track-handover-in-a-bare-list.md`).
-    `takeOverList` now leaves it out of the rows and names the first row ahead that is not
+    `takeOverState` now leaves it out of the rows and names the first row ahead that is not
     queued (`resumingAt`), with the rows' uids, and `playTracks` places it from those as for a
     handover. With no such row ahead, it goes into the list as before.
   - **Seen on a phone** (2026-10-02):

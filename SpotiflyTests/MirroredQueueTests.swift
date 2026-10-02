@@ -94,7 +94,8 @@ struct MirroredQueueTests {
     }
 }
 
-/// A bare list another device plays, as this Mac takes it over.
+/// Another device's playback as Play on this Mac takes it over (`takeOverState`): a bare list's
+/// rows, and for any context the queue and the row it goes on with.
 extension MirroredQueueTests {
     /// With repeat on, the list goes on after a delimiter as its next iteration. Taken whole, it
     /// held its tracks twice, and local repeat looped that.
@@ -104,11 +105,11 @@ extension MirroredQueueTests {
         state.track = row("t2")
         state.nextTracks = [row("t3"), delimiter, row("t1"), row("t2"), row("t3"), delimiter]
 
-        let list = try #require(LibrespotClient.takeOverList(of: state))
+        let taken = try #require(LibrespotClient.takeOverState(of: state))
 
-        #expect(list.tracks == uris("t1", "t2", "t3"))
-        #expect(list.index == 1)
-        #expect(list.queued.isEmpty)
+        #expect(taken.contextTrackUris == uris("t1", "t2", "t3"))
+        #expect(taken.currentRow == 1)
+        #expect(taken.queuedTrackUris.isEmpty)
     }
 
     /// Should a device keep the iteration before in its previous tracks, behind a delimiter.
@@ -117,10 +118,10 @@ extension MirroredQueueTests {
         state.prevTracks = [row("t1"), row("t2"), delimiter, row("t1")]
         state.track = row("t2")
 
-        let list = try #require(LibrespotClient.takeOverList(of: state))
+        let taken = try #require(LibrespotClient.takeOverState(of: state))
 
-        #expect(list.tracks == uris("t1", "t2"))
-        #expect(list.index == 1)
+        #expect(taken.contextTrackUris == uris("t1", "t2"))
+        #expect(taken.currentRow == 1)
     }
 
     @Test func `queued rows go to the queue, not into the list`() throws {
@@ -128,27 +129,28 @@ extension MirroredQueueTests {
         state.track = row("t1")
         state.nextTracks = [row("q", provider: "queue"), row("t2"), delimiter, row("t1", hidden: true)]
 
-        let list = try #require(LibrespotClient.takeOverList(of: state))
+        let taken = try #require(LibrespotClient.takeOverState(of: state))
 
-        #expect(list.tracks == uris("t1", "t2"))
-        #expect(list.index == 0)
-        #expect(list.queued == uris("q"))
+        #expect(taken.contextTrackUris == uris("t1", "t2"))
+        #expect(taken.currentRow == 0)
+        #expect(taken.queuedTrackUris == uris("q"))
     }
 
     /// What a handover of the same state does: the queued track plays as queued, not as one of
     /// the list's rows for repeat to play again, and the list goes on with the row after it.
-    /// `PlaybackQueueTests` has the placement from `resumingAt`.
+    /// `PlaybackQueueTests` has the placement from `contextResumeUid`.
     @Test func `a queued track playing is left out of the list, which goes on at the row after it`() throws {
         var state = PlayerState()
         state.prevTracks = [row("t1"), row("q0", provider: "queue")]
         state.track = row("q1", provider: "queue")
         state.nextTracks = [row("q2", provider: "queue"), row("t2"), row("t3")]
 
-        let list = try #require(LibrespotClient.takeOverList(of: state))
-        #expect(list.tracks == uris("t1", "t2", "t3"))
-        #expect(list.uids == ["uid-t1", "uid-t2", "uid-t3"])
-        #expect(list.queued == uris("q2"))
-        #expect(list.resumingAt == "uid-t2")
+        let taken = try #require(LibrespotClient.takeOverState(of: state))
+        #expect(taken.contextTrackUris == uris("t1", "t2", "t3"))
+        #expect(taken.contextTrackUids == ["uid-t1", "uid-t2", "uid-t3"])
+        #expect(taken.currentTrackUid == nil)
+        #expect(taken.queuedTrackUris == uris("q2"))
+        #expect(taken.contextResumeUid == "uid-t2")
     }
 
     /// Nothing ahead to go on with: the queued track is played where it is, as a row.
@@ -157,10 +159,10 @@ extension MirroredQueueTests {
         state.prevTracks = [row("t1")]
         state.track = row("q1", provider: "queue")
 
-        let list = try #require(LibrespotClient.takeOverList(of: state))
-        #expect(list.tracks == uris("t1", "q1"))
-        #expect(list.index == 1)
-        #expect(list.resumingAt == nil)
+        let taken = try #require(LibrespotClient.takeOverState(of: state))
+        #expect(taken.contextTrackUris == uris("t1", "q1"))
+        #expect(taken.currentRow == 1)
+        #expect(taken.contextResumeUid == nil)
     }
 
     @Test func `without a delimiter the list is every row after the current one`() throws {
@@ -168,10 +170,29 @@ extension MirroredQueueTests {
         state.track = row("t1")
         state.nextTracks = [row("t2"), row("t3")]
 
-        #expect(try #require(LibrespotClient.takeOverList(of: state)).tracks == uris("t1", "t2", "t3"))
+        #expect(try #require(LibrespotClient.takeOverState(of: state)).contextTrackUris == uris("t1", "t2", "t3"))
+    }
+
+    /// Play on the Mac takes another device's queue over as a handover does. While a context
+    /// track played it did not: a track queued on the web player was gone (2026-10-02).
+    @Test func `a context's queued rows ahead are taken over, and its current row is named`() throws {
+        var state = PlayerState()
+        state.contextUri = "spotify:album:a"
+        state.options.shufflingContext = true
+        state.prevTracks = [row("t1")]
+        state.track = row("t2")
+        state.nextTracks = [row("q", provider: "queue"), row("t3"), delimiter]
+
+        let taken = try #require(LibrespotClient.takeOverState(of: state))
+        #expect(taken.contextUri == "spotify:album:a")
+        #expect(taken.currentTrackUri == "spotify:track:t2")
+        #expect(taken.currentTrackUid == "uid-t2")
+        #expect(taken.queuedTrackUris == uris("q"))
+        #expect(taken.contextResumeUid == nil)
+        #expect(taken.shuffle)
     }
 
     @Test func `nothing playing is nothing to take over`() {
-        #expect(LibrespotClient.takeOverList(of: PlayerState()) == nil)
+        #expect(LibrespotClient.takeOverState(of: PlayerState()) == nil)
     }
 }

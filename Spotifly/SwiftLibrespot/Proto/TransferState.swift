@@ -28,6 +28,9 @@ public nonisolated struct TransferState: Sendable {
     var contextTrackUris: [String] = []
     /// Those rows' uids, beside them, with none for a row sent without one.
     var contextTrackUids: [String?] = []
+    /// Which of those rows is the current track, where the rows say: another device's mirrored
+    /// rows do (`LibrespotClient.takeOverState`), a handover's pages do not.
+    var currentRow: Int?
     /// The track that was playing.
     var currentTrackUri: String?
     /// Its row's uid in the context, which names the row when the track plays under another id
@@ -50,6 +53,8 @@ public nonisolated struct TransferState: Sendable {
     var shuffle = false
     var repeatContext = false
     var repeatTrack = false
+
+    init() {}
 
     init(parsing data: Data) {
         var playingQueue = false
