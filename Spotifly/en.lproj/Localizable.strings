@@ -28,6 +28,8 @@
 
 /* Common Actions */
 "action.play" = "Play";
+"action.pause" = "Pause";
+"action.more" = "More Options";
 "action.try_again" = "Try Again";
 "action.cancel" = "Cancel";
 "action.create" = "Create";
@@ -58,6 +60,14 @@
 /* Mini Player */
 "mini_player.enter" = "Enter mini player mode";
 "mini_player.restore" = "Restore full window";
+
+/* Now Playing Bar */
+"now_playing.cover_menu" = "Go to Artist, Album or Queue";
+"now_playing.position" = "Position";
+"now_playing.position_value %@ %@" = "%1$@ of %2$@";
+"shuffle.enable" = "Enable shuffle";
+"shuffle.disable" = "Disable shuffle";
+"shuffle.unavailable" = "Shuffle is not available for what is playing, such as a radio";
 
 /* Loading States */
 "loading.favorites" = "Loading favorites...";
@@ -140,6 +150,7 @@
 
 /* Volume */
 "volume.device_controls_itself %@" = "%@ controls its own volume";
+"volume.title" = "Volume";
 
 /* Menu Commands */
 "menu.playback" = "Playback";

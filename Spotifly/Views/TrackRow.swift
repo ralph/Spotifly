@@ -189,7 +189,7 @@ struct TrackRow: View {
             .buttonStyle(.plain)
             .disabled(isTogglingFavorite)
             .opacity(isTogglingFavorite ? 0.5 : 1.0)
-            .favoriteToggleName(isFavorited: isFavorited)
+            .named(.favoriteToggle(isFavorited: isFavorited))
 
             // Context menu (3-dot button)
             Menu {
@@ -202,7 +202,9 @@ struct TrackRow: View {
                     onPlaylistAdded: showSuccessFeedback,
                 )
             } label: {
-                Image(systemName: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
+                // A menu takes its accessibility name from its label, not from a modifier.
+                Label("action.more", systemImage: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
+                    .labelStyle(.iconOnly)
                     .font(.caption)
                     .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
                     .frame(width: 20, height: 20)
@@ -213,6 +215,7 @@ struct TrackRow: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(showPlaylistAddedSuccess)
+            .help("action.more")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -352,13 +355,6 @@ extension LocalizedStringKey {
 }
 
 extension View {
-    /// Names a heart button by what pressing it does, as its tooltip and to accessibility, which
-    /// otherwise names it after its symbol, "Love", whether the track is saved or not.
-    func favoriteToggleName(isFavorited: Bool) -> some View {
-        let name = LocalizedStringKey.favoriteToggle(isFavorited: isFavorited)
-        return help(name).accessibilityLabel(name)
-    }
-
     /// A tooltip only where there is something to say. An outer tooltip wins over an inner one,
     /// even an empty one: a row's `.help("")` hid its heart's.
     @ViewBuilder
