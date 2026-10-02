@@ -203,7 +203,7 @@ struct Playlist: Identifiable, Hashable, Encodable {
     var images: ImageSet
     let uri: String
     var isPublic: Bool
-    let ownerId: String
+    var ownerId: String
     let ownerName: String
 
     // Mutable state (populated when tracks are loaded)

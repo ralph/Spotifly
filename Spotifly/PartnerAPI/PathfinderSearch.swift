@@ -242,16 +242,29 @@ nonisolated struct PathfinderArtist: Decodable, Sendable {
     }
 }
 
-nonisolated struct PathfinderPlaylist: Decodable, Sendable {
-    struct Owner: Decodable, Sendable {
-        struct Data: Decodable, Sendable {
-            let name: String?
-            let username: String?
+/// A playlist's owner, `ownerV2`, as every playlist shape carries it.
+nonisolated struct PathfinderOwner: Decodable, Sendable {
+    struct Data: Decodable, Sendable {
+        let name: String?
+        let username: String?
+        /// `spotify:user:<id>`. The start page leaves the username out and names the owner by this
+        /// alone (2026-10-02).
+        let uri: String?
+
+        /// The owner's id: the username, or the id in the uri where no username came.
+        var id: String? {
+            username ?? uri.flatMap { SpotifyURI.id(from: $0, kind: "user") }
         }
 
-        let data: Data?
+        var displayName: String? {
+            name ?? username
+        }
     }
 
+    let data: Data?
+}
+
+nonisolated struct PathfinderPlaylist: Decodable, Sendable {
     struct Images: Decodable, Sendable {
         let items: [PathfinderImage]?
     }
@@ -260,7 +273,7 @@ nonisolated struct PathfinderPlaylist: Decodable, Sendable {
     let name: String?
     let description: String?
     let images: Images?
-    let ownerV2: Owner?
+    let ownerV2: PathfinderOwner?
 
     /// **Kind-checked**, unlike the other entities here, because this type also decodes the
     /// *folders* `libraryV3` returns alongside playlists: a folder carries a `uri` and a `name`
@@ -271,7 +284,7 @@ nonisolated struct PathfinderPlaylist: Decodable, Sendable {
     }
 
     var ownerName: String? {
-        ownerV2?.data?.name ?? ownerV2?.data?.username
+        ownerV2?.data?.displayName
     }
 
     var imageURL: String? {

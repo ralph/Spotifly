@@ -311,24 +311,33 @@ final class AppStore {
     /// refresh failed, say — stays stale through a summary refresh, so the rows keep rendering
     /// while the next visit still refetches them. Claiming `true` here is what let a routine
     /// library refresh both erase those rows and declare the result loaded.
+    ///
+    /// A summary that names no owner or no description says nothing about them either: a start page
+    /// Recents entry carries neither. The ones already known stay. A playlist's owner never
+    /// changes. Without that, a start page refresh took the owner-only actions (Edit Details, the
+    /// cover, Delete) off an owned playlist, and blanked its description, which Edit Details would
+    /// then have saved over the real one.
     func upsertPlaylist(_ playlist: Playlist) {
         deletedEntitySelections.remove(.playlist(id: playlist.id))
 
-        guard let existing = playlists[playlist.id],
-              !playlist.tracksLoaded,
-              // A loaded playlist that is genuinely empty is preserved too, so it is not
-              // fetched again forever — see the "cache what was fetched" rule in AGENTS.md.
-              existing.tracksLoaded || !existing.items.isEmpty
-        else {
-            playlists[playlist.id] = playlist
-            return
+        var playlist = playlist
+        if let existing = playlists[playlist.id] {
+            if playlist.ownerId.isEmpty {
+                playlist.ownerId = existing.ownerId
+            }
+            // A summary's missing description says nothing; a full load's says there is none.
+            if !playlist.tracksLoaded {
+                playlist.description = playlist.description ?? existing.description
+            }
+            // A loaded playlist that is genuinely empty is preserved too, so it is not fetched
+            // again forever — see the "cache what was fetched" rule in AGENTS.md.
+            if !playlist.tracksLoaded, existing.tracksLoaded || !existing.items.isEmpty {
+                playlist.items = existing.items
+                playlist.totalDurationMs = existing.totalDurationMs
+                playlist.tracksLoaded = existing.tracksLoaded
+            }
         }
-
-        var merged = playlist
-        merged.items = existing.items
-        merged.totalDurationMs = existing.totalDurationMs
-        merged.tracksLoaded = existing.tracksLoaded
-        playlists[playlist.id] = merged
+        playlists[playlist.id] = playlist
     }
 
     /// Attach a fetched track list to a playlist. Marks it loaded even when the

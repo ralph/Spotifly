@@ -65,6 +65,29 @@ struct AppStoreCacheTests {
         #expect(store.playlists["p"]?.trackIds.isEmpty == true)
     }
 
+    /// A start page Recents entry names no owner and no description. The owner-only actions went
+    /// from an owned playlist, and Edit Details would have saved a blank description over the
+    /// real one; what a load found stays.
+    @Test func `a summary naming no owner or description keeps what a load found`() {
+        let store = AppStore()
+        var loaded = playlist(id: "p")
+        loaded.description = "description abc"
+        store.upsertPlaylist(loaded)
+        store.setPlaylistTracks([PlaylistItem(uid: "u1", trackId: "t1")], totalDurationMs: 500, for: "p")
+
+        var summary = playlist(id: "p")
+        summary.ownerId = ""
+        store.upsertPlaylist(summary)
+        #expect(store.playlists["p"]?.ownerId == "owner")
+        #expect(store.playlists["p"]?.description == "description abc")
+
+        // A load of the whole playlist that finds none means it was cleared.
+        var reloaded = playlist(id: "p")
+        reloaded.tracksLoaded = true
+        store.upsertPlaylist(reloaded)
+        #expect(store.playlists["p"]?.description == nil)
+    }
+
     @Test func `artist albums are cached in order`() {
         let store = AppStore()
         store.upsertAlbums([fetchedAlbum(id: "a2", name: "Second"), fetchedAlbum(id: "a1", name: "First")])
