@@ -23,8 +23,11 @@ import Foundation
 public nonisolated struct TransferState: Sendable {
     var contextUri = ""
     /// The context's tracks as the sender had them, when it sent any. Often
-    /// only a window of the context, so the uri is the better source.
+    /// only a window of the context, so the uri is the better source. A bare list has no uri
+    /// and comes whole: a phone sent all 20 rows of one (2026-10-02).
     var contextTrackUris: [String] = []
+    /// Those rows' uids, beside them, with none for a row sent without one.
+    var contextTrackUids: [String?] = []
     /// The track that was playing.
     var currentTrackUri: String?
     /// Its row's uid in the context, which names the row when the track plays under another id
@@ -35,8 +38,9 @@ public nonisolated struct TransferState: Sendable {
     var queuedTrackUris: [String] = []
     /// While a queued track plays, the uid of the context row that plays after it: the session's
     /// `current_uid`. Measured on 2026-09-30 with the web player, it names the row the context
-    /// goes on with, and librespot's `finish_transfer` reads it the same way. Nil while a context
-    /// track plays, when it only names that track again.
+    /// goes on with, and librespot's `finish_transfer` reads it the same way; so it does in a
+    /// bare list a phone handed over (2026-10-02). Nil while a context track plays, when it only
+    /// names that track again.
     var contextResumeUid: String?
 
     var positionAsOfTimestamp: Int64 = 0
@@ -71,7 +75,7 @@ public nonisolated struct TransferState: Sendable {
                     case 5:
                         let track = playback.fields
                         currentTrackUri = Self.trackUri(track)
-                        currentTrackUid = track.last(2).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
+                        currentTrackUid = Self.trackUid(track)
                     default: break
                     }
                 }
@@ -84,8 +88,11 @@ public nonisolated struct TransferState: Sendable {
                         case 1:
                             contextUri = part.string
                         case 5:
-                            let tracks = part.fields.filter { $0.number == 4 }
-                            contextTrackUris += tracks.compactMap { Self.trackUri($0.fields) }
+                            for row in part.fields where row.number == 4 {
+                                guard let uri = Self.trackUri(row.fields) else { continue }
+                                contextTrackUris.append(uri)
+                                contextTrackUids.append(Self.trackUid(row.fields))
+                            }
                         default:
                             break
                         }
@@ -136,6 +143,11 @@ public nonisolated struct TransferState: Sendable {
             return max(0, positionAsOfTimestamp)
         }
         return max(0, positionAsOfTimestamp + now - timestamp)
+    }
+
+    /// A `ContextTrack`'s uid, or none for an empty one.
+    private static func trackUid(_ fields: [ProtobufField]) -> String? {
+        fields.last(2).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// A `ContextTrack`'s uri, rebuilt from its gid when only that was sent.

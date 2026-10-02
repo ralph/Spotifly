@@ -1,7 +1,7 @@
 # A queued track handed over in an album is placed by its uri
 
 Status: **Done** 2026-10-01, seen in the running app. The bare list the plan also named is
-`plans/open/queued-track-handover-in-a-bare-list.md`.
+`plans/done/queued-track-handover-in-a-bare-list.md`.
 Components: `Spotifly/PartnerAPI/PathfinderAlbum.swift` (`rowUids`), `Spotifly/SpotifyPlayer.swift`
 (`albumRowUids`), `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`contextRowUids`, `play`)
 Found: 2026-09-30, measuring the handover of a queued track

@@ -25,6 +25,9 @@ struct TransferStateTests {
 
     private static func transfer(
         paused: Bool = false,
+        contextUri: String = "spotify:playlist:abc",
+        rows: [(inout ProtobufWriter) -> Void] = [contextTrack(uri: "spotify:track:first"), contextTrack(uri: "spotify:track:current")],
+        sessionUid: String = "uid-current",
         currentTrack: @escaping (inout ProtobufWriter) -> Void = contextTrack(uri: "spotify:track:current"),
         queue: [String] = [],
         playingQueue: Bool = false,
@@ -43,13 +46,14 @@ struct TransferStateTests {
             }
             $0.message(field: 3) { session in
                 session.message(field: 2) { context in
-                    context.string(field: 1, "spotify:playlist:abc")
+                    context.string(field: 1, contextUri)
                     context.message(field: 5) { page in
-                        page.message(field: 4, contextTrack(uri: "spotify:track:first"))
-                        page.message(field: 4, contextTrack(uri: "spotify:track:current"))
+                        for row in rows {
+                            page.message(field: 4, row)
+                        }
                     }
                 }
-                session.string(field: 3, "uid-current")
+                session.string(field: 3, sessionUid)
             }
             $0.message(field: 4) { queued in
                 for uri in queue {
@@ -108,6 +112,35 @@ struct TransferStateTests {
 
         let fromContext = TransferState(parsing: Self.transfer(queue: ["spotify:track:q1"]))
         #expect(fromContext.contextResumeUid == nil)
+    }
+
+    @Test func `a list's rows keep their uids beside them, and a row without a track is left out`() {
+        let state = TransferState(parsing: Self.transfer(contextUri: "-", rows: [
+            Self.contextTrack(uri: "spotify:track:a", uid: "uid-a"),
+            { $0.string(field: 2, "uid-nothing") },
+            Self.contextTrack(uri: "spotify:track:b"),
+        ]))
+
+        #expect(state.contextUri == "")
+        #expect(state.contextTrackUris == ["spotify:track:a", "spotify:track:b"])
+        #expect(state.contextTrackUids == ["uid-a", nil])
+    }
+
+    /// Measured with a phone (2026-10-02): a bare list handed over while a queued track played
+    /// came whole, each row with a uid, and the session's uid named the row after the one the
+    /// phone had played. `PlaybackQueue.start(in:queued:resumingAt:uids:)` places it from those.
+    @Test func `a bare list handed over from the queue names the row it goes on with`() {
+        let state = TransferState(parsing: Self.transfer(
+            contextUri: "",
+            rows: (0 ..< 4).map { Self.contextTrack(uri: "spotify:track:t\($0)", uid: "u\($0)") },
+            sessionUid: "u2",
+            queue: ["spotify:track:q1"],
+            playingQueue: true,
+        ))
+
+        #expect(state.currentTrackUri == "spotify:track:q1")
+        #expect(state.contextTrackUids == ["u0", "u1", "u2", "u3"])
+        #expect(state.contextResumeUid == "u2")
     }
 
     @Test func `a track sent only by gid gets its uri back`() {
