@@ -1306,12 +1306,10 @@ final class PlaybackViewModel {
         let isReady = SpotifyPlayer.isSessionConnected
         guard isReady != isConnectionReady else { return }
 
-        // Pinned where last seen, or the display would fall back to the last anchor once it
-        // stops running; see `positionRuns`.
+        // Another device's position holds while the session is down.
         if !isReady, !SpotifyPlayer.isActiveDevice {
-            let frozenPosition = interpolatedPositionMs
-            anchorPosition(frozenPosition)
-            debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(frozenPosition)ms")
+            freezePositionClock()
+            debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(positionAnchorMs)ms")
         }
         isConnectionReady = isReady
     }
@@ -1365,7 +1363,7 @@ final class PlaybackViewModel {
             // another device took over, or the session went. The bar keeps the track, and the
             // clock stops where it had got to.
             if isPlaying {
-                anchorPosition(interpolatedPositionMs)
+                freezePositionClock()
                 isPlaying = false
                 updateNowPlayingPosition()
             }
@@ -1378,9 +1376,6 @@ final class PlaybackViewModel {
         )
 
         // Playing and not paused, for this Mac's player and for a device it mirrors alike.
-        // While this Mac was active, the client's flag was read here instead; it is the same
-        // field of the newest snapshot, and never differed from this one (measured
-        // 2026-10-03, `plans/open/playback-view-model-mirrors-the-player.md`).
         isPlaying = state.isPlaying
 
         // Update track if changed
@@ -1494,6 +1489,13 @@ final class PlaybackViewModel {
         positionAnchorTime = Self.positionClockNow()
     }
 
+    /// Pins the position where the clock had got to, before something that stops it, such as
+    /// `isPlaying` turning false. Afterwards the display would fall back to the last anchor;
+    /// see `positionRuns`.
+    private func freezePositionClock() {
+        anchorPosition(interpolatedPositionMs)
+    }
+
     /// Computed position using anchor interpolation - UI should bind to this
     /// Read by the bar's TimelineView on each tick
     var interpolatedPositionMs: UInt32 {
@@ -1593,14 +1595,6 @@ final class PlaybackViewModel {
 
     /// Called every second to check for drift and sync state
     private func checkDriftAndSync() {
-        var didCorrectDrift = false
-
-        defer {
-            if didCorrectDrift {
-                updateNowPlayingPosition()
-            }
-        }
-
         // Readiness gates interpolation, so recover here from a callback that never arrived
         // rather than leaving the progress bar stopped until the next one does.
         syncConnectionReadiness()
@@ -1660,7 +1654,7 @@ final class PlaybackViewModel {
         if correct {
             debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(playerPosition)")
             anchorPosition(playerPosition)
-            didCorrectDrift = true
+            updateNowPlayingPosition()
         }
     }
 

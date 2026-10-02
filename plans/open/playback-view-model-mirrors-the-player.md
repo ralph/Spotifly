@@ -1,9 +1,7 @@
 # The playback view model keeps its own copy of the player's playback state
 
-Status: **Open**, partly done: 2026-10-02, shuffle is read from the player, and a local start no
-longer writes the track and the playing state ahead of it; 2026-10-03, `isPlaying` is taken
-from the snapshot alone, never from the client's flag, and the drift poll no longer corrects
-it. What is left is named below, with where it is written
+Status: **Open**, partly done in two steps (2026-10-02 and 2026-10-03, under Solution). What is
+left is named below, with where it is written
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`, `Spotifly/Store/PlayerModel.swift`,
 `Spotifly/Views/NowPlayingBarView.swift`
 Found: 2026-10-02, reviewing the store against current practice; deliberately left out of
@@ -32,11 +30,8 @@ Each copy, with every place that writes it:
     guarantees one soon. For a playlist the same; for a track Spotify withholds, the track the
     player stepped over. It now leaves both to the report.
 - **`isPlaying`:**
-  - the mirror, in `handlePlaybackStateUpdate`: **done**, `state.isPlaying` alone. It read
-    `SpotifyPlayer.isPlaying` while this Mac was the active device and the cluster's
-    `isPlaying && !isPaused` otherwise;
-  - **done:** `checkDriftAndSync()`, once a second while this Mac was active, from
-    `SpotifyPlayer.isPlaying`, re-anchoring the position when it differed;
+  - the mirror, in `handlePlaybackStateUpdate`, now `state.isPlaying` alone (second step);
+  - **done:** `checkDriftAndSync()`, once a second while this Mac was active;
   - `clearPlaybackState()`, at logout;
   - **done:** the local start's `true`, which the report had already set.
 - **`trackDurationMs`:** set from the report when positive, reset to 0 by `currentTrackUri`'s
@@ -57,14 +52,15 @@ Done in the first step:
   `currentTrackUri`, so a change of track is read against that.
 
 Done in the second step, **which `isPlaying`**:
-- The client's flag, `SpotifyPlayer.isPlaying`, is `latest.playback?.isPlaying` in
-  `LibrespotClient`: the same field of the same stream of snapshots the player model applies,
-  read at its newest. Both places that build a `PlaybackState` already make `isPlaying` mean
-  playing and not paused (`publishPlaybackState`: `playing && !paused`; `mirror`: `isPaused` is
-  `!playing`), so `isPlaying && !isPaused` was `isPlaying`.
-- Measured, they never disagreed (below), so `handlePlaybackStateUpdate` takes
-  `state.isPlaying`, and the drift poll's correction of `isPlaying`, there for the Rust bridge's
-  missed callbacks, is gone.
+- `handlePlaybackStateUpdate` read the client's flag, `SpotifyPlayer.isPlaying`, while this Mac
+  was active, and the cluster's `isPlaying && !isPaused` otherwise. The flag was
+  `latest.playback?.isPlaying` in `LibrespotClient`: the same field of the snapshots the player
+  model applies, read at its newest. And both places that build a `PlaybackState` make
+  `isPlaying` mean playing and not paused (`publishPlaybackState`: `playing && !paused`;
+  `mirror`: `isPaused` is `!playing`).
+- Measured, they never disagreed (below), so it takes `state.isPlaying`; the drift poll's
+  correction of `isPlaying`, there for the Rust bridge's missed callbacks, is gone, and so is
+  the flag, which nothing else read.
 - They differ in one case, which the measurement could not reach: a snapshot with no playback,
   published when a load fails, a context has nothing left to play, another device takes over,
   or the session goes. The flag read it as not playing, while `handlePlaybackStateUpdate`
@@ -74,11 +70,21 @@ Done in the second step, **which `isPlaying`**:
   player model's `apply`, while the position anchor moves only when `handlePlaybackStateUpdate`
   runs, on the next delivery of `Observations`. In between, `interpolatedPositionMs` would run
   from a paused anchor, or stop at a stale one, and a frame drawn there jumps. The copy is
-  written in the same call as the anchor. It can become computed with the clock, in step 3.
+  written in the same call as the anchor. It can become computed with the clock, in the last step.
+
+A more general shape, raised in review: keep the last snapshot that had playback, with
+`isPlaying` forced false on `nil`, written in the same call as the anchor, and compute
+`isPlaying`, shuffle, `canSkipNext`, `canShuffle` and the track from it. On `nil`, shuffle,
+computed from `player.playback`, now reads off and the two `can…` flags read true while the bar
+keeps the track; that one copy would make `nil` uniform. It needs `currentTrackUri`'s `didSet`,
+which resets the duration, reworked.
 
 Next, in this order, each measured before it changes:
-1. **Logout.** `clearPlaybackState()` could become the player model's own reset, if the client
-   publishes an empty snapshot at shutdown.
+1. **Logout.** `clearPlaybackState()` could become the player model's own reset. The client
+   already publishes no playback at teardown (`clearLocalState`), but since the second step
+   that means "stopped here, keep the track", as after a failed load: a logout needs another
+   signal, such as the connection going (`player.connection == nil`) or a shutdown state of
+   its own.
 2. **`trackDurationMs`, the position anchor and `isPlaying`**, last, since the clock depends on
    them. With them, the local start's re-anchor, which repeats what the report already did, and its
    volume, which belongs to the player: it knows when its mixer opens.
