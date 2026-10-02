@@ -22,21 +22,23 @@ final class ProfileService {
     private var answered = false
     /// The asking again after a failed launch request; see `loadForSession()`.
     private var sessionLoad: Task<Void, Never>?
-    /// The pauses before each time it asks again, the last one repeating. Injected, with the
-    /// wait itself, so tests do not wait.
-    private let retryPauses: [Duration]
-    private let pause: @Sendable (Duration) async throws -> Void
+    /// The pauses before each time it asks again, the last one repeating.
+    private static let retryPauses: [Duration] = [.seconds(5), .seconds(30), .seconds(120), .seconds(300)]
+    /// The wait for each of them, injected so tests do not wait.
+    private let pause: SpotifyCredentials.Pause
+    /// Offline, a timed attempt is skipped: it could only fail, and the network's return asks.
+    private let network: NetworkMonitor
 
     init(
         store: AppStore,
         partnerAPI: PartnerAPI = PartnerAPI(),
-        retryPauses: [Duration] = [.seconds(5), .seconds(30), .seconds(120), .seconds(300)],
-        pause: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        pause: @escaping SpotifyCredentials.Pause = { try await Task.sleep(for: $0) },
+        network: NetworkMonitor = .shared,
     ) {
         self.store = store
         self.partnerAPI = partnerAPI
-        self.retryPauses = retryPauses
         self.pause = pause
+        self.network = network
     }
 
     isolated deinit {
@@ -54,28 +56,26 @@ final class ProfileService {
     /// this is for the rest, and for one that did not pass in those seconds.
     ///
     /// Returns when the first attempt has ended, so the launch waits for it as long as it did.
-    /// The asking again goes on in the background, and ends with the service, which is the
-    /// session's. The network's return still asks at once (`LoggedInLifecycleModifier`).
+    /// The asking again goes on in the background, and ends when any request answers, or with the
+    /// service, which is the session's. The network's return also asks at once (`askAgain()`).
     func loadForSession() async {
         guard sessionLoad == nil, !answered else { return }
         do {
             try await reload()
             return
         } catch {
-            debugLog("ProfileService", "Profile unavailable: \(error.localizedDescription); asking again in \(retryPauses.first?.components.seconds ?? 0) s")
+            debugLog("ProfileService", "Profile unavailable: \(error.localizedDescription); asking again in \(Self.retryPauses[0].components.seconds) s")
         }
 
-        sessionLoad = Task { [weak self, retryPauses, pause] in
-            var pauses = retryPauses.makeIterator()
-            var delay = Duration.seconds(300)
-            while true {
-                delay = pauses.next() ?? delay
+        sessionLoad = Task { [weak self, pause, network] in
+            for attempt in 0... {
                 do {
-                    try await pause(delay)
+                    try await pause(Self.retryPauses[min(attempt, Self.retryPauses.count - 1)])
                 } catch {
                     return
                 }
                 guard let self, !answered else { return }
+                guard network.isOnline else { continue }
                 do {
                     try await reload()
                     debugLog("ProfileService", "Profile loaded on asking again")
@@ -84,6 +84,20 @@ final class ProfileService {
                     debugLog("ProfileService", "Profile still unavailable: \(error.localizedDescription)")
                 }
             }
+        }
+    }
+
+    /// Whether no profile request has answered this session, for the network's return to ask.
+    var needsProfile: Bool {
+        !answered
+    }
+
+    /// Asks now, for the network's return. A failure is left to `loadForSession()`'s asking again.
+    func askAgain() async {
+        do {
+            try await reload()
+        } catch {
+            debugLog("ProfileService", "Profile unavailable: \(error.localizedDescription)")
         }
     }
 
@@ -119,5 +133,6 @@ final class ProfileService {
         let profile = try await partnerAPI.profile()
         store.setUserProfile(UserProfile(pathfinder: profile))
         answered = true
+        sessionLoad?.cancel()
     }
 }

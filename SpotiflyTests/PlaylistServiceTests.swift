@@ -353,7 +353,6 @@ struct ProfileServiceTests {
         let service = ProfileService(
             store: store,
             partnerAPI: partnerAPI(transport: { _ in calls.profile() }),
-            retryPauses: [.zero],
             pause: { _ in await Task.yield() },
         )
 
@@ -374,7 +373,6 @@ struct ProfileServiceTests {
         let service = ProfileService(
             store: store,
             partnerAPI: partnerAPI(transport: { _ in calls.profile() }),
-            retryPauses: [.zero],
             pause: { _ in
                 await held.entered()
                 await held.wait()
@@ -389,6 +387,27 @@ struct ProfileServiceTests {
 
         #expect(calls.profileRequests == 2)
         #expect(store.userProfile != nil)
+    }
+
+    /// Offline, a timed attempt could only fail; the network's return asks instead.
+    @Test func `the session's load does not ask while offline`() async throws {
+        let calls = Calls(failuresBeforeSuccess: 1)
+        let pauses = MainActorCounter()
+        let service = ProfileService(
+            store: AppStore(),
+            partnerAPI: partnerAPI(transport: { _ in calls.profile() }),
+            pause: { _ in
+                await MainActor.run { pauses.count += 1 }
+                await Task.yield()
+            },
+            network: NetworkMonitor(satisfied: false),
+        )
+
+        await service.loadForSession()
+        try await waitUntil { pauses.count >= 3 }
+
+        #expect(calls.profileRequests == 1)
+        #expect(service.needsProfile)
     }
 
     @Test func `the session's load is one load`() async {

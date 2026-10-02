@@ -34,10 +34,14 @@ still worked, because it fetches the profile through `ProfileService.require()`.
 - **It stops** when any request answers: its own, a write's `require()`, or the network's
   return, which still asks at once. An answer with a profile that has no name counts, since
   asking again would not change it.
+- **Offline, it skips** a timed attempt, which could only fail; the network's return asks.
 - **It ends with the session:** the task holds the service weakly, and the service's
   `isolated deinit` cancels it.
 
-The pauses and the wait are injected, so the tests do not wait.
+The network's return now asks through the service too, `askAgain()` while `needsProfile`, where
+the lifecycle modifier had its own wrapper and its own test of "done", `store.userProfile ==
+nil`, which a nameless profile never left. The wait and the network are injected, so the tests
+do not wait.
 
 Considered and not done: the three views asking `ProfileService` themselves, like a write does.
 That is three call sites for one fact the session can keep.
@@ -56,11 +60,14 @@ phase 4 create" selected.
 - **After:** `Profile unavailable: …; asking again in 5 s`, then 5.07 s later
   `profileAttributes` and `Profile loaded on asking again`. The sidebar said "llralphj", and the
   toolbar showed the pencil, the cover menu and the bin.
+- **After the review's changes, two requests failing:** the launch's failed, the one 5 s later
+  failed, and the one 30 s after that loaded the profile.
 
 ### Unit tests
 
-607 pass, three of them new:
+608 pass, four of them new:
 - the session's load asks again until a request answers, and then stops (two failures, three
   requests);
 - it stops when another request answers first, without a request of its own;
+- offline, it makes no request on its timed wakes;
 - a second call makes no second load.

@@ -185,7 +185,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // while the launch's is still out, is harmless; skipping it lost the only retry
             // when that one then failed.
             .retryingWhenNetworkReturns(if: store.homeErrorMessage != nil) { await homeService.refresh() }
-            .retryingWhenNetworkReturns(if: store.userProfile == nil) { await loadProfile() }
+            .retryingWhenNetworkReturns(if: profileService.needsProfile) { await profileService.askAgain() }
             // And the queue's tracks, which every change of the queue asks for: one that failed
             // offline is not asked for again until the queue changes. A track already loaded
             // costs no request.
@@ -196,19 +196,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
             .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
                 SpotifyPlayer.setUnplayable(uris)
             }
-    }
-
-    /// Who is logged in, asked again when the network returns; the launch's load, which also asks
-    /// again after a failure, is `ProfileService.loadForSession()`. Failure is swallowed, because
-    /// nothing on this path should block on it: an app that cannot say who you are is still an
-    /// app that plays music. A playlist write that needs the profile asks for it itself; see
-    /// `ProfileService.require()`.
-    private func loadProfile() async {
-        do {
-            try await profileService.reload()
-        } catch {
-            debugLog("LoggedInLifecycle", "Profile unavailable: \(error.localizedDescription)")
-        }
     }
 
     #if DEBUG
