@@ -11,7 +11,6 @@ struct AlbumsListView: View {
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     /// The ephemeral album being viewed (if not in user's library)
     private var ephemeralAlbum: Album? {

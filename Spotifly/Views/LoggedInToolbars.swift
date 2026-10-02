@@ -45,8 +45,6 @@ struct LoggedInContentToolbar: ToolbarContent {
 }
 
 struct LoggedInDetailToolbar: ToolbarContent {
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
-
     @ToolbarContentBuilder
     var body: some ToolbarContent {
         ToolbarItem(placement: .automatic) {

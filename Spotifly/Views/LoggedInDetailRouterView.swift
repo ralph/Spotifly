@@ -10,8 +10,6 @@ import SwiftUI
 struct LoggedInDetailRouterView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
-
     // Each branch used to pick between an `init(album:)` and an `init(albumId:)`
     // depending on whether the entity was in the store yet. Those are the two
     // branches of a `_ConditionalContent` and so have distinct structural
@@ -24,10 +22,8 @@ struct LoggedInDetailRouterView: View {
         switch navigationCoordinator.selectedNavigationItem {
         case .albums:
             if let albumId = navigationCoordinator.selectedAlbumId {
-                AlbumDetailView(
-                    albumId: albumId,
-                )
-                .id(albumId)
+                AlbumDetailView(albumId: albumId)
+                    .id(albumId)
             } else {
                 Text("empty.select_album")
                     .foregroundStyle(.secondary)
@@ -44,10 +40,8 @@ struct LoggedInDetailRouterView: View {
 
         case .playlists:
             if let playlistId = navigationCoordinator.selectedPlaylistId {
-                PlaylistDetailView(
-                    playlistId: playlistId,
-                )
-                .id(playlistId)
+                PlaylistDetailView(playlistId: playlistId)
+                    .id(playlistId)
             } else {
                 Text("empty.select_playlist")
                     .foregroundStyle(.secondary)

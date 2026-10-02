@@ -11,7 +11,6 @@ struct PlaylistsListView: View {
     @Environment(AppStore.self) private var store
     @Environment(PlaylistService.self) private var playlistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     /// The ephemeral playlist being viewed (if not in user's library)
     private var ephemeralPlaylist: Playlist? {

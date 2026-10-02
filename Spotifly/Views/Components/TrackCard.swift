@@ -9,9 +9,9 @@ import SwiftUI
 
 struct TrackCard: View {
     let track: Track
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
     var currentSection: NavigationItem = .searchResults
 
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(TrackService.self) private var trackService
 
     var body: some View {

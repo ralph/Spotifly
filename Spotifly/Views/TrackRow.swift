@@ -37,7 +37,6 @@ struct TrackRow: View {
     let isCurrentTrack: Bool
     let isPlayedTrack: Bool // For queue - tracks that have already played
     let provider: TrackProvider? // Optional provider (queue, context, autoplay, unavailable)
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
     let currentSection: NavigationItem // Current sidebar section (for "Go to" navigation)
     let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
     /// Which *occurrence* this row is, where the list knows — only a playlist does.
@@ -53,6 +52,7 @@ struct TrackRow: View {
     /// the list redraws.
     private static let artworkShape = AnyShape(.rect(cornerRadius: 4))
 
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
 
@@ -293,10 +293,10 @@ struct NewPlaylistPrompt: ViewModifier {
     /// The track to put in the new playlist — optional because the now-playing bar carries the
     /// prompt whether or not something is playing.
     let trackId: String?
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
     let onAdded: () -> Void
 
     @Environment(PlaylistService.self) private var playlistService
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     @State private var newPlaylistName = ""
 

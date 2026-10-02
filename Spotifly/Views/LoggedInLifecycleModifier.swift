@@ -10,16 +10,14 @@ import Combine
 import SwiftUI
 
 struct LoggedInLifecycleModifier: ViewModifier {
-    let store: AppStore
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
-    let queueService: QueueService
-    let deviceService: DeviceService
-    let homeService: HomeService
-    /// Only the debug hooks use it. Passed in, because `LoggedInView` puts it into the
-    /// environment of the content this modifies, not of the modifier.
-    let navigationCoordinator: NavigationCoordinator
-
+    @Environment(AppStore.self) private var store
     @Environment(PlayerModel.self) private var player
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
+    @Environment(QueueService.self) private var queueService
+    @Environment(DeviceService.self) private var deviceService
+    @Environment(HomeService.self) private var homeService
+    /// Only the debug hooks use it.
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     /// Whether readiness has been lost since the last re-sync.
     @State private var connectionDropped = false

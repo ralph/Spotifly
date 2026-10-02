@@ -9,7 +9,6 @@ import SwiftUI
 
 struct SearchResultsView: View {
     let searchResults: SearchResults
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(TrackService.self) private var trackService
 
     var body: some View {

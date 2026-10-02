@@ -101,6 +101,8 @@ struct LoggedInView: View {
             }
         }
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
+        // Inside the environment below, so the modifier reads the services from it.
+        .modifier(LoggedInLifecycleModifier())
         .environment(deviceService)
         .environment(queueService)
         .environment(homeService)
@@ -115,15 +117,6 @@ struct LoggedInView: View {
         // inside it. The Navigate menu's ⌘1–⌘4 are the only registration of those shortcuts.
         .focusedSceneValue(\.navigationSelection, navigationSelectionBinding)
         .focusedSceneValue(\.homeService, homeService)
-        .modifier(
-            LoggedInLifecycleModifier(
-                store: store,
-                queueService: queueService,
-                deviceService: deviceService,
-                homeService: homeService,
-                navigationCoordinator: navigationCoordinator,
-            ),
-        )
         .onChange(of: store.searchCacheEvictionRevision) {
             navigationCoordinator.invalidateUnviewableRoutes()
         }
@@ -207,12 +200,10 @@ struct LoggedInView: View {
     /// The main content router with its content toolbar attached directly. Search is
     /// attached to the NavigationSplitView (see `body`), not here.
     private var contentRouter: some View {
-        LoggedInContentRouterView(
-            onLogout: handleLogout,
-        )
-        .toolbar {
-            LoggedInContentToolbar(refreshAction: refreshAction(for: navigationCoordinator.selectedNavigationItem))
-        }
+        LoggedInContentRouterView(onLogout: handleLogout)
+            .toolbar {
+                LoggedInContentToolbar(refreshAction: refreshAction(for: navigationCoordinator.selectedNavigationItem))
+            }
     }
 
     private func sidebarView() -> some View {

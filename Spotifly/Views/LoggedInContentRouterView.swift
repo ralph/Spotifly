@@ -12,7 +12,6 @@ struct LoggedInContentRouterView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(SearchService.self) private var searchService
 
-    @Environment(PlaybackViewModel.self) private var playbackViewModel
     let onLogout: () -> Void
 
     var body: some View {
@@ -93,19 +92,13 @@ struct LoggedInContentRouterView: View {
             ArtistDetailView(artistId: id)
 
         case let .album(id):
-            AlbumDetailView(
-                albumId: id,
-            )
+            AlbumDetailView(albumId: id)
 
         case let .playlist(id):
-            PlaylistDetailView(
-                playlistId: id,
-            )
+            PlaylistDetailView(playlistId: id)
 
         case let .searchTracks(ids):
-            SearchAllTracksView(
-                trackIds: ids,
-            )
+            SearchAllTracksView(trackIds: ids)
         }
     }
 }
