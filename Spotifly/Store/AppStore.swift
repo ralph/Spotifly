@@ -325,7 +325,10 @@ final class AppStore {
             if playlist.ownerId.isEmpty {
                 playlist.ownerId = existing.ownerId
             }
-            playlist.description = playlist.description ?? existing.description
+            // A summary's missing description says nothing; a full load's says there is none.
+            if !playlist.tracksLoaded {
+                playlist.description = playlist.description ?? existing.description
+            }
             // A loaded playlist that is genuinely empty is preserved too, so it is not fetched
             // again forever — see the "cache what was fetched" rule in AGENTS.md.
             if !playlist.tracksLoaded, existing.tracksLoaded || !existing.items.isEmpty {

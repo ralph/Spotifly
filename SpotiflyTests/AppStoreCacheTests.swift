@@ -80,6 +80,12 @@ struct AppStoreCacheTests {
         store.upsertPlaylist(summary)
         #expect(store.playlists["p"]?.ownerId == "owner")
         #expect(store.playlists["p"]?.description == "description abc")
+
+        // A load of the whole playlist that finds none means it was cleared.
+        var reloaded = playlist(id: "p")
+        reloaded.tracksLoaded = true
+        store.upsertPlaylist(reloaded)
+        #expect(store.playlists["p"]?.description == nil)
     }
 
     @Test func `artist albums are cached in order`() {
