@@ -170,8 +170,8 @@ No behavior change.
   `uniqued()`. `SearchService` upserts the entities first and records the ids after them.
   Relinking can give two track results one market id, and the results page's `ForEach` is
   keyed by id. That is a hazard today too; recording ids is the place to close it.
-- `SearchResultsView` resolves the ids through the tables, as `SearchAllTracksView` already
-  does. The lookup goes in an `AppStore` helper rather than in each section.
+- `SearchResultsView` resolves the ids through the tables in four one-line computed
+  properties, as `SearchAllTracksView` and the start page's shelves already do.
 - `NavigationCoordinatorTests` and `debugDumpJSON` change with the type. A new test covers
   duplicate ids.
 - Eviction does not change: `searchResultQueries` and `searchCacheEvictionRevision` now bound
