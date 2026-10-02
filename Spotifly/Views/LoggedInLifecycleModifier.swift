@@ -5,8 +5,6 @@
 //  Encapsulates startup and session lifecycle side effects for LoggedInView.
 //
 
-import AppKit
-import Combine
 import SwiftUI
 
 struct LoggedInLifecycleModifier: ViewModifier {
@@ -200,28 +198,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // And the other way: what playback found withheld, which no list said, is greyed.
             .onChange(of: player.withheld, initial: true) { _, uris in
                 store.setWithheld(uris)
-            }
-            .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
-                debugLog("LoggedInLifecycle", "System will sleep, disconnecting from Spotify")
-                SpotifyPlayer.disconnect()
-            }
-            // Ask the client to reconnect rather than rebuilding it. A rebuild starts with
-            // a destructive cleanup that invalidates whatever reconnect loop is already
-            // working the problem, and if the single rebuild attempt then fails there is
-            // nothing left retrying.
-            .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
-                switch SpotifyPlayer.forceReconnect() {
-                case .started, .alreadyRecovering:
-                    debugLog("LoggedInLifecycle", "System wake detected, reconnect under way")
-                case .noSession:
-                    // Nothing to reconnect to — after a logout, or if the initial
-                    // initialization never succeeded. Only a full rebuild helps here, and
-                    // there is no running recovery for it to disturb.
-                    debugLog("LoggedInLifecycle", "System wake detected, no session — rebuilding")
-                    Task {
-                        await playbackViewModel.forceReinitialize()
-                    }
-                }
             }
     }
 

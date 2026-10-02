@@ -1036,9 +1036,6 @@ final class PlaybackViewModel {
     // MARK: - System Sleep
 
     /// When the system last said it would sleep, until it says it woke.
-    ///
-    /// Watched here, for the life of the process, rather than in `LoggedInLifecycleModifier`,
-    /// whose observer goes with a closed window: the pause it guards against arrives either way.
     private var systemWillSleepAt: Date?
 
     /// How long after the system says it will sleep a pause is taken as the sleep's. Seen half
@@ -1046,14 +1043,43 @@ final class PlaybackViewModel {
     /// happened, so never woke, does not silence the pause key for long.
     private nonisolated static let sleepPauseWindow: TimeInterval = 10
 
+    /// For the life of the process, rather than a window's, whose observers would go with it
+    /// when it closes.
     private func observeSystemSleep() {
         let center = NSWorkspace.shared.notificationCenter
         // On the main queue, so the mark is set before a command that follows it is handled.
         center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.systemWillSleepAt = Date() }
+            MainActor.assumeIsolated { self?.systemWillSleep() }
         }
         center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.systemWillSleepAt = nil }
+            MainActor.assumeIsolated { self?.systemDidWake() }
+        }
+    }
+
+    private func systemWillSleep() {
+        systemWillSleepAt = Date()
+        debugLog("PlaybackViewModel", "System will sleep, disconnecting from Spotify")
+        SpotifyPlayer.disconnect()
+    }
+
+    /// Reconnects rather than rebuilds; see `SpotifyPlayer.forceReconnect`. A rebuild that then
+    /// failed would also leave nothing retrying.
+    private func systemDidWake() {
+        systemWillSleepAt = nil
+        switch SpotifyPlayer.forceReconnect() {
+        case .started, .alreadyRecovering:
+            debugLog("PlaybackViewModel", "System wake detected, reconnect under way")
+        case .noSession:
+            // Never initialized, or signed out. Only the first wants a rebuild, and no recovery
+            // is running for it to disturb.
+            Task {
+                guard await KeymasterSession.shared.hasGrant else {
+                    debugLog("PlaybackViewModel", "System wake detected, signed out — nothing to reconnect")
+                    return
+                }
+                debugLog("PlaybackViewModel", "System wake detected, no session — rebuilding")
+                await forceReinitialize()
+            }
         }
     }
 
