@@ -27,6 +27,7 @@
 "nav.your_library" = "Bibliothèque";
 
 /* Common Actions */
+"action.play" = "Lire";
 "action.try_again" = "Réessayer";
 "action.cancel" = "Annuler";
 "action.create" = "Créer";
@@ -256,6 +257,3 @@
 "common.ok" = "OK";
 "common.cancel" = "Annuler";
 "auth.enable_playback_wrong_account" = "Ce compte Spotify n'est pas celui avec lequel vous êtes connecté. Connectez le navigateur au même compte, puis réessayez.";
-
-/* A library row's action, for accessibility */
-"action.play" = "Lire";
