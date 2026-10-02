@@ -72,8 +72,9 @@ Neither librespot nor go-librespot reads `main_context`.
 
 While the session stands in autoplay, this Mac writes its own `transfer_data`, as a phone and the
 web player write theirs (`SpircController.handover(of:)`, `TransferState.serialized`):
-- the station as the context, with no pages: the device taking over resolves it, as it does a
-  phone's handover;
+- the station as the context, with its rows from the session's row on as one page: a phone given
+  none made a station of three tracks;
+- the position at the moment of the report;
 - the album as `main_context`, with the resolver's metadata;
 - the track, its uid as `current_uid`, and its metadata (`autoplay.is_autoplay`, the station);
 - the queue, each track `is_queued`.
@@ -104,6 +105,18 @@ what other devices show while the Mac plays.
 - With the web player (2026-10-02), see Progress.
 - Left for its own plan: a handover *into* this Mac of a track queued during autoplay,
   `plans/open/handover-of-a-track-queued-during-autoplay.md`.
+- **Your phone, first round** (2026-10-02): it took the Mac's autoplay track over as autoplay,
+  "Wiedergabe empfohlener Songs", with the station as its context and the album as
+  `main_context`, as its own `transfer_data` showed. Two things were off:
+  - **The position:** it played the track from its start. The handover said 0 ms at the
+    track's start, 98 s before; the phone carries a position forward only when it is above zero,
+    as librespot does, where the web player had carried the 2 ms of the first run forward. The
+    handover now gives the position at the moment of each report.
+  - **The station:** the phone showed three tracks after the current one, the album's two and
+    the current one again, and its context stayed `loading`; the web player had resolved the
+    station itself. The handover now carries the station's rows from the session's row on as
+    the context's page, 50 of them. The web player then took over at the Mac's position (87.6 s)
+    with the Mac's rows, 10 behind and 37 ahead.
 - With your phone, still to see: picking the phone while this Mac plays autoplay shows the track
   as autoplay, with the station's tracks after it and not the album's last again.
 

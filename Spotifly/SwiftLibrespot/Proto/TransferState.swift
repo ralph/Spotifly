@@ -161,9 +161,9 @@ public nonisolated struct TransferState: Sendable {
     }
 
     /// The message as a sending device writes it, which `init(parsing:)` reads back: the
-    /// handover this Mac writes during autoplay (`SpircController.handover(of:)`), so with no
-    /// pages, as a phone's has none and the device taking over resolves the context. The current
-    /// track goes with `currentTrackMetadata`; a queued one `is_queued`. A playing queued track
+    /// handover this Mac writes during autoplay (`SpircController.handover(of:atMs:)`). The
+    /// context's rows go as one page. The current track goes with `currentTrackMetadata`; a
+    /// queued one `is_queued`. A playing queued track
     /// is the queue's head as well as the current track, with its uid, as a phone wrote it
     /// (2026-10-02).
     var serialized: Data {
@@ -183,7 +183,16 @@ public nonisolated struct TransferState: Sendable {
                 }
             }
             message.message(field: 3) { session in
-                session.message(field: 2) { Self.write(context: contextUri, into: &$0) }
+                session.message(field: 2) { context in
+                    Self.write(context: contextUri, into: &context)
+                    if !contextTrackUris.isEmpty {
+                        context.message(field: 5) { page in
+                            for (uri, uid) in zip(contextTrackUris, contextTrackUids) {
+                                page.message(field: 4) { Self.write(track: uri, uid: uid, metadata: [:], into: &$0) }
+                            }
+                        }
+                    }
+                }
                 if let uid = playsQueuedTrack ? contextResumeUid : currentTrackUid {
                     session.string(field: 3, uid)
                 }

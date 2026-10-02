@@ -414,7 +414,7 @@ public actor SpircController {
             playerStateProto.options = options
 
             device.playerState = playerStateProto
-            device.transferData = Self.handover(of: ps)?.serialized
+            device.transferData = Self.handover(of: ps, atMs: Int64(Date().timeIntervalSince1970 * 1000))?.serialized
         }
 
         return device
@@ -431,9 +431,15 @@ public actor SpircController {
     /// only and the session at the context's last row, so a phone made the autoplay track a
     /// queued one, with the context's last track again after it. Written here as a phone and
     /// the web player write it: the station as the context, the context it went on from as
-    /// `main_context`. The station's rows are left out, as theirs are: the device taking over
-    /// resolves the station. Taken over so, the web player went on with the station.
-    nonisolated static func handover(of ps: SpircPlayerState) -> TransferState? {
+    /// `main_context`. The station's rows go as the context's page, from the session's row on: a
+    /// phone handed none made a station of three tracks of its own, where the web player resolved
+    /// one (2026-10-02).
+    ///
+    /// The position is the one at `now`, the moment of the report. The player state's is the
+    /// one when the track started or last changed, and a phone took a handover's 0 at the start
+    /// of a track as it was, 98 s later: as librespot does, it carries a position forward from
+    /// its timestamp only when it is above zero.
+    nonisolated static func handover(of ps: SpircPlayerState, atMs now: Int64) -> TransferState? {
         guard ps.sessionRow?.provider == "autoplay", let station = ps.autoplayContextUri, let uri = ps.trackUri else {
             return nil
         }
@@ -449,9 +455,15 @@ public actor SpircController {
         state.playsQueuedTrack = playsQueued
         state.contextResumeUid = playsQueued ? ps.sessionRow?.uid : nil
         state.queuedTrackUris = ps.nextTracks.filter { $0.provider == "queue" }.map(\.uri)
+        let current = playsQueued ? [] : [QueueItem(uri: uri, provider: ps.trackProvider, uid: ps.trackUid)]
+        let stationRows = (current + ps.nextTracks).filter { $0.provider == "autoplay" && !$0.hidden }
+        state.contextTrackUris = stationRows.map(\.uri)
+        state.contextTrackUids = stationRows.map(\.uid)
         state.positionAsOfTimestamp = Int64(ps.positionMs)
         state.timestamp = Int64(ps.timestamp)
         state.isPaused = ps.isPaused
+        state.positionAsOfTimestamp = state.position(atMs: now)
+        state.timestamp = now
         state.shuffle = ps.shuffle
         state.repeatContext = ps.repeatMode == .context
         state.repeatTrack = ps.repeatMode == .track
