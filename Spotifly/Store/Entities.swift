@@ -381,12 +381,28 @@ enum TrackProvider: String, Codable {
 
 // MARK: - Search Results
 
-/// One search's four result lists, cached per query by `AppStore`.
+/// One search's four result lists, cached per query by `AppStore`, in the order Spotify ranked
+/// them.
+///
+/// **Holds ids rather than entities**, like the start page's shelves, so the results page shows
+/// what the tables hold now. A copy did not: a track playback found withheld after the search
+/// stayed ungreyed on its card while "show all" greyed it, and a playlist renamed on its page kept
+/// its old name here. The entities themselves are upserted when the search answers.
+///
+/// Each list is deduplicated: relinking can give two track results one market id (`AGENTS.md`,
+/// "Track identity is the market id"), and the page keys its rows by id.
 struct SearchResults: Encodable {
-    let albums: [Album]
-    let artists: [Artist]
-    let playlists: [Playlist]
-    let tracks: [Track]
+    let albumIds: [String]
+    let artistIds: [String]
+    let playlistIds: [String]
+    let trackIds: [String]
+
+    init(albums: [Album], artists: [Artist], playlists: [Playlist], tracks: [Track]) {
+        albumIds = albums.map(\.id).uniqued()
+        artistIds = artists.map(\.id).uniqued()
+        playlistIds = playlists.map(\.id).uniqued()
+        trackIds = tracks.map(\.id).uniqued()
+    }
 }
 
 // MARK: - Duplicate Ids

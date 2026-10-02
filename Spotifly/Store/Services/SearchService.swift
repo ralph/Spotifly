@@ -30,15 +30,17 @@ final class SearchService {
         store.searchIsLoading = true
 
         do {
-            let results = try await partnerSearch(query: query)
+            let found = try await partnerSearch(query: query)
 
-            store.setSearchResults(results, for: query)
-
-            // Store entities in AppStore so favorites work and for future reference
-            store.upsertTracks(results.tracks)
-            store.upsertAlbums(results.albums)
-            store.upsertArtists(results.artists)
-            store.upsertPlaylists(results.playlists)
+            // Into the tables first: the results name them by id.
+            store.upsertTracks(found.tracks)
+            store.upsertAlbums(found.albums)
+            store.upsertArtists(found.artists)
+            store.upsertPlaylists(found.playlists)
+            store.setSearchResults(
+                SearchResults(albums: found.albums, artists: found.artists, playlists: found.playlists, tracks: found.tracks),
+                for: query,
+            )
         } catch {
             store.setSearchFailure(error, for: query)
         }
@@ -51,13 +53,15 @@ final class SearchService {
     /// Concurrently, because they are four separate operations where the Web API served all
     /// four categories from one request — sequentially this would be four round-trips of
     /// latency for what the user experiences as a single search.
-    private func partnerSearch(query: String) async throws -> SearchResults {
+    private func partnerSearch(
+        query: String,
+    ) async throws -> (albums: [Album], artists: [Artist], playlists: [Playlist], tracks: [Track]) {
         async let tracks = partner.searchTracks(query, limit: 20)
         async let albums = partner.searchAlbums(query, limit: 20)
         async let artists = partner.searchArtists(query, limit: 20)
         async let playlists = partner.searchPlaylists(query, limit: 20)
 
-        return try await SearchResults(
+        return try await (
             albums: albums.compactMap(Album.init(pathfinder:)),
             artists: artists.compactMap(Artist.init(pathfinder:)),
             playlists: playlists.compactMap(Playlist.init(pathfinder:)),
