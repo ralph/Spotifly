@@ -21,6 +21,7 @@ struct PlaylistDetailView: View {
     @State private var failure: LoadFailure?
     @State private var showEditDetailsDialog = false
     @State private var showCoverPicker = false
+    @State private var showRemoveCoverConfirmation = false
     @State private var showDeleteConfirmation = false
     @State private var showUnfollowConfirmation = false
     @State private var editingPlaylistName = ""
@@ -120,14 +121,22 @@ struct PlaylistDetailView: View {
             editingPlaylistDescription = playlistDescription
             showEditDetailsDialog = true
         }
-        .fileImporter(isPresented: $showCoverPicker, allowedContentTypes: [.image]) { result in
-            changeCover(to: result)
+        .fileImporter(isPresented: $showCoverPicker, allowedContentTypes: [.image]) { picked in
+            updating { try await playlistService.changePlaylistCover(playlistId: playlistId, imageAt: picked.get()) }
+        }
+        .alert("playlist.remove_cover.title", isPresented: $showRemoveCoverConfirmation) {
+            Button("action.cancel", role: .cancel) {}
+            Button("playlist.remove_cover.action", role: .destructive) {
+                updating { try await playlistService.removePlaylistCover(playlistId: playlistId) }
+            }
+        } message: {
+            Text("playlist.remove_cover.message")
         }
         .onToolbarAction(.showPlaylistCoverPicker, addressedTo: playlistId) {
             showCoverPicker = true
         }
-        .onToolbarAction(.removePlaylistCover, addressedTo: playlistId) {
-            removeCover()
+        .onToolbarAction(.showPlaylistRemoveCoverConfirmation, addressedTo: playlistId) {
+            showRemoveCoverConfirmation = true
         }
         .onToolbarAction(.showPlaylistDeleteConfirmation, addressedTo: playlistId) {
             showDeleteConfirmation = true
@@ -306,49 +315,20 @@ struct PlaylistDetailView: View {
     private func savePlaylistDetails() {
         let trimmedName = editingPlaylistName.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
+        let description = editingPlaylistDescription
+        editingPlaylistName = ""
+        editingPlaylistDescription = ""
 
-        Task {
-            do {
-                try await playlistService.updatePlaylistDetails(
-                    playlistId: playlistId,
-                    name: trimmedName,
-                    description: editingPlaylistDescription,
-                )
-            } catch {
-                failure = LoadFailure(message: String(localized: "error.update_playlist \(error.localizedDescription)"))
-            }
-            editingPlaylistName = ""
-            editingPlaylistDescription = ""
+        updating {
+            try await playlistService.updatePlaylistDetails(playlistId: playlistId, name: trimmedName, description: description)
         }
     }
 
-    /// Sets the cover to the image picked.
-    private func changeCover(to picked: Result<URL, any Error>) {
+    /// Runs a change to the playlist, and shows what went wrong where the page shows its errors.
+    private func updating(_ change: @escaping () async throws -> Void) {
         Task {
             do {
-                let data = try Self.read(picked.get())
-                try await playlistService.changePlaylistCover(playlistId: playlistId, imageData: data)
-            } catch {
-                failure = LoadFailure(message: String(localized: "error.update_playlist \(error.localizedDescription)"))
-            }
-        }
-    }
-
-    /// A picked file's contents, read while the picker's grant to it lasts.
-    private static func read(_ url: URL) throws -> Data {
-        let granted = url.startAccessingSecurityScopedResource()
-        defer {
-            if granted {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-        return try Data(contentsOf: url)
-    }
-
-    private func removeCover() {
-        Task {
-            do {
-                try await playlistService.removePlaylistCover(playlistId: playlistId)
+                try await change()
             } catch {
                 failure = LoadFailure(message: String(localized: "error.update_playlist \(error.localizedDescription)"))
             }

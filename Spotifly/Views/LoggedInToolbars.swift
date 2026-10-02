@@ -196,7 +196,7 @@ private struct LoggedInContextToolbarActions: View {
                         NotificationCenter.default.post(name: .showPlaylistCoverPicker, object: playlist.id)
                     }
                     Button("playlist.menu.remove_cover", role: .destructive) {
-                        NotificationCenter.default.post(name: .removePlaylistCover, object: playlist.id)
+                        NotificationCenter.default.post(name: .showPlaylistRemoveCoverConfirmation, object: playlist.id)
                     }
                 } label: {
                     Label("playlist.menu.cover", systemImage: "photo")

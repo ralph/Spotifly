@@ -2,7 +2,8 @@
 //  SpclientAPI.swift
 //  Spotifly
 //
-//  The REST half of the client's own API, at spclient.wg.spotify.com.
+//  The REST half of the client's own API, at spclient.wg.spotify.com, and the image upload
+//  beside it.
 //
 
 import Foundation
@@ -158,7 +159,8 @@ nonisolated struct SpclientTrack: Decodable, Sendable {
     }
 }
 
-/// Reads metadata from `spclient.wg.spotify.com`.
+/// Reads metadata from `spclient.wg.spotify.com`, and writes playlists and Connect commands
+/// there; a playlist's cover image goes up to `image-upload.spotify.com`.
 ///
 /// Same two credentials as `PartnerAPI` — bearer plus client token — but plain REST rather than
 /// persisted queries, which makes this the more stable half to depend on: there are no query
@@ -181,13 +183,7 @@ nonisolated struct SpclientAPI: Sendable {
         }
 
         let url = Self.baseURL.appending(path: "metadata/4/track/\(gid)")
-        let data = try await get(url)
-
-        do {
-            return try JSONDecoder().decode(SpclientTrack.self, from: data)
-        } catch {
-            throw SpclientError.malformedResponse
-        }
+        return try await decode(SpclientTrack.self, from: get(url))
     }
 
     /// How many metadata requests are allowed to be in the air at once.
@@ -307,10 +303,7 @@ nonisolated struct SpclientAPI: Sendable {
             body: PlaylistCreation(name: name, description: description),
         )
 
-        guard
-            let reply = try? JSONDecoder().decode(PlaylistCreationReply.self, from: data),
-            let id = SpotifyURI.id(from: reply.uri)
-        else {
+        guard let id = try SpotifyURI.id(from: decode(PlaylistCreationReply.self, from: data).uri) else {
             throw SpclientError.malformedResponse
         }
 
@@ -323,11 +316,12 @@ nonisolated struct SpclientAPI: Sendable {
         name: String? = nil,
         description: String? = nil,
     ) async throws {
-        try await send(
-            method: "POST",
-            path: "playlist/v2/playlist/\(id)/changes",
-            body: PlaylistListChanges(.attributes(name: name, description: description)),
-        )
+        try await changePlaylist(id: id, .attributes(name: name, description: description))
+    }
+
+    /// One change to a playlist's own attributes.
+    private func changePlaylist(id: String, _ op: PlaylistOp) async throws {
+        try await send(method: "POST", path: "playlist/v2/playlist/\(id)/changes", body: PlaylistListChanges(op))
     }
 
     // MARK: - Playlist cover
@@ -345,21 +339,15 @@ nonisolated struct SpclientAPI: Sendable {
         upload.httpMethod = "POST"
         upload.httpBody = jpeg
         upload.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
-        let token = try await decode(ImageUploadReply.self, from: send(upload)).uploadToken
+        let uploaded = try await decode(ImageUploadReply.self, from: send(upload))
 
-        let registered = try await send(
-            method: "POST",
-            path: "playlist/v2/playlist/\(id)/register-image",
-            body: ImageUploadReply(uploadToken: token),
-        )
-        let picture = try decode(RegisteredImage.self, from: registered).picture
-
-        try await send(method: "POST", path: "playlist/v2/playlist/\(id)/changes", body: PlaylistListChanges(.picture(picture)))
+        let registered = try await send(method: "POST", path: "playlist/v2/playlist/\(id)/register-image", body: uploaded)
+        try await changePlaylist(id: id, .picture(decode(RegisteredImage.self, from: registered).picture))
     }
 
     /// Takes a playlist's cover away, as the web player's "Remove photo" does.
     func removePlaylistCover(id: String) async throws {
-        try await send(method: "POST", path: "playlist/v2/playlist/\(id)/changes", body: PlaylistListChanges(.removePicture))
+        try await changePlaylist(id: id, .removePicture)
     }
 
     /// `image-upload`'s answer, and `register-image`'s body: the token that names the upload.
@@ -451,7 +439,7 @@ nonisolated struct SpclientAPI: Sendable {
         var request = request
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let method = request.httpMethod ?? "GET", path = request.url?.path ?? ""
-        debugLog("SpclientAPI", "[\(method)] \(request.url?.absoluteString ?? path)")
+        debugLog("SpclientAPI", "[\(method)] \(request.url?.absoluteString ?? "")")
 
         let sent = try await credentials.send(request)
 

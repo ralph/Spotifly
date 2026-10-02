@@ -68,16 +68,6 @@ struct PlaylistChangeBodyTests {
     /// The instant in the follow fixture: 1786645835061 milliseconds after the epoch.
     static let followedAt = Date(timeIntervalSince1970: 1_786_645_835.061)
 
-    private func fields(_ data: Data) -> NSDictionary? {
-        (try? JSONSerialization.jsonObject(with: data)) as? NSDictionary
-    }
-
-    private func expectMatch(_ encoded: Data, _ fixture: String) throws {
-        let ours = try #require(fields(encoded))
-        let theirs = try #require(fields(Data(fixture.utf8)))
-        #expect(ours == theirs)
-    }
-
     @Test func `creating sends what the web client sends`() throws {
         let encoded = try JSONEncoder().encode(PlaylistCreation(name: "Meine Playlist Nr. 37"))
 

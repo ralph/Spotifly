@@ -232,6 +232,9 @@
 "playlist.menu.cover" = "Cover Image";
 "playlist.menu.choose_cover" = "Choose Image…";
 "playlist.menu.remove_cover" = "Remove Image";
+"playlist.remove_cover.title" = "Remove Cover Image";
+"playlist.remove_cover.action" = "Remove";
+"playlist.remove_cover.message" = "Spotify shows its own cover for this playlist again.";
 "playlist.edit_details.title" = "Edit Playlist";
 "playlist.edit_details.name" = "Name";
 "playlist.edit_details.description" = "Description";

@@ -19,11 +19,26 @@ import UniformTypeIdentifiers
 nonisolated enum PlaylistCoverImage {
     static let side = 640
 
-    /// The cover for an image file's data, of any type ImageIO reads, turned as its orientation
-    /// says; nil for data that isn't an image.
+    /// The cover for an image file picked by the user, made off the main actor while the picker's
+    /// grant to it lasts. ImageIO reads only as much of the file as the scaled image needs.
+    @concurrent static func jpeg(contentsOf url: URL) async -> Data? {
+        let granted = url.startAccessingSecurityScopedResource()
+        defer {
+            if granted {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        return CGImageSourceCreateWithURL(url as CFURL, nil).flatMap(jpeg(from:))
+    }
+
     static func jpeg(from data: Data) -> Data? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+        CGImageSourceCreateWithData(data as CFData, nil).flatMap(jpeg(from:))
+    }
+
+    /// The cover for an image of any type ImageIO reads, turned as its orientation says; nil for
+    /// one that isn't an image.
+    private static func jpeg(from source: CGImageSource) -> Data? {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = properties[kCGImagePropertyPixelWidth] as? Int,
               let height = properties[kCGImagePropertyPixelHeight] as? Int,
               min(width, height) > 0

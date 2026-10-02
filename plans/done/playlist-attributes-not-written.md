@@ -71,17 +71,20 @@ made for it ("Meine Playlist Nr. 41"), with a `fetch` wrapper in the page:
 - **Requests:** `PlaylistOp.picture(_:)` and `.removePicture`. `SpclientAPI.changePlaylistCover`
   runs the three requests in order, the upload through the same signed `send` as the writes;
   `removePlaylistCover` sends the removal.
-- **The image:** `PlaylistCoverImage.jpeg(from:)` takes any image ImageIO reads, turned as its
-  orientation says. It sends the centre square at most 640 pixels a side, as a JPEG. The web
+- **The image:** `PlaylistCoverImage.jpeg(contentsOf:)` takes any image ImageIO reads, turned as
+  its orientation says, off the main actor. It sends the centre square at most 640 pixels a
+  side, as a JPEG. The web
   player sends the file as picked. Cropping here makes the cover the one the user sees, and
   scaling keeps a photo's megabytes off a request whose limit isn't measured.
-- **The store:** `PlaylistService.changePlaylistCover` and `removePlaylistCover` read the playlist
-  again afterwards. The change answers nothing about the sizes Spotify makes, and the re-read
-  brings the new cover url at once (2026-10-02).
+- **The store:** `PlaylistService.changePlaylistCover` and `removePlaylistCover` read the cover
+  again afterwards, from a one-item page of `fetchPlaylist`, and write only the images. The change
+  answers nothing about the sizes Spotify makes, and the read brings the new cover url at once
+  (2026-10-02). A failed read leaves the old cover until the next load; the change went through.
 - **The screen:** for the playlist's owner, a cover menu in the toolbar:
   - "Choose Image…" opens a file picker (`.fileImporter`, the sandbox's user-selected read
     grant);
-  - "Remove Image" takes the cover away.
+  - "Remove Image" asks first, as the toolbar's other destructive actions do, then takes the
+    cover away.
 
   Errors show where the playlist page shows the others.
 

@@ -28,10 +28,6 @@ struct PlaylistCoverRequestTests {
         })
     }
 
-    private func json(_ data: Data?) -> NSDictionary? {
-        data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? NSDictionary }
-    }
-
     @Test func `the image goes up, is registered, and becomes the playlist's picture`() async throws {
         let sent = Recorder<URLRequest>()
         let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0])
@@ -49,9 +45,8 @@ struct PlaylistCoverRequestTests {
         #expect(upload.value(forHTTPHeaderField: "Authorization") != nil)
         #expect(upload.value(forHTTPHeaderField: "Client-Token") != nil)
 
-        #expect(json(requests[1].httpBody) == ["uploadToken": "token-1"])
-        let change = try #require(json(requests[2].httpBody))
-        #expect(change == json(Data(PlaylistChangeBodyTests.webClientCover.utf8)))
+        try expectMatch(requests[1].httpBody, #"{"uploadToken":"token-1"}"#)
+        try expectMatch(requests[2].httpBody, PlaylistChangeBodyTests.webClientCover)
     }
 
     @Test func `an upload that fails registers nothing`() async throws {
@@ -66,11 +61,41 @@ struct PlaylistCoverRequestTests {
     @Test @MainActor func `a file that isn't an image fails before anything is sent`() async throws {
         let sent = Recorder<URLRequest>()
         let service = PlaylistService(store: AppStore(), spclientAPI: api(sent))
+        let file = FileManager.default.temporaryDirectory.appending(path: "not-an-image-\(UUID().uuidString).txt")
+        try Data("not an image".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
 
         await #expect(throws: PlaylistCoverError.self) {
-            try await service.changePlaylistCover(playlistId: "p1", imageData: Data("not an image".utf8))
+            try await service.changePlaylistCover(playlistId: "p1", imageAt: file)
         }
         #expect(sent.values.isEmpty)
+    }
+
+    /// The change answers nothing about the image, so the playlist's cover is read again, from a
+    /// one-item page, and only its images are written.
+    @Test @MainActor func `after a change only the cover is read again`() async throws {
+        let store = AppStore()
+        store.upsertPlaylist(playlist(id: "p1"))
+        let pages = Recorder<URLRequest>()
+        let reread = #"{"data":{"playlistV2":{"__typename":"Playlist","uri":"spotify:playlist:p1","name":"Playlist","#
+            + #""images":{"items":[{"sources":[{"url":"https://image-cdn-fa.spotifycdn.com/image/new","width":640,"height":640}]}]},"#
+            + #""content":{"totalCount":0,"items":[]}}}}"#
+        let service = PlaylistService(
+            store: store,
+            partnerAPI: partnerAPI { request in
+                pages.record(request)
+                return (Data(reread.utf8), httpResponse(200))
+            },
+            spclientAPI: api(Recorder<URLRequest>()),
+        )
+
+        try await service.removePlaylistCover(playlistId: "p1")
+
+        let variables = try #require(pages.values.first?.httpBody.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["variables"] as? [String: Any])
+        #expect(pages.values.count == 1)
+        #expect(variables["limit"] as? Int == 1)
+        #expect(store.playlists["p1"]?.images.variants.map(\.url.absoluteString) == ["https://image-cdn-fa.spotifycdn.com/image/new"])
+        #expect(store.playlists["p1"]?.name == "Playlist")
     }
 }
 

@@ -194,6 +194,16 @@ func spclientAPI(
     SpclientAPI(credentials: spotifyCredentials(invalidateClientToken: invalidateClientToken, pause: pause, transport: transport))
 }
 
+// MARK: - Request bodies
+
+/// That a JSON body says what a captured one says, key order aside.
+func expectMatch(_ encoded: Data?, _ fixture: String) throws {
+    let json = { (data: Data?) in data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? NSDictionary } }
+    let ours = try #require(json(encoded))
+    let theirs = try #require(json(Data(fixture.utf8)))
+    #expect(ours == theirs)
+}
+
 // MARK: - Fixtures
 
 /// Anchors `Bundle(for:)` to the test bundle, which carries `Fixtures/`.

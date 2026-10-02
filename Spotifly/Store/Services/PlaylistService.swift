@@ -230,22 +230,32 @@ final class PlaylistService {
         )
     }
 
-    /// Sets a playlist's cover from an image file's data (`PlaylistCoverImage`), then reads the
-    /// playlist again: the change answers nothing about the sizes Spotify makes of the image, so
-    /// the store's `ImageSet` would go on showing the old cover.
-    func changePlaylistCover(playlistId: String, imageData: Data) async throws {
-        guard let jpeg = PlaylistCoverImage.jpeg(from: imageData) else {
+    /// Sets a playlist's cover from an image file the user picked (`PlaylistCoverImage`).
+    func changePlaylistCover(playlistId: String, imageAt url: URL) async throws {
+        guard let jpeg = await PlaylistCoverImage.jpeg(contentsOf: url) else {
             throw PlaylistCoverError.notAnImage
         }
         try await spclientAPI.changePlaylistCover(id: playlistId, jpeg: jpeg)
-        try await reloadPlaylistTracks(playlistId: playlistId)
+        await refreshCover(of: playlistId)
     }
 
-    /// Takes a playlist's cover away, and reads the playlist again for the one Spotify shows
-    /// instead.
+    /// Takes a playlist's cover away, so Spotify shows its own again.
     func removePlaylistCover(playlistId: String) async throws {
         try await spclientAPI.removePlaylistCover(id: playlistId)
-        try await reloadPlaylistTracks(playlistId: playlistId)
+        await refreshCover(of: playlistId)
+    }
+
+    /// Reads a playlist's cover again after a change, which answers nothing about the sizes
+    /// Spotify makes of it: the store's `ImageSet` would go on showing the old one. One page of
+    /// one item, since nothing else moved. The change went through either way, so a failed read
+    /// leaves the old cover until the playlist is next loaded.
+    private func refreshCover(of playlistId: String) async {
+        do {
+            guard let (playlist, _) = try await partnerAPI.playlistDetails(id: playlistId).entities() else { return }
+            store.updatePlaylistDetails(id: playlistId, images: playlist.images)
+        } catch {
+            debugLog("PlaylistService", "Cover of \(playlistId) not read again: \(error)")
+        }
     }
 
     /// Deletes a playlist — which is to say, drops it from the user's library.
