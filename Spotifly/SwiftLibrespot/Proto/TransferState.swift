@@ -67,6 +67,17 @@ public nonisolated struct TransferState: Sendable {
     var contextResumeUid: String?
     /// Whether the current track plays from the queue, the queue's `is_playing_queue`.
     var playsQueuedTrack = false
+    /// While a queued track plays, whether the row it goes on with is autoplay's. A handover says
+    /// so by naming the station as its context, beside the context it went on from
+    /// (`main_context`), as the web player wrote it (2026-10-02); another device's mirrored rows
+    /// by that row's provider (`LibrespotClient.takeOverState`).
+    var resumesInAutoplay = false
+
+    /// Whether the session goes on in autoplay: an autoplay track plays, or a queued track before
+    /// autoplay's next row. `LibrespotClient.continueAutoplay` takes it over then.
+    var continuesAutoplay: Bool {
+        currentIsAutoplay || resumesInAutoplay
+    }
 
     var positionAsOfTimestamp: Int64 = 0
     var timestamp: Int64 = 0
@@ -152,6 +163,7 @@ public nonisolated struct TransferState: Sendable {
             currentTrackUri = queuedTrackUris.removeFirst()
             currentTrackUid = nil
             contextResumeUid = sessionUid
+            resumesInAutoplay = contextUri.hasPrefix("spotify:station:") && mainContextUri != nil
         }
 
         // A context started from a bare list of uris is sent as "-" or nothing.

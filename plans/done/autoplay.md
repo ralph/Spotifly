@@ -144,8 +144,10 @@ To find out first:
     after it; so it did after the rows named their contexts too. Now
     `plans/done/phone-takes-macs-autoplay-as-queued.md`, with what was measured.
 - **A phone's own autoplay handed over** (2026-10-02): the phone names the station as the
-  context, `spotify:station:album:<id>`, with no pages. That resolves to nothing (404) and gets no
-  autoplay (204), so the Mac played the one track and stopped. The context it followed is the
+  context, `spotify:station:album:<id>`, with no pages. Its resolve failed (404) and it gets no
+  autoplay (204), so the Mac played the one track and stopped. The 404 was its next page's,
+  asked of the wrong path; its first page resolved (8776 bytes), found later in
+  `plans/done/handover-of-a-track-queued-during-autoplay.md`. The context it followed is the
   station's uri without `station:`, as librespot's `handle_transfer` takes it
   (`contextBeforeAutoplay`). Seen after the fix: the album resolved (12 tracks), a station of 50
   lined up after it, and the queue read 1 behind and 50 ahead.

@@ -104,7 +104,7 @@ what other devices show while the Mac plays.
   `TransferStateTests` reads `main_context` from a schema-built message.
 - With the web player (2026-10-02), see Progress.
 - Left for its own plan: a handover *into* this Mac of a track queued during autoplay,
-  `plans/open/handover-of-a-track-queued-during-autoplay.md`.
+  `plans/done/handover-of-a-track-queued-during-autoplay.md`.
 - **Your phone, first round** (2026-10-02): it took the Mac's autoplay track over as autoplay,
   "Wiedergabe empfohlener Songs", with the station as its context and the album as
   `main_context`, as its own `transfer_data` showed. Two things were off:

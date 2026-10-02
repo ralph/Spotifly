@@ -288,8 +288,17 @@ public actor SPClient {
             var request = URLRequest(url: url)
             request.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
             // The deadline is the page's, its retries included.
-            let data = try await Self.withTimeout(seconds: 20) { [self, request] in
-                try await fetch(request, named: "Context resolve")
+            let data: Data
+            do {
+                data = try await Self.withTimeout(seconds: 20) { [self, request] in
+                    try await fetch(request, named: "Context resolve")
+                }
+            } catch where !allTracks.isEmpty && !(error is CancellationError) {
+                // A later page failing leaves the context its pages so far, as go-librespot's
+                // resolver returns an empty page for one: a station names pages without end, and
+                // its third was answered 404 (2026-10-02).
+                debugLog("SPClient", "Context page failed, keeping \(allTracks.count) track(s): \(error)")
+                break
             }
             debugLog("SPClient", "Context response received")
 
@@ -300,12 +309,20 @@ public actor SPClient {
             allTracks.append(contentsOf: report.tracks)
             allUids.append(contentsOf: report.uids)
             metadata.merge(report.metadata) { first, _ in first }
-            nextPage = report.nextPageUrl.map { "/context-resolve/v1/\($0)" }
+            nextPage = report.nextPageUrl.map(Self.nextPagePath)
         }
 
         debugLog("SPClient", "Context resolved: \(allTracks.count) track(s)")
 
         return ResolvedContext(tracks: allTracks, uids: allUids, metadata: metadata)
+    }
+
+    /// Where a context's next page is asked for. An `hm://` url names a path of spclient's own,
+    /// as librespot's `get_next_page` and go-librespot's `hmRequestUrl` read it: a station's next
+    /// page, `hm://radio-apollo/v3/tracks/spotify:station:…`, asked of the resolver, was answered
+    /// 404, and failed the whole resolve (2026-10-02). Anything else goes through the resolver.
+    nonisolated static func nextPagePath(_ url: String) -> String {
+        url.hasPrefix("hm://") ? "/" + url.dropFirst("hm://".count) : "/context-resolve/v1/\(url)"
     }
 
     /// The tracks autoplay goes on with after `contextUri`: a station for it, from
@@ -358,7 +375,9 @@ public actor SPClient {
         var uids: [String?] = []
         var nextPageUrl: String?
 
-        let pages = json["pages"] as? [[String: Any]] ?? []
+        // A next page fetched at its `hm://` url is one page of its own, `{tracks, next_page_url}`,
+        // as go-librespot's `loadPage` reads it.
+        let pages = json["pages"] as? [[String: Any]] ?? [json]
         for page in pages {
             let pageTracks = page["tracks"] as? [[String: Any]] ?? []
             for track in pageTracks {
