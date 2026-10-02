@@ -121,7 +121,6 @@
 "section.playlists" = "Playlists";
 
 /* Metadata */
-"metadata.tracks" = "%d Tracks";
 "metadata.by_owner" = "Von %@";
 "metadata.separator" = "•";
 

@@ -8,16 +8,21 @@
 //
 
 import Foundation
+@testable import Spotifly
 import Testing
 
 struct LocalizationTests {
-    /// The keys of a language's `Localizable.strings`, as the app bundle ships it.
+    /// The keys of a language's strings, as the app bundle ships them: `Localizable.strings`, and
+    /// `Localizable.stringsdict` for the strings with plural forms.
     private func keys(_ language: String) throws -> Set<String> {
-        let url = try #require(
+        let strings = try #require(
             Bundle.main.url(forResource: "Localizable", withExtension: "strings", subdirectory: nil, localization: language),
         )
-        let table = try #require(NSDictionary(contentsOf: url) as? [String: String])
-        return Set(table.keys)
+        var keys = try Set(#require(NSDictionary(contentsOf: strings) as? [String: String]).keys)
+        if let plurals = Bundle.main.url(forResource: "Localizable", withExtension: "stringsdict", subdirectory: nil, localization: language) {
+            try keys.formUnion(#require(NSDictionary(contentsOf: plurals) as? [String: Any]).keys)
+        }
+        return keys
     }
 
     /// The keys the code names, as the compiler extracted them (`SWIFT_EMIT_LOC_STRINGS`): one
@@ -67,6 +72,21 @@ struct LocalizationTests {
         let unused = try keys("en").subtracting(keysNamedByTheCode())
 
         #expect(unused.sorted() == [])
+    }
+
+    /// A count of one is singular, "1 track" where it said "1 tracks". And a count is not grouped,
+    /// "1007" rather than "1.007", which formatting for the key's locale would do.
+    @Test(arguments: [
+        ("en", 1, "1 track"), ("en", 2, "2 tracks"),
+        ("de", 1, "1 Track"), ("de", 1007, "1007 Tracks"),
+        ("fr", 1, "1 titre"), ("fr", 2, "2 titres"),
+    ])
+    @MainActor
+    func `a track count takes the language's plural`(language: String, count: Int, expected: String) {
+        var key = LocalizedStringResource("metadata.tracks")
+        key.locale = Locale(identifier: language)
+
+        #expect(localizedNumberString(key, count) == expected)
     }
 
     @Test(arguments: Bundle.main.localizations.filter { $0 != "en" && $0 != "Base" })
