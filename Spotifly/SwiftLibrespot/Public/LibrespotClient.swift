@@ -1476,9 +1476,11 @@ public actor LibrespotClient {
             repeatContext: options.repeatingContext,
             timestampMs: remote.timestamp,
             // Measured 2026-10-01: on an album's last track with repeat off the web player lists
-            // only hidden rows, and names no reason not to skip next.
+            // only hidden rows, and names no reason not to skip next. A librespot made to name
+            // one greyed Next here (2026-10-02).
             canSkipNext: !remote.disallowsSkippingNext,
-            // The web player playing a station names it, and greys its own Shuffle (2026-10-02).
+            // The web player playing a station names it, and greys its own Shuffle, and
+            // librespot does while it plays autoplay (2026-10-02).
             canShuffle: remote.restrictions.allowsShuffle,
         )
         let queue = Self.mirroredQueue(of: remote)
@@ -1563,8 +1565,9 @@ public actor LibrespotClient {
     /// again as its next iteration, for repeat to play: with repeat off every row from the
     /// delimiter on is `hidden`, with repeat on only the delimiters are. So the context's rows
     /// after the first delimiter are left out, hidden or not: one round, as this Mac's own queue
-    /// lists (`PlaybackQueue.Rounds.one`). Rows after it that are not the context stay, since a
-    /// device may list autoplay there (librespot does; unmeasured).
+    /// lists (`PlaybackQueue.Rounds.one`). Rows after it that are not the context stay: librespot
+    /// lists its autoplay rows there, shown, where a phone lists them straight after the
+    /// context's last row (measured 2026-10-02).
     nonisolated static func mirroredQueue(of remote: PlayerState) -> QueueState {
         let item: (ProvidedTrack) -> QueueItem = { QueueItem(uri: $0.uri, provider: $0.provider, uid: rowUid($0)) }
         let round = thisRound(of: remote.nextTracks)
