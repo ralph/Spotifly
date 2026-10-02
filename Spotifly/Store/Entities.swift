@@ -455,17 +455,14 @@ nonisolated func formatTrackTime(milliseconds: Int) -> String {
     return String(format: "%d:%02d", minutes, seconds)
 }
 
-/// Format milliseconds as human-readable duration (e.g., "3 hr 15 min" or "45 min")
-func formatDuration(milliseconds: Int) -> String {
-    let totalSeconds = milliseconds / 1000
-    let hours = totalSeconds / 3600
-    let minutes = (totalSeconds % 3600) / 60
-
-    if hours > 0 {
-        return "\(hours.formatted()) hr \(minutes.formatted()) min"
-    } else {
-        return "\(minutes.formatted()) min"
-    }
+/// How long an album or playlist lasts, in hours and minutes, in the app's language: "2 hr,
+/// 44 min", "2 Std., 44 Min.", "2 h et 44 min". Minutes are whole ones played, rounded down, and
+/// a zero hour or minute is left out ("1 hr"), except for "0 min".
+nonisolated func formatDuration(milliseconds: Int, locale: Locale = .autoupdatingCurrent) -> String {
+    Duration.milliseconds(milliseconds).formatted(
+        .units(allowed: [.hours, .minutes], width: .abbreviated, fractionalPart: .hide(rounded: .down))
+            .locale(locale),
+    )
 }
 
 /// Calculate total duration from a sequence of tracks
