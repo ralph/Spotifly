@@ -145,10 +145,11 @@ final class NavigationCoordinator {
         setSelection(playlistId.map { .playlist(id: $0) }, for: .playlists, recordsHistory: recordsHistory)
     }
 
-    /// Push a destination onto the drill-down path.
-    func push(_ destination: NavigationDestination) {
+    /// Opens all of the shown search's tracks, as a step of its own in the history.
+    func showAllSearchTracks() {
+        guard current.section == .searchResults, !current.showsAllTracks else { return }
         var route = current
-        route.path.append(destination)
+        route.showsAllTracks = true
         navigate(to: route)
     }
 
@@ -322,31 +323,16 @@ final class NavigationCoordinator {
             return false
         }
 
-        return !route.path.contains { destination in
-            guard case let .playlist(id) = destination else { return false }
-            return store?.deletedEntitySelections.contains(.playlist(id: id)) == true
-        }
+        return true
     }
 
-    /// An entity missing from the store falls back to the route's own section, never to the
-    /// kind of the entity — an album route holding an artist drill-down is still in Albums,
-    /// and naming it "Artists" pointed Back at a section the user was never in.
+    /// An entity missing from the store falls back to the route's own section.
     private func title(for route: Route) -> String {
-        let sectionTitle = route.section?.title ?? String(localized: "app.name")
-
-        if let destination = route.path.last {
-            switch destination {
-            case .searchTracks:
-                return String(localized: "section.tracks")
-            case let .artist(id):
-                return store?.name(of: .artist(id: id)) ?? sectionTitle
-            case let .album(id):
-                return store?.name(of: .album(id: id)) ?? sectionTitle
-            case let .playlist(id):
-                return store?.name(of: .playlist(id: id)) ?? sectionTitle
-            }
+        if route.showsAllTracks {
+            return String(localized: "section.tracks")
         }
 
+        let sectionTitle = route.section?.title ?? String(localized: "app.name")
         return route.selection.flatMap { store?.name(of: $0) } ?? sectionTitle
     }
 }

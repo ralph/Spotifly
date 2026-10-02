@@ -10,7 +10,9 @@ import Testing
 @MainActor
 struct NavigationCoordinatorTests {
     @Test func `every user initiated change is reachable by back`() {
-        let coordinator = NavigationCoordinator(store: AppStore())
+        let store = AppStore()
+        store.setSearchResults(emptySearchResults, for: "q")
+        let coordinator = NavigationCoordinator(store: store)
         var visited = [coordinator.current]
 
         coordinator.selectNavigationItem(.favorites)
@@ -19,13 +21,13 @@ struct NavigationCoordinatorTests {
         visited.append(coordinator.current)
         coordinator.selectAlbum("album-a")
         visited.append(coordinator.current)
-        coordinator.push(.artist(id: "artist-a"))
-        visited.append(coordinator.current)
-        coordinator.selectNavigationItem(.artists)
+        coordinator.navigateToArtistSection(artistId: "artist-a")
         visited.append(coordinator.current)
         coordinator.selectArtist("artist-b")
         visited.append(coordinator.current)
-        coordinator.push(.album(id: "album-b"))
+        coordinator.navigateToSearchResults(query: "q")
+        visited.append(coordinator.current)
+        coordinator.showAllSearchTracks()
         visited.append(coordinator.current)
         coordinator.selectNavigationItem(.playlists)
         visited.append(coordinator.current)
@@ -62,10 +64,11 @@ struct NavigationCoordinatorTests {
     }
 
     @Test func `back and forward restore the identical route including drill down`() {
-        let coordinator = NavigationCoordinator(store: AppStore())
-        coordinator.selectNavigationItem(.albums)
-        coordinator.selectAlbum("album-a")
-        coordinator.push(.artist(id: "artist-a"))
+        let store = AppStore()
+        store.setSearchResults(emptySearchResults, for: "q")
+        let coordinator = NavigationCoordinator(store: store)
+        coordinator.navigateToSearchResults(query: "q")
+        coordinator.showAllSearchTracks()
         let expected = coordinator.current
 
         coordinator.selectNavigationItem(.favorites)
@@ -132,22 +135,72 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.forwardNavigationTitle == "Named Album")
         coordinator.navigateForward()
 
-        coordinator.push(.artist(id: "artist-a"))
+        coordinator.navigateToArtistSection(artistId: "artist-a")
         coordinator.selectNavigationItem(.favorites)
         #expect(coordinator.backNavigationTitle == "Named Artist")
+
+        store.setSearchResults(emptySearchResults, for: "q")
+        coordinator.navigateToSearchResults(query: "q")
+        coordinator.showAllSearchTracks()
+        coordinator.selectNavigationItem(.favorites)
+        #expect(coordinator.backNavigationTitle == String(localized: "section.tracks"))
     }
 
-    @Test func `favorites selection clears drill down state and still records section history`() {
+    /// The entity is named by its section, never by its kind.
+    @Test func `a selection missing from the store is named by its section`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.selectNavigationItem(.albums)
-        coordinator.selectAlbum("album-a")
-        coordinator.push(.artist(id: "missing-artist"))
+        coordinator.selectAlbum("missing-album")
 
         coordinator.selectNavigationItem(.favorites)
 
-        #expect(coordinator.current.path.isEmpty)
         #expect(coordinator.viewingAlbumId == nil)
         #expect(coordinator.backNavigationTitle == NavigationItem.albums.title)
+    }
+
+    /// "Show all" is a page of the search, and Back leads to the results.
+    @Test func `all of a search's tracks is a step of its own`() {
+        let store = AppStore()
+        store.setSearchResults(emptySearchResults, for: "q")
+        let coordinator = NavigationCoordinator(store: store)
+        coordinator.navigateToSearchResults(query: "q")
+
+        coordinator.showAllSearchTracks()
+
+        #expect(coordinator.current == Route(section: .searchResults, query: "q", showsAllTracks: true))
+        #expect(coordinator.displayedSearchQuery == "q")
+        coordinator.navigateBackward()
+        #expect(coordinator.current == Route(section: .searchResults, query: "q"))
+    }
+
+    @Test func `all tracks opens only from a search, and only once`() {
+        let store = AppStore()
+        store.setSearchResults(emptySearchResults, for: "q")
+        let coordinator = NavigationCoordinator(store: store)
+        coordinator.selectNavigationItem(.albums)
+
+        coordinator.showAllSearchTracks()
+        #expect(!coordinator.current.showsAllTracks)
+
+        coordinator.navigateToSearchResults(query: "q")
+        coordinator.showAllSearchTracks()
+        coordinator.showAllSearchTracks()
+        coordinator.navigateBackward()
+        #expect(!coordinator.current.showsAllTracks)
+    }
+
+    /// The sidebar's search row reopens the results, not the page of all tracks.
+    @Test func `the search row reopens the results page`() {
+        let store = AppStore()
+        store.setSearchResults(emptySearchResults, for: "q")
+        let coordinator = NavigationCoordinator(store: store)
+        coordinator.navigateToSearchResults(query: "q")
+        coordinator.showAllSearchTracks()
+        coordinator.selectNavigationItem(.albums)
+
+        coordinator.selectNavigationItem(.searchResults)
+
+        #expect(coordinator.current == Route(section: .searchResults, query: "q"))
     }
 
     @Test func `history cap drops oldest entries and back still works`() {
@@ -191,7 +244,6 @@ struct NavigationCoordinatorTests {
 
         #expect(coordinator.current.section == nil)
         #expect(coordinator.current.selection == nil)
-        #expect(coordinator.current.path.isEmpty)
         coordinator.navigateBackward()
         #expect(coordinator.current.section == .albums)
     }
