@@ -268,7 +268,7 @@ Found while building the phases, and each recorded as an open plan of its own:
 - `plans/open/menu-commands-lose-the-session-with-the-window.md`
 - `plans/open/ownership-checks-trust-the-launch-profile.md`
 - `plans/open/toolbar-refresh-moves-the-selection.md`
-- `plans/open/now-playing-bar-missing-on-show-all-tracks.md`
+- `plans/done/now-playing-bar-missing-on-show-all-tracks.md`
 
 ### Not changing
 
