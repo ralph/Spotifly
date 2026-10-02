@@ -23,13 +23,13 @@ Catalog's plural variations, and a lookup that picks the form by the number.
   key left the three `.strings` files.
 - **The helper is unchanged.** `localizedNumberString` resolves the key with
   `String(localized:)`, which hands back the plural format, and `String(format:)` picks the form.
-  Measured in the test host before choosing:
+  Measured in German in the test host before choosing:
 
   | Lookup | 1 | 1007 |
   | --- | --- | --- |
-  | `String(format:)`, no locale (the helper) | 1 track | 1007 tracks |
-  | `String(format:locale:)` | 1 track | 1.007 Tracks (German) |
-  | `String.localizedStringWithFormat` | 1 track | 1.007 Tracks |
+  | `String(format:)`, no locale (the helper) | 1 Track | 1007 Tracks |
+  | `String(format:locale:)` | 1 Track | 1.007 Tracks |
+  | `String.localizedStringWithFormat` | 1 Track | 1.007 Tracks |
 
   A locale groups the digits, which the helper exists to avoid. Without one, the plural rule is
   the app's language's: the French app says "0 titre", as French counts zero as one.
