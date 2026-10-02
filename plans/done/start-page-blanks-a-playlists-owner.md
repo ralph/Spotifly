@@ -1,8 +1,7 @@
 # A start page refresh takes the owner's actions off an owned playlist
 
-Status: **Done** 2026-10-02 in code, and measured: the start page's playlists now name their owners.
-Not seen live: the toolbar of an owned playlist that is on the start page, since none was on it
-during the session; see Verification. Found in the altitude review of the share fix.
+Status: **Done** 2026-10-02, and verified live: an owned playlist on the start page keeps its owner's
+actions through a refresh. Found in the altitude review of the share fix.
 Components: `Spotifly/PartnerAPI/PathfinderEntities.swift` (`Playlist(pathfinder:)`, the start
 page's stubs), `Spotifly/PartnerAPI/PathfinderSearch.swift` (`PathfinderPlaylist.Owner`),
 `Spotifly/Store/AppStore.swift` (`upsertPlaylist`), `Spotifly/Store/Entities.swift`
@@ -55,6 +54,12 @@ too. Whether a playlist's own load says so per user isn't measured.
   - a summary with no owner or description keeps the stored ones.
 - **Live, 2026-10-02:** with the fix, the start page's playlists named their owners: `spotify`
   for Spotify's, `ericpuig` for "Good Vibrations OST", and a user id for "Mein Lotta-Leben".
-- **Not seen live:** an owned playlist on the start page keeping its toolbar through a refresh.
-  None was on the page: Spotifly sends no play events, so playing one there didn't add it to
-  Recents, and the web player wouldn't start playing by itself.
+- **Live, the toolbar, 2026-10-02:** an owned test playlist on the start page's "Recently played",
+  opened from there:
+  - main: Edit Details, the cover menu and Delete were gone after one ⌘R, replaced by the button
+    that removes someone else's playlist from the library;
+  - with the fix: all three stayed through three ⌘R, and Edit Details still held the description.
+- **Getting an owned playlist onto Recents:** Spotifly sends no play events, so playing it there
+  doesn't do it, and the web player sat at 0:00 when started by itself. Started in Spotifly and
+  handed to the web player (`SPOTIFLY_DEBUG_TRANSFER_TO`), it played, and the playlist was on the
+  start page by the next load.
