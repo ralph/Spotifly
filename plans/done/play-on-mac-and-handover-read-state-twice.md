@@ -66,5 +66,12 @@ The review's proposal, built:
     and fetched "On Good Terms", the row after "The Big Sleep".
   - **A handover** (`SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER`) of "The Big Sleep" with track 1
     queued: taken over at 0:09, 8 rows ahead, and the queued track fetched as next.
-- **Not seen here:** a bare list, which the web player cannot make; the take-over code for it
-  is `takeOverList`'s, moved, and its tests carried over. The phone round in the PR covers it.
+- **Seen with a phone** (2026-10-02), each time paused and the app closed before Play on the Mac:
+  - **An album, with a track queued and not reached:** before Play, 15 rows ahead, the queued
+    one among them. Play took "Spider Bites" over at 0:26 with the same 15 ahead, and fetched
+    the queued "Sunny Baby" as next.
+  - **A bare list** (Play Tracks for "oasis"), taken over by the phone. "Sunny Baby", still
+    queued from the round before, came first; then "If They Could Only Know", queued and
+    reached by Next. So the list stood on its first row, "Don't Look Back In Anger".
+  - Play took the queued track over at 0:09 as queued. The Mac fetched "Rock 'n' Roll Star", the
+    list's second row, as next.
