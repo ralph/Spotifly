@@ -12,42 +12,34 @@ import Foundation
 import Testing
 
 struct ReleaseDateTests {
-    /// Spotify writes a date it only knows the year of as that year's first of January.
+    private func formatted(_ json: String) throws -> String? {
+        try JSONDecoder().decode(PathfinderReleaseDate.self, from: Data(json.utf8)).formatted
+    }
+
+    /// Spotify writes a date it only knows the year of as that year's first of January. This is
+    /// `getAlbum`'s and `libraryV3`'s shape for Rodriguez, "Coming From Reality", measured
+    /// 2026-10-02, with each precision.
     @Test(arguments: [
         ("YEAR", "1971"),
         ("MONTH", "1971-01"),
         ("DAY", "1971-01-01"),
     ])
-    func `a timestamp is cut to its precision`(precision: String, expected: String) {
-        #expect(releaseDate(isoString: "1971-01-01T00:00:00Z", precision: precision) == expected)
+    func `a timestamp is cut to its precision`(precision: String, expected: String) throws {
+        #expect(try formatted(#"{"isoString":"1971-01-01T00:00:00Z","precision":"\#(precision)"}"#) == expected)
     }
 
-    @Test func `an unknown precision keeps the day`() {
-        #expect(releaseDate(isoString: "2001-03-12T00:00:00Z", precision: nil) == "2001-03-12")
-    }
-
-    /// `getAlbum`'s shape for Rodriguez, "Coming From Reality", measured 2026-10-02.
-    @Test func `an album's page keeps a year-only date to its year`() throws {
-        let json = Data(#"{"isoString":"1971-01-01T00:00:00Z","precision":"YEAR"}"#.utf8)
-        let date = try JSONDecoder().decode(PathfinderAlbumUnion.ReleaseDate.self, from: json)
-
-        #expect(date.formatted == "1971")
-    }
-
-    /// `libraryV3` sends the same shape for the same album.
-    @Test func `a library album keeps a year-only date to its year`() throws {
-        let json = Data(#"{"isoString":"1971-01-01T00:00:00Z","precision":"YEAR"}"#.utf8)
-        let date = try JSONDecoder().decode(PathfinderAlbum.ReleaseDate.self, from: json)
-
-        #expect(date.formatted == "1971")
+    @Test func `an unknown precision keeps the day`() throws {
+        #expect(try formatted(#"{"isoString":"2001-03-12T00:00:00Z"}"#) == "2001-03-12")
     }
 
     /// An artist page's overview spells the date in parts.
-    @Test func `a release dated in parts is cut to its precision too`() throws {
-        let json = Data(#"{"day":1,"month":5,"year":1971,"precision":"MONTH"}"#.utf8)
-        let date = try JSONDecoder().decode(PathfinderRelease.ReleaseDate.self, from: json)
+    @Test func `a date in parts is cut to its precision too`() throws {
+        #expect(try formatted(#"{"day":1,"month":5,"year":1971,"precision":"MONTH"}"#) == "1971-05")
+    }
 
-        #expect(date.formatted == "1971-05")
+    /// Search sends the year alone.
+    @Test func `a year alone is the year`() throws {
+        #expect(try formatted(#"{"year":1994}"#) == "1994")
     }
 
     @Test(arguments: [

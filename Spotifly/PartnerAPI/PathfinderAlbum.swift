@@ -19,36 +19,12 @@ nonisolated struct PathfinderAlbumResponse: Decodable, Sendable {
     let data: Payload?
 }
 
-/// A release date as precise as Spotify knows it: `YYYY-MM-DD` for `DAY`, `YYYY-MM` for `MONTH`,
-/// `YYYY` for `YEAR`. A date Spotify only knows the year of comes as that year's first of January,
-/// `1971-01-01T00:00:00Z` with `YEAR` (Rodriguez, "Coming From Reality", measured 2026-10-02), so
-/// the timestamp is cut to its precision rather than kept whole, which showed a day Spotify never
-/// said. An unknown or missing precision keeps the day.
-nonisolated func releaseDate(isoString: String, precision: String?) -> String {
-    let day = isoString.prefix(while: { $0 != "T" })
-    return switch precision {
-    case "YEAR": String(day.prefix(4))
-    case "MONTH": String(day.prefix(7))
-    default: String(day)
-    }
-}
-
 /// An album and its tracks.
 ///
 /// A partial view of what `getAlbum` returns, which also carries extracted cover-art colours,
 /// `moreAlbumsByArtist`, `watchFeedEntrypoint`, sharing info and pre-release scheduling. Decoding
 /// fields nothing renders only creates work the next time Spotify adds one.
 nonisolated struct PathfinderAlbumUnion: Decodable, Sendable, PathfinderEntityUnion {
-    struct ReleaseDate: Decodable, Sendable {
-        let isoString: String?
-        let precision: String?
-
-        /// As precise as Spotify knows it; see `releaseDate(isoString:precision:)`.
-        var formatted: String? {
-            isoString.map { releaseDate(isoString: $0, precision: precision) }
-        }
-    }
-
     struct ArtistList: Decodable, Sendable {
         struct Item: Decodable, Sendable {
             struct Profile: Decodable, Sendable {
@@ -83,7 +59,7 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable, PathfinderEntityUn
     let uri: String?
     let name: String?
     let type: String?
-    let date: ReleaseDate?
+    let date: PathfinderReleaseDate?
     let coverArt: PathfinderImage?
     let artists: ArtistList?
     let tracksV2: TrackList?

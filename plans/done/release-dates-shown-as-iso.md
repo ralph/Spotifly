@@ -1,8 +1,9 @@
 # An album's release date was shown as an ISO date, and more precisely than Spotify knows it
 
 Status: **Done** 2026-10-02, verified live
-Components: `Spotifly/PartnerAPI/PathfinderAlbum.swift` (`releaseDate(isoString:precision:)`),
-`Spotifly/PartnerAPI/PathfinderSearch.swift`, `Spotifly/PartnerAPI/PathfinderArtist.swift`,
+Components: `Spotifly/PartnerAPI/PathfinderReleaseDate.swift` (new),
+`Spotifly/PartnerAPI/PathfinderAlbum.swift`, `Spotifly/PartnerAPI/PathfinderSearch.swift`,
+`Spotifly/PartnerAPI/PathfinderArtist.swift`,
 `Spotifly/PartnerAPI/PathfinderEntities.swift`, `Spotifly/Store/Entities.swift`
 (`formatReleaseDate`), `Spotifly/Views/AlbumDetailView.swift`, `SpotiflyTests/ReleaseDateTests.swift`
 Found: 2026-10-02, in the review of `plans/done/units-are-written-the-english-way.md`
@@ -28,14 +29,15 @@ is now kept as precise as Spotify knows it and written in the app's language: "2
 
 ## Solution
 
-- **Stored to its precision.** `releaseDate(isoString:precision:)` cuts the timestamp to
-  `YYYY-MM-DD` for `DAY`, `YYYY-MM` for `MONTH` and `YYYY` for `YEAR`, and keeps the day for a
-  precision it does not know. The three date decoders read `precision` and use it:
-  `getAlbum`'s, `libraryV3`'s and search's (`PathfinderAlbum`), and the artist page's in either
-  of its two shapes. Search's `{year}` stays the year.
+- **Stored to its precision.** One decoder, `PathfinderReleaseDate`, takes every shape pathfinder
+  sends, where there were three near-copies: `getAlbum`'s and `libraryV3`'s `{isoString,
+  precision}`, search's `{year}`, and the artist page's `{day, month, year, precision}` and
+  `{isoString, year, precision}`. Its `formatted` cuts the day to `YYYY-MM-DD` for `DAY`,
+  `YYYY-MM` for `MONTH` and `YYYY` for `YEAR`, keeps the day for a precision it does not know,
+  and gives the year where that is all there is.
 - **Shown in the app's language.** `formatReleaseDate(_:locale:)` writes a day as "Sep 26, 1969",
   "26. Sept. 1969" or "26 sept. 1969", a month as "Sept. 1969", and a year as "1969", from
-  `Date.FormatStyle` in UTC, so no time zone moves the day. Anything it cannot read is shown as
+  `Date.FormatStyle`, building and formatting in UTC, so no time zone moves the day. Anything it cannot read is shown as
   it came. `AlbumDetailView` uses it.
 
 The artist page shows the first four characters of the same string, a year, as before.
@@ -48,6 +50,8 @@ The artist page shows the first four characters of the same string, a year, as b
 - **After:**
   - "Coming From Reality": "10 Tracks · 40 Min. · 1971".
   - Abbey Road: "17 Tracks · 47 Min. · 26. Sept. 1969".
+- **After the decoders became one,** in French: "Coming From Reality" says "10 titres · 40 min ·
+  1971".
 
 A throwaway log, not committed, read the raw `getAlbum`, `libraryV3` and artist responses for the
 measurement. The Beatles' 53 releases and Bach's are all dated to the day; the account's albums
@@ -55,9 +59,9 @@ were where the coarse ones turned up.
 
 ### Unit tests
 
-605 pass. `ReleaseDateTests` is new:
+604 pass. `ReleaseDateTests` is new:
 - the cut for each precision, and for none;
-- the `getAlbum`, `libraryV3` and artist-overview shapes keeping a coarse date coarse;
+- a date in parts cut the same way, and a year alone;
 - a day in English, German and French, with Foundation's spaces read as plain ones;
 - a month ("Mai 1971") and a year;
 - an unreadable date shown as it came.
