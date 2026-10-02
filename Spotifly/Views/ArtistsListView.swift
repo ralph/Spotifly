@@ -11,7 +11,7 @@ struct ArtistsListView: View {
     @Environment(AppStore.self) private var store
     @Environment(ArtistService.self) private var artistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     /// The ephemeral artist being viewed (if not in user's library)
     private var ephemeralArtist: Artist? {
@@ -44,7 +44,6 @@ struct ArtistsListView: View {
                 placeholderGlyph: "person.fill",
                 artworkShape: AnyShape(.circle),
             ),
-            playbackViewModel: playbackViewModel,
         )
     }
 }

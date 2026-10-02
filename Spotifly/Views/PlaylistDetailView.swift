@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 struct PlaylistDetailView: View {
     let playlistId: String
 
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
     @Environment(PlaylistService.self) private var playlistService
@@ -246,7 +246,6 @@ struct PlaylistDetailView: View {
             track: track,
             index: index,
             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-            playbackViewModel: playbackViewModel,
             currentSection: .playlists,
             selectionId: playlistId,
             itemUid: item.uid,

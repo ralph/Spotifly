@@ -108,6 +108,7 @@ struct SpotiflyApp: App {
             }
             .environment(windowState)
             .environment(PlayerModel.shared)
+            .environment(PlaybackViewModel.shared)
             .preferredColorScheme(appearanceMode.colorScheme)
             .onChange(of: appearanceMode, initial: true) { _, mode in
                 mode.apply()

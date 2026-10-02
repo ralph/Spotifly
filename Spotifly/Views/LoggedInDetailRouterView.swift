@@ -10,7 +10,7 @@ import SwiftUI
 struct LoggedInDetailRouterView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     // Each branch used to pick between an `init(album:)` and an `init(albumId:)`
     // depending on whether the entity was in the store yet. Those are the two
@@ -26,7 +26,6 @@ struct LoggedInDetailRouterView: View {
             if let albumId = navigationCoordinator.selectedAlbumId {
                 AlbumDetailView(
                     albumId: albumId,
-                    playbackViewModel: playbackViewModel,
                 )
                 .id(albumId)
             } else {
@@ -47,7 +46,6 @@ struct LoggedInDetailRouterView: View {
             if let playlistId = navigationCoordinator.selectedPlaylistId {
                 PlaylistDetailView(
                     playlistId: playlistId,
-                    playbackViewModel: playbackViewModel,
                 )
                 .id(playlistId)
             } else {

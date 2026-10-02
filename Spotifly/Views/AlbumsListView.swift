@@ -11,7 +11,7 @@ struct AlbumsListView: View {
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     /// The ephemeral album being viewed (if not in user's library)
     private var ephemeralAlbum: Album? {
@@ -44,7 +44,6 @@ struct AlbumsListView: View {
                 placeholderGlyph: "square.stack",
                 artworkShape: AnyShape(.rect(cornerRadius: 4)),
             ),
-            playbackViewModel: playbackViewModel,
         )
     }
 }

@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SearchResultsView: View {
     let searchResults: SearchResults
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(TrackService.self) private var trackService
 
     var body: some View {
@@ -84,7 +84,7 @@ struct SearchResultsView: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
                     ForEach(searchResults.tracks) { track in
-                        TrackCard(track: track, playbackViewModel: playbackViewModel)
+                        TrackCard(track: track)
                     }
                 }
                 .padding(.horizontal)

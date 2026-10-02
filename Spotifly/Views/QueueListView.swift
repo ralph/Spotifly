@@ -45,7 +45,7 @@ struct QueueListView: View {
     @Environment(DeviceService.self) private var deviceService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     @State private var scrollPosition = ScrollPosition(idType: Int.self)
 
@@ -215,7 +215,6 @@ struct QueueListView: View {
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
                         currentIndex: store.currentIndex,
                         provider: item.provider,
-                        playbackViewModel: playbackViewModel,
                         currentSection: .queue,
                         onDoubleTap: {
                             playbackViewModel.play(queueRow: item.row)

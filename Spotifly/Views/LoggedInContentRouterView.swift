@@ -12,7 +12,7 @@ struct LoggedInContentRouterView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(SearchService.self) private var searchService
 
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     let onLogout: () -> Void
 
     var body: some View {
@@ -21,7 +21,7 @@ struct LoggedInContentRouterView: View {
                 if let query = navigationCoordinator.displayedSearchQuery,
                    let searchResults = store.searchResults(for: query)
                 {
-                    SearchResultsView(searchResults: searchResults, playbackViewModel: playbackViewModel)
+                    SearchResultsView(searchResults: searchResults)
                         .navigationTitle("nav.search_results")
                 } else if let query = navigationCoordinator.displayedSearchQuery,
                           let failure = store.searchFailure(for: query)
@@ -47,27 +47,27 @@ struct LoggedInContentRouterView: View {
                 .navigationTitle("nav.startpage")
 
         case .favorites:
-            FavoritesListView(playbackViewModel: playbackViewModel)
+            FavoritesListView()
                 .navigationTitle("nav.favorites")
 
         case .playlists:
-            PlaylistsListView(playbackViewModel: playbackViewModel)
+            PlaylistsListView()
                 .navigationTitle("nav.playlists")
 
         case .albums:
-            AlbumsListView(playbackViewModel: playbackViewModel)
+            AlbumsListView()
                 .navigationTitle("nav.albums")
 
         case .artists:
-            ArtistsListView(playbackViewModel: playbackViewModel)
+            ArtistsListView()
                 .navigationTitle("nav.artists")
 
         case .queue:
-            QueueListView(playbackViewModel: playbackViewModel)
+            QueueListView()
                 .navigationTitle("nav.queue")
 
         case .speakers:
-            SpeakersView(playbackViewModel: playbackViewModel)
+            SpeakersView()
                 .navigationTitle("nav.speakers")
 
         case .profile:
@@ -95,19 +95,16 @@ struct LoggedInContentRouterView: View {
         case let .album(id):
             AlbumDetailView(
                 albumId: id,
-                playbackViewModel: playbackViewModel,
             )
 
         case let .playlist(id):
             PlaylistDetailView(
                 playlistId: id,
-                playbackViewModel: playbackViewModel,
             )
 
         case let .searchTracks(ids):
             SearchAllTracksView(
                 trackIds: ids,
-                playbackViewModel: playbackViewModel,
             )
         }
     }

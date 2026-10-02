@@ -14,7 +14,7 @@ struct TrackContextMenu: View {
     let selectionId: String?
     /// The playlist item this menu was opened from, where the caller knows which one.
     let itemUid: String?
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(AppStore.self) private var store
@@ -208,13 +208,11 @@ extension TrackContextMenu {
         currentSection: NavigationItem = .startpage,
         selectionId: String? = nil,
         itemUid: String? = nil,
-        playbackViewModel: PlaybackViewModel,
     ) {
         self.track = track
         self.currentSection = currentSection
         self.selectionId = selectionId
         self.itemUid = itemUid
-        self.playbackViewModel = playbackViewModel
         _showNewPlaylistDialog = .constant(false)
         onPlaylistAdded = nil
         onNavigate = nil

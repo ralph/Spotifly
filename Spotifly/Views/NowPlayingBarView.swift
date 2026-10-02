@@ -14,8 +14,8 @@ struct NowPlayingBarView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
     @Environment(\.displayScale) private var displayScale
-    let playbackViewModel: PlaybackViewModel
-    let windowState: WindowState
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
+    @Environment(WindowState.self) private var windowState
 
     @State private var cachedAlbumArtImage: Image?
     private let network = NetworkMonitor.shared
@@ -63,7 +63,6 @@ struct NowPlayingBarView: View {
             .newPlaylistPrompt(
                 isPresented: $showNewPlaylistDialog,
                 trackId: currentTrack?.id,
-                playbackViewModel: playbackViewModel,
                 onAdded: showSuccessFeedback,
             )
             .task(id: currentTrackId) {
@@ -575,7 +574,6 @@ struct NowPlayingBarView: View {
                     // from — and with no playlist selected there is nothing to remove from
                     // anyway.
                     itemUid: nil,
-                    playbackViewModel: playbackViewModel,
                     showNewPlaylistDialog: $showNewPlaylistDialog,
                     onPlaylistAdded: showSuccessFeedback,
                     onNavigate: exitMiniPlayerIfNeeded,

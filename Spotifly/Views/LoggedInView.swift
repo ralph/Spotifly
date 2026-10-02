@@ -14,7 +14,7 @@ struct LoggedInView: View {
     @Environment(AuthViewModel.self) private var authViewModel
     @Environment(PlayerModel.self) private var player
 
-    private let playbackViewModel = PlaybackViewModel.shared
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     /// Normalized state store.
     @State private var store: AppStore
@@ -31,11 +31,9 @@ struct LoggedInView: View {
     /// cancellation-resilience across view recreation.
     @State private var trackService: TrackService
     @State private var homeService: HomeService
-
-    /// Services whose state lives entirely in AppStore.
-    private var searchService: SearchService {
-        SearchService(store: store)
-    }
+    /// Holds no state of its own, but kept like the others, so the environment hands the same
+    /// instance to every view rather than a new one per evaluation of the body.
+    @State private var searchService: SearchService
 
     init(onLogout: @escaping () -> Void) {
         self.onLogout = onLogout
@@ -52,6 +50,7 @@ struct LoggedInView: View {
         _navigationCoordinator = State(initialValue: NavigationCoordinator(store: store))
         _trackService = State(initialValue: trackService)
         _homeService = State(initialValue: HomeService(store: store))
+        _searchService = State(initialValue: SearchService(store: store))
     }
 
     @State private var searchText = ""
@@ -74,10 +73,7 @@ struct LoggedInView: View {
     var body: some View {
         Group {
             if windowState.isMiniPlayerMode {
-                NowPlayingBarView(
-                    playbackViewModel: playbackViewModel,
-                    windowState: windowState,
-                )
+                NowPlayingBarView()
             } else {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
                     sidebarView()
@@ -122,7 +118,6 @@ struct LoggedInView: View {
         .modifier(
             LoggedInLifecycleModifier(
                 store: store,
-                playbackViewModel: playbackViewModel,
                 queueService: queueService,
                 deviceService: deviceService,
                 homeService: homeService,
@@ -160,10 +155,10 @@ struct LoggedInView: View {
                     contentRouter
                         .frame(minWidth: 280, idealWidth: 380, maxWidth: 560, maxHeight: .infinity)
 
-                    LoggedInDetailRouterView(playbackViewModel: playbackViewModel)
+                    LoggedInDetailRouterView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .toolbar {
-                            LoggedInDetailToolbar(playbackViewModel: playbackViewModel)
+                            LoggedInDetailToolbar()
                         }
                 }
             } else {
@@ -179,10 +174,7 @@ struct LoggedInView: View {
         // and no `List`, which on macOS takes no content margins: Speakers leaves its own room.
         .contentMargins(.bottom, NowPlayingBarView.contentClearance)
         .overlay(alignment: .bottom) {
-            NowPlayingBarView(
-                playbackViewModel: playbackViewModel,
-                windowState: windowState,
-            )
+            NowPlayingBarView()
         }
         // Raised only when a play request had nowhere to go: no local player and no active
         // remote device. With a device active, playback goes there and nothing is asked.
@@ -216,7 +208,6 @@ struct LoggedInView: View {
     /// attached to the NavigationSplitView (see `body`), not here.
     private var contentRouter: some View {
         LoggedInContentRouterView(
-            playbackViewModel: playbackViewModel,
             onLogout: handleLogout,
         )
         .toolbar {

@@ -11,7 +11,7 @@ import SwiftUI
 
 struct LoggedInLifecycleModifier: ViewModifier {
     let store: AppStore
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     let queueService: QueueService
     let deviceService: DeviceService
     let homeService: HomeService

@@ -9,7 +9,7 @@ import SwiftUI
 
 struct TrackCard: View {
     let track: Track
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     var currentSection: NavigationItem = .searchResults
 
     @Environment(TrackService.self) private var trackService
@@ -44,7 +44,6 @@ struct TrackCard: View {
                 track: track,
                 currentSection: currentSection,
                 selectionId: nil,
-                playbackViewModel: playbackViewModel,
             )
         }
         .task(id: track.id) {
