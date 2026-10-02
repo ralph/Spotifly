@@ -230,11 +230,6 @@ enum SpotifyPlayer {
         LibrespotClient.shared.isActiveDeviceFlagValue
     }
 
-    /// Whether the player is currently playing.
-    static var isPlaying: Bool {
-        LibrespotClient.shared.isPlayingFlagValue
-    }
-
     /// The current playback position in milliseconds.
     /// This is the actual audible position, not an estimate.
     static var positionMs: UInt32 {

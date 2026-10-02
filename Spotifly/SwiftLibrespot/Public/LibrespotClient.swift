@@ -872,10 +872,6 @@ public actor LibrespotClient {
         latest.withLock { $0.connection }
     }
 
-    nonisolated var isPlayingFlagValue: Bool {
-        latest.withLock { $0.playback?.isPlaying == true }
-    }
-
     nonisolated var positionMsCached: UInt64 {
         positionCache.withLock { $0 }
     }

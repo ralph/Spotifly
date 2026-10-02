@@ -1306,12 +1306,10 @@ final class PlaybackViewModel {
         let isReady = SpotifyPlayer.isSessionConnected
         guard isReady != isConnectionReady else { return }
 
-        // Pinned where last seen, or the display would fall back to the last anchor once it
-        // stops running; see `positionRuns`.
+        // Another device's position holds while the session is down.
         if !isReady, !SpotifyPlayer.isActiveDevice {
-            let frozenPosition = interpolatedPositionMs
-            anchorPosition(frozenPosition)
-            debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(frozenPosition)ms")
+            freezePositionClock()
+            debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(positionAnchorMs)ms")
         }
         isConnectionReady = isReady
     }
@@ -1360,23 +1358,25 @@ final class PlaybackViewModel {
 
     /// Handle a playback state published by the client.
     private func handlePlaybackStateUpdate(_ state: PlaybackState?) {
-        guard let state else { return }
+        guard let state else {
+            // Nothing plays here any more: a load failed, a context had nothing left to play,
+            // another device took over, or the session went. The bar keeps the track, and the
+            // clock stops where it had got to.
+            if isPlaying {
+                freezePositionClock()
+                isPlaying = false
+                updateNowPlayingPosition()
+            }
+            return
+        }
 
         debugLog(
             "PlaybackViewModel",
             "Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
 
-        // Update playing state
-        // When active device: use SpotifyPlayer.isPlaying (local Spirc state)
-        // When not active: use cluster state (remote device's actual state)
-        let newIsPlaying: Bool = if SpotifyPlayer.isActiveDevice {
-            SpotifyPlayer.isPlaying
-        } else {
-            // Remote device: use cluster state - playing means actively playing (not paused)
-            state.isPlaying && !state.isPaused
-        }
-        isPlaying = newIsPlaying
+        // Playing and not paused, for this Mac's player and for a device it mirrors alike.
+        isPlaying = state.isPlaying
 
         // Update track if changed
         let trackChanged = !state.trackUri.isEmpty && state.trackUri != currentTrackUri
@@ -1489,6 +1489,13 @@ final class PlaybackViewModel {
         positionAnchorTime = Self.positionClockNow()
     }
 
+    /// Pins the position where the clock had got to, before something that stops it, such as
+    /// `isPlaying` turning false. Afterwards the display would fall back to the last anchor;
+    /// see `positionRuns`.
+    private func freezePositionClock() {
+        anchorPosition(interpolatedPositionMs)
+    }
+
     /// Computed position using anchor interpolation - UI should bind to this
     /// Read by the bar's TimelineView on each tick
     var interpolatedPositionMs: UInt32 {
@@ -1588,28 +1595,9 @@ final class PlaybackViewModel {
 
     /// Called every second to check for drift and sync state
     private func checkDriftAndSync() {
-        var didCorrectDrift = false
-
-        defer {
-            if didCorrectDrift {
-                updateNowPlayingPosition()
-            }
-        }
-
         // Readiness gates interpolation, so recover here from a callback that never arrived
         // rather than leaving the progress bar stopped until the next one does.
         syncConnectionReadiness()
-
-        // Sync playing state with the player - only when we're the active device
-        // When monitoring remote playback, state comes from cluster updates
-        if SpotifyPlayer.isActiveDevice {
-            let playerIsPlaying = SpotifyPlayer.isPlaying
-            if playerIsPlaying != isPlaying {
-                isPlaying = playerIsPlaying
-                syncPositionAnchor()
-                didCorrectDrift = true
-            }
-        }
 
         // Check for significant drift from the player's position - only when active device
         // Remote playback position is interpolated from cluster timestamp, not real-time.
@@ -1666,7 +1654,7 @@ final class PlaybackViewModel {
         if correct {
             debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(playerPosition)")
             anchorPosition(playerPosition)
-            didCorrectDrift = true
+            updateNowPlayingPosition()
         }
     }
 
