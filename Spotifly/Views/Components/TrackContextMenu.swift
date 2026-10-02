@@ -238,7 +238,7 @@ private struct PlaylistSubmenuContent: View {
         // placeholder and kick one off. Both cases used to be spelled out separately with
         // byte-identical bodies.
         if ownedPlaylists.isEmpty {
-            Text("playlist.loading")
+            Text("loading.playlists")
                 .foregroundStyle(.secondary)
                 .onAppear {
                     triggerLoadIfNeeded()
