@@ -191,12 +191,13 @@ nonisolated struct PathfinderAlbum: Decodable, Sendable {
     struct ReleaseDate: Decodable, Sendable {
         let year: Int?
         let isoString: String?
+        let precision: String?
 
-        /// `2025-05-09` where a full date is known, the bare year otherwise. Trimmed at the `T`
-        /// rather than parsed, because the views format it as a year anyway.
+        /// As precise as Spotify knows it (`releaseDate(isoString:precision:)`), or the bare year
+        /// where that is all there is.
         var formatted: String? {
             if let isoString {
-                return String(isoString.prefix(while: { $0 != "T" }))
+                return releaseDate(isoString: isoString, precision: precision)
             }
             return year.map(String.init)
         }

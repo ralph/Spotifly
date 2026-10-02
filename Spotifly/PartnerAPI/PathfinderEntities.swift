@@ -66,8 +66,8 @@ extension Album {
             name: album.name ?? "",
             uri: uri,
             images: ImageSet(pathfinderSources: album.coverArt?.sources),
-            // Search returns only the year, where the library returns a full date. Rendered as
-            // a year either way, so the difference does not reach the screen.
+            // Search returns only the year, where the library returns a date as precise as
+            // Spotify knows it. The album's page has the precise one once `getAlbum` answers.
             releaseDate: album.date?.formatted,
             albumType: album.type?.lowercased(),
             artistId: album.artists?.items?.first?.id,
@@ -131,7 +131,7 @@ extension Album {
             name: album.name ?? "",
             uri: uri,
             images: ImageSet(pathfinderSources: album.coverArt?.sources),
-            releaseDate: album.date?.day,
+            releaseDate: album.date?.formatted,
             // `ALBUM`, `SINGLE`, `COMPILATION` — the Web API's lowercase spelling is what the
             // views compare against.
             albumType: album.type?.lowercased(),

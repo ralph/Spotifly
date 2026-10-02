@@ -143,14 +143,16 @@ nonisolated struct PathfinderRelease: Decodable, Sendable {
         let year: Int?
         let month: Int?
         let day: Int?
+        let precision: String?
 
-        /// A `YYYY-MM-DD` string where the parts allow, the bare year otherwise.
+        /// As precise as Spotify knows it (`releaseDate(isoString:precision:)`), from whichever
+        /// shape came, or the bare year where that is all there is.
         var formatted: String? {
             if let isoString {
-                return String(isoString.prefix(while: { $0 != "T" }))
+                return releaseDate(isoString: isoString, precision: precision)
             }
             if let year, let month, let day {
-                return String(format: "%04d-%02d-%02d", year, month, day)
+                return releaseDate(isoString: String(format: "%04d-%02d-%02d", year, month, day), precision: precision)
             }
             return year.map(String.init)
         }
