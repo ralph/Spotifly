@@ -10,8 +10,8 @@ import SwiftUI
 
 // MARK: - Focused Values for Menu Commands
 
-struct FocusedNavigationSelection: FocusedValueKey {
-    typealias Value = Binding<NavigationItem?>
+struct FocusedNavigationCoordinator: FocusedValueKey {
+    typealias Value = NavigationCoordinator
 }
 
 struct FocusedHomeService: FocusedValueKey {
@@ -19,9 +19,10 @@ struct FocusedHomeService: FocusedValueKey {
 }
 
 extension FocusedValues {
-    var navigationSelection: Binding<NavigationItem?>? {
-        get { self[FocusedNavigationSelection.self] }
-        set { self[FocusedNavigationSelection.self] = newValue }
+    /// The key window's navigation, for the Navigate menu's sections and history.
+    var navigationCoordinator: NavigationCoordinator? {
+        get { self[FocusedNavigationCoordinator.self] }
+        set { self[FocusedNavigationCoordinator.self] = newValue }
     }
 
     var homeService: HomeService? {
@@ -133,7 +134,7 @@ struct SpotiflyApp: App {
 struct SpotiflyCommands: Commands {
     /// Nil in the unit-test host.
     let sessions: LoggedInSessions?
-    @FocusedValue(\.navigationSelection) var navigationSelection
+    @FocusedValue(\.navigationCoordinator) var navigationCoordinator
     @FocusedValue(\.homeService) var homeService
 
     private var playbackViewModel: PlaybackViewModel {
@@ -177,29 +178,33 @@ struct SpotiflyCommands: Commands {
 
         // Navigation menu
         CommandMenu("menu.navigate") {
+            NavigationHistoryMenuItems(coordinator: navigationCoordinator)
+
+            Divider()
+
             Button("menu.favorites") {
-                navigationSelection?.wrappedValue = .favorites
+                navigationCoordinator?.selectNavigationItem(.favorites)
             }
             .keyboardShortcut("1", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Button("menu.playlists") {
-                navigationSelection?.wrappedValue = .playlists
+                navigationCoordinator?.selectNavigationItem(.playlists)
             }
             .keyboardShortcut("2", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Button("menu.albums") {
-                navigationSelection?.wrappedValue = .albums
+                navigationCoordinator?.selectNavigationItem(.albums)
             }
             .keyboardShortcut("3", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Button("menu.artists") {
-                navigationSelection?.wrappedValue = .artists
+                navigationCoordinator?.selectNavigationItem(.artists)
             }
             .keyboardShortcut("4", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Divider()
 
@@ -240,6 +245,29 @@ struct SpotiflyCommands: Commands {
                 }
             }
         #endif
+    }
+}
+
+/// The history the toolbar's arrows step through, under the shortcuts Safari, Finder and Music
+/// use for it; ⌘← and ⌘→ are Previous and Next track.
+///
+/// A view of its own, so its body follows the coordinator as it moves: the menu's own body is
+/// drawn again only when a focused value changes, and the coordinator stays the same object.
+private struct NavigationHistoryMenuItems: View {
+    let coordinator: NavigationCoordinator?
+
+    var body: some View {
+        Button("nav.back") {
+            coordinator?.navigateBackward()
+        }
+        .keyboardShortcut("[", modifiers: .command)
+        .disabled(coordinator?.canNavigateBackward != true)
+
+        Button("nav.forward") {
+            coordinator?.navigateForward()
+        }
+        .keyboardShortcut("]", modifiers: .command)
+        .disabled(coordinator?.canNavigateForward != true)
     }
 }
 
