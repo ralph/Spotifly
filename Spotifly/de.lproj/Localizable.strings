@@ -256,3 +256,6 @@
 "common.ok" = "OK";
 "common.cancel" = "Abbrechen";
 "auth.enable_playback_wrong_account" = "Dieses Spotify-Konto ist nicht das, mit dem du angemeldet bist. Melde dich im Browser mit demselben Konto an und versuche es erneut.";
+
+/* A library row's action, for accessibility */
+"action.play" = "Wiedergeben";

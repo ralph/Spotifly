@@ -211,36 +211,39 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
 
     @State private var isHovering = false
 
+    /// A button, so accessibility can press it as a click selects it: a tap gesture announced
+    /// nothing and could not be pressed. Play, which shows only under the pointer, is one of the
+    /// row's actions too.
     var body: some View {
-        HStack(spacing: 10) {
-            Artwork(
-                images: entity.images,
-                size: 36,
-                shape: style.artworkShape,
-                symbol: style.placeholderGlyph,
-                symbolFont: .system(size: 16),
-                placeholderWhileLoading: true,
-            )
+        Button(action: onSelect) {
+            HStack(spacing: 10) {
+                Artwork(
+                    images: entity.images,
+                    size: 36,
+                    shape: style.artworkShape,
+                    symbol: style.placeholderGlyph,
+                    symbolFont: .system(size: 16),
+                    placeholderWhileLoading: true,
+                )
 
-            Text(entity.name)
-                .font(.system(size: 13))
-                .lineLimit(1)
+                Text(entity.name)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
 
-            Spacer()
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityAction(named: Text("action.play"), play)
         .overlay(alignment: .trailing) {
             if isHovering {
-                Button {
-                    Task {
-                        await playbackViewModel.play(uriOrUrl: entity.uri)
-                    }
-                } label: {
+                Button(action: play) {
                     Image(systemName: "play.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(.green)
@@ -252,6 +255,12 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
         }
         .onHover { hovering in
             isHovering = hovering
+        }
+    }
+
+    private func play() {
+        Task {
+            await playbackViewModel.play(uriOrUrl: entity.uri)
         }
     }
 }
