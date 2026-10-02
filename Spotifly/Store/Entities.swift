@@ -465,6 +465,27 @@ nonisolated func formatDuration(milliseconds: Int, locale: Locale = .autoupdatin
     )
 }
 
+/// An album's release date in the app's language, as precise as it is stored
+/// (`PathfinderReleaseDate.formatted`): "Sep 26, 1969", "26. Sept. 1969" or "26 sept. 1969" for
+/// a day, "Sep 1969" for a month, "1969" for a year. Anything else is shown as it came.
+nonisolated func formatReleaseDate(_ releaseDate: String, locale: Locale = .autoupdatingCurrent) -> String {
+    let parts = releaseDate.split(separator: "-").map { Int($0) }
+    guard (1 ... 3).contains(parts.count), let year = parts[0] else { return releaseDate }
+
+    // Built and formatted in UTC, so no time zone moves the day.
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = .gmt
+    let components = DateComponents(year: year, month: parts.count > 1 ? parts[1] : 1, day: parts.count > 2 ? parts[2] : 1)
+    guard let date = calendar.date(from: components) else { return releaseDate }
+
+    let style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: .gmt)
+    return switch parts.count {
+    case 3: date.formatted(style.year().month(.abbreviated).day())
+    case 2: date.formatted(style.year().month(.abbreviated))
+    default: date.formatted(style.year())
+    }
+}
+
 /// Calculate total duration from a sequence of tracks
 func totalDuration(of tracks: some Sequence<Track>) -> String {
     let totalMs = tracks.reduce(0) { $0 + $1.durationMs }

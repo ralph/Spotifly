@@ -109,7 +109,7 @@ struct AlbumDetailView: View {
                             }
                             if let releaseDate = album.releaseDate {
                                 Text("metadata.separator")
-                                Text(releaseDate)
+                                Text(formatReleaseDate(releaseDate))
                             }
                         }
                         .font(.subheadline)

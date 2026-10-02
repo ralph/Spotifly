@@ -184,24 +184,6 @@ nonisolated struct PathfinderTrack: Decodable, Sendable {
 }
 
 nonisolated struct PathfinderAlbum: Decodable, Sendable {
-    /// **The two operations that return this type spell the date differently**: search sends
-    /// `{year}` and nothing else, while `libraryV3` sends `{isoString, precision}` and no year.
-    /// Both are accepted, and `formatted` prefers the precise one — a decoder written against
-    /// either alone would leave the other's albums with no release date at all.
-    struct ReleaseDate: Decodable, Sendable {
-        let year: Int?
-        let isoString: String?
-
-        /// `2025-05-09` where a full date is known, the bare year otherwise. Trimmed at the `T`
-        /// rather than parsed, because the views format it as a year anyway.
-        var formatted: String? {
-            if let isoString {
-                return String(isoString.prefix(while: { $0 != "T" }))
-            }
-            return year.map(String.init)
-        }
-    }
-
     /// Search results carry no `id` — only the URI — so it is derived. `AppStore` keys albums
     /// by id, so this is not cosmetic.
     let uri: String?
@@ -209,7 +191,8 @@ nonisolated struct PathfinderAlbum: Decodable, Sendable {
     let type: String?
     let artists: PathfinderArtistList?
     let coverArt: PathfinderImage?
-    let date: ReleaseDate?
+    /// Search sends `{year}`, `libraryV3` `{isoString, precision}`; see `PathfinderReleaseDate`.
+    let date: PathfinderReleaseDate?
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))
