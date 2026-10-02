@@ -1,7 +1,7 @@
 # Some state is held twice, and the playback view model is passed by hand
 
-Status: **Open**, planned 2026-10-02 on `plan/state-held-twice`. Not started. Four PRs, in the
-order below
+Status: **Open**, planned 2026-10-02 on `plan/state-held-twice` (#158). Four PRs, in the order
+below. Phase 1 is in #159, awaiting live checks of Speakers and the context menus
 Components: `Spotifly/Store/AppStore.swift`, `Spotifly/Store/Entities.swift`,
 `Spotifly/Store/PlayerModel.swift`, `Spotifly/Store/Services/QueueService.swift`,
 `Spotifly/Store/Services/SearchService.swift`, `Spotifly/Store/Services/DeviceService.swift`,
