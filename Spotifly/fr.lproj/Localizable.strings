@@ -27,6 +27,9 @@
 "nav.your_library" = "Bibliothèque";
 
 /* Common Actions */
+"action.play" = "Lire";
+"action.pause" = "Pause";
+"action.more" = "Plus d'options";
 "action.try_again" = "Réessayer";
 "action.cancel" = "Annuler";
 "action.create" = "Créer";
@@ -57,6 +60,14 @@
 /* Mini Player */
 "mini_player.enter" = "Ouvrir le lecteur réduit";
 "mini_player.restore" = "Restaurer la fenêtre complète";
+
+/* Now Playing Bar */
+"now_playing.cover_menu" = "Aller à l'artiste, à l'album ou à la file d'attente";
+"now_playing.position" = "Position";
+"now_playing.position_value %@ %@" = "%1$@ sur %2$@";
+"shuffle.enable" = "Activer la lecture aléatoire";
+"shuffle.disable" = "Désactiver la lecture aléatoire";
+"shuffle.unavailable" = "La lecture aléatoire n'est pas disponible pour ce qui est en cours, comme une radio";
 
 /* Loading States */
 "loading.favorites" = "Chargement des titres likés...";
@@ -139,6 +150,7 @@
 
 /* Volume */
 "volume.device_controls_itself %@" = "%@ règle son volume lui-même";
+"volume.title" = "Volume";
 
 /* Menu Commands */
 "menu.playback" = "Lecture";

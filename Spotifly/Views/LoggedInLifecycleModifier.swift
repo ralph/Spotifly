@@ -184,10 +184,10 @@ struct LoggedInLifecycleModifier: ViewModifier {
     }
 
     #if DEBUG
-        /// What the bar shows, and whether the client agrees it is playing.
+        /// What the bar shows, and whether the player model agrees it is playing.
         private func debugPlaybackSummary() -> String {
             "uri=\(playbackViewModel.currentTrackUri ?? "nil") at \(playbackViewModel.interpolatedPositionMs)ms, "
-                + "playing=\(playbackViewModel.isPlaying), client playing=\(SpotifyPlayer.isPlaying), "
+                + "playing=\(playbackViewModel.isPlaying), model playing=\(PlayerModel.shared.playback?.isPlaying == true), "
                 + "active=\(SpotifyPlayer.isActiveDevice)"
         }
     #endif
