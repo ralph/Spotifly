@@ -359,7 +359,6 @@ public actor SPClient {
         guard let start = path.range(of: "prev_tracks=")?.upperBound else { return path }
         let end = path[start...].firstIndex(of: "&") ?? path.endIndex
         let tracks = path[start ..< end].split(separator: ",")
-        guard tracks.count > stationPageMemory else { return path }
         return path.replacingCharacters(in: start ..< end, with: tracks.prefix(stationPageMemory).joined(separator: ","))
     }
 

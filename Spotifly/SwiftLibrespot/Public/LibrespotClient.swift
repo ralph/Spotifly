@@ -63,15 +63,6 @@ public actor LibrespotClient {
     /// Logical Connect volume (0…65535), mirrored into player state.
     private var logicalVolume: UInt32 = 32767
 
-    /// The options, which the queue keeps: a context that does not allow one turns it off.
-    private var shuffleEnabled: Bool {
-        playbackQueue.shuffleEnabled
-    }
-
-    private var repeatMode: PlaybackQueue.RepeatMode {
-        playbackQueue.repeatMode
-    }
-
     /// Tracks Spotify will not play for the account, as the app's lists said, replaced each
     /// time it tells. Next, Previous, auto-advance and the fetch-ahead step over them, and
     /// those learned below, without loading them. The context resolver's answer does not
@@ -718,7 +709,7 @@ public actor LibrespotClient {
     /// before the current track ends. Under repeat-one that is the same track,
     /// which the pipeline already holds.
     private func announceNextTrack() {
-        let next = repeatMode == .track
+        let next = playbackQueue.repeatMode == .track
             ? playbackQueue.currentUri
             : playbackQueue.upcomingPlayable(skipping: knownUnplayable)
         lineUpNextPage()
@@ -774,7 +765,7 @@ public actor LibrespotClient {
     /// queue's publish can come before.
     private func lineUpAutoplay() {
         let contextUri = playbackQueue.contextUri
-        guard autoplay, localState != nil, repeatMode == .off, !playbackQueue.autoplayAsked,
+        guard autoplay, localState != nil, playbackQueue.repeatMode == .off, !playbackQueue.autoplayAsked,
               !contextUri.isEmpty, !contextUri.hasPrefix("spotify:station:"), playbackQueue.nextPageUrl == nil, let spclient,
               playbackQueue.upcomingPlayable(skipping: knownUnplayable) == nil
         else { return }
@@ -790,7 +781,7 @@ public actor LibrespotClient {
             }
             // Still playing here, the context it was asked for, with nothing after the track
             // playing, and still wanted: any of it may have changed meanwhile.
-            guard autoplay, localState != nil, repeatMode == .off, playbackQueue.contextUri == contextUri, playbackQueue.autoplayAsked,
+            guard autoplay, localState != nil, playbackQueue.repeatMode == .off, playbackQueue.contextUri == contextUri, playbackQueue.autoplayAsked,
                   playbackQueue.autoplayStart == nil, playbackQueue.upcomingPlayable(skipping: knownUnplayable) == nil
             else { return }
             playbackQueue.appendAutoplay(station.tracks, uids: station.uids, from: station.uri)
@@ -1056,7 +1047,7 @@ public actor LibrespotClient {
             // advancing again passed over its track, and repeat-one played the old one again
             // under the new one's queue.
             guard uri == playbackQueue.currentUri else { return }
-            if repeatMode == .track {
+            if playbackQueue.repeatMode == .track {
                 await autoAdvance(to: uri)
                 return
             }
@@ -1793,8 +1784,8 @@ public actor LibrespotClient {
             // librespot applies each flag that is present. Repeat-one wins over
             // repeat-context, as clients send both on for it.
             if repeatContext != nil || repeatTrack != nil {
-                let track = repeatTrack ?? (repeatMode == .track)
-                let context = repeatContext ?? (repeatMode == .context)
+                let track = repeatTrack ?? (playbackQueue.repeatMode == .track)
+                let context = repeatContext ?? (playbackQueue.repeatMode == .context)
                 await setRepeat(track ? .track : (context ? .context : .off))
             }
             if let shuffle {
@@ -1850,9 +1841,9 @@ public actor LibrespotClient {
             trackUri: trackUri,
             positionMs: positionMs,
             durationMs: knownDurationMs,
-            shuffle: shuffleEnabled,
-            repeatTrack: repeatMode == .track,
-            repeatContext: repeatMode == .context,
+            shuffle: playbackQueue.shuffleEnabled,
+            repeatTrack: playbackQueue.repeatMode == .track,
+            repeatContext: playbackQueue.repeatMode == .context,
             timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
             canShuffle: playbackQueue.restrictions.allowsShuffle,
         )

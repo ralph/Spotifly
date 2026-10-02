@@ -366,14 +366,12 @@ public nonisolated struct Restrictions: Sendable, Equatable {
     public init() {}
 
     /// The fields modelled, by number and by the name the resolver's JSON gives them.
-    private static var fields: [(number: Int, name: String, reasons: WritableKeyPath<Restrictions, [String]>)] {
-        [
-            (7, "disallow_skipping_next_reasons", \.skippingNext),
-            (8, "disallow_toggling_repeat_context_reasons", \.togglingRepeatContext),
-            (9, "disallow_toggling_repeat_track_reasons", \.togglingRepeatTrack),
-            (10, "disallow_toggling_shuffle_reasons", \.togglingShuffle),
-        ]
-    }
+    private static let fields: [(number: Int, name: String, reasons: WritableKeyPath<Restrictions, [String]> & Sendable)] = [
+        (7, "disallow_skipping_next_reasons", \.skippingNext),
+        (8, "disallow_toggling_repeat_context_reasons", \.togglingRepeatContext),
+        (9, "disallow_toggling_repeat_track_reasons", \.togglingRepeatTrack),
+        (10, "disallow_toggling_shuffle_reasons", \.togglingShuffle),
+    ]
 
     /// The resolver's `restrictions`: each field by name, a list of reasons.
     init(json: [String: Any]) {

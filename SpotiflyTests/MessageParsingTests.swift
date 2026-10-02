@@ -184,21 +184,18 @@ struct ConnectMessageParsingTests {
     /// This Mac reports a station's restrictions as its context's and its own, where the web
     /// player playing one sent them too (2026-10-02).
     @Test func `restrictions are written at player.proto's numbers, and read back`() {
-        var radio = Restrictions()
-        radio.togglingRepeatContext = ["radio"]
-        radio.togglingShuffle = ["radio"]
         var state = PlayerState()
-        state.contextRestrictions = radio
-        state.restrictions = radio
+        state.contextRestrictions = .radio
+        state.restrictions = .radio
 
         let fields = ProtobufReader.fields(in: state.serialize())
-        let written = { (number: Int) in fields.first { $0.number == number }?.fields.map { "\($0.number)=\($0.string)" } }
+        let written = { (number: Int) in fields.last(number)?.fields.map { "\($0.number)=\($0.string)" } }
         #expect(written(4) == ["8=radio", "10=radio"])
         #expect(written(17) == ["8=radio", "10=radio"])
 
         let read = PlayerState.parse(from: state.serialize())
-        #expect(read.contextRestrictions == radio)
-        #expect(read.restrictions == radio)
+        #expect(read.contextRestrictions == .radio)
+        #expect(read.restrictions == .radio)
         #expect(!read.disallowsSkippingNext)
     }
 
