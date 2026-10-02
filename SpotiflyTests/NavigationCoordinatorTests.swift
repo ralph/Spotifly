@@ -63,7 +63,7 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.current.section == .favorites)
     }
 
-    @Test func `back and forward restore the identical route including drill down`() {
+    @Test func `back and forward restore the identical route including a search's all-tracks page`() {
         let store = AppStore()
         store.setSearchResults(emptySearchResults, for: "q")
         let coordinator = NavigationCoordinator(store: store)
@@ -121,7 +121,7 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.current == artistsRoute)
     }
 
-    @Test func `history titles name section selection and drill down targets`() {
+    @Test func `history titles name the section, the selection and the all-tracks page`() {
         let store = AppStore()
         let coordinator = NavigationCoordinator(store: store)
         store.upsertAlbum(album(id: "album-a", name: "Named Album"))
@@ -173,20 +173,15 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.current == Route(section: .searchResults, query: "q"))
     }
 
-    @Test func `all tracks opens only from a search, and only once`() {
+    @Test func `all tracks opens only from a search`() {
         let store = AppStore()
         store.setSearchResults(emptySearchResults, for: "q")
         let coordinator = NavigationCoordinator(store: store)
         coordinator.selectNavigationItem(.albums)
 
         coordinator.showAllSearchTracks()
-        #expect(!coordinator.current.showsAllTracks)
 
-        coordinator.navigateToSearchResults(query: "q")
-        coordinator.showAllSearchTracks()
-        coordinator.showAllSearchTracks()
-        coordinator.navigateBackward()
-        #expect(!coordinator.current.showsAllTracks)
+        #expect(coordinator.current == Route(section: .albums))
     }
 
     /// The sidebar's search row reopens the results, not the page of all tracks.

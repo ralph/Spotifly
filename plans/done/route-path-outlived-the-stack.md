@@ -33,7 +33,8 @@ search's "show all tracks". "Show all tracks" is now a page of the search route,
 - **`Route.showsAllTracks`**, a flag on the search route, in place of `path`. Equality and the
   history work as before: "show all" is a step of its own, and Back returns to the results.
 - **`NavigationCoordinator.showAllSearchTracks()`**, in place of `push(_:)`. It does nothing
-  outside a search route, or on the all-tracks page itself.
+  outside a search route; on the all-tracks page itself the route is unchanged, so no step is
+  added.
 - **The router draws both pages from the search's results**: the all-tracks page reads
   `searchResults.trackIds` through the route's query, after the same results-or-failure check
   as the results page, so a failure governs both.
@@ -61,6 +62,5 @@ input, which moved two steps per click; through accessibility each moved one, as
 ### Unit tests
 
 611 pass. Four are new: "show all" is a step of its own with Back to the results; it opens only
-from a search and only once; the sidebar's search row reopens the results; and a selection
-missing from the store is named by its section, which the old missing-artist drill-down test
-covered.
+from a search; the sidebar's search row reopens the results; and a selection missing from the
+store is named by its section, which the old missing-artist drill-down test covered.

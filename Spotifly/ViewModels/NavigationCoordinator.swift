@@ -147,7 +147,7 @@ final class NavigationCoordinator {
 
     /// Opens all of the shown search's tracks, as a step of its own in the history.
     func showAllSearchTracks() {
-        guard current.section == .searchResults, !current.showsAllTracks else { return }
+        guard displayedSearchQuery != nil else { return }
         var route = current
         route.showsAllTracks = true
         navigate(to: route)
