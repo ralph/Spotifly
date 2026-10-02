@@ -1621,8 +1621,8 @@ final class PlaybackViewModel {
 
     // MARK: - Favorite Management
 
-    /// Toggles the current track's favorite status, for the menu item and ⌘L, which reach this
-    /// model rather than the services.
+    /// Toggles the current track's favorite status, for the now-playing bar's heart and the Like
+    /// menu item (⌘L), which works without the bar.
     func toggleCurrentTrackFavorite() async {
         guard let uri = currentTrackUri, let trackId = SpotifyAPI.parseTrackURI(uri),
               let trackService

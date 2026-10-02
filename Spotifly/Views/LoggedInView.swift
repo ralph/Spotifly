@@ -19,10 +19,8 @@ struct LoggedInView: View {
     /// Normalized state store.
     @State private var store: AppStore
 
-    /// Services that need Task deduplication or subscription persistence.
+    // Services that need Task deduplication or subscription persistence.
     @State private var playlistService: PlaylistService
-    /// Shared with `playlistService`, so the launch and the playlist writes ask for the profile
-    /// once between them.
     @State private var profileService: ProfileService
     @State private var albumService: AlbumService
     @State private var artistService: ArtistService

@@ -21,8 +21,9 @@ final class PlaylistService {
     private static let listKey = "user-playlists"
     private let notFound = NotFoundMemory(.playlist)
 
-    /// The account's own profile, which the library writes address the rootlist by. The one
-    /// the launch asks too, so the two share a single request.
+    /// The account's own profile. The rootlist is addressed by the account's username, so library
+    /// membership cannot change before it has loaded; `UserProfile.id` *is* the username, taken
+    /// straight from `profileAttributes`.
     private let profileService: ProfileService
 
     /// The playlist reads and the item mutations. No token is passed in: both clients run on
@@ -185,7 +186,7 @@ final class PlaylistService {
     /// playlist and answers its uri; nothing puts it in the library until the rootlist is told
     /// to hold it. Measured 2026-08-14 — the web client sends both.
     func createPlaylist(name: String, description: String? = nil) async throws -> Playlist {
-        let owner = try await requireProfile()
+        let owner = try await profileService.require()
 
         let id = try await spclientAPI.createPlaylist(name: name, description: description)
         try await spclientAPI.addPlaylistToLibrary(username: owner.id, playlistId: id)
@@ -274,7 +275,7 @@ final class PlaylistService {
     }
 
     private func removeFromLibrary(playlistId: String) async throws {
-        let owner = try await requireProfile()
+        let owner = try await profileService.require()
         try await spclientAPI.removePlaylistFromLibrary(
             username: owner.id,
             playlistId: playlistId,
@@ -285,17 +286,10 @@ final class PlaylistService {
 
     /// Follows (saves) a playlist into the user's library.
     func followPlaylist(playlistId: String) async throws {
-        let owner = try await requireProfile()
+        let owner = try await profileService.require()
         try await spclientAPI.addPlaylistToLibrary(username: owner.id, playlistId: playlistId)
 
         store.addPlaylistToUserLibraryById(playlistId)
-    }
-
-    /// The rootlist is addressed by the account's own username, so library membership cannot be
-    /// changed before the profile has loaded. `UserProfile.id` *is* the username — see
-    /// `UserProfile.init(pathfinder:)`, which takes it straight from `profileAttributes`.
-    private func requireProfile() async throws -> UserProfile {
-        try await profileService.require()
     }
 
     // MARK: - Track Operations

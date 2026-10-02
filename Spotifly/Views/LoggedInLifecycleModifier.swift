@@ -227,10 +227,10 @@ struct LoggedInLifecycleModifier: ViewModifier {
 
     /// Who is logged in. Failure is swallowed, because nothing on this path should block on it:
     /// an app that cannot say who you are is still an app that plays music. A playlist write
-    /// asks the same service again when it needs the profile; see `ProfileService.require()`.
+    /// that needs the profile asks for it itself; see `ProfileService.require()`.
     private func loadProfile() async {
         do {
-            _ = try await profileService.require()
+            try await profileService.reload()
         } catch {
             debugLog("LoggedInLifecycle", "Profile unavailable: \(error.localizedDescription)")
         }

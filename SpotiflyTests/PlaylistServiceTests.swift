@@ -315,26 +315,43 @@ struct PlaylistLibraryWriteTests {
         #expect(calls.profileRequests == 1)
         #expect(calls.rootlistWrites == 4)
     }
+}
 
-    /// The launch asks for the profile through the same service the writes use, so a write
-    /// arriving while the launch's request is out joins it rather than making its own.
-    @Test func `the launch and a write share one profile request`() async throws {
+@MainActor
+struct ProfileServiceTests {
+    /// The network's return asks again while an earlier request may still be out. Joining one
+    /// the launch started offline would fail with it, so a reload makes a request of its own.
+    @Test func `a reload does not join a request in flight`() async throws {
         let calls = Calls()
+        let held = AsyncGate()
         let store = AppStore()
-        let api = partnerAPI(transport: { _ in calls.profile() })
-        let profileService = ProfileService(store: store, partnerAPI: api)
-        let service = PlaylistService(
-            store: store,
-            partnerAPI: api,
-            spclientAPI: spclientAPI(transport: { calls.rootlist($0) }),
-            profileService: profileService,
-        )
+        let service = ProfileService(store: store, partnerAPI: partnerAPI(transport: { _ in
+            let answer = calls.profile()
+            if calls.profileRequests == 1 {
+                await held.entered()
+                await held.wait()
+            }
+            return answer
+        }))
 
-        async let launch = profileService.require()
-        async let write: Void = service.followPlaylist(playlistId: "p1")
-        _ = try await (launch, write)
+        let write = Task { try await service.require() }
+        await held.waitUntilEntered()
 
-        #expect(calls.profileRequests == 1)
-        #expect(calls.rootlistWrites == 1)
+        try await service.reload()
+
+        #expect(calls.profileRequests == 2)
+        #expect(store.userProfile?.id == "qixixbr0ox6sik6jc6bkv6y6y")
+        await held.open()
+        _ = try await write.value
+    }
+
+    @Test func `a reload asks even with a profile in the store`() async throws {
+        let calls = Calls()
+        let service = ProfileService(store: AppStore(), partnerAPI: partnerAPI(transport: { _ in calls.profile() }))
+
+        try await service.reload()
+        try await service.reload()
+
+        #expect(calls.profileRequests == 2)
     }
 }

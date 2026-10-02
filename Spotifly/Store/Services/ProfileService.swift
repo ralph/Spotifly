@@ -2,7 +2,7 @@
 //  ProfileService.swift
 //  Spotifly
 //
-//  Who is logged in: one request for it, however many callers ask at once.
+//  Who is logged in: the one place that asks Spotify for it.
 //
 
 import Foundation
@@ -13,7 +13,7 @@ final class ProfileService {
     private let store: AppStore
     private let partnerAPI: PartnerAPI
 
-    /// The profile request, one run at a time under one key.
+    /// The writes' profile request, one run at a time under one key.
     private let requests = InFlightRequests<Void>()
     private static let key = "user-profile"
 
@@ -24,20 +24,17 @@ final class ProfileService {
 
     /// The logged-in user's profile, fetched when the store does not hold it yet.
     ///
-    /// The launch asks for it and swallows a failure, since an app that cannot say who you are
-    /// is still an app that plays music. The playlist library's writes ask too, and need it:
-    /// they address the rootlist by username. So a write fetches it rather than refusing, which
-    /// is what kept one transient failure at launch from leaving create, delete, follow and
-    /// unfollow throwing `accountUnknown` until a relaunch. Through the registry, so the launch
-    /// and several writes arriving at once ask for it once.
+    /// For the playlist library's writes, which address the rootlist by username. Fetching it
+    /// rather than refusing is what keeps one transient failure at launch from leaving create,
+    /// delete, follow and unfollow throwing `accountUnknown` until a relaunch. Through the
+    /// registry, so several writes arriving at once ask for it once.
     func require() async throws -> UserProfile {
         if let profile = store.userProfile {
             return profile
         }
 
         try await requests.run(Self.key) {
-            let profile = try await self.partnerAPI.profile()
-            self.store.setUserProfile(UserProfile(pathfinder: profile))
+            try await self.reload()
         }
 
         // A profile can arrive without the one field that matters — `UserProfile(pathfinder:)`
@@ -46,5 +43,15 @@ final class ProfileService {
             throw SpclientError.accountUnknown
         }
         return profile
+    }
+
+    /// Asks for the profile, whatever the store holds, and never joins a request in flight.
+    ///
+    /// For the launch and the network's return. Joining would let the retry join a request the
+    /// launch started offline, and fail with it; see
+    /// `plans/done/list-failures-the-retry-cannot-see.md`.
+    func reload() async throws {
+        let profile = try await partnerAPI.profile()
+        store.setUserProfile(UserProfile(pathfinder: profile))
     }
 }
