@@ -17,9 +17,74 @@ final class ProfileService {
     private let requests = InFlightRequests<Void>()
     private static let key = "user-profile"
 
-    init(store: AppStore, partnerAPI: PartnerAPI = PartnerAPI()) {
+    /// Whether a profile request has answered this session, even with a profile that has no name,
+    /// which asking again would not change.
+    private var answered = false
+    /// The asking again after a failed launch request; see `loadForSession()`.
+    private var sessionLoad: Task<Void, Never>?
+    /// The pauses before each time it asks again, the last one repeating. Injected, with the
+    /// wait itself, so tests do not wait.
+    private let retryPauses: [Duration]
+    private let pause: @Sendable (Duration) async throws -> Void
+
+    init(
+        store: AppStore,
+        partnerAPI: PartnerAPI = PartnerAPI(),
+        retryPauses: [Duration] = [.seconds(5), .seconds(30), .seconds(120), .seconds(300)],
+        pause: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+    ) {
         self.store = store
         self.partnerAPI = partnerAPI
+        self.retryPauses = retryPauses
+        self.pause = pause
+    }
+
+    isolated deinit {
+        sessionLoad?.cancel()
+    }
+
+    /// Loads the profile for the session: once now, then, after a failure, again after growing
+    /// pauses until a request answers.
+    ///
+    /// The owner-only actions decide by `store.userId`, read synchronously: Remove from this
+    /// playlist, Edit Details, the cover and Delete, and the playlists Add to playlist offers. A
+    /// launch request that failed while the network stayed up was asked again only when the
+    /// network returned, so until a relaunch they were missing. A failure that may pass soon is
+    /// already asked again inside the request (`SpotifyCredentials.retryingPassingFailures`);
+    /// this is for the rest, and for one that did not pass in those seconds.
+    ///
+    /// Returns when the first attempt has ended, so the launch waits for it as long as it did.
+    /// The asking again goes on in the background, and ends with the service, which is the
+    /// session's. The network's return still asks at once (`LoggedInLifecycleModifier`).
+    func loadForSession() async {
+        guard sessionLoad == nil, !answered else { return }
+        do {
+            try await reload()
+            return
+        } catch {
+            debugLog("ProfileService", "Profile unavailable: \(error.localizedDescription); asking again in \(retryPauses.first?.components.seconds ?? 0) s")
+        }
+
+        sessionLoad = Task { [weak self, retryPauses, pause] in
+            var pauses = retryPauses.makeIterator()
+            var delay = Duration.seconds(300)
+            while true {
+                delay = pauses.next() ?? delay
+                do {
+                    try await pause(delay)
+                } catch {
+                    return
+                }
+                guard let self, !answered else { return }
+                do {
+                    try await reload()
+                    debugLog("ProfileService", "Profile loaded on asking again")
+                    return
+                } catch {
+                    debugLog("ProfileService", "Profile still unavailable: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     /// The logged-in user's profile, fetched when the store does not hold it yet.
@@ -53,5 +118,6 @@ final class ProfileService {
     func reload() async throws {
         let profile = try await partnerAPI.profile()
         store.setUserProfile(UserProfile(pathfinder: profile))
+        answered = true
     }
 }

@@ -345,6 +345,62 @@ struct ProfileServiceTests {
         _ = try await write.value
     }
 
+    /// A launch request that failed while the network stayed up was asked again only when the
+    /// network returned, so the owner-only actions were missing until a relaunch.
+    @Test func `the session's load asks again until a request answers, and then stops`() async throws {
+        let calls = Calls(failuresBeforeSuccess: 2)
+        let store = AppStore()
+        let service = ProfileService(
+            store: store,
+            partnerAPI: partnerAPI(transport: { _ in calls.profile() }),
+            retryPauses: [.zero],
+            pause: { _ in await Task.yield() },
+        )
+
+        await service.loadForSession()
+        #expect(store.userProfile == nil)
+
+        try await waitUntil { store.userProfile != nil }
+        await settle()
+        #expect(calls.profileRequests == 3)
+    }
+
+    /// A write's `require()`, or the network's return, can answer first. The asking again then
+    /// stops without a request of its own.
+    @Test func `the session's load stops when another request answers`() async throws {
+        let calls = Calls(failuresBeforeSuccess: 1)
+        let held = AsyncGate()
+        let store = AppStore()
+        let service = ProfileService(
+            store: store,
+            partnerAPI: partnerAPI(transport: { _ in calls.profile() }),
+            retryPauses: [.zero],
+            pause: { _ in
+                await held.entered()
+                await held.wait()
+            },
+        )
+
+        await service.loadForSession()
+        await held.waitUntilEntered()
+        try await service.reload()
+        await held.open()
+        await settle()
+
+        #expect(calls.profileRequests == 2)
+        #expect(store.userProfile != nil)
+    }
+
+    @Test func `the session's load is one load`() async {
+        let calls = Calls()
+        let service = ProfileService(store: AppStore(), partnerAPI: partnerAPI(transport: { _ in calls.profile() }))
+
+        await service.loadForSession()
+        await service.loadForSession()
+
+        #expect(calls.profileRequests == 1)
+    }
+
     @Test func `a reload asks even with a profile in the store`() async throws {
         let calls = Calls()
         let service = ProfileService(store: AppStore(), partnerAPI: partnerAPI(transport: { _ in calls.profile() }))

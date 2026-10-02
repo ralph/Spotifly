@@ -40,7 +40,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // The profile and the start page are independent requests on the same grant, so
                 // they run together. Neither blocks: an app that cannot say who you are is
                 // still an app that plays music.
-                async let profile: () = loadProfile()
+                async let profile: () = profileService.loadForSession()
                 async let home: () = homeService.loadHome()
                 _ = await (profile, home)
 
@@ -198,9 +198,11 @@ struct LoggedInLifecycleModifier: ViewModifier {
             }
     }
 
-    /// Who is logged in. Failure is swallowed, because nothing on this path should block on it:
-    /// an app that cannot say who you are is still an app that plays music. A playlist write
-    /// that needs the profile asks for it itself; see `ProfileService.require()`.
+    /// Who is logged in, asked again when the network returns; the launch's load, which also asks
+    /// again after a failure, is `ProfileService.loadForSession()`. Failure is swallowed, because
+    /// nothing on this path should block on it: an app that cannot say who you are is still an
+    /// app that plays music. A playlist write that needs the profile asks for it itself; see
+    /// `ProfileService.require()`.
     private func loadProfile() async {
         do {
             try await profileService.reload()
