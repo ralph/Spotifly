@@ -2,7 +2,8 @@
 
 Status: **Done** 2026-10-02, verified live
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift` (`applyNowPlayingTiming`,
-`handlePlaybackStateUpdate`, `hasPrevious`, `previous()`, `currentPositionMs`)
+`handlePlaybackStateUpdate`, `handlePlaybackStarted`, `performSeek`, `interpolatedPositionMs`,
+`hasPrevious` and `currentPositionMs`, both removed), `Spotifly/Views/NowPlayingBarView.swift`
 Found: 2026-10-02, in the review of `plans/done/position-behind-after-a-reconnect.md`
 
 ## Summary
@@ -10,8 +11,8 @@ Found: 2026-10-02, in the review of `plans/done/position-behind-after-a-reconnec
 The bar shows `interpolatedPositionMs`: the anchor's position plus the time since its anchor
 time. Control Center's elapsed time and the Previous button read `currentPositionMs`, the
 anchor's position alone, as the position now. Control Center also heard nothing when another
-device seeked. Both now take the position as the bar does, Control Center hears every re-anchor,
-and the anchor's position alone is private to the interpolation.
+device seeked. Control Center now gets the bar's position and hears every re-anchor, Previous is
+enabled with a track, and the anchor's position alone is no longer a property anyone can read.
 
 ## Problem
 
@@ -49,17 +50,25 @@ nothing):
 
 - **Control Center gets the bar's position:** `applyNowPlayingTiming` publishes
   `interpolatedPositionMs`, clamped to the duration.
-- **Every playback state update republishes the timing**, the full entry on a track change or a
-  first duration, else `updateNowPlayingPosition()`. Updates arrive only when something changed,
-  a few a minute while another device plays.
-- **Previous is enabled whenever a track is loaded.** It always does something: it goes back a
+- **Every playback state update republishes the timing**: the full entry on a track change, else
+  `updateNowPlayingPosition()`, which writes the duration too, so the first duration's own full
+  update went. Updates arrive only when something changed, a few a minute while another device
+  plays.
+- **Two re-anchors that published first or not at all:** `handlePlaybackStarted` now re-anchors
+  before it publishes, where the new track went out with the old track's position; and a seek
+  that could not be sent puts Control Center back with the bar.
+- **Previous is enabled whenever a track is loaded**, by the bar's `hasPlayback` as shuffle is;
+  `hasPrevious` is gone. It always does something: it goes back a
   track, or restarts this one where there is none to go back to, on this Mac
   (`LibrespotClient.previous()`) and on a remote device (`403 no_prev_track` answered with a seek
   to 0). The three-second rule only hid a restart in a track's first seconds, and switching it
   on at the right moment would need a timer for one button. Spotify's and Apple's players keep
   Previous enabled too.
-- **`currentPositionMs` is private**, read only by `interpolatedPositionMs` for a position that
-  is not advancing, so no reader can take it for the position now again.
+- **`currentPositionMs` is gone**, inlined into `interpolatedPositionMs` for a position that is
+  not advancing, so no reader can take the anchor for the position now again.
+- **Not changed:** while the session is down, the bar pins the position and Control Center runs
+  on at rate 1. The other device plays on meanwhile, so Control Center is the nearer of the two,
+  and the bar catches up to it when the session returns.
 
 ## Verification
 

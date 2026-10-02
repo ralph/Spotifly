@@ -274,7 +274,7 @@ struct NowPlayingBarView: View {
                     .font(.body)
             }
             .buttonStyle(.plain)
-            .disabled(!playbackViewModel.hasPrevious)
+            .disabled(!hasPlayback)
 
             Button {
                 if playbackViewModel.isPlaying {

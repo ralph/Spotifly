@@ -91,7 +91,7 @@ final class PlaybackViewModel {
     /// Length of the current track, as the stream reports it. Zero until one is known, which
     /// is what stops a previous track's length being applied to a new one — see
     /// `clampedToTrack`. The position that goes with it is derived from the anchor rather
-    /// than stored alongside; see `currentPositionMs`.
+    /// than stored alongside; see `interpolatedPositionMs`.
     var trackDurationMs: UInt32 = 0
 
     /// Volume (0.0 - 1.0)
@@ -666,8 +666,8 @@ final class PlaybackViewModel {
         isPlaying = true
         // Apply volume after playback starts (mixer is now initialized)
         SpotifyPlayer.setVolume(volume)
-        updateNowPlayingInfo()
         syncPositionAnchor()
+        updateNowPlayingInfo()
         // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackUri changes
     }
 
@@ -825,7 +825,7 @@ final class PlaybackViewModel {
         skip("next()", local: { try await SpotifyPlayer.next() }, remote: .next)
     }
 
-    /// Previous track, or the start of this one.
+    /// Previous track, or the start of this one, so the bar enables it whenever a track is loaded.
     ///
     /// With no earlier track, restarting is what pressing it means, and the local player does
     /// exactly that. A remote device does not: `skip_prev` comes back `403 no_prev_track`,
@@ -945,12 +945,6 @@ final class PlaybackViewModel {
     /// Whether shuffle may be switched on; see `PlaybackState.canShuffle`.
     var canShuffle: Bool {
         player.playback?.canShuffle != false
-    }
-
-    /// Whether Previous does anything: it goes back a track, or restarts this one where there
-    /// is none to go back to; see `previous()`.
-    var hasPrevious: Bool {
-        currentTrackUri != nil
     }
 
     // MARK: - Media Keys & Now Playing
@@ -1209,7 +1203,8 @@ final class PlaybackViewModel {
     }
 
     /// Lightweight Now Playing update — writes elapsed time, duration, and playback rate.
-    /// No title, artist, or artwork processing. Call on: seek, play/pause, drift correction.
+    /// No title, artist, or artwork processing. Call on: seek, play/pause, drift correction, and
+    /// every playback state update.
     ///
     /// Duration belongs here even though it is metadata: the URI `didSet` clears the stream
     /// duration on every track change, so a path that only wrote elapsed time would leave
@@ -1343,6 +1338,7 @@ final class PlaybackViewModel {
         // UI parked at a position playback never reached.
         if !issued {
             syncPositionAnchor()
+            updateNowPlayingPosition()
         }
     }
 
@@ -1377,14 +1373,11 @@ final class PlaybackViewModel {
             // Note: Track metadata (name, artist, etc.) will be updated from queue
         }
 
-        let hadStreamDuration = trackDurationMs > 0
-
         // Update duration. Connect snapshots carry these as signed 64-bit integers, so do
         // not let a malformed one turn a narrowing conversion into a process trap.
         if let durationMs = Self.playbackMilliseconds(state.durationMs), durationMs > 0 {
             trackDurationMs = durationMs
         }
-        let receivedFirstStreamDuration = !hadStreamDuration && trackDurationMs > 0
 
         isShuffleEnabled = state.shuffle
 
@@ -1400,7 +1393,7 @@ final class PlaybackViewModel {
 
         // The anchor moved, so Control Center has to move with it: it runs on from the last
         // elapsed time published, and a seek on another device changes no rate and no track.
-        if trackChanged || receivedFirstStreamDuration {
+        if trackChanged {
             updateNowPlayingInfo()
         } else {
             updateNowPlayingPosition()
@@ -1421,7 +1414,7 @@ final class PlaybackViewModel {
     }
 
     // Anchor-based position tracking, timed by positionClockNow()
-    // UI reads interpolatedPositionMs (computed), not currentPositionMs directly
+    // UI reads interpolatedPositionMs (computed)
     private var positionAnchorMs: UInt32 = 0
     private var positionAnchorTime: Double = PlaybackViewModel.positionClockNow()
     private var driftCorrectionTask: Task<Void, Never>?
@@ -1486,21 +1479,10 @@ final class PlaybackViewModel {
         positionAnchorTime = Self.positionClockNow()
     }
 
-    /// The position to report while playback is not advancing.
-    ///
-    /// Derived rather than stored. This used to be a third field assigned beside the anchor
-    /// on every update, always to exactly this expression — a cache of a one-line derivation,
-    /// whose only possible disagreement with its source was being stale. Reading it live also
-    /// means a duration arriving after the position now caps it, where the stored copy kept
-    /// whatever it was written with.
-    private var currentPositionMs: UInt32 {
-        clampedToTrack(positionAnchorMs)
-    }
-
     /// Computed position using anchor interpolation - UI should bind to this
     /// Read by the bar's TimelineView on each tick
     var interpolatedPositionMs: UInt32 {
-        guard positionRuns else { return currentPositionMs }
+        guard positionRuns else { return clampedToTrack(positionAnchorMs) }
         let elapsed = Self.positionClockNow() - positionAnchorTime
         let elapsedMs = UInt32(max(0, min(elapsed * 1000, Double(UInt32.max - 1))))
         return clampedToTrack(positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue)
