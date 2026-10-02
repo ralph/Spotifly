@@ -427,6 +427,7 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(isCurrentTrackFavorited ? .red : .secondary)
         }
         .buttonStyle(.plain)
+        .favoriteToggleName(isFavorited: isCurrentTrackFavorited)
     }
 
     private func resolveCurrentTrackMetadataIfNeeded() async {

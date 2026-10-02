@@ -189,6 +189,7 @@ struct TrackRow: View {
             .buttonStyle(.plain)
             .disabled(isTogglingFavorite)
             .opacity(isTogglingFavorite ? 0.5 : 1.0)
+            .favoriteToggleName(isFavorited: isFavorited)
 
             // Context menu (3-dot button)
             Menu {
@@ -217,7 +218,9 @@ struct TrackRow: View {
         .padding(.vertical, 8)
         .background(isCurrentTrack ? Color.green.opacity(0.1) : Color.clear)
         .opacity(isPlayedTrack || isUnavailable ? 0.5 : 1.0)
-        .help(track.unplayableMessage ?? "")
+        // Only for a track Spotify will not play: a tooltip on the row, even an empty one,
+        // stands in for its heart's.
+        .help(ifAny: track.unplayableMessage)
         .contentShape(Rectangle())
         .contextMenu {
             TrackContextMenu(
@@ -344,6 +347,24 @@ struct NewPlaylistPrompt: ViewModifier {
 }
 
 extension View {
+    /// Names a heart button by what pressing it does, as its tooltip and to accessibility, which
+    /// otherwise names it after its symbol, "Love", whether the track is saved or not.
+    func favoriteToggleName(isFavorited: Bool) -> some View {
+        let name: LocalizedStringKey = isFavorited
+            ? "track.menu.remove_from_favorites" : "track.menu.add_to_favorites"
+        return help(name).accessibilityLabel(name)
+    }
+
+    /// A tooltip where there is something to say, and none where there is not.
+    @ViewBuilder
+    func help(ifAny message: String?) -> some View {
+        if let message {
+            help(message)
+        } else {
+            self
+        }
+    }
+
     func newPlaylistPrompt(
         isPresented: Binding<Bool>,
         trackId: String?,
