@@ -33,7 +33,7 @@ struct PlaylistsListView: View {
             select: { playlistId, recordsHistory in
                 navigationCoordinator.selectPlaylist(playlistId, recordsHistory: recordsHistory)
             },
-            load: playlistService.loadUserPlaylists(forceRefresh:),
+            load: playlistService.loadSection(forceRefresh:),
             loadMore: playlistService.loadMorePlaylists,
             style: LibrarySectionStyle(
                 loadingText: "loading.playlists",

@@ -235,7 +235,8 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     }
 
     private var openFolders: Set<String> {
-        Set(openFolderList.split(separator: "\n").map(String.init))
+        get { Set(openFolderList.split(separator: "\n").map(String.init)) }
+        nonmutating set { openFolderList = newValue.sorted().joined(separator: "\n") }
     }
 
     /// The outline without what closed folders hold: the rows deeper than a closed folder, up
@@ -277,10 +278,9 @@ struct LibraryListView<Entity: LibraryEntity>: View {
 
     private func revealSelection() {
         guard let outline, let selectedId else { return }
-        let open = openFolders
-        let closed = Self.folders(around: selectedId, in: outline).filter { !open.contains($0) }
+        let closed = Self.folders(around: selectedId, in: outline).filter { !openFolders.contains($0) }
         guard !closed.isEmpty else { return }
-        openFolderList = open.union(closed).sorted().joined(separator: "\n")
+        openFolders.formUnion(closed)
     }
 
     /// A button, so accessibility can press it: a tap gesture with a button trait announced
@@ -288,21 +288,15 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     private func folderRow(uri: String, name: String) -> some View {
         let isOpen = openFolders.contains(uri)
         return Button {
-            var open = openFolders
             if isOpen {
-                open.remove(uri)
+                openFolders.remove(uri)
             } else {
-                open.insert(uri)
+                openFolders.insert(uri)
             }
-            openFolderList = open.sorted().joined(separator: "\n")
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: "folder")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 36, height: 36)
-                    .background(.quaternary)
-                    .clipShape(style.artworkShape)
+                // A folder has no cover; this is the placeholder a playlist without one shows.
+                Artwork(images: .empty, size: 36, shape: style.artworkShape, symbol: "folder", symbolFont: .system(size: 16))
 
                 Text(name)
                     .font(.system(size: 13))

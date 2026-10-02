@@ -265,9 +265,7 @@ struct LoggedInView: View {
         switch section {
         case .playlists:
             {
-                async let outline: Void = playlistService.loadPlaylistOutline(forceRefresh: true)
-                try? await playlistService.loadUserPlaylists(forceRefresh: true)
-                try? await outline
+                try? await playlistService.loadSection(forceRefresh: true)
             }
 
         case .albums:

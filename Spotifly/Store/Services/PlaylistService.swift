@@ -88,6 +88,16 @@ final class PlaylistService {
         }
     }
 
+    /// The Playlists section's load: the flat list, and on a forced refresh the outline beside
+    /// it, so the toolbar's refresh, pull-to-refresh and Try again all reload both. An outline
+    /// that fails leaves the one shown; the flat list's failure is the section's.
+    func loadSection(forceRefresh: Bool = false) async throws {
+        guard forceRefresh else { return try await loadUserPlaylists() }
+        async let outline: Void = loadPlaylistOutline(forceRefresh: true)
+        try await loadUserPlaylists(forceRefresh: true)
+        try? await outline
+    }
+
     /// Loads the playlists as Spotify nests them in folders, for the Playlists section. The
     /// flat list above stays what everything else reads, the add-to-playlist menus above all.
     ///

@@ -150,6 +150,12 @@ a playlist row.
       which announced itself to accessibility as a button and did nothing when pressed: VoiceOver
       could not open a folder, and neither could an accessibility press. It now opens and closes
       by one, and says "Geöffnet" or "Geschlossen" as its value (`folder.open`, `folder.closed`).
+- [x] **One load for the section**, `PlaylistService.loadSection(forceRefresh:)`, since
+      2026-10-02: a forced one reloads the outline beside the flat list, and it is what the
+      toolbar's refresh, pull-to-refresh and Try again all call. Only the toolbar reloaded the
+      outline before. Live: the toolbar's refresh still made three `libraryV3` requests, the flat
+      page and the outline's two passes. The folder's glyph is `Artwork`'s placeholder, as a
+      playlist without a cover shows it.
 - [ ] Live: a new playlist appears at the top; a deleted one disappears. Not run: it changes the
       library.
 - [ ] Live, an account or a check with no folders: the section looks as it did.
