@@ -103,4 +103,24 @@ struct PlaylistDescriptionTests {
         #expect(String?(nil).normalizedPlaylistDescription == nil)
         #expect(String?("Real description").normalizedPlaylistDescription == "Real description")
     }
+
+    /// As the start page sent them on 2026-10-02.
+    @Test func `a description reads as the text its HTML shows`() {
+        #expect(String?("<a href=spotify:playlist:37i9dQZF1EIXPRB6OHORIn>Brian Fallon</a>, <a href=spotify:playlist:37i9dQZF1EIZN733xVL21v>The Horrible Crowes</a> und mehr").normalizedPlaylistDescription
+            == "Brian Fallon, The Horrible Crowes und mehr")
+        #expect(String?("a chronicle of Terri Hooley&#x27;s life").normalizedPlaylistDescription == "a chronicle of Terri Hooley's life")
+        #expect(String?("Die handverlesene Playlist zum Fest & Flauschig Podcast.").normalizedPlaylistDescription
+            == "Die handverlesene Playlist zum Fest & Flauschig Podcast.")
+    }
+
+    /// A `<` the user typed comes escaped, and stays a `<`; only Spotify's own tags go, before the
+    /// entities are decoded.
+    @Test func `escaped characters come back as typed`() {
+        let text = { (html: String) in String?(html).normalizedPlaylistDescription }
+        #expect(text("I &lt;3 this &amp; that &quot;song&quot; &#39;99") == "I <3 this & that \"song\" '99")
+        #expect(text("a typed &lt;b&gt;tag&lt;/b&gt;") == "a typed <b>tag</b>")
+        #expect(text("a < b and c > d") == "a < b and c > d")
+        #expect(text("&unknown; &#xZZ; &#xD800; stays") == "&unknown; &#xZZ; &#xD800; stays")
+        #expect(text("<a href=spotify:x></a>") == nil)
+    }
 }
