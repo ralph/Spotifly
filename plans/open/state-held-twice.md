@@ -185,10 +185,10 @@ the table no longer holds (a deleted playlist).
 
 - **One translation, in the app.** `Queue` and `QueueEntry` move out of `AppStore.swift`, and
   `Queue(_ state: QueueState?)` builds them with today's rule (`QueueService.queueEntry(from:)`):
-  a row whose uri names a track, with its provider and uid. `PlayerModel` exposes it as a
-  computed `queueEntries`. Computed rather than stored: it is a few hundred rows, parsed by a
-  view that walks them all anyway. If a profile of the queue panel with a long mirrored queue
-  says otherwise, `apply(_:)` can store it next to `queue`, in the same write.
+  a row whose uri names a track, with its provider and uid. `PlayerModel` holds it as
+  `queueEntries`, written in `apply(_:)` in the same call as `queue`, so the two cannot
+  disagree. Worked out on each read, it cost about 1 ms per redraw of the queue panel, which
+  read it once per row.
 - **Readers.** `QueueListView`, `NowPlayingBarView` and `PlaybackViewModel.hasPrevious` read
   `player.queueEntries`. `currentIndex` and `queueLength` move onto `Queue`. The three entity
   lists (`currentTrackEntity` and its siblings) need the store, which `PlayerModel` does not
@@ -197,19 +197,19 @@ the table no longer holds (a deleted playlist).
 - **What goes.** `AppStore.queue`, `setQueue`, `liveStateRevision`, `noteLiveStateReceived`
   and the queue part of `debugDumpJSON`. `queueUpdate(from:)` goes with the copy it guarded.
 - **`QueueService` keeps one job**: making sure the store has metadata for every track the
-  queue names. It still observes `player.queue`, now only to call `ensureTracksLoaded`.
-  `fetchInitialPlaybackState()` becomes `hydrate()`, the same metadata request for the queue as
-  it stands. The launch calls it after initialization, and so does the reconnect, which is the
-  retry that has to survive.
-- **The waits go.** `PlaybackViewModel.startRemotely` drops the 600 ms sleep and the
-  revision check, and calls `hydrate()` straight after the command. A cache hit costs nothing,
-  and the call retries an earlier failed fetch when the command leaves the queue as it was.
-  `DeviceService.waitForTransferSettling()` and `lastTransferTime` go: the reconnect was their
-  only reader.
+  queue names. `hydrate()` asks `ensureTracksLoaded` for it on every change of the queue,
+  without the old 100 ms debounce, since `TrackService` already joins overlapping loads. The
+  retry that has to survive is `retryingWhenNetworkReturns { queueService.hydrate() }`, beside
+  the start page's and the profile's.
+- **The waits go.** `PlaybackViewModel.startRemotely` drops the 600 ms sleep, the revision
+  check and the re-copy, and with them its reference to `QueueService`: a call straight after
+  the command would run before the cluster reported, and so would only ask for the old queue.
+  The reconnect's re-copy goes with its drop-then-rise detection, and so do
+  `DeviceService.waitForTransferSettling()` and `lastTransferTime`, which only it read.
 - **Tests.** `QueueBootstrapTests` covers `queueUpdate(from:)` and `setQueue`. Its cases (nil,
   empty, history only, providers, uids, rows that are not tracks) move to tests of the derived
-  entries in `PlayerModelTests`. New tests cover `hydrate()` retrying after a failed fetch, a
-  logout leaving an empty queue, and `hasPrevious`.
+  entries, in `QueueTests` (renamed from `QueueBootstrapTests`). New tests cover `hydrate()`
+  asking again after a failed fetch and a logout leaving an empty queue.
 - **Docs.** `CLAUDE.md`'s *State Management Architecture* names `PlayerModel` as the queue's
   owner and stops listing it under `AppStore`.
 
@@ -222,7 +222,8 @@ Behavior changes:
 
 - the header and the rows change in the same frame;
 - a remote start no longer waits 600 ms to look again;
-- a reconnect within 5 s of a transfer asks for metadata at once instead of after the wait.
+- missing metadata is asked for again when the network returns, rather than on a session
+  reconnect.
 
 ### 4. Writes back into the services
 
