@@ -29,7 +29,7 @@ reach too.
   as the hover button, which stays where it was: an overlay outside the row's button, so the two
   do not nest.
 
-Left for its own plan: a track row's double-click, `plans/open/track-rows-play-only-by-double-click.md`.
+Left for its own plan: a track row's double-click, since done in `plans/done/track-rows-play-only-by-double-click.md`.
 
 ## Verification
 

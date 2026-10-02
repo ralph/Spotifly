@@ -76,7 +76,7 @@ struct TrackContextMenu: View {
             toggleFavorite()
         } label: {
             Label(
-                isFavorited ? "track.menu.remove_from_favorites" : "track.menu.add_to_favorites",
+                .favoriteToggle(isFavorited: isFavorited),
                 systemImage: isFavorited ? "heart.slash" : "heart",
             )
         }

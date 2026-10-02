@@ -46,7 +46,7 @@ struct TrackRow: View {
     /// both. The uid is the only thing that tells them apart, which is why removing from the
     /// context menu needs it.
     let itemUid: String?
-    let onDoubleTap: (@MainActor () async -> Void)? // Playback action on double-tap
+    let onDoubleTap: (@MainActor () async -> Void)? // Plays the row, on a double-click or by accessibility
 
     /// Made once, not in every row's body, so a row hands its artwork the same shape each time
     /// the list redraws.
@@ -189,6 +189,7 @@ struct TrackRow: View {
             .buttonStyle(.plain)
             .disabled(isTogglingFavorite)
             .opacity(isTogglingFavorite ? 0.5 : 1.0)
+            .named(.favoriteToggle(isFavorited: isFavorited))
 
             // Context menu (3-dot button)
             Menu {
@@ -201,7 +202,9 @@ struct TrackRow: View {
                     onPlaylistAdded: showSuccessFeedback,
                 )
             } label: {
-                Image(systemName: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
+                // A menu takes its accessibility name from its label, not from a modifier.
+                Label("action.more", systemImage: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
+                    .labelStyle(.iconOnly)
                     .font(.caption)
                     .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
                     .frame(width: 20, height: 20)
@@ -212,12 +215,13 @@ struct TrackRow: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(showPlaylistAddedSuccess)
+            .help("action.more")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(isCurrentTrack ? Color.green.opacity(0.1) : Color.clear)
         .opacity(isPlayedTrack || isUnavailable ? 0.5 : 1.0)
-        .help(track.unplayableMessage ?? "")
+        .help(ifAny: track.unplayableMessage)
         .contentShape(Rectangle())
         .contextMenu {
             TrackContextMenu(
@@ -229,16 +233,12 @@ struct TrackRow: View {
                 onPlaylistAdded: showSuccessFeedback,
             )
         }
-        .onTapGesture(count: 2) {
-            // A track Spotify will not play starts nothing: played, it would only fail with the
-            // same message, and search's double-click starts radio, which is refused too.
-            if let message = track.unplayableMessage {
-                playbackViewModel.errorMessage = message
-                return
-            }
-            guard let onDoubleTap else { return }
-            Task { await onDoubleTap() }
-        }
+        .onTapGesture(count: 2, perform: play)
+        // Accessibility has no double-click, so Play is an action on the row, a group that keeps
+        // its heart and menu reachable.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(verbatim: "\(track.name), \(track.artistName)"))
+        .accessibilityAction(named: Text("action.play"), play)
         .task(id: track.id) {
             await resolveFavoriteStatusIfNeeded()
         }
@@ -247,6 +247,17 @@ struct TrackRow: View {
             trackId: track.id,
             onAdded: showSuccessFeedback,
         )
+    }
+
+    /// Plays the row's track. One Spotify will not play starts nothing: played, it would only
+    /// fail with the same message, and search's double-click starts radio, which is refused too.
+    private func play() {
+        if let message = track.unplayableMessage {
+            playbackViewModel.errorMessage = message
+            return
+        }
+        guard let onDoubleTap else { return }
+        Task { await onDoubleTap() }
     }
 
     /// Toggle favorite using TrackService (optimistic update)
@@ -336,7 +347,25 @@ struct NewPlaylistPrompt: ViewModifier {
     }
 }
 
+extension LocalizedStringKey {
+    /// What saving or removing a track is called, in the track menu and on its hearts.
+    static func favoriteToggle(isFavorited: Bool) -> LocalizedStringKey {
+        isFavorited ? "track.menu.remove_from_favorites" : "track.menu.add_to_favorites"
+    }
+}
+
 extension View {
+    /// A tooltip only where there is something to say. An outer tooltip wins over an inner one,
+    /// even an empty one: a row's `.help("")` hid its heart's.
+    @ViewBuilder
+    func help(ifAny message: String?) -> some View {
+        if let message {
+            help(message)
+        } else {
+            self
+        }
+    }
+
     func newPlaylistPrompt(
         isPresented: Binding<Bool>,
         trackId: String?,

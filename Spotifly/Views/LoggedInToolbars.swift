@@ -21,24 +21,18 @@ struct LoggedInContentToolbar: ToolbarContent {
         }
         ToolbarItem(placement: .navigation) {
             if let refreshAction {
-                Button {
+                ToolbarActionButton(title: "menu.refresh", systemImage: "arrow.clockwise") {
                     Task {
                         await refreshAction()
                     }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
                 }
-                .help("menu.refresh")
             }
         }
         ToolbarItem(placement: .navigation) {
             if navigationCoordinator.selectedNavigationItem == .queue {
-                Button {
+                ToolbarActionButton(title: "queue.scroll_to_current", systemImage: "arrow.down.to.line") {
                     NotificationCenter.default.post(name: .scrollToCurrentTrack, object: nil)
-                } label: {
-                    Image(systemName: "arrow.down.to.line")
                 }
-                .help("queue.scroll_to_current")
             }
         }
     }
@@ -63,7 +57,7 @@ private struct NavigationHistoryToolbarControl: View {
             } label: {
                 Image(systemName: "chevron.left")
             }
-            .help(navigationCoordinator.backNavigationTitle.map { String(localized: "nav.back_to \($0)") } ?? String(localized: "nav.back"))
+            .named(navigationCoordinator.backNavigationTitle.map { "nav.back_to \($0)" } ?? "nav.back")
             .disabled(!navigationCoordinator.canNavigateBackward)
 
             Button {
@@ -71,7 +65,7 @@ private struct NavigationHistoryToolbarControl: View {
             } label: {
                 Image(systemName: "chevron.right")
             }
-            .help(navigationCoordinator.forwardNavigationTitle.map { String(localized: "nav.forward_to \($0)") } ?? String(localized: "nav.forward"))
+            .named(navigationCoordinator.forwardNavigationTitle.map { "nav.forward_to \($0)" } ?? "nav.forward")
             .disabled(!navigationCoordinator.canNavigateForward)
         }
         .controlGroupStyle(.navigation)
