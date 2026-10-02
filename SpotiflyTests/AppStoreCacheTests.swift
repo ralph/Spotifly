@@ -84,7 +84,6 @@ struct AppStoreCacheTests {
             id: id,
             name: name,
             releaseDate: "2025-06-13",
-            externalUrl: "https://open.spotify.com/album/\(id)",
             artistId: "artist",
         )
     }

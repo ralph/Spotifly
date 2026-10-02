@@ -459,6 +459,22 @@ struct SpotifyURITests {
         #expect(SpotifyURI.id(from: "spotify:track:") == nil)
         #expect(SpotifyURI.id(from: "") == nil)
     }
+
+    /// What Share copies, for each kind it's offered for.
+    @Test func `a uri's page is on open.spotify.com`() {
+        #expect(SpotifyURI.webURL("spotify:playlist:3z9hP42BTLFUL6dxNMHyHe") == "https://open.spotify.com/playlist/3z9hP42BTLFUL6dxNMHyHe")
+        #expect(SpotifyURI.webURL("spotify:album:4u8aQo4fvnjCiQGQcITG85") == "https://open.spotify.com/album/4u8aQo4fvnjCiQGQcITG85")
+        #expect(SpotifyURI.webURL("spotify:artist:0LyfQWJT6nXafLPZqxe9Of") == "https://open.spotify.com/artist/0LyfQWJT6nXafLPZqxe9Of")
+        #expect(SpotifyURI.webURL("spotify:track:6rqhFgbbKwnb9MLmUQDhG6") == "https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6")
+    }
+
+    @Test func `what has no page there names none`() {
+        #expect(SpotifyURI.webURL("spotify:user:llralphj:folder:abc") == nil)
+        #expect(SpotifyURI.webURL("spotify:local:Artist:Album:Title:180") == nil)
+        #expect(SpotifyURI.webURL("spotify:station:track:x") == nil)
+        #expect(SpotifyURI.webURL("spotify:track:") == nil)
+        #expect(SpotifyURI.webURL("") == nil)
+    }
 }
 
 /// A page Spotify has none of is asked for once a session: every visit asked again, for the

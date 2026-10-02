@@ -135,16 +135,16 @@ struct TrackContextMenu: View {
         } label: {
             Label("action.share", systemImage: "square.and.arrow.up")
         }
-        .disabled(track.externalUrl == nil)
+        .disabled(SpotifyURI.webURL(track.uri) == nil)
     }
 
     // MARK: - Actions
 
     private func copyToClipboard() {
-        guard let externalUrl = track.externalUrl else { return }
+        guard let link = SpotifyURI.webURL(track.uri) else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(externalUrl, forType: .string)
+        pasteboard.setString(link, forType: .string)
     }
 
     private func addToQueue() {
