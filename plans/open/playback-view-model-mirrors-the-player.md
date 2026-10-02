@@ -47,9 +47,12 @@ Each copy, with every place that writes it:
 
 Done in the first step:
 - `isShuffleEnabled` computed.
-- `handlePlaybackStarted` no longer writes `currentTrackUri`, `lastHandledTrackUri` and
-  `isPlaying`; it applies the volume, re-anchors the position and refreshes Now Playing, as
-  before. `startLocally` lost the uri it passed along.
+- The local start no longer writes `currentTrackUri`, `lastHandledTrackUri` and `isPlaying`.
+  What `handlePlaybackStarted` had left, the volume, a re-anchor and a Now Playing refresh, is
+  three lines in `startLocally`, which lost the uri it passed along; the refresh is the
+  position's only, since the report already published a new track.
+- `lastHandledTrackUri` is gone: without the start's write it always equalled
+  `currentTrackUri`, so a change of track is read against that.
 
 Next, in this order, each measured before it changes:
 1. **Which `isPlaying`.** The active-device branch reads the client's flag, where the report
@@ -57,7 +60,9 @@ Next, in this order, each measured before it changes:
    they once did, on the Rust bridge), and if not, read `player.playback` alone.
 2. **Logout.** `clearPlaybackState()` could become the player model's own reset, if the client
    publishes an empty snapshot at shutdown.
-3. **`trackDurationMs` and the position anchor**, last, since the clock depends on them.
+3. **`trackDurationMs` and the position anchor**, last, since the clock depends on them. With
+   them, the local start's re-anchor, which repeats what the report already did, and its
+   volume, which belongs to the player: it knows when its mixer opens.
 
 ## Verification
 
@@ -69,6 +74,8 @@ Next, in this order, each measured before it changes:
   report said `shuffle=false`.
 - **A local album start**, with the fix: the audio began at 22:01:35.360, and the player's
   report with the album's first track came 4 ms later. Nothing wrote the album's uri over it.
+- **After the review's changes:** the mirrored device's next track, "Sunny Baby", reached the bar;
+  a local album start put "Never Know", playing, in Control Center.
 - **Before**, measured with a throwaway log on `main`'s code: the report at .398, the
   optimistic write of `spotify:album:…` at .556, the next report at .568.
 - 611 unit tests pass.

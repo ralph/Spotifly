@@ -45,8 +45,6 @@ final class PlaybackViewModel {
         }
     }
 
-    private var lastHandledTrackUri: String?
-
     /// The error the now-playing bar shows in place of the track's title. Views set it too,
     /// for favorite and playlist failures. It clears itself after five seconds, here rather
     /// than in the bar, because the bar is not always mounted: with the window closed, media
@@ -383,7 +381,6 @@ final class PlaybackViewModel {
         isPlaying = false
         updateNowPlayingPosition()
         currentTrackUri = nil
-        lastHandledTrackUri = nil
         updateNowPlayingInfo()
         anchorPosition(0)
     }
@@ -589,7 +586,11 @@ final class PlaybackViewModel {
 
         do {
             try await start()
-            handlePlaybackStarted()
+            // The track and whether it plays are the player's report, which has arrived by now.
+            // The mixer exists only once playback starts, so the volume goes now.
+            SpotifyPlayer.setVolume(volume)
+            syncPositionAnchor()
+            updateNowPlayingPosition()
         } catch is CancellationError {
             // Another start overtook this one; it reports for itself.
         } catch {
@@ -657,21 +658,6 @@ final class PlaybackViewModel {
     }
 
     // MARK: - Playback State Helpers
-
-    /// Common setup after playback has started.
-    ///
-    /// The track and whether it plays are the player's report, which reaches the model before
-    /// the start returns: 158 ms before, in a measured album start. This used to set them itself,
-    /// to the uri the start was given, which for an album or a playlist is the context's, not a
-    /// track's, and for a track Spotify withholds is one the player stepped over. The bar then
-    /// showed no track until the player's next report.
-    private func handlePlaybackStarted() {
-        // Apply volume after playback starts (mixer is now initialized)
-        SpotifyPlayer.setVolume(volume)
-        syncPositionAnchor()
-        updateNowPlayingInfo()
-        // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackUri changes
-    }
 
     func togglePlayPause(trackId: String) async {
         if isPlaying, currentTrackUri == trackId {
@@ -1392,12 +1378,8 @@ final class PlaybackViewModel {
         isPlaying = newIsPlaying
 
         // Update track if changed
-        let trackChanged = !state.trackUri.isEmpty && state.trackUri != lastHandledTrackUri
+        let trackChanged = !state.trackUri.isEmpty && state.trackUri != currentTrackUri
         if trackChanged {
-            lastHandledTrackUri = state.trackUri
-        }
-
-        if !state.trackUri.isEmpty, state.trackUri != currentTrackUri {
             currentTrackUri = state.trackUri
             // Note: Track metadata (name, artist, etc.) will be updated from queue
         }
