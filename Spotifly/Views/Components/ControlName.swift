@@ -17,9 +17,4 @@ extension View {
     func named(_ name: LocalizedStringKey) -> some View {
         help(name).accessibilityLabel(name)
     }
-
-    /// `named(_:)` for a name already looked up, such as one with an argument.
-    func named(verbatim name: String) -> some View {
-        help(name).accessibilityLabel(name)
-    }
 }

@@ -46,9 +46,19 @@ never looked up as localization keys.
 ## Solution
 
 - `View.named(_:)`, in `Views/Components/ControlName.swift`, sets one key as a control's tooltip
-  and its accessibility label; `named(verbatim:)` takes a string already looked up. The hearts'
-  `favoriteToggleName` became `.named(.favoriteToggle(isFavorited:))`, and the queue button's
-  `.help` and `.accessibilityLabel` pair became `.named("queue.open")`.
+  and its accessibility label. The hearts' `favoriteToggleName` became
+  `.named(.favoriteToggle(isFavorited:))`, and the queue button's `.help` and
+  `.accessibilityLabel` pair became `.named("queue.open")`.
+- A modifier rather than one shared icon button, as proposed: the bar's controls are too unlike
+  for one view. The cover shows artwork, the queue button text or a symbol, Play/Pause, the heart
+  and the mini player change symbol and name together, and shuffle's name and tooltip differ.
+  Toolbar buttons keep `ToolbarActionButton`, whose `Label` title also names them in the
+  toolbar's overflow menu; refresh and scroll-to-current now use it too.
+- A `Menu` ignores `.accessibilityLabel` and takes its name from its label, so the two ellipsis
+  menus, a track row's and the bar's, have a `Label("action.more", …)` with `.iconOnly` as their
+  label ("More Options"), and `.help` with the same key. Their symbol had named them "Weitere",
+  and the checkmark they show for two seconds after an add to a playlist named them after it.
+- A library row's Play button, shown under the pointer, is named `action.play` with a tooltip.
 - The bar: Previous and Next take the Playback menu's `menu.previous_track` and
   `menu.next_track`; Play/Pause `action.play` or a new `action.pause`; the cover
   `now_playing.cover_menu` ("Go to Artist, Album or Queue"); the mini player its existing
@@ -59,10 +69,12 @@ never looked up as localization keys.
   ("0:12 of 4:54") as its value, which was milliseconds. The volume slider is named
   `volume.title`, with its value as a percentage, which was a fraction of a hundred
   (`60.59375`).
-- The toolbar: the history arrows' tooltips (`nav.back_to …`) are their names too, and refresh
-  and scroll-to-current are named by their keys.
+- The toolbar: the history arrows' tooltips (`nav.back_to …`, now `LocalizedStringKey`s rather
+  than `String(localized:)`) are their names too.
 - The context toolbar's actions were already named, through `ToolbarActionButton`'s
   `Label`, and are unchanged. The mini player uses the same layout as the bar.
+- Looked at and fine: Speakers, Queue, Settings, the sidebar, the detail views and the cards,
+  whose buttons all carry text.
 
 ## Verification
 
@@ -82,7 +94,10 @@ With `osascript -l JavaScript` against the running Debug build (`AXDescription`,
 - Pressing the mini player button renamed it "Restore full window", and pressing that, back.
 - With the silent librespot device playing and Spotifly following it, the play button read
   "Pause".
+- After the review's changes: the eleven ellipsis menus of an album and the bar read
+  "Weitere Optionen" as name and tooltip, and a background screenshot showed them drawn as
+  before; refresh read "Aktualisieren", the history arrow "Zurück zu Startseite".
 - The localization tests pass with the new keys in en, de and fr.
 
-Not seen: the shuffle tooltip while greyed out, which needs a radio playing; the tooltips on
-hover; VoiceOver itself.
+Not seen: the shuffle tooltip while greyed out, which needs a radio playing; a library row's
+Play button, which shows only under the pointer; the tooltips on hover; VoiceOver itself.

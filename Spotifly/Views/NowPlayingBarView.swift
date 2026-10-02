@@ -342,10 +342,12 @@ struct NowPlayingBarView: View {
         // app's CPU when idle. A seek or a new position still redraws it,
         // through the view model properties the content reads.
         TimelineView(.animation(minimumInterval: isHoveringSeekBar ? 0.1 : 1.0, paused: !playbackViewModel.isPlaying)) { _ in
+            let position = formatTrackTime(milliseconds: Int(currentPositionMs))
+            let duration = formatTrackTime(milliseconds: Int(currentDurationMs))
             HStack(spacing: 8) {
                 // Show timestamp only on hover
                 if isHoveringSeekBar {
-                    Text(formatTrackTime(milliseconds: Int(currentPositionMs)))
+                    Text(position)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -365,13 +367,11 @@ struct NowPlayingBarView: View {
                 .tint(.green)
                 // Its value is milliseconds, which accessibility would read out as they are.
                 .accessibilityLabel("now_playing.position")
-                .accessibilityValue(Text(
-                    "now_playing.position_value \(formatTrackTime(milliseconds: Int(currentPositionMs))) \(formatTrackTime(milliseconds: Int(currentDurationMs)))",
-                ))
+                .accessibilityValue(Text("now_playing.position_value \(position) \(duration)"))
 
                 // Show timestamp only on hover
                 if isHoveringSeekBar {
-                    Text(formatTrackTime(milliseconds: Int(currentDurationMs)))
+                    Text(duration)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -534,7 +534,7 @@ struct NowPlayingBarView: View {
                     .frame(width: 120)
                     .disabled(volumeRefused)
                     .accessibilityLabel("volume.title")
-                    .accessibilityValue(Text((currentVolume / 100).formatted(.percent.precision(.fractionLength(0)))))
+                    .accessibilityValue(Text(currentVolume / 100, format: .percent.precision(.fractionLength(0))))
 
                     Image(systemName: "speaker.wave.3.fill")
                         .font(.caption)
@@ -586,7 +586,9 @@ struct NowPlayingBarView: View {
                     onNavigate: exitMiniPlayerIfNeeded,
                 )
             } label: {
-                Image(systemName: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
+                // A menu takes its accessibility name from its label, not from a modifier.
+                Label("action.more", systemImage: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
+                    .labelStyle(.iconOnly)
                     .font(.body)
                     .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
                     .frame(width: 24, height: 24)
@@ -597,6 +599,7 @@ struct NowPlayingBarView: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(showPlaylistAddedSuccess)
+            .help("action.more")
         }
     }
 

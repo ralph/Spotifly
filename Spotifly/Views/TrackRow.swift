@@ -202,7 +202,9 @@ struct TrackRow: View {
                     onPlaylistAdded: showSuccessFeedback,
                 )
             } label: {
-                Image(systemName: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
+                // A menu takes its accessibility name from its label, not from a modifier.
+                Label("action.more", systemImage: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
+                    .labelStyle(.iconOnly)
                     .font(.caption)
                     .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
                     .frame(width: 20, height: 20)
@@ -213,6 +215,7 @@ struct TrackRow: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(showPlaylistAddedSuccess)
+            .help("action.more")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)

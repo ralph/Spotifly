@@ -29,6 +29,7 @@
 /* Common Actions */
 "action.play" = "Wiedergeben";
 "action.pause" = "Pause";
+"action.more" = "Weitere Optionen";
 "action.try_again" = "Erneut versuchen";
 "action.cancel" = "Abbrechen";
 "action.create" = "Erstellen";

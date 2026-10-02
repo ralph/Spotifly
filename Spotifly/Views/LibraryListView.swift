@@ -250,6 +250,7 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(playbackViewModel.isLoading)
+                .named("action.play")
                 .padding(.trailing, 10)
             }
         }
