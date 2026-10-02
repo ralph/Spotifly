@@ -18,5 +18,21 @@
 			<string>%d Tracks</string>
 		</dict>
 	</dict>
+	<key>queue.song_count %lld %lld</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@songs@ (%2$lld ausstehend)</string>
+		<key>songs</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld Song</string>
+			<key>other</key>
+			<string>%lld Songs</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

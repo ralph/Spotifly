@@ -106,7 +106,6 @@
 "queue.on_device" = "on";
 "queue.context_name %@" = "“%@”";
 "queue.playing_on" = "Playing on";
-"queue.song_count %lld %lld" = "%lld songs (%lld upcoming)";
 "queue.scroll_to_current" = "Scroll to current track";
 
 /* Startpage */

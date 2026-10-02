@@ -15,12 +15,12 @@ struct LocalizationTests {
     /// The keys of a language's strings, as the app bundle ships them: `Localizable.strings`, and
     /// `Localizable.stringsdict` for the strings with plural forms.
     private func keys(_ language: String) throws -> Set<String> {
-        let strings = try #require(
-            Bundle.main.url(forResource: "Localizable", withExtension: "strings", subdirectory: nil, localization: language),
-        )
-        var keys = try Set(#require(NSDictionary(contentsOf: strings) as? [String: String]).keys)
-        if let plurals = Bundle.main.url(forResource: "Localizable", withExtension: "stringsdict", subdirectory: nil, localization: language) {
-            try keys.formUnion(#require(NSDictionary(contentsOf: plurals) as? [String: Any]).keys)
+        var keys = Set<String>()
+        for fileExtension in ["strings", "stringsdict"] {
+            let url = try #require(
+                Bundle.main.url(forResource: "Localizable", withExtension: fileExtension, subdirectory: nil, localization: language),
+            )
+            try keys.formUnion(#require(NSDictionary(contentsOf: url) as? [String: Any]).keys)
         }
         return keys
     }
@@ -87,6 +87,18 @@ struct LocalizationTests {
         key.locale = Locale(identifier: language)
 
         #expect(localizedNumberString(key, count) == expected)
+    }
+
+    /// The queue's count, which `Text` formats from its interpolation, takes the plural too.
+    @Test(arguments: [
+        ("en", 1, "1 song (0 upcoming)"), ("en", 3, "3 songs (2 upcoming)"),
+        ("de", 1, "1 Song (0 ausstehend)"), ("fr", 1, "1 titre (0 à venir)"),
+    ])
+    func `the queue's song count takes the language's plural`(language: String, count: Int, expected: String) {
+        var key = LocalizedStringResource("queue.song_count \(count) \(count - 1)")
+        key.locale = Locale(identifier: language)
+
+        #expect(String(localized: key) == expected)
     }
 
     @Test(arguments: Bundle.main.localizations.filter { $0 != "en" && $0 != "Base" })

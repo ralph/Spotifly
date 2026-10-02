@@ -8,8 +8,9 @@ Found: 2026-10-02, in the review of `plans/done/units-are-written-the-english-wa
 ## Summary
 
 `metadata.tracks` was `"%d tracks"` in English, `"%d Tracks"` in German and `"%d titres"` in
-French, with no singular. A playlist with one track said "1 tracks". The key now has plural forms
-in a `Localizable.stringsdict` for each language.
+French, with no singular. A playlist with one track said "1 tracks". The review found the queue's
+count the same: "1 songs (0 upcoming)". Both keys now have plural forms in a
+`Localizable.stringsdict` for each language.
 
 ## Problem
 
@@ -36,7 +37,12 @@ Catalog's plural variations, and a lookup that picks the form by the number.
 - **`LocalizationTests` reads `.stringsdict` keys too**, as part of a language's strings, so
   the key is still found in English and in each language.
 
-`show_all.tracks` stays in `.strings`: the link shows only for more than five tracks.
+- **`queue.song_count %lld %lld`**, the Queue section's "52 songs (50 upcoming)" when no device
+  is active, moved to the `.stringsdict` too, as `%1$#@songs@ (%2$lld upcoming)`. `Text` formats
+  it from its interpolation, so no code changed.
+
+`show_all.tracks` stays in `.strings`: the link shows only for more than five tracks. No other
+string counts something.
 
 ## Verification
 
@@ -44,9 +50,14 @@ Catalog's plural variations, and a lookup that picks the form by the number.
 
 - "Spotifly test: phase 4 create": "Par llralphj · 1 titre · 4 min".
 - "Meine Playlist Nr. 37", empty: "Par llralphj · 0 titre".
+- The Queue section, opened by a throwaway hook (not committed) with no device active: "52 titres
+  (50 à venir)", so `Text` finds the key in the `.stringsdict` and fills both arguments.
 
 ### Unit tests
 
-596 pass. `a track count takes the language's plural` pins the key's locale: "1 track", "2
-tracks", "1 Track", "1007 Tracks", "1 titre", "2 titres". It leaves out French zero, since the
-test host's own language picks the rule, and it is German.
+597 pass, two of them new:
+- `a track count takes the language's plural` pins the key's locale: "1 track", "2 tracks",
+  "1 Track", "1007 Tracks", "1 titre", "2 titres". It leaves out French zero, since the test
+  host's own language picks the rule, and it is German.
+- `the queue's song count takes the language's plural`: "1 song (0 upcoming)", "3 songs (2
+  upcoming)", "1 Song (0 ausstehend)", "1 titre (0 à venir)".

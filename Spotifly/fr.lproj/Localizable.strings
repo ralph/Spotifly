@@ -106,7 +106,6 @@
 "queue.on_device" = "sur";
 "queue.context_name %@" = "« %@ »";
 "queue.playing_on" = "Lecture sur";
-"queue.song_count %lld %lld" = "%lld titres (%lld à venir)";
 "queue.scroll_to_current" = "Aller au titre en cours";
 
 /* Startpage */
