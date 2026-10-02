@@ -140,6 +140,16 @@ a playlist row.
       opens it as any other. A track's "Zu Playlist hinzufügen" menu lists the playlists inside a
       closed folder.
 - [x] Live, 2026-09-30: Refresh keeps the folders and the selection.
+- [x] Live, 2026-10-02, after bringing the branch up to date with `main` (the toolbar's refresh
+      no longer restores the selection, #169; the rows read the playback view model from the
+      environment): the four folders show closed; one opens, with "Sprint" indented under it,
+      which opens as any playlist; it stays open after a relaunch, and closes again; the toolbar's
+      refresh fetches the flat list and the outline again and keeps both the folders and the
+      selection.
+- [x] **The folder row is a `Button`** since 2026-10-02. It was a tap gesture with a button trait,
+      which announced itself to accessibility as a button and did nothing when pressed: VoiceOver
+      could not open a folder, and neither could an accessibility press. It now opens and closes
+      by one, and says "Geöffnet" or "Geschlossen" as its value (`folder.open`, `folder.closed`).
 - [ ] Live: a new playlist appears at the top; a deleted one disappears. Not run: it changes the
       library.
 - [ ] Live, an account or a check with no folders: the section looks as it did.

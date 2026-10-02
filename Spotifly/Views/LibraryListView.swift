@@ -283,32 +283,11 @@ struct LibraryListView<Entity: LibraryEntity>: View {
         openFolderList = open.union(closed).sorted().joined(separator: "\n")
     }
 
+    /// A button, so accessibility can press it: a tap gesture with a button trait announced
+    /// itself as one and did nothing when pressed.
     private func folderRow(uri: String, name: String) -> some View {
         let isOpen = openFolders.contains(uri)
-        return HStack(spacing: 10) {
-            Image(systemName: "folder")
-                .font(.system(size: 16))
-                .foregroundStyle(.secondary)
-                .frame(width: 36, height: 36)
-                .background(.quaternary)
-                .clipShape(style.artworkShape)
-
-            Text(name)
-                .font(.system(size: 13))
-                .lineLimit(1)
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(isOpen ? 90 : 0))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .onTapGesture {
+        return Button {
             var open = openFolders
             if isOpen {
                 open.remove(uri)
@@ -316,9 +295,33 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                 open.insert(uri)
             }
             openFolderList = open.sorted().joined(separator: "\n")
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "folder")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 36)
+                    .background(.quaternary)
+                    .clipShape(style.artworkShape)
+
+                Text(name)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isOpen ? 90 : 0))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
+        .buttonStyle(.plain)
+        .accessibilityValue(isOpen ? Text("folder.open") : Text("folder.closed"))
     }
 
     /// The section always shows a detail, so entering it lands on the first entry. The
