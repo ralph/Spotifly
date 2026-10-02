@@ -116,6 +116,41 @@ struct SPClientRequestTests {
         #expect(sent.values.count == 1)
     }
 
+    /// A station's answer on 2026-10-02 named its next page as an `hm://` url, which the resolver
+    /// answered 404, failing the whole resolve.
+    @Test func `a context's next page at an hm url is asked of spclient at its path`() async throws {
+        let sent = Recorder<URLRequest>()
+        let first = Data(#"{"pages":[{"tracks":[{"uri":"spotify:track:a","uid":"u1"}],"next_page_url":"hm://radio-apollo/v3/tracks/spotify:station:album:x?count=1"}]}"#.utf8)
+        let next = Data(#"{"tracks":[{"uri":"spotify:track:b","uid":"u2"}]}"#.utf8)
+        let credentials = spotifyCredentials(transport: { request in
+            sent.record(request)
+            return (sent.values.count == 1 ? first : next, httpResponse(200, url: request.url!))
+        })
+        let client = SPClient(credentials: credentials, deviceId: "device")
+
+        let context = try await client.resolveContext("spotify:station:album:x")
+
+        #expect(context.tracks == ["spotify:track:a", "spotify:track:b"])
+        #expect(context.uids == ["u1", "u2"])
+        #expect(sent.values.last?.url?.path == "/radio-apollo/v3/tracks/spotify:station:album:x")
+        #expect(sent.values.last?.url?.query == "count=1")
+        #expect(SPClient.nextPagePath("spotify:album:x?page=2") == "/context-resolve/v1/spotify:album:x?page=2")
+    }
+
+    /// A station's third page was answered 404 (2026-10-02); the pages before it still play.
+    @Test func `a later page that fails leaves the pages before it`() async throws {
+        let first = Data(#"{"pages":[{"tracks":[{"uri":"spotify:track:a"}],"next_page_url":"hm://radio-router/v3/tracks/x"}]}"#.utf8)
+        let client = spclient([200, 404], body: first, sent: Recorder())
+
+        #expect(try await client.resolveContext("spotify:station:album:x").tracks == ["spotify:track:a"])
+
+        // The first page failing is the resolve failing.
+        let refused = spclient([404], body: Data(), sent: Recorder())
+        await #expect(throws: LibrespotError.self) {
+            _ = try await refused.resolveContext("spotify:album:x")
+        }
+    }
+
     @Test func `a context page that meets a server error is asked for again`() async throws {
         let sent = Recorder<URLRequest>()
         let client = spclient([502, 200], body: contextAnswer, sent: sent)

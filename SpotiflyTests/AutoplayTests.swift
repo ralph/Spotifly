@@ -228,6 +228,36 @@ struct AutoplayQueueTests {
         #expect(queue.history.isEmpty)
     }
 
+    /// Another device's queued track during its autoplay, taken over: it plays as queued, after the
+    /// album's last row, and autoplay goes on after it from the first of the rows.
+    @Test(arguments: [false, true])
+    func `a queued track taken over plays before autoplay's rows`(shuffled: Bool) {
+        let queue = album()
+        queue.setShuffle(shuffled)
+        queue.playAutoplay(["s2", "s3"], uids: ["x2", "x3"], after: "q0")
+
+        #expect(queue.currentUri == "q0")
+        #expect(queue.currentProvider == "queue")
+        #expect(queue.history == ["a3"])
+        #expect(queue.autoplayAsked)
+        #expect(queue.sessionRow == QueueItem(uri: "s2", provider: "autoplay", uid: "x2"))
+        #expect(queue.advance() == "s2")
+        #expect(queue.currentProvider == "autoplay")
+        #expect(queue.advance() == "s3")
+    }
+
+    /// With no context resolved to stand on, the queued track plays in front of autoplay's rows, and
+    /// none of them is skipped.
+    @Test func `a queued track taken over with no context plays before autoplay's first row`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: [], startIndex: 0)
+        queue.playAutoplay(["s1", "s2"], uids: ["x1", "x2"], after: "q0")
+
+        #expect(queue.currentUri == "q0")
+        #expect(queue.advance() == "s1")
+        #expect(queue.advance() == "s2")
+    }
+
     /// What a handover names as the session's row: the track's, or after a queued track, the row
     /// the context goes on with, however many tracks are queued.
     @Test func `the session stands on the current row, or after a queued track on the next`() {
@@ -300,7 +330,7 @@ struct AutoplayHandoverTests {
         #expect(read.contextTrackUids == ["x1", "x2"])
         #expect(read.currentTrackUri == "spotify:track:s1")
         #expect(read.currentTrackUid == "x1")
-        #expect(read.currentIsAutoplay)
+        #expect(read.continuesAutoplay)
         #expect(read.autoplayContextUri == "spotify:station:album:a")
         #expect(read.queuedTrackUris.isEmpty)
         #expect(!read.playsQueuedTrack)
@@ -325,8 +355,8 @@ struct AutoplayHandoverTests {
         #expect(read.contextUri == "spotify:station:album:a")
         #expect(read.playsQueuedTrack)
         #expect(read.currentTrackUri == "spotify:track:s1")
-        #expect(!read.currentIsAutoplay)
         #expect(read.contextResumeUid == "x2")
+        #expect(read.continuesAutoplay)
         #expect(read.contextTrackUris == ["spotify:track:s2"])
         #expect(read.queuedTrackUris == ["spotify:track:q2"])
 

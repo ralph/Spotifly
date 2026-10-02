@@ -78,6 +78,27 @@ struct TransferStateTests {
         #expect(TransferState(parsing: Self.transfer()).mainContextUri == nil)
     }
 
+    /// The web player on 2026-10-02, playing a track queued during its autoplay: the station as
+    /// the context, the album as `main_context`, the queue playing.
+    @Test func `a queued track before the station's next row goes on in autoplay`() {
+        let station = TransferState(parsing: Self.transfer(
+            contextUri: "spotify:station:album:a",
+            sessionUid: "station-row",
+            queue: ["spotify:track:q0"],
+            playingQueue: true,
+            mainContext: "spotify:album:a",
+        ))
+        #expect(station.playsQueuedTrack)
+        #expect(station.continuesAutoplay)
+        #expect(station.contextResumeUid == "station-row")
+
+        // Queued in a station played as it is, or in an album, it goes on with that context.
+        let radio = TransferState(parsing: Self.transfer(contextUri: "spotify:station:album:a", queue: ["spotify:track:q0"], playingQueue: true))
+        #expect(!radio.continuesAutoplay)
+        let album = TransferState(parsing: Self.transfer(queue: ["spotify:track:q0"], playingQueue: true, mainContext: "spotify:album:b"))
+        #expect(!album.continuesAutoplay)
+    }
+
     @Test func `the context, track, options and position come through`() {
         let state = TransferState(parsing: Self.transfer())
 
@@ -170,9 +191,9 @@ struct TransferStateTests {
             }
         }))
 
-        #expect(fromAutoplay.currentIsAutoplay)
+        #expect(fromAutoplay.continuesAutoplay)
         #expect(fromAutoplay.autoplayContextUri == "spotify:station:album:a")
-        #expect(!TransferState(parsing: Self.transfer()).currentIsAutoplay)
+        #expect(!TransferState(parsing: Self.transfer()).continuesAutoplay)
     }
 
     /// A phone handed its own autoplay over with the station as the context (2026-10-02).

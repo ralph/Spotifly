@@ -40,14 +40,20 @@ public nonisolated struct TransferState: Sendable {
     /// than the context lists, as a relinked track does. Read as nil when it plays from the
     /// queue.
     var currentTrackUid: String?
-    /// Whether the track playing came from autoplay, after the context ended: its metadata's
-    /// `autoplay.is_autoplay`, or its provider in another device's mirrored state, where the
-    /// autoplay rows are `contextTrackUris` from `currentRow` on.
-    var currentIsAutoplay = false
+    /// Whether the session goes on in autoplay, its row autoplay's, which
+    /// `LibrespotClient.continueAutoplay` takes over:
+    /// - an autoplay track playing, by its metadata's `autoplay.is_autoplay`;
+    /// - a queued track before autoplay's next row, which a handover says by naming the station
+    ///   as its context beside the context it went on from (`main_context`), as the web player
+    ///   wrote it (2026-10-02).
+    ///
+    /// From another device's mirrored state, the session row's provider
+    /// (`LibrespotClient.takeOverState`).
+    var continuesAutoplay = false
     /// The station an autoplay track came from, as its row's metadata names it (`context_uri`).
     var autoplayContextUri: String?
     /// The current track's metadata, as `serialized` writes it: other devices' rows' own
-    /// (`SpircController.provided`). Read, only what `currentIsAutoplay` and
+    /// (`SpircController.provided`). Read, only what `continuesAutoplay` and
     /// `autoplayContextUri` need is kept.
     var currentTrackMetadata: [String: String] = [:]
     /// While autoplay plays, the context it went on from: the session's `main_context`, beside the
@@ -67,6 +73,12 @@ public nonisolated struct TransferState: Sendable {
     var contextResumeUid: String?
     /// Whether the current track plays from the queue, the queue's `is_playing_queue`.
     var playsQueuedTrack = false
+
+    /// The row the session stands on, as `current_uid` names it: the current track's, or while a
+    /// queued track plays, the row the context goes on with after it.
+    var sessionUid: String? {
+        playsQueuedTrack ? contextResumeUid : currentTrackUid
+    }
 
     var positionAsOfTimestamp: Int64 = 0
     var timestamp: Int64 = 0
@@ -103,7 +115,7 @@ public nonisolated struct TransferState: Sendable {
                         currentTrackUri = Self.trackUri(track)
                         currentTrackUid = Self.trackUid(track)
                         let metadata = track.filter { $0.number == 4 }.map(\.mapEntry)
-                        currentIsAutoplay = metadata.contains { $0 == ("autoplay.is_autoplay", "true") }
+                        continuesAutoplay = metadata.contains { $0 == ("autoplay.is_autoplay", "true") }
                         autoplayContextUri = metadata.first { $0.key == "context_uri" && $0.value.hasPrefix("spotify:station:") }?.value
                     default: break
                     }
@@ -152,6 +164,7 @@ public nonisolated struct TransferState: Sendable {
             currentTrackUri = queuedTrackUris.removeFirst()
             currentTrackUid = nil
             contextResumeUid = sessionUid
+            continuesAutoplay = continuesAutoplay || (contextUri.hasPrefix("spotify:station:") && mainContextUri != nil)
         }
 
         // A context started from a bare list of uris is sent as "-" or nothing.
@@ -193,7 +206,7 @@ public nonisolated struct TransferState: Sendable {
                         }
                     }
                 }
-                if let uid = playsQueuedTrack ? contextResumeUid : currentTrackUid {
+                if let uid = sessionUid {
                     session.string(field: 3, uid)
                 }
                 if let mainContextUri {

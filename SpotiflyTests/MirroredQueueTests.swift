@@ -207,10 +207,34 @@ extension MirroredQueueTests {
         let taken = try #require(LibrespotClient.takeOverState(of: state))
         let current = try #require(taken.currentRow)
 
-        #expect(taken.currentIsAutoplay)
+        #expect(taken.continuesAutoplay)
         #expect(taken.autoplayContextUri == "spotify:station:album:a")
         #expect(Array(taken.contextTrackUris[current...]) == uris("s1", "s2"))
         #expect(Array(taken.contextTrackUids[current...]) == ["uid-s1", "uid-s2"])
+    }
+
+    /// The web player on 2026-10-02, playing a track queued during its autoplay: the album as the
+    /// context, the queued track, then the station's rows.
+    @Test func `a track queued during autoplay is taken over before the station's next row`() throws {
+        var state = PlayerState()
+        state.contextUri = "spotify:album:a"
+        state.prevTracks = [row("a1"), row("s1", provider: "autoplay")]
+        state.track = row("q0", provider: "queue")
+        var next = row("s2", provider: "autoplay")
+        next.metadata["context_uri"] = "spotify:station:album:a"
+        state.nextTracks = [next, row("s3", provider: "autoplay")]
+
+        let taken = try #require(LibrespotClient.takeOverState(of: state))
+        #expect(taken.playsQueuedTrack)
+        #expect(taken.continuesAutoplay)
+        #expect(taken.contextResumeUid == "uid-s2")
+        #expect(taken.autoplayContextUri == "spotify:station:album:a")
+
+        // Queued in the album itself, it goes on with the album.
+        state.nextTracks = [row("a2")]
+        let inAlbum = try #require(LibrespotClient.takeOverState(of: state))
+        #expect(inAlbum.playsQueuedTrack)
+        #expect(!inAlbum.continuesAutoplay)
     }
 
     @Test func `nothing playing is nothing to take over`() {
