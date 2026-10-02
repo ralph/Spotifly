@@ -138,6 +138,10 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 - Views read it via `@Environment(PlayerModel.self)`. `QueueService` and `PlaybackViewModel`
   follow it with `Observations`. Nothing subscribes to the client directly, and nothing needs
   a hop to the main queue
+- The queue is the player's alone: `queueEntries` gives it as rows of track ids, written in the
+  same `apply` as `queue`, and the store holds only the tracks' metadata, which `QueueService`
+  asks for on every change of the queue and again when the network returns. No copy of the
+  queue is kept anywhere else, so its rows and its context come from one snapshot
 - Commands still go through the static `SpotifyPlayer` facade
 
 **Entities** (`Store/Entities.swift`)
