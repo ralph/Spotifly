@@ -34,8 +34,11 @@ heart's.
   strings, `track.menu.add_to_favorites` ("Add to Favorites") or
   `track.menu.remove_from_favorites`, as `.help` and `.accessibilityLabel`, following the saved
   state. Both hearts use it. The image is unchanged.
+- The track menu's Add/Remove item takes its title from the same place,
+  `LocalizedStringKey.favoriteToggle(isFavorited:)`.
 - The row's tooltip is set only where there is a message, through `View.help(ifAny:)`, so a
-  playable track's row no longer covers its heart's with an empty one.
+  playable track's row no longer covers its heart's with an empty one. A search card's tooltip
+  uses it too, for one idiom, though nothing inside a card has a tooltip of its own.
 
 ## Verification
 
@@ -51,3 +54,6 @@ With `osascript -l JavaScript` against the running Debug build (`AXDescription`,
 - Nothing was saved or removed.
 
 Not seen: the tooltips on hover, which needs the pointer over the window, and VoiceOver itself.
+
+Reading every control's name for this turned up the rest of the bar and the toolbar's arrows,
+named by their symbols or not at all: `plans/open/now-playing-bar-controls-named-by-their-symbols.md`.
