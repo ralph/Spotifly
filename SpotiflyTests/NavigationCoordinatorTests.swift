@@ -246,6 +246,7 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.displayedSearchQuery == "q")
     }
 
+    /// The failure goes when the field is emptied, which `LoggedInView` passes to the service.
     @Test func `a failed search leaves the history with its failure`() {
         let store = AppStore()
         let coordinator = NavigationCoordinator(store: store)
@@ -253,7 +254,8 @@ struct NavigationCoordinatorTests {
         coordinator.navigateToSearchResults(query: "q")
         coordinator.selectNavigationItem(.albums)
 
-        store.clearSearchFailure()
+        SearchService(store: store).clearFailure()
+        #expect(store.failedSearch == nil)
         coordinator.invalidateUnviewableRoutes()
 
         #expect(coordinator.current.section == .albums)

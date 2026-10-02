@@ -95,4 +95,24 @@ struct WithheldTrackTests {
 
         #expect(store.tracks["girlfriend"]?.isPlayable == false)
     }
+
+    /// The player's set reaches the store through `QueueService`: as it stands when the service
+    /// starts, which is a new login's store, and on every change.
+    @Test func `the queue service passes the player's withheld tracks to the store`() async throws {
+        let store = AppStore()
+        store.upsertTracks([track(id: "girlfriend"), track(id: "other")])
+        let player = PlayerModel()
+        var snapshot = PlayerSnapshot()
+        snapshot.withheld = ["spotify:track:girlfriend"]
+        player.apply(snapshot)
+        let queueService = QueueService(store: store, trackService: TrackService(store: store), player: player)
+
+        queueService.activate()
+        try await waitUntil { store.tracks["girlfriend"]?.isPlayable == false }
+        #expect(store.tracks["other"]?.isPlayable == true)
+
+        snapshot.withheld.insert("spotify:track:other")
+        player.apply(snapshot)
+        try await waitUntil { store.tracks["other"]?.isPlayable == false }
+    }
 }

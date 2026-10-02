@@ -332,6 +332,13 @@ final class PlaylistService {
         }
     }
 
+    /// The order shown while a row is dragged, written into the store so the list redraws. The
+    /// drop reads the order back to name the move (`movePlaylistItem`), whose reload then puts
+    /// in the order the server applied.
+    func previewMove(playlistId: String, fromIndex: Int, toIndex: Int) {
+        store.movePlaylistTrack(playlistId: playlistId, fromIndex: fromIndex, toIndex: toIndex)
+    }
+
     /// Move one item to sit before another, both named by uid.
     func movePlaylistItem(
         playlistId: String,

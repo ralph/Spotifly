@@ -2,8 +2,9 @@
 //  QueueService.swift
 //  Spotifly
 //
-//  Keeps the store holding metadata for every track the player's queue names.
-//  The queue itself is the player's: `PlayerModel.queueEntries`.
+//  Keeps the store holding metadata for every track the player's queue names, and
+//  greys the tracks playback found withheld. The queue itself is the player's:
+//  `PlayerModel.queueEntries`.
 //
 
 import Foundation
@@ -15,6 +16,7 @@ final class QueueService {
     private let trackService: TrackService
     private let player: PlayerModel
     private var queueObservation: Task<Void, Never>?
+    private var withheldObservation: Task<Void, Never>?
 
     /// Identifies this instance and the store it holds in the log.
     ///
@@ -58,6 +60,18 @@ final class QueueService {
                 let contextInfo = queue?.context.map { " context=\($0)," } ?? ""
                 log("Queue updated from the player:\(contextInfo) prev=\(rows.previousTracks.count), current=\(rows.currentTrack != nil ? 1 : 0), next=\(rows.nextTracks.count)")
                 hydrate()
+            }
+        }
+
+        // What playback found withheld, which no list said, is greyed. As it stands too, so the
+        // store of a new login starts from the player's set.
+        withheldObservation = Task { [weak self, player] in
+            for await uris in Observations({ player.withheld }) {
+                guard let self else { return }
+                if !uris.isEmpty {
+                    log("Playback found \(uris.count) withheld, greying them")
+                }
+                store.setWithheld(uris)
             }
         }
 

@@ -38,6 +38,12 @@ final class SearchService {
         store.searchIsLoading = false
     }
 
+    /// The search field was emptied. A failure is about the query that was typed, so it goes
+    /// with it, and the history drops its page.
+    func clearFailure() {
+        store.clearSearchFailure()
+    }
+
     /// Runs the four searches together, upserts what they found, and returns the results as ids
     /// into the tables.
     ///

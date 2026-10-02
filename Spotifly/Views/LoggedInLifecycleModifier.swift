@@ -195,10 +195,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
             .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
                 SpotifyPlayer.setUnplayable(uris)
             }
-            // And the other way: what playback found withheld, which no list said, is greyed.
-            .onChange(of: player.withheld, initial: true) { _, uris in
-                store.setWithheld(uris)
-            }
     }
 
     /// Who is logged in. Failure is swallowed, because nothing on this path should block on it:

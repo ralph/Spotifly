@@ -200,6 +200,12 @@ Rules when adding a loading path:
 - **Cache what was fetched, not what is non-empty.** `detailsLoaded` / `tracksLoaded` are
   set by the load, so a genuinely empty album is not re-fetched forever.
 - **Views read the store**, never a `@State` copy of an entity.
+- **Views do not write the store.** A write belongs to the service that owns the fact, and a
+  view calls the service, even for an optimistic write such as the order shown while a
+  playlist row is dragged (`PlaylistService.previewMove`). What the player reports is followed
+  by a service observing `PlayerModel` (`QueueService`), not by a view's `.onChange`. Outside
+  the services, only the navigation coordinator writes, to record the search the page last
+  showed (`markSearchQueryDisplayed`).
 
 The services that hold registries are stored as `@State` in `LoggedInView` so the
 registries survive view recreation. `plans/done/section-request-pattern.md` has the full reasoning.
