@@ -69,10 +69,6 @@ struct LoggedInView: View {
     private static let sidebarMinWidth: CGFloat = 180
     private static let sidebarMaxWidth: CGFloat = 400
 
-    private var navigationSelectionBinding: Binding<NavigationItem?> {
-        Bindable(navigationCoordinator).selectedNavigationItem
-    }
-
     var body: some View {
         Group {
             if windowState.isMiniPlayerMode {
@@ -121,13 +117,6 @@ struct LoggedInView: View {
         // inside it. The Navigate menu's ⌘1–⌘4, ⌘[ and ⌘] are the only registration of those
         // shortcuts.
         .focusedSceneValue(\.navigationCoordinator, navigationCoordinator)
-        .focusedSceneValue(
-            \.navigationHistory,
-            NavigationHistoryAvailability(
-                back: navigationCoordinator.canNavigateBackward,
-                forward: navigationCoordinator.canNavigateForward,
-            ),
-        )
         .focusedSceneValue(\.homeService, homeService)
         .onChange(of: store.searchCacheEvictionRevision) {
             navigationCoordinator.invalidateUnviewableRoutes()
@@ -214,7 +203,7 @@ struct LoggedInView: View {
 
     private func sidebarView() -> some View {
         SidebarView(
-            selection: navigationSelectionBinding,
+            selection: $navigationCoordinator.selectedNavigationItem,
             // Or a failed search's page, while it shows: the selection is there.
             hasSearchResults: navigationCoordinator.reopenableSearchQuery != nil
                 || navigationCoordinator.displayedSearchQuery != nil,

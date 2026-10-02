@@ -14,18 +14,6 @@ struct FocusedNavigationCoordinator: FocusedValueKey {
     typealias Value = NavigationCoordinator
 }
 
-/// Which way the key window's history can go. A value of its own beside the coordinator: the
-/// menu is drawn again when a focused value changes, and the coordinator stays the same object
-/// as it moves, so Back and Forward read through it stayed as they were.
-struct NavigationHistoryAvailability: Equatable {
-    var back: Bool
-    var forward: Bool
-}
-
-struct FocusedNavigationHistory: FocusedValueKey {
-    typealias Value = NavigationHistoryAvailability
-}
-
 struct FocusedHomeService: FocusedValueKey {
     typealias Value = HomeService
 }
@@ -35,11 +23,6 @@ extension FocusedValues {
     var navigationCoordinator: NavigationCoordinator? {
         get { self[FocusedNavigationCoordinator.self] }
         set { self[FocusedNavigationCoordinator.self] = newValue }
-    }
-
-    var navigationHistory: NavigationHistoryAvailability? {
-        get { self[FocusedNavigationHistory.self] }
-        set { self[FocusedNavigationHistory.self] = newValue }
     }
 
     var homeService: HomeService? {
@@ -145,7 +128,6 @@ struct SpotiflyApp: App {
 
 struct SpotiflyCommands: Commands {
     @FocusedValue(\.navigationCoordinator) var navigationCoordinator
-    @FocusedValue(\.navigationHistory) var navigationHistory
     @FocusedValue(\.homeService) var homeService
 
     private var playbackViewModel: PlaybackViewModel {
@@ -189,19 +171,7 @@ struct SpotiflyCommands: Commands {
 
         // Navigation menu
         CommandMenu("menu.navigate") {
-            // The history the toolbar's arrows step through, under the shortcuts Safari, Finder
-            // and Music use for it. ⌘← and ⌘→ are Previous and Next track.
-            Button("nav.back") {
-                navigationCoordinator?.navigateBackward()
-            }
-            .keyboardShortcut("[", modifiers: .command)
-            .disabled(navigationHistory?.back != true)
-
-            Button("nav.forward") {
-                navigationCoordinator?.navigateForward()
-            }
-            .keyboardShortcut("]", modifiers: .command)
-            .disabled(navigationHistory?.forward != true)
+            NavigationHistoryMenuItems(coordinator: navigationCoordinator)
 
             Divider()
 
@@ -268,6 +238,29 @@ struct SpotiflyCommands: Commands {
                 }
             }
         #endif
+    }
+}
+
+/// The history the toolbar's arrows step through, under the shortcuts Safari, Finder and Music
+/// use for it; ⌘← and ⌘→ are Previous and Next track.
+///
+/// A view of its own, so its body follows the coordinator as it moves: the menu's own body is
+/// drawn again only when a focused value changes, and the coordinator stays the same object.
+private struct NavigationHistoryMenuItems: View {
+    let coordinator: NavigationCoordinator?
+
+    var body: some View {
+        Button("nav.back") {
+            coordinator?.navigateBackward()
+        }
+        .keyboardShortcut("[", modifiers: .command)
+        .disabled(coordinator?.canNavigateBackward != true)
+
+        Button("nav.forward") {
+            coordinator?.navigateForward()
+        }
+        .keyboardShortcut("]", modifiers: .command)
+        .disabled(coordinator?.canNavigateForward != true)
     }
 }
 

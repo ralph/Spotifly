@@ -16,11 +16,14 @@ Previous and Next track.
 
 - **The window publishes its `NavigationCoordinator`** as a focused scene value, which the menu
   calls `navigateBackward()` and `navigateForward()` on. ⌘1–⌘4 now call `selectNavigationItem`
-  on it too, where they set a separate binding of the sidebar's selection, which is gone.
-- **Whether each way is open** is a focused value of its own, `NavigationHistoryAvailability`,
-  and the items are disabled by it. Read through the coordinator, the items would not follow
-  the history: the menu is drawn again when a focused value changes, and the coordinator stays
-  the same object while it moves.
+  on it too, where they set a focused binding of the sidebar's selection; the sidebar binds the
+  coordinator's selection directly.
+- **Back and Forward are a small view inside the menu**, `NavigationHistoryMenuItems`, disabled
+  by the coordinator's `canNavigateBackward` and `canNavigateForward`. A view's body follows the
+  coordinator as it moves, where the menu's own body is drawn again only when a focused value
+  changes, and the coordinator stays the same object. A first version carried the two flags as
+  a second focused value; the review found this simpler form, which was then checked the same
+  way.
 - The titles are the toolbar's own, `nav.back` and `nav.forward`: Zurück and Vorwärts, Retour
   and Suivant.
 
@@ -34,12 +37,10 @@ Through `app_menu`, Spotifly frontmost:
 - At launch, Back was disabled: no history.
 - Navigation → Alben, then Zurück: the start page. Then Vorwärts: Albums again, its first album
   selected.
-- A throwaway log in the Back item's `.disabled`, not committed, showed the menu evaluated again
-  at each step: `back: true, forward: false` after Alben, `back: false, forward: true` after
-  Zurück.
+- Then Vorwärts once more: refused as disabled, with nothing ahead.
 
 The first tries found Back disabled after two steps. Those menu presses followed each other with
-no pause; with a second between them, the items had caught up. Not checked: the key equivalents
+no pause; with a few seconds between them, the items had caught up. Not checked: the key equivalents
 typed on a keyboard, since that needs control of the screen. A German layout has no `[` key of
 its own; macOS's automatic localization of key equivalents decides what it becomes there.
 
