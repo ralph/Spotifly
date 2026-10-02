@@ -45,8 +45,6 @@ final class PlaybackViewModel {
         }
     }
 
-    private var lastHandledTrackUri: String?
-
     /// The error the now-playing bar shows in place of the track's title. Views set it too,
     /// for favorite and playlist failures. It clears itself after five seconds, here rather
     /// than in the bar, because the bar is not always mounted: with the window closed, media
@@ -116,7 +114,10 @@ final class PlaybackViewModel {
     /// The volume slider uses this for display when set.
     var remoteVolume: Double?
 
-    var isShuffleEnabled = false
+    /// The player's, as it last reported; nothing here keeps a copy of it.
+    var isShuffleEnabled: Bool {
+        player.playback?.shuffle ?? false
+    }
 
     /// Whether the client has completed at least one usable initialization.
     /// This stays true through transient disconnects, because `LibrespotClient`
@@ -380,7 +381,6 @@ final class PlaybackViewModel {
         isPlaying = false
         updateNowPlayingPosition()
         currentTrackUri = nil
-        lastHandledTrackUri = nil
         updateNowPlayingInfo()
         anchorPosition(0)
     }
@@ -434,7 +434,7 @@ final class PlaybackViewModel {
         let target = resolvedPlaybackTarget()
         switch target {
         case .local:
-            await startLocally(startedUri: startingAtUri ?? uriOrUrl) {
+            await startLocally {
                 try await SpotifyPlayer.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex, startingAtUri: startingAtUri)
             }
 
@@ -466,7 +466,7 @@ final class PlaybackViewModel {
         let target = resolvedPlaybackTarget()
         switch target {
         case .local:
-            await startLocally(startedUri: trackUris[0]) {
+            await startLocally {
                 try await SpotifyPlayer.playTracks(trackUris)
             }
 
@@ -578,19 +578,20 @@ final class PlaybackViewModel {
 
     /// Runs a local Spirc start and folds its outcome into `isLoading` / `errorMessage`.
     ///
-    /// `play` and `playTracks` differ only in the call they make and in which uri counts as
-    /// the one that started, so the state-keeping around it is written once. The remote
-    /// half is `startRemotely` below.
-    private func startLocally(
-        startedUri: String,
-        _ start: @MainActor () async throws -> Void,
-    ) async {
+    /// `play` and `playTracks` differ only in the call they make, so the state-keeping around it
+    /// is written once. The remote half is `startRemotely` below.
+    private func startLocally(_ start: @MainActor () async throws -> Void) async {
         isLoading = true
         errorMessage = nil
 
         do {
             try await start()
-            handlePlaybackStarted(trackId: startedUri)
+            // The track and whether it plays are the player's report, which normally arrives
+            // before the start returns (158 ms before, measured), and sets them when it comes.
+            // The mixer exists only once playback starts, so the volume goes now.
+            SpotifyPlayer.setVolume(volume)
+            syncPositionAnchor()
+            updateNowPlayingPosition()
         } catch is CancellationError {
             // Another start overtook this one; it reports for itself.
         } catch {
@@ -658,18 +659,6 @@ final class PlaybackViewModel {
     }
 
     // MARK: - Playback State Helpers
-
-    /// Common setup after playback has started
-    private func handlePlaybackStarted(trackId: String) {
-        currentTrackUri = trackId
-        lastHandledTrackUri = trackId
-        isPlaying = true
-        // Apply volume after playback starts (mixer is now initialized)
-        SpotifyPlayer.setVolume(volume)
-        syncPositionAnchor()
-        updateNowPlayingInfo()
-        // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackUri changes
-    }
 
     func togglePlayPause(trackId: String) async {
         if isPlaying, currentTrackUri == trackId {
@@ -1390,12 +1379,8 @@ final class PlaybackViewModel {
         isPlaying = newIsPlaying
 
         // Update track if changed
-        let trackChanged = !state.trackUri.isEmpty && state.trackUri != lastHandledTrackUri
+        let trackChanged = !state.trackUri.isEmpty && state.trackUri != currentTrackUri
         if trackChanged {
-            lastHandledTrackUri = state.trackUri
-        }
-
-        if !state.trackUri.isEmpty, state.trackUri != currentTrackUri {
             currentTrackUri = state.trackUri
             // Note: Track metadata (name, artist, etc.) will be updated from queue
         }
@@ -1405,8 +1390,6 @@ final class PlaybackViewModel {
         if let durationMs = Self.playbackMilliseconds(state.durationMs), durationMs > 0 {
             trackDurationMs = durationMs
         }
-
-        isShuffleEnabled = state.shuffle
 
         // Sync position anchor on state changes. When monitoring a remote device,
         // position_ms is the position at timestamp_ms, which can be minutes old.
