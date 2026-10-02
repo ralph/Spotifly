@@ -34,16 +34,20 @@ fails, and play their 100 tracks and stop.
 ## Solution
 
 - **`SPClient.resolveContext(_:pageLimit:)`** follows a context's pages up to its limit and names
-  the page after them (`ResolvedContext.nextPageUrl`). A station's limit is one page; any other
-  context's stays ten, so shuffle and repeat still have all of a playlist's rows.
+  the page after them (`ResolvedContext.nextPageUrl`). The caller sets the limit
+  (`LibrespotClient.pagesUpFront`): a station's is one page; any other context's stays ten, so
+  shuffle and repeat still have all of a playlist's rows.
 - **`SPClient.resolvePage(_:)`** fetches a named page. `nextPagePath` asks a `radio-router` page at
   `radio-apollo`.
 - **`PlaybackQueue`** keeps the url (`nextPageUrl`): `setContext(nextPage:)` sets it, a rewind
-  keeps it, `takeNextPage()` takes it once, and `appendPage` adds the rows to the context's own,
-  after the rows not yet played when shuffled.
-- **`LibrespotClient.lineUpNextPage`**, beside `lineUpAutoplay` where nothing comes after the
-  track playing: the page is fetched, appended if the same context still plays, and published,
-  so its first track is fetched ahead.
+  keeps it, and `appendPage` adds the rows to the context's own, after the rows not yet played
+  when shuffled. The rows grow without bound: 50 per three hours, and nothing done per track
+  reads them all.
+- **`LibrespotClient.lineUpNextPage`**, from `announceNextTrack`: with fewer than 5 rows ahead,
+  as librespot fetched a station's, the page is fetched once at a time, appended if the url is
+  still the queue's, and published, so other devices' lists don't run dry and the next track is
+  fetched ahead. The url stays in the queue until its page comes, so a failed fetch is asked
+  again with the next track, and autoplay waits for it. A page without rows ends the paging.
 
 ## Verification
 
@@ -64,3 +68,14 @@ fails, and play their 100 tracks and stop.
     answered 50 more.
 - **A 150-track playlist** resolved in one request with no next page, so other contexts are as
   before.
+- **After `/simplify`** (the fetch with fewer than 5 rows ahead): row 46 of the first page played
+  from the Queue section, 4 rows ahead, and the next page came at once: 50 ahead.
+
+## Not done
+
+- **Shuffle and repeat on a station** go over every row it has loaded, played hours ago included.
+  Spotify's clients restrict them for a radio; that would be a policy of its own.
+- **`prev_tracks`** in a station's page url may grow with every page; whether that reaches a url
+  length limit in a long session is not measured.
+- **The `radio-router` alias** is inferred from the answers at `radio-apollo`, not from a
+  Spotify client's own request.

@@ -255,16 +255,16 @@ public actor SPClient {
 
     /// An ordered track list resolved from a context uri.
     public struct ResolvedContext: Sendable {
-        public let tracks: [String]
+        public var tracks: [String]
         /// Each track's `uid`, beside `tracks`, or nil where the answer has none. A playlist's
         /// tracks have one, an album's none (measured 2026-09-30).
-        public let uids: [String?]
+        public var uids: [String?]
         /// The answer's `metadata`, the context's name among it (`contextName`).
-        public let metadata: [String: String]
+        public var metadata: [String: String]
         /// The context's own uri, as the answer names it: a station's for autoplay.
         public var uri: String?
-        /// The page after these tracks, where the resolve stopped short of the end: a station's,
-        /// for `resolvePage` when its rows run out.
+        /// The page after these tracks, where the resolve stopped short of the end, for
+        /// `resolvePage`.
         public var nextPageUrl: String?
     }
 
@@ -273,57 +273,42 @@ public actor SPClient {
     /// clients use, and one that handles every context shape uniformly.
     ///
     /// Its next pages are followed, up to `pageLimit` pages in all, and the page after them named
-    /// as `nextPageUrl`. A station names pages without end, so it is resolved a page at a time:
-    /// following them before it played cost two more requests, about 0.4 s (2026-10-02). Its next
-    /// page is fetched when its rows run out (`LibrespotClient.lineUpNextPage`), as go-librespot's
-    /// resolver fetches one when the queue reaches it.
-    public func resolveContext(_ contextUri: String, pageLimit: Int? = nil) async throws -> ResolvedContext {
+    /// as `nextPageUrl`. A later page that fails leaves the pages before it; only the first
+    /// failing fails the resolve.
+    public func resolveContext(_ contextUri: String, pageLimit: Int = 10) async throws -> ResolvedContext {
         let encodedUri = contextUri.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? contextUri
-        let pageLimit = max(1, pageLimit ?? (contextUri.hasPrefix("spotify:station:") ? 1 : 10))
-
         debugLog("SPClient", "Resolving context: \(contextUri)")
 
-        var allTracks: [String] = []
-        var allUids: [String?] = []
-        var metadata: [String: String] = [:]
-        var path = "/context-resolve/v1/\(encodedUri)?device_id=\(deviceId)"
-        var nextPageUrl: String?
-
-        for page in 1 ... pageLimit {
-            let report: ContextReport
+        var context = try await fetchContextPage("/context-resolve/v1/\(encodedUri)?device_id=\(deviceId)")
+        for _ in 1 ..< max(1, pageLimit) {
+            guard let next = context.nextPageUrl else { break }
             do {
-                report = try await fetchContextPage(path)
-            } catch where !allTracks.isEmpty && !(error is CancellationError) {
-                // A later page failing leaves the context its pages so far.
-                debugLog("SPClient", "Context page failed, keeping \(allTracks.count) track(s): \(error)")
-                nextPageUrl = nil
+                let page = try await fetchContextPage(Self.nextPagePath(next))
+                context.tracks += page.tracks
+                context.uids += page.uids
+                context.metadata.merge(page.metadata) { first, _ in first }
+                context.nextPageUrl = page.nextPageUrl
+            } catch where !(error is CancellationError) {
+                debugLog("SPClient", "Context page failed, keeping \(context.tracks.count) track(s): \(error)")
+                context.nextPageUrl = nil
                 break
             }
-            allTracks.append(contentsOf: report.tracks)
-            allUids.append(contentsOf: report.uids)
-            metadata.merge(report.metadata) { first, _ in first }
-            nextPageUrl = report.nextPageUrl
-            guard let next = nextPageUrl, page < pageLimit else { break }
-            path = Self.nextPagePath(next)
         }
 
-        debugLog("SPClient", "Context resolved: \(allTracks.count) track(s)\(nextPageUrl == nil ? "" : ", more to come")")
-
-        return ResolvedContext(tracks: allTracks, uids: allUids, metadata: metadata, nextPageUrl: nextPageUrl)
+        debugLog("SPClient", "Context resolved: \(context.tracks.count) track(s)\(context.nextPageUrl == nil ? "" : ", more to come")")
+        return context
     }
 
     /// A context's next page, as `ResolvedContext.nextPageUrl` names it, with the url of the page
     /// after it.
     public func resolvePage(_ url: String) async throws -> ResolvedContext {
-        let report = try await fetchContextPage(Self.nextPagePath(url))
-        debugLog("SPClient", "Context page resolved: \(report.tracks.count) track(s)")
-        return ResolvedContext(tracks: report.tracks, uids: report.uids, metadata: report.metadata, nextPageUrl: report.nextPageUrl)
+        let page = try await fetchContextPage(Self.nextPagePath(url))
+        debugLog("SPClient", "Context page resolved: \(page.tracks.count) track(s)")
+        return page
     }
 
-    typealias ContextReport = (tracks: [String], uids: [String?], nextPageUrl: String?, metadata: [String: String], uri: String?)
-
     /// One page of a context, at `path` of spclient.
-    private func fetchContextPage(_ path: String) async throws -> ContextReport {
+    private func fetchContextPage(_ path: String) async throws -> ResolvedContext {
         let host = spclientHost ?? "spclient.wg.spotify.com"
         guard let url = URL(string: "https://\(host)\(path)") else {
             throw LibrespotError.invalidState("Context page path: \(path)")
@@ -374,9 +359,9 @@ public actor SPClient {
             try await fetch(request, named: "Autoplay resolve")
         }
 
-        let report = Self.parseContextReport(data)
-        debugLog("SPClient", "Autoplay resolved: \(report.tracks.count) track(s) from \(report.uri ?? "no uri")")
-        return ResolvedContext(tracks: report.tracks, uids: report.uids, metadata: report.metadata, uri: report.uri)
+        let station = Self.parseContextReport(data)
+        debugLog("SPClient", "Autoplay resolved: \(station.tracks.count) track(s) from \(station.uri ?? "no uri")")
+        return station
     }
 
     /// `AutoplayContextRequest { required string context_uri = 1; repeated string
@@ -399,9 +384,9 @@ public actor SPClient {
     /// it and was always 0 — the guard ran after the append, and a context uri
     /// never matches a track uri anyway. Removed rather than guessed at: which
     /// field, if any, carries a resume point has to come off a real response.
-    nonisolated static func parseContextReport(_ data: Data) -> ContextReport {
+    nonisolated static func parseContextReport(_ data: Data) -> ResolvedContext {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return ([], [], nil, [:], nil)
+            return ResolvedContext(tracks: [], uids: [], metadata: [:])
         }
 
         var tracks: [String] = []
@@ -425,7 +410,7 @@ public actor SPClient {
 
         // String values only, as the player state's `context_metadata` is a map of strings.
         let metadata = (json["metadata"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
-        return (tracks, uids, nextPageUrl, metadata, json["uri"] as? String)
+        return ResolvedContext(tracks: tracks, uids: uids, metadata: metadata, uri: json["uri"] as? String, nextPageUrl: nextPageUrl)
     }
 
     // MARK: - Timeout

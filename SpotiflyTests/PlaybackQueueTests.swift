@@ -655,3 +655,43 @@ struct RepeatRoundTests {
         #expect(album(at: 2, repeat: .off).upcomingPlayable(skipping: { _ in false }) == nil)
     }
 }
+
+/// A station's rows a page at a time: the next page's url waits in the queue, and its rows join the
+/// context's own when they come.
+struct StationPageQueueTests {
+    @Test func `a page's rows join the context's own, and name the page after them`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:station:track:x", tracks: ["a", "b"], startIndex: 1, nextPage: "page2")
+
+        #expect(queue.upcoming().isEmpty)
+        #expect(queue.nextPageUrl == "page2")
+
+        queue.appendPage(["c", "d"], uids: ["u3", "u4"], next: "page3")
+        #expect(queue.upcoming().map(\.uri) == ["c", "d"])
+        #expect(queue.upcoming().map(\.provider) == ["context", "context"])
+        #expect(queue.nextPageUrl == "page3")
+        #expect(queue.advance() == "c")
+    }
+
+    @Test func `another context drops the page, a rewind keeps it`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:station:track:x", tracks: ["a", "b"], startIndex: 1, nextPage: "page2")
+        queue.rewind(to: 0)
+        #expect(queue.nextPageUrl == "page2")
+
+        queue.setContext(uri: "spotify:album:y", tracks: ["c"], startIndex: 0)
+        #expect(queue.nextPageUrl == nil)
+    }
+
+    @Test func `shuffled, a page's rows come after the rows not yet played`() {
+        let queue = PlaybackQueue()
+        queue.setShuffle(true)
+        queue.setContext(uri: "spotify:station:track:x", tracks: ["a", "b", "c"], startIndex: 0)
+        let before = Set(queue.upcoming().map(\.uri))
+
+        queue.appendPage(["d", "e"], uids: [nil, nil], next: nil)
+        let upcoming = queue.upcoming().map(\.uri)
+        #expect(Set(upcoming.prefix(before.count)) == before)
+        #expect(Set(upcoming.dropFirst(before.count)) == ["d", "e"])
+    }
+}

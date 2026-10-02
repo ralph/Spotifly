@@ -232,16 +232,10 @@ final nonisolated class PlaybackQueue {
 
     // MARK: - Pages
 
-    /// The context's next page, where its rows are not all of it: a station's, which names pages
-    /// without end and is resolved one at a time. `LibrespotClient.lineUpNextPage` fetches it
-    /// when nothing comes after the track playing.
+    /// The context's next page, where its rows are not all of it: a station's, resolved a page at a
+    /// time (`LibrespotClient.lineUpNextPage`). The rows grow by a page as they run out, without
+    /// bound: 50 rows are about three hours.
     private(set) var nextPageUrl: String?
-
-    /// The next page's url, to fetch it: taken, so it is asked for once.
-    func takeNextPage() -> String? {
-        defer { nextPageUrl = nil }
-        return nextPageUrl
-    }
 
     /// Adds a page's rows to the context's own, and the url of the page after it. Shuffled, they
     /// come after the rows not yet played, in an order of their own.
