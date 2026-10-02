@@ -233,8 +233,9 @@ Behavior changes:
   the load replaces the id list at offset 0. Moving the emptying into the services'
   `forceRefresh` branch instead would also blank the list on pull-to-refresh and Try again.
   The emptying did one thing besides: it took `LoadMoreRow`'s spinner off screen, so it asked
-  again when it came back. The spinner now asks whenever the next offset changes, which serves
-  every refresh path.
+  again when it came back. The spinner now also asks when the list starts over and when that
+  first page lands (`isLoaded`), which serves every refresh path. Not on every change of the
+  offset: the spinner, still laid out as a page lands, would then fetch the one after it too.
 - **The profile.** One home for the fetch, a small `ProfileService` with two ways in:
   - `require()`, today's `PlaylistService.requireProfile()`: the store's profile, or one
     fetched through the registry. Playlist writes call it and pass its error on.
