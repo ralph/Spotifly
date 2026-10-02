@@ -10,10 +10,12 @@ import SwiftUI
 /// A spinner that loads the next page once it scrolls into view, or, once that page has failed,
 /// the failure with a Try again, which the network's return presses too.
 ///
-/// Keyed on the next offset rather than on appearing, because the spinner can stay on screen
-/// while that changes: a refresh that keeps the list showing starts over from the first page,
-/// and the spinner's ask during it finds the refresh running and does nothing. Once the first
-/// page lands, the new offset asks again.
+/// Asks when it appears, and again when the list starts over and when that first page lands
+/// (`isLoaded`). A refresh keeps the list showing, so the spinner can stay on screen through it;
+/// its ask during the refresh finds the refresh running and does nothing, and without the second
+/// ask it would spin there until scrolled away and back. Not keyed on the offset, which changes
+/// with every page: the spinner, still laid out as a page lands, would then fetch the one after
+/// it too.
 struct LoadMoreRow: View {
     let pagination: PaginationState
     let loadMore: () async -> Void
@@ -25,7 +27,7 @@ struct LoadMoreRow: View {
             } else {
                 ProgressView()
                     .padding()
-                    .task(id: pagination.nextOffset) {
+                    .task(id: pagination.isLoaded) {
                         await loadMore()
                     }
             }
