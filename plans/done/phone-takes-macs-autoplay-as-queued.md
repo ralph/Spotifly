@@ -1,6 +1,6 @@
 # A phone that takes this Mac's autoplay over makes it a queued track
 
-Status: **Open**, built 2026-10-02 and seen with the web player; the phone is still to see.
+Status: **Done** 2026-10-02, seen with the web player and with a phone; see Progress.
 Measured with a phone on 2026-10-02, over three rounds, and the cause found in the cluster's
 `transfer_data`; see Problem. Left from `plans/done/autoplay.md`.
 Components: `Spotifly/SwiftLibrespot/Connect/SpircController.swift` (`handover(of:)`,
@@ -117,8 +117,7 @@ what other devices show while the Mac plays.
     station itself. The handover now carries the station's rows from the session's row on as
     the context's page, 50 of them. The web player then took over at the Mac's position (87.6 s)
     with the Mac's rows, 10 behind and 37 ahead.
-- With your phone, still to see: picking the phone while this Mac plays autoplay shows the track
-  as autoplay, with the station's tracks after it and not the album's last again.
+- With your phone: see Progress, second round.
 
 ## Progress
 
@@ -140,3 +139,8 @@ what other devices show while the Mac plays.
   - **A queued track during autoplay** (a track and an album queued, then Next): the Mac's
     handover named the station, the station's next row as `current_uid`, and 12 queued tracks.
     The web player played the queued track, the queued album, then the station's tracks.
+- **Your phone, second round** (2026-10-02): picked while the Mac played an autoplay track 70 s
+  in, the phone went on at 69.5 s, "Wiedergabe empfohlener Songs", with the station's tracks
+  after it (Coastline, Ohio, Heartbeats, …) and no album track. Its own `transfer_data` named the
+  station and the album as `main_context`. Picked back, the Mac took the station over at 95.6 s,
+  with 50 tracks ahead.

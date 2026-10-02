@@ -1,7 +1,7 @@
 # A handover of a track queued during autoplay names a station this Mac cannot play
 
 Status: **Open**, not planned. Inferred from the code on 2026-10-02, in the altitude review of
-`plans/open/phone-takes-macs-autoplay-as-queued.md`; not seen live.
+`plans/done/phone-takes-macs-autoplay-as-queued.md`; not seen live.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`continuePlayback`,
 `continueAutoplay`), `Spotifly/SwiftLibrespot/Proto/TransferState.swift`
 Found: 2026-10-02, reviewing the handover this Mac writes during autoplay

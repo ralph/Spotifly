@@ -252,7 +252,7 @@ struct AutoplayQueueTests {
 }
 
 /// What this Mac writes as its `transfer_data` while autoplay plays, which the backend hands the
-/// device taking over. See `plans/open/phone-takes-macs-autoplay-as-queued.md`.
+/// device taking over. See `plans/done/phone-takes-macs-autoplay-as-queued.md`.
 struct AutoplayHandoverTests {
     private static let autoplayRow = QueueItem(uri: "spotify:track:s1", provider: "autoplay", uid: "x1")
     private static let nextAutoplayRow = QueueItem(uri: "spotify:track:s2", provider: "autoplay", uid: "x2")
