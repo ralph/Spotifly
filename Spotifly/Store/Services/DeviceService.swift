@@ -20,10 +20,6 @@ import Foundation
 final class DeviceService {
     private let player: PlayerModel
 
-    /// Timestamp of the last outgoing transfer, used to delay the
-    /// `fetchInitialPlaybackState` that fires on reconnect.
-    private var lastTransferTime: ContinuousClock.Instant?
-
     /// The transfer currently in flight, if any. Transfers are chained onto it so no two
     /// ever overlap — see `transferPlayback(to:)`.
     private var transferTask: Task<Bool, Never>?
@@ -60,9 +56,6 @@ final class DeviceService {
     }
 
     private func performTransfer(to device: Device) async -> Bool {
-        // Record transfer time so sessionConnected handler can delay its Web API fetch
-        lastTransferTime = .now
-
         // Optimistically mark the target device as active for immediate UI feedback,
         // remembering the previous one so a rejected transfer can be undone
         let previousActiveDeviceId = player.activeDeviceId
@@ -99,18 +92,6 @@ final class DeviceService {
         // Nothing to schedule: the transfer changes the cluster, and the cluster pushes the
         // new device list and active device back on its own.
         return true
-    }
-
-    /// Waits if a transfer happened recently, giving the cluster time to push the state the
-    /// transfer produced. Call before `fetchInitialPlaybackState` on reconnect, which reads
-    /// the last cluster update and would otherwise read the one from before the transfer.
-    func waitForTransferSettling() async {
-        guard let transferTime = lastTransferTime else { return }
-        let elapsed = transferTime.duration(to: .now)
-        let staleWindow = Duration.seconds(5)
-        if elapsed < staleWindow {
-            try? await Task.sleep(for: staleWindow - elapsed)
-        }
     }
 
     // MARK: - Helpers

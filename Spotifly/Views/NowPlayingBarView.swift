@@ -391,8 +391,9 @@ struct NowPlayingBarView: View {
             navigationCoordinator.navigateToQueue()
         } label: {
             Group {
-                if store.queue.currentTrack != nil {
-                    Text(verbatim: "\(store.currentIndex + 1)/\(store.queueLength)")
+                let queue = player.queueEntries
+                if queue.currentTrack != nil {
+                    Text(verbatim: "\(queue.currentIndex + 1)/\(queue.length)")
                 } else {
                     // The counter is the button's only label, so dropping it outright would
                     // leave an invisible control that VoiceOver announces unnamed. The glyph

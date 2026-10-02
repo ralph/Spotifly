@@ -24,8 +24,8 @@ final class PlaybackViewModel {
     /// Reference to AppStore for reading current track metadata (set by LoggedInView)
     private weak var store: AppStore?
 
-    /// Reference to QueueService, used to resync after a remote start (set by LoggedInView).
-    /// Remote playback produces no local player events, so nothing else would update the UI.
+    /// Reference to QueueService, which asks for the queue's metadata again after a remote start
+    /// (set by LoggedInView).
     private weak var queueService: QueueService?
 
     /// Set when a play request arrived with nowhere to serve it: no local player and no
@@ -599,10 +599,9 @@ final class PlaybackViewModel {
         isLoading = false
     }
 
-    /// Starts content on a remote device and then resyncs, because nothing else will.
-    ///
-    /// With no Spirc session there are no playback or queue callbacks — a successful start
-    /// would otherwise leave the now-playing bar showing whatever it showed before.
+    /// Starts content on a remote device. The cluster reports what it plays, and the queue
+    /// follows from the player model; what is asked for here is only the metadata of a queue
+    /// that came back as it was, which a failed fetch may have left missing.
     private func startRemotely(
         _ command: ConnectCommand,
         deviceId: String,
@@ -615,19 +614,9 @@ final class PlaybackViewModel {
         isLoading = true
         errorMessage = nil
 
-        // Captured before any awaiting: a logout can land during the request or the settle
-        // delay, and a superseded run must not write (see AGENTS.md).
-        let revisionAtStart = store?.liveStateRevision
-
         do {
             try await SpclientAPI().sendCommand(command, from: from, to: deviceId)
-
-            // Let Spotify settle before asking what it thinks is playing.
-            try? await Task.sleep(for: .milliseconds(600))
-
-            if let queueService, store?.liveStateRevision == revisionAtStart {
-                _ = await queueService.fetchInitialPlaybackState()
-            }
+            queueService?.hydrate()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -966,9 +955,8 @@ final class PlaybackViewModel {
 
     /// Returns true if there are tracks before the current track or if we're past the start of the track
     var hasPrevious: Bool {
-        guard let store else { return false }
         // Allow previous if we have previous tracks or if we're more than 3 seconds into the current track
-        return !store.queue.previousTracks.isEmpty || currentPositionMs > 3000
+        !player.queueEntries.previousTracks.isEmpty || currentPositionMs > 3000
     }
 
     // MARK: - Media Keys & Now Playing
@@ -1321,10 +1309,6 @@ final class PlaybackViewModel {
             "PlaybackViewModel",
             "Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
-
-        // Authoritative state from the player — let any in-flight Web API bootstrap know it
-        // is now stale (see AppStore.liveStateRevision)
-        store?.noteLiveStateReceived()
 
         // Update playing state
         // When active device: use SpotifyPlayer.isPlaying (local Spirc state)

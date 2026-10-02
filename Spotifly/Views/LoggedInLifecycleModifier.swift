@@ -49,7 +49,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 _ = await (profile, home)
 
                 await playbackViewModel.initializeIfNeeded()
-                await queueService.fetchInitialPlaybackState()
+                queueService.hydrate()
 
                 #if DEBUG
                     // Headless test scaffolding: SPOTIFLY_DEBUG_AUTOPLAY=1 starts
@@ -216,11 +216,9 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 guard connectionDropped else { return }
                 connectionDropped = false
 
-                // Re-sync with whatever is playing now.
-                Task {
-                    await deviceService.waitForTransferSettling()
-                    await queueService.fetchInitialPlaybackState()
-                }
+                // The queue itself follows the player; its metadata may have failed to load while
+                // the connection was down.
+                queueService.hydrate()
             }
             .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
                 debugLog("LoggedInLifecycle", "System will sleep, disconnecting from Spotify")

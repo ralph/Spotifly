@@ -2,9 +2,8 @@
 //  QueueService.swift
 //  Spotifly
 //
-//  Service for queue-related operations.
-//  Queue structure (track URIs) is published by LibrespotClient, which owns the queue.
-//  Track metadata is loaded through TrackService and cached in the store.
+//  Keeps the store holding metadata for every track the player's queue names.
+//  The queue itself is the player's: `PlayerModel.queueEntries`.
 //
 
 import Combine
@@ -79,24 +78,23 @@ final class QueueService {
 
     // MARK: - Queue Updates
 
-    /// Handle a queue update published by the client.
+    /// Asks for the metadata of a queue the player published.
     private func handleQueueUpdate(_ queueState: QueueState?) {
-        guard let state = queueState else {
-            log("Queue update was nil; keeping existing queue state")
-            return
-        }
+        let queue = Queue(queueState)
+        let contextInfo = queueState?.context.map { " context=\($0)," } ?? ""
+        log("Queue updated from the player:\(contextInfo) prev=\(queue.previousTracks.count), current=\(queue.currentTrack != nil ? 1 : 0), next=\(queue.nextTracks.count)")
 
-        let currentEntry = state.currentTrack.flatMap(Self.queueEntry(from:))
-        let nextEntries = state.nextTracks.compactMap(Self.queueEntry(from:))
-        let previousEntries = state.previousTracks.compactMap(Self.queueEntry(from:))
+        fetchTrackMetadata(for: queue.trackIds)
+    }
 
-        let contextInfo = state.context.map { " context=\($0)," } ?? ""
-        log("Queue updated from the player:\(contextInfo) prev=\(previousEntries.count), current=\(currentEntry != nil ? 1 : 0), next=\(nextEntries.count)")
-
-        store.noteLiveStateReceived()
-        store.setQueue(previous: previousEntries, current: currentEntry, next: nextEntries)
-
-        fetchTrackMetadata(for: Self.trackIds(previousEntries, currentEntry, nextEntries))
+    /// Asks again for the metadata of every track the queue names that the store lacks.
+    ///
+    /// The observation asks whenever the queue changes, but nothing else retries a fetch that
+    /// failed, offline say: after a reconnect or a remote start the queue can come back as it
+    /// was, and the player model then publishes no change. A track the store holds costs no
+    /// request.
+    func hydrate() {
+        fetchTrackMetadata(for: player.queueEntries.trackIds)
     }
 
     // MARK: - Metadata Fetching
@@ -142,83 +140,8 @@ final class QueueService {
         // Trigger Now Playing update - it resolves PlaybackViewModel's logical URI.
         PlaybackViewModel.shared.updateNowPlayingInfo()
 
-        let prevCount = store.previousTrackEntities.count
-        let nextCount = store.nextTrackEntities.count
-        let total = prevCount + (store.currentTrackEntity != nil ? 1 : 0) + nextCount
-        log("Queue tracks resolved: \(total) with metadata (prev=\(prevCount), next=\(nextCount))")
-    }
-
-    // MARK: - Initial State Fetch
-
-    /// Adopts whatever the Connect cluster last said is playing.
-    ///
-    /// **This used to be two Web API requests**, `/me/player` and `/me/player/queue`, asked
-    /// because the push channel only pushes and a client that just started had never been
-    /// pushed to. The cluster answers both, and the dealer already receives it — so this
-    /// reads a snapshot of the last update rather than going to the network.
-    ///
-    /// Two consequences of having one source instead of two. The **freshness barrier is gone**:
-    /// it existed because an HTTP snapshot could be older than live state that landed while
-    /// it was in flight, and a snapshot that *is* the last live update cannot be. And the
-    /// **previous tracks survive** — `/me/player/queue` returned none at all, so the old code
-    /// had to pass `previous: nil` and hope something else filled it in.
-    ///
-    /// - Returns: `false` when nothing was applied, which for this source means only one
-    ///   thing: no cluster update has arrived yet. Callers that can wait should try again.
-    @discardableResult
-    func fetchInitialPlaybackState() async -> Bool {
-        guard let update = Self.queueUpdate(from: player.queue) else {
-            log("Cluster says nothing usable yet — keeping the existing queue")
-            return false
-        }
-
-        store.setQueue(previous: update.previous, current: update.current, next: update.next)
-
-        log("Initial queue: prev=\(update.previous.count), current=\(update.current != nil ? 1 : 0), next=\(update.next.count)")
-
-        fetchTrackMetadata(for: Self.trackIds(update.previous, update.current, update.next))
-
-        return true
-    }
-
-    /// The whole queue's track ids in play order, which is what a metadata fetch needs.
-    private static func trackIds(
-        _ previous: [QueueEntry],
-        _ current: QueueEntry?,
-        _ next: [QueueEntry],
-    ) -> [String] {
-        (previous + (current.map { [$0] } ?? []) + next).map(\.trackId)
-    }
-
-    /// What a cluster snapshot resolves to, or **nil when it must not be applied**.
-    ///
-    /// This is the guard that `responseCarriesPlayback` used to be, and it exists for the same
-    /// reason: an answer meaning "I have nothing to tell you" decodes identically to one
-    /// meaning "nothing is queued", and applying the second when you were given the first
-    /// wipes a real queue. That is what emptied the queue on every wake from sleep — see
-    /// `plans/done/wake-from-sleep-loses-queue-and-resume.md`.
-    ///
-    /// The two forms it takes here: **nil**, when no cluster update has arrived at all, and a
-    /// snapshot that yields no current track and nothing pending. Previous tracks alone are
-    /// not enough — history with nothing playing is what a wiped queue looks like.
-    static func queueUpdate(
-        from snapshot: QueueState?,
-    ) -> (previous: [QueueEntry], current: QueueEntry?, next: [QueueEntry])? {
-        guard let snapshot else { return nil }
-
-        let current = snapshot.currentTrack.flatMap(queueEntry(from:))
-        let next = snapshot.nextTracks.compactMap(queueEntry(from:))
-        let previous = snapshot.previousTracks.compactMap(queueEntry(from:))
-
-        guard current != nil || !next.isEmpty else { return nil }
-
-        return (previous, current, next)
-    }
-
-    /// A queue track becomes an entry only if its uri names a track — the cluster can carry
-    /// episodes and ads, which this app has no row for.
-    private static func queueEntry(from item: QueueItem) -> QueueEntry? {
-        guard let trackId = SpotifyAPI.parseTrackURI(item.uri) else { return nil }
-        return QueueEntry(trackId: trackId, provider: TrackProvider(from: item.provider), uid: item.uid)
+        let trackIds = player.queueEntries.trackIds
+        let resolved = trackIds.count(where: { store.tracks[$0] != nil })
+        log("Queue tracks resolved: \(resolved) of \(trackIds.count) with metadata")
     }
 }

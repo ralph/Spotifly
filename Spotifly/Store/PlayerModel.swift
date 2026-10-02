@@ -74,6 +74,16 @@ final class PlayerModel {
         connection?.deviceId
     }
 
+    /// The queue as the app's rows, worked out from `queue` on every read.
+    ///
+    /// Not kept as a copy: a copy in the store, written by a task after each change, could
+    /// describe another queue than the context this model names in the same frame, and kept the
+    /// last non-empty one when the player had moved on. Read here, the rows and the queue's
+    /// context always come from the same snapshot.
+    var queueEntries: Queue {
+        Queue(queue)
+    }
+
     /// Adopts a snapshot. Each part is written only when it changed, so what
     /// observes one part does not hear about another.
     func apply(_ snapshot: PlayerSnapshot) {
@@ -117,6 +127,56 @@ final class PlayerModel {
     /// The next cluster report replaces it.
     func setActiveDevice(_ deviceId: String?) {
         activeDeviceId = deviceId
+    }
+}
+
+// MARK: - Queue
+
+/// A row of the queue: a track, by its id into the store's tables, which hold its name and
+/// artwork, and where it comes from.
+struct QueueEntry: Equatable {
+    let trackId: String
+    let provider: TrackProvider
+    /// The row's uid, where it has one: from the cluster while another device plays, and from
+    /// this Mac's own queue otherwise.
+    var uid: String?
+}
+
+/// The player's queue as rows of track ids. See `PlayerModel.queueEntries`.
+struct Queue: Equatable {
+    /// What played before the current track, in play order: the most recent last. From the
+    /// local queue, or from the cluster's `prev_tracks` while another device plays.
+    let previousTracks: [QueueEntry]
+    let currentTrack: QueueEntry?
+    let nextTracks: [QueueEntry]
+
+    /// The rows of `state` that name a track. The cluster can carry episodes and ads, which
+    /// this app has no row for. No state, before the first snapshot or after a logout, is an
+    /// empty queue.
+    init(_ state: QueueState?) {
+        previousTracks = state?.previousTracks.compactMap(Self.entry(from:)) ?? []
+        currentTrack = state?.currentTrack.flatMap(Self.entry(from:))
+        nextTracks = state?.nextTracks.compactMap(Self.entry(from:)) ?? []
+    }
+
+    /// How many rows there are, the current one included.
+    var length: Int {
+        previousTracks.count + (currentTrack != nil ? 1 : 0) + nextTracks.count
+    }
+
+    /// The current row's position among all of them.
+    var currentIndex: Int {
+        previousTracks.count
+    }
+
+    /// Every row's track id, in play order, which is what a metadata fetch needs.
+    var trackIds: [String] {
+        (previousTracks + (currentTrack.map { [$0] } ?? []) + nextTracks).map(\.trackId)
+    }
+
+    private static func entry(from item: QueueItem) -> QueueEntry? {
+        guard let trackId = SpotifyAPI.parseTrackURI(item.uri) else { return nil }
+        return QueueEntry(trackId: trackId, provider: TrackProvider(from: item.provider), uid: item.uid)
     }
 }
 

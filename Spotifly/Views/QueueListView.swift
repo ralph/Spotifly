@@ -56,11 +56,16 @@ struct QueueListView: View {
         let row: PlaybackViewModel.QueueRow
     }
 
+    /// How many of the next tracks the store has metadata for, which the header counts.
+    private var nextTracksWithMetadata: Int {
+        player.queueEntries.nextTracks.count(where: { store.tracks[$0.trackId] != nil })
+    }
+
     /// Flattened queue with provider info: previous + current + next. A track whose metadata
     /// has not arrived has no row, so each item keeps its index in its own list.
     private var allQueueItems: [QueueDisplayItem] {
         var items: [QueueDisplayItem] = []
-        let queue = store.queue
+        let queue = player.queueEntries
 
         for (index, entry) in queue.previousTracks.enumerated() {
             if let track = store.tracks[entry.trackId] {
@@ -123,7 +128,7 @@ struct QueueListView: View {
         .task {
             await syncQueueFavoriteStatuses()
         }
-        .onChange(of: store.queue.currentTrack?.trackId) { _, _ in
+        .onChange(of: player.queueEntries.currentTrack?.trackId) { _, _ in
             Task {
                 await syncQueueFavoriteStatuses()
             }
@@ -146,9 +151,9 @@ struct QueueListView: View {
                     playingFromText(device: device)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else if store.queueLength > 0 {
+                } else if player.queueEntries.length > 0 {
                     // Fallback to song count if no active device
-                    Text("queue.song_count \(store.queueLength) \(store.nextTrackEntities.count)")
+                    Text("queue.song_count \(player.queueEntries.length) \(nextTracksWithMetadata)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -213,7 +218,7 @@ struct QueueListView: View {
                         track: item.track,
                         index: index,
                         currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                        currentIndex: store.currentIndex,
+                        currentIndex: player.queueEntries.currentIndex,
                         provider: item.provider,
                         currentSection: .queue,
                         onDoubleTap: {
@@ -248,9 +253,10 @@ struct QueueListView: View {
     // MARK: - Navigation
 
     private func scrollToCurrentTrack() {
-        guard store.currentIndex < allQueueItems.count else { return }
+        let currentIndex = player.queueEntries.currentIndex
+        guard currentIndex < allQueueItems.count else { return }
         withAnimation {
-            scrollPosition.scrollTo(id: store.currentIndex, anchor: .center)
+            scrollPosition.scrollTo(id: currentIndex, anchor: .center)
         }
     }
 }
