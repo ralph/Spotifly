@@ -1046,6 +1046,7 @@ final class PlaybackViewModel {
     /// For the life of the process, rather than a window's, whose observers would go with it
     /// when it closes.
     private func observeSystemSleep() {
+        guard !SpotiflyApp.hostsUnitTests else { return }
         let center = NSWorkspace.shared.notificationCenter
         // On the main queue, so the mark is set before a command that follows it is handled.
         center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in

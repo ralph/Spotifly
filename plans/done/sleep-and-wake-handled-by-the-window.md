@@ -4,7 +4,7 @@ Status: **Done** 2026-10-02. The closed-window path is verified with sleep and w
 posted inside the app; real sleeps are pending, see Verification.
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift` (`observeSystemSleep`,
 `systemWillSleep`, `systemDidWake`), `Spotifly/Views/LoggedInLifecycleModifier.swift` (the
-handlers removed)
+handlers removed), `Spotifly/SpotiflyApp.swift` (`hostsUnitTests`)
 Found: 2026-10-02, in the review of `plans/done/phone-pauses-when-the-mac-sleeps.md`
 
 ## Summary
@@ -46,8 +46,11 @@ outlives a logout, so `systemDidWake` first asks `KeymasterSession.shared.hasGra
 being signed in means (`AuthViewModel.isSignedIn` is read from it, and that view model lives in the
 window). Signed out, it logs and does nothing.
 
-The unit-test host never creates `PlaybackViewModel.shared` (the menu commands read it only in
-their actions), so a wake during a test run starts no session there.
+The unit-test host shows no window, but a test can still create `PlaybackViewModel.shared`:
+`QueueHydrationTests` does, through `QueueService.hydrate()`. The host has the developer's grant,
+so a wake during a test run would have signed it in as the developer's Debug device. The code
+review found this. `observeSystemSleep` now returns early under `SpotiflyApp.hostsUnitTests`, the
+flag that already keeps the window out of the host.
 
 ## Verification
 
