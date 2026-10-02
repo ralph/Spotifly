@@ -28,6 +28,7 @@
 
 /* Common Actions */
 "action.play" = "Wiedergeben";
+"action.pause" = "Pause";
 "action.try_again" = "Erneut versuchen";
 "action.cancel" = "Abbrechen";
 "action.create" = "Erstellen";
@@ -58,6 +59,14 @@
 /* Mini Player */
 "mini_player.enter" = "Mini-Player-Modus aktivieren";
 "mini_player.restore" = "Vollständiges Fenster wiederherstellen";
+
+/* Now Playing Bar */
+"now_playing.cover_menu" = "Zu Künstler, Album oder Warteschlange";
+"now_playing.position" = "Position";
+"now_playing.position_value %@ %@" = "%1$@ von %2$@";
+"shuffle.enable" = "Zufallswiedergabe einschalten";
+"shuffle.disable" = "Zufallswiedergabe ausschalten";
+"shuffle.unavailable" = "Für das, was gerade läuft, etwa ein Radio, gibt es keine Zufallswiedergabe";
 
 /* Loading States */
 "loading.favorites" = "Lade Favoriten...";
@@ -140,6 +149,7 @@
 
 /* Lautstärke */
 "volume.device_controls_itself %@" = "%@ regelt die Lautstärke selbst";
+"volume.title" = "Lautstärke";
 
 /* Menu Commands */
 "menu.playback" = "Wiedergabe";

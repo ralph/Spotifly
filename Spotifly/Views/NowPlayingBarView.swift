@@ -90,6 +90,7 @@ struct NowPlayingBarView: View {
                         albumArt(size: 34)
                     }
                     .buttonStyle(.plain)
+                    .named("now_playing.cover_menu")
                     .onHover { hovering in
                         if hovering {
                             NSCursor.pointingHand.push()
@@ -274,6 +275,7 @@ struct NowPlayingBarView: View {
                     .font(.body)
             }
             .buttonStyle(.plain)
+            .named("menu.previous_track")
             .disabled(!hasPlayback)
 
             Button {
@@ -287,6 +289,7 @@ struct NowPlayingBarView: View {
                     .font(.title)
             }
             .buttonStyle(.plain)
+            .named(playbackViewModel.isPlaying ? "action.pause" : "action.play")
 
             Button {
                 playbackViewModel.next()
@@ -295,15 +298,13 @@ struct NowPlayingBarView: View {
                     .font(.body)
             }
             .buttonStyle(.plain)
+            .named("menu.next_track")
             .disabled(!playbackViewModel.hasNext)
         }
     }
 
-    private var shuffleHelp: String {
-        if !playbackViewModel.canShuffle {
-            return "Shuffle is not available for what is playing, such as a radio"
-        }
-        return playbackViewModel.isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"
+    private var shuffleName: LocalizedStringKey {
+        playbackViewModel.isShuffleEnabled ? "shuffle.disable" : "shuffle.enable"
     }
 
     private var shuffleButton: some View {
@@ -316,7 +317,9 @@ struct NowPlayingBarView: View {
         }
         .buttonStyle(.plain)
         .disabled(!hasPlayback || !playbackViewModel.canShuffle)
-        .help(shuffleHelp)
+        .accessibilityLabel(shuffleName)
+        // Greyed out, it says why; a radio cannot be shuffled.
+        .help(playbackViewModel.canShuffle ? shuffleName : "shuffle.unavailable")
     }
 
     /// Current playback position (interpolated for smooth display)
@@ -360,6 +363,11 @@ struct NowPlayingBarView: View {
                 )
                 .controlSize(.mini)
                 .tint(.green)
+                // Its value is milliseconds, which accessibility would read out as they are.
+                .accessibilityLabel("now_playing.position")
+                .accessibilityValue(Text(
+                    "now_playing.position_value \(formatTrackTime(milliseconds: Int(currentPositionMs))) \(formatTrackTime(milliseconds: Int(currentDurationMs)))",
+                ))
 
                 // Show timestamp only on hover
                 if isHoveringSeekBar {
@@ -406,8 +414,7 @@ struct NowPlayingBarView: View {
             .frame(width: 50, alignment: .trailing)
         }
         .buttonStyle(.plain)
-        .help("queue.open")
-        .accessibilityLabel("queue.open")
+        .named("queue.open")
     }
 
     /// Whether the current track is favorited (from global store)
@@ -427,7 +434,7 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(isCurrentTrackFavorited ? .red : .secondary)
         }
         .buttonStyle(.plain)
-        .favoriteToggleName(isFavorited: isCurrentTrackFavorited)
+        .named(.favoriteToggle(isFavorited: isCurrentTrackFavorited))
     }
 
     private func resolveCurrentTrackMetadataIfNeeded() async {
@@ -508,6 +515,7 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
+        .named("volume.title")
         .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
@@ -525,6 +533,8 @@ struct NowPlayingBarView: View {
                     .tint(.green)
                     .frame(width: 120)
                     .disabled(volumeRefused)
+                    .accessibilityLabel("volume.title")
+                    .accessibilityValue(Text((currentVolume / 100).formatted(.percent.precision(.fractionLength(0)))))
 
                     Image(systemName: "speaker.wave.3.fill")
                         .font(.caption)
@@ -556,7 +566,7 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .help(windowState.isMiniPlayerMode ? "mini_player.restore" : "mini_player.enter")
+        .named(windowState.isMiniPlayerMode ? "mini_player.restore" : "mini_player.enter")
     }
 
     @ViewBuilder

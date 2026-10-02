@@ -28,7 +28,7 @@ struct LoggedInContentToolbar: ToolbarContent {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("menu.refresh")
+                .named("menu.refresh")
             }
         }
         ToolbarItem(placement: .navigation) {
@@ -38,7 +38,7 @@ struct LoggedInContentToolbar: ToolbarContent {
                 } label: {
                     Image(systemName: "arrow.down.to.line")
                 }
-                .help("queue.scroll_to_current")
+                .named("queue.scroll_to_current")
             }
         }
     }
@@ -63,7 +63,7 @@ private struct NavigationHistoryToolbarControl: View {
             } label: {
                 Image(systemName: "chevron.left")
             }
-            .help(navigationCoordinator.backNavigationTitle.map { String(localized: "nav.back_to \($0)") } ?? String(localized: "nav.back"))
+            .named(verbatim: navigationCoordinator.backNavigationTitle.map { String(localized: "nav.back_to \($0)") } ?? String(localized: "nav.back"))
             .disabled(!navigationCoordinator.canNavigateBackward)
 
             Button {
@@ -71,7 +71,7 @@ private struct NavigationHistoryToolbarControl: View {
             } label: {
                 Image(systemName: "chevron.right")
             }
-            .help(navigationCoordinator.forwardNavigationTitle.map { String(localized: "nav.forward_to \($0)") } ?? String(localized: "nav.forward"))
+            .named(verbatim: navigationCoordinator.forwardNavigationTitle.map { String(localized: "nav.forward_to \($0)") } ?? String(localized: "nav.forward"))
             .disabled(!navigationCoordinator.canNavigateForward)
         }
         .controlGroupStyle(.navigation)
