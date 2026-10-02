@@ -182,7 +182,8 @@ struct SpeakerRow: View {
                             Text("metadata.separator")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text(verbatim: "\(volume)%")
+                            // "50 %" in German and French.
+                            Text(volume.formatted(.percent))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
