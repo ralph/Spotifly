@@ -1,7 +1,8 @@
 # What finding out a withheld track by loading it still costs
 
-Status: **Open**, in part. spclient's metadata is read for it since 2026-10-01, seen in the
-running app; see Progress. The other three are weighed there and left. What is left of
+Status: **Done** 2026-10-01 for spclient's metadata, seen in the running app; see Progress.
+The other three were weighed there and left, none seen to cost anything a user notices; a new
+plan if one does. What is left of
 `plans/done/unplayable-track-attempts-cost-and-show.md` once a withheld track stopped being shown.
 Components: `Spotifly/SwiftLibrespot/Public/AutoAdvance.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`takeOver`, `loadAndPlay`),

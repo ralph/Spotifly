@@ -1,12 +1,11 @@
 # What the mirrored queue still takes on trust: autoplay, other devices
 
-Status: **Open**, in part. Next on a context's last track, this Mac's own report of the next
-round under repeat, and the take-over of a bare list are done and seen, the last two on a phone
-(2026-10-01); see Progress. The mirror lists one round under repeat, seen with the web player
-(2026-10-01). A phone with autoplay on was measured (2026-10-02): the mirror and Next work, and
-what does not is this Mac's missing autoplay, now `plans/done/autoplay.md`. What is left needs a
-device that names a reason not to skip next, or librespot as the other device. From the altitude
-review of
+Status: **Done** 2026-10-02 for the devices measured, the web player and a phone; see Progress.
+Next on a context's last track, this Mac's own report of the next round under repeat, the
+take-over of a bare list and one round in the mirror were seen working (2026-10-01), and a phone's
+autoplay rows mirrored (2026-10-02), where what failed was this Mac's missing autoplay, now
+`plans/done/autoplay.md`. What needs librespot as the other device, or a device that refuses Next,
+moved to `plans/open/mirrored-queue-left-to-measure.md`. From the altitude review of
 `plans/done/mirrored-queue-runs-past-the-context.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`mirroredQueue`, the take-over
 of a mirrored bare list), `Spotifly/ViewModels/PlaybackViewModel.swift` (`hasNext`),
@@ -17,8 +16,9 @@ Found: 2026-09-30, in the review of the fix for the mirrored queue
 
 The mirrored queue leaves out the rows another device marks hidden, which is the rule the web
 player's own queue follows. The web player's rows were measured, and a phone's were seen working
-for a bare list and for the next round under repeat. What is still taken on trust: autoplay rows,
-a device that refuses Next, and the next round of another device's context.
+for a bare list and for the next round under repeat, and a phone's autoplay rows were logged. What
+is still taken on trust, librespot's rows and a device that refuses Next, is
+`plans/open/mirrored-queue-left-to-measure.md`.
 
 ## Problem
 
@@ -48,19 +48,18 @@ a device that refuses Next, and the next round of another device's context.
 
 ## Solution
 
-The take-over and this Mac's report are built; see Progress. The others need a measurement
-first: the cluster's rows and restrictions from a phone and from librespot, on a context's last
-track, with autoplay on. The web player's restrictions there can be read with this Mac
-mirroring it; librespot never sets `disallow_skipping_next_reasons`
-(`connect/src/state/restrictions.rs`), so for a librespot device they would say nothing.
+The take-over and this Mac's report are built, and the mirror lists one round; see Progress. A
+phone's rows on a context's last track with autoplay on were measured (2026-10-02). librespot's
+were not: it never sets `disallow_skipping_next_reasons` (`connect/src/state/restrictions.rs`),
+so for a librespot device the restrictions say nothing, and its autoplay rows are unmeasured.
 
 ## Verification
 
 - The take-over: unit tests (`BareListTakeOverTests`), and seen on a phone; see Progress.
 - Next on the last track, and the next round under repeat: see Progress.
 - Autoplay on: a phone's rows logged on a context's last track; see Progress.
-- What is left: a device that names a reason not to skip next, and librespot as the other
-  device.
+- Not seen: a device that names a reason not to skip next, and librespot as the other device;
+  see `plans/open/mirrored-queue-left-to-measure.md`.
 
 ## Progress
 
@@ -132,9 +131,9 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
   - The fetch-ahead gets the first track on the last one, so the wrap is gapless; it used to
     get nothing there.
   - The app's own queue lists one round, as before, as the web player's own queue panel does
-    (below); the bar's "n/m" counts its rows. The mirror of another device still lists the next
-    round where that device does not hide it, as `MirroredQueueTests` has it, so the two differ:
-    left open.
+    (below); the bar's "n/m" counts its rows. The mirror of another device still listed the next
+    round where that device did not hide it, so the two differed until the mirror listed one
+    round too (below).
   - **Seen:** "Not Bad for New Jersey" on the Mac, its last track, repeat on from the web player.
     A throwaway log, never committed, showed the report: `delimiter0` with `hidden: true`, then
     track 1, 2, 3 with their row uids. "Fetching … ahead" named track 1 right after the
