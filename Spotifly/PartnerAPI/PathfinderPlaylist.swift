@@ -24,16 +24,6 @@ nonisolated struct PathfinderPlaylistResponse: Decodable, Sendable {
 /// bytes with tracks reduced to a uri and a duration, contents in 4396 with no playlist fields
 /// at all, and `fetchPlaylist` in 7144 with both. The app wants both, so it asks for both.
 nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable, PathfinderEntityUnion {
-    struct Owner: Decodable, Sendable {
-        struct Data: Decodable, Sendable {
-            let username: String?
-            let name: String?
-            let uri: String?
-        }
-
-        let data: Data?
-    }
-
     struct Images: Decodable, Sendable {
         let items: [PathfinderImage]?
     }
@@ -49,7 +39,7 @@ nonisolated struct PathfinderPlaylistUnion: Decodable, Sendable, PathfinderEntit
     let uri: String?
     let name: String?
     let description: String?
-    let ownerV2: Owner?
+    let ownerV2: PathfinderOwner?
     let images: Images?
     let content: Content?
 

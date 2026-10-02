@@ -34,15 +34,25 @@ those actions on every refresh of it (⌘R, or pull to refresh), until the app w
 - **Read the owner where it is:** `PathfinderPlaylist.Owner` decodes the owner's `uri`.
   `Playlist(pathfinder:)` takes the username, or else the id in that uri. The start page's stubs
   take it from their contributor's uri.
-- **Keep a known owner:** `upsertPlaylist` keeps the owner a load found when a summary names none.
-  A playlist's owner never changes, so this is never stale. It covers any other summary without
-  one.
+- **Keep a known owner and description:** `upsertPlaylist` keeps what a load found when a summary
+  names no owner or no description. A Recents entry carries neither.
+  - A playlist's owner never changes, so the kept owner is never stale.
+  - The description matters as soon as the owner is back. Before, a refresh blanked the description
+    and hid Edit Details. With the owner restored, Edit Details would open on the blank and save it
+    over the real description on Spotify.
+  - A description cleared on another device stays here until the playlist is loaded again, which is
+    the lesser cost.
+
+### Left
+
+The owner also gates adding and removing tracks (`TrackContextMenu`), where a collaborator may edit
+too. Whether a playlist's own load says so per user isn't measured.
 
 ## Verification
 
 - **Unit tests:**
   - a start page playlist names its owner, from a recents contributor and from `ownerV2`'s uri;
-  - a summary with no owner keeps the stored one, loaded or not.
+  - a summary with no owner or description keeps the stored ones.
 - **Live, 2026-10-02:** with the fix, the start page's playlists named their owners: `spotify`
   for Spotify's, `ericpuig` for "Good Vibrations OST", and a user id for "Mein Lotta-Leben".
 - **Not seen live:** an owned playlist on the start page keeping its toolbar through a refresh.

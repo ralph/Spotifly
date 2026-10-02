@@ -213,8 +213,8 @@ extension PathfinderPlaylistUnion {
             uri: uri,
             // Not in this projection, and nothing renders it — the Web API path defaulted it too.
             isPublic: true,
-            ownerId: owner?.uri.flatMap(SpotifyURI.id(from:)) ?? owner?.username ?? "",
-            ownerName: owner?.name ?? owner?.username ?? "",
+            ownerId: owner?.id ?? "",
+            ownerName: owner?.displayName ?? "",
             items: items,
             totalDurationMs: tracks.reduce(0) { $0 + $1.durationMs },
             knownTrackCount: content?.totalCount,
@@ -478,9 +478,7 @@ extension Playlist {
             images: ImageSet(pathfinderSources: (playlist.images?.items ?? []).first?.sources),
             uri: uri,
             isPublic: true,
-            // The username where the answer has it; the start page's playlists name their owner by
-            // uri only, `spotify:user:<id>` (2026-10-02).
-            ownerId: owner?.username ?? owner?.uri.flatMap { SpotifyURI.id(from: $0, kind: "user") } ?? "",
+            ownerId: owner?.id ?? "",
             ownerName: playlist.ownerName ?? "",
             items: [],
             totalDurationMs: nil,
