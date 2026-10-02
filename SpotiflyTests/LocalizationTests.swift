@@ -2,9 +2,9 @@
 //  LocalizationTests.swift
 //  SpotiflyTests
 //
-//  Every string the code names is translated, in every language. A key without an entry shows
-//  as the raw key: `playlist.loading` in every language, and `speakers.airplay_disabled_hint` in
-//  German, until 2026-10-02.
+//  Every string the code names is translated, in every language, and every string is named by
+//  the code. A key without an entry shows as the raw key: `playlist.loading` in every language,
+//  and `speakers.airplay_disabled_hint` in German, until 2026-10-02.
 //
 
 import Foundation
@@ -58,6 +58,15 @@ struct LocalizationTests {
         let missing = try keysNamedByTheCode().subtracting(keys("en"))
 
         #expect(missing.sorted() == [])
+    }
+
+    /// The other way: a string no code names is left over from code that went. Every key has to
+    /// reach the code as a literal the compiler extracts for this to hold, which is why the
+    /// formatting helpers take a `LocalizedStringResource`.
+    @Test func `every English string is named by the code`() throws {
+        let unused = try keys("en").subtracting(keysNamedByTheCode())
+
+        #expect(unused.sorted() == [])
     }
 
     @Test(arguments: Bundle.main.localizations.filter { $0 != "en" && $0 != "Base" })
