@@ -308,4 +308,21 @@ nonisolated enum SpotifyURI {
         }
         return String(parts[2])
     }
+
+    /// The page on open.spotify.com a uri names, which Share copies: `spotify:album:<id>` is
+    /// `https://open.spotify.com/album/<id>`. Nil for what has no page there, such as a folder or
+    /// a local file.
+    ///
+    /// The Web API answered it with every entity, as `external_urls.spotify`; pathfinder and
+    /// spclient don't, so since the move to them every entity's was nil, and Share was greyed for
+    /// all of them (2026-10-02).
+    static func webURL(_ uri: String) -> String? {
+        let parts = uri.split(separator: ":")
+        guard parts.count == 3, parts[0] == "spotify", pagedKinds.contains(parts[1]), !parts[2].isEmpty else {
+            return nil
+        }
+        return "https://open.spotify.com/\(parts[1])/\(parts[2])"
+    }
+
+    private static let pagedKinds: Set<Substring> = ["track", "album", "artist", "playlist", "show", "episode", "user"]
 }

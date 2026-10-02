@@ -20,7 +20,6 @@ func track(id: String) -> Track {
         uri: "spotify:track:\(id)",
         durationMs: 180_000,
         trackNumber: 1,
-        externalUrl: nil,
         albumId: "album",
         artistId: "artist",
         artistName: "Artist",
@@ -35,7 +34,6 @@ func album(
     name: String = "Album",
     releaseDate: String? = nil,
     albumType: String? = "album",
-    externalUrl: String? = nil,
     artistId: String? = nil,
     artistName: String = "Artist",
     detailsLoaded: Bool = true,
@@ -47,7 +45,6 @@ func album(
         images: .empty,
         releaseDate: releaseDate,
         albumType: albumType,
-        externalUrl: externalUrl,
         artistId: artistId,
         artistName: artistName,
         detailsLoaded: detailsLoaded,
@@ -61,7 +58,6 @@ func artist(id: String, name: String) -> Artist {
         name: name,
         uri: "spotify:artist:\(id)",
         images: .empty,
-        externalUrl: nil,
     )
 }
 

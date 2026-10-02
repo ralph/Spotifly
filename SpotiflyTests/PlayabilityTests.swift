@@ -57,7 +57,7 @@ struct PlayabilityTests {
         func track(_ playability: Playability) -> Track {
             var track = Track(
                 id: "g", name: "Girlfriend", uri: "spotify:track:g", durationMs: 0, trackNumber: nil,
-                externalUrl: nil, albumId: nil, artistId: nil, artistName: "", albumName: nil, images: .empty,
+                albumId: nil, artistId: nil, artistName: "", albumName: nil, images: .empty,
             )
             track.playability = playability
             return track

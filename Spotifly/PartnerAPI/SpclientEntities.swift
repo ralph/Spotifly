@@ -32,7 +32,6 @@ extension Track {
             durationMs: track.duration ?? 0,
             trackNumber: track.number,
             // metadata/4 carries no external_urls; `Track` generates one from the id.
-            externalUrl: nil,
             albumId: track.album?.gid.flatMap(SpotifyGID.base62(fromGID:)),
             artistId: track.artist?.first?.gid.flatMap(SpotifyGID.base62(fromGID:)),
             artistName: track.artistNames.first ?? "Unknown",

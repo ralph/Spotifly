@@ -68,7 +68,11 @@ struct Track: Identifiable, Hashable, Encodable {
     let uri: String
     let durationMs: Int
     let trackNumber: Int?
-    let externalUrl: String?
+
+    /// Its page on open.spotify.com, which Share copies.
+    var externalUrl: String? {
+        SpotifyURI.webURL(uri)
+    }
 
     // Relationships (stored as IDs, not nested objects)
     let albumId: String?
@@ -122,7 +126,11 @@ struct Album: Identifiable, Hashable, Encodable {
     let images: ImageSet
     let releaseDate: String?
     let albumType: String?
-    let externalUrl: String?
+
+    /// Its page on open.spotify.com, which Share copies.
+    var externalUrl: String? {
+        SpotifyURI.webURL(uri)
+    }
 
     // Relationships
     let artistId: String?
@@ -161,7 +169,6 @@ struct Album: Identifiable, Hashable, Encodable {
         images: ImageSet,
         releaseDate: String?,
         albumType: String?,
-        externalUrl: String?,
         artistId: String?,
         artistName: String,
         trackIds: [String] = [],
@@ -176,7 +183,6 @@ struct Album: Identifiable, Hashable, Encodable {
         self.images = images
         self.releaseDate = releaseDate
         self.albumType = albumType
-        self.externalUrl = externalUrl
         self.artistId = artistId
         self.artistName = artistName
         self.trackIds = trackIds
@@ -195,7 +201,11 @@ struct Artist: Identifiable, Hashable, Encodable {
     let name: String
     let uri: String
     let images: ImageSet
-    let externalUrl: String?
+
+    /// Its page on open.spotify.com, which Share copies.
+    var externalUrl: String? {
+        SpotifyURI.webURL(uri)
+    }
 }
 
 // MARK: - Playlist
@@ -210,7 +220,11 @@ struct Playlist: Identifiable, Hashable, Encodable {
     var isPublic: Bool
     let ownerId: String
     let ownerName: String
-    let externalUrl: String?
+
+    /// Its page on open.spotify.com, which Share copies.
+    var externalUrl: String? {
+        SpotifyURI.webURL(uri)
+    }
 
     // Mutable state (populated when tracks are loaded)
     var items: [PlaylistItem]
@@ -244,7 +258,6 @@ struct Playlist: Identifiable, Hashable, Encodable {
         isPublic: Bool,
         ownerId: String,
         ownerName: String,
-        externalUrl: String? = nil,
         items: [PlaylistItem] = [],
         totalDurationMs: Int? = nil,
         knownTrackCount: Int? = nil,
@@ -258,7 +271,6 @@ struct Playlist: Identifiable, Hashable, Encodable {
         self.isPublic = isPublic
         self.ownerId = ownerId
         self.ownerName = ownerName
-        self.externalUrl = externalUrl
         self.items = items
         self.totalDurationMs = totalDurationMs
         self.tracksLoaded = tracksLoaded

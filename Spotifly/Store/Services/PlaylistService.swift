@@ -200,7 +200,6 @@ final class PlaylistService {
             isPublic: false,
             ownerId: owner.id,
             ownerName: owner.displayName,
-            externalUrl: nil,
             items: [],
             totalDurationMs: 0,
             knownTrackCount: 0,
