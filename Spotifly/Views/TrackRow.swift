@@ -46,7 +46,7 @@ struct TrackRow: View {
     /// both. The uid is the only thing that tells them apart, which is why removing from the
     /// context menu needs it.
     let itemUid: String?
-    let onDoubleTap: (@MainActor () async -> Void)? // Playback action on double-tap
+    let onDoubleTap: (@MainActor () async -> Void)? // Plays the row, on a double-click or by accessibility
 
     /// Made once, not in every row's body, so a row hands its artwork the same shape each time
     /// the list redraws.
@@ -230,8 +230,8 @@ struct TrackRow: View {
             )
         }
         .onTapGesture(count: 2, perform: play)
-        // Accessibility has no double-click, so the row is a group, its heart and menu still
-        // inside it, named by its track and with Play as one of its actions.
+        // Accessibility has no double-click, so Play is an action on the row, a group that keeps
+        // its heart and menu reachable.
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: "\(track.name), \(track.artistName)"))
         .accessibilityAction(named: Text("action.play"), play)
@@ -245,9 +245,8 @@ struct TrackRow: View {
         )
     }
 
-    /// What a double-click does. A track Spotify will not play starts nothing: played, it would
-    /// only fail with the same message, and search's double-click starts radio, which is refused
-    /// too.
+    /// Plays the row's track. One Spotify will not play starts nothing: played, it would only
+    /// fail with the same message, and search's double-click starts radio, which is refused too.
     private func play() {
         if let message = track.unplayableMessage {
             playbackViewModel.errorMessage = message
