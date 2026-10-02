@@ -827,11 +827,10 @@ final class PlaybackViewModel {
 
     /// Previous track, or the start of this one.
     ///
-    /// `hasPrevious` enables the control once playback is more than three seconds in even with
-    /// no earlier track, because restarting is what pressing it then means — and the local
-    /// player does exactly that. A remote device does not: `skip_prev` comes back
-    /// `403 no_prev_track`, which left the button enabled and doing nothing while an error
-    /// banner blamed Spotify. So the refusal is answered with the seek it stood for.
+    /// With no earlier track, restarting is what pressing it means, and the local player does
+    /// exactly that. A remote device does not: `skip_prev` comes back `403 no_prev_track`,
+    /// which left the button enabled and doing nothing while an error banner blamed Spotify.
+    /// So the refusal is answered with the seek it stood for.
     func previous() {
         skip("previous()", local: { try await SpotifyPlayer.previous() }, remote: .previous) { [weak self] error in
             guard error.isNoPreviousTrack else { return }
@@ -948,10 +947,10 @@ final class PlaybackViewModel {
         player.playback?.canShuffle != false
     }
 
-    /// Returns true if there are tracks before the current track or if we're past the start of the track
+    /// Whether Previous does anything: it goes back a track, or restarts this one where there
+    /// is none to go back to; see `previous()`.
     var hasPrevious: Bool {
-        // Allow previous if we have previous tracks or if we're more than 3 seconds into the current track
-        !player.queueEntries.previousTracks.isEmpty || currentPositionMs > 3000
+        currentTrackUri != nil
     }
 
     // MARK: - Media Keys & Now Playing
@@ -1124,7 +1123,10 @@ final class PlaybackViewModel {
     private func applyNowPlayingTiming(to info: inout [String: Any]) {
         if let durationMs = effectiveNowPlayingDurationMs {
             info[MPMediaItemPropertyPlaybackDuration] = Double(durationMs) / 1000.0
-            let validPosition = min(currentPositionMs, durationMs)
+            // Where the bar is now, not the anchor: macOS runs the elapsed time on from the
+            // moment it is published, and an anchor can be seconds old by then, or back-dated
+            // by a report's age.
+            let validPosition = min(interpolatedPositionMs, durationMs)
             info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(validPosition) / 1000.0
         } else {
             info.removeValue(forKey: MPMediaItemPropertyPlaybackDuration)
@@ -1356,7 +1358,6 @@ final class PlaybackViewModel {
         // Update playing state
         // When active device: use SpotifyPlayer.isPlaying (local Spirc state)
         // When not active: use cluster state (remote device's actual state)
-        let wasPlaying = isPlaying
         let newIsPlaying: Bool = if SpotifyPlayer.isActiveDevice {
             SpotifyPlayer.isPlaying
         } else {
@@ -1397,10 +1398,11 @@ final class PlaybackViewModel {
             debugLog("PlaybackViewModel", "Ignoring out-of-range playback position: \(state.positionMs)ms")
         }
 
-        // Update Now Playing position if playback rate changed, or if track changed
+        // The anchor moved, so Control Center has to move with it: it runs on from the last
+        // elapsed time published, and a seek on another device changes no rate and no track.
         if trackChanged || receivedFirstStreamDuration {
             updateNowPlayingInfo()
-        } else if wasPlaying != isPlaying {
+        } else {
             updateNowPlayingPosition()
         }
     }
@@ -1491,7 +1493,7 @@ final class PlaybackViewModel {
     /// whose only possible disagreement with its source was being stale. Reading it live also
     /// means a duration arriving after the position now caps it, where the stored copy kept
     /// whatever it was written with.
-    var currentPositionMs: UInt32 {
+    private var currentPositionMs: UInt32 {
         clampedToTrack(positionAnchorMs)
     }
 
