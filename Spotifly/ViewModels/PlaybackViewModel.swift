@@ -959,6 +959,11 @@ final class PlaybackViewModel {
         currentTrackUri != nil && player.playback?.canSkipNext != false
     }
 
+    /// Whether shuffle may be switched on; see `PlaybackState.canShuffle`.
+    var canShuffle: Bool {
+        player.playback?.canShuffle != false
+    }
+
     /// Returns true if there are tracks before the current track or if we're past the start of the track
     var hasPrevious: Bool {
         guard let store else { return false }

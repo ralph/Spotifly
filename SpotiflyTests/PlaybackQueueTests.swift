@@ -683,15 +683,65 @@ struct StationPageQueueTests {
         #expect(queue.nextPageUrl == nil)
     }
 
+    /// A playlist longer than the pages fetched up front comes a page at a time too.
     @Test func `shuffled, a page's rows come after the rows not yet played`() {
         let queue = PlaybackQueue()
         queue.setShuffle(true)
-        queue.setContext(uri: "spotify:station:track:x", tracks: ["a", "b", "c"], startIndex: 0)
+        queue.setContext(uri: "spotify:playlist:long", tracks: ["a", "b", "c"], startIndex: 0, nextPage: "page2")
         let before = Set(queue.upcoming().map(\.uri))
 
         queue.appendPage(["d", "e"], uids: [nil, nil], next: nil)
         let upcoming = queue.upcoming().map(\.uri)
         #expect(Set(upcoming.prefix(before.count)) == before)
         #expect(Set(upcoming.dropFirst(before.count)) == ["d", "e"])
+    }
+}
+
+/// A context's restrictions, as the resolver names them for a station (2026-10-02).
+struct ContextRestrictionQueueTests {
+    private var radio: Restrictions {
+        var restrictions = Restrictions()
+        restrictions.togglingRepeatContext = ["radio"]
+        restrictions.togglingShuffle = ["radio"]
+        return restrictions
+    }
+
+    @Test func `a station starts unshuffled and without repeat, in its own order`() {
+        let queue = PlaybackQueue()
+        queue.setShuffle(true)
+        queue.setRepeat(.context)
+        queue.setContext(uri: "spotify:station:track:x", tracks: ["a", "b", "c"], startIndex: 0, nextPage: "page2", restrictions: radio)
+
+        #expect(!queue.shuffleEnabled)
+        #expect(queue.repeatMode == .off)
+        #expect(queue.upcoming().map(\.uri) == ["b", "c"])
+    }
+
+    @Test func `repeat-one, which a station allows, stays on`() {
+        let queue = PlaybackQueue()
+        queue.setRepeat(.track)
+        queue.setContext(uri: "spotify:station:track:x", tracks: ["a", "b"], startIndex: 0, restrictions: radio)
+
+        #expect(queue.repeatMode == .track)
+    }
+
+    @Test func `a context without restrictions keeps the options`() {
+        let queue = PlaybackQueue()
+        queue.setShuffle(true)
+        queue.setRepeat(.context)
+        queue.setContext(uri: "spotify:album:y", tracks: ["a", "b", "c"], startIndex: 0)
+
+        #expect(queue.shuffleEnabled)
+        #expect(queue.repeatMode == .context)
+    }
+
+    @Test func `a rewind keeps the restrictions, and the next context has its own`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:station:track:x", tracks: ["a", "b"], startIndex: 1, restrictions: radio)
+        queue.rewind(to: 0)
+        #expect(queue.restrictions == radio)
+
+        queue.setContext(uri: "spotify:album:y", tracks: ["c"], startIndex: 0)
+        #expect(queue.restrictions.isEmpty)
     }
 }

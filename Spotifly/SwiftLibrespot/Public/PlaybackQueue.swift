@@ -61,6 +61,9 @@ final nonisolated class PlaybackQueue {
 
     private(set) var shuffleEnabled = false
     private(set) var repeatMode: RepeatMode = .off
+    /// What the context does not allow, as the resolver named it, which `LibrespotClient` keeps
+    /// to and reports: a station's shuffle and repeat. Set with the context.
+    private(set) var restrictions = Restrictions()
 
     /// Shuffle visits the context in a random permutation instead of list
     /// order; `shuffleOrder`/`shufflePosition` track where we are in it.
@@ -150,14 +153,21 @@ final nonisolated class PlaybackQueue {
     /// Starts the context over at `startIndex`, with the rows it has: the end of it, played
     /// through with nothing to repeat. Autoplay's rows go, as the context's own come round again.
     func rewind(to startIndex: Int) {
-        setContext(uri: contextUri, tracks: Array(contextTracks.prefix(ownCount)), uids: Array(contextUids.prefix(ownCount)), startIndex: startIndex, nextPage: nextPageUrl)
+        setContext(uri: contextUri, tracks: Array(contextTracks.prefix(ownCount)), uids: Array(contextUids.prefix(ownCount)), startIndex: startIndex, nextPage: nextPageUrl, restrictions: restrictions)
     }
 
-    /// Replaces the whole playing context, with its rows' uids where it has them, and the url of
-    /// its next page where its rows are not all of it.
-    func setContext(uri: String, tracks: [String], uids: [String?] = [], startIndex: Int, nextPage: String? = nil) {
+    /// Replaces the whole playing context, with its rows' uids where it has them, the url of
+    /// its next page where its rows are not all of it, and what it does not allow. Shuffle and
+    /// repeat it does not allow go off, as go-librespot's `loadContext` turns them off and the
+    /// web player reported a shuffled station handed to it unshuffled (2026-10-02).
+    func setContext(uri: String, tracks: [String], uids: [String?] = [], startIndex: Int, nextPage: String? = nil, restrictions: Restrictions = .init()) {
         contextUri = uri
         nextPageUrl = nextPage
+        self.restrictions = restrictions
+        shuffleEnabled = shuffleEnabled && restrictions.allowsShuffle
+        if !restrictions.allows(repeatMode) {
+            repeatMode = .off
+        }
         contextTracks = tracks
         contextUids = Self.aligned(uids, to: tracks)
         autoplayStart = nil
