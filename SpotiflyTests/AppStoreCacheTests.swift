@@ -103,4 +103,21 @@ struct PlaylistDescriptionTests {
         #expect(String?(nil).normalizedPlaylistDescription == nil)
         #expect(String?("Real description").normalizedPlaylistDescription == "Real description")
     }
+
+    /// As the start page sent them on 2026-10-02.
+    @Test func `a description reads as the text its HTML shows`() {
+        #expect(String?("<a href=spotify:playlist:37i9dQZF1EIXPRB6OHORIn>Brian Fallon</a>, <a href=spotify:playlist:37i9dQZF1EIZN733xVL21v>The Horrible Crowes</a> und mehr").normalizedPlaylistDescription
+            == "Brian Fallon, The Horrible Crowes und mehr")
+        #expect(String?("a chronicle of Terri Hooley&#x27;s life").normalizedPlaylistDescription == "a chronicle of Terri Hooley's life")
+        #expect(String?("Die handverlesene Playlist zum Fest & Flauschig Podcast.").normalizedPlaylistDescription
+            == "Die handverlesene Playlist zum Fest & Flauschig Podcast.")
+    }
+
+    /// A `<` the user typed comes escaped, and stays a `<`; only Spotify's own tags go.
+    @Test func `escaped characters come back as typed`() {
+        #expect("I &lt;3 this &amp; that &quot;song&quot; &#39;99".htmlAsPlainText == "I <3 this & that \"song\" '99")
+        #expect("a < b and c > d".htmlAsPlainText == "a < b and c > d")
+        #expect("&unknown; &#xZZ; stays".htmlAsPlainText == "&unknown; &#xZZ; stays")
+        #expect(String?("<a href=spotify:x></a>").normalizedPlaylistDescription == nil)
+    }
 }
