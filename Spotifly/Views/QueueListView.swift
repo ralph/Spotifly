@@ -14,6 +14,8 @@ extension Notification.Name {
     static let showAlbumRemoveConfirmation = Notification.Name("showAlbumRemoveConfirmation")
     static let showArtistUnfollowConfirmation = Notification.Name("showArtistUnfollowConfirmation")
     static let showPlaylistEditDetails = Notification.Name("showPlaylistEditDetails")
+    static let showPlaylistCoverPicker = Notification.Name("showPlaylistCoverPicker")
+    static let showPlaylistRemoveCoverConfirmation = Notification.Name("showPlaylistRemoveCoverConfirmation")
     static let showPlaylistDeleteConfirmation = Notification.Name("showPlaylistDeleteConfirmation")
     static let showPlaylistUnfollowConfirmation = Notification.Name("showPlaylistUnfollowConfirmation")
 }

@@ -229,6 +229,12 @@
 "playlist.menu.delete" = "Supprimer la playlist";
 "playlist.menu.unfollow" = "Ne plus suivre la playlist";
 "playlist.menu.follow" = "Suivre la playlist";
+"playlist.menu.cover" = "Image de couverture";
+"playlist.menu.choose_cover" = "Choisir une image…";
+"playlist.menu.remove_cover" = "Supprimer l’image";
+"playlist.remove_cover.title" = "Supprimer l’image de couverture";
+"playlist.remove_cover.action" = "Supprimer";
+"playlist.remove_cover.message" = "Spotify affiche de nouveau sa propre couverture pour cette playlist.";
 "playlist.edit_details.title" = "Modifier la playlist";
 "playlist.edit_details.name" = "Nom";
 "playlist.edit_details.description" = "Description";

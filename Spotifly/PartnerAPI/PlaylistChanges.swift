@@ -29,13 +29,19 @@ nonisolated struct PlaylistOp: Encodable, Sendable {
     struct Attributes: Encodable, Sendable {
         var name: String?
         var description: String?
+        /// The cover's image id, as `register-image` answers it: the `bytes` field in proto3's
+        /// JSON, base64.
+        var picture: String?
     }
 
     /// `ListAttributesPartialState`, which is a partial by design: the fields it names are the
     /// fields that move. A nil is omitted by the encoder and the existing value stands, so an
     /// empty string is how a description is cleared and not the same thing as leaving it alone.
+    /// A field with no value is named in `noValue`, by its `ListAttributeKind`: the web player
+    /// removes a cover so, `LIST_PICTURE` (2026-10-02).
     struct PartialState: Encodable, Sendable {
         var values: Attributes
+        var noValue: [String]?
     }
 
     struct AttributeUpdate: Encodable, Sendable {
@@ -89,14 +95,19 @@ nonisolated struct PlaylistOp: Encodable, Sendable {
     }
 
     static func attributes(name: String?, description: String?) -> PlaylistOp {
-        PlaylistOp(
-            kind: "UPDATE_LIST_ATTRIBUTES",
-            updateListAttributes: AttributeUpdate(
-                newAttributes: PartialState(
-                    values: Attributes(name: name, description: description),
-                ),
-            ),
-        )
+        attributes(PartialState(values: Attributes(name: name, description: description)))
+    }
+
+    /// Sets the cover to an image `register-image` named.
+    static func picture(_ picture: String) -> PlaylistOp {
+        attributes(PartialState(values: Attributes(picture: picture)))
+    }
+
+    /// Takes the cover away, so the playlist shows Spotify's own again.
+    static let removePicture = attributes(PartialState(values: Attributes(), noValue: ["LIST_PICTURE"]))
+
+    private static func attributes(_ state: PartialState) -> PlaylistOp {
+        PlaylistOp(kind: "UPDATE_LIST_ATTRIBUTES", updateListAttributes: AttributeUpdate(newAttributes: state))
     }
 
     /// `addedAt` is injectable so a test can pin the encoded body; nothing else passes it.

@@ -20,6 +20,8 @@ struct PlaylistDetailView: View {
     @State private var isLoading = false
     @State private var failure: LoadFailure?
     @State private var showEditDetailsDialog = false
+    @State private var showCoverPicker = false
+    @State private var showRemoveCoverConfirmation = false
     @State private var showDeleteConfirmation = false
     @State private var showUnfollowConfirmation = false
     @State private var editingPlaylistName = ""
@@ -118,6 +120,23 @@ struct PlaylistDetailView: View {
             editingPlaylistName = playlistName
             editingPlaylistDescription = playlistDescription
             showEditDetailsDialog = true
+        }
+        .fileImporter(isPresented: $showCoverPicker, allowedContentTypes: [.image]) { picked in
+            updating { try await playlistService.changePlaylistCover(playlistId: playlistId, imageAt: picked.get()) }
+        }
+        .alert("playlist.remove_cover.title", isPresented: $showRemoveCoverConfirmation) {
+            Button("action.cancel", role: .cancel) {}
+            Button("playlist.remove_cover.action", role: .destructive) {
+                updating { try await playlistService.removePlaylistCover(playlistId: playlistId) }
+            }
+        } message: {
+            Text("playlist.remove_cover.message")
+        }
+        .onToolbarAction(.showPlaylistCoverPicker, addressedTo: playlistId) {
+            showCoverPicker = true
+        }
+        .onToolbarAction(.showPlaylistRemoveCoverConfirmation, addressedTo: playlistId) {
+            showRemoveCoverConfirmation = true
         }
         .onToolbarAction(.showPlaylistDeleteConfirmation, addressedTo: playlistId) {
             showDeleteConfirmation = true
@@ -296,19 +315,23 @@ struct PlaylistDetailView: View {
     private func savePlaylistDetails() {
         let trimmedName = editingPlaylistName.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
+        let description = editingPlaylistDescription
+        editingPlaylistName = ""
+        editingPlaylistDescription = ""
 
+        updating {
+            try await playlistService.updatePlaylistDetails(playlistId: playlistId, name: trimmedName, description: description)
+        }
+    }
+
+    /// Runs a change to the playlist, and shows what went wrong where the page shows its errors.
+    private func updating(_ change: @escaping () async throws -> Void) {
         Task {
             do {
-                try await playlistService.updatePlaylistDetails(
-                    playlistId: playlistId,
-                    name: trimmedName,
-                    description: editingPlaylistDescription,
-                )
+                try await change()
             } catch {
                 failure = LoadFailure(message: String(localized: "error.update_playlist \(error.localizedDescription)"))
             }
-            editingPlaylistName = ""
-            editingPlaylistDescription = ""
         }
     }
 

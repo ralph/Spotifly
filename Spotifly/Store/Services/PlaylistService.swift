@@ -230,6 +230,34 @@ final class PlaylistService {
         )
     }
 
+    /// Sets a playlist's cover from an image file the user picked (`PlaylistCoverImage`).
+    func changePlaylistCover(playlistId: String, imageAt url: URL) async throws {
+        guard let jpeg = await PlaylistCoverImage.jpeg(contentsOf: url) else {
+            throw PlaylistCoverError.notAnImage
+        }
+        try await spclientAPI.changePlaylistCover(id: playlistId, jpeg: jpeg)
+        await refreshCover(of: playlistId)
+    }
+
+    /// Takes a playlist's cover away, so Spotify shows its own again.
+    func removePlaylistCover(playlistId: String) async throws {
+        try await spclientAPI.removePlaylistCover(id: playlistId)
+        await refreshCover(of: playlistId)
+    }
+
+    /// Reads a playlist's cover again after a change, which answers nothing about the sizes
+    /// Spotify makes of it: the store's `ImageSet` would go on showing the old one. One page of
+    /// one item, since nothing else moved. The change went through either way, so a failed read
+    /// leaves the old cover until the playlist is next loaded.
+    private func refreshCover(of playlistId: String) async {
+        do {
+            guard let (playlist, _) = try await partnerAPI.playlistDetails(id: playlistId).entities() else { return }
+            store.updatePlaylistDetails(id: playlistId, images: playlist.images)
+        } catch {
+            debugLog("PlaylistService", "Cover of \(playlistId) not read again: \(error)")
+        }
+    }
+
     /// Deletes a playlist — which is to say, drops it from the user's library.
     ///
     /// The same call as `unfollowPlaylist` below, and the Web API said so too: `DELETE
@@ -348,5 +376,13 @@ final class PlaylistService {
 
         // Re-fetch to pick up the order the server actually applied
         try await reloadPlaylistTracks(playlistId: playlistId)
+    }
+}
+
+nonisolated enum PlaylistCoverError: Error, LocalizedError {
+    case notAnImage
+
+    var errorDescription: String? {
+        "The file is not an image Spotifly can read"
     }
 }

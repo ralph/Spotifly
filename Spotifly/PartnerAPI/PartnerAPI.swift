@@ -251,6 +251,11 @@ nonisolated struct PartnerAPI: Sendable {
         return first.withItems(items)
     }
 
+    /// A playlist's details with one of its items, for what changes without them: its cover.
+    func playlistDetails(id: String) async throws -> PathfinderPlaylistUnion {
+        try await playlistPage(variables: .init(uri: "spotify:playlist:\(id)", limit: 1))
+    }
+
     private func playlistPage(
         _ operation: PathfinderOperation = .fetchPlaylist,
         variables: PathfinderPlaylistVariables,

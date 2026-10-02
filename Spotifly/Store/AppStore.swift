@@ -546,7 +546,10 @@ final class AppStore {
     }
 
     /// Update playlist details
-    func updatePlaylistDetails(id: String, name: String? = nil, description: String? = nil, isPublic: Bool? = nil) {
+    func updatePlaylistDetails(id: String, name: String? = nil, description: String? = nil, isPublic: Bool? = nil, images: ImageSet? = nil) {
+        if let images {
+            playlists[id]?.images = images
+        }
         if let name {
             playlists[id]?.name = name
         }
