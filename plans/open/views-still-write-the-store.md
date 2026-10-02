@@ -1,7 +1,7 @@
 # Some views still write the store, or decide what a load means
 
 Status: **Open**, not planned. The rest of the writes moved into services in
-`plans/open/state-held-twice.md`, phase 4
+`plans/done/state-held-twice.md`, phase 4
 Components: `Spotifly/Views/LoggedInView.swift`, `Spotifly/Views/LoggedInLifecycleModifier.swift`,
 `Spotifly/Views/PlaylistDetailView.swift`, `Spotifly/Store/Services/SearchService.swift`,
 `Spotifly/Store/Services/TrackService.swift`

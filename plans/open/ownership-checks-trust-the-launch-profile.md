@@ -4,7 +4,7 @@ Status: **Open**, not planned
 Components: `Spotifly/Views/Components/TrackContextMenu.swift`,
 `Spotifly/Views/PlaylistDetailView.swift`, `Spotifly/Views/LoggedInToolbars.swift`,
 `Spotifly/Store/Services/ProfileService.swift`
-Found: 2026-10-02, in the review of `plans/open/state-held-twice.md`, phase 4
+Found: 2026-10-02, in the review of `plans/done/state-held-twice.md`, phase 4
 
 ## Summary
 

@@ -1,7 +1,7 @@
 # The playback view model keeps its own copy of the player's playback state
 
 Status: **Open**, not planned. Found reviewing the store; deliberately left out of
-`plans/open/state-held-twice.md`, which it would have made far riskier
+`plans/done/state-held-twice.md`, which it would have made far riskier
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`, `Spotifly/Store/PlayerModel.swift`,
 `Spotifly/Views/NowPlayingBarView.swift`
 Found: 2026-10-02, reviewing the store against current practice

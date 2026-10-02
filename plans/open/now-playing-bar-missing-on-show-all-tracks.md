@@ -3,7 +3,7 @@
 Status: **Open**, not planned; cause unknown
 Components: `Spotifly/Views/LoggedInView.swift` (`contentRegion`),
 `Spotifly/Views/SearchAllTracksView.swift`, `Spotifly/Views/LoggedInContentRouterView.swift`
-Found: 2026-10-02, live-checking `plans/open/state-held-twice.md`, phase 1; the same on `main`
+Found: 2026-10-02, live-checking `plans/done/state-held-twice.md`, phase 1; the same on `main`
 
 ## Summary
 

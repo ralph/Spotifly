@@ -1,7 +1,7 @@
 # The toolbar's refresh moves the selection when it lies past the first page
 
 Status: **Open**, not planned. Same on `main`, so not caused by
-`plans/open/state-held-twice.md`
+`plans/done/state-held-twice.md`
 Components: `Spotifly/Views/LoggedInView.swift` (`refreshAction(for:)`),
 `Spotifly/ViewModels/NavigationCoordinator.swift` (`restoredSelection`)
 Found: 2026-10-02, in the review of that plan's phase 4

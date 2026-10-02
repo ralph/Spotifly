@@ -4,7 +4,7 @@ Status: **Open**, not planned, and the window-closed behaviour is **not measured
 from the code
 Components: `Spotifly/SpotiflyApp.swift`, `Spotifly/Views/LoggedInView.swift`,
 `Spotifly/ViewModels/PlaybackViewModel.swift`
-Found: 2026-10-02, in the review of `plans/open/state-held-twice.md`, phase 4
+Found: 2026-10-02, in the review of `plans/done/state-held-twice.md`, phase 4
 
 ## Summary
 

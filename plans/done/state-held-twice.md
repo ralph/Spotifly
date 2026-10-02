@@ -1,8 +1,8 @@
 # Some state is held twice, and the playback view model is passed by hand
 
-Status: **Open**, planned 2026-10-02 on `plan/state-held-twice` (#158). Phases 1 and 2 are
-merged (#159, #160). Phases 3 and 4 are in #161 and #162, stacked, checked live except for what
-their PRs list. Follow-ups are their own open plans, linked under Solution
+Status: **Done** 2026-10-02, in four PRs: #159 (phase 1), #160 (phase 2), #161 (phase 3) and #162
+(phase 4), each checked live. The plan is #158. Follow-ups are their own open plans, linked under
+Solution
 Components: `Spotifly/Store/AppStore.swift`, `Spotifly/Store/Entities.swift`,
 `Spotifly/Store/PlayerModel.swift`, `Spotifly/Store/Services/QueueService.swift`,
 `Spotifly/Store/Services/SearchService.swift`, `Spotifly/Store/Services/DeviceService.swift`,
@@ -313,35 +313,32 @@ Found while building the phases, and each recorded as an open plan of its own:
 
 ## Verification
 
-Each PR is built, unit-tested, linted with `swiftformat --swiftversion 6.4 --lint`, then
-reviewed with `/simplify` and `/code-review`. Each is checked live against the Debug build
-before it is merged.
+Each PR was built, unit-tested, linted with `swiftformat --swiftversion 6.4 --lint`, reviewed with
+`/simplify` and `/code-review`, and checked live against the Debug build before it was merged.
 
-1. **The view model from the environment.** No behavior change, so the live check walks every
-   view that lost the argument: each section and detail view, the queue, the mini player,
-   speakers, a track's context menu (Play Next, Add to playlist, New playlist), and ⌘L with the
-   window open and closed, which should behave as before.
-2. **Search results as ids.**
-   - Unit tests: search, then rename a playlist in the results, delete another, and mark a
-     result track withheld. The results resolve to the updated entities, and the deleted
-     playlist drops out. Two results with one id give one row.
-   - Live: a search; then an owned test playlist that shows in the results, renamed through
-     Edit Details, so that its card follows.
-3. **The queue read from the player.**
-   - Unit tests: as listed under the phase.
-   - Live:
-     - the queue panel and the bar's count, with this Mac playing;
-     - the same while the web player plays, so the queue is mirrored;
-     - a handover in each direction;
-     - a remote start from Spotifly onto the web player, whose queue should show without the
-       old wait;
-     - a reconnect after a drop, which asks for missing metadata again;
-     - a logout, which empties the queue.
-   - Left to the user: a sleep and wake, which this check does not trigger.
-4. **Writes back into the services.**
-   - Unit tests: as listed under the phase.
-   - Live:
-     - the toolbar's refresh in each library section, keeping the list on screen and the
-       selection;
-     - the launch log showing one profile request;
-     - ⌘L toggling the heart, and showing the error when the request fails.
+1. **The view model from the environment (#159).** Every view that lost the argument rendered:
+   - each section and detail view, the queue, the toolbar and the mini player;
+   - Speakers;
+   - a track's context menu, from a row and from the bar's "…", with its playlist submenu.
+
+   ⌘L was tested with #162.
+2. **Search results as ids (#160).** A test playlist renamed through Edit Details was renamed
+   on its search card too, then renamed back.
+3. **The queue read from the player (#161).** These were checked with the silent librespot
+   device: its mirrored queue and a skip, a handover in each direction, and a reconnect after
+   `SPOTIFLY_DEBUG_DROP_AP_AFTER`. Ralph tested the rest:
+   - a sleep and wake, where the queue stayed;
+   - Wi-Fi off and on, where the network-return retry asked again;
+   - a remote start with `SPOTIFLY_DEBUG_ACCOUNT_TYPE=free`, where the queue showed 0.4 s after
+     the command;
+   - a logout and sign-in.
+
+   The sleep showed a separate bug, also on `main`: a mirrored position stays behind by the time
+   offline. It is fixed on its own.
+4. **Writes back into the services (#162).**
+   - The launch made one profile request. "Add to new playlist" created a playlist using the
+     stored profile.
+   - The toolbar's refresh in Playlists, Albums and Artists kept the list and the selection.
+   - Liked Songs paged as on `main`, one page per arrival at the bottom. A refresh at the bottom
+     of the fully loaded list fetched the first page and then the second.
+   - Ralph tested the heart and ⌘L.
