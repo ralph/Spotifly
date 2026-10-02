@@ -2,13 +2,14 @@
 //  NavigationDestination.swift
 //  Spotifly
 //
-//  Types that can be pushed onto the navigation stack for drill-down navigation.
+//  The drill-downs a route's path can hold.
 //
 
 import Foundation
 
-/// Navigation destinations for stack-based navigation
-/// Uses IDs instead of full objects to keep navigation history lightweight and Hashable
+/// A page opened from within a section, such as all of a search's tracks. The last one in the
+/// route's path is the page `LoggedInContentRouterView` shows. Holds ids rather than whole
+/// objects, to keep the history light and `Hashable`.
 enum NavigationDestination: Hashable {
     case artist(id: String)
     case album(id: String)

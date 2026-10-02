@@ -14,27 +14,28 @@ struct LoggedInContentRouterView: View {
 
     let onLogout: () -> Void
 
+    /// The route's last drill-down, or else its section's page.
+    ///
+    /// Drawn here rather than pushed onto a `NavigationStack`: the split view's detail column
+    /// takes over a stack's pushes and shows the pushed page in place of the whole column, so
+    /// everything `LoggedInView` lays around the router, the now-playing bar, the room under
+    /// each page, the content toolbar and the playback alerts, was missing on it.
     var body: some View {
-        NavigationStack(path: Bindable(navigationCoordinator).navigationPath) {
-            Group {
-                if let query = navigationCoordinator.displayedSearchQuery,
-                   let searchResults = store.searchResults(for: query)
-                {
-                    SearchResultsView(searchResults: searchResults)
-                        .navigationTitle("nav.search_results")
-                } else if let query = navigationCoordinator.displayedSearchQuery,
-                          let failure = store.searchFailure(for: query)
-                {
-                    InlineLoadError(failure: failure) { await searchService.search(query: query) }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .navigationTitle("nav.search_results")
-                } else {
-                    contentView
-                }
-            }
-            .navigationDestination(for: NavigationDestination.self) { destination in
-                destinationView(for: destination)
-            }
+        if let destination = navigationCoordinator.navigationPath.last {
+            destinationView(for: destination)
+        } else if let query = navigationCoordinator.displayedSearchQuery,
+                  let searchResults = store.searchResults(for: query)
+        {
+            SearchResultsView(searchResults: searchResults)
+                .navigationTitle("nav.search_results")
+        } else if let query = navigationCoordinator.displayedSearchQuery,
+                  let failure = store.searchFailure(for: query)
+        {
+            InlineLoadError(failure: failure) { await searchService.search(query: query) }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle("nav.search_results")
+        } else {
+            contentView
         }
     }
 

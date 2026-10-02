@@ -10,6 +10,7 @@ import SwiftUI
 struct SearchResultsView: View {
     let searchResults: SearchResults
     @Environment(AppStore.self) private var store
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
 
     // The results as the tables hold them now. An id the tables no longer hold, such as a
@@ -85,7 +86,9 @@ struct SearchResultsView: View {
                 Spacer()
 
                 if tracks.count > 5 {
-                    NavigationLink(value: NavigationDestination.searchTracks(ids: searchResults.trackIds)) {
+                    Button {
+                        navigationCoordinator.push(.searchTracks(ids: searchResults.trackIds))
+                    } label: {
                         HStack(spacing: 4) {
                             Text(localizedNumberString("show_all.tracks", tracks.count))
                                 .font(.subheadline)

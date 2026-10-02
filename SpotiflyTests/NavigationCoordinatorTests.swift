@@ -104,95 +104,16 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.current.selection == nil)
     }
 
-    @Test func `drill down through stack path records history`() {
+    @Test func `a drill down records history`() {
         let coordinator = NavigationCoordinator(store: AppStore())
         coordinator.selectNavigationItem(.albums)
         let albumsRoute = coordinator.current
 
-        coordinator.setNavigationPath([.artist(id: "artist-a")])
+        coordinator.push(.artist(id: "artist-a"))
 
         #expect(coordinator.navigationPath == [.artist(id: "artist-a")])
         coordinator.navigateBackward()
         #expect(coordinator.current == albumsRoute)
-    }
-
-    @Test func `native stack pop moves backward instead of recording a new route`() {
-        let coordinator = NavigationCoordinator(store: AppStore())
-        coordinator.selectNavigationItem(.albums)
-        let root = coordinator.current
-        coordinator.push(.album(id: "album-a"))
-        let firstPush = coordinator.current
-        coordinator.push(.artist(id: "artist-a"))
-
-        coordinator.setNavigationPath(firstPush.path)
-
-        #expect(coordinator.current == firstPush)
-        #expect(coordinator.forward.last?.path == [.album(id: "album-a"), .artist(id: "artist-a")])
-
-        coordinator.navigateBackward()
-        #expect(coordinator.current == root)
-    }
-
-    /// A whole path can be assigned in one step — that is what the binding is for, and what
-    /// a deep link would do — so the levels it skips were never locations. Popping out of
-    /// one must still move backward rather than recording the deeper view.
-    @Test func `a pop to an unrecorded level still moves backward`() {
-        let coordinator = NavigationCoordinator(store: AppStore())
-
-        coordinator.selectNavigationItem(.albums)
-        coordinator.setNavigationPath([.artist(id: "artist-1"), .album(id: "album-1")])
-        coordinator.setNavigationPath([.artist(id: "artist-1")])
-
-        #expect(coordinator.navigationPath == [.artist(id: "artist-1")])
-
-        coordinator.navigateBackward()
-
-        #expect(coordinator.navigationPath.isEmpty)
-
-        coordinator.navigateForward()
-
-        #expect(coordinator.navigationPath == [.artist(id: "artist-1")])
-    }
-
-    /// An automatic selection while a drill-down is showing leaves a pending restore
-    /// target holding that full path. Popping out of it consumes the write that target was
-    /// waiting for, so pushing back must not be mistaken for the restore callback.
-    @Test func `a push after popping past a pending restore target is not swallowed`() {
-        let coordinator = NavigationCoordinator(store: AppStore())
-
-        coordinator.selectNavigationItem(.albums)
-        coordinator.setNavigationPath([.artist(id: "artist-1"), .album(id: "album-1")])
-        coordinator.selectAlbum("album-1", recordsHistory: false)
-        coordinator.setNavigationPath([.artist(id: "artist-1")])
-
-        coordinator.setNavigationPath([.artist(id: "artist-1"), .album(id: "album-1")])
-
-        #expect(coordinator.navigationPath == [.artist(id: "artist-1"), .album(id: "album-1")])
-    }
-
-    /// A pop can skip several levels at once. The levels it skipped were passed through on
-    /// the way deeper, so they belong ahead of the user now, not behind.
-    @Test func `a pop skipping levels does not leave them behind the user`() {
-        let coordinator = NavigationCoordinator(store: AppStore())
-
-        coordinator.selectNavigationItem(.albums)
-        coordinator.setNavigationPath([.artist(id: "artist-1"), .album(id: "album-1")])
-        coordinator.push(.playlist(id: "playlist-1"))
-        coordinator.setNavigationPath([.artist(id: "artist-1")])
-
-        #expect(coordinator.navigationPath == [.artist(id: "artist-1")])
-
-        coordinator.navigateBackward()
-
-        #expect(coordinator.navigationPath.isEmpty)
-
-        coordinator.navigateForward()
-
-        #expect(coordinator.navigationPath == [.artist(id: "artist-1")])
-
-        coordinator.navigateForward()
-
-        #expect(coordinator.navigationPath == [.artist(id: "artist-1"), .album(id: "album-1")])
     }
 
     @Test func `section reentry restores remembered selection without an extra step`() {
