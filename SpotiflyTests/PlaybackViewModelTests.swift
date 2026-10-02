@@ -44,8 +44,7 @@ struct PositionClockTests {
     }
 }
 
-/// The pause macOS sends the now-playing app as the Mac goes to sleep. Seen on 2026-10-02: it
-/// was sent on to a playing phone, which stopped each time the Mac slept.
+/// The pause macOS sends the now-playing app as the Mac goes to sleep.
 struct SleepPauseTests {
     private let willSleepAt = Date(timeIntervalSince1970: 1_000_000)
 
@@ -72,6 +71,10 @@ struct SleepPauseTests {
             now: willSleepAt.addingTimeInterval(60),
             isActiveDevice: false,
         ))
+    }
+
+    /// The wake clears the mark: a pause pressed just after a short sleep is the user's.
+    @Test func `a pause after the wake goes through`() {
         #expect(!PlaybackViewModel.isSleepPause(willSleepAt: nil, now: willSleepAt, isActiveDevice: false))
     }
 }

@@ -992,9 +992,7 @@ final class PlaybackViewModel {
             Task { @MainActor in
                 guard let self else { return }
                 debugLog("PlaybackViewModel", "Media command: pause")
-                if self.isPlaying, !self.isSleepPause() {
-                    self.pause()
-                }
+                self.pauseFromMediaControls()
             }
             return .success
         }
@@ -1005,9 +1003,7 @@ final class PlaybackViewModel {
                 guard let self else { return }
                 debugLog("PlaybackViewModel", "Media command: play/pause")
                 if self.isPlaying {
-                    if !self.isSleepPause() {
-                        self.pause()
-                    }
+                    self.pauseFromMediaControls()
                 } else {
                     self.resume()
                 }
@@ -1068,25 +1064,21 @@ final class PlaybackViewModel {
         }
     }
 
-    /// Whether a pause from the media controls is the one macOS sends the now-playing app as
-    /// the Mac goes to sleep, and is about another device's playback.
-    ///
-    /// While another device plays, this app is the now-playing one, so the pause comes here,
-    /// and `pause()` would send it on to that device: a phone stopped each time the Mac slept
-    /// (seen 2026-10-02). The sleep stops nothing that plays elsewhere, so that pause is
-    /// dropped. This Mac's own playback still takes it; the sleep stops that audio anyway.
-    private func isSleepPause() -> Bool {
-        let ignored = Self.isSleepPause(
-            willSleepAt: systemWillSleepAt,
-            now: Date(),
-            isActiveDevice: SpotifyPlayer.isActiveDevice,
-        )
-        if ignored {
+    /// A pause from the media controls, unless it is the one macOS sends the now-playing app as
+    /// the Mac goes to sleep while another device plays: `pause()` would send that on to the
+    /// device, and the sleep stops nothing that plays elsewhere. This Mac's own playback still
+    /// takes it; the sleep stops that audio anyway.
+    private func pauseFromMediaControls() {
+        guard isPlaying else { return }
+        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), isActiveDevice: SpotifyPlayer.isActiveDevice) {
             debugLog("PlaybackViewModel", "Pause ignored: the Mac is going to sleep, and another device plays")
+            return
         }
-        return ignored
+        pause()
     }
 
+    /// Whether a pause is the sleep's: another device plays, and the system said it will sleep
+    /// less than `sleepPauseWindow` ago and has not woken since.
     nonisolated static func isSleepPause(willSleepAt: Date?, now: Date, isActiveDevice: Bool) -> Bool {
         guard !isActiveDevice, let willSleepAt else { return false }
         return now.timeIntervalSince(willSleepAt) < sleepPauseWindow

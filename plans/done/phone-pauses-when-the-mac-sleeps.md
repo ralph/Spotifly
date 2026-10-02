@@ -2,7 +2,8 @@
 
 Status: **Done** 2026-10-02, verified live
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift` (`setupRemoteCommandCenter`,
-`observeSystemSleep`, `isSleepPause`), `SpotiflyTests/PlaybackViewModelTests.swift`
+`observeSystemSleep`, `pauseFromMediaControls`, `isSleepPause`),
+`SpotiflyTests/PlaybackViewModelTests.swift`
 Found: 2026-10-02, live-checking `plans/done/position-behind-after-a-reconnect.md`
 
 ## Summary
@@ -50,7 +51,8 @@ on the main queue so the mark is set before a command that follows it is handled
 `LoggedInLifecycleModifier`, whose observer goes with a closed window, where the pause arrives
 too.
 
-**A pause or a play/pause that would pause is dropped** (`isSleepPause`) when:
+**A pause or a play/pause that would pause is dropped** (`pauseFromMediaControls`, deciding
+with `isSleepPause`) when:
 - another device is the active one: the sleep stops nothing that plays elsewhere. This Mac's own
   playback still pauses, which the sleep's disconnect does anyway;
 - the system said it will sleep less than ten seconds ago and has not woken since. Seen half a
@@ -66,11 +68,14 @@ it came from.
 - **Dropping every system pause while another device plays.** The media keys and Control Center
   send the same command, and they should pause the phone.
 
+Sleep is now watched in two places, here and in the window's lifecycle modifier;
+`plans/open/sleep-and-wake-handled-by-the-window.md` takes that up.
+
 ## Verification
 
 - [x] Unit tests: `SleepPauseTests`, the decision: dropped half a second after the will-sleep for
-      another device, not for this Mac's own playback, and not a minute after a sleep that never
-      came.
+      another device, but not for this Mac's own playback, not a minute after a sleep that never
+      came, and not after the wake.
 - [x] **Live** (Ralph's phone playing, a build with this and the position fix): with the window
       open, then closed, the Mac slept and woke, and the phone played on. The closed-window sleep
       logged the pause and its dropping, as quoted above.
