@@ -25,6 +25,10 @@ final class PlaybackViewModel {
     /// appears).
     private weak var store: AppStore?
 
+    /// What ⌘L's favorite toggle goes through. Weak like the store, so a logout does not keep
+    /// the old account's service and store alive in this process-wide model.
+    private weak var trackService: TrackService?
+
     /// Set when a play request arrived with nowhere to serve it: no local player and no
     /// active remote device. The view presents the Auth / Cancel alert on this.
     var needsStreamingAuthorization = false
@@ -691,9 +695,10 @@ final class PlaybackViewModel {
         clearPlaybackState()
     }
 
-    /// Sets the AppStore reference. Call this after AppStore is created.
-    func setStore(_ store: AppStore) {
+    /// Gives the model the logged-in view's store and track service.
+    func attach(store: AppStore, trackService: TrackService) {
         self.store = store
+        self.trackService = trackService
     }
 
     // MARK: - Playback Control (via Spirc or connect-state)
@@ -1616,40 +1621,16 @@ final class PlaybackViewModel {
 
     // MARK: - Favorite Management
 
-    /// Toggle favorite status for the currently playing track via the global store.
-    ///
-    /// A second copy of `TrackService.toggleFavorite`, kept because its callers — the menu bar
-    /// item and the ⌘L shortcut — reach the view model and not the services. Worth collapsing
-    /// into one when those two get a service; not worth restructuring for this migration.
+    /// Toggles the current track's favorite status, for the menu item and ⌘L, which reach this
+    /// model rather than the services.
     func toggleCurrentTrackFavorite() async {
         guard let uri = currentTrackUri, let trackId = SpotifyAPI.parseTrackURI(uri),
-              let store
+              let trackService
         else { return }
 
-        let wasFavorite = store.isFavorite(trackId)
-
-        // Optimistic update
-        if wasFavorite {
-            store.removeTrackFromFavorites(trackId)
-        } else {
-            store.addTrackToFavorites(trackId)
-        }
-
-        let uris = ["spotify:track:\(trackId)"]
-
         do {
-            if wasFavorite {
-                try await PartnerAPI().removeFromLibrary(uris: uris)
-            } else {
-                try await PartnerAPI().addToLibrary(uris: uris)
-            }
+            try await trackService.toggleFavorite(trackId: trackId)
         } catch {
-            // Rollback
-            if wasFavorite {
-                store.addTrackToFavorites(trackId)
-            } else {
-                store.removeTrackFromFavorites(trackId)
-            }
             errorMessage = String(localized: "error.update_favorite \(error.localizedDescription)")
         }
     }

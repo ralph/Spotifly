@@ -315,4 +315,26 @@ struct PlaylistLibraryWriteTests {
         #expect(calls.profileRequests == 1)
         #expect(calls.rootlistWrites == 4)
     }
+
+    /// The launch asks for the profile through the same service the writes use, so a write
+    /// arriving while the launch's request is out joins it rather than making its own.
+    @Test func `the launch and a write share one profile request`() async throws {
+        let calls = Calls()
+        let store = AppStore()
+        let api = partnerAPI(transport: { _ in calls.profile() })
+        let profileService = ProfileService(store: store, partnerAPI: api)
+        let service = PlaylistService(
+            store: store,
+            partnerAPI: api,
+            spclientAPI: spclientAPI(transport: { calls.rootlist($0) }),
+            profileService: profileService,
+        )
+
+        async let launch = profileService.require()
+        async let write: Void = service.followPlaylist(playlistId: "p1")
+        _ = try await (launch, write)
+
+        #expect(calls.profileRequests == 1)
+        #expect(calls.rootlistWrites == 1)
+    }
 }

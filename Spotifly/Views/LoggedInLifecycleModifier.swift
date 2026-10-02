@@ -15,6 +15,8 @@ struct LoggedInLifecycleModifier: ViewModifier {
     @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(QueueService.self) private var queueService
     @Environment(HomeService.self) private var homeService
+    @Environment(ProfileService.self) private var profileService
+    @Environment(TrackService.self) private var trackService
     /// Only the debug hooks use these two.
     @Environment(DeviceService.self) private var deviceService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
@@ -31,7 +33,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // Before the first `await`, so no Spirc notification can arrive while the
                 // player is unobserved.
                 queueService.activate()
-                playbackViewModel.setStore(store)
+                playbackViewModel.attach(store: store, trackService: trackService)
 
                 #if DEBUG
                     AppStore.current = store
@@ -224,15 +226,11 @@ struct LoggedInLifecycleModifier: ViewModifier {
     }
 
     /// Who is logged in. Failure is swallowed, because nothing on this path should block on it:
-    /// an app that cannot say who you are is still an app that plays music.
-    ///
-    /// It is no longer only the settings screen that reads it, though — the playlist library
-    /// writes address the rootlist by username — so `PlaylistService.requireProfile` fetches it
-    /// itself when it is missing rather than trusting this one attempt.
+    /// an app that cannot say who you are is still an app that plays music. A playlist write
+    /// asks the same service again when it needs the profile; see `ProfileService.require()`.
     private func loadProfile() async {
         do {
-            let profile = try await PartnerAPI().profile()
-            store.setUserProfile(UserProfile(pathfinder: profile))
+            _ = try await profileService.require()
         } catch {
             debugLog("LoggedInLifecycle", "Profile unavailable: \(error.localizedDescription)")
         }

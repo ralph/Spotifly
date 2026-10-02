@@ -19,8 +19,11 @@ struct LoggedInView: View {
     /// Normalized state store.
     @State private var store: AppStore
 
-    // Services that need Task deduplication or subscription persistence.
+    /// Services that need Task deduplication or subscription persistence.
     @State private var playlistService: PlaylistService
+    /// Shared with `playlistService`, so the launch and the playlist writes ask for the profile
+    /// once between them.
+    @State private var profileService: ProfileService
     @State private var albumService: AlbumService
     @State private var artistService: ArtistService
     @State private var queueService: QueueService
@@ -41,7 +44,9 @@ struct LoggedInView: View {
         let store = AppStore()
 
         _store = State(initialValue: store)
-        _playlistService = State(initialValue: PlaylistService(store: store))
+        let profileService = ProfileService(store: store)
+        _profileService = State(initialValue: profileService)
+        _playlistService = State(initialValue: PlaylistService(store: store, profileService: profileService))
         _albumService = State(initialValue: AlbumService(store: store))
         _artistService = State(initialValue: ArtistService(store: store))
         let trackService = TrackService(store: store)
@@ -111,6 +116,7 @@ struct LoggedInView: View {
         .environment(store)
         .environment(trackService)
         .environment(playlistService)
+        .environment(profileService)
         .environment(albumService)
         .environment(artistService)
         // Scene values, which the menu sees whenever the window is key, whatever has focus
@@ -261,13 +267,14 @@ struct LoggedInView: View {
     /// What the toolbar's refresh button does in a section, or nil where there is nothing to
     /// fetch again, and so no button: the queue and Speakers are pushed by the player and the
     /// cluster. One switch for both, so a section cannot show a button that does nothing.
+    ///
+    /// The same load as pull-to-refresh and Try again. The service resets the paging, and the
+    /// first page replaces the list, so the old one stays on screen until the answer arrives.
     private func refreshAction(for section: NavigationItem?) -> (@MainActor @Sendable () async -> Void)? {
         switch section {
         case .playlists:
             {
                 let previousSelection = navigationCoordinator.selectedPlaylistId
-                store.playlistsPagination.reset()
-                store.setUserPlaylistIds([])
                 try? await playlistService.loadUserPlaylists(forceRefresh: true)
                 navigationCoordinator.restorePlaylistSelection(
                     previous: previousSelection,
@@ -278,8 +285,6 @@ struct LoggedInView: View {
         case .albums:
             {
                 let previousSelection = navigationCoordinator.selectedAlbumId
-                store.albumsPagination.reset()
-                store.setUserAlbumIds([])
                 try? await albumService.loadUserAlbums(forceRefresh: true)
                 navigationCoordinator.restoreAlbumSelection(
                     previous: previousSelection,
@@ -290,8 +295,6 @@ struct LoggedInView: View {
         case .artists:
             {
                 let previousSelection = navigationCoordinator.selectedArtistId
-                store.artistsPagination.reset()
-                store.setUserArtistIds([])
                 try? await artistService.loadUserArtists(forceRefresh: true)
                 navigationCoordinator.restoreArtistSelection(
                     previous: previousSelection,
@@ -301,8 +304,6 @@ struct LoggedInView: View {
 
         case .favorites:
             {
-                store.favoritesPagination.reset()
-                store.setSavedTrackIds([])
                 try? await trackService.loadFavorites(forceRefresh: true)
             }
 

@@ -21,9 +21,9 @@ final class PlaylistService {
     private static let listKey = "user-playlists"
     private let notFound = NotFoundMemory(.playlist)
 
-    /// The account's own profile, which the library writes address the rootlist by.
-    private let profileRequests = InFlightRequests<Void>()
-    private static let profileKey = "user-profile"
+    /// The account's own profile, which the library writes address the rootlist by. The one
+    /// the launch asks too, so the two share a single request.
+    private let profileService: ProfileService
 
     /// The playlist reads and the item mutations. No token is passed in: both clients run on
     /// the keymaster grant and hold it themselves.
@@ -37,10 +37,12 @@ final class PlaylistService {
         store: AppStore,
         partnerAPI: PartnerAPI = PartnerAPI(),
         spclientAPI: SpclientAPI = SpclientAPI(),
+        profileService: ProfileService? = nil,
     ) {
         self.store = store
         self.partnerAPI = partnerAPI
         self.spclientAPI = spclientAPI
+        self.profileService = profileService ?? ProfileService(store: store, partnerAPI: partnerAPI)
     }
 
     // MARK: - User Playlists
@@ -292,29 +294,8 @@ final class PlaylistService {
     /// The rootlist is addressed by the account's own username, so library membership cannot be
     /// changed before the profile has loaded. `UserProfile.id` *is* the username — see
     /// `UserProfile.init(pathfinder:)`, which takes it straight from `profileAttributes`.
-    ///
-    /// **Fetches it rather than refusing.** The profile is loaded once at startup, on a path
-    /// that deliberately swallows its own failure — an app that cannot say who you are is still
-    /// an app that plays music — and nothing retried it. So one transient failure there left
-    /// create, delete, follow and unfollow throwing `accountUnknown` until the app was
-    /// relaunched, for a request none of them had ever made themselves. Through the registry,
-    /// so several writes arriving at once ask for it once.
     private func requireProfile() async throws -> UserProfile {
-        if let profile = store.userProfile {
-            return profile
-        }
-
-        try await profileRequests.run(Self.profileKey) {
-            let profile = try await self.partnerAPI.profile()
-            self.store.setUserProfile(UserProfile(pathfinder: profile))
-        }
-
-        // A profile can arrive without the one field that matters — `UserProfile(pathfinder:)`
-        // is failable precisely because a nameless account cannot address a rootlist.
-        guard let profile = store.userProfile else {
-            throw SpclientError.accountUnknown
-        }
-        return profile
+        try await profileService.require()
     }
 
     // MARK: - Track Operations

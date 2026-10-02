@@ -154,7 +154,8 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 - Each service takes `AppStore` in its initializer, except `DeviceService`, which only
   transfers playback and writes its guess at the active device into `PlayerModel`
 - Injected via `@Environment(XxxService.self)`
-- Available services: `TrackService`, `AlbumService`, `ArtistService`, `PlaylistService`, `HomeService`, `SearchService`, `DeviceService`, `QueueService`
+- Available services: `TrackService`, `AlbumService`, `ArtistService`, `PlaylistService`, `ProfileService`, `HomeService`, `SearchService`, `DeviceService`, `QueueService`
+- Views do not write the store; a write a view needs is a service method
 
 ### Network Request Deduplication
 
