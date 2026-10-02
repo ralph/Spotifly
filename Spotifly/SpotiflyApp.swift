@@ -79,8 +79,9 @@ struct SpotiflyApp: App {
 
     /// Hosting the unit tests (`TEST_HOST`), the app finds the developer's grant, stored login
     /// and Connect device id, so its content would sign in and register as the Debug app the
-    /// developer has open. The tests need the app's code, not its window.
-    private static let hostsUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    /// developer has open. The tests need the app's code, not its window, nor the wake's rebuild
+    /// in `PlaybackViewModel`, which a test that reaches the shared instance would set up.
+    static let hostsUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     var body: some Scene {
         WindowGroup {
