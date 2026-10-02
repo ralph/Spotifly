@@ -327,8 +327,9 @@ extension UserProfile {
         id = username
         displayName = profile.name ?? username
         imageURL = profile.avatar?.largestURL.flatMap(URL.init(string:))
-        externalUrl = "https://open.spotify.com/user/\(username)"
-        uri = profile.uri ?? "spotify:user:\(username)"
+        let uri = profile.uri ?? "spotify:user:\(username)"
+        self.uri = uri
+        externalUrl = SpotifyURI.webURL(uri)
     }
 }
 

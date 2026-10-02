@@ -69,11 +69,6 @@ struct Track: Identifiable, Hashable, Encodable {
     let durationMs: Int
     let trackNumber: Int?
 
-    /// Its page on open.spotify.com, which Share copies.
-    var externalUrl: String? {
-        SpotifyURI.webURL(uri)
-    }
-
     // Relationships (stored as IDs, not nested objects)
     let albumId: String?
     let artistId: String?
@@ -127,11 +122,6 @@ struct Album: Identifiable, Hashable, Encodable {
     let releaseDate: String?
     let albumType: String?
 
-    /// Its page on open.spotify.com, which Share copies.
-    var externalUrl: String? {
-        SpotifyURI.webURL(uri)
-    }
-
     // Relationships
     let artistId: String?
     let artistName: String // Denormalized for display
@@ -143,7 +133,7 @@ struct Album: Identifiable, Hashable, Encodable {
     /// Whether every field came from a source that returns them all.
     ///
     /// False for the stubs built out of a shelf entry or an artist's release list, which
-    /// carry no release date, album type or external URL. `AlbumService` uses this to decide
+    /// carry no release date or album type. `AlbumService` uses this to decide
     /// whether the metadata request can be skipped — presence in the store alone would not
     /// be enough.
     var detailsLoaded: Bool
@@ -201,11 +191,6 @@ struct Artist: Identifiable, Hashable, Encodable {
     let name: String
     let uri: String
     let images: ImageSet
-
-    /// Its page on open.spotify.com, which Share copies.
-    var externalUrl: String? {
-        SpotifyURI.webURL(uri)
-    }
 }
 
 // MARK: - Playlist
@@ -220,11 +205,6 @@ struct Playlist: Identifiable, Hashable, Encodable {
     var isPublic: Bool
     let ownerId: String
     let ownerName: String
-
-    /// Its page on open.spotify.com, which Share copies.
-    var externalUrl: String? {
-        SpotifyURI.webURL(uri)
-    }
 
     // Mutable state (populated when tracks are loaded)
     var items: [PlaylistItem]

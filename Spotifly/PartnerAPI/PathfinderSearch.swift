@@ -302,11 +302,7 @@ nonisolated enum SpotifyURI {
     /// a row and answered "Spotify returned no data" when opened. Requiring the kind is what
     /// tells `spotify:playlist:x` from anything else wearing an id at the end.
     static func id(from uri: String, kind: String) -> String? {
-        let parts = uri.split(separator: ":")
-        guard parts.count == 3, parts[0] == "spotify", parts[1] == kind, !parts[2].isEmpty else {
-            return nil
-        }
-        return String(parts[2])
+        parts(of: uri).flatMap { $0.kind == kind ? String($0.id) : nil }
     }
 
     /// The page on open.spotify.com a uri names, which Share copies: `spotify:album:<id>` is
@@ -317,12 +313,16 @@ nonisolated enum SpotifyURI {
     /// spclient don't, so since the move to them every entity's was nil, and Share was greyed for
     /// all of them (2026-10-02).
     static func webURL(_ uri: String) -> String? {
-        let parts = uri.split(separator: ":")
-        guard parts.count == 3, parts[0] == "spotify", pagedKinds.contains(parts[1]), !parts[2].isEmpty else {
-            return nil
-        }
-        return "https://open.spotify.com/\(parts[1])/\(parts[2])"
+        guard let (kind, id) = parts(of: uri), pagedKinds.contains(kind) else { return nil }
+        return "https://open.spotify.com/\(kind)/\(id)"
     }
 
     private static let pagedKinds: Set<Substring> = ["track", "album", "artist", "playlist", "show", "episode", "user"]
+
+    /// A `spotify:<kind>:<id>` uri's kind and id, or nil for any other shape.
+    private static func parts(of uri: String) -> (kind: Substring, id: Substring)? {
+        let parts = uri.split(separator: ":")
+        guard parts.count == 3, parts[0] == "spotify" else { return nil }
+        return (parts[1], parts[2])
+    }
 }

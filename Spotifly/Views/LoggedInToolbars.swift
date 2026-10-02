@@ -125,7 +125,7 @@ private struct LoggedInContextToolbarActions: View {
                 }
             }
 
-            ShareToolbarButton(externalUrl: album.externalUrl)
+            ShareToolbarButton(uri: album.uri)
 
             if let artistId = album.artistId {
                 ToolbarActionButton(title: "track.menu.go_to_artist", systemImage: "person") {
@@ -153,7 +153,7 @@ private struct LoggedInContextToolbarActions: View {
 
     private func artistToolbarActions(artist: Artist) -> some View {
         HStack(spacing: 8) {
-            ShareToolbarButton(externalUrl: artist.externalUrl)
+            ShareToolbarButton(uri: artist.uri)
 
             if store.userArtistIds.contains(artist.id) {
                 ToolbarActionButton(
@@ -184,7 +184,7 @@ private struct LoggedInContextToolbarActions: View {
                 }
             }
 
-            ShareToolbarButton(externalUrl: playlist.externalUrl)
+            ShareToolbarButton(uri: playlist.uri)
 
             if playlist.ownerId == store.userId {
                 ToolbarActionButton(title: "playlist.menu.edit_details", systemImage: "pencil") {
@@ -239,19 +239,24 @@ private struct ToolbarActionButton: View {
     }
 }
 
+/// Copies an item's open.spotify.com link, made from its uri (`SpotifyURI.webURL`).
 private struct ShareToolbarButton: View {
-    let externalUrl: String?
+    let uri: String
+
+    private var link: String? {
+        SpotifyURI.webURL(uri)
+    }
 
     @State private var showLinkCopied = false
     @State private var linkCopiedDismissTask: Task<Void, Never>?
 
     var body: some View {
         ToolbarActionButton(title: "action.share", systemImage: "square.and.arrow.up") {
-            guard let externalUrl else { return }
+            guard let link else { return }
 
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.setString(externalUrl, forType: .string)
+            pasteboard.setString(link, forType: .string)
 
             showLinkCopied = true
             linkCopiedDismissTask?.cancel()
@@ -261,7 +266,7 @@ private struct ShareToolbarButton: View {
                 showLinkCopied = false
             }
         }
-        .disabled(externalUrl == nil)
+        .disabled(link == nil)
         .popover(isPresented: $showLinkCopied, arrowEdge: .bottom) {
             Text("action.link_copied")
                 .font(.callout)
