@@ -75,6 +75,7 @@ final class QueueService {
     /// another call is already fetching joins that run (`TrackService.ensureTracksLoaded`).
     func hydrate() {
         let trackIds = player.queueEntries.trackIds
+        guard !trackIds.isEmpty else { return }
         Task {
             do {
                 try await trackService.ensureTracksLoaded(trackIds: trackIds)
