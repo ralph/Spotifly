@@ -3,7 +3,7 @@
 //  SpotiflyTests
 //
 //  Autoplay after a context ends: the account's setting, the station asked for, and the rows
-//  lined up after the context's own. See `plans/open/autoplay.md`. The take-over of another
+//  lined up after the context's own. See `plans/done/autoplay.md`. The take-over of another
 //  device's autoplay is in `MirroredQueueTests` and `TransferStateTests`.
 //
 
@@ -68,8 +68,9 @@ struct AutoplayRequestTests {
             "entity_uri": "spotify:album:a",
         ])
         #expect(SpircController.provided(uri: "spotify:track:a", uid: "q0", provider: "queue").metadata == ["is_queued": "true"])
-        // A bare list names no context.
+        // A bare list names no context, and a delimiter belongs to none.
         #expect(SpircController.provided(uri: "spotify:track:a", uid: nil, provider: "context").metadata.isEmpty)
+        #expect(SpircController.provided(uri: PlaybackQueue.delimiterUri, uid: "delimiter0", provider: "context", context: "spotify:album:a").metadata.isEmpty)
     }
 }
 

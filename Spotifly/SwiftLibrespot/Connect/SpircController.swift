@@ -420,11 +420,12 @@ public actor SpircController {
     /// A row as other devices are told it, as librespot's and a phone's read (2026-10-02). Proto3:
     /// a row without a uid sends "". Its metadata says where it came from: the context it belongs
     /// to as its `context_uri` and `entity_uri` (the album for a context row, the station for an
-    /// autoplay row, which says `autoplay.is_autoplay` too), and `is_queued` for a queued row.
+    /// autoplay row, which says `autoplay.is_autoplay` too), and `is_queued` for a queued row. A
+    /// delimiter belongs to none, as a phone's carries none.
     nonisolated static func provided(uri: String, uid: String?, provider: String, context: String = "", station: String? = nil) -> ProvidedTrack {
         var track = ProvidedTrack(uri: uri, uid: uid ?? "", provider: provider)
         let belongsTo: String? = switch provider {
-        case "context": context.isEmpty ? nil : context
+        case "context": context.isEmpty || uri == PlaybackQueue.delimiterUri ? nil : context
         case "autoplay": station
         default: nil
         }

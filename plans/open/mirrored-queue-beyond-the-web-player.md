@@ -4,7 +4,7 @@ Status: **Open**, in part. Next on a context's last track, this Mac's own report
 round under repeat, and the take-over of a bare list are done and seen, the last two on a phone
 (2026-10-01); see Progress. The mirror lists one round under repeat, seen with the web player
 (2026-10-01). A phone with autoplay on was measured (2026-10-02): the mirror and Next work, and
-what does not is this Mac's missing autoplay, now `plans/open/autoplay.md`. What is left needs a
+what does not is this Mac's missing autoplay, now `plans/done/autoplay.md`. What is left needs a
 device that names a reason not to skip next, or librespot as the other device. From the altitude
 review of
 `plans/done/mirrored-queue-runs-past-the-context.md`.
@@ -174,4 +174,4 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
   - **Play on the Mac,** with the phone paused and closed, took "Teardrop" over in the album.
     The track is not the album's, so it went in front of it, and the album followed from its
     first track: the take-over has no autoplay to go on with, and neither has this Mac when an
-    album ends. Now `plans/open/autoplay.md`.
+    album ends. Now `plans/done/autoplay.md`.

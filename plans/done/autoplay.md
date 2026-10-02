@@ -1,8 +1,9 @@
 # This Mac has no autoplay
 
-Status: **Open**, built 2026-10-02: the account's setting, a station lined up on a context's
-last row, and the take-over of another device's autoplay; see Progress. Seen on this Mac alone;
-the phone's cases are still to see.
+Status: **Done** 2026-10-02: the account's setting, a station lined up on a context's last row,
+and the take-over of another device's autoplay; see Progress. Seen on this Mac and with a phone,
+Play on the Mac over the phone's autoplay included. Left: the phone takes this Mac's autoplay
+over as a queued track, `plans/open/phone-takes-macs-autoplay-as-queued.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (the end of a context,
 `takeOverState`, `continuePlayback`), `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Network/SPClient.swift` (a resolve for autoplay),
@@ -72,11 +73,12 @@ To find out first:
 ## Verification
 
 - Unit tests: `AutoplayTests`, and the take-overs in `MirroredQueueTests` and
-  `TransferStateTests`; 542 tests and the lint pass.
+  `TransferStateTests`; 544 tests and the lint pass.
 - On this Mac: see Progress.
-- With a phone, still to see: Play on the Mac over the phone's autoplay track, a handover of
-  one, the setting switched off while the Mac is on a last track, and the phone's queue while the
-  Mac plays its own autoplay.
+- With your phone: see Progress. Seen: the setting switched on the phone, the Mac's own
+  autoplay in the phone's queue, a handover of the phone's autoplay, and Play on the Mac over it.
+  Not yet: the phone taking the Mac's autoplay over, in
+  `plans/open/phone-takes-macs-autoplay-as-queued.md`.
 
 ## Progress
 
@@ -138,7 +140,21 @@ To find out first:
   - **The web player,** before and after the station was added, takes an autoplay track over as
     a context of its own (`spotify:track:…`) and goes on with its own autoplay from it.
     go-librespot notes the same: an autoplayed track "is handed over on its own, with no
-    context". The phone after the fix: to see.
+    context".
+  - **The phone after the fix** still held the track as queued, with the album's last track again
+    after it; so it did after the rows named their contexts too. Now
+    `plans/open/phone-takes-macs-autoplay-as-queued.md`, with what was measured.
+- **A phone's own autoplay handed over** (2026-10-02): the phone names the station as the
+  context, `spotify:station:album:<id>`, with no pages. That resolves to nothing (404) and gets no
+  autoplay (204), so the Mac played the one track and stopped. The context it followed is the
+  station's uri without `station:`, as librespot's `handle_transfer` takes it
+  (`contextBeforeAutoplay`). Seen after the fix: the album resolved (12 tracks), a station of 50
+  lined up after it, and the queue read 1 behind and 50 ahead.
+- **Play on the Mac over the phone's own autoplay** (2026-10-02, the bug this plan began with):
+  the phone played an album's last track, went on into its autoplay, was paused and closed.
+  Play on the Mac took "Here's Lookin At You, Kid" over at 17.7 s from the mirror, as
+  autoplay after the album's 10 tracks, with the phone's 49 autoplay rows ahead, and fetched the
+  next of them ahead. Before, the album played again after it.
 - **`/code-review` found five, all fixed:**
   - A repeat wrap after autoplay left the station's rows in the history, past the context's end,
     which the next queue publish would have trapped on.
