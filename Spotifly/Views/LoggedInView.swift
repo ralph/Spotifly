@@ -118,8 +118,16 @@ struct LoggedInView: View {
         .environment(albumService)
         .environment(artistService)
         // Scene values, which the menu sees whenever the window is key, whatever has focus
-        // inside it. The Navigate menu's ⌘1–⌘4 are the only registration of those shortcuts.
-        .focusedSceneValue(\.navigationSelection, navigationSelectionBinding)
+        // inside it. The Navigate menu's ⌘1–⌘4, ⌘[ and ⌘] are the only registration of those
+        // shortcuts.
+        .focusedSceneValue(\.navigationCoordinator, navigationCoordinator)
+        .focusedSceneValue(
+            \.navigationHistory,
+            NavigationHistoryAvailability(
+                back: navigationCoordinator.canNavigateBackward,
+                forward: navigationCoordinator.canNavigateForward,
+            ),
+        )
         .focusedSceneValue(\.homeService, homeService)
         .onChange(of: store.searchCacheEvictionRevision) {
             navigationCoordinator.invalidateUnviewableRoutes()

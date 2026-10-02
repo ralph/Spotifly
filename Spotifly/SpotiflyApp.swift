@@ -10,8 +10,20 @@ import SwiftUI
 
 // MARK: - Focused Values for Menu Commands
 
-struct FocusedNavigationSelection: FocusedValueKey {
-    typealias Value = Binding<NavigationItem?>
+struct FocusedNavigationCoordinator: FocusedValueKey {
+    typealias Value = NavigationCoordinator
+}
+
+/// Which way the key window's history can go. A value of its own beside the coordinator: the
+/// menu is drawn again when a focused value changes, and the coordinator stays the same object
+/// as it moves, so Back and Forward read through it stayed as they were.
+struct NavigationHistoryAvailability: Equatable {
+    var back: Bool
+    var forward: Bool
+}
+
+struct FocusedNavigationHistory: FocusedValueKey {
+    typealias Value = NavigationHistoryAvailability
 }
 
 struct FocusedHomeService: FocusedValueKey {
@@ -19,9 +31,15 @@ struct FocusedHomeService: FocusedValueKey {
 }
 
 extension FocusedValues {
-    var navigationSelection: Binding<NavigationItem?>? {
-        get { self[FocusedNavigationSelection.self] }
-        set { self[FocusedNavigationSelection.self] = newValue }
+    /// The key window's navigation, for the Navigate menu's sections and history.
+    var navigationCoordinator: NavigationCoordinator? {
+        get { self[FocusedNavigationCoordinator.self] }
+        set { self[FocusedNavigationCoordinator.self] = newValue }
+    }
+
+    var navigationHistory: NavigationHistoryAvailability? {
+        get { self[FocusedNavigationHistory.self] }
+        set { self[FocusedNavigationHistory.self] = newValue }
     }
 
     var homeService: HomeService? {
@@ -126,7 +144,8 @@ struct SpotiflyApp: App {
 // MARK: - Menu Commands
 
 struct SpotiflyCommands: Commands {
-    @FocusedValue(\.navigationSelection) var navigationSelection
+    @FocusedValue(\.navigationCoordinator) var navigationCoordinator
+    @FocusedValue(\.navigationHistory) var navigationHistory
     @FocusedValue(\.homeService) var homeService
 
     private var playbackViewModel: PlaybackViewModel {
@@ -170,29 +189,45 @@ struct SpotiflyCommands: Commands {
 
         // Navigation menu
         CommandMenu("menu.navigate") {
+            // The history the toolbar's arrows step through, under the shortcuts Safari, Finder
+            // and Music use for it. ⌘← and ⌘→ are Previous and Next track.
+            Button("nav.back") {
+                navigationCoordinator?.navigateBackward()
+            }
+            .keyboardShortcut("[", modifiers: .command)
+            .disabled(navigationHistory?.back != true)
+
+            Button("nav.forward") {
+                navigationCoordinator?.navigateForward()
+            }
+            .keyboardShortcut("]", modifiers: .command)
+            .disabled(navigationHistory?.forward != true)
+
+            Divider()
+
             Button("menu.favorites") {
-                navigationSelection?.wrappedValue = .favorites
+                navigationCoordinator?.selectNavigationItem(.favorites)
             }
             .keyboardShortcut("1", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Button("menu.playlists") {
-                navigationSelection?.wrappedValue = .playlists
+                navigationCoordinator?.selectNavigationItem(.playlists)
             }
             .keyboardShortcut("2", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Button("menu.albums") {
-                navigationSelection?.wrappedValue = .albums
+                navigationCoordinator?.selectNavigationItem(.albums)
             }
             .keyboardShortcut("3", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Button("menu.artists") {
-                navigationSelection?.wrappedValue = .artists
+                navigationCoordinator?.selectNavigationItem(.artists)
             }
             .keyboardShortcut("4", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Divider()
 
