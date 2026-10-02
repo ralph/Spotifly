@@ -412,9 +412,54 @@ public actor SpircController {
             playerStateProto.options = options
 
             device.playerState = playerStateProto
+            device.transferData = Self.handover(of: ps)?.serialized
         }
 
         return device
+    }
+
+    /// What another device takes over from here while autoplay plays, written as the
+    /// `transfer_data` the backend hands it; nil otherwise, and the backend builds that from the
+    /// player state.
+    ///
+    /// The web player and a phone write their own (2026-10-02); librespot and go-librespot do
+    /// not. Built from this player state during autoplay, it held the context with its own rows
+    /// only and the session at the context's last row, so a phone made the autoplay track a
+    /// queued one, with the context's last track again after it. Written here as a phone and
+    /// the web player write it: the station as the context, the context it went on from as
+    /// `main_context`. The station's rows are left out, as theirs are: the device taking over
+    /// resolves the station. Taken over so, the web player went on with the station.
+    nonisolated static func handover(of ps: SpircPlayerState) -> TransferState? {
+        let playsQueued = ps.trackProvider == "queue"
+        // The row the session stands on: the track's, or while a queued one plays, the
+        // context's row after it.
+        let sessionRow: (provider: String, uid: String?)? = if playsQueued {
+            ps.nextTracks.first { $0.provider != "queue" }.map { ($0.provider, $0.uid) }
+        } else {
+            (ps.trackProvider, ps.trackUid)
+        }
+        guard sessionRow?.provider == "autoplay", let station = ps.autoplayContextUri, let uri = ps.trackUri else {
+            return nil
+        }
+
+        var state = TransferState()
+        state.contextUri = station
+        state.mainContextUri = ps.contextUri.isEmpty ? nil : ps.contextUri
+        state.mainContextMetadata = ps.contextMetadata
+        state.currentTrackUri = uri
+        state.currentTrackUid = ps.trackUid
+        state.currentIsAutoplay = !playsQueued
+        state.autoplayContextUri = station
+        state.playsQueuedTrack = playsQueued
+        state.contextResumeUid = playsQueued ? sessionRow?.uid : nil
+        state.queuedTrackUris = ps.nextTracks.filter { $0.provider == "queue" }.map(\.uri)
+        state.positionAsOfTimestamp = Int64(ps.positionMs)
+        state.timestamp = Int64(ps.timestamp)
+        state.isPaused = ps.isPaused
+        state.shuffle = ps.shuffle
+        state.repeatContext = ps.repeatMode == .context
+        state.repeatTrack = ps.repeatMode == .track
+        return state
     }
 
     /// A row as other devices are told it, as librespot's and a phone's read (2026-10-02). Proto3:

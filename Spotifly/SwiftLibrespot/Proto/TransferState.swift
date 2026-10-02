@@ -9,13 +9,16 @@ import Foundation
 
 /// The `data` of a Connect `transfer` command: librespot's `TransferState`
 /// (`protocol/proto/transfer_state.proto` and the messages it nests), reduced
-/// to what this player can act on.
+/// to what this player can act on. A device writes the same message into its `PutState` as
+/// `transfer_data` (`serialized`), which the backend hands the next device.
 ///
 /// ```
 /// TransferState {
 ///   1 options         { 1 shuffling_context, 2 repeating_context, 3 repeating_track }
-///   2 playback        { 1 timestamp, 2 position_as_of_timestamp, 4 is_paused, 5 current_track }
-///   3 current_session { 2 context { 1 uri, 5 pages { 4 tracks } }, 3 current_uid }
+///   2 playback        { 1 timestamp, 2 position_as_of_timestamp, 3 playback_speed, 4 is_paused,
+///                       5 current_track }
+///   3 current_session { 2 context { 1 uri, 2 url, 3 metadata, 5 pages { 4 tracks } },
+///                       3 current_uid, 8 main_context { 1 uri, 2 url, 3 metadata } }
 ///   4 queue           { 1 tracks, 2 is_playing_queue }
 /// }
 /// ContextTrack { 1 uri, 2 uid, 3 gid, 4 metadata { 1 key, 2 value } }
@@ -34,7 +37,8 @@ public nonisolated struct TransferState: Sendable {
     /// The track that was playing.
     var currentTrackUri: String?
     /// Its row's uid in the context, which names the row when the track plays under another id
-    /// than the context lists, as a relinked track does. Nil when it plays from the queue.
+    /// than the context lists, as a relinked track does. Read as nil when it plays from the
+    /// queue.
     var currentTrackUid: String?
     /// Whether the track playing came from autoplay, after the context ended: its metadata's
     /// `autoplay.is_autoplay`, or its provider in another device's mirrored state, where the
@@ -42,6 +46,12 @@ public nonisolated struct TransferState: Sendable {
     var currentIsAutoplay = false
     /// The station an autoplay track came from, as its row's metadata names it (`context_uri`).
     var autoplayContextUri: String?
+    /// While autoplay plays, the context it went on from: the session's `main_context`, beside the
+    /// station as its `context`. The web player wrote it so on 2026-10-02.
+    var mainContextUri: String?
+    /// The metadata `mainContextUri` is written with, the resolver's, which names it to the
+    /// device taking over.
+    var mainContextMetadata: [String: String] = [:]
     /// Tracks the user queued on the sending device, which play before the
     /// context continues.
     var queuedTrackUris: [String] = []
@@ -51,6 +61,8 @@ public nonisolated struct TransferState: Sendable {
     /// bare list a phone handed over (2026-10-02). Nil while a context track plays, when it only
     /// names that track again.
     var contextResumeUid: String?
+    /// Whether the current track plays from the queue, the queue's `is_playing_queue`.
+    var playsQueuedTrack = false
 
     var positionAsOfTimestamp: Int64 = 0
     var timestamp: Int64 = 0
@@ -63,7 +75,6 @@ public nonisolated struct TransferState: Sendable {
     init() {}
 
     init(parsing data: Data) {
-        var playingQueue = false
         var sessionUid: String?
 
         for field in ProtobufReader.fields(in: data) {
@@ -96,6 +107,7 @@ public nonisolated struct TransferState: Sendable {
             case 3:
                 let session = field.fields
                 sessionUid = session.last(3).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
+                mainContextUri = session.last(8)?.fields.last(1).map(\.string).flatMap { $0.isEmpty ? nil : $0 }
                 for context in session where context.number == 2 {
                     for part in context.fields {
                         switch part.number {
@@ -120,7 +132,7 @@ public nonisolated struct TransferState: Sendable {
                             queuedTrackUris.append(uri)
                         }
                     case 2:
-                        playingQueue = queue.bool
+                        playsQueuedTrack = queue.bool
                     default:
                         break
                     }
@@ -132,7 +144,7 @@ public nonisolated struct TransferState: Sendable {
 
         // Playing from the queue means the queue's head *is* the current track
         // (librespot's `current_track_from_transfer`).
-        if playingQueue, !queuedTrackUris.isEmpty {
+        if playsQueuedTrack, !queuedTrackUris.isEmpty {
             currentTrackUri = queuedTrackUris.removeFirst()
             currentTrackUid = nil
             contextResumeUid = sessionUid
@@ -142,6 +154,73 @@ public nonisolated struct TransferState: Sendable {
         if contextUri == "-" {
             contextUri = ""
         }
+    }
+
+    /// The message as a sending device writes it, which `init(parsing:)` reads back. Each track
+    /// says where it came from, as a phone's do: an autoplay track `autoplay.is_autoplay` and its
+    /// station, a queued one `is_queued`. A playing queued track is the queue's head as well
+    /// as the current track, as a phone wrote it (2026-10-02).
+    var serialized: Data {
+        ProtobufWriter.message { message in
+            message.message(field: 1) {
+                $0.flag(field: 1, shuffle)
+                $0.flag(field: 2, repeatContext)
+                $0.flag(field: 3, repeatTrack)
+            }
+            message.message(field: 2) { playback in
+                playback.varint(field: 1, timestamp)
+                playback.varint(field: 2, positionAsOfTimestamp)
+                playback.double(field: 3, isPaused ? 0 : 1)
+                playback.flag(field: 4, isPaused)
+                if let currentTrackUri {
+                    playback.message(field: 5) { Self.write(track: currentTrackUri, uid: currentTrackUid, metadata: currentTrackMetadata, into: &$0) }
+                }
+            }
+            message.message(field: 3) { session in
+                session.message(field: 2) { Self.write(context: contextUri, into: &$0) }
+                if let uid = playsQueuedTrack ? contextResumeUid : currentTrackUid {
+                    session.string(field: 3, uid)
+                }
+                if let mainContextUri {
+                    session.message(field: 8) { Self.write(context: mainContextUri, metadata: mainContextMetadata, into: &$0) }
+                }
+            }
+            message.message(field: 4) { queue in
+                let playing = playsQueuedTrack ? [currentTrackUri].compactMap(\.self) : []
+                for uri in playing + queuedTrackUris {
+                    queue.message(field: 1) { Self.write(track: uri, uid: nil, metadata: ["is_queued": "true"], into: &$0) }
+                }
+                queue.flag(field: 2, playsQueuedTrack)
+            }
+        }
+    }
+
+    /// The current track's metadata, as `init(parsing:)` reads it.
+    private var currentTrackMetadata: [String: String] {
+        var metadata: [String: String] = [:]
+        if currentIsAutoplay {
+            metadata["autoplay.is_autoplay"] = "true"
+            metadata["context_uri"] = autoplayContextUri
+            metadata["entity_uri"] = autoplayContextUri
+        }
+        if playsQueuedTrack {
+            metadata["is_queued"] = "true"
+        }
+        return metadata
+    }
+
+    private static func write(track uri: String, uid: String?, metadata: [String: String], into track: inout ProtobufWriter) {
+        track.string(field: 1, uri)
+        track.nonEmptyString(field: 2, uid ?? "")
+        track.map(field: 4, metadata)
+    }
+
+    private static func write(context uri: String, metadata: [String: String] = [:], into context: inout ProtobufWriter) {
+        context.nonEmptyString(field: 1, uri)
+        if !uri.isEmpty {
+            context.string(field: 2, "context://\(uri)")
+        }
+        context.map(field: 3, metadata)
     }
 
     /// Where the track is now: it kept playing on the sender since `timestamp`

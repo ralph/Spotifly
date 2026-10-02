@@ -76,8 +76,8 @@ public nonisolated enum ClusterUpdateReason: UInt32, Sendable {
 
 /// Connect-state is proto3: a field at its default may stay off the wire, and the peer reads
 /// its absence as that default. The writer never skips a field by itself, so these say so
-/// where a message does.
-private extension ProtobufWriter {
+/// where a message does, here and in `TransferState`.
+extension ProtobufWriter {
     /// A bool written only when true.
     nonisolated mutating func flag(field: Int, _ isSet: Bool) {
         if isSet {

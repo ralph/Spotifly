@@ -1596,13 +1596,14 @@ public actor LibrespotClient {
     ///
     /// A phone hands its own autoplay over with the station as the context,
     /// `spotify:station:album:<id>`, which resolves to nothing (404) and gets no autoplay of its own
-    /// (204), measured 2026-10-02. The context it followed is the station's uri without
-    /// `station:`, as librespot's `handle_transfer` takes it.
+    /// (204), measured 2026-10-02. The context it followed is the session's `main_context`, which
+    /// the web player names, or else the station's uri without `station:`, as librespot's
+    /// `handle_transfer` takes it.
     private func continueAutoplay(of state: TransferState, positionMs: UInt64, paused: Bool) async throws {
         guard let spclient, let track = state.currentTrackUri else {
             throw LibrespotError.notInitialized
         }
-        let contextUri = Self.contextBeforeAutoplay(state.contextUri)
+        let contextUri = state.mainContextUri ?? Self.contextBeforeAutoplay(state.contextUri)
         let followsStation = contextUri != state.contextUri
         async let resolved: SPClient.ResolvedContext? = contextUri.isEmpty ? nil : try? await spclient.resolveContext(contextUri)
 
