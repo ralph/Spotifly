@@ -55,6 +55,9 @@ Measured on 2026-10-02 with the web player in autoplay, a track queued there and
   shuffled), from the row the session goes on with (`sessionUid`). Rows the other device sent
   are used from that row (a mirror's, or this Mac's own handover's page); a handover without
   them gets a station asked for.
+- **With no context resolved** to stand on (its resolve failed), the queued track goes in front
+  of autoplay's rows as a context row, as `PlaybackQueue.start(in:queued:resumingAt:uids:)` puts
+  one before a first row; found by `/code-review`, where the first station row was skipped.
 - **Not the station as a context,** as librespot and go-librespot take a queued track: a station
   is resolved afresh with each request (a `salt` in its page urls), so the row a handover names
   is not among its rows; other devices would be told a radio, so this Mac's next handover would

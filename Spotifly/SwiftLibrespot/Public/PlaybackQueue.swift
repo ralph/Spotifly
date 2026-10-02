@@ -284,8 +284,14 @@ final nonisolated class PlaybackQueue {
     /// follow in their order either way.
     func playAutoplay(_ tracks: [String], uids: [String?], from station: String? = nil, after queued: String? = nil) {
         guard autoplayStart == nil, !tracks.isEmpty else { return }
-        let standing = currentIndex
-        if queued == nil {
+        let rowless = queued != nil && contextTracks.isEmpty
+        if let queued, rowless {
+            // Before the first row there is no row to stand on, so the queued track goes in front
+            // of autoplay's, as a context row, as `start(in:queued:resumingAt:uids:)` puts one.
+            contextTracks = [queued]
+            contextUids = [nil]
+            currentIndex = 0
+        } else if queued == nil {
             pushHistory()
         }
         appendAutoplay(tracks, uids: uids, from: station)
@@ -293,11 +299,11 @@ final nonisolated class PlaybackQueue {
             currentIndex = ownCount
         }
         if shuffleEnabled {
-            shuffleOrder = (queued == nil ? [] : [standing]) + Array(ownCount ..< contextTracks.count)
+            shuffleOrder = Array(currentIndex ..< contextTracks.count)
             shufflePosition = 0
         }
         autoplayAsked = true
-        if let queued {
+        if let queued, !rowless {
             playQueued(queued)
         }
     }

@@ -246,6 +246,18 @@ struct AutoplayQueueTests {
         #expect(queue.advance() == "s3")
     }
 
+    /// With no context resolved to stand on, the queued track plays in front of autoplay's rows, and
+    /// none of them is skipped.
+    @Test func `a queued track taken over with no context plays before autoplay's first row`() {
+        let queue = PlaybackQueue()
+        queue.setContext(uri: "spotify:album:a", tracks: [], startIndex: 0)
+        queue.playAutoplay(["s1", "s2"], uids: ["x1", "x2"], after: "q0")
+
+        #expect(queue.currentUri == "q0")
+        #expect(queue.advance() == "s1")
+        #expect(queue.advance() == "s2")
+    }
+
     /// What a handover names as the session's row: the track's, or after a queued track, the row
     /// the context goes on with, however many tracks are queued.
     @Test func `the session stands on the current row, or after a queued track on the next`() {
