@@ -189,6 +189,7 @@ struct TrackRow: View {
             .buttonStyle(.plain)
             .disabled(isTogglingFavorite)
             .opacity(isTogglingFavorite ? 0.5 : 1.0)
+            .favoriteToggleName(isFavorited: isFavorited)
 
             // Context menu (3-dot button)
             Menu {
@@ -217,7 +218,7 @@ struct TrackRow: View {
         .padding(.vertical, 8)
         .background(isCurrentTrack ? Color.green.opacity(0.1) : Color.clear)
         .opacity(isPlayedTrack || isUnavailable ? 0.5 : 1.0)
-        .help(track.unplayableMessage ?? "")
+        .help(ifAny: track.unplayableMessage)
         .contentShape(Rectangle())
         .contextMenu {
             TrackContextMenu(
@@ -343,7 +344,32 @@ struct NewPlaylistPrompt: ViewModifier {
     }
 }
 
+extension LocalizedStringKey {
+    /// What saving or removing a track is called, in the track menu and on its hearts.
+    static func favoriteToggle(isFavorited: Bool) -> LocalizedStringKey {
+        isFavorited ? "track.menu.remove_from_favorites" : "track.menu.add_to_favorites"
+    }
+}
+
 extension View {
+    /// Names a heart button by what pressing it does, as its tooltip and to accessibility, which
+    /// otherwise names it after its symbol, "Love", whether the track is saved or not.
+    func favoriteToggleName(isFavorited: Bool) -> some View {
+        let name = LocalizedStringKey.favoriteToggle(isFavorited: isFavorited)
+        return help(name).accessibilityLabel(name)
+    }
+
+    /// A tooltip only where there is something to say. An outer tooltip wins over an inner one,
+    /// even an empty one: a row's `.help("")` hid its heart's.
+    @ViewBuilder
+    func help(ifAny message: String?) -> some View {
+        if let message {
+            help(message)
+        } else {
+            self
+        }
+    }
+
     func newPlaylistPrompt(
         isPresented: Binding<Bool>,
         trackId: String?,
