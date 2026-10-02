@@ -1,7 +1,8 @@
 # Some state is held twice, and the playback view model is passed by hand
 
-Status: **Open**, planned 2026-10-02 on `plan/state-held-twice` (#158). Four PRs, in the order
-below. Phase 1 is in #159, awaiting live checks of Speakers and the context menus
+Status: **Open**, planned 2026-10-02 on `plan/state-held-twice` (#158). All four phases are in
+stacked PRs, checked live except where each says: #159 (phase 1) ← #160 (2) ← #161 (3) ← #162
+(4). Follow-ups are their own open plans, linked under Solution
 Components: `Spotifly/Store/AppStore.swift`, `Spotifly/Store/Entities.swift`,
 `Spotifly/Store/PlayerModel.swift`, `Spotifly/Store/Services/QueueService.swift`,
 `Spotifly/Store/Services/SearchService.swift`, `Spotifly/Store/Services/DeviceService.swift`,
@@ -257,6 +258,17 @@ Behavior changes:
 Behavior change: the toolbar's refresh keeps the list on screen until the answer replaces it,
 as pull-to-refresh does. A failed one leaves the old list with the error in its last row,
 rather than an empty page with the error.
+
+### Follow-ups
+
+Found while building the phases, and each recorded as an open plan of its own:
+
+- `plans/open/playback-view-model-mirrors-the-player.md`
+- `plans/open/views-still-write-the-store.md`
+- `plans/open/menu-commands-lose-the-session-with-the-window.md`
+- `plans/open/ownership-checks-trust-the-launch-profile.md`
+- `plans/open/toolbar-refresh-moves-the-selection.md`
+- `plans/open/now-playing-bar-missing-on-show-all-tracks.md`
 
 ### Not changing
 
