@@ -12,33 +12,33 @@ import Testing
 
 struct DurationFormattingTests {
     private static let twoHours44 = (2 * 3600 + 44 * 60) * 1000
+    private static let en = Locale(identifier: "en_US")
 
     @Test(arguments: [
         ("en_US", "2 hr, 44 min"),
         ("de_DE", "2 Std., 44 Min."),
-        // French keeps a number with its unit with no-break spaces, narrow before "h".
-        ("fr_FR", "2\u{202F}h et 44\u{00A0}min"),
+        ("fr_FR", "2 h et 44 min"),
     ])
     func `hours and minutes are written in the locale's words`(locale: String, expected: String) {
-        #expect(formatDuration(milliseconds: Self.twoHours44, locale: Locale(identifier: locale)) == expected)
+        let formatted = formatDuration(milliseconds: Self.twoHours44, locale: Locale(identifier: locale))
+
+        // Which spaces are Foundation's: French has no-break ones, U+202F before "h" and U+00A0
+        // before "min" (2026-10-02), and they have changed between releases before.
+        #expect(formatted.replacing(/\s/, with: " ") == expected)
     }
 
     @Test func `under an hour is minutes only`() {
-        #expect(formatDuration(milliseconds: 47 * 60 * 1000, locale: Locale(identifier: "en_US")) == "47 min")
+        #expect(formatDuration(milliseconds: 47 * 60 * 1000, locale: Self.en) == "47 min")
     }
 
     /// Whole minutes played, as before: 2:44:40 is not yet 2:45.
     @Test func `minutes are rounded down`() {
-        let en = Locale(identifier: "en_US")
-
-        #expect(formatDuration(milliseconds: Self.twoHours44 + 40000, locale: en) == "2 hr, 44 min")
-        #expect(formatDuration(milliseconds: 59000, locale: en) == "0 min")
+        #expect(formatDuration(milliseconds: Self.twoHours44 + 40000, locale: Self.en) == "2 hr, 44 min")
+        #expect(formatDuration(milliseconds: 59000, locale: Self.en) == "0 min")
     }
 
     @Test func `a zero unit is left out, except for nothing at all`() {
-        let en = Locale(identifier: "en_US")
-
-        #expect(formatDuration(milliseconds: 3600 * 1000, locale: en) == "1 hr")
-        #expect(formatDuration(milliseconds: 0, locale: en) == "0 min")
+        #expect(formatDuration(milliseconds: 3600 * 1000, locale: Self.en) == "1 hr")
+        #expect(formatDuration(milliseconds: 0, locale: Self.en) == "0 min")
     }
 }

@@ -81,21 +81,19 @@ private struct UptimeDisplay: View {
         }
     }
 
+    /// "1h 2m 5s", in the app's language: "1h 2min 5s" in German and French. Leading zero units
+    /// are left out, and inner ones kept, so the readout does not change shape as it ticks.
     private var formattedUptime: String {
         let interval = currentTime.timeIntervalSince(connectedSince)
         guard interval >= 0 else { return "--" }
 
-        let hours = Int(interval) / 3600
-        let minutes = (Int(interval) % 3600) / 60
-        let seconds = Int(interval) % 60
-
-        if hours > 0 {
-            return "\(hours.formatted())h \(minutes.formatted())m \(seconds.formatted())s"
-        } else if minutes > 0 {
-            return "\(minutes.formatted())m \(seconds.formatted())s"
-        } else {
-            return "\(seconds.formatted())s"
+        let units: Set<Duration.UnitsFormatStyle.Unit> = switch interval {
+        case 3600...: [.hours, .minutes, .seconds]
+        case 60...: [.minutes, .seconds]
+        default: [.seconds]
         }
+        return Duration.seconds(Int(interval))
+            .formatted(.units(allowed: units, width: .narrow, zeroValueUnits: .show(length: 1)))
     }
 }
 
