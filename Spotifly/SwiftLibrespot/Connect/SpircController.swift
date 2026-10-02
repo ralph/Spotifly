@@ -85,6 +85,8 @@ public actor SpircController {
         /// The resolver's metadata of the context, sent as `context_metadata`.
         public var contextMetadata: [String: String] = [:]
         public var contextIndex: Int?
+        /// The station autoplay's rows came from, told with each of them.
+        public var autoplayContextUri: String?
         /// "context", or "queue" for a track the user queued.
         public var trackProvider: String
         /// The current row's uid, where it has one.
@@ -384,7 +386,7 @@ public actor SpircController {
             playerStateProto.isBuffering = ps.isPaused
 
             if let uri = ps.trackUri {
-                playerStateProto.track = ProvidedTrack(uri: uri, uid: ps.trackUid ?? "", provider: ps.trackProvider)
+                playerStateProto.track = Self.provided(uri: uri, uid: ps.trackUid, provider: ps.trackProvider, context: ps.contextUri, station: ps.autoplayContextUri)
             }
             playerStateProto.contextUri = ps.contextUri
             playerStateProto.contextMetadata = ps.contextMetadata
@@ -394,9 +396,8 @@ public actor SpircController {
             if let index = ps.contextIndex {
                 playerStateProto.index = ContextIndex(page: 0, track: UInt32(index))
             }
-            // Proto3: a row without a uid sends "".
             let provided: (QueueItem) -> ProvidedTrack = { item in
-                var track = ProvidedTrack(uri: item.uri, uid: item.uid ?? "", provider: item.provider)
+                var track = Self.provided(uri: item.uri, uid: item.uid, provider: item.provider, context: ps.contextUri, station: ps.autoplayContextUri)
                 track.isHidden = item.hidden
                 return track
             }
@@ -414,6 +415,29 @@ public actor SpircController {
         }
 
         return device
+    }
+
+    /// A row as other devices are told it, as librespot's and a phone's read (2026-10-02). Proto3:
+    /// a row without a uid sends "". Its metadata says where it came from: the context it belongs
+    /// to as its `context_uri` and `entity_uri` (the album for a context row, the station for an
+    /// autoplay row, which says `autoplay.is_autoplay` too), and `is_queued` for a queued row. A
+    /// delimiter belongs to none, as a phone's carries none.
+    nonisolated static func provided(uri: String, uid: String?, provider: String, context: String = "", station: String? = nil) -> ProvidedTrack {
+        var track = ProvidedTrack(uri: uri, uid: uid ?? "", provider: provider)
+        let belongsTo: String? = switch provider {
+        case "context": context.isEmpty || uri == PlaybackQueue.delimiterUri ? nil : context
+        case "autoplay": station
+        default: nil
+        }
+        track.metadata["context_uri"] = belongsTo
+        track.metadata["entity_uri"] = belongsTo
+        if provider == "autoplay" {
+            track.metadata["autoplay.is_autoplay"] = "true"
+        }
+        if provider == "queue" {
+            track.metadata["is_queued"] = "true"
+        }
+        return track
     }
 
     /// A token that changes whenever what plays next does — librespot's

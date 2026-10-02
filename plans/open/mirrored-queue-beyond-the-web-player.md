@@ -3,8 +3,10 @@
 Status: **Open**, in part. Next on a context's last track, this Mac's own report of the next
 round under repeat, and the take-over of a bare list are done and seen, the last two on a phone
 (2026-10-01); see Progress. The mirror lists one round under repeat, seen with the web player
-(2026-10-01). What is left needs autoplay on, a device that names a reason not to skip next,
-or librespot as the other device. From the altitude review of
+(2026-10-01). A phone with autoplay on was measured (2026-10-02): the mirror and Next work, and
+what does not is this Mac's missing autoplay, now `plans/done/autoplay.md`. What is left needs a
+device that names a reason not to skip next, or librespot as the other device. From the altitude
+review of
 `plans/done/mirrored-queue-runs-past-the-context.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`mirroredQueue`, the take-over
 of a mirrored bare list), `Spotifly/ViewModels/PlaybackViewModel.swift` (`hasNext`),
@@ -31,11 +33,12 @@ a device that refuses Next, and the next round of another device's context.
     context named). Its repeat did not respond, neither while it held the list nor while it
     controlled Spotifly playing it, and Spotifly has no repeat control of its own. Without
     repeat, taking the mirrored list back over played the same five tracks.
-- **Next on a context's last track:** done; see Progress. What is left of it: a device with
-  autoplay on, and one that does name a reason not to skip next, neither seen.
+- **Next on a context's last track:** done; see Progress. Autoplay on was seen with a phone
+  (2026-10-02). What is left of it: a device that does name a reason not to skip next, not seen.
 - **Other devices' rows.** librespot, as the other device, fills autoplay after a delimiter
   "to only display the current context" (`connect/src/state/tracks.rs`), and those autoplay
-  rows may not be hidden. A phone's rows were not logged either; only what its queue showed.
+  rows may not be hidden. A phone's were logged with autoplay on (2026-10-02; see Progress):
+  its autoplay rows follow the album's last row with no delimiter between, and are shown.
 - **The next round of another device's context:** done, one round under repeat; see Progress.
   The mirror listed it where that device does not hide it, while this Mac's own queue lists one
   round, as the web player's queue panel does.
@@ -55,8 +58,9 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
 
 - The take-over: unit tests (`BareListTakeOverTests`), and seen on a phone; see Progress.
 - Next on the last track, and the next round under repeat: see Progress.
-- What is left: a device with autoplay on, on a context's last track, mirrored by this Mac with
-  its rows and restrictions logged.
+- Autoplay on: a phone's rows logged on a context's last track; see Progress.
+- What is left: a device that names a reason not to skip next, and librespot as the other
+  device.
 
 ## Progress
 
@@ -152,3 +156,22 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
     10 shown, and the mirror listed 10.
   - A phone's queue lists the next round (seen 2026-10-01), so the mirror now differs from a
     phone's own queue, and agrees with the Mac's and the web player's.
+- **Autoplay on, a phone** (2026-10-02). A throwaway build, never committed, logged the rows
+  this Mac mirrored. The account's autoplay was switched on on the phone.
+  - **On an album's last track** ("The Final Frame", "Love & Hate"), the phone sent 52 next
+    rows:
+    - 50 with provider `autoplay`, not hidden, each carrying `autoplay.is_autoplay=true`,
+      `context_uri` and `entity_uri` `spotify:station:album:<the album's id>`, `iteration=0`
+      and a `view_index`;
+    - then 2 hidden rows, the last a `spotify:delimiter` (uid `delimiter0`, provider
+      `autoplay`, `actions.advancing_past_track=pause`).
+    - No delimiter came between the album's last row and the first autoplay row. Next was not
+      refused.
+  - **The mirror** listed the 50 autoplay rows, marked A, as the phone's queue lists them.
+  - **The bar's Next** was enabled, and sent `skip_next`. The phone went on to the first
+    autoplay track, "Teardrop", still naming the album as its context, with 49 autoplay rows
+    ahead.
+  - **Play on the Mac,** with the phone paused and closed, took "Teardrop" over in the album.
+    The track is not the album's, so it went in front of it, and the album followed from its
+    first track: the take-over has no autoplay to go on with, and neither has this Mac when an
+    album ends. Now `plans/done/autoplay.md`.

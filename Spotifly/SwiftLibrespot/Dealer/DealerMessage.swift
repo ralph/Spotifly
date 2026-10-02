@@ -135,6 +135,10 @@ public enum SpircCommand: Sendable {
     /// tried: the iPhone app went on offering them, and stopped sending drags
     /// within the queue instead.
     case setQueue(queuedUris: [String])
+    /// `spotify:user:attributes:mutated`: the account's attributes of these names changed,
+    /// `autoplay` among them when it is switched on another device. It names no values:
+    /// librespot flips the "0" or "1" it keeps, and so does this client.
+    case userAttributesMutated([String])
     case unknown(String)
 
     public nonisolated struct PlayCommand: Sendable {

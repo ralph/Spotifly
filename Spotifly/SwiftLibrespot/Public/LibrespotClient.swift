@@ -46,6 +46,10 @@ public actor LibrespotClient {
     /// Whether this Mac may play for the account, as the last login found.
     private var streams = true
 
+    /// The account's autoplay setting: from the last login, and flipped when another device
+    /// switches it (`userAttributesMutated`).
+    private var autoplay = false
+
     /// Consumes the current session's events; cancelled when it is torn down.
     private var sessionEvents: Task<Void, Never>?
 
@@ -396,6 +400,7 @@ public actor LibrespotClient {
 
         await spclient?.setCountryCode(accesspoint.lastCountryCode)
         streams = await session.streams
+        autoplay = await accesspoint.autoplay ?? false
 
         guard audioPipeline == nil else { return }
 
@@ -691,7 +696,57 @@ public actor LibrespotClient {
         let next = repeatMode == .track
             ? playbackQueue.currentUri
             : playbackQueue.upcomingPlayable(skipping: knownUnplayable)
+        if next == nil {
+            lineUpAutoplay()
+        }
         Task { [audioPipeline] in await audioPipeline?.setNextTrack(next) }
+    }
+
+    /// Asks for autoplay when nothing comes after the track playing here, with the account's
+    /// autoplay on and nothing to repeat: its tracks are then listed, reported and fetched ahead
+    /// before the context ends, as librespot's `add_autoplay_resolving_when_required` has them. A
+    /// station is followed by none, as under go-librespot, and a bare list has no context to ask
+    /// for.
+    ///
+    /// Asked from `announceNextTrack`, and again once the first track here reports, which the
+    /// queue's publish can come before.
+    private func lineUpAutoplay() {
+        let contextUri = playbackQueue.contextUri
+        guard autoplay, localState != nil, repeatMode == .off, !playbackQueue.autoplayAsked,
+              !contextUri.isEmpty, !contextUri.hasPrefix("spotify:station:"), let spclient,
+              playbackQueue.upcomingPlayable(skipping: knownUnplayable) == nil
+        else { return }
+        playbackQueue.markAutoplayAsked()
+        let seed = playbackQueue.autoplaySeed
+        Task {
+            let station: SPClient.ResolvedContext
+            do {
+                station = try await spclient.resolveAutoplay(contextUri: contextUri, recentTrackUris: seed)
+            } catch {
+                debugLog("LibrespotClient", "Autoplay for \(contextUri) failed: \(error.localizedDescription)")
+                return
+            }
+            // Still playing here, the context it was asked for, with nothing after the track
+            // playing, and still wanted: any of it may have changed meanwhile.
+            guard autoplay, localState != nil, repeatMode == .off, playbackQueue.contextUri == contextUri, playbackQueue.autoplayAsked,
+                  playbackQueue.autoplayStart == nil, playbackQueue.upcomingPlayable(skipping: knownUnplayable) == nil
+            else { return }
+            playbackQueue.appendAutoplay(station.tracks, uids: station.uids, from: station.uri)
+            debugLog("LibrespotClient", "Autoplay lined up after \(contextUri): \(station.tracks.count) track(s)")
+            publishQueue()
+            reportPlaybackToCluster()
+        }
+    }
+
+    /// The account's autoplay switched on another device. Switched off, autoplay's rows go
+    /// unless one plays; either way it may be asked for again.
+    private func setAutoplay(_ enabled: Bool) {
+        autoplay = enabled
+        debugLog("LibrespotClient", "Autoplay \(enabled ? "on" : "off")")
+        playbackQueue.dropAutoplay()
+        // While another device plays, the Queue section shows its queue, not this one.
+        guard localState != nil else { return }
+        publishQueue()
     }
 
     /// A track Spotify withholds, found out by loading it or by fetching it ahead: the queue
@@ -821,7 +876,10 @@ public actor LibrespotClient {
     /// and is published again afterwards, as the skips do: announcing the next track any sooner
     /// would cancel a fetched-ahead copy of this one.
     ///
-    /// - Parameter queued: a track to play as queued, after the context's start row.
+    /// - Parameters:
+    ///   - queued: a track to play as queued, after the context's start row.
+    ///   - autoplay: autoplay's rows to play from, after the context's start row; see
+    ///     `continueAutoplay`.
     private func play(
         contextUri: String,
         tracks: [String],
@@ -829,6 +887,7 @@ public actor LibrespotClient {
         startIndex: Int,
         metadata: [String: String] = [:],
         playingQueued queued: String? = nil,
+        playingAutoplay autoplay: (tracks: [String], uids: [String?], station: String?)? = nil,
         positionMs: UInt64,
         paused: Bool,
     ) async throws {
@@ -837,6 +896,9 @@ public actor LibrespotClient {
         // Before the load, so the row before it never shows as the one playing.
         if let queued {
             playbackQueue.playQueued(queued)
+        }
+        if let autoplay {
+            playbackQueue.playAutoplay(autoplay.tracks, uids: autoplay.uids, from: autoplay.station)
         }
         defer { publishQueue() }
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
@@ -993,7 +1055,7 @@ public actor LibrespotClient {
         let isUnplayable = knownUnplayable
         // Nothing in the context plays: a load would go past its end again, and back here. A
         // track found out on the way has said so; an album or a playlist says it of itself.
-        guard let first = playbackQueue.contextTracks.firstIndex(where: { !isUnplayable($0) }) else {
+        guard let first = playbackQueue.ownTracks.firstIndex(where: { !isUnplayable($0) }) else {
             await audioPipeline?.stop()
             if let contextName = contextMetadata.contextName {
                 await playbackFailed(LibrespotError.trackUnavailable(name: contextName))
@@ -1211,7 +1273,8 @@ public actor LibrespotClient {
             timestamp: UInt64(max(0, current.timestampMs)),
             contextUri: playbackQueue.contextUri,
             contextMetadata: contextMetadata,
-            contextIndex: playbackQueue.contextPosition,
+            contextIndex: playbackQueue.reportedIndex,
+            autoplayContextUri: playbackQueue.autoplayContextUri,
             trackProvider: playbackQueue.currentProvider,
             trackUid: playbackQueue.current?.uid,
             nextTracks: playbackQueue.upcoming(rounds: .asReported),
@@ -1400,6 +1463,8 @@ public actor LibrespotClient {
         state.currentTrackUid = current.provider == "queue" ? nil : rowUid(current)
         state.queuedTrackUris = ahead.filter { $0.provider == "queue" }.map(\.uri)
         state.contextResumeUid = resumingAt
+        state.currentIsAutoplay = current.provider == "autoplay"
+        state.autoplayContextUri = current.metadata["context_uri"].flatMap { $0.hasPrefix("spotify:station:") ? $0 : nil }
         state.shuffle = remote.options.shufflingContext
         state.repeatContext = remote.options.repeatingContext
         state.repeatTrack = remote.options.repeatingTrack
@@ -1497,7 +1562,9 @@ public actor LibrespotClient {
         // see the other device's queue, and none left over from before.
         playbackQueue.replaceUserQueue(with: state.queuedTrackUris)
 
-        if !state.contextUri.isEmpty {
+        if state.currentIsAutoplay {
+            try await continueAutoplay(of: state, positionMs: positionMs, paused: paused)
+        } else if !state.contextUri.isEmpty {
             try await play(
                 uriOrUrl: state.contextUri,
                 startingAtUri: state.currentTrackUri,
@@ -1519,6 +1586,58 @@ public actor LibrespotClient {
                 paused: paused,
             )
         }
+    }
+
+    /// Goes on with another device's autoplay: the context it followed, standing on its last
+    /// row, and autoplay's rows from the one playing (`PlaybackQueue.playAutoplay`). Taken over
+    /// from a mirror, the rows are the other device's, from `currentRow` on; a handover names none,
+    /// so a station is asked for beside the context, seeded with the track and what the handover
+    /// sent of the context.
+    ///
+    /// A phone hands its own autoplay over with the station as the context,
+    /// `spotify:station:album:<id>`, which resolves to nothing (404) and gets no autoplay of its own
+    /// (204), measured 2026-10-02. The context it followed is the station's uri without
+    /// `station:`, as librespot's `handle_transfer` takes it.
+    private func continueAutoplay(of state: TransferState, positionMs: UInt64, paused: Bool) async throws {
+        guard let spclient, let track = state.currentTrackUri else {
+            throw LibrespotError.notInitialized
+        }
+        let contextUri = Self.contextBeforeAutoplay(state.contextUri)
+        let followsStation = contextUri != state.contextUri
+        async let resolved: SPClient.ResolvedContext? = contextUri.isEmpty ? nil : try? await spclient.resolveContext(contextUri)
+
+        var rows: [String]
+        var uids: [String?]
+        var stationUri = state.autoplayContextUri ?? (followsStation ? state.contextUri : nil)
+        if let row = state.currentRow, row < state.contextTrackUris.count {
+            rows = Array(state.contextTrackUris[row...])
+            uids = Array(state.contextTrackUids[row...])
+        } else {
+            let seed = state.contextTrackUris.suffix(PlaybackQueue.autoplaySeedLimit - 1) + [track]
+            let station = try? await spclient.resolveAutoplay(contextUri: contextUri, recentTrackUris: Array(seed))
+            let after = zip(station?.tracks ?? [], station?.uids ?? []).filter { $0.0 != track }
+            rows = [track] + after.map(\.0)
+            uids = [state.currentTrackUid] + after.map(\.1)
+            stationUri = station?.uri ?? stationUri
+        }
+
+        let context = await resolved
+        try await play(
+            contextUri: contextUri,
+            tracks: context?.tracks ?? [],
+            uids: context?.uids ?? [],
+            startIndex: max(0, (context?.tracks.count ?? 0) - 1),
+            metadata: context?.metadata ?? [:],
+            playingAutoplay: (rows, uids, stationUri),
+            positionMs: positionMs,
+            paused: paused,
+        )
+    }
+
+    /// The context autoplay followed, as a handover names it: a station's uri without
+    /// `station:`, as librespot's `handle_transfer` takes it, and any other uri as it is.
+    nonisolated static func contextBeforeAutoplay(_ uri: String) -> String {
+        uri.hasPrefix("spotify:station:") ? uri.replacingOccurrences(of: "station:", with: "") : uri
     }
 
     // MARK: - Remote Commands
@@ -1613,6 +1732,11 @@ public actor LibrespotClient {
             playbackQueue.replaceUserQueue(with: queuedUris)
             publishQueue()
 
+        case let .userAttributesMutated(names):
+            if names.contains("autoplay") {
+                setAutoplay(!autoplay)
+            }
+
         case let .transfer(state):
             await takeOver(state)
 
@@ -1652,8 +1776,12 @@ public actor LibrespotClient {
             repeatContext: repeatMode == .context,
             timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
         )
+        let arrived = localState == nil
         localState = state
         positionCache.withLock { $0 = UInt64(max(0, positionMs)) }
+        if arrived {
+            lineUpAutoplay()
+        }
         publish {
             $0.playback = state
             if let queue {

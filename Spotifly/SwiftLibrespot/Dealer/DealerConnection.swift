@@ -300,6 +300,8 @@ public actor DealerConnection {
             await handleCommand(dealerMsg)
         } else if uri.starts(with: "hm://connect-state/v1/connect/volume") {
             await handleVolumeCommand(dealerMsg)
+        } else if uri == "spotify:user:attributes:mutated" {
+            handleAttributesMutation(dealerMsg)
         } else {
             debugLog("DealerConnection", "Unhandled URI: \(uri)")
         }
@@ -478,6 +480,23 @@ public actor DealerConnection {
 
         debugLog("DealerConnection", "Volume command: \(volume)")
         commandSubject.send(SpircRemoteCommand(command: .setVolume(volume), messageId: nil, sentByDeviceId: nil))
+    }
+
+    private func handleAttributesMutation(_ message: DealerMessage) {
+        guard let payloadData = Self.payloadData(from: message, headers: message.headers) else {
+            debugLog("DealerConnection", "No payload in attributes mutation")
+            return
+        }
+        let names = Self.mutatedAttributes(in: payloadData)
+        debugLog("DealerConnection", "Attributes mutated: \(names)")
+        commandSubject.send(SpircRemoteCommand(command: .userAttributesMutated(names), messageId: nil, sentByDeviceId: nil))
+    }
+
+    /// The names a `UserAttributesMutation` lists: `{ repeated MutatedField fields = 1 { string
+    /// name = 1 }, … }`, as librespot reads it. Measured 2026-10-02: switching autoplay on a
+    /// phone sent one naming `autoplay`, with a timestamp and no value.
+    nonisolated static func mutatedAttributes(in data: Data) -> [String] {
+        ProtobufReader.fields(in: data).filter { $0.number == 1 }.compactMap { $0.fields.last(1)?.string }
     }
 
     /// The volume a `SetVolumeCommand` sets, 0…65535.

@@ -18,7 +18,7 @@ import Foundation
 ///   3 current_session { 2 context { 1 uri, 5 pages { 4 tracks } }, 3 current_uid }
 ///   4 queue           { 1 tracks, 2 is_playing_queue }
 /// }
-/// ContextTrack { 1 uri, 2 uid, 3 gid }
+/// ContextTrack { 1 uri, 2 uid, 3 gid, 4 metadata { 1 key, 2 value } }
 /// ```
 public nonisolated struct TransferState: Sendable {
     var contextUri = ""
@@ -36,6 +36,12 @@ public nonisolated struct TransferState: Sendable {
     /// Its row's uid in the context, which names the row when the track plays under another id
     /// than the context lists, as a relinked track does. Nil when it plays from the queue.
     var currentTrackUid: String?
+    /// Whether the track playing came from autoplay, after the context ended: its metadata's
+    /// `autoplay.is_autoplay`, or its provider in another device's mirrored state, where the
+    /// autoplay rows are `contextTrackUris` from `currentRow` on.
+    var currentIsAutoplay = false
+    /// The station an autoplay track came from, as its row's metadata names it (`context_uri`).
+    var autoplayContextUri: String?
     /// Tracks the user queued on the sending device, which play before the
     /// context continues.
     var queuedTrackUris: [String] = []
@@ -81,6 +87,9 @@ public nonisolated struct TransferState: Sendable {
                         let track = playback.fields
                         currentTrackUri = Self.trackUri(track)
                         currentTrackUid = Self.trackUid(track)
+                        let metadata = track.filter { $0.number == 4 }.map(\.mapEntry)
+                        currentIsAutoplay = metadata.contains { $0 == ("autoplay.is_autoplay", "true") }
+                        autoplayContextUri = metadata.first { $0.key == "context_uri" && $0.value.hasPrefix("spotify:station:") }?.value
                     default: break
                     }
                 }

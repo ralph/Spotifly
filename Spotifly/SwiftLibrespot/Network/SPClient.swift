@@ -261,6 +261,8 @@ public actor SPClient {
         public let uids: [String?]
         /// The answer's `metadata`, the context's name among it (`contextName`).
         public let metadata: [String: String]
+        /// The context's own uri, as the answer names it: a station's for autoplay.
+        public var uri: String?
     }
 
     /// Resolves an album, playlist, artist, or station uri into its tracks,
@@ -306,6 +308,38 @@ public actor SPClient {
         return ResolvedContext(tracks: allTracks, uids: allUids, metadata: metadata)
     }
 
+    /// The tracks autoplay goes on with after `contextUri`: a station for it, from
+    /// `context-resolve/v1/autoplay`, seeded with tracks the context played, as librespot's
+    /// `get_autoplay_context` and go-librespot's `ContextResolveAutoplay` ask for it. Its first
+    /// page only, which go-librespot plays too.
+    public func resolveAutoplay(contextUri: String, recentTrackUris: [String]) async throws -> ResolvedContext {
+        let host = spclientHost ?? "spclient.wg.spotify.com"
+        debugLog("SPClient", "Resolving autoplay for \(contextUri), \(recentTrackUris.count) track(s) as its seed")
+
+        var request = URLRequest(url: URL(string: "https://\(host)/context-resolve/v1/autoplay")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Self.autoplayRequest(contextUri: contextUri, recentTrackUris: recentTrackUris)
+        let data = try await Self.withTimeout(seconds: 20) { [self, request] in
+            try await fetch(request, named: "Autoplay resolve")
+        }
+
+        let report = Self.parseContextReport(data)
+        debugLog("SPClient", "Autoplay resolved: \(report.tracks.count) track(s) from \(report.uri ?? "no uri")")
+        return ResolvedContext(tracks: report.tracks, uids: report.uids, metadata: report.metadata, uri: report.uri)
+    }
+
+    /// `AutoplayContextRequest { required string context_uri = 1; repeated string
+    /// recent_track_uri = 2; }`. The answer is JSON, as a resolve's is.
+    nonisolated static func autoplayRequest(contextUri: String, recentTrackUris: [String]) -> Data {
+        ProtobufWriter.message {
+            $0.string(field: 1, contextUri)
+            for uri in recentTrackUris {
+                $0.string(field: 2, uri)
+            }
+        }
+    }
+
     /// Parses the context resolver's answer. Despite the protobuf `Accept`
     /// header the endpoint replies **JSON**: `{metadata, pages: [{tracks:
     /// [{uri, uid}], next_page_url}], uri}`.
@@ -315,9 +349,9 @@ public actor SPClient {
     /// it and was always 0 — the guard ran after the append, and a context uri
     /// never matches a track uri anyway. Removed rather than guessed at: which
     /// field, if any, carries a resume point has to come off a real response.
-    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], uids: [String?], nextPageUrl: String?, metadata: [String: String]) {
+    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], uids: [String?], nextPageUrl: String?, metadata: [String: String], uri: String?) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return ([], [], nil, [:])
+            return ([], [], nil, [:], nil)
         }
 
         var tracks: [String] = []
@@ -339,7 +373,7 @@ public actor SPClient {
 
         // String values only, as the player state's `context_metadata` is a map of strings.
         let metadata = (json["metadata"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
-        return (tracks, uids, nextPageUrl, metadata)
+        return (tracks, uids, nextPageUrl, metadata, json["uri"] as? String)
     }
 
     // MARK: - Timeout

@@ -29,6 +29,11 @@ final nonisolated class PlaybackQueue {
     private var contextUids: [String?] = []
     private(set) var currentIndex = 0
 
+    /// Where autoplay's rows start among `contextTracks`, once they are lined up after the
+    /// context's own (`appendAutoplay`). The context stays the one played, as a phone reports
+    /// it while its autoplay plays (2026-10-02), and the rows say `autoplay`.
+    private(set) var autoplayStart: Int?
+
     /// Tracks queued explicitly ("add to queue"), which play before the
     /// context resumes. Each row is named by a uid of its own: `q0`, `q1` and on, as
     /// librespot's `add_to_queue` makes them, so another device can name a queued copy apart
@@ -143,9 +148,9 @@ final nonisolated class PlaybackQueue {
     }
 
     /// Starts the context over at `startIndex`, with the rows it has: the end of it, played
-    /// through with nothing to repeat.
+    /// through with nothing to repeat. Autoplay's rows go, as the context's own come round again.
     func rewind(to startIndex: Int) {
-        setContext(uri: contextUri, tracks: contextTracks, uids: contextUids, startIndex: startIndex)
+        setContext(uri: contextUri, tracks: Array(contextTracks.prefix(ownCount)), uids: Array(contextUids.prefix(ownCount)), startIndex: startIndex)
     }
 
     /// Replaces the whole playing context, with its rows' uids where it has them.
@@ -153,6 +158,8 @@ final nonisolated class PlaybackQueue {
         contextUri = uri
         contextTracks = tracks
         contextUids = Self.aligned(uids, to: tracks)
+        autoplayStart = nil
+        autoplayAsked = false
         currentIndex = max(0, min(startIndex, tracks.count - 1))
         historyPositions = []
         userQueueCurrent = nil
@@ -168,9 +175,10 @@ final nonisolated class PlaybackQueue {
     ///
     /// - Returns: whether any row has a uid now.
     func adoptRowUids(_ listed: [(uri: String, uid: String)], ofContext uri: String) -> Bool {
-        guard uri == contextUri, !contextUids.contains(where: { $0 != nil }) else { return false }
-        contextUids = Self.rowUids(listed, of: contextTracks)
-        return contextUids.contains { $0 != nil }
+        let own = ownCount
+        guard uri == contextUri, !contextUids.prefix(own).contains(where: { $0 != nil }) else { return false }
+        contextUids = Self.rowUids(listed, of: Array(contextTracks.prefix(own))) + contextUids.dropFirst(own)
+        return contextUids.prefix(own).contains { $0 != nil }
     }
 
     func enqueue(_ uri: String) {
@@ -212,8 +220,97 @@ final nonisolated class PlaybackQueue {
         }
     }
 
+    /// Repeat plays the context's own rows again, so autoplay's go while one of those plays.
     func setRepeat(_ mode: RepeatMode) {
         repeatMode = mode
+        if mode != .off {
+            dropAutoplay()
+        }
+    }
+
+    // MARK: - Autoplay
+
+    /// Where the context's own rows end; autoplay's come after them. A round of the context,
+    /// for repeat and shuffle, is its own rows.
+    private var ownCount: Int {
+        autoplayStart ?? contextTracks.count
+    }
+
+    /// Whether autoplay was asked for this context, answered or not: once per context, and
+    /// again after its rows were taken away.
+    private(set) var autoplayAsked = false
+
+    /// The station autoplay's rows came from, `spotify:station:…`, where it is known: other
+    /// devices are told it with each of them, as librespot tells them and a phone's rows carry
+    /// it.
+    private(set) var autoplayContextUri: String?
+
+    func markAutoplayAsked() {
+        autoplayAsked = true
+    }
+
+    /// How many of the context's tracks seed a station, as go-librespot's
+    /// `maxAutoplaySeedTracks`.
+    static let autoplaySeedLimit = 50
+
+    /// The context's own tracks, without autoplay's.
+    var ownTracks: ArraySlice<String> {
+        contextTracks.prefix(ownCount)
+    }
+
+    /// The tracks to seed a station with: the context's own, its last `autoplaySeedLimit`.
+    var autoplaySeed: [String] {
+        Array(ownTracks.suffix(Self.autoplaySeedLimit))
+    }
+
+    /// Lines up autoplay's `tracks` after the context's own rows, in their order also when
+    /// shuffled: a station goes on from where the context ended.
+    func appendAutoplay(_ tracks: [String], uids: [String?], from station: String? = nil) {
+        guard autoplayStart == nil, !tracks.isEmpty else { return }
+        let start = contextTracks.count
+        contextTracks += tracks
+        contextUids += Self.aligned(uids, to: tracks)
+        autoplayStart = start
+        autoplayContextUri = station
+        if shuffleEnabled {
+            shuffleOrder += start ..< contextTracks.count
+        }
+    }
+
+    /// Goes on with autoplay's rows after the context's row standing, as another device's autoplay
+    /// is taken over: the first of them plays, and that row goes into the history for Previous.
+    func playAutoplay(_ tracks: [String], uids: [String?], from station: String? = nil) {
+        guard autoplayStart == nil, !tracks.isEmpty else { return }
+        pushHistory()
+        appendAutoplay(tracks, uids: uids, from: station)
+        currentIndex = ownCount
+        if shuffleEnabled {
+            shuffleOrder = Array(currentIndex ..< contextTracks.count)
+            shufflePosition = 0
+        }
+        autoplayAsked = true
+    }
+
+    /// Takes autoplay's rows away again, unless one of them plays, and lets it be asked for
+    /// again.
+    func dropAutoplay() {
+        guard !isAutoplayRow(currentIndex) else { return }
+        removeAutoplayRows()
+    }
+
+    private func removeAutoplayRows() {
+        autoplayAsked = false
+        guard let start = autoplayStart else { return }
+        contextTracks.removeSubrange(start...)
+        contextUids.removeSubrange(start...)
+        shuffleOrder.removeAll { $0 >= start }
+        historyPositions.removeAll { $0 >= start }
+        autoplayStart = nil
+        autoplayContextUri = nil
+    }
+
+    private func isAutoplayRow(_ index: Int) -> Bool {
+        autoplayStart.map { index >= $0 } ?? false
     }
 
     private func reshuffleIfNeeded() {
@@ -237,15 +334,21 @@ final nonisolated class PlaybackQueue {
         shufflePosition = 0
     }
 
-    /// Builds a fresh random visit order that still starts at the current track.
+    /// Builds a fresh random visit order that still starts at the current track. Autoplay's
+    /// rows stay after the context's own, in their order; while one of them plays, the rest of
+    /// them is what is left.
     private func reshuffleKeepingCurrent() {
         guard !contextTracks.isEmpty else {
             shuffleOrder = []
             return
         }
-        var others = Array(contextTracks.indices.filter { $0 != currentIndex })
-        others.shuffle()
-        shuffleOrder = [currentIndex] + others
+        if isAutoplayRow(currentIndex) {
+            shuffleOrder = Array(currentIndex ..< contextTracks.count)
+        } else {
+            var others = Array(contextTracks.indices.prefix(ownCount).filter { $0 != currentIndex })
+            others.shuffle()
+            shuffleOrder = [currentIndex] + others + contextTracks.indices.dropFirst(ownCount)
+        }
         shufflePosition = 0
     }
 
@@ -292,7 +395,9 @@ final nonisolated class PlaybackQueue {
             // Exhausted. The position stays on the last track rather than
             // stepping past the end — `upcoming()` slices the order from
             // `shufflePosition + 1`, and walking off it trapped the process.
-            guard repeatMode == .context else { return nil }
+            // A new round is the context's own rows, without autoplay's.
+            guard repeatMode == .context, ownCount > 0 else { return nil }
+            removeAutoplayRows()
             reshuffle(avoiding: currentIndex)
             currentIndex = shuffleOrder[0]
             return contextTracks[currentIndex]
@@ -303,7 +408,8 @@ final nonisolated class PlaybackQueue {
             return contextTracks[currentIndex]
         }
 
-        if repeatMode == .context {
+        if repeatMode == .context, ownCount > 0 {
+            removeAutoplayRows()
             currentIndex = 0
             return contextTracks[0]
         }
@@ -386,9 +492,17 @@ final nonisolated class PlaybackQueue {
         return currentIndex
     }
 
+    /// Where other devices are told the current track sits in the context: nowhere while a
+    /// queued or an autoplay track plays, as librespot clears `player.index` for both. An autoplay
+    /// row's position lies past the context's end, and a phone that took over an autoplay track
+    /// told so made it a queued one, with the context's last track again after it (2026-10-02).
+    var reportedIndex: Int? {
+        contextPosition.flatMap { isAutoplayRow($0) ? nil : $0 }
+    }
+
     /// Where the current track came from, in the cluster's vocabulary.
     var currentProvider: String {
-        userQueueCurrent == nil ? "context" : "queue"
+        current?.provider ?? "context"
     }
 
     /// Whether going backwards has anywhere to go besides restarting the
@@ -442,14 +556,14 @@ final nonisolated class PlaybackQueue {
         }
 
         result.append(contentsOf: afterCurrent.map(contextRow))
-        if rounds != .one, repeatMode == .context, !shuffleEnabled, !contextTracks.isEmpty {
+        if rounds != .one, repeatMode == .context, !shuffleEnabled, ownCount > 0 {
             var round = 0
             while result.count < limit {
                 if rounds == .asReported {
                     result.append(QueueItem(uri: Self.delimiterUri, provider: "context", uid: "delimiter\(round)", hidden: true))
                 }
                 round += 1
-                result.append(contentsOf: contextTracks.indices.prefix(limit - result.count).map(contextRow))
+                result.append(contentsOf: contextTracks.indices.prefix(ownCount).prefix(limit - result.count).map(contextRow))
             }
         }
         return Array(result.prefix(limit))
@@ -470,7 +584,7 @@ final nonisolated class PlaybackQueue {
 
     /// The row at `index` in the context, as Connect lists it.
     private func contextRow(_ index: Int) -> QueueItem {
-        QueueItem(uri: contextTracks[index], provider: "context", uid: contextUids[index])
+        QueueItem(uri: contextTracks[index], provider: isAutoplayRow(index) ? "autoplay" : "context", uid: contextUids[index])
     }
 
     /// The current track's row, as the queue lists it.
