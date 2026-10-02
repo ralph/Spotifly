@@ -230,20 +230,27 @@ Behavior changes:
 - **The library refresh.** `refreshAction(for:)` makes the same call that pull-to-refresh and
   Try again make, `load…(forceRefresh: true)`, and then restores the selection as now, which
   stays a navigation job. The view's resets go: the service resets the pagination itself, and
-  the load replaces the id list at offset 0, so emptying it first was never needed for
-  correctness. Moving the emptying into the services' `forceRefresh` branch instead would also
-  blank the list on pull-to-refresh and Try again.
-- **The profile.** One single-flight path: a small `ProfileService` owns `profileRequests` and
-  a throwing `require() -> UserProfile`, which is today's `PlaylistService.requireProfile()`.
-  Playlist writes call it and pass its error on. The launch calls it with `try?` and logs the
-  failure, as `loadProfile()` does now. `LoggedInView` builds one instance and hands that same
-  one to `PlaylistService`; two instances would mean two registries and the race again.
+  the load replaces the id list at offset 0. Moving the emptying into the services'
+  `forceRefresh` branch instead would also blank the list on pull-to-refresh and Try again.
+  The emptying did one thing besides: it took `LoadMoreRow`'s spinner off screen, so it asked
+  again when it came back. The spinner now asks whenever the next offset changes, which serves
+  every refresh path.
+- **The profile.** One home for the fetch, a small `ProfileService` with two ways in:
+  - `require()`, today's `PlaylistService.requireProfile()`: the store's profile, or one
+    fetched through the registry. Playlist writes call it and pass its error on.
+  - `reload()`, always a request of its own, for the launch and the network's return. The
+    launch logs a failure and goes on, as `loadProfile()` does now.
+
+  Not one single-flight path for all three callers: that would make the network-return retry
+  join a request the launch started offline and fail with it, which is why
+  `plans/done/list-failures-the-retry-cannot-see.md` kept two loaders. It named this split as
+  the way to have one.
 - **⌘L's favorite toggle.** `PlaybackViewModel` holds the `TrackService` weakly, like the store,
   so a logout does not keep the old account's service and store alive. It is set in the same
   wiring call. `toggleCurrentTrackFavorite()` calls `toggleFavorite(trackId:)` and turns a
-  thrown error into `errorMessage` as now.
-- **Tests.** `PlaylistServiceTests`' profile cases move to `ProfileService`: a cached profile,
-  a retry after a failure, and four concurrent writers sharing one request.
+  thrown error into `errorMessage` as now, and the now-playing bar's heart calls it too.
+- **Tests.** `PlaylistServiceTests`' profile cases stay, now running through `ProfileService`.
+  New: a reload does not join a request in flight, and asks even with a profile in the store.
   `LibraryPageFailureTests` keeps recording a failed refresh.
 
 Behavior change: the toolbar's refresh keeps the list on screen until the answer replaces it,
