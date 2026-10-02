@@ -9,6 +9,8 @@ import Foundation
 
 // The key is a `LocalizedStringResource`, not a `String`, so the compiler extracts the literal
 // at each call site (`SWIFT_EMIT_LOC_STRINGS`), and `LocalizationTests` sees it as named.
+// Interpolating the value into a `Text` key instead, as other strings do, groups its digits:
+// "1.007 Tracks" in German, where these say "1007 Tracks" (measured 2026-10-02).
 
 func localizedNumberString(_ key: LocalizedStringResource, _ value: Int) -> String {
     // String(format:) is intentional: it handles all printf specifiers (%d, %1$d,

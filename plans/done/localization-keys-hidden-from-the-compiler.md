@@ -32,6 +32,17 @@ English string is named by the code.
 2. **`every English string is named by the code`**, the reverse of the existing test, built on
    the same `.stringsdata` reading. After step 1 the two sets are equal: 205 keys each.
 
+### Not interpolation
+
+The rest of the app puts a value into its key, as `Text("artist.show_all \(count)")` with the
+key `"artist.show_all %lld"`, which the compiler also extracts. The review suggested the same
+here, deleting the helpers. It was built and measured: SwiftUI formats an interpolated `Int` for
+the locale, so the 1007-track test playlist's header said "1.007 Tracks" in German, where `main`
+and the helpers say "1007 Tracks". The helpers' `String(format:)` exists to keep those ASCII
+digits, so they stay, and their comment now says why.
+
+### Step 3
+
 Step 3, a String Catalog with generated symbols, would rewrite the three files into one and touch
 every call site. It is `plans/open/strings-in-a-string-catalog.md`.
 
@@ -49,6 +60,7 @@ every call site. It is `plans/open/strings-in-a-string-catalog.md`.
 bundle's preferred localization, so both were checked:
 - **German** (the system's language): Abbey Road's header says "17 Tracks · 47 min".
 - **French** (`-AppleLanguages '(fr)'`): Today's Top Hits says "Par Spotify · 50 titres".
+- **German, a four-digit count:** "Spotifly test: 1007 tracks" says "Von llralphj · 1007 Tracks".
 
 ### Seen in passing
 
