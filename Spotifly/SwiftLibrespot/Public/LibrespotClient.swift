@@ -731,7 +731,7 @@ public actor LibrespotClient {
             guard autoplay, localState != nil, repeatMode == .off, playbackQueue.contextUri == contextUri, playbackQueue.autoplayAsked,
                   playbackQueue.autoplayStart == nil, playbackQueue.upcomingPlayable(skipping: knownUnplayable) == nil
             else { return }
-            playbackQueue.appendAutoplay(station.tracks, uids: station.uids)
+            playbackQueue.appendAutoplay(station.tracks, uids: station.uids, from: station.uri)
             debugLog("LibrespotClient", "Autoplay lined up after \(contextUri): \(station.tracks.count) track(s)")
             publishQueue()
             reportPlaybackToCluster()
@@ -887,7 +887,7 @@ public actor LibrespotClient {
         startIndex: Int,
         metadata: [String: String] = [:],
         playingQueued queued: String? = nil,
-        playingAutoplay autoplay: (tracks: [String], uids: [String?])? = nil,
+        playingAutoplay autoplay: (tracks: [String], uids: [String?], station: String?)? = nil,
         positionMs: UInt64,
         paused: Bool,
     ) async throws {
@@ -898,7 +898,7 @@ public actor LibrespotClient {
             playbackQueue.playQueued(queued)
         }
         if let autoplay {
-            playbackQueue.playAutoplay(autoplay.tracks, uids: autoplay.uids)
+            playbackQueue.playAutoplay(autoplay.tracks, uids: autoplay.uids, from: autoplay.station)
         }
         defer { publishQueue() }
         try await loadCurrentTrack(positionMs: positionMs, paused: paused)
@@ -1273,7 +1273,8 @@ public actor LibrespotClient {
             timestamp: UInt64(max(0, current.timestampMs)),
             contextUri: playbackQueue.contextUri,
             contextMetadata: contextMetadata,
-            contextIndex: playbackQueue.contextPosition,
+            contextIndex: playbackQueue.reportedIndex,
+            autoplayContextUri: playbackQueue.autoplayContextUri,
             trackProvider: playbackQueue.currentProvider,
             trackUid: playbackQueue.current?.uid,
             nextTracks: playbackQueue.upcoming(rounds: .asReported),
@@ -1463,6 +1464,7 @@ public actor LibrespotClient {
         state.queuedTrackUris = ahead.filter { $0.provider == "queue" }.map(\.uri)
         state.contextResumeUid = resumingAt
         state.currentIsAutoplay = current.provider == "autoplay"
+        state.autoplayContextUri = current.metadata["context_uri"].flatMap { $0.hasPrefix("spotify:station:") ? $0 : nil }
         state.shuffle = remote.options.shufflingContext
         state.repeatContext = remote.options.repeatingContext
         state.repeatTrack = remote.options.repeatingTrack
@@ -1600,6 +1602,7 @@ public actor LibrespotClient {
 
         var rows: [String]
         var uids: [String?]
+        var stationUri = state.autoplayContextUri
         if let row = state.currentRow, row < state.contextTrackUris.count {
             rows = Array(state.contextTrackUris[row...])
             uids = Array(state.contextTrackUids[row...])
@@ -1609,6 +1612,7 @@ public actor LibrespotClient {
             let after = zip(station?.tracks ?? [], station?.uids ?? []).filter { $0.0 != track }
             rows = [track] + after.map(\.0)
             uids = [state.currentTrackUid] + after.map(\.1)
+            stationUri = station?.uri ?? stationUri
         }
 
         let context = await resolved
@@ -1618,7 +1622,7 @@ public actor LibrespotClient {
             uids: context?.uids ?? [],
             startIndex: max(0, (context?.tracks.count ?? 0) - 1),
             metadata: context?.metadata ?? [:],
-            playingAutoplay: (rows, uids),
+            playingAutoplay: (rows, uids, stationUri),
             positionMs: positionMs,
             paused: paused,
         )

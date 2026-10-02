@@ -240,6 +240,11 @@ final nonisolated class PlaybackQueue {
     /// again after its rows were taken away.
     private(set) var autoplayAsked = false
 
+    /// The station autoplay's rows came from, `spotify:station:…`, where it is known: other
+    /// devices are told it with each of them, as librespot tells them and a phone's rows carry
+    /// it.
+    private(set) var autoplayContextUri: String?
+
     func markAutoplayAsked() {
         autoplayAsked = true
     }
@@ -260,12 +265,13 @@ final nonisolated class PlaybackQueue {
 
     /// Lines up autoplay's `tracks` after the context's own rows, in their order also when
     /// shuffled: a station goes on from where the context ended.
-    func appendAutoplay(_ tracks: [String], uids: [String?]) {
+    func appendAutoplay(_ tracks: [String], uids: [String?], from station: String? = nil) {
         guard autoplayStart == nil, !tracks.isEmpty else { return }
         let start = contextTracks.count
         contextTracks += tracks
         contextUids += Self.aligned(uids, to: tracks)
         autoplayStart = start
+        autoplayContextUri = station
         if shuffleEnabled {
             shuffleOrder += start ..< contextTracks.count
         }
@@ -273,10 +279,10 @@ final nonisolated class PlaybackQueue {
 
     /// Goes on with autoplay's rows after the context's row standing, as another device's autoplay
     /// is taken over: the first of them plays, and that row goes into the history for Previous.
-    func playAutoplay(_ tracks: [String], uids: [String?]) {
+    func playAutoplay(_ tracks: [String], uids: [String?], from station: String? = nil) {
         guard autoplayStart == nil, !tracks.isEmpty else { return }
         pushHistory()
-        appendAutoplay(tracks, uids: uids)
+        appendAutoplay(tracks, uids: uids, from: station)
         currentIndex = ownCount
         if shuffleEnabled {
             shuffleOrder = Array(currentIndex ..< contextTracks.count)
@@ -300,6 +306,7 @@ final nonisolated class PlaybackQueue {
         shuffleOrder.removeAll { $0 >= start }
         historyPositions.removeAll { $0 >= start }
         autoplayStart = nil
+        autoplayContextUri = nil
     }
 
     private func isAutoplayRow(_ index: Int) -> Bool {
@@ -483,6 +490,14 @@ final nonisolated class PlaybackQueue {
     var contextPosition: Int? {
         guard userQueueCurrent == nil, currentIndex < contextTracks.count else { return nil }
         return currentIndex
+    }
+
+    /// Where other devices are told the current track sits in the context: nowhere while a
+    /// queued or an autoplay track plays, as librespot clears `player.index` for both. An autoplay
+    /// row's position lies past the context's end, and a phone that took over an autoplay track
+    /// told so made it a queued one, with the context's last track again after it (2026-10-02).
+    var reportedIndex: Int? {
+        contextPosition.flatMap { isAutoplayRow($0) ? nil : $0 }
     }
 
     /// Where the current track came from, in the cluster's vocabulary.

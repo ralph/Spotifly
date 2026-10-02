@@ -261,6 +261,8 @@ public actor SPClient {
         public let uids: [String?]
         /// The answer's `metadata`, the context's name among it (`contextName`).
         public let metadata: [String: String]
+        /// The context's own uri, as the answer names it: a station's for autoplay.
+        public var uri: String?
     }
 
     /// Resolves an album, playlist, artist, or station uri into its tracks,
@@ -323,8 +325,8 @@ public actor SPClient {
         }
 
         let report = Self.parseContextReport(data)
-        debugLog("SPClient", "Autoplay resolved: \(report.tracks.count) track(s)")
-        return ResolvedContext(tracks: report.tracks, uids: report.uids, metadata: report.metadata)
+        debugLog("SPClient", "Autoplay resolved: \(report.tracks.count) track(s) from \(report.uri ?? "no uri")")
+        return ResolvedContext(tracks: report.tracks, uids: report.uids, metadata: report.metadata, uri: report.uri)
     }
 
     /// `AutoplayContextRequest { required string context_uri = 1; repeated string
@@ -347,9 +349,9 @@ public actor SPClient {
     /// it and was always 0 — the guard ran after the append, and a context uri
     /// never matches a track uri anyway. Removed rather than guessed at: which
     /// field, if any, carries a resume point has to come off a real response.
-    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], uids: [String?], nextPageUrl: String?, metadata: [String: String]) {
+    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], uids: [String?], nextPageUrl: String?, metadata: [String: String], uri: String?) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return ([], [], nil, [:])
+            return ([], [], nil, [:], nil)
         }
 
         var tracks: [String] = []
@@ -371,7 +373,7 @@ public actor SPClient {
 
         // String values only, as the player state's `context_metadata` is a map of strings.
         let metadata = (json["metadata"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
-        return (tracks, uids, nextPageUrl, metadata)
+        return (tracks, uids, nextPageUrl, metadata, json["uri"] as? String)
     }
 
     // MARK: - Timeout

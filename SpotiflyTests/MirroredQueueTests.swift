@@ -199,6 +199,7 @@ extension MirroredQueueTests {
         state.contextUri = "spotify:album:a"
         state.prevTracks = [row("a1")]
         state.track = row("s1", provider: "autoplay")
+        state.track?.metadata["context_uri"] = "spotify:station:album:a"
         var autoplayDelimiter = ProvidedTrack(uri: "spotify:delimiter", uid: "delimiter0", provider: "autoplay")
         autoplayDelimiter.isHidden = true
         state.nextTracks = [row("s2", provider: "autoplay"), autoplayDelimiter]
@@ -207,6 +208,7 @@ extension MirroredQueueTests {
         let current = try #require(taken.currentRow)
 
         #expect(taken.currentIsAutoplay)
+        #expect(taken.autoplayContextUri == "spotify:station:album:a")
         #expect(Array(taken.contextTrackUris[current...]) == uris("s1", "s2"))
         #expect(Array(taken.contextTrackUids[current...]) == ["uid-s1", "uid-s2"])
     }

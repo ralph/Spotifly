@@ -126,6 +126,19 @@ To find out first:
     it;
   - the Queue section listed the album's two rows as C and the rest as A, under "Wiedergabe von
     'Teardrop (Bundle)'".
+- **Handing this Mac's autoplay to another device** (2026-10-02).
+  - **Your phone, first round:** it took "Miles Davis & The Cool", an autoplay track playing
+    on the Mac, over as a queued track, with the album's last track again after it and its own
+    autoplay after that. Play on the Mac then took that over as it was.
+  - **The cause:** the Mac told other devices the track sat at index 15 of a 15-track album.
+    librespot clears `player.index` while an autoplay or a queued track plays.
+  - **The fix:** `PlaybackQueue.reportedIndex` names no row for an autoplay track. Its rows now
+    also carry the station as `context_uri` and `entity_uri`, as librespot's and the phone's
+    do. The station's uri is the autoplay answer's `uri`, `spotify:station:album:<id>`.
+  - **The web player,** before and after the station was added, takes an autoplay track over as
+    a context of its own (`spotify:track:…`) and goes on with its own autoplay from it.
+    go-librespot notes the same: an autoplayed track "is handed over on its own, with no
+    context". The phone after the fix: to see.
 - **`/code-review` found five, all fixed:**
   - A repeat wrap after autoplay left the station's rows in the history, past the context's end,
     which the next queue publish would have trapped on.

@@ -150,9 +150,14 @@ struct TransferStateTests {
                 $0.string(field: 1, "autoplay.is_autoplay")
                 $0.string(field: 2, "true")
             }
+            $0.message(field: 4) {
+                $0.string(field: 1, "context_uri")
+                $0.string(field: 2, "spotify:station:album:a")
+            }
         }))
 
         #expect(fromAutoplay.currentIsAutoplay)
+        #expect(fromAutoplay.autoplayContextUri == "spotify:station:album:a")
         #expect(!TransferState(parsing: Self.transfer()).currentIsAutoplay)
     }
 

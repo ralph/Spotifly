@@ -85,6 +85,8 @@ public actor SpircController {
         /// The resolver's metadata of the context, sent as `context_metadata`.
         public var contextMetadata: [String: String] = [:]
         public var contextIndex: Int?
+        /// The station autoplay's rows came from, told with each of them.
+        public var autoplayContextUri: String?
         /// "context", or "queue" for a track the user queued.
         public var trackProvider: String
         /// The current row's uid, where it has one.
@@ -384,7 +386,7 @@ public actor SpircController {
             playerStateProto.isBuffering = ps.isPaused
 
             if let uri = ps.trackUri {
-                playerStateProto.track = Self.provided(uri: uri, uid: ps.trackUid, provider: ps.trackProvider)
+                playerStateProto.track = Self.provided(uri: uri, uid: ps.trackUid, provider: ps.trackProvider, station: ps.autoplayContextUri)
             }
             playerStateProto.contextUri = ps.contextUri
             playerStateProto.contextMetadata = ps.contextMetadata
@@ -395,7 +397,7 @@ public actor SpircController {
                 playerStateProto.index = ContextIndex(page: 0, track: UInt32(index))
             }
             let provided: (QueueItem) -> ProvidedTrack = { item in
-                var track = Self.provided(uri: item.uri, uid: item.uid, provider: item.provider)
+                var track = Self.provided(uri: item.uri, uid: item.uid, provider: item.provider, station: ps.autoplayContextUri)
                 track.isHidden = item.hidden
                 return track
             }
@@ -416,11 +418,14 @@ public actor SpircController {
     }
 
     /// A row as other devices are told it. Proto3: a row without a uid sends "". An autoplay row
-    /// says so in its metadata too, as a phone's do (2026-10-02) and librespot's.
-    nonisolated static func provided(uri: String, uid: String?, provider: String) -> ProvidedTrack {
+    /// says so in its metadata too, with the station it came from as its `context_uri` and
+    /// `entity_uri`, as a phone's do (2026-10-02) and librespot's.
+    nonisolated static func provided(uri: String, uid: String?, provider: String, station: String? = nil) -> ProvidedTrack {
         var track = ProvidedTrack(uri: uri, uid: uid ?? "", provider: provider)
         if provider == "autoplay" {
             track.metadata["autoplay.is_autoplay"] = "true"
+            track.metadata["context_uri"] = station
+            track.metadata["entity_uri"] = station
         }
         return track
     }

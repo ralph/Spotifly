@@ -43,6 +43,7 @@ struct AutoplayRequestTests {
 
         #expect(station.tracks == ["spotify:track:s1", "spotify:track:s2"])
         #expect(station.uids == ["x1", "x2"])
+        #expect(station.uri == "spotify:station:album:a")
         let request = try #require(sent.values.first)
         #expect(request.httpMethod == "POST")
         #expect(request.url?.path == "/context-resolve/v1/autoplay")
@@ -53,9 +54,16 @@ struct AutoplayRequestTests {
         #expect(fields.filter { $0.number == 2 }.map(\.string) == ["spotify:track:1"])
     }
 
-    @Test func `an autoplay row says so to other devices`() {
-        #expect(SpircController.provided(uri: "spotify:track:a", uid: "u", provider: "autoplay").metadata["autoplay.is_autoplay"] == "true")
-        #expect(SpircController.provided(uri: "spotify:track:a", uid: nil, provider: "context").metadata.isEmpty)
+    /// As a phone's autoplay rows read (2026-10-02), and librespot's.
+    @Test func `an autoplay row says so to other devices, with its station`() {
+        let row = SpircController.provided(uri: "spotify:track:a", uid: "u", provider: "autoplay", station: "spotify:station:album:a")
+
+        #expect(row.metadata == [
+            "autoplay.is_autoplay": "true",
+            "context_uri": "spotify:station:album:a",
+            "entity_uri": "spotify:station:album:a",
+        ])
+        #expect(SpircController.provided(uri: "spotify:track:a", uid: nil, provider: "context", station: "spotify:station:album:a").metadata.isEmpty)
     }
 }
 
@@ -75,9 +83,12 @@ struct AutoplayQueueTests {
         #expect(queue.upcoming().map(\.provider) == ["autoplay", "autoplay"])
         #expect(queue.currentProvider == "context")
 
+        #expect(queue.reportedIndex == 2)
         #expect(queue.advance() == "s1")
         #expect(queue.currentProvider == "autoplay")
         #expect(queue.contextUri == "spotify:album:a")
+        // Not "row 3 of an album of three": other devices are told no row.
+        #expect(queue.reportedIndex == nil)
         // Previous goes back into the album.
         #expect(queue.history == ["a3"])
     }
@@ -123,6 +134,15 @@ struct AutoplayQueueTests {
         // The station's rows left the history with it, which listed past the context's end.
         #expect(queue.history == ["a3"])
         #expect(queue.recent().map(\.uri) == ["a3"])
+    }
+
+    @Test func `the station goes with autoplay's rows`() {
+        let queue = album()
+        queue.appendAutoplay(["s1"], uids: [nil], from: "spotify:station:album:a")
+        #expect(queue.autoplayContextUri == "spotify:station:album:a")
+
+        queue.dropAutoplay()
+        #expect(queue.autoplayContextUri == nil)
     }
 
     @Test func `switched off, the rows stay while one plays`() {
