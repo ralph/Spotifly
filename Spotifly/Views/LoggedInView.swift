@@ -268,36 +268,23 @@ struct LoggedInView: View {
     ///
     /// The same load as pull-to-refresh and Try again. The service resets the paging, and the
     /// first page replaces the list, so the old one stays on screen until the answer arrives.
+    /// The selection stays: one past the first page, or opened from elsewhere, is shown as the
+    /// section's ephemeral entry, as after any other load.
     private func refreshAction(for section: NavigationItem?) -> (@MainActor @Sendable () async -> Void)? {
         switch section {
         case .playlists:
             {
-                let previousSelection = navigationCoordinator.selectedPlaylistId
                 try? await playlistService.loadUserPlaylists(forceRefresh: true)
-                navigationCoordinator.restorePlaylistSelection(
-                    previous: previousSelection,
-                    available: store.userPlaylistIds,
-                )
             }
 
         case .albums:
             {
-                let previousSelection = navigationCoordinator.selectedAlbumId
                 try? await albumService.loadUserAlbums(forceRefresh: true)
-                navigationCoordinator.restoreAlbumSelection(
-                    previous: previousSelection,
-                    available: store.userAlbumIds,
-                )
             }
 
         case .artists:
             {
-                let previousSelection = navigationCoordinator.selectedArtistId
                 try? await artistService.loadUserArtists(forceRefresh: true)
-                navigationCoordinator.restoreArtistSelection(
-                    previous: previousSelection,
-                    available: store.userArtistIds,
-                )
             }
 
         case .favorites:

@@ -181,18 +181,6 @@ final class NavigationCoordinator {
 
     // MARK: - Selection Helpers
 
-    func restorePlaylistSelection(previous: String?, available: [String]) {
-        selectPlaylist(restoredSelection(previous: previous, available: available), recordsHistory: false)
-    }
-
-    func restoreAlbumSelection(previous: String?, available: [String]) {
-        selectAlbum(restoredSelection(previous: previous, available: available), recordsHistory: false)
-    }
-
-    func restoreArtistSelection(previous: String?, available: [String]) {
-        selectArtist(restoredSelection(previous: previous, available: available), recordsHistory: false)
-    }
-
     /// Select the first remaining album without adding an automatic history step.
     func clearAlbumSelection() {
         selectAlbum(store?.userAlbumIds.first, recordsHistory: false)
@@ -317,14 +305,6 @@ final class NavigationCoordinator {
 
         if route.section == .searchResults, let query = route.query {
             store?.markSearchQueryDisplayed(query)
-        }
-    }
-
-    private func restoredSelection(previous: String?, available: [String]) -> String? {
-        if let previous, available.contains(previous) {
-            previous
-        } else {
-            available.first
         }
     }
 
