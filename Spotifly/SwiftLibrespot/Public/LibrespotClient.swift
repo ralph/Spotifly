@@ -1277,6 +1277,7 @@ public actor LibrespotClient {
             autoplayContextUri: playbackQueue.autoplayContextUri,
             trackProvider: playbackQueue.currentProvider,
             trackUid: playbackQueue.current?.uid,
+            sessionRow: playbackQueue.sessionRow,
             nextTracks: playbackQueue.upcoming(rounds: .asReported),
             previousTracks: playbackQueue.recent(),
         )

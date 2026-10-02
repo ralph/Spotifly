@@ -544,18 +544,7 @@ final nonisolated class PlaybackQueue {
     /// rounds of it as `rounds` says.
     func upcoming(limit: Int = 50, rounds: Rounds = .one) -> [QueueItem] {
         var result = Array(queued.prefix(limit))
-        // `dropFirst` rather than a range slice: it clamps, where
-        // `shuffleOrder[(shufflePosition + 1)...]` traps the moment the
-        // position sits on the last entry.
-        let afterCurrent: [Int] = if shuffleEnabled {
-            shuffleOrder.dropFirst(shufflePosition + 1)
-                .prefix(limit)
-                .filter(contextTracks.indices.contains)
-        } else {
-            Array(contextTracks.indices.dropFirst(currentIndex + 1).prefix(limit))
-        }
-
-        result.append(contentsOf: afterCurrent.map(contextRow))
+        result.append(contentsOf: contextIndicesAfterCurrent(limit: limit).map(contextRow))
         if rounds != .one, repeatMode == .context, !shuffleEnabled, ownCount > 0 {
             var round = 0
             while result.count < limit {
@@ -567,6 +556,27 @@ final nonisolated class PlaybackQueue {
             }
         }
         return Array(result.prefix(limit))
+    }
+
+    /// The context's rows after the current one, in play order, this round.
+    private func contextIndicesAfterCurrent(limit: Int) -> [Int] {
+        // `dropFirst` rather than a range slice: it clamps, where
+        // `shuffleOrder[(shufflePosition + 1)...]` traps the moment the
+        // position sits on the last entry.
+        if shuffleEnabled {
+            shuffleOrder.dropFirst(shufflePosition + 1)
+                .prefix(limit)
+                .filter(contextTracks.indices.contains)
+        } else {
+            Array(contextTracks.indices.dropFirst(currentIndex + 1).prefix(limit))
+        }
+    }
+
+    /// The context row the session stands on: the current track's, or while a queued track
+    /// plays, the row the context goes on with after it, which a handover names as the
+    /// session's `current_uid`. Nil past the context's end.
+    var sessionRow: QueueItem? {
+        userQueueCurrent == nil ? current : contextIndicesAfterCurrent(limit: 1).first.map(contextRow)
     }
 
     /// How many played tracks `recent()` lists.

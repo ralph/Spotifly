@@ -91,6 +91,8 @@ public actor SpircController {
         public var trackProvider: String
         /// The current row's uid, where it has one.
         public var trackUid: String?
+        /// The context row the session stands on (`PlaybackQueue.sessionRow`).
+        var sessionRow: QueueItem?
         /// What plays next — queued tracks first — and what played before,
         /// oldest first. A transfer hands both to the receiving device. Each row's uid names
         /// it, so another device can name one copy of a track apart from another.
@@ -418,9 +420,11 @@ public actor SpircController {
         return device
     }
 
-    /// What another device takes over from here while autoplay plays, written as the
-    /// `transfer_data` the backend hands it; nil otherwise, and the backend builds that from the
-    /// player state.
+    /// What another device takes over from here, written as the `transfer_data` the backend
+    /// hands it, where the backend's own reading of the player state loses the session's row:
+    /// while that row is an autoplay row, which the context's rows do not hold. Nil otherwise,
+    /// and the backend builds the handover from the player state, as for every handover seen
+    /// working.
     ///
     /// The web player and a phone write their own (2026-10-02); librespot and go-librespot do
     /// not. Built from this player state during autoplay, it held the context with its own rows
@@ -430,17 +434,10 @@ public actor SpircController {
     /// `main_context`. The station's rows are left out, as theirs are: the device taking over
     /// resolves the station. Taken over so, the web player went on with the station.
     nonisolated static func handover(of ps: SpircPlayerState) -> TransferState? {
-        let playsQueued = ps.trackProvider == "queue"
-        // The row the session stands on: the track's, or while a queued one plays, the
-        // context's row after it.
-        let sessionRow: (provider: String, uid: String?)? = if playsQueued {
-            ps.nextTracks.first { $0.provider != "queue" }.map { ($0.provider, $0.uid) }
-        } else {
-            (ps.trackProvider, ps.trackUid)
-        }
-        guard sessionRow?.provider == "autoplay", let station = ps.autoplayContextUri, let uri = ps.trackUri else {
+        guard ps.sessionRow?.provider == "autoplay", let station = ps.autoplayContextUri, let uri = ps.trackUri else {
             return nil
         }
+        let playsQueued = ps.trackProvider == "queue"
 
         var state = TransferState()
         state.contextUri = station
@@ -448,10 +445,9 @@ public actor SpircController {
         state.mainContextMetadata = ps.contextMetadata
         state.currentTrackUri = uri
         state.currentTrackUid = ps.trackUid
-        state.currentIsAutoplay = !playsQueued
-        state.autoplayContextUri = station
+        state.currentTrackMetadata = provided(uri: uri, uid: ps.trackUid, provider: ps.trackProvider, station: station).metadata
         state.playsQueuedTrack = playsQueued
-        state.contextResumeUid = playsQueued ? sessionRow?.uid : nil
+        state.contextResumeUid = playsQueued ? ps.sessionRow?.uid : nil
         state.queuedTrackUris = ps.nextTracks.filter { $0.provider == "queue" }.map(\.uri)
         state.positionAsOfTimestamp = Int64(ps.positionMs)
         state.timestamp = Int64(ps.timestamp)

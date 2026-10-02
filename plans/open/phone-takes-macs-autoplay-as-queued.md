@@ -78,10 +78,13 @@ web player write theirs (`SpircController.handover(of:)`, `TransferState.seriali
 - the track, its uid as `current_uid`, and its metadata (`autoplay.is_autoplay`, the station);
 - the queue, each track `is_queued`.
 
-"In autoplay" is an autoplay track playing, or a queued track whose context row after it is an
-autoplay row; then `current_uid` names that row, and the queued track is the queue's head as well
-as the current track, as the phone wrote one. Otherwise nothing is written, and Spotify builds
-the handover from the player state, as it did for every handover that worked.
+"In autoplay" is the session's row being an autoplay row (`PlaybackQueue.sessionRow`): the
+current track's, or while a queued track plays, the context row after it, however many tracks are
+queued. Then `current_uid` names that row, and the queued track is the queue's head as well as the
+current track, with its uid, as the phone wrote one. Otherwise nothing is written, and Spotify
+builds the handover from the player state, as it did for every handover that worked: the rule is
+that the session's row is not one of the context's rows, which today happens only in autoplay.
+The current track's metadata is the player state's own (`SpircController.provided`).
 
 Reading a handover, `continueAutoplay` takes the album from `main_context`, and only without one
 from the station's uri (`contextBeforeAutoplay`).
@@ -94,9 +97,13 @@ what other devices show while the Mac plays.
 ## Verification
 
 - Unit tests (`AutoplayHandoverTests`): an autoplay track's handover reads back as the station
-  with the album as `main_context`; a track queued during autoplay as the queue's head before the
-  station's next row; outside autoplay, and without a station uri, none is written.
+  with the album as `main_context` and its metadata; a track queued during autoplay as the queue's
+  head, with its uid, before the station's next row; outside autoplay, and without a station uri,
+  none is written. `AutoplayQueueTests` has the session's row, also after 60 queued tracks, and
+  `TransferStateTests` reads `main_context` from a schema-built message.
 - With the web player (2026-10-02), see Progress.
+- Left for its own plan: a handover *into* this Mac of a track queued during autoplay,
+  `plans/open/handover-of-a-track-queued-during-autoplay.md`.
 - With your phone, still to see: picking the phone while this Mac plays autoplay shows the track
   as autoplay, with the station's tracks after it and not the album's last again.
 
