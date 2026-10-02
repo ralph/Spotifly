@@ -7,7 +7,6 @@
 
 import Combine
 import MediaPlayer
-import QuartzCore
 import SwiftUI
 
 // MARK: - Playback View Model
@@ -1370,11 +1369,20 @@ final class PlaybackViewModel {
         UInt32(exactly: milliseconds)
     }
 
-    // Anchor-based position tracking using CACurrentMediaTime for precision
+    // Anchor-based position tracking, timed by positionClockNow()
     // UI reads interpolatedPositionMs (computed), not currentPositionMs directly
     private var positionAnchorMs: UInt32 = 0
-    private var positionAnchorTime: Double = CACurrentMediaTime()
+    private var positionAnchorTime: Double = PlaybackViewModel.positionClockNow()
     private var driftCorrectionTask: Task<Void, Never>?
+
+    /// Now, in seconds, on the clock that every anchor time is read from and compared with.
+    ///
+    /// It has to count the time the Mac sleeps, as the wall clock does: a report's age is
+    /// wall-clock time (`positionAnchor(forPosition:takenAt:)`), and another device plays on
+    /// while this Mac sleeps. On Darwin, `CLOCK_MONOTONIC` is the wall-clock time since boot.
+    nonisolated static func positionClockNow() -> Double {
+        Double(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000
+    }
 
     /// How far the display may disagree with the player before the disagreement means something.
     private static let positionDisagreementMs: Int64 = 500
@@ -1408,12 +1416,12 @@ final class PlaybackViewModel {
     /// caller, all of which anchor something measured, clears the mark by writing.
     private func anchorPosition(
         _ positionMs: UInt32,
-        at time: Double = CACurrentMediaTime(),
+        at time: Double = PlaybackViewModel.positionClockNow(),
         optimistic: Bool = false,
     ) {
         positionAnchorMs = positionMs
         positionAnchorTime = time
-        optimisticAnchorTime = optimistic ? CACurrentMediaTime() : nil
+        optimisticAnchorTime = optimistic ? Self.positionClockNow() : nil
     }
 
     /// Restarts interpolation at the position already held, without claiming to have
@@ -1424,7 +1432,7 @@ final class PlaybackViewModel {
     /// itself and, worse, clear the optimistic mark — telling `checkDriftAndSync` that a
     /// seek made while paused had been confirmed, when resuming confirms nothing.
     private func restartPositionClock() {
-        positionAnchorTime = CACurrentMediaTime()
+        positionAnchorTime = Self.positionClockNow()
     }
 
     /// The position to report while playback is not advancing.
@@ -1439,10 +1447,10 @@ final class PlaybackViewModel {
     }
 
     /// Computed position using anchor interpolation - UI should bind to this
-    /// Called by TimelineView on every frame for smooth updates
+    /// Read by the bar's TimelineView on each tick
     var interpolatedPositionMs: UInt32 {
         guard positionRuns else { return currentPositionMs }
-        let elapsed = CACurrentMediaTime() - positionAnchorTime
+        let elapsed = Self.positionClockNow() - positionAnchorTime
         let elapsedMs = UInt32(max(0, min(elapsed * 1000, Double(UInt32.max - 1))))
         return clampedToTrack(positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue)
     }
@@ -1478,7 +1486,7 @@ final class PlaybackViewModel {
     /// it — cluster updates forward `player_state.timestamp` unchanged and can be minutes
     /// old, while local callbacks stamp the current time and compensate by nothing.
     private func positionAnchor(forPosition positionMs: Int64, takenAt timestampMs: Int64) -> PositionAnchor {
-        let now = CACurrentMediaTime()
+        let now = Self.positionClockNow()
         guard timestampMs > 0 else { return PositionAnchor(time: now, logSuffix: "") }
 
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -1595,7 +1603,7 @@ final class PlaybackViewModel {
         let displayedPosition = interpolatedPositionMs
         let displayedLead = Int64(displayedPosition) - Int64(playerPosition)
 
-        let unconfirmedFor = optimisticAnchorTime.map { CACurrentMediaTime() - $0 }
+        let unconfirmedFor = optimisticAnchorTime.map { Self.positionClockNow() - $0 }
         let correct = switch unconfirmedFor {
         case let .some(elapsed) where elapsed < Self.optimisticAnchorGrace: false
         case .some: abs(displayedLead) > Self.positionDisagreementMs

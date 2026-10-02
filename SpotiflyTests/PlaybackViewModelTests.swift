@@ -5,6 +5,7 @@
 //  Validation of the playback measurements that arrive in Connect snapshots.
 //
 
+import Foundation
 @testable import Spotifly
 import Testing
 
@@ -24,5 +25,21 @@ struct PlaybackMillisecondsTests {
     @Test func `a timestamp-shaped playback position is ignored rather than trapping`() {
         #expect(PlaybackViewModel.playbackMilliseconds(1_787_161_786_267) == nil)
         #expect(PlaybackViewModel.playbackMilliseconds(Int64(UInt32.max) + 1) == nil)
+    }
+}
+
+/// The clock the displayed position runs on.
+struct PositionClockTests {
+    /// A clock that stops in sleep is behind the wall clock by every second this Mac has slept
+    /// since boot; on a Mac that has not slept, this cannot tell the two apart.
+    @Test func `the position clock is the wall clock since boot and so counts sleep`() throws {
+        var bootTime = timeval()
+        var size = MemoryLayout<timeval>.size
+        try #require(sysctlbyname("kern.boottime", &bootTime, &size, nil, 0) == 0)
+        let boot = Double(bootTime.tv_sec) + Double(bootTime.tv_usec) / 1_000_000
+        let wallSinceBoot = Date().timeIntervalSince1970 - boot
+
+        // A second is far more than the readings take apart, and far less than a sleep.
+        #expect(abs(PlaybackViewModel.positionClockNow() - wallSinceBoot) < 1)
     }
 }
