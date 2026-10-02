@@ -45,8 +45,6 @@ public actor LibrespotSession {
     /// cleared on logout via `forgetCredentials()`.
     private var credentials: APCredentials?
 
-    private var clientTokenProvider: (@Sendable () async throws -> String)?
-
     private var apResolver: APResolver?
     private var resolvedEndpoints: ResolvedEndpoints?
     public private(set) var accesspoint: Accesspoint?
@@ -83,15 +81,14 @@ public actor LibrespotSession {
     // MARK: - Connection Management
 
     /// Connects with the given credentials and returns the server welcome,
-    /// whose reusable credentials are worth persisting.
+    /// whose reusable credentials are worth persisting. The dealer's requests
+    /// are signed with `httpCredentials`.
     @discardableResult
-    public func connect(
+    func connect(
         credentials: APCredentials,
-        tokenProvider: @escaping @Sendable () async throws -> String,
-        clientTokenProvider: (@Sendable () async throws -> String)? = nil,
+        signing httpCredentials: SpotifyCredentials,
     ) async throws -> APWelcome {
         self.credentials = credentials
-        self.clientTokenProvider = clientTokenProvider
 
         updateState(.connecting)
 
@@ -146,13 +143,10 @@ public actor LibrespotSession {
 
             dealerConnection = DealerConnection(
                 endpoint: dealerHost,
-                tokenProvider: tokenProvider,
+                credentials: httpCredentials,
                 spclientHost: spclientHost,
                 deviceId: deviceInfo.deviceId,
             )
-            if let clientTokenProvider {
-                await dealerConnection!.setClientTokenProvider(clientTokenProvider)
-            }
             try await dealerConnection!.connect()
 
             // The dealer is the other half of the session, and losing it is

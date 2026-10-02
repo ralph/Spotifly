@@ -133,29 +133,6 @@ nonisolated struct PathfinderReleaseGroup: Decodable, Sendable {
 
 /// One release — an album, single or compilation — as a discography lists it.
 nonisolated struct PathfinderRelease: Decodable, Sendable {
-    /// **The date shape differs by operation**, which a single decoder has to absorb:
-    /// `queryArtistOverview` sends `{day, month, year, precision}` while
-    /// `queryArtistDiscographyAll` sends `{isoString, year, precision}`. Only `year` is in both,
-    /// and the artist page renders a year — so the day-level fields are assembled when present
-    /// and the year used otherwise.
-    struct ReleaseDate: Decodable, Sendable {
-        let isoString: String?
-        let year: Int?
-        let month: Int?
-        let day: Int?
-
-        /// A `YYYY-MM-DD` string where the parts allow, the bare year otherwise.
-        var formatted: String? {
-            if let isoString {
-                return String(isoString.prefix(while: { $0 != "T" }))
-            }
-            if let year, let month, let day {
-                return String(format: "%04d-%02d-%02d", year, month, day)
-            }
-            return year.map(String.init)
-        }
-    }
-
     struct TrackCount: Decodable, Sendable {
         let totalCount: Int?
     }
@@ -164,7 +141,9 @@ nonisolated struct PathfinderRelease: Decodable, Sendable {
     let id: String?
     let name: String?
     let type: String?
-    let date: ReleaseDate?
+    /// `queryArtistOverview` sends `{day, month, year, precision}`, `queryArtistDiscographyAll`
+    /// `{isoString, year, precision}`; see `PathfinderReleaseDate`.
+    let date: PathfinderReleaseDate?
     let coverArt: PathfinderImage?
     let tracks: TrackCount?
 

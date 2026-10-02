@@ -5,24 +5,19 @@
 //  Encapsulates startup and session lifecycle side effects for LoggedInView.
 //
 
-import AppKit
-import Combine
 import SwiftUI
 
 struct LoggedInLifecycleModifier: ViewModifier {
-    let store: AppStore
-    let playbackViewModel: PlaybackViewModel
-    let queueService: QueueService
-    let deviceService: DeviceService
-    let homeService: HomeService
-    /// Only the debug hooks use it. Passed in, because `LoggedInView` puts it into the
-    /// environment of the content this modifies, not of the modifier.
-    let navigationCoordinator: NavigationCoordinator
-
+    @Environment(AppStore.self) private var store
     @Environment(PlayerModel.self) private var player
-
-    /// Whether readiness has been lost since the last re-sync.
-    @State private var connectionDropped = false
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
+    @Environment(QueueService.self) private var queueService
+    @Environment(HomeService.self) private var homeService
+    @Environment(ProfileService.self) private var profileService
+    @Environment(TrackService.self) private var trackService
+    /// Only the debug hooks use these two.
+    @Environment(DeviceService.self) private var deviceService
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     func body(content: Content) -> some View {
         content
@@ -36,8 +31,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // Before the first `await`, so no Spirc notification can arrive while the
                 // player is unobserved.
                 queueService.activate()
-                playbackViewModel.setStore(store)
-                playbackViewModel.setQueueService(queueService)
+                playbackViewModel.attach(store: store, trackService: trackService)
 
                 #if DEBUG
                     AppStore.current = store
@@ -46,12 +40,11 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // The profile and the start page are independent requests on the same grant, so
                 // they run together. Neither blocks: an app that cannot say who you are is
                 // still an app that plays music.
-                async let profile: () = loadProfile()
+                async let profile: () = profileService.loadForSession()
                 async let home: () = homeService.loadHome()
                 _ = await (profile, home)
 
                 await playbackViewModel.initializeIfNeeded()
-                await queueService.fetchInitialPlaybackState()
 
                 #if DEBUG
                     // Headless test scaffolding: SPOTIFLY_DEBUG_AUTOPLAY=1 starts
@@ -192,75 +185,17 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // while the launch's is still out, is harmless; skipping it lost the only retry
             // when that one then failed.
             .retryingWhenNetworkReturns(if: store.homeErrorMessage != nil) { await homeService.refresh() }
-            .retryingWhenNetworkReturns(if: store.userProfile == nil) { await loadProfile() }
+            .retryingWhenNetworkReturns(if: profileService.needsProfile) { await profileService.askAgain() }
+            // And the queue's tracks, which every change of the queue asks for: one that failed
+            // offline is not asked for again until the queue changes. A track already loaded
+            // costs no request.
+            .retryingWhenNetworkReturns { queueService.hydrate() }
             // Playback steps over what the lists said will not play. Initially too, which
-            // sends an empty set at login, so nothing of the previous account's is left.
+            // sends an empty set at login, so nothing of the previous account's is left. The
+            // other way, what playback found withheld into the store, is `QueueService`'s.
             .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
                 SpotifyPlayer.setUnplayable(uris)
             }
-            // And the other way: what playback found withheld, which no list said, is greyed.
-            .onChange(of: player.withheld, initial: true) { _, uris in
-                store.setWithheld(uris)
-            }
-            // Connection handling is driven by whether the session is connected, not by
-            // which device is active. Activation and connection are different facts:
-            // another device taking over says nothing about whether the session is
-            // healthy, so a device handoff neither arms the recovery path nor refetches.
-            .onChange(of: player.connection?.isConnected == true) { _, isReady in
-                guard isReady else {
-                    connectionDropped = true
-                    return
-                }
-
-                // A reconnect is a drop followed by a rise. The rise on its own is also what
-                // a cold start looks like, and that one is handled by .task above — so
-                // treating every rise as a reconnect doubled the bootstrap on every launch.
-                guard connectionDropped else { return }
-                connectionDropped = false
-
-                // Re-sync with whatever is playing now.
-                Task {
-                    await deviceService.waitForTransferSettling()
-                    await queueService.fetchInitialPlaybackState()
-                }
-            }
-            .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)) { _ in
-                debugLog("LoggedInLifecycle", "System will sleep, disconnecting from Spotify")
-                SpotifyPlayer.disconnect()
-            }
-            // Ask the client to reconnect rather than rebuilding it. A rebuild starts with
-            // a destructive cleanup that invalidates whatever reconnect loop is already
-            // working the problem, and if the single rebuild attempt then fails there is
-            // nothing left retrying.
-            .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
-                switch SpotifyPlayer.forceReconnect() {
-                case .started, .alreadyRecovering:
-                    debugLog("LoggedInLifecycle", "System wake detected, reconnect under way")
-                case .noSession:
-                    // Nothing to reconnect to — after a logout, or if the initial
-                    // initialization never succeeded. Only a full rebuild helps here, and
-                    // there is no running recovery for it to disturb.
-                    debugLog("LoggedInLifecycle", "System wake detected, no session — rebuilding")
-                    Task {
-                        await playbackViewModel.forceReinitialize()
-                    }
-                }
-            }
-    }
-
-    /// Who is logged in. Failure is swallowed, because nothing on this path should block on it:
-    /// an app that cannot say who you are is still an app that plays music.
-    ///
-    /// It is no longer only the settings screen that reads it, though — the playlist library
-    /// writes address the rootlist by username — so `PlaylistService.requireProfile` fetches it
-    /// itself when it is missing rather than trusting this one attempt.
-    private func loadProfile() async {
-        do {
-            let profile = try await PartnerAPI().profile()
-            store.setUserProfile(UserProfile(pathfinder: profile))
-        } catch {
-            debugLog("LoggedInLifecycle", "Profile unavailable: \(error.localizedDescription)")
-        }
     }
 
     #if DEBUG

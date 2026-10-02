@@ -179,6 +179,20 @@ struct PathfinderHomeTests {
         #expect(!album.detailsLoaded)
     }
 
+    /// The start page names a playlist's owner by uri only, as a recents entry's contributor and as
+    /// a playlist's `ownerV2` (2026-10-02). An owner left empty took the owner-only actions away
+    /// from an owned playlist once the page was refreshed.
+    @Test func `a playlist on the start page names its owner`() throws {
+        let page = try HomePage(pathfinder: decodeHome(homeJSON))
+        #expect(page.playlists.first { $0.id == "2Cngv8qX0kwH5vwkOY6wdJ" }?.ownerId == "qixixbr0ox6sik6jc6bkv6y6y")
+
+        let wrapped = try JSONDecoder().decode(PathfinderPlaylist.self, from: Data(#"""
+        {"uri":"spotify:playlist:37i9dQZEVXbfcDFMLqgC0b","name":"Release Radar",
+         "ownerV2":{"data":{"name":"Spotify","username":null,"uri":"spotify:user:spotify"}}}
+        """#.utf8))
+        #expect(Playlist(pathfinder: wrapped)?.ownerId == "spotify")
+    }
+
     /// **The uri decides the kind, not `entityTypeTrait`.** Liked Songs says
     /// `ENTITY_TYPE_PLAYLIST` and is `spotify:collection:tracks`; believing the declaration
     /// would put a row on the start page that opens an empty playlist screen.

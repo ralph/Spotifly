@@ -65,10 +65,11 @@ struct AutoAdvanceTests {
     }
 
     /// The plan's rule: a skip must mean the track cannot play, never that the network
-    /// blinked. `trackNotFound` is what any failed metadata request throws, a 5xx included.
+    /// blinked: a server error that outlasted its retries, or a track Spotify has no entry for.
     @Test func `a network error or a failed request stops instead of skipping`() async {
         let errors: [any Error] = [
             URLError(.notConnectedToInternet),
+            LibrespotError.requestFailed("Track metadata", status: 503),
             LibrespotError.trackNotFound("e0624580e17b49bab335775ea6fe1593"),
             LibrespotError.audioKeyFailed("timeout"),
         ]

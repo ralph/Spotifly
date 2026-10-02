@@ -129,7 +129,7 @@ struct PathfinderAlbumEntityTests {
         #expect(entities.album.artistId == "4tZwfgrHOc3mvqYlEYSvVi")
         // Lowercased: the Web API's spelling is what the views compare against.
         #expect(entities.album.albumType == "album")
-        // Trimmed at the `T` — the views render a year, and the Web API sent a plain date.
+        // Cut at the `T`, to the day its `DAY` precision says; see `ReleaseDateTests`.
         #expect(entities.album.releaseDate == "2001-03-12")
         #expect(entities.album.images.url(for: 320, scale: 2)?.absoluteString == "https://i.scdn.co/image/large")
     }

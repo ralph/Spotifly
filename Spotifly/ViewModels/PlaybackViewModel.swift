@@ -7,7 +7,6 @@
 
 import Combine
 import MediaPlayer
-import QuartzCore
 import SwiftUI
 
 // MARK: - Playback View Model
@@ -21,12 +20,13 @@ final class PlaybackViewModel {
     /// What the player last published.
     private let player = PlayerModel.shared
 
-    /// Reference to AppStore for reading current track metadata (set by LoggedInView)
+    /// Reference to AppStore for reading current track metadata (set when the logged-in view
+    /// appears).
     private weak var store: AppStore?
 
-    /// Reference to QueueService, used to resync after a remote start (set by LoggedInView).
-    /// Remote playback produces no local player events, so nothing else would update the UI.
-    private weak var queueService: QueueService?
+    /// What ⌘L's favorite toggle goes through. Weak like the store, so a logout does not keep
+    /// the old account's service and store alive in this process-wide model.
+    private weak var trackService: TrackService?
 
     /// Set when a play request arrived with nowhere to serve it: no local player and no
     /// active remote device. The view presents the Auth / Cancel alert on this.
@@ -44,8 +44,6 @@ final class PlaybackViewModel {
             }
         }
     }
-
-    private var lastHandledTrackUri: String?
 
     /// The error the now-playing bar shows in place of the track's title. Views set it too,
     /// for favorite and playlist failures. It clears itself after five seconds, here rather
@@ -91,7 +89,7 @@ final class PlaybackViewModel {
     /// Length of the current track, as the stream reports it. Zero until one is known, which
     /// is what stops a previous track's length being applied to a new one — see
     /// `clampedToTrack`. The position that goes with it is derived from the anchor rather
-    /// than stored alongside; see `currentPositionMs`.
+    /// than stored alongside; see `interpolatedPositionMs`.
     var trackDurationMs: UInt32 = 0
 
     /// Volume (0.0 - 1.0)
@@ -116,7 +114,10 @@ final class PlaybackViewModel {
     /// The volume slider uses this for display when set.
     var remoteVolume: Double?
 
-    var isShuffleEnabled = false
+    /// The player's, as it last reported; nothing here keeps a copy of it.
+    var isShuffleEnabled: Bool {
+        player.playback?.shuffle ?? false
+    }
 
     /// Whether the client has completed at least one usable initialization.
     /// This stays true through transient disconnects, because `LibrespotClient`
@@ -196,6 +197,7 @@ final class PlaybackViewModel {
         setupVolumeDebounceSubscription()
         setupSeekSubscription()
         setupRemoteCommandCenter()
+        observeSystemSleep()
 
         // Load saved volume (but don't apply it yet - mixer isn't initialized)
         let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
@@ -379,7 +381,6 @@ final class PlaybackViewModel {
         isPlaying = false
         updateNowPlayingPosition()
         currentTrackUri = nil
-        lastHandledTrackUri = nil
         updateNowPlayingInfo()
         anchorPosition(0)
     }
@@ -433,7 +434,7 @@ final class PlaybackViewModel {
         let target = resolvedPlaybackTarget()
         switch target {
         case .local:
-            await startLocally(startedUri: startingAtUri ?? uriOrUrl) {
+            await startLocally {
                 try await SpotifyPlayer.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex, startingAtUri: startingAtUri)
             }
 
@@ -465,7 +466,7 @@ final class PlaybackViewModel {
         let target = resolvedPlaybackTarget()
         switch target {
         case .local:
-            await startLocally(startedUri: trackUris[0]) {
+            await startLocally {
                 try await SpotifyPlayer.playTracks(trackUris)
             }
 
@@ -577,19 +578,20 @@ final class PlaybackViewModel {
 
     /// Runs a local Spirc start and folds its outcome into `isLoading` / `errorMessage`.
     ///
-    /// `play` and `playTracks` differ only in the call they make and in which uri counts as
-    /// the one that started, so the state-keeping around it is written once. The remote
-    /// half is `startRemotely` below.
-    private func startLocally(
-        startedUri: String,
-        _ start: @MainActor () async throws -> Void,
-    ) async {
+    /// `play` and `playTracks` differ only in the call they make, so the state-keeping around it
+    /// is written once. The remote half is `startRemotely` below.
+    private func startLocally(_ start: @MainActor () async throws -> Void) async {
         isLoading = true
         errorMessage = nil
 
         do {
             try await start()
-            handlePlaybackStarted(trackId: startedUri)
+            // The track and whether it plays are the player's report, which normally arrives
+            // before the start returns (158 ms before, measured), and sets them when it comes.
+            // The mixer exists only once playback starts, so the volume goes now.
+            SpotifyPlayer.setVolume(volume)
+            syncPositionAnchor()
+            updateNowPlayingPosition()
         } catch is CancellationError {
             // Another start overtook this one; it reports for itself.
         } catch {
@@ -599,10 +601,8 @@ final class PlaybackViewModel {
         isLoading = false
     }
 
-    /// Starts content on a remote device and then resyncs, because nothing else will.
-    ///
-    /// With no Spirc session there are no playback or queue callbacks — a successful start
-    /// would otherwise leave the now-playing bar showing whatever it showed before.
+    /// Starts content on a remote device. The cluster reports what it plays, and the bar and
+    /// the queue follow it through the player model.
     private func startRemotely(
         _ command: ConnectCommand,
         deviceId: String,
@@ -615,19 +615,8 @@ final class PlaybackViewModel {
         isLoading = true
         errorMessage = nil
 
-        // Captured before any awaiting: a logout can land during the request or the settle
-        // delay, and a superseded run must not write (see AGENTS.md).
-        let revisionAtStart = store?.liveStateRevision
-
         do {
             try await SpclientAPI().sendCommand(command, from: from, to: deviceId)
-
-            // Let Spotify settle before asking what it thinks is playing.
-            try? await Task.sleep(for: .milliseconds(600))
-
-            if let queueService, store?.liveStateRevision == revisionAtStart {
-                _ = await queueService.fetchInitialPlaybackState()
-            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -671,18 +660,6 @@ final class PlaybackViewModel {
 
     // MARK: - Playback State Helpers
 
-    /// Common setup after playback has started
-    private func handlePlaybackStarted(trackId: String) {
-        currentTrackUri = trackId
-        lastHandledTrackUri = trackId
-        isPlaying = true
-        // Apply volume after playback starts (mixer is now initialized)
-        SpotifyPlayer.setVolume(volume)
-        updateNowPlayingInfo()
-        syncPositionAnchor()
-        // Note: favorite status is checked by NowPlayingBarView's .task(id:) when currentTrackUri changes
-    }
-
     func togglePlayPause(trackId: String) async {
         if isPlaying, currentTrackUri == trackId {
             // Route through pause() rather than calling SpotifyPlayer directly: it carries
@@ -707,14 +684,10 @@ final class PlaybackViewModel {
         clearPlaybackState()
     }
 
-    /// Sets the AppStore reference. Call this after AppStore is created.
-    func setStore(_ store: AppStore) {
+    /// Gives the model the logged-in view's store and track service.
+    func attach(store: AppStore, trackService: TrackService) {
         self.store = store
-    }
-
-    /// Sets the QueueService used to resync after a remote start.
-    func setQueueService(_ queueService: QueueService) {
-        self.queueService = queueService
+        self.trackService = trackService
     }
 
     // MARK: - Playback Control (via Spirc or connect-state)
@@ -841,13 +814,12 @@ final class PlaybackViewModel {
         skip("next()", local: { try await SpotifyPlayer.next() }, remote: .next)
     }
 
-    /// Previous track, or the start of this one.
+    /// Previous track, or the start of this one, so the bar enables it whenever a track is loaded.
     ///
-    /// `hasPrevious` enables the control once playback is more than three seconds in even with
-    /// no earlier track, because restarting is what pressing it then means — and the local
-    /// player does exactly that. A remote device does not: `skip_prev` comes back
-    /// `403 no_prev_track`, which left the button enabled and doing nothing while an error
-    /// banner blamed Spotify. So the refusal is answered with the seek it stood for.
+    /// With no earlier track, restarting is what pressing it means, and the local player does
+    /// exactly that. A remote device does not: `skip_prev` comes back `403 no_prev_track`,
+    /// which left the button enabled and doing nothing while an error banner blamed Spotify.
+    /// So the refusal is answered with the seek it stood for.
     func previous() {
         skip("previous()", local: { try await SpotifyPlayer.previous() }, remote: .previous) { [weak self] error in
             guard error.isNoPreviousTrack else { return }
@@ -959,11 +931,9 @@ final class PlaybackViewModel {
         currentTrackUri != nil && player.playback?.canSkipNext != false
     }
 
-    /// Returns true if there are tracks before the current track or if we're past the start of the track
-    var hasPrevious: Bool {
-        guard let store else { return false }
-        // Allow previous if we have previous tracks or if we're more than 3 seconds into the current track
-        return !store.queue.previousTracks.isEmpty || currentPositionMs > 3000
+    /// Whether shuffle may be switched on; see `PlaybackState.canShuffle`.
+    var canShuffle: Bool {
+        player.playback?.canShuffle != false
     }
 
     // MARK: - Media Keys & Now Playing
@@ -991,6 +961,7 @@ final class PlaybackViewModel {
         commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                debugLog("PlaybackViewModel", "Media command: play")
                 if !self.isPlaying {
                     self.resume()
                 }
@@ -1002,9 +973,8 @@ final class PlaybackViewModel {
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.isPlaying {
-                    self.pause()
-                }
+                debugLog("PlaybackViewModel", "Media command: pause")
+                self.pauseFromMediaControls()
             }
             return .success
         }
@@ -1013,8 +983,9 @@ final class PlaybackViewModel {
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                debugLog("PlaybackViewModel", "Media command: play/pause")
                 if self.isPlaying {
-                    self.pause()
+                    self.pauseFromMediaControls()
                 } else {
                     self.resume()
                 }
@@ -1025,6 +996,7 @@ final class PlaybackViewModel {
         // Next track command
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
+            debugLog("PlaybackViewModel", "Media command: next")
             next()
             return .success
         }
@@ -1032,6 +1004,7 @@ final class PlaybackViewModel {
         // Previous track command
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
+            debugLog("PlaybackViewModel", "Media command: previous")
             previous()
             return .success
         }
@@ -1042,10 +1015,82 @@ final class PlaybackViewModel {
                 guard let self else { return }
                 guard let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
                 let positionMs = UInt32(seekEvent.positionTime * 1000)
+                debugLog("PlaybackViewModel", "Media command: seek to \(positionMs)ms")
                 self.seek(to: positionMs)
             }
             return .success
         }
+    }
+
+    // MARK: - System Sleep
+
+    /// When the system last said it would sleep, until it says it woke.
+    private var systemWillSleepAt: Date?
+
+    /// How long after the system says it will sleep a pause is taken as the sleep's. Seen half
+    /// a second after it; long enough for that, and short enough that a sleep which never
+    /// happened, so never woke, does not silence the pause key for long.
+    private nonisolated static let sleepPauseWindow: TimeInterval = 10
+
+    /// For the life of the process, rather than a window's, whose observers would go with it
+    /// when it closes.
+    private func observeSystemSleep() {
+        guard !SpotiflyApp.hostsUnitTests else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        // On the main queue, so the mark is set before a command that follows it is handled.
+        center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemWillSleep() }
+        }
+        center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemDidWake() }
+        }
+    }
+
+    private func systemWillSleep() {
+        systemWillSleepAt = Date()
+        debugLog("PlaybackViewModel", "System will sleep, disconnecting from Spotify")
+        SpotifyPlayer.disconnect()
+    }
+
+    /// Reconnects rather than rebuilds; see `SpotifyPlayer.forceReconnect`. A rebuild that then
+    /// failed would also leave nothing retrying.
+    private func systemDidWake() {
+        systemWillSleepAt = nil
+        switch SpotifyPlayer.forceReconnect() {
+        case .started, .alreadyRecovering:
+            debugLog("PlaybackViewModel", "System wake detected, reconnect under way")
+        case .noSession:
+            // Never initialized, or signed out. Only the first wants a rebuild, and no recovery
+            // is running for it to disturb.
+            Task {
+                guard await KeymasterSession.shared.hasGrant else {
+                    debugLog("PlaybackViewModel", "System wake detected, signed out — nothing to reconnect")
+                    return
+                }
+                debugLog("PlaybackViewModel", "System wake detected, no session — rebuilding")
+                await forceReinitialize()
+            }
+        }
+    }
+
+    /// A pause from the media controls, unless it is the one macOS sends the now-playing app as
+    /// the Mac goes to sleep while another device plays: `pause()` would send that on to the
+    /// device, and the sleep stops nothing that plays elsewhere. This Mac's own playback still
+    /// takes it; the sleep stops that audio anyway.
+    private func pauseFromMediaControls() {
+        guard isPlaying else { return }
+        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), isActiveDevice: SpotifyPlayer.isActiveDevice) {
+            debugLog("PlaybackViewModel", "Pause ignored: the Mac is going to sleep, and another device plays")
+            return
+        }
+        pause()
+    }
+
+    /// Whether a pause is the sleep's: another device plays, and the system said it will sleep
+    /// less than `sleepPauseWindow` ago and has not woken since.
+    nonisolated static func isSleepPause(willSleepAt: Date?, now: Date, isActiveDevice: Bool) -> Bool {
+        guard !isActiveDevice, let willSleepAt else { return false }
+        return now.timeIntervalSince(willSleepAt) < sleepPauseWindow
     }
 
     /// Title published while no logical track resolves.
@@ -1088,7 +1133,10 @@ final class PlaybackViewModel {
     private func applyNowPlayingTiming(to info: inout [String: Any]) {
         if let durationMs = effectiveNowPlayingDurationMs {
             info[MPMediaItemPropertyPlaybackDuration] = Double(durationMs) / 1000.0
-            let validPosition = min(currentPositionMs, durationMs)
+            // Where the bar is now, not the anchor: macOS runs the elapsed time on from the
+            // moment it is published, and an anchor can be seconds old by then, or back-dated
+            // by a report's age.
+            let validPosition = min(interpolatedPositionMs, durationMs)
             info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = Double(validPosition) / 1000.0
         } else {
             info.removeValue(forKey: MPMediaItemPropertyPlaybackDuration)
@@ -1098,7 +1146,7 @@ final class PlaybackViewModel {
     }
 
     /// Full Now Playing update — sets track metadata, duration, position, rate, and artwork.
-    /// Call on: track start, next/prev, initial Web API load.
+    /// Call on: track start, next/prev, and when the queue's metadata arrives.
     func updateNowPlayingInfo() {
         let currentTrack = currentNowPlayingTrack
 
@@ -1171,7 +1219,8 @@ final class PlaybackViewModel {
     }
 
     /// Lightweight Now Playing update — writes elapsed time, duration, and playback rate.
-    /// No title, artist, or artwork processing. Call on: seek, play/pause, drift correction.
+    /// No title, artist, or artwork processing. Call on: seek, play/pause, drift correction, and
+    /// every playback state update.
     ///
     /// Duration belongs here even though it is metadata: the URI `didSet` clears the stream
     /// duration on every track change, so a path that only wrote elapsed time would leave
@@ -1305,6 +1354,7 @@ final class PlaybackViewModel {
         // UI parked at a position playback never reached.
         if !issued {
             syncPositionAnchor()
+            updateNowPlayingPosition()
         }
     }
 
@@ -1317,14 +1367,9 @@ final class PlaybackViewModel {
             "Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
 
-        // Authoritative state from the player — let any in-flight Web API bootstrap know it
-        // is now stale (see AppStore.liveStateRevision)
-        store?.noteLiveStateReceived()
-
         // Update playing state
         // When active device: use SpotifyPlayer.isPlaying (local Spirc state)
         // When not active: use cluster state (remote device's actual state)
-        let wasPlaying = isPlaying
         let newIsPlaying: Bool = if SpotifyPlayer.isActiveDevice {
             SpotifyPlayer.isPlaying
         } else {
@@ -1334,26 +1379,17 @@ final class PlaybackViewModel {
         isPlaying = newIsPlaying
 
         // Update track if changed
-        let trackChanged = !state.trackUri.isEmpty && state.trackUri != lastHandledTrackUri
+        let trackChanged = !state.trackUri.isEmpty && state.trackUri != currentTrackUri
         if trackChanged {
-            lastHandledTrackUri = state.trackUri
-        }
-
-        if !state.trackUri.isEmpty, state.trackUri != currentTrackUri {
             currentTrackUri = state.trackUri
             // Note: Track metadata (name, artist, etc.) will be updated from queue
         }
-
-        let hadStreamDuration = trackDurationMs > 0
 
         // Update duration. Connect snapshots carry these as signed 64-bit integers, so do
         // not let a malformed one turn a narrowing conversion into a process trap.
         if let durationMs = Self.playbackMilliseconds(state.durationMs), durationMs > 0 {
             trackDurationMs = durationMs
         }
-        let receivedFirstStreamDuration = !hadStreamDuration && trackDurationMs > 0
-
-        isShuffleEnabled = state.shuffle
 
         // Sync position anchor on state changes. When monitoring a remote device,
         // position_ms is the position at timestamp_ms, which can be minutes old.
@@ -1365,10 +1401,11 @@ final class PlaybackViewModel {
             debugLog("PlaybackViewModel", "Ignoring out-of-range playback position: \(state.positionMs)ms")
         }
 
-        // Update Now Playing position if playback rate changed, or if track changed
-        if trackChanged || receivedFirstStreamDuration {
+        // The anchor moved, so Control Center has to move with it: it runs on from the last
+        // elapsed time published, and a seek on another device changes no rate and no track.
+        if trackChanged {
             updateNowPlayingInfo()
-        } else if wasPlaying != isPlaying {
+        } else {
             updateNowPlayingPosition()
         }
     }
@@ -1386,11 +1423,20 @@ final class PlaybackViewModel {
         UInt32(exactly: milliseconds)
     }
 
-    // Anchor-based position tracking using CACurrentMediaTime for precision
-    // UI reads interpolatedPositionMs (computed), not currentPositionMs directly
+    // Anchor-based position tracking, timed by positionClockNow()
+    // UI reads interpolatedPositionMs (computed)
     private var positionAnchorMs: UInt32 = 0
-    private var positionAnchorTime: Double = CACurrentMediaTime()
+    private var positionAnchorTime: Double = PlaybackViewModel.positionClockNow()
     private var driftCorrectionTask: Task<Void, Never>?
+
+    /// Now, in seconds, on the clock that every anchor time is read from and compared with.
+    ///
+    /// It has to count the time the Mac sleeps, as the wall clock does: a report's age is
+    /// wall-clock time (`positionAnchor(forPosition:takenAt:)`), and another device plays on
+    /// while this Mac sleeps. On Darwin, `CLOCK_MONOTONIC` is the wall-clock time since boot.
+    nonisolated static func positionClockNow() -> Double {
+        Double(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000
+    }
 
     /// How far the display may disagree with the player before the disagreement means something.
     private static let positionDisagreementMs: Int64 = 500
@@ -1415,7 +1461,7 @@ final class PlaybackViewModel {
     /// position was capped at the track length.
     ///
     /// `time` defaults to now. A caller holding a snapshot that was true *earlier* — a
-    /// cluster or Web API state carrying a timestamp — passes that moment instead, so
+    /// cluster state carrying a timestamp — passes that moment instead, so
     /// interpolation accounts for the delay rather than restarting the clock.
     ///
     /// `optimistic` marks the anchors that transport commands write ahead of playback, to
@@ -1424,12 +1470,12 @@ final class PlaybackViewModel {
     /// caller, all of which anchor something measured, clears the mark by writing.
     private func anchorPosition(
         _ positionMs: UInt32,
-        at time: Double = CACurrentMediaTime(),
+        at time: Double = PlaybackViewModel.positionClockNow(),
         optimistic: Bool = false,
     ) {
         positionAnchorMs = positionMs
         positionAnchorTime = time
-        optimisticAnchorTime = optimistic ? CACurrentMediaTime() : nil
+        optimisticAnchorTime = optimistic ? Self.positionClockNow() : nil
     }
 
     /// Restarts interpolation at the position already held, without claiming to have
@@ -1440,25 +1486,14 @@ final class PlaybackViewModel {
     /// itself and, worse, clear the optimistic mark — telling `checkDriftAndSync` that a
     /// seek made while paused had been confirmed, when resuming confirms nothing.
     private func restartPositionClock() {
-        positionAnchorTime = CACurrentMediaTime()
-    }
-
-    /// The position to report while playback is not advancing.
-    ///
-    /// Derived rather than stored. This used to be a third field assigned beside the anchor
-    /// on every update, always to exactly this expression — a cache of a one-line derivation,
-    /// whose only possible disagreement with its source was being stale. Reading it live also
-    /// means a duration arriving after the position now caps it, where the stored copy kept
-    /// whatever it was written with.
-    var currentPositionMs: UInt32 {
-        clampedToTrack(positionAnchorMs)
+        positionAnchorTime = Self.positionClockNow()
     }
 
     /// Computed position using anchor interpolation - UI should bind to this
-    /// Called by TimelineView on every frame for smooth updates
+    /// Read by the bar's TimelineView on each tick
     var interpolatedPositionMs: UInt32 {
-        guard positionRuns else { return currentPositionMs }
-        let elapsed = CACurrentMediaTime() - positionAnchorTime
+        guard positionRuns else { return clampedToTrack(positionAnchorMs) }
+        let elapsed = Self.positionClockNow() - positionAnchorTime
         let elapsedMs = UInt32(max(0, min(elapsed * 1000, Double(UInt32.max - 1))))
         return clampedToTrack(positionAnchorMs.addingReportingOverflow(elapsedMs).partialValue)
     }
@@ -1494,7 +1529,7 @@ final class PlaybackViewModel {
     /// it — cluster updates forward `player_state.timestamp` unchanged and can be minutes
     /// old, while local callbacks stamp the current time and compensate by nothing.
     private func positionAnchor(forPosition positionMs: Int64, takenAt timestampMs: Int64) -> PositionAnchor {
-        let now = CACurrentMediaTime()
+        let now = Self.positionClockNow()
         guard timestampMs > 0 else { return PositionAnchor(time: now, logSuffix: "") }
 
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -1541,7 +1576,8 @@ final class PlaybackViewModel {
     /// Sync the position anchor with the player - call after seek, play, resume, track change
     private func syncPositionAnchor() {
         let playerPosition = SpotifyPlayer.positionMs
-        // Don't overwrite a valid position with 0 - the pipeline may not have ticked yet
+        // Don't overwrite a valid position with 0: the player says 0 while nothing is loaded
+        // here, as after another device took playback.
         if playerPosition == 0, positionAnchorMs > 0 {
             debugLog("PlaybackViewModel", "syncPositionAnchor: skipping - playerPosition=0 but have valid anchor=\(positionAnchorMs)")
             return
@@ -1610,7 +1646,7 @@ final class PlaybackViewModel {
         let displayedPosition = interpolatedPositionMs
         let displayedLead = Int64(displayedPosition) - Int64(playerPosition)
 
-        let unconfirmedFor = optimisticAnchorTime.map { CACurrentMediaTime() - $0 }
+        let unconfirmedFor = optimisticAnchorTime.map { Self.positionClockNow() - $0 }
         let correct = switch unconfirmedFor {
         case let .some(elapsed) where elapsed < Self.optimisticAnchorGrace: false
         case .some: abs(displayedLead) > Self.positionDisagreementMs
@@ -1636,40 +1672,16 @@ final class PlaybackViewModel {
 
     // MARK: - Favorite Management
 
-    /// Toggle favorite status for the currently playing track via the global store.
-    ///
-    /// A second copy of `TrackService.toggleFavorite`, kept because its callers — the menu bar
-    /// item and the ⌘L shortcut — reach the view model and not the services. Worth collapsing
-    /// into one when those two get a service; not worth restructuring for this migration.
+    /// Toggles the current track's favorite status, for the now-playing bar's heart and the Like
+    /// menu item (⌘L), which works without the bar.
     func toggleCurrentTrackFavorite() async {
         guard let uri = currentTrackUri, let trackId = SpotifyAPI.parseTrackURI(uri),
-              let store
+              let trackService
         else { return }
 
-        let wasFavorite = store.isFavorite(trackId)
-
-        // Optimistic update
-        if wasFavorite {
-            store.removeTrackFromFavorites(trackId)
-        } else {
-            store.addTrackToFavorites(trackId)
-        }
-
-        let uris = ["spotify:track:\(trackId)"]
-
         do {
-            if wasFavorite {
-                try await PartnerAPI().removeFromLibrary(uris: uris)
-            } else {
-                try await PartnerAPI().addToLibrary(uris: uris)
-            }
+            try await trackService.toggleFavorite(trackId: trackId)
         } catch {
-            // Rollback
-            if wasFavorite {
-                store.addTrackToFavorites(trackId)
-            } else {
-                store.removeTrackFromFavorites(trackId)
-            }
             errorMessage = String(localized: "error.update_favorite \(error.localizedDescription)")
         }
     }

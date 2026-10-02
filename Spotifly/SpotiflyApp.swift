@@ -10,8 +10,8 @@ import SwiftUI
 
 // MARK: - Focused Values for Menu Commands
 
-struct FocusedNavigationSelection: FocusedValueKey {
-    typealias Value = Binding<NavigationItem?>
+struct FocusedNavigationCoordinator: FocusedValueKey {
+    typealias Value = NavigationCoordinator
 }
 
 struct FocusedHomeService: FocusedValueKey {
@@ -19,9 +19,10 @@ struct FocusedHomeService: FocusedValueKey {
 }
 
 extension FocusedValues {
-    var navigationSelection: Binding<NavigationItem?>? {
-        get { self[FocusedNavigationSelection.self] }
-        set { self[FocusedNavigationSelection.self] = newValue }
+    /// The key window's navigation, for the Navigate menu's sections and history.
+    var navigationCoordinator: NavigationCoordinator? {
+        get { self[FocusedNavigationCoordinator.self] }
+        set { self[FocusedNavigationCoordinator.self] = newValue }
     }
 
     var homeService: HomeService? {
@@ -79,8 +80,9 @@ struct SpotiflyApp: App {
 
     /// Hosting the unit tests (`TEST_HOST`), the app finds the developer's grant, stored login
     /// and Connect device id, so its content would sign in and register as the Debug app the
-    /// developer has open. The tests need the app's code, not its window.
-    private static let hostsUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    /// developer has open. The tests need the app's code, not its window, nor the wake's rebuild
+    /// in `PlaybackViewModel`, which a test that reaches the shared instance would set up.
+    static let hostsUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     var body: some Scene {
         WindowGroup {
@@ -108,6 +110,9 @@ struct SpotiflyApp: App {
             }
             .environment(windowState)
             .environment(PlayerModel.shared)
+            // Here rather than in `LoggedInView`, which reads it itself and so cannot be the one
+            // to inject it. It lives as long as the process, like the player model.
+            .environment(PlaybackViewModel.shared)
             .preferredColorScheme(appearanceMode.colorScheme)
             .onChange(of: appearanceMode, initial: true) { _, mode in
                 mode.apply()
@@ -122,7 +127,7 @@ struct SpotiflyApp: App {
 // MARK: - Menu Commands
 
 struct SpotiflyCommands: Commands {
-    @FocusedValue(\.navigationSelection) var navigationSelection
+    @FocusedValue(\.navigationCoordinator) var navigationCoordinator
     @FocusedValue(\.homeService) var homeService
 
     private var playbackViewModel: PlaybackViewModel {
@@ -166,29 +171,33 @@ struct SpotiflyCommands: Commands {
 
         // Navigation menu
         CommandMenu("menu.navigate") {
+            NavigationHistoryMenuItems(coordinator: navigationCoordinator)
+
+            Divider()
+
             Button("menu.favorites") {
-                navigationSelection?.wrappedValue = .favorites
+                navigationCoordinator?.selectNavigationItem(.favorites)
             }
             .keyboardShortcut("1", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Button("menu.playlists") {
-                navigationSelection?.wrappedValue = .playlists
+                navigationCoordinator?.selectNavigationItem(.playlists)
             }
             .keyboardShortcut("2", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Button("menu.albums") {
-                navigationSelection?.wrappedValue = .albums
+                navigationCoordinator?.selectNavigationItem(.albums)
             }
             .keyboardShortcut("3", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Button("menu.artists") {
-                navigationSelection?.wrappedValue = .artists
+                navigationCoordinator?.selectNavigationItem(.artists)
             }
             .keyboardShortcut("4", modifiers: .command)
-            .disabled(navigationSelection == nil)
+            .disabled(navigationCoordinator == nil)
 
             Divider()
 
@@ -210,15 +219,17 @@ struct SpotiflyCommands: Commands {
         }
 
         #if DEBUG
-            CommandMenu("Debug") {
-                Button("Dump Store to Clipboard") {
+            // Developer tools, in English only: titles passed as `String` are not looked up as
+            // localization keys.
+            CommandMenu("Debug" as String) {
+                Button("Dump Store to Clipboard" as String) {
                     AppStore.current?.debugDumpJSON()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
 
                 // The grant's own token, which is what every request now carries. Paste it
                 // into a curl and you are the app.
-                Button("Copy Access Token") {
+                Button("Copy Access Token" as String) {
                     Task {
                         guard let token = try? await KeymasterSession.shared.accessToken() else { return }
                         NSPasteboard.general.clearContents()
@@ -227,6 +238,29 @@ struct SpotiflyCommands: Commands {
                 }
             }
         #endif
+    }
+}
+
+/// The history the toolbar's arrows step through, under the shortcuts Safari, Finder and Music
+/// use for it; ⌘← and ⌘→ are Previous and Next track.
+///
+/// A view of its own, so its body follows the coordinator as it moves: the menu's own body is
+/// drawn again only when a focused value changes, and the coordinator stays the same object.
+private struct NavigationHistoryMenuItems: View {
+    let coordinator: NavigationCoordinator?
+
+    var body: some View {
+        Button("nav.back") {
+            coordinator?.navigateBackward()
+        }
+        .keyboardShortcut("[", modifiers: .command)
+        .disabled(coordinator?.canNavigateBackward != true)
+
+        Button("nav.forward") {
+            coordinator?.navigateForward()
+        }
+        .keyboardShortcut("]", modifiers: .command)
+        .disabled(coordinator?.canNavigateForward != true)
     }
 }
 

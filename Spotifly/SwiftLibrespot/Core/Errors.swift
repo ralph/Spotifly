@@ -30,15 +30,18 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
 
     case trackNotFound(String)
     /// Spotify lists no file for this track, and none for a substitute: it withholds the track
-    /// from this account. Unlike `trackNotFound`, which any failed metadata request throws, this
-    /// is a fact about the track, so loading it again gets the same answer. Auto-advance skips
-    /// it; see `AutoAdvance`.
+    /// from this account. Unlike `trackNotFound` or a failed request, this is a fact about the
+    /// track, so loading it again gets the same answer. Auto-advance skips it; see
+    /// `AutoAdvance`.
     case trackUnavailable(name: String)
     case audioKeyFailed(String)
     case audioKeyError(Int)
     case decryptionFailed(String)
     case decodingFailed(String)
     case cdnError(String)
+    /// A request the playback stack makes to spclient was answered with an error, after its
+    /// retries.
+    case requestFailed(String, status: Int)
 
     // MARK: - SPIRC/Connect Errors
 
@@ -90,6 +93,8 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
             "Decoding failed: \(message)"
         case let .cdnError(message):
             "CDN error: \(message)"
+        case let .requestFailed(request, status):
+            "\(request) failed: HTTP \(status)"
         case .spircNotReady:
             "SPIRC controller not ready"
         case let .deviceNotFound(id):

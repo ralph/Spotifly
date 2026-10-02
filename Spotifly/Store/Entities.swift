@@ -68,7 +68,6 @@ struct Track: Identifiable, Hashable, Encodable {
     let uri: String
     let durationMs: Int
     let trackNumber: Int?
-    let externalUrl: String?
 
     // Relationships (stored as IDs, not nested objects)
     let albumId: String?
@@ -122,7 +121,6 @@ struct Album: Identifiable, Hashable, Encodable {
     let images: ImageSet
     let releaseDate: String?
     let albumType: String?
-    let externalUrl: String?
 
     // Relationships
     let artistId: String?
@@ -135,7 +133,7 @@ struct Album: Identifiable, Hashable, Encodable {
     /// Whether every field came from a source that returns them all.
     ///
     /// False for the stubs built out of a shelf entry or an artist's release list, which
-    /// carry no release date, album type or external URL. `AlbumService` uses this to decide
+    /// carry no release date or album type. `AlbumService` uses this to decide
     /// whether the metadata request can be skipped — presence in the store alone would not
     /// be enough.
     var detailsLoaded: Bool
@@ -161,7 +159,6 @@ struct Album: Identifiable, Hashable, Encodable {
         images: ImageSet,
         releaseDate: String?,
         albumType: String?,
-        externalUrl: String?,
         artistId: String?,
         artistName: String,
         trackIds: [String] = [],
@@ -176,7 +173,6 @@ struct Album: Identifiable, Hashable, Encodable {
         self.images = images
         self.releaseDate = releaseDate
         self.albumType = albumType
-        self.externalUrl = externalUrl
         self.artistId = artistId
         self.artistName = artistName
         self.trackIds = trackIds
@@ -195,7 +191,6 @@ struct Artist: Identifiable, Hashable, Encodable {
     let name: String
     let uri: String
     let images: ImageSet
-    let externalUrl: String?
 }
 
 // MARK: - Playlist
@@ -208,9 +203,8 @@ struct Playlist: Identifiable, Hashable, Encodable {
     var images: ImageSet
     let uri: String
     var isPublic: Bool
-    let ownerId: String
+    var ownerId: String
     let ownerName: String
-    let externalUrl: String?
 
     // Mutable state (populated when tracks are loaded)
     var items: [PlaylistItem]
@@ -244,7 +238,6 @@ struct Playlist: Identifiable, Hashable, Encodable {
         isPublic: Bool,
         ownerId: String,
         ownerName: String,
-        externalUrl: String? = nil,
         items: [PlaylistItem] = [],
         totalDurationMs: Int? = nil,
         knownTrackCount: Int? = nil,
@@ -258,7 +251,6 @@ struct Playlist: Identifiable, Hashable, Encodable {
         self.isPublic = isPublic
         self.ownerId = ownerId
         self.ownerName = ownerName
-        self.externalUrl = externalUrl
         self.items = items
         self.totalDurationMs = totalDurationMs
         self.tracksLoaded = tracksLoaded
@@ -419,12 +411,27 @@ enum TrackProvider: String, Codable {
 
 // MARK: - Search Results
 
-/// One search's four result lists, cached per query by `AppStore`.
+/// One search's four result lists, cached per query by `AppStore`, in the order Spotify ranked
+/// them.
+///
+/// **Holds ids rather than entities**, like the start page's shelves, so a track greyed or a
+/// playlist renamed after the search shows that way here too. The entities themselves are
+/// upserted when the search answers.
+///
+/// Each list is deduplicated: relinking can give two track results one market id (`AGENTS.md`,
+/// "Track identity is the market id"), and the page keys its rows by id.
 struct SearchResults: Encodable {
-    let albums: [Album]
-    let artists: [Artist]
-    let playlists: [Playlist]
-    let tracks: [Track]
+    let albumIds: [String]
+    let artistIds: [String]
+    let playlistIds: [String]
+    let trackIds: [String]
+
+    init(albums: [Album], artists: [Artist], playlists: [Playlist], tracks: [Track]) {
+        albumIds = albums.map(\.id).uniqued()
+        artistIds = artists.map(\.id).uniqued()
+        playlistIds = playlists.map(\.id).uniqued()
+        trackIds = tracks.map(\.id).uniqued()
+    }
 }
 
 // MARK: - Duplicate Ids
@@ -478,16 +485,34 @@ nonisolated func formatTrackTime(milliseconds: Int) -> String {
     return String(format: "%d:%02d", minutes, seconds)
 }
 
-/// Format milliseconds as human-readable duration (e.g., "3 hr 15 min" or "45 min")
-func formatDuration(milliseconds: Int) -> String {
-    let totalSeconds = milliseconds / 1000
-    let hours = totalSeconds / 3600
-    let minutes = (totalSeconds % 3600) / 60
+/// How long an album or playlist lasts, in hours and minutes, in the app's language: "2 hr,
+/// 44 min", "2 Std., 44 Min.", "2 h et 44 min". Minutes are whole ones played, rounded down, and
+/// a zero hour or minute is left out ("1 hr"), except for "0 min".
+nonisolated func formatDuration(milliseconds: Int, locale: Locale = .autoupdatingCurrent) -> String {
+    Duration.milliseconds(milliseconds).formatted(
+        .units(allowed: [.hours, .minutes], width: .abbreviated, fractionalPart: .hide(rounded: .down))
+            .locale(locale),
+    )
+}
 
-    if hours > 0 {
-        return "\(hours.formatted()) hr \(minutes.formatted()) min"
-    } else {
-        return "\(minutes.formatted()) min"
+/// An album's release date in the app's language, as precise as it is stored
+/// (`PathfinderReleaseDate.formatted`): "Sep 26, 1969", "26. Sept. 1969" or "26 sept. 1969" for
+/// a day, "Sep 1969" for a month, "1969" for a year. Anything else is shown as it came.
+nonisolated func formatReleaseDate(_ releaseDate: String, locale: Locale = .autoupdatingCurrent) -> String {
+    let parts = releaseDate.split(separator: "-").map { Int($0) }
+    guard (1 ... 3).contains(parts.count), let year = parts[0] else { return releaseDate }
+
+    // Built and formatted in UTC, so no time zone moves the day.
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = .gmt
+    let components = DateComponents(year: year, month: parts.count > 1 ? parts[1] : 1, day: parts.count > 2 ? parts[2] : 1)
+    guard let date = calendar.date(from: components) else { return releaseDate }
+
+    let style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: .gmt)
+    return switch parts.count {
+    case 3: date.formatted(style.year().month(.abbreviated).day())
+    case 2: date.formatted(style.year().month(.abbreviated))
+    default: date.formatted(style.year())
     }
 }
 

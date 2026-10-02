@@ -181,6 +181,29 @@ struct ConnectMessageParsingTests {
         #expect(next.disallowsSkippingNext)
     }
 
+    /// This Mac reports a station's restrictions as its context's and its own, where the web
+    /// player playing one sent them too (2026-10-02).
+    @Test func `restrictions are written at player.proto's numbers, and read back`() {
+        var state = PlayerState()
+        state.contextRestrictions = .radio
+        state.restrictions = .radio
+
+        let fields = ProtobufReader.fields(in: state.serialize())
+        let written = { (number: Int) in fields.last(number)?.fields.map { "\($0.number)=\($0.string)" } }
+        #expect(written(4) == ["8=radio", "10=radio"])
+        #expect(written(17) == ["8=radio", "10=radio"])
+
+        let read = PlayerState.parse(from: state.serialize())
+        #expect(read.contextRestrictions == .radio)
+        #expect(read.restrictions == .radio)
+        #expect(!read.disallowsSkippingNext)
+    }
+
+    @Test func `a context without restrictions writes none`() {
+        let fields = ProtobufReader.fields(in: PlayerState().serialize())
+        #expect(!fields.contains { $0.number == 4 || $0.number == 17 })
+    }
+
     @Test func `the context fields are read at player.proto's numbers`() {
         let data = ProtobufWriter.message {
             $0.string(field: 3, "context://spotify:album:abc") // context_url
@@ -256,7 +279,7 @@ struct ConnectMessageParsingTests {
 @MainActor
 struct SPClientParsingTests {
     /// `Track.file (12)`: `AudioFile { 1: file_id, 2: format }`, the id twenty bytes of `id`.
-    private static func file(_ track: inout ProtobufWriter, id: UInt8, format: Int) {
+    static func file(_ track: inout ProtobufWriter, id: UInt8, format: Int) {
         track.message(field: 12) {
             $0.bytes(field: 1, Data(repeating: id, count: 20))
             $0.varint(field: 2, format)
@@ -265,7 +288,7 @@ struct SPClientParsingTests {
 
     /// A `Track` wrapped the way the extended-metadata endpoint answers with one, or, without
     /// one, the way it answers for an entity it has none of.
-    private static func extendedMetadataResponse(track: Data?, status: Int = 200) -> Data {
+    static func extendedMetadataResponse(track: Data?, status: Int = 200) -> Data {
         ProtobufWriter.message {
             $0.message(field: 2) { array in // extended_metadata
                 array.varint(field: 2, 10) // extension_kind: TRACK_V4

@@ -138,6 +138,10 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 - Views read it via `@Environment(PlayerModel.self)`. `QueueService` and `PlaybackViewModel`
   follow it with `Observations`. Nothing subscribes to the client directly, and nothing needs
   a hop to the main queue
+- The queue is the player's alone: `queueEntries` gives it as rows of track ids, written in the
+  same `apply` as `queue`, and the store holds only the tracks' metadata, which `QueueService`
+  asks for on every change of the queue and again when the network returns. No copy of the
+  queue is kept anywhere else, so its rows and its context come from one snapshot
 - Commands still go through the static `SpotifyPlayer` facade
 
 **Entities** (`Store/Entities.swift`)
@@ -150,7 +154,7 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 - Each service takes `AppStore` in its initializer, except `DeviceService`, which only
   transfers playback and writes its guess at the active device into `PlayerModel`
 - Injected via `@Environment(XxxService.self)`
-- Available services: `TrackService`, `AlbumService`, `ArtistService`, `PlaylistService`, `HomeService`, `SearchService`, `DeviceService`, `QueueService`
+- Available services: `TrackService`, `AlbumService`, `ArtistService`, `PlaylistService`, `ProfileService`, `HomeService`, `SearchService`, `DeviceService`, `QueueService`
 
 ### Network Request Deduplication
 
@@ -196,6 +200,11 @@ Rules when adding a loading path:
 - **Cache what was fetched, not what is non-empty.** `detailsLoaded` / `tracksLoaded` are
   set by the load, so a genuinely empty album is not re-fetched forever.
 - **Views read the store**, never a `@State` copy of an entity.
+- **Views do not write the store.** A write belongs to the service that owns the fact, and a
+  view calls the service, even for an optimistic write such as the order shown while a
+  playlist row is dragged (`PlaylistService.previewMove`). What the player reports is followed
+  by a service observing `PlayerModel` (`QueueService`), not by a view's `.onChange`. Navigation
+  state, such as the search the sidebar reopens to, is the coordinator's, not the store's.
 
 The services that hold registries are stored as `@State` in `LoggedInView` so the
 registries survive view recreation. `plans/done/section-request-pattern.md` has the full reasoning.

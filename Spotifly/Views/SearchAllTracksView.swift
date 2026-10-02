@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SearchAllTracksView: View {
     let trackIds: [String]
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
 
@@ -68,7 +68,6 @@ struct SearchAllTracksView: View {
                             track: track,
                             index: index,
                             currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                            playbackViewModel: playbackViewModel,
                             currentSection: .searchResults,
                             onDoubleTap: {
                                 await playbackViewModel.playRadio(trackUri: track.uri)

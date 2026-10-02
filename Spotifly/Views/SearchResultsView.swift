@@ -9,39 +9,59 @@ import SwiftUI
 
 struct SearchResultsView: View {
     let searchResults: SearchResults
-    let playbackViewModel: PlaybackViewModel
+    @Environment(AppStore.self) private var store
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
+
+    // The results as the tables hold them now. An id the tables no longer hold, such as a
+    // playlist deleted since the search, is left out.
+
+    private var tracks: [Track] {
+        searchResults.trackIds.compactMap { store.tracks[$0] }
+    }
+
+    private var artists: [Artist] {
+        searchResults.artistIds.compactMap { store.artists[$0] }
+    }
+
+    private var albums: [Album] {
+        searchResults.albumIds.compactMap { store.albums[$0] }
+    }
+
+    private var playlists: [Playlist] {
+        searchResults.playlistIds.compactMap { store.playlists[$0] }
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 // Tracks section
-                if !searchResults.tracks.isEmpty {
+                if !tracks.isEmpty {
                     tracksSection
                 }
 
                 // Artists section
-                if !searchResults.artists.isEmpty {
+                if !artists.isEmpty {
                     cardSection("section.artists") {
-                        ForEach(searchResults.artists) { artist in
+                        ForEach(artists) { artist in
                             ArtistCard(artist: artist)
                         }
                     }
                 }
 
                 // Albums section
-                if !searchResults.albums.isEmpty {
+                if !albums.isEmpty {
                     cardSection("section.albums") {
-                        ForEach(searchResults.albums) { album in
+                        ForEach(albums) { album in
                             AlbumCard(album: album)
                         }
                     }
                 }
 
                 // Playlists section
-                if !searchResults.playlists.isEmpty {
+                if !playlists.isEmpty {
                     cardSection("section.playlists") {
-                        ForEach(searchResults.playlists) { playlist in
+                        ForEach(playlists) { playlist in
                             PlaylistCard(playlist: playlist)
                         }
                     }
@@ -49,10 +69,9 @@ struct SearchResultsView: View {
             }
             .padding(.vertical)
         }
-        .task(id: searchResults.tracks.map(\.id).joined()) {
+        .task(id: searchResults.trackIds) {
             // Check favorite status for all search tracks
-            let trackIds = searchResults.tracks.map(\.id)
-            await trackService.ensureFavoriteStatuses(trackIds: trackIds)
+            await trackService.ensureFavoriteStatuses(trackIds: searchResults.trackIds)
         }
     }
 
@@ -66,10 +85,12 @@ struct SearchResultsView: View {
 
                 Spacer()
 
-                if searchResults.tracks.count > 5 {
-                    NavigationLink(value: NavigationDestination.searchTracks(ids: searchResults.tracks.map(\.id))) {
+                if tracks.count > 5 {
+                    Button {
+                        navigationCoordinator.showAllSearchTracks()
+                    } label: {
                         HStack(spacing: 4) {
-                            Text(localizedNumberString("show_all.tracks", searchResults.tracks.count))
+                            Text(localizedNumberString("show_all.tracks", tracks.count))
                                 .font(.subheadline)
                             Image(systemName: "chevron.right")
                                 .font(.caption)
@@ -83,8 +104,8 @@ struct SearchResultsView: View {
 
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
-                    ForEach(searchResults.tracks) { track in
-                        TrackCard(track: track, playbackViewModel: playbackViewModel)
+                    ForEach(tracks) { track in
+                        TrackCard(track: track)
                     }
                 }
                 .padding(.horizontal)

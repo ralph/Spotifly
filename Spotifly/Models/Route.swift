@@ -22,14 +22,16 @@ enum Selection: Hashable {
     }
 }
 
+/// The memberwise initializer's defaults leave every field but the section out: most routes set
+/// only that one, and naming the empty fields at every call site hides the one that distinguishes
+/// them.
 struct Route: Hashable {
     var section: NavigationItem?
     var selection: Selection?
     var query: String?
-    /// Defaulted so the memberwise initializer carries defaults for every field but the
-    /// section — most routes set only that one, and naming the empty fields at every call
-    /// site hides the one that distinguishes them.
-    var path: [NavigationDestination] = []
+    /// A search route's second page, all of its tracks, which "Show all" opens: a step of its own
+    /// in the history, drawn from the same search's results.
+    var showsAllTracks = false
 
     static let startpage = Route(section: .startpage)
 }

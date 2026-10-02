@@ -11,7 +11,7 @@ struct SpeakersView: View {
     @Environment(AppStore.self) private var store
     @Environment(PlayerModel.self) private var player
     @Environment(AuthViewModel.self) private var authViewModel
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     /// Whether AirPlay is available (only when Spotifly is the active device)
     private var isAirPlayEnabled: Bool {
@@ -170,7 +170,7 @@ struct SpeakerRow: View {
                             .foregroundStyle(.secondary)
 
                         if device.isActive {
-                            Text("•")
+                            Text("metadata.separator")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Text("speakers.active")
@@ -179,10 +179,11 @@ struct SpeakerRow: View {
                         }
 
                         if let volume = device.volumePercent {
-                            Text("•")
+                            Text("metadata.separator")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text("\(volume)%")
+                            // "50 %" in German and French.
+                            Text(volume.formatted(.percent))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

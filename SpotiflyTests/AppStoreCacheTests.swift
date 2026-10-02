@@ -65,6 +65,29 @@ struct AppStoreCacheTests {
         #expect(store.playlists["p"]?.trackIds.isEmpty == true)
     }
 
+    /// A start page Recents entry names no owner and no description. The owner-only actions went
+    /// from an owned playlist, and Edit Details would have saved a blank description over the
+    /// real one; what a load found stays.
+    @Test func `a summary naming no owner or description keeps what a load found`() {
+        let store = AppStore()
+        var loaded = playlist(id: "p")
+        loaded.description = "description abc"
+        store.upsertPlaylist(loaded)
+        store.setPlaylistTracks([PlaylistItem(uid: "u1", trackId: "t1")], totalDurationMs: 500, for: "p")
+
+        var summary = playlist(id: "p")
+        summary.ownerId = ""
+        store.upsertPlaylist(summary)
+        #expect(store.playlists["p"]?.ownerId == "owner")
+        #expect(store.playlists["p"]?.description == "description abc")
+
+        // A load of the whole playlist that finds none means it was cleared.
+        var reloaded = playlist(id: "p")
+        reloaded.tracksLoaded = true
+        store.upsertPlaylist(reloaded)
+        #expect(store.playlists["p"]?.description == nil)
+    }
+
     @Test func `artist albums are cached in order`() {
         let store = AppStore()
         store.upsertAlbums([fetchedAlbum(id: "a2", name: "Second"), fetchedAlbum(id: "a1", name: "First")])
@@ -84,7 +107,6 @@ struct AppStoreCacheTests {
             id: id,
             name: name,
             releaseDate: "2025-06-13",
-            externalUrl: "https://open.spotify.com/album/\(id)",
             artistId: "artist",
         )
     }
@@ -103,5 +125,25 @@ struct PlaylistDescriptionTests {
         #expect(String?("").normalizedPlaylistDescription == nil)
         #expect(String?(nil).normalizedPlaylistDescription == nil)
         #expect(String?("Real description").normalizedPlaylistDescription == "Real description")
+    }
+
+    /// As the start page sent them on 2026-10-02.
+    @Test func `a description reads as the text its HTML shows`() {
+        #expect(String?("<a href=spotify:playlist:37i9dQZF1EIXPRB6OHORIn>Brian Fallon</a>, <a href=spotify:playlist:37i9dQZF1EIZN733xVL21v>The Horrible Crowes</a> und mehr").normalizedPlaylistDescription
+            == "Brian Fallon, The Horrible Crowes und mehr")
+        #expect(String?("a chronicle of Terri Hooley&#x27;s life").normalizedPlaylistDescription == "a chronicle of Terri Hooley's life")
+        #expect(String?("Die handverlesene Playlist zum Fest & Flauschig Podcast.").normalizedPlaylistDescription
+            == "Die handverlesene Playlist zum Fest & Flauschig Podcast.")
+    }
+
+    /// A `<` the user typed comes escaped, and stays a `<`; only Spotify's own tags go, before the
+    /// entities are decoded.
+    @Test func `escaped characters come back as typed`() {
+        let text = { (html: String) in String?(html).normalizedPlaylistDescription }
+        #expect(text("I &lt;3 this &amp; that &quot;song&quot; &#39;99") == "I <3 this & that \"song\" '99")
+        #expect(text("a typed &lt;b&gt;tag&lt;/b&gt;") == "a typed <b>tag</b>")
+        #expect(text("a < b and c > d") == "a < b and c > d")
+        #expect(text("&unknown; &#xZZ; &#xD800; stays") == "&unknown; &#xZZ; &#xD800; stays")
+        #expect(text("<a href=spotify:x></a>") == nil)
     }
 }

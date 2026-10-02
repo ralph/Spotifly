@@ -25,9 +25,10 @@ final class PlaylistService {
     private var outlineLoaded = false
     private let notFound = NotFoundMemory(.playlist)
 
-    /// The account's own profile, which the library writes address the rootlist by.
-    private let profileRequests = InFlightRequests<Void>()
-    private static let profileKey = "user-profile"
+    /// The account's own profile. The rootlist is addressed by the account's username, so library
+    /// membership cannot change before it has loaded; `UserProfile.id` *is* the username, taken
+    /// straight from `profileAttributes`.
+    private let profileService: ProfileService
 
     /// The playlist reads and the item mutations. No token is passed in: both clients run on
     /// the keymaster grant and hold it themselves.
@@ -41,10 +42,12 @@ final class PlaylistService {
         store: AppStore,
         partnerAPI: PartnerAPI = PartnerAPI(),
         spclientAPI: SpclientAPI = SpclientAPI(),
+        profileService: ProfileService? = nil,
     ) {
         self.store = store
         self.partnerAPI = partnerAPI
         self.spclientAPI = spclientAPI
+        self.profileService = profileService ?? ProfileService(store: store, partnerAPI: partnerAPI)
     }
 
     // MARK: - User Playlists
@@ -247,7 +250,7 @@ final class PlaylistService {
     /// playlist and answers its uri; nothing puts it in the library until the rootlist is told
     /// to hold it. Measured 2026-08-14 — the web client sends both.
     func createPlaylist(name: String, description: String? = nil) async throws -> Playlist {
-        let owner = try await requireProfile()
+        let owner = try await profileService.require()
 
         let id = try await spclientAPI.createPlaylist(name: name, description: description)
         try await spclientAPI.addPlaylistToLibrary(username: owner.id, playlistId: id)
@@ -264,7 +267,6 @@ final class PlaylistService {
             isPublic: false,
             ownerId: owner.id,
             ownerName: owner.displayName,
-            externalUrl: nil,
             items: [],
             totalDurationMs: 0,
             knownTrackCount: 0,
@@ -294,6 +296,34 @@ final class PlaylistService {
         )
     }
 
+    /// Sets a playlist's cover from an image file the user picked (`PlaylistCoverImage`).
+    func changePlaylistCover(playlistId: String, imageAt url: URL) async throws {
+        guard let jpeg = await PlaylistCoverImage.jpeg(contentsOf: url) else {
+            throw PlaylistCoverError.notAnImage
+        }
+        try await spclientAPI.changePlaylistCover(id: playlistId, jpeg: jpeg)
+        await refreshCover(of: playlistId)
+    }
+
+    /// Takes a playlist's cover away, so Spotify shows its own again.
+    func removePlaylistCover(playlistId: String) async throws {
+        try await spclientAPI.removePlaylistCover(id: playlistId)
+        await refreshCover(of: playlistId)
+    }
+
+    /// Reads a playlist's cover again after a change, which answers nothing about the sizes
+    /// Spotify makes of it: the store's `ImageSet` would go on showing the old one. One page of
+    /// one item, since nothing else moved. The change went through either way, so a failed read
+    /// leaves the old cover until the playlist is next loaded.
+    private func refreshCover(of playlistId: String) async {
+        do {
+            guard let (playlist, _) = try await partnerAPI.playlistDetails(id: playlistId).entities() else { return }
+            store.updatePlaylistDetails(id: playlistId, images: playlist.images)
+        } catch {
+            debugLog("PlaylistService", "Cover of \(playlistId) not read again: \(error)")
+        }
+    }
+
     /// Deletes a playlist — which is to say, drops it from the user's library.
     ///
     /// The same call as `unfollowPlaylist` below, and the Web API said so too: `DELETE
@@ -309,7 +339,7 @@ final class PlaylistService {
     }
 
     private func removeFromLibrary(playlistId: String) async throws {
-        let owner = try await requireProfile()
+        let owner = try await profileService.require()
         try await spclientAPI.removePlaylistFromLibrary(
             username: owner.id,
             playlistId: playlistId,
@@ -320,38 +350,10 @@ final class PlaylistService {
 
     /// Follows (saves) a playlist into the user's library.
     func followPlaylist(playlistId: String) async throws {
-        let owner = try await requireProfile()
+        let owner = try await profileService.require()
         try await spclientAPI.addPlaylistToLibrary(username: owner.id, playlistId: playlistId)
 
         store.addPlaylistToUserLibraryById(playlistId)
-    }
-
-    /// The rootlist is addressed by the account's own username, so library membership cannot be
-    /// changed before the profile has loaded. `UserProfile.id` *is* the username — see
-    /// `UserProfile.init(pathfinder:)`, which takes it straight from `profileAttributes`.
-    ///
-    /// **Fetches it rather than refusing.** The profile is loaded once at startup, on a path
-    /// that deliberately swallows its own failure — an app that cannot say who you are is still
-    /// an app that plays music — and nothing retried it. So one transient failure there left
-    /// create, delete, follow and unfollow throwing `accountUnknown` until the app was
-    /// relaunched, for a request none of them had ever made themselves. Through the registry,
-    /// so several writes arriving at once ask for it once.
-    private func requireProfile() async throws -> UserProfile {
-        if let profile = store.userProfile {
-            return profile
-        }
-
-        try await profileRequests.run(Self.profileKey) {
-            let profile = try await self.partnerAPI.profile()
-            self.store.setUserProfile(UserProfile(pathfinder: profile))
-        }
-
-        // A profile can arrive without the one field that matters — `UserProfile(pathfinder:)`
-        // is failable precisely because a nameless account cannot address a rootlist.
-        guard let profile = store.userProfile else {
-            throw SpclientError.accountUnknown
-        }
-        return profile
     }
 
     // MARK: - Track Operations
@@ -394,6 +396,13 @@ final class PlaylistService {
         }
     }
 
+    /// The order shown while a row is dragged, written into the store so the list redraws. The
+    /// drop reads the order back to name the move (`movePlaylistItem`), whose reload then puts
+    /// in the order the server applied.
+    func previewMove(playlistId: String, fromIndex: Int, toIndex: Int) {
+        store.movePlaylistTrack(playlistId: playlistId, fromIndex: fromIndex, toIndex: toIndex)
+    }
+
     /// Move one item to sit before another, both named by uid.
     func movePlaylistItem(
         playlistId: String,
@@ -412,5 +421,13 @@ final class PlaylistService {
 
         // Re-fetch to pick up the order the server actually applied
         try await reloadPlaylistTracks(playlistId: playlistId)
+    }
+}
+
+nonisolated enum PlaylistCoverError: Error, LocalizedError {
+    case notAnImage
+
+    var errorDescription: String? {
+        "The file is not an image Spotifly can read"
     }
 }

@@ -2,7 +2,8 @@
 //  SpclientAPI.swift
 //  Spotifly
 //
-//  The REST half of the client's own API, at spclient.wg.spotify.com.
+//  The REST half of the client's own API, at spclient.wg.spotify.com, and the image upload
+//  beside it.
 //
 
 import Foundation
@@ -158,7 +159,8 @@ nonisolated struct SpclientTrack: Decodable, Sendable {
     }
 }
 
-/// Reads metadata from `spclient.wg.spotify.com`.
+/// Reads metadata from `spclient.wg.spotify.com`, and writes playlists and Connect commands
+/// there; a playlist's cover image goes up to `image-upload.spotify.com`.
 ///
 /// Same two credentials as `PartnerAPI` — bearer plus client token — but plain REST rather than
 /// persisted queries, which makes this the more stable half to depend on: there are no query
@@ -170,24 +172,8 @@ nonisolated struct SpclientAPI: Sendable {
 
     private let credentials: SpotifyCredentials
 
-    init(
-        accessToken: @escaping @Sendable () async throws -> String = {
-            try await KeymasterSession.shared.accessToken()
-        },
-        clientToken: @escaping @Sendable () async throws -> String = {
-            try await ClientTokenProvider.shared.token()
-        },
-        invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
-        transport: @escaping Transport = { try await URLSession.shared.data(for: $0) },
-        pause: @escaping SpotifyCredentials.Pause = { try await Task.sleep(for: $0) },
-    ) {
-        credentials = SpotifyCredentials(
-            accessToken: accessToken,
-            clientToken: clientToken,
-            invalidateClientToken: invalidateClientToken,
-            transport: transport,
-            pause: pause,
-        )
+    init(credentials: SpotifyCredentials = .live) {
+        self.credentials = credentials
     }
 
     /// Track metadata for a base62 id, the form the rest of the app uses.
@@ -197,13 +183,7 @@ nonisolated struct SpclientAPI: Sendable {
         }
 
         let url = Self.baseURL.appending(path: "metadata/4/track/\(gid)")
-        let data = try await get(url)
-
-        do {
-            return try JSONDecoder().decode(SpclientTrack.self, from: data)
-        } catch {
-            throw SpclientError.malformedResponse
-        }
+        return try await decode(SpclientTrack.self, from: get(url))
     }
 
     /// How many metadata requests are allowed to be in the air at once.
@@ -323,10 +303,7 @@ nonisolated struct SpclientAPI: Sendable {
             body: PlaylistCreation(name: name, description: description),
         )
 
-        guard
-            let reply = try? JSONDecoder().decode(PlaylistCreationReply.self, from: data),
-            let id = SpotifyURI.id(from: reply.uri)
-        else {
+        guard let id = try SpotifyURI.id(from: decode(PlaylistCreationReply.self, from: data).uri) else {
             throw SpclientError.malformedResponse
         }
 
@@ -339,11 +316,55 @@ nonisolated struct SpclientAPI: Sendable {
         name: String? = nil,
         description: String? = nil,
     ) async throws {
-        try await send(
-            method: "POST",
-            path: "playlist/v2/playlist/\(id)/changes",
-            body: PlaylistListChanges(.attributes(name: name, description: description)),
-        )
+        try await changePlaylist(id: id, .attributes(name: name, description: description))
+    }
+
+    /// One change to a playlist's own attributes.
+    private func changePlaylist(id: String, _ op: PlaylistOp) async throws {
+        try await send(method: "POST", path: "playlist/v2/playlist/\(id)/changes", body: PlaylistListChanges(op))
+    }
+
+    // MARK: - Playlist cover
+
+    /// Where a playlist's cover image goes up, as the web player sends it (2026-10-02).
+    static let imageUploadURL = URL(string: "https://image-upload.spotify.com/v4/playlist")!
+
+    /// Sets a playlist's cover to `jpeg`, in the three requests the web player makes
+    /// (2026-10-02):
+    /// 1. the image itself to `image-upload`, which answers a token;
+    /// 2. the token to the playlist's `register-image`, which answers the image's id;
+    /// 3. that id as the playlist's `picture`, in the change a rename sends.
+    func changePlaylistCover(id: String, jpeg: Data) async throws {
+        var upload = URLRequest(url: Self.imageUploadURL)
+        upload.httpMethod = "POST"
+        upload.httpBody = jpeg
+        upload.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        let uploaded = try await decode(ImageUploadReply.self, from: send(upload))
+
+        let registered = try await send(method: "POST", path: "playlist/v2/playlist/\(id)/register-image", body: uploaded)
+        try await changePlaylist(id: id, .picture(decode(RegisteredImage.self, from: registered).picture))
+    }
+
+    /// Takes a playlist's cover away, as the web player's "Remove photo" does.
+    func removePlaylistCover(id: String) async throws {
+        try await changePlaylist(id: id, .removePicture)
+    }
+
+    /// `image-upload`'s answer, and `register-image`'s body: the token that names the upload.
+    private struct ImageUploadReply: Codable {
+        let uploadToken: String
+    }
+
+    /// `register-image`'s answer: the image's id, as the playlist's `picture` takes it.
+    private struct RegisteredImage: Decodable {
+        let picture: String
+    }
+
+    private func decode<Reply: Decodable>(_: Reply.Type, from data: Data) throws -> Reply {
+        guard let reply = try? JSONDecoder().decode(Reply.self, from: data) else {
+            throw SpclientError.malformedResponse
+        }
+        return reply
     }
 
     /// Adds a playlist to the user's library — which is what following one is.
@@ -404,9 +425,23 @@ nonisolated struct SpclientAPI: Sendable {
         path: String,
         encoded: Data?,
     ) async throws -> Data {
-        let sent = try await credentials.retryingRefusedToken {
-            try await sendOnce(method: method, path: path, body: encoded)
+        var request = URLRequest(url: Self.baseURL.appending(path: path))
+        request.httpMethod = method
+        request.httpBody = encoded
+        if encoded != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        return try await send(request)
+    }
+
+    /// Any write, to any of the client's hosts: an image upload goes to its own.
+    private func send(_ request: URLRequest) async throws -> Data {
+        var request = request
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let method = request.httpMethod ?? "GET", path = request.url?.path ?? ""
+        debugLog("SpclientAPI", "[\(method)] \(request.url?.absoluteString ?? "")")
+
+        let sent = try await credentials.send(request)
 
         guard (200 ..< 300).contains(sent.status) else {
             debugLog(
@@ -420,31 +455,6 @@ nonisolated struct SpclientAPI: Sendable {
         }
 
         return sent.body
-    }
-
-    private func sendOnce(
-        method: String,
-        path: String,
-        body: Data?,
-    ) async throws -> SpotifyCredentials.Attempt {
-        var request = URLRequest(url: Self.baseURL.appending(path: path))
-        request.httpMethod = method
-        request.httpBody = body
-        try await credentials.sign(&request)
-        if body != nil {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        let urlString = request.url?.absoluteString ?? path
-        debugLog("SpclientAPI", "[\(method)] \(urlString)")
-
-        let (data, response) = try await credentials.transport(request)
-        guard let http = response as? HTTPURLResponse else {
-            throw SpclientError.malformedResponse
-        }
-
-        return (data, http.statusCode, request.value(forHTTPHeaderField: "Client-Token"))
     }
 
     // MARK: - Transport
@@ -471,17 +481,11 @@ nonisolated struct SpclientAPI: Sendable {
 
         var request = URLRequest(url: Self.withMarket(url))
         request.httpMethod = "GET"
-        try await credentials.sign(&request)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         debugLog("SpclientAPI", "[GET] \(request.url?.absoluteString ?? url.absoluteString)")
 
-        let (data, response) = try await credentials.transport(request)
-        guard let http = response as? HTTPURLResponse else {
-            throw SpclientError.malformedResponse
-        }
-
-        return (data, http.statusCode, request.value(forHTTPHeaderField: "Client-Token"))
+        return try await credentials.attempt(request)
     }
 
     func preflight(_ url: URL) async throws {

@@ -25,16 +25,6 @@ nonisolated struct PathfinderAlbumResponse: Decodable, Sendable {
 /// `moreAlbumsByArtist`, `watchFeedEntrypoint`, sharing info and pre-release scheduling. Decoding
 /// fields nothing renders only creates work the next time Spotify adds one.
 nonisolated struct PathfinderAlbumUnion: Decodable, Sendable, PathfinderEntityUnion {
-    struct ReleaseDate: Decodable, Sendable {
-        let isoString: String?
-
-        /// The Web API's `release_date` was a plain `2001-03-12`, and the views format it as a
-        /// year, so the timestamp is trimmed at the `T` rather than parsed into a `Date`.
-        var day: String? {
-            isoString.map { String($0.prefix(while: { $0 != "T" })) }
-        }
-    }
-
     struct ArtistList: Decodable, Sendable {
         struct Item: Decodable, Sendable {
             struct Profile: Decodable, Sendable {
@@ -69,7 +59,7 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable, PathfinderEntityUn
     let uri: String?
     let name: String?
     let type: String?
-    let date: ReleaseDate?
+    let date: PathfinderReleaseDate?
     let coverArt: PathfinderImage?
     let artists: ArtistList?
     let tracksV2: TrackList?

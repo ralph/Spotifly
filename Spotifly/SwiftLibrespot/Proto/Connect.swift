@@ -72,27 +72,6 @@ public nonisolated enum ClusterUpdateReason: UInt32, Sendable {
     case deviceNewConnection = 6
 }
 
-// MARK: - Writing
-
-/// Connect-state is proto3: a field at its default may stay off the wire, and the peer reads
-/// its absence as that default. The writer never skips a field by itself, so these say so
-/// where a message does.
-private extension ProtobufWriter {
-    /// A bool written only when true.
-    nonisolated mutating func flag(field: Int, _ isSet: Bool) {
-        if isSet {
-            bool(field: field, true)
-        }
-    }
-
-    /// A string written only when non-empty.
-    nonisolated mutating func nonEmptyString(field: Int, _ value: String) {
-        if !value.isEmpty {
-            string(field: field, value)
-        }
-    }
-}
-
 // MARK: - ConnectCapabilities
 
 /// Device capabilities for Connect
@@ -364,6 +343,81 @@ public nonisolated struct ContextPlayerOptions: Sendable {
     }
 }
 
+// MARK: - Restrictions
+
+/// What a player or a context does not allow, as `player.proto`'s `Restrictions` names it: the
+/// reasons for each action, where any reason means no. Only what this player reads or keeps to is
+/// modelled.
+///
+/// The context resolver names a context's own, in its answer's `restrictions` keyed by the fields'
+/// names. A station's say no to shuffle and to repeating the context, for "radio", measured
+/// 2026-10-02. The web player playing one reported them as its `context_restrictions`, and among its
+/// `restrictions`, where it added "endless_context" for repeat-one too.
+public nonisolated struct Restrictions: Sendable, Equatable {
+    /// `disallow_skipping_next_reasons`, field 7.
+    public var skippingNext: [String] = []
+    /// `disallow_toggling_repeat_context_reasons`, field 8.
+    public var togglingRepeatContext: [String] = []
+    /// `disallow_toggling_repeat_track_reasons`, field 9.
+    public var togglingRepeatTrack: [String] = []
+    /// `disallow_toggling_shuffle_reasons`, field 10.
+    public var togglingShuffle: [String] = []
+
+    public init() {}
+
+    /// The fields modelled, by number and by the name the resolver's JSON gives them.
+    private static let fields: [(number: Int, name: String, reasons: WritableKeyPath<Restrictions, [String]> & Sendable)] = [
+        (7, "disallow_skipping_next_reasons", \.skippingNext),
+        (8, "disallow_toggling_repeat_context_reasons", \.togglingRepeatContext),
+        (9, "disallow_toggling_repeat_track_reasons", \.togglingRepeatTrack),
+        (10, "disallow_toggling_shuffle_reasons", \.togglingShuffle),
+    ]
+
+    /// The resolver's `restrictions`: each field by name, a list of reasons.
+    init(json: [String: Any]) {
+        for field in Self.fields {
+            self[keyPath: field.reasons] = json[field.name] as? [String] ?? []
+        }
+    }
+
+    public var isEmpty: Bool {
+        self == Restrictions()
+    }
+
+    /// Whether shuffle may be switched on.
+    var allowsShuffle: Bool {
+        togglingShuffle.isEmpty
+    }
+
+    /// Whether repeat may be set to `mode`. Off always may.
+    func allows(_ mode: PlaybackQueue.RepeatMode) -> Bool {
+        switch mode {
+        case .off: true
+        case .context: togglingRepeatContext.isEmpty
+        case .track: togglingRepeatTrack.isEmpty
+        }
+    }
+
+    public func serialize() -> Data {
+        ProtobufWriter.message { message in
+            for field in Self.fields {
+                for reason in self[keyPath: field.reasons] {
+                    message.string(field: field.number, reason)
+                }
+            }
+        }
+    }
+
+    public static func parse(from data: Data) -> Restrictions {
+        var restrictions = Restrictions()
+        for value in ProtobufReader.fields(in: data) {
+            guard let field = fields.first(where: { $0.number == value.number }) else { continue }
+            restrictions[keyPath: field.reasons].append(value.string)
+        }
+        return restrictions
+    }
+}
+
 // MARK: - PlayerState
 
 /// Current player state
@@ -388,9 +442,16 @@ public nonisolated struct PlayerState: Sendable {
     public var sessionId: String = ""
     public var queueRevision: String = ""
     public var position: Int64 = 0
-    /// Whether the device says Next cannot be pressed: its `restrictions` (field 17) name a
-    /// `disallow_skipping_next_reason` (their field 7). Read, never written.
-    public var disallowsSkippingNext = false
+    /// What the device says cannot be done now (field 17), and what its context does not allow
+    /// (field 4). This Mac reports its context's in both, as go-librespot does.
+    public var restrictions = Restrictions()
+    public var contextRestrictions = Restrictions()
+
+    /// Whether the device says Next cannot be pressed: its `restrictions` name a
+    /// `disallow_skipping_next_reason`.
+    public var disallowsSkippingNext: Bool {
+        !restrictions.skippingNext.isEmpty
+    }
 
     public init() {}
 
@@ -399,6 +460,9 @@ public nonisolated struct PlayerState: Sendable {
             $0.varint(field: 1, timestamp)
             $0.nonEmptyString(field: 2, contextUri)
             $0.nonEmptyString(field: 3, contextUrl)
+            if !contextRestrictions.isEmpty {
+                $0.bytes(field: 4, contextRestrictions.serialize())
+            }
             if let index {
                 $0.bytes(field: 6, index.serialize())
             }
@@ -418,6 +482,9 @@ public nonisolated struct PlayerState: Sendable {
             let optionsData = options.serialize()
             if !optionsData.isEmpty {
                 $0.bytes(field: 16, optionsData)
+            }
+            if !restrictions.isEmpty {
+                $0.bytes(field: 17, restrictions.serialize())
             }
             for track in prevTracks {
                 $0.bytes(field: 19, track.serialize())
@@ -439,6 +506,7 @@ public nonisolated struct PlayerState: Sendable {
             case 1: state.timestamp = field.int64
             case 2: state.contextUri = field.string
             case 3: state.contextUrl = field.string
+            case 4: state.contextRestrictions = Restrictions.parse(from: field.bytes)
             case 6: state.index = ContextIndex.parse(from: field.bytes)
             case 7: state.track = ProvidedTrack.parse(from: field.bytes)
             case 8: state.playbackId = field.string
@@ -450,7 +518,7 @@ public nonisolated struct PlayerState: Sendable {
             case 14: state.isBuffering = field.bool
             case 15: state.isSystemInitiated = field.bool
             case 16: state.options = ContextPlayerOptions.parse(from: field.bytes)
-            case 17: state.disallowsSkippingNext = field.fields.contains { $0.number == 7 }
+            case 17: state.restrictions = Restrictions.parse(from: field.bytes)
             case 19: state.prevTracks.append(ProvidedTrack.parse(from: field.bytes))
             case 20: state.nextTracks.append(ProvidedTrack.parse(from: field.bytes))
             case 21:

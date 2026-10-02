@@ -14,8 +14,8 @@ struct NowPlayingBarView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(TrackService.self) private var trackService
     @Environment(\.displayScale) private var displayScale
-    let playbackViewModel: PlaybackViewModel
-    let windowState: WindowState
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
+    @Environment(WindowState.self) private var windowState
 
     @State private var cachedAlbumArtImage: Image?
     private let network = NetworkMonitor.shared
@@ -63,7 +63,6 @@ struct NowPlayingBarView: View {
             .newPlaylistPrompt(
                 isPresented: $showNewPlaylistDialog,
                 trackId: currentTrack?.id,
-                playbackViewModel: playbackViewModel,
                 onAdded: showSuccessFeedback,
             )
             .task(id: currentTrackId) {
@@ -275,7 +274,7 @@ struct NowPlayingBarView: View {
                     .font(.body)
             }
             .buttonStyle(.plain)
-            .disabled(!playbackViewModel.hasPrevious)
+            .disabled(!hasPlayback)
 
             Button {
                 if playbackViewModel.isPlaying {
@@ -300,6 +299,13 @@ struct NowPlayingBarView: View {
         }
     }
 
+    private var shuffleHelp: String {
+        if !playbackViewModel.canShuffle {
+            return "Shuffle is not available for what is playing, such as a radio"
+        }
+        return playbackViewModel.isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"
+    }
+
     private var shuffleButton: some View {
         Button {
             playbackViewModel.toggleShuffle()
@@ -309,8 +315,8 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(playbackViewModel.isShuffleEnabled ? .green : .secondary)
         }
         .buttonStyle(.plain)
-        .disabled(!hasPlayback)
-        .help(playbackViewModel.isShuffleEnabled ? "Disable shuffle" : "Enable shuffle")
+        .disabled(!hasPlayback || !playbackViewModel.canShuffle)
+        .help(shuffleHelp)
     }
 
     /// Current playback position (interpolated for smooth display)
@@ -385,8 +391,9 @@ struct NowPlayingBarView: View {
             navigationCoordinator.navigateToQueue()
         } label: {
             Group {
-                if store.queue.currentTrack != nil {
-                    Text("\(store.currentIndex + 1)/\(store.queueLength)")
+                let queue = player.queueEntries
+                if queue.currentTrack != nil {
+                    Text(verbatim: "\(queue.currentIndex + 1)/\(queue.length)")
                 } else {
                     // The counter is the button's only label, so dropping it outright would
                     // leave an invisible control that VoiceOver announces unnamed. The glyph
@@ -412,12 +419,7 @@ struct NowPlayingBarView: View {
     private var favoriteButton: some View {
         Button {
             Task {
-                guard let trackId = currentTrackId else { return }
-                do {
-                    try await trackService.toggleFavorite(trackId: trackId)
-                } catch {
-                    playbackViewModel.errorMessage = String(localized: "error.update_favorite \(error.localizedDescription)")
-                }
+                await playbackViewModel.toggleCurrentTrackFavorite()
             }
         } label: {
             Image(systemName: isCurrentTrackFavorited ? "heart.fill" : "heart")
@@ -568,7 +570,6 @@ struct NowPlayingBarView: View {
                     // from — and with no playlist selected there is nothing to remove from
                     // anyway.
                     itemUid: nil,
-                    playbackViewModel: playbackViewModel,
                     showNewPlaylistDialog: $showNewPlaylistDialog,
                     onPlaylistAdded: showSuccessFeedback,
                     onNavigate: exitMiniPlayerIfNeeded,

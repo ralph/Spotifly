@@ -25,9 +25,13 @@ struct TransferStateTests {
 
     private static func transfer(
         paused: Bool = false,
+        contextUri: String = "spotify:playlist:abc",
+        rows: [(inout ProtobufWriter) -> Void] = [contextTrack(uri: "spotify:track:first"), contextTrack(uri: "spotify:track:current")],
+        sessionUid: String = "uid-current",
         currentTrack: @escaping (inout ProtobufWriter) -> Void = contextTrack(uri: "spotify:track:current"),
         queue: [String] = [],
         playingQueue: Bool = false,
+        mainContext: String? = nil,
     ) -> Data {
         ProtobufWriter.message {
             $0.message(field: 1) { options in
@@ -43,13 +47,17 @@ struct TransferStateTests {
             }
             $0.message(field: 3) { session in
                 session.message(field: 2) { context in
-                    context.string(field: 1, "spotify:playlist:abc")
+                    context.string(field: 1, contextUri)
                     context.message(field: 5) { page in
-                        page.message(field: 4, contextTrack(uri: "spotify:track:first"))
-                        page.message(field: 4, contextTrack(uri: "spotify:track:current"))
+                        for row in rows {
+                            page.message(field: 4, row)
+                        }
                     }
                 }
-                session.string(field: 3, "uid-current")
+                session.string(field: 3, sessionUid)
+                if let mainContext {
+                    session.message(field: 8) { $0.string(field: 1, mainContext) }
+                }
             }
             $0.message(field: 4) { queued in
                 for uri in queue {
@@ -58,6 +66,37 @@ struct TransferStateTests {
                 queued.bool(field: 2, playingQueue)
             }
         }
+    }
+
+    /// The web player names the context autoplay went on from as the session's `main_context`,
+    /// beside the station (2026-10-02).
+    @Test func `the context autoplay went on from comes through`() {
+        let state = TransferState(parsing: Self.transfer(contextUri: "spotify:station:album:a", mainContext: "spotify:album:a"))
+
+        #expect(state.contextUri == "spotify:station:album:a")
+        #expect(state.mainContextUri == "spotify:album:a")
+        #expect(TransferState(parsing: Self.transfer()).mainContextUri == nil)
+    }
+
+    /// The web player on 2026-10-02, playing a track queued during its autoplay: the station as
+    /// the context, the album as `main_context`, the queue playing.
+    @Test func `a queued track before the station's next row goes on in autoplay`() {
+        let station = TransferState(parsing: Self.transfer(
+            contextUri: "spotify:station:album:a",
+            sessionUid: "station-row",
+            queue: ["spotify:track:q0"],
+            playingQueue: true,
+            mainContext: "spotify:album:a",
+        ))
+        #expect(station.playsQueuedTrack)
+        #expect(station.continuesAutoplay)
+        #expect(station.contextResumeUid == "station-row")
+
+        // Queued in a station played as it is, or in an album, it goes on with that context.
+        let radio = TransferState(parsing: Self.transfer(contextUri: "spotify:station:album:a", queue: ["spotify:track:q0"], playingQueue: true))
+        #expect(!radio.continuesAutoplay)
+        let album = TransferState(parsing: Self.transfer(queue: ["spotify:track:q0"], playingQueue: true, mainContext: "spotify:album:b"))
+        #expect(!album.continuesAutoplay)
     }
 
     @Test func `the context, track, options and position come through`() {
@@ -108,6 +147,59 @@ struct TransferStateTests {
 
         let fromContext = TransferState(parsing: Self.transfer(queue: ["spotify:track:q1"]))
         #expect(fromContext.contextResumeUid == nil)
+    }
+
+    @Test func `a list's rows keep their uids beside them, and a row without a track is left out`() {
+        let state = TransferState(parsing: Self.transfer(contextUri: "-", rows: [
+            Self.contextTrack(uri: "spotify:track:a", uid: "uid-a"),
+            { $0.string(field: 2, "uid-nothing") },
+            Self.contextTrack(uri: "spotify:track:b"),
+        ]))
+
+        #expect(state.contextUri == "")
+        #expect(state.contextTrackUris == ["spotify:track:a", "spotify:track:b"])
+        #expect(state.contextTrackUids == ["uid-a", nil])
+    }
+
+    /// Measured with a phone (2026-10-02): a bare list handed over while a queued track played
+    /// came whole, each row with a uid, and the session's uid named the row after the one the
+    /// phone had played. `PlaybackQueue.start(in:queued:resumingAt:uids:)` places it from those.
+    @Test func `a bare list handed over from the queue names the row it goes on with`() {
+        let state = TransferState(parsing: Self.transfer(
+            contextUri: "",
+            rows: (0 ..< 4).map { Self.contextTrack(uri: "spotify:track:t\($0)", uid: "u\($0)") },
+            sessionUid: "u2",
+            queue: ["spotify:track:q1"],
+            playingQueue: true,
+        ))
+
+        #expect(state.currentTrackUri == "spotify:track:q1")
+        #expect(state.contextTrackUids == ["u0", "u1", "u2", "u3"])
+        #expect(state.contextResumeUid == "u2")
+    }
+
+    @Test func `a handover says when its track came from autoplay`() {
+        let fromAutoplay = TransferState(parsing: Self.transfer(currentTrack: {
+            $0.string(field: 1, "spotify:track:current")
+            $0.message(field: 4) {
+                $0.string(field: 1, "autoplay.is_autoplay")
+                $0.string(field: 2, "true")
+            }
+            $0.message(field: 4) {
+                $0.string(field: 1, "context_uri")
+                $0.string(field: 2, "spotify:station:album:a")
+            }
+        }))
+
+        #expect(fromAutoplay.continuesAutoplay)
+        #expect(fromAutoplay.autoplayContextUri == "spotify:station:album:a")
+        #expect(!TransferState(parsing: Self.transfer()).continuesAutoplay)
+    }
+
+    /// A phone handed its own autoplay over with the station as the context (2026-10-02).
+    @Test func `a handover from a station goes on after the context it followed`() {
+        #expect(LibrespotClient.contextBeforeAutoplay("spotify:station:album:a") == "spotify:album:a")
+        #expect(LibrespotClient.contextBeforeAutoplay("spotify:album:a") == "spotify:album:a")
     }
 
     @Test func `a track sent only by gid gets its uri back`() {

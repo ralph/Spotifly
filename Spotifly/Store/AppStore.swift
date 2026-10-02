@@ -9,28 +9,6 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Queue State
-
-/// A track reference in the queue with its provider (normalized - stores ID only, not full metadata)
-struct QueueEntry: Equatable {
-    let trackId: String
-    let provider: TrackProvider
-    /// The row's uid, where it has one: from the cluster while another device plays, and from
-    /// this Mac's own queue otherwise.
-    var uid: String?
-}
-
-/// Normalized queue state storing track entries (ID + provider)
-struct Queue: Equatable {
-    /// What played before the current track, in play order: the most recent last. From the
-    /// local queue, or from the cluster's `prev_tracks` while another device plays.
-    var previousTracks: [QueueEntry] = []
-    /// Current track
-    var currentTrack: QueueEntry?
-    /// Next tracks in queue
-    var nextTracks: [QueueEntry] = []
-}
-
 // MARK: - App Store
 
 @MainActor
@@ -104,7 +82,6 @@ final class AppStore {
     private(set) var searchResultsByQuery: [String: SearchResults] = [:]
     /// Oldest to newest, used to enforce the bounded query cache.
     private(set) var searchResultQueries: [String] = []
-    private(set) var lastDisplayedSearchQuery: String?
     private(set) var searchCacheEvictionRevision: UInt64 = 0
     var searchIsLoading = false
     /// The last submitted search that failed, which its results page shows in their place,
@@ -127,11 +104,6 @@ final class AppStore {
     var homeIsLoading = false
     var homeErrorMessage: String?
     var hasLoadedHome = false
-
-    // MARK: - Queue State
-
-    /// Queue state (previous/current/next track IDs + loading state)
-    var queue = Queue()
 
     // MARK: - User Profile
 
@@ -172,34 +144,6 @@ final class AppStore {
         case let .artist(id): artists[id]?.name
         case let .playlist(id): playlists[id]?.name
         }
-    }
-
-    // MARK: - Queue Computed Properties
-
-    /// Current track entity from the tracks store
-    var currentTrackEntity: Track? {
-        guard let trackId = queue.currentTrack?.trackId else { return nil }
-        return tracks[trackId]
-    }
-
-    /// Previously played track entities from the tracks store
-    var previousTrackEntities: [Track] {
-        queue.previousTracks.compactMap { tracks[$0.trackId] }
-    }
-
-    /// Next track entities from the tracks store
-    var nextTrackEntities: [Track] {
-        queue.nextTracks.compactMap { tracks[$0.trackId] }
-    }
-
-    /// Total queue length
-    var queueLength: Int {
-        queue.previousTracks.count + (queue.currentTrack != nil ? 1 : 0) + queue.nextTracks.count
-    }
-
-    /// Current track index within the full queue
-    var currentIndex: Int {
-        queue.previousTracks.count
     }
 
     // MARK: - Entity Mutations
@@ -316,24 +260,33 @@ final class AppStore {
     /// refresh failed, say — stays stale through a summary refresh, so the rows keep rendering
     /// while the next visit still refetches them. Claiming `true` here is what let a routine
     /// library refresh both erase those rows and declare the result loaded.
+    ///
+    /// A summary that names no owner or no description says nothing about them either: a start page
+    /// Recents entry carries neither. The ones already known stay. A playlist's owner never
+    /// changes. Without that, a start page refresh took the owner-only actions (Edit Details, the
+    /// cover, Delete) off an owned playlist, and blanked its description, which Edit Details would
+    /// then have saved over the real one.
     func upsertPlaylist(_ playlist: Playlist) {
         deletedEntitySelections.remove(.playlist(id: playlist.id))
 
-        guard let existing = playlists[playlist.id],
-              !playlist.tracksLoaded,
-              // A loaded playlist that is genuinely empty is preserved too, so it is not
-              // fetched again forever — see the "cache what was fetched" rule in AGENTS.md.
-              existing.tracksLoaded || !existing.items.isEmpty
-        else {
-            playlists[playlist.id] = playlist
-            return
+        var playlist = playlist
+        if let existing = playlists[playlist.id] {
+            if playlist.ownerId.isEmpty {
+                playlist.ownerId = existing.ownerId
+            }
+            // A summary's missing description says nothing; a full load's says there is none.
+            if !playlist.tracksLoaded {
+                playlist.description = playlist.description ?? existing.description
+            }
+            // A loaded playlist that is genuinely empty is preserved too, so it is not fetched
+            // again forever — see the "cache what was fetched" rule in AGENTS.md.
+            if !playlist.tracksLoaded, existing.tracksLoaded || !existing.items.isEmpty {
+                playlist.items = existing.items
+                playlist.totalDurationMs = existing.totalDurationMs
+                playlist.tracksLoaded = existing.tracksLoaded
+            }
         }
-
-        var merged = playlist
-        merged.items = existing.items
-        merged.totalDurationMs = existing.totalDurationMs
-        merged.tracksLoaded = existing.tracksLoaded
-        playlists[playlist.id] = merged
+        playlists[playlist.id] = playlist
     }
 
     /// Attach a fetched track list to a playlist. Marks it loaded even when the
@@ -570,7 +523,10 @@ final class AppStore {
     }
 
     /// Update playlist details
-    func updatePlaylistDetails(id: String, name: String? = nil, description: String? = nil, isPublic: Bool? = nil) {
+    func updatePlaylistDetails(id: String, name: String? = nil, description: String? = nil, isPublic: Bool? = nil, images: ImageSet? = nil) {
+        if let images {
+            playlists[id]?.images = images
+        }
         if let name {
             playlists[id]?.name = name
         }
@@ -647,16 +603,7 @@ final class AppStore {
         guard searchResultQueries.count > Self.searchResultsLimit else { return }
         let evicted = searchResultQueries.removeFirst()
         searchResultsByQuery.removeValue(forKey: evicted)
-        if lastDisplayedSearchQuery == evicted {
-            lastDisplayedSearchQuery = nil
-        }
         searchCacheEvictionRevision &+= 1
-    }
-
-    /// The query the sidebar's search row reopens to: one with results, never a failed one.
-    func markSearchQueryDisplayed(_ query: String) {
-        guard searchResultsByQuery[query] != nil else { return }
-        lastDisplayedSearchQuery = query
     }
 
     /// Why the last search for `query` failed, where it was the last to fail.
@@ -687,43 +634,6 @@ final class AppStore {
     func setHomePage(sections: [HomeSection], greeting: String?) {
         homeSections = sections
         homeGreeting = greeting
-    }
-
-    // MARK: - Live State Freshness
-
-    /// Monotonic counter bumped whenever live playback or queue state from the player is
-    /// accepted.
-    ///
-    /// The Web API bootstrap captures this before issuing its requests and re-checks it
-    /// before applying the response, so live state that lands while those requests are in
-    /// flight wins over the older network snapshot. Without it, reconnecting or
-    /// transferring could show the correct live state and then replace it with a stale
-    /// Web API one.
-    ///
-    /// Deliberately one counter for playback and queue together rather than two. Splitting
-    /// them looks more precise but is not: both halves carry the current track, so a
-    /// per-half check lets a stale queue response reinstate the track a live playback state
-    /// has just moved on from. All-or-nothing keeps the two consistent.
-    ///
-    /// It is coarser — a queue response can be discarded because a playback state arrived —
-    /// and that costs nothing for the callers whose live state is replacing what is there
-    /// anyway.
-    private(set) var liveStateRevision: UInt64 = 0
-
-    /// Records that authoritative state arrived from the player.
-    func noteLiveStateReceived() {
-        liveStateRevision &+= 1
-    }
-
-    // MARK: - Queue Actions
-
-    /// Set queue state with queue entries. If `previous` is nil, preserves existing (Web API doesn't provide history).
-    func setQueue(previous: [QueueEntry]?, current: QueueEntry?, next: [QueueEntry]) {
-        if let previous {
-            queue.previousTracks = previous
-        }
-        queue.currentTrack = current
-        queue.nextTracks = next
     }
 
     // MARK: - User Profile Actions
@@ -758,22 +668,8 @@ final class AppStore {
 
                 let searchResultsByQuery: [String: SearchResults]
                 let searchResultQueries: [String]
-                let lastDisplayedSearchQuery: String?
 
                 let homeSections: [HomeSection]
-
-                let queue: QueueSnapshot
-
-                struct QueueItemSnapshot: Encodable {
-                    let trackId: String
-                    let provider: String
-                }
-
-                struct QueueSnapshot: Encodable {
-                    let previousTracks: [QueueItemSnapshot]
-                    let currentTrack: QueueItemSnapshot?
-                    let nextTracks: [QueueItemSnapshot]
-                }
             }
 
             let snapshot = StoreSnapshot(
@@ -793,13 +689,7 @@ final class AppStore {
                 favoritesPagination: favoritesPagination,
                 searchResultsByQuery: searchResultsByQuery,
                 searchResultQueries: searchResultQueries,
-                lastDisplayedSearchQuery: lastDisplayedSearchQuery,
                 homeSections: homeSections,
-                queue: StoreSnapshot.QueueSnapshot(
-                    previousTracks: queue.previousTracks.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
-                    currentTrack: queue.currentTrack.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
-                    nextTracks: queue.nextTracks.map { StoreSnapshot.QueueItemSnapshot(trackId: $0.trackId, provider: $0.provider.rawValue) },
-                ),
             )
 
             let encoder = JSONEncoder()

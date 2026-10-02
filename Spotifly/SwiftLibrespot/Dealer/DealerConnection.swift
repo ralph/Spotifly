@@ -15,16 +15,15 @@ public actor DealerConnection {
     // MARK: - Properties
 
     private let endpoint: String
-    /// Asked for the bearer token on every use. A token held from the start
-    /// expired an hour into the session, and every PutState after that was
-    /// answered 401 while playback, which asks for its own, went on.
-    private let tokenProvider: @Sendable () async throws -> String
+    /// Sign the socket's URL and PutState, as the app's pages are signed. Asked
+    /// for the bearer on every use: a token held from the start expired an
+    /// hour into the session, and every PutState after that was answered 401.
+    private let credentials: SpotifyCredentials
     /// Where connect-state lives. It is *not* the dealer host, which is what
     /// PutState was aimed at until every one of them came back 403.
     private let spclientHost: String
     /// The device's own id — the connect-state resource this session owns.
     private let deviceId: String
-    private var clientTokenProvider: (@Sendable () async throws -> String)?
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
     private var connectionId: String?
@@ -58,21 +57,17 @@ public actor DealerConnection {
 
     // MARK: - Initialization
 
-    public init(
+    init(
         endpoint: String,
-        tokenProvider: @escaping @Sendable () async throws -> String,
+        credentials: SpotifyCredentials,
         spclientHost: String,
         deviceId: String,
     ) {
         self.endpoint = endpoint
-        self.tokenProvider = tokenProvider
+        self.credentials = credentials
         self.spclientHost = spclientHost
         self.deviceId = deviceId
         debugLog("DealerConnection", "Created for endpoint: \(endpoint)")
-    }
-
-    func setClientTokenProvider(_ provider: @escaping @Sendable () async throws -> String) {
-        clientTokenProvider = provider
     }
 
     // MARK: - Connection
@@ -82,7 +77,7 @@ public actor DealerConnection {
         debugLog("DealerConnection", "Connecting to dealer...")
 
         // Build WebSocket URL with access token
-        let wsURL = try await buildWebSocketURL(accessToken: tokenProvider())
+        let wsURL = try await buildWebSocketURL(accessToken: credentials.accessToken())
 
         // Create WebSocket task
         let session = URLSession(configuration: .default)
@@ -206,27 +201,19 @@ public actor DealerConnection {
         httpRequest.httpMethod = "PUT"
         httpRequest.timeoutInterval = 15
         httpRequest.setValue(connId, forHTTPHeaderField: "X-Spotify-Connection-Id")
-        try await httpRequest.setValue("Bearer \(tokenProvider())", forHTTPHeaderField: "Authorization")
-        if let clientTokenProvider {
-            try await httpRequest.setValue(clientTokenProvider(), forHTTPHeaderField: "Client-Token")
-        }
-        httpRequest.setValue("OSX_ARM64", forHTTPHeaderField: "App-Platform")
-        httpRequest.setValue("https://xpui.app.spotify.com", forHTTPHeaderField: "Origin")
         httpRequest.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
 
         httpRequest.httpBody = payload
 
-        let (data, response) = try await URLSession.shared.data(for: httpRequest)
+        // A refused client token is asked again with a fresh one, but no server error: a report
+        // asked again later could land after the newer one that replaced it.
+        let (data, status) = try await credentials.send(httpRequest)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw LibrespotError.commandFailed("PutState failed: no response")
+        guard (200 ..< 300).contains(status) else {
+            throw LibrespotError.requestFailed("PutState", status: status)
         }
 
-        guard (200 ..< 300).contains(httpResponse.statusCode) else {
-            throw LibrespotError.commandFailed("PutState failed: HTTP \(httpResponse.statusCode)")
-        }
-
-        debugLog("DealerConnection", "PutState accepted (HTTP \(httpResponse.statusCode), \(data.count) bytes back)")
+        debugLog("DealerConnection", "PutState accepted (HTTP \(status), \(data.count) bytes back)")
         return try? Cluster.parse(from: data)
     }
 
@@ -313,6 +300,8 @@ public actor DealerConnection {
             await handleCommand(dealerMsg)
         } else if uri.starts(with: "hm://connect-state/v1/connect/volume") {
             await handleVolumeCommand(dealerMsg)
+        } else if uri == "spotify:user:attributes:mutated" {
+            handleAttributesMutation(dealerMsg)
         } else {
             debugLog("DealerConnection", "Unhandled URI: \(uri)")
         }
@@ -354,6 +343,12 @@ public actor DealerConnection {
                    let raw = try? JSONSerialization.data(withJSONObject: commandJson, options: [.sortedKeys])
                 {
                     debugLog("DealerConnection", "Unhandled command: \(String(decoding: raw, as: UTF8.self))")
+                }
+                // A handover's state whole, as the base64 `TransferState` it came as, since the
+                // parsed one keeps only what this player acts on. `base64 -d | protoc
+                // --decode_raw` reads it.
+                if case .transfer = command, let data = commandJson["data"] as? String {
+                    debugLog("DealerConnection", "Transfer data: \(data)")
                 }
                 commandSubject.send(SpircRemoteCommand(command: command, messageId: messageId, sentByDeviceId: sentBy))
             } else if uri.starts(with: "hm://connect-state/v1/connect/volume"),
@@ -485,6 +480,23 @@ public actor DealerConnection {
 
         debugLog("DealerConnection", "Volume command: \(volume)")
         commandSubject.send(SpircRemoteCommand(command: .setVolume(volume), messageId: nil, sentByDeviceId: nil))
+    }
+
+    private func handleAttributesMutation(_ message: DealerMessage) {
+        guard let payloadData = Self.payloadData(from: message, headers: message.headers) else {
+            debugLog("DealerConnection", "No payload in attributes mutation")
+            return
+        }
+        let names = Self.mutatedAttributes(in: payloadData)
+        debugLog("DealerConnection", "Attributes mutated: \(names)")
+        commandSubject.send(SpircRemoteCommand(command: .userAttributesMutated(names), messageId: nil, sentByDeviceId: nil))
+    }
+
+    /// The names a `UserAttributesMutation` lists: `{ repeated MutatedField fields = 1 { string
+    /// name = 1 }, … }`, as librespot reads it. Measured 2026-10-02: switching autoplay on a
+    /// phone sent one naming `autoplay`, with a timestamp and no value.
+    nonisolated static func mutatedAttributes(in data: Data) -> [String] {
+        ProtobufReader.fields(in: data).filter { $0.number == 1 }.compactMap { $0.fields.last(1)?.string }
     }
 
     /// The volume a `SetVolumeCommand` sets, 0…65535.

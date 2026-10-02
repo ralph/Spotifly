@@ -11,7 +11,7 @@ import SwiftUI
 struct AlbumDetailView: View {
     let albumId: String
 
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
     @Environment(TrackService.self) private var trackService
@@ -109,7 +109,7 @@ struct AlbumDetailView: View {
                             }
                             if let releaseDate = album.releaseDate {
                                 Text("metadata.separator")
-                                Text(releaseDate)
+                                Text(formatReleaseDate(releaseDate))
                             }
                         }
                         .font(.subheadline)
@@ -149,7 +149,6 @@ struct AlbumDetailView: View {
                                 track: track,
                                 showTrackNumber: true,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                                playbackViewModel: playbackViewModel,
                                 currentSection: .albums,
                                 selectionId: albumId,
                                 onDoubleTap: {

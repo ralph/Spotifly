@@ -47,7 +47,6 @@ extension Track {
             uri: uri,
             durationMs: track.durationMs ?? 0,
             trackNumber: nil,
-            externalUrl: nil,
             albumId: track.albumOfTrack?.id ?? track.albumOfTrack?.uri.flatMap(SpotifyURI.id(from:)),
             artistId: track.firstArtistId,
             artistName: track.artistNames.first ?? "Unknown",
@@ -67,11 +66,10 @@ extension Album {
             name: album.name ?? "",
             uri: uri,
             images: ImageSet(pathfinderSources: album.coverArt?.sources),
-            // Search returns only the year, where the library returns a full date. Rendered as
-            // a year either way, so the difference does not reach the screen.
+            // Search returns only the year, where the library returns a date as precise as
+            // Spotify knows it. The album's page has the precise one once `getAlbum` answers.
             releaseDate: album.date?.formatted,
             albumType: album.type?.lowercased(),
-            externalUrl: nil,
             artistId: album.artists?.items?.first?.id,
             artistName: album.artistNames.first ?? "Unknown",
             trackIds: [],
@@ -133,11 +131,10 @@ extension Album {
             name: album.name ?? "",
             uri: uri,
             images: ImageSet(pathfinderSources: album.coverArt?.sources),
-            releaseDate: album.date?.day,
+            releaseDate: album.date?.formatted,
             // `ALBUM`, `SINGLE`, `COMPILATION` — the Web API's lowercase spelling is what the
             // views compare against.
             albumType: album.type?.lowercased(),
-            externalUrl: nil,
             artistId: artist?.id ?? artist?.uri.flatMap(SpotifyURI.id(from:)),
             artistName: artist?.profile?.name ?? "Unknown",
             trackIds: trackIds,
@@ -171,7 +168,6 @@ extension Track {
             uri: uri,
             durationMs: track.duration?.totalMilliseconds ?? 0,
             trackNumber: track.trackNumber,
-            externalUrl: nil,
             albumId: albumId,
             artistId: track.firstArtistId,
             artistName: track.artistNames.first ?? "Unknown",
@@ -217,9 +213,8 @@ extension PathfinderPlaylistUnion {
             uri: uri,
             // Not in this projection, and nothing renders it — the Web API path defaulted it too.
             isPublic: true,
-            ownerId: owner?.uri.flatMap(SpotifyURI.id(from:)) ?? owner?.username ?? "",
-            ownerName: owner?.name ?? owner?.username ?? "",
-            externalUrl: nil,
+            ownerId: owner?.id ?? "",
+            ownerName: owner?.displayName ?? "",
             items: items,
             totalDurationMs: tracks.reduce(0) { $0 + $1.durationMs },
             knownTrackCount: content?.totalCount,
@@ -244,7 +239,6 @@ extension Track {
             uri: uri,
             durationMs: track.trackDuration?.totalMilliseconds ?? 0,
             trackNumber: track.trackNumber,
-            externalUrl: nil,
             albumId: track.albumId,
             artistId: track.firstArtistId,
             artistName: track.artistNames.first ?? "Unknown",
@@ -276,7 +270,6 @@ extension Artist {
             name: artist.name ?? "",
             uri: uri,
             images: ImageSet(pathfinderSources: artist.visuals?.avatarImage?.sources),
-            externalUrl: nil,
         )
     }
 
@@ -289,7 +282,6 @@ extension Artist {
             name: artist.profile?.name ?? "",
             uri: artist.uri ?? "spotify:artist:\(id)",
             images: ImageSet(pathfinderSources: artist.visuals?.avatarImage?.sources),
-            externalUrl: nil,
         )
     }
 }
@@ -310,7 +302,6 @@ extension Album {
             images: ImageSet(pathfinderSources: release.coverArt?.sources),
             releaseDate: release.date?.formatted,
             albumType: release.type?.lowercased(),
-            externalUrl: nil,
             artistId: artistId,
             artistName: artistName,
             trackIds: [],
@@ -336,8 +327,9 @@ extension UserProfile {
         id = username
         displayName = profile.name ?? username
         imageURL = profile.avatar?.largestURL.flatMap(URL.init(string:))
-        externalUrl = "https://open.spotify.com/user/\(username)"
-        uri = profile.uri ?? "spotify:user:\(username)"
+        let uri = profile.uri ?? "spotify:user:\(username)"
+        self.uri = uri
+        externalUrl = SpotifyURI.webURL(uri)
     }
 }
 
@@ -432,7 +424,6 @@ struct HomePage {
                 images: images,
                 releaseDate: nil,
                 albumType: nil,
-                externalUrl: nil,
                 artistId: contributor?.uri.flatMap { SpotifyURI.id(from: $0, kind: "artist") },
                 artistName: contributor?.name ?? "Unknown",
                 detailsLoaded: false,
@@ -448,9 +439,8 @@ struct HomePage {
                 images: images,
                 uri: uri,
                 isPublic: true,
-                ownerId: "",
+                ownerId: contributor?.uri.flatMap { SpotifyURI.id(from: $0, kind: "user") } ?? "",
                 ownerName: contributor?.name ?? "",
-                externalUrl: nil,
                 items: [],
                 totalDurationMs: nil,
                 knownTrackCount: 0,
@@ -464,7 +454,6 @@ struct HomePage {
                 name: entity.name ?? "",
                 uri: uri,
                 images: images,
-                externalUrl: nil,
             ))
             return [.artist(id)]
         }
@@ -489,11 +478,8 @@ extension Playlist {
             images: ImageSet(pathfinderSources: (playlist.images?.items ?? []).first?.sources),
             uri: uri,
             isPublic: true,
-            // Pathfinder identifies the owner by name, not by id. Used for display only here;
-            // the playlist detail load supplies the id when it is needed.
-            ownerId: owner?.username ?? "",
+            ownerId: owner?.id ?? "",
             ownerName: playlist.ownerName ?? "",
-            externalUrl: nil,
             items: [],
             totalDurationMs: nil,
             knownTrackCount: 0,

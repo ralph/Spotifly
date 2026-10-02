@@ -119,6 +119,11 @@ actor AudioPipeline {
     /// after a seek or a start-at-position.
     private var sinkClockOriginFrame: Int64 = 0
 
+    /// Where a load announced as `.loading` starts, until its decode does. The teardown before
+    /// it zeroed the sink's clock, which said 0 for a handover at 1:05 while the file downloaded:
+    /// what a shuffle toggled meanwhile published, and what sleep would have reloaded from.
+    private var loadingPositionMs: UInt64?
+
     /// Sink frame at which `sinkClockOriginFrame` plays: zero after a load or
     /// a seek, which restart the sink clock, and the boundary for a track that
     /// followed on without a gap, which does not.
@@ -254,6 +259,7 @@ actor AudioPipeline {
             debugLog("AudioPipeline", "Playing \(uri) at \(positionMs)ms")
             publish(.loading(trackUri: uri, positionMs: positionMs, paused: paused, durationMs: knownDurationMs(of: uri, resolved: resolved)))
             await teardownTrack()
+            loadingPositionMs = positionMs
             return false
         }
         guard !alreadyPlaying else { return }
@@ -272,6 +278,7 @@ actor AudioPipeline {
             // is no longer news, and acting on it, by clearing the state or
             // skipping to the next track, would undo what came after.
             guard generation == loadGeneration else { throw CancellationError() }
+            loadingPositionMs = nil
             throw error
         }
         debugLog("AudioPipeline", "Decoder open: \(vorbis.format.sampleRate)Hz x\(vorbis.format.channels), \(vorbis.totalFrames) frames")
@@ -545,6 +552,9 @@ actor AudioPipeline {
 
     /// Current position in milliseconds, derived from the sink playhead.
     func currentPositionMs() -> UInt64 {
+        if let loadingPositionMs {
+            return loadingPositionMs
+        }
         guard currentTrackUri != nil, isPlaying else {
             return UInt64(max(0, min(durationMs, Int64(frameToMs(sinkClockOriginFrame)))))
         }
@@ -568,6 +578,7 @@ actor AudioPipeline {
         // start, and a restart of the track — Previous past its first seconds,
         // which other clients send as a seek to 0 — played on from where
         // decoding had got to, or at the end skipped to the next track.
+        loadingPositionMs = nil
         if !decoder.seek(toFrame: frame) {
             debugLog("AudioPipeline", "Seek to frame \(frame) failed; continuing at current position")
             sinkClockOriginFrame = decoder.currentFrame
@@ -738,6 +749,7 @@ actor AudioPipeline {
 
     /// Cancels whatever is running and releases the loaded track.
     private func teardownTrack() async {
+        loadingPositionMs = nil
         await retireDecoding()
         dropContinuation()
         positionTimer?.cancel()

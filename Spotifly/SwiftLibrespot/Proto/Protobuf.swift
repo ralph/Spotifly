@@ -64,6 +64,22 @@ nonisolated struct ProtobufWriter {
         }
     }
 
+    /// A bool written only when true. Connect-state is proto3: a field at its default may stay
+    /// off the wire, and the peer reads its absence as that default. The writer never skips a
+    /// field by itself, so this and `nonEmptyString` say so where a message does.
+    mutating func flag(field: Int, _ isSet: Bool) {
+        if isSet {
+            bool(field: field, true)
+        }
+    }
+
+    /// A string written only when non-empty.
+    mutating func nonEmptyString(field: Int, _ value: String) {
+        if !value.isEmpty {
+            string(field: field, value)
+        }
+    }
+
     mutating func double(field: Int, _ value: Double) {
         appendTag(field: field, wire: 1)
         withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }

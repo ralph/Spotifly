@@ -12,30 +12,32 @@ struct LoggedInContentRouterView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(SearchService.self) private var searchService
 
-    let playbackViewModel: PlaybackViewModel
     let onLogout: () -> Void
 
+    /// The route's section's page, or a search's.
+    ///
+    /// Not a `NavigationStack`: the split view's detail column takes its pushes over and drops
+    /// everything `LoggedInView` lays around the router, the now-playing bar among it. A search's
+    /// all-tracks page is drawn here from the search's own results, so the search's state governs
+    /// both of its pages.
     var body: some View {
-        NavigationStack(path: Bindable(navigationCoordinator).navigationPath) {
-            Group {
-                if let query = navigationCoordinator.displayedSearchQuery,
-                   let searchResults = store.searchResults(for: query)
-                {
-                    SearchResultsView(searchResults: searchResults, playbackViewModel: playbackViewModel)
-                        .navigationTitle("nav.search_results")
-                } else if let query = navigationCoordinator.displayedSearchQuery,
-                          let failure = store.searchFailure(for: query)
-                {
-                    InlineLoadError(failure: failure) { await searchService.search(query: query) }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .navigationTitle("nav.search_results")
-                } else {
-                    contentView
-                }
+        if let query = navigationCoordinator.displayedSearchQuery,
+           let searchResults = store.searchResults(for: query)
+        {
+            if navigationCoordinator.current.showsAllTracks {
+                SearchAllTracksView(trackIds: searchResults.trackIds)
+            } else {
+                SearchResultsView(searchResults: searchResults)
+                    .navigationTitle("nav.search_results")
             }
-            .navigationDestination(for: NavigationDestination.self) { destination in
-                destinationView(for: destination)
-            }
+        } else if let query = navigationCoordinator.displayedSearchQuery,
+                  let failure = store.searchFailure(for: query)
+        {
+            InlineLoadError(failure: failure) { await searchService.search(query: query) }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle("nav.search_results")
+        } else {
+            contentView
         }
     }
 
@@ -47,27 +49,27 @@ struct LoggedInContentRouterView: View {
                 .navigationTitle("nav.startpage")
 
         case .favorites:
-            FavoritesListView(playbackViewModel: playbackViewModel)
+            FavoritesListView()
                 .navigationTitle("nav.favorites")
 
         case .playlists:
-            PlaylistsListView(playbackViewModel: playbackViewModel)
+            PlaylistsListView()
                 .navigationTitle("nav.playlists")
 
         case .albums:
-            AlbumsListView(playbackViewModel: playbackViewModel)
+            AlbumsListView()
                 .navigationTitle("nav.albums")
 
         case .artists:
-            ArtistsListView(playbackViewModel: playbackViewModel)
+            ArtistsListView()
                 .navigationTitle("nav.artists")
 
         case .queue:
-            QueueListView(playbackViewModel: playbackViewModel)
+            QueueListView()
                 .navigationTitle("nav.queue")
 
         case .speakers:
-            SpeakersView(playbackViewModel: playbackViewModel)
+            SpeakersView()
                 .navigationTitle("nav.speakers")
 
         case .profile:
@@ -83,32 +85,6 @@ struct LoggedInContentRouterView: View {
         case .none:
             Text("empty.select_item")
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private func destinationView(for destination: NavigationDestination) -> some View {
-        switch destination {
-        case let .artist(id):
-            ArtistDetailView(artistId: id)
-
-        case let .album(id):
-            AlbumDetailView(
-                albumId: id,
-                playbackViewModel: playbackViewModel,
-            )
-
-        case let .playlist(id):
-            PlaylistDetailView(
-                playlistId: id,
-                playbackViewModel: playbackViewModel,
-            )
-
-        case let .searchTracks(ids):
-            SearchAllTracksView(
-                trackIds: ids,
-                playbackViewModel: playbackViewModel,
-            )
         }
     }
 }

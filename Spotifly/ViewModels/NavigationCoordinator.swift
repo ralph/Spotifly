@@ -15,7 +15,8 @@ final class NavigationCoordinator {
 
     private weak var store: AppStore?
     private var lastSelection: [NavigationItem: Selection] = [:]
-    private var historyRestoreTarget: Route?
+    /// The last search shown with results; see `reopenableSearchQuery`.
+    private var lastDisplayedSearchQuery: String?
 
     private(set) var current: Route = .startpage
     private(set) var back: [Route] = []
@@ -73,13 +74,15 @@ final class NavigationCoordinator {
         return id
     }
 
-    var navigationPath: [NavigationDestination] {
-        get { current.path }
-        set { setNavigationPath(newValue) }
-    }
-
     var displayedSearchQuery: String? {
         current.section == .searchResults ? current.query : nil
+    }
+
+    /// The query the sidebar's search row reopens to: the last one shown with results, never a
+    /// failed one, while the cache still holds them.
+    var reopenableSearchQuery: String? {
+        guard let query = lastDisplayedSearchQuery, store?.searchResults(for: query) != nil else { return nil }
+        return query
     }
 
     var needsThreeColumnLayout: Bool {
@@ -116,11 +119,7 @@ final class NavigationCoordinator {
         case .albums, .artists, .playlists:
             route = Route(section: section, selection: section.flatMap { lastSelection[$0] })
         case .searchResults:
-            guard let query = store?.lastDisplayedSearchQuery,
-                  store?.searchResults(for: query) != nil
-            else {
-                return
-            }
+            guard let query = reopenableSearchQuery else { return }
             route = Route(section: .searchResults, query: query)
         default:
             route = Route(section: section)
@@ -146,34 +145,12 @@ final class NavigationCoordinator {
         setSelection(playlistId.map { .playlist(id: $0) }, for: .playlists, recordsHistory: recordsHistory)
     }
 
-    /// Push a destination onto the drill-down path.
-    func push(_ destination: NavigationDestination) {
-        setNavigationPath(current.path + [destination])
-    }
-
-    /// Classifies writes from `NavigationStack`: extensions are pushes, prefixes are
-    /// native pops through shared history, and replacements are new locations.
-    func setNavigationPath(_ newPath: [NavigationDestination]) {
-        if let historyRestoreTarget, newPath == historyRestoreTarget.path {
-            self.historyRestoreTarget = nil
-            return
-        }
-
-        let oldPath = current.path
-        guard newPath != oldPath else { return }
-
+    /// Opens all of the shown search's tracks, as a step of its own in the history.
+    func showAllSearchTracks() {
+        guard displayedSearchQuery != nil else { return }
         var route = current
-        route.path = newPath
-
-        // A shorter path that the old one starts with is `NavigationStack`'s own back
-        // chevron, which has to move through the shared history — recording it would put
-        // the view just left onto the back stack. An extension is a push and anything else
-        // is a jump; both are new locations.
-        if oldPath.starts(with: newPath) {
-            navigateBackward(to: route)
-        } else {
-            navigate(to: route)
-        }
+        route.showsAllTracks = true
+        navigate(to: route)
     }
 
     /// Navigate directly to the Albums section and a specific album.
@@ -209,18 +186,6 @@ final class NavigationCoordinator {
     }
 
     // MARK: - Selection Helpers
-
-    func restorePlaylistSelection(previous: String?, available: [String]) {
-        selectPlaylist(restoredSelection(previous: previous, available: available), recordsHistory: false)
-    }
-
-    func restoreAlbumSelection(previous: String?, available: [String]) {
-        selectAlbum(restoredSelection(previous: previous, available: available), recordsHistory: false)
-    }
-
-    func restoreArtistSelection(previous: String?, available: [String]) {
-        selectArtist(restoredSelection(previous: previous, available: available), recordsHistory: false)
-    }
 
     /// Select the first remaining album without adding an automatic history step.
     func clearAlbumSelection() {
@@ -271,10 +236,8 @@ final class NavigationCoordinator {
         let currentRunIndex = runs.lastIndex { $0.firstIndex <= oldCurrentIndex } ?? runs.startIndex
 
         back = runs[..<currentRunIndex].map(\.route)
-        current = runs[currentRunIndex].route
         forward = runs[(currentRunIndex + 1)...].map(\.route).reversed()
-        historyRestoreTarget = current
-        noteRouteDisplayed(current)
+        restore(runs[currentRunIndex].route)
     }
 
     // MARK: - Internal History Logic
@@ -306,7 +269,6 @@ final class NavigationCoordinator {
     /// Goes to a route as a new location, such as the page of a context uri
     /// (`Route(contextUri:)`).
     func navigate(to route: Route) {
-        historyRestoreTarget = nil
         if route != current {
             appendToBack(current)
             current = route
@@ -317,7 +279,6 @@ final class NavigationCoordinator {
 
     private func replace(with route: Route) {
         guard route != current else { return }
-        historyRestoreTarget = route
         current = route
         while back.last == current {
             back.removeLast()
@@ -329,50 +290,8 @@ final class NavigationCoordinator {
     }
 
     private func restore(_ route: Route) {
-        historyRestoreTarget = route
         current = route
         noteRouteDisplayed(route)
-    }
-
-    private func navigateBackward(to target: Route) {
-        guard let targetIndex = back.lastIndex(of: target) else {
-            // A pop is a backward move even when its destination was never recorded — the
-            // user can arrive deep in one step by assigning a whole path, and the levels
-            // skipped on the way in were never locations. Recording it as a *new* location
-            // would put the view just left onto the back stack, so Back would walk straight
-            // back into it.
-            // Consume any pending restore target. `replace` can have left one pointing at
-            // the full path — an automatic selection while a drill-down is showing does
-            // exactly that — and the write it was waiting for is this pop. Leaving it set
-            // would make the next push back to that path look like a restore callback and
-            // be swallowed.
-            historyRestoreTarget = nil
-            forward.append(current)
-            // A pop can skip several levels at once, and the ones it skipped are sitting at
-            // the end of the back stack — they were passed through on the way *deeper*.
-            // Leaving them there would make Back walk further into the path just exited.
-            // Moving them in order keeps Forward replaying the way back down.
-            while let deeper = back.last, isDescendant(deeper, of: target) {
-                forward.append(back.removeLast())
-            }
-            current = target
-            noteRouteDisplayed(target)
-            return
-        }
-
-        while back.indices.contains(targetIndex), current != target {
-            navigateBackward()
-        }
-    }
-
-    /// Whether `route` sits deeper in the same place — same section, same selection, same
-    /// query, and a strictly longer path that continues the target's.
-    private func isDescendant(_ route: Route, of target: Route) -> Bool {
-        route.section == target.section
-            && route.selection == target.selection
-            && route.query == target.query
-            && route.path.count > target.path.count
-            && route.path.starts(with: target.path)
     }
 
     private func appendToBack(_ route: Route) {
@@ -390,16 +309,8 @@ final class NavigationCoordinator {
             lastSelection[section] = selection
         }
 
-        if route.section == .searchResults, let query = route.query {
-            store?.markSearchQueryDisplayed(query)
-        }
-    }
-
-    private func restoredSelection(previous: String?, available: [String]) -> String? {
-        if let previous, available.contains(previous) {
-            previous
-        } else {
-            available.first
+        if route.section == .searchResults, let query = route.query, store?.searchResults(for: query) != nil {
+            lastDisplayedSearchQuery = query
         }
     }
 
@@ -412,31 +323,16 @@ final class NavigationCoordinator {
             return false
         }
 
-        return !route.path.contains { destination in
-            guard case let .playlist(id) = destination else { return false }
-            return store?.deletedEntitySelections.contains(.playlist(id: id)) == true
-        }
+        return true
     }
 
-    /// An entity missing from the store falls back to the route's own section, never to the
-    /// kind of the entity — an album route holding an artist drill-down is still in Albums,
-    /// and naming it "Artists" pointed Back at a section the user was never in.
+    /// An entity missing from the store falls back to the route's own section.
     private func title(for route: Route) -> String {
-        let sectionTitle = route.section?.title ?? String(localized: "app.name")
-
-        if let destination = route.path.last {
-            switch destination {
-            case .searchTracks:
-                return String(localized: "section.tracks")
-            case let .artist(id):
-                return store?.name(of: .artist(id: id)) ?? sectionTitle
-            case let .album(id):
-                return store?.name(of: .album(id: id)) ?? sectionTitle
-            case let .playlist(id):
-                return store?.name(of: .playlist(id: id)) ?? sectionTitle
-            }
+        if route.showsAllTracks {
+            return String(localized: "section.tracks")
         }
 
+        let sectionTitle = route.section?.title ?? String(localized: "app.name")
         return route.selection.flatMap { store?.name(of: $0) } ?? sectionTitle
     }
 }

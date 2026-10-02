@@ -184,24 +184,6 @@ nonisolated struct PathfinderTrack: Decodable, Sendable {
 }
 
 nonisolated struct PathfinderAlbum: Decodable, Sendable {
-    /// **The two operations that return this type spell the date differently**: search sends
-    /// `{year}` and nothing else, while `libraryV3` sends `{isoString, precision}` and no year.
-    /// Both are accepted, and `formatted` prefers the precise one — a decoder written against
-    /// either alone would leave the other's albums with no release date at all.
-    struct ReleaseDate: Decodable, Sendable {
-        let year: Int?
-        let isoString: String?
-
-        /// `2025-05-09` where a full date is known, the bare year otherwise. Trimmed at the `T`
-        /// rather than parsed, because the views format it as a year anyway.
-        var formatted: String? {
-            if let isoString {
-                return String(isoString.prefix(while: { $0 != "T" }))
-            }
-            return year.map(String.init)
-        }
-    }
-
     /// Search results carry no `id` — only the URI — so it is derived. `AppStore` keys albums
     /// by id, so this is not cosmetic.
     let uri: String?
@@ -209,7 +191,8 @@ nonisolated struct PathfinderAlbum: Decodable, Sendable {
     let type: String?
     let artists: PathfinderArtistList?
     let coverArt: PathfinderImage?
-    let date: ReleaseDate?
+    /// Search sends `{year}`, `libraryV3` `{isoString, precision}`; see `PathfinderReleaseDate`.
+    let date: PathfinderReleaseDate?
 
     var id: String? {
         uri.flatMap(SpotifyURI.id(from:))
@@ -242,16 +225,29 @@ nonisolated struct PathfinderArtist: Decodable, Sendable {
     }
 }
 
-nonisolated struct PathfinderPlaylist: Decodable, Sendable {
-    struct Owner: Decodable, Sendable {
-        struct Data: Decodable, Sendable {
-            let name: String?
-            let username: String?
+/// A playlist's owner, `ownerV2`, as every playlist shape carries it.
+nonisolated struct PathfinderOwner: Decodable, Sendable {
+    struct Data: Decodable, Sendable {
+        let name: String?
+        let username: String?
+        /// `spotify:user:<id>`. The start page leaves the username out and names the owner by this
+        /// alone (2026-10-02).
+        let uri: String?
+
+        /// The owner's id: the username, or the id in the uri where no username came.
+        var id: String? {
+            username ?? uri.flatMap { SpotifyURI.id(from: $0, kind: "user") }
         }
 
-        let data: Data?
+        var displayName: String? {
+            name ?? username
+        }
     }
 
+    let data: Data?
+}
+
+nonisolated struct PathfinderPlaylist: Decodable, Sendable {
     struct Images: Decodable, Sendable {
         let items: [PathfinderImage]?
     }
@@ -260,7 +256,7 @@ nonisolated struct PathfinderPlaylist: Decodable, Sendable {
     let name: String?
     let description: String?
     let images: Images?
-    let ownerV2: Owner?
+    let ownerV2: PathfinderOwner?
 
     /// **Kind-checked**, unlike the other entities here, because this type also decodes the
     /// *folders* `libraryV3` returns alongside playlists: a folder carries a `uri` and a `name`
@@ -271,7 +267,7 @@ nonisolated struct PathfinderPlaylist: Decodable, Sendable {
     }
 
     var ownerName: String? {
-        ownerV2?.data?.name ?? ownerV2?.data?.username
+        ownerV2?.data?.displayName
     }
 
     /// The uri when this is a playlist *folder*, which decodes as this type too; see `id`.
@@ -317,10 +313,27 @@ nonisolated enum SpotifyURI {
     }
 
     static func id(from uri: String, kind: String) -> String? {
+        parts(of: uri).flatMap { $0.kind == kind ? String($0.id) : nil }
+    }
+
+    /// The page on open.spotify.com a uri names, which Share copies: `spotify:album:<id>` is
+    /// `https://open.spotify.com/album/<id>`. Nil for what has no page there, such as a folder or
+    /// a local file.
+    ///
+    /// The Web API answered it with every entity, as `external_urls.spotify`; pathfinder and
+    /// spclient don't, so since the move to them every entity's was nil, and Share was greyed for
+    /// all of them (2026-10-02).
+    static func webURL(_ uri: String) -> String? {
+        guard let (kind, id) = parts(of: uri), pagedKinds.contains(kind) else { return nil }
+        return "https://open.spotify.com/\(kind)/\(id)"
+    }
+
+    private static let pagedKinds: Set<Substring> = ["track", "album", "artist", "playlist", "show", "episode", "user"]
+
+    /// A `spotify:<kind>:<id>` uri's kind and id, or nil for any other shape.
+    private static func parts(of uri: String) -> (kind: Substring, id: Substring)? {
         let parts = uri.split(separator: ":")
-        guard parts.count == 3, parts[0] == "spotify", parts[1] == kind, !parts[2].isEmpty else {
-            return nil
-        }
-        return String(parts[2])
+        guard parts.count == 3, parts[0] == "spotify" else { return nil }
+        return (parts[1], parts[2])
     }
 }

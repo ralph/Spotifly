@@ -10,7 +10,7 @@ import SwiftUI
 struct FavoritesListView: View {
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     var body: some View {
         // A ZStack, not a Group: a Group hands its `.task` to each branch, so switching
@@ -68,7 +68,6 @@ struct FavoritesListView: View {
                                 track: track,
                                 index: index,
                                 currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
-                                playbackViewModel: playbackViewModel,
                                 currentSection: .favorites,
                                 onDoubleTap: {
                                     // The playlist the list was read from; see `LikedSongs`.

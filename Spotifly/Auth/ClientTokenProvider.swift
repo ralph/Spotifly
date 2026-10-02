@@ -79,8 +79,8 @@ actor ClientTokenProvider {
         return granted.token
     }
 
-    /// Drops the cached token, so the next caller fetches a fresh one. For a 401, where the
-    /// token is dead before its stated expiry.
+    /// Drops the cached token, so the next caller fetches a fresh one. For a refusal, where the
+    /// token is dead before its stated expiry; see `SpotifyCredentials.retryingRefusedToken`.
     ///
     /// **Only if `rejected` is still the cached one.** Requests run concurrently, so one dead
     /// token is refused several times over, and each refusal arrives separately — the later

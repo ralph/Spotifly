@@ -12,10 +12,10 @@ import Foundation
 public actor SPClient {
     // MARK: - Properties
 
-    /// Produces a current bearer token on demand, so long-lived sessions
-    /// survive the hour-long lifetime of any single token.
-    private let tokenProvider: @Sendable () async throws -> String
-    private let clientTokenProvider: (@Sendable () async throws -> String)?
+    /// Signs each request like the desktop client, as the app's pages are signed, and shares
+    /// their retries: once after a refused client token, and after a failure that may pass, with
+    /// `retryPauses`.
+    private let credentials: SpotifyCredentials
     private var spclientHost: String?
     private let deviceId: String
     /// Market and catalogue the batched-metadata requests must name.
@@ -26,39 +26,36 @@ public actor SPClient {
         countryCode = code
     }
 
+    /// The pauses before a request that failed in a way that may pass is asked for again,
+    /// shorter than a page's (`SpotifyCredentials.retryPauses`): a track's start waits on them,
+    /// and a Next should not hang for seconds before it says it failed. librespot asks again
+    /// with no pause at all.
+    static let retryPauses: [Duration] = [.milliseconds(250), .seconds(1)]
+
     // MARK: - Initialization
 
-    public init(
-        tokenProvider: @escaping @Sendable () async throws -> String,
-        clientTokenProvider: (@Sendable () async throws -> String)? = nil,
+    init(
+        credentials: SpotifyCredentials,
         spclientHost: String? = nil,
         deviceId: String,
     ) {
-        self.tokenProvider = tokenProvider
-        self.clientTokenProvider = clientTokenProvider
+        var credentials = credentials
+        credentials.retryPauses = Self.retryPauses
+        self.credentials = credentials
         self.spclientHost = spclientHost
         self.deviceId = deviceId
 
         debugLog("SPClient", "Initialized")
     }
 
-    /// Signs like the desktop client does: these hosts are no public API, and
-    /// the requests they answer are the ones shaped like the client's own —
-    /// bearer for the user, client token for the application, plus the
-    /// platform/origin markers.
-    private func authorizedRequest(url: URL, accept: String) async throws -> URLRequest {
-        var request = URLRequest(url: url)
-        request.setValue("OSX_ARM64", forHTTPHeaderField: "App-Platform")
-        request.setValue("https://xpui.app.spotify.com", forHTTPHeaderField: "Origin")
-        request.setValue("https://xpui.app.spotify.com/", forHTTPHeaderField: "Referer")
-
-        let token = try await tokenProvider()
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        if let clientTokenProvider {
-            try await request.setValue(clientTokenProvider(), forHTTPHeaderField: "Client-Token")
+    /// Reads a request, and throws `requestFailed` naming it unless it is answered 200.
+    private nonisolated func fetch(_ request: URLRequest, named name: String) async throws -> Data {
+        let (data, status) = try await credentials.read(request)
+        guard status == 200 else {
+            debugLog("SPClient", "\(name) failed: HTTP \(status), body: \(String(data: data.prefix(200), encoding: .utf8) ?? "?")")
+            throw LibrespotError.requestFailed(name, status: status)
         }
-        request.setValue(accept, forHTTPHeaderField: "Accept")
-        return request
+        return data
     }
 
     // MARK: - Track Metadata
@@ -116,25 +113,15 @@ public actor SPClient {
 
         debugLog("SPClient", "[POST] extended-metadata \(entityUri)")
 
-        var request = try await authorizedRequest(url: url, accept: "application/x-protobuf")
+        // A read sent as a POST, and asked again as one.
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
         request.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Self.buildTrackRequest(
-            entityUri: entityUri,
-            country: countryCode,
-            catalogue: catalogue,
-        )
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw LibrespotError.cdnError("Invalid extended-metadata response")
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            debugLog("SPClient", "Extended metadata failed: HTTP \(httpResponse.statusCode), body: \(String(data: data.prefix(160), encoding: .utf8) ?? "?")")
-            throw LibrespotError.trackNotFound(entityUri)
-        }
+        request.httpBody = Self.buildTrackRequest(entityUri: entityUri, country: countryCode, catalogue: catalogue)
+        // Not `trackNotFound` when it fails: a server error that outlasted the retries is no
+        // fact about the track.
+        let data = try await fetch(request, named: "Track metadata")
 
         // A track that does not exist answers HTTP 200 with no `Track`, and 404 in the entity's
         // own header: not found, not withheld. A withheld one has a `Track` with no files.
@@ -202,15 +189,9 @@ public actor SPClient {
 
         debugLog("SPClient", "[GET] storage-resolve for \(fileIdHex.prefix(16))…")
 
-        let request = try await authorizedRequest(url: url, accept: "application/json")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200
-        else {
-            throw LibrespotError.cdnError("Storage resolve failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-        }
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let data = try await fetch(request, named: "Storage resolve")
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let cdnUrls = json["cdnurl"] as? [String],
@@ -274,62 +255,143 @@ public actor SPClient {
 
     /// An ordered track list resolved from a context uri.
     public struct ResolvedContext: Sendable {
-        public let tracks: [String]
+        public var tracks: [String]
         /// Each track's `uid`, beside `tracks`, or nil where the answer has none. A playlist's
         /// tracks have one, an album's none (measured 2026-09-30).
-        public let uids: [String?]
+        public var uids: [String?]
         /// The answer's `metadata`, the context's name among it (`contextName`).
-        public let metadata: [String: String]
+        public var metadata: [String: String]
+        /// The context's own uri, as the answer names it: a station's for autoplay.
+        public var uri: String?
+        /// The page after these tracks, where the resolve stopped short of the end, for
+        /// `resolvePage`.
+        public var nextPageUrl: String?
+        /// What the context does not allow, as the answer names it: a station's shuffle and
+        /// repeat.
+        public var restrictions = Restrictions()
     }
 
     /// Resolves an album, playlist, artist, or station uri into its tracks,
     /// via spclient's context resolver — the same source Spotify's own
     /// clients use, and one that handles every context shape uniformly.
-    public func resolveContext(_ contextUri: String) async throws -> ResolvedContext {
-        let host = spclientHost ?? "spclient.wg.spotify.com"
+    ///
+    /// Its next pages are followed, up to `pageLimit` pages in all, and the page after them named
+    /// as `nextPageUrl`. A later page that fails leaves the pages before it; only the first
+    /// failing fails the resolve.
+    public func resolveContext(_ contextUri: String, pageLimit: Int = 10) async throws -> ResolvedContext {
         let encodedUri = contextUri.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? contextUri
-
         debugLog("SPClient", "Resolving context: \(contextUri)")
 
-        var allTracks: [String] = []
-        var allUids: [String?] = []
-        var metadata: [String: String] = [:]
-        var nextPage: String? = "/context-resolve/v1/\(encodedUri)?device_id=\(deviceId)"
-        var pageLimit = 10
-
-        while let path = nextPage, pageLimit > 0 {
-            pageLimit -= 1
-
-            let url = URL(string: "https://\(host)\(path)")!
-            debugLog("SPClient", "[GET] \(url.absoluteString.prefix(120))")
-            debugLog("SPClient", "Signing context request…")
-            let request = try await authorizedRequest(url: url, accept: "application/x-protobuf")
-            debugLog("SPClient", "Sending context request…")
-
-            let (data, response) = try await Self.withTimeout(seconds: 20) {
-                try await URLSession.shared.data(for: request)
+        var context = try await fetchContextPage("/context-resolve/v1/\(encodedUri)?device_id=\(deviceId)")
+        for _ in 1 ..< max(1, pageLimit) {
+            guard let next = context.nextPageUrl else { break }
+            do {
+                let page = try await fetchContextPage(Self.nextPagePath(next))
+                context.tracks += page.tracks
+                context.uids += page.uids
+                context.metadata.merge(page.metadata) { first, _ in first }
+                context.nextPageUrl = page.nextPageUrl
+            } catch where !(error is CancellationError) {
+                debugLog("SPClient", "Context page failed, keeping \(context.tracks.count) track(s): \(error)")
+                context.nextPageUrl = nil
+                break
             }
-            debugLog("SPClient", "Context response received")
-
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-                debugLog("SPClient", "Context resolve FAILED: HTTP \(status), body: \(String(data: data.prefix(200), encoding: .utf8) ?? "?")")
-                throw LibrespotError.cdnError("Context resolve failed: HTTP \(status)")
-            }
-
-            #if DEBUG
-                debugLog("SPClient", "Context response \(data.count) bytes: \(data.prefix(400).map { String(format: "%02x", $0) }.joined())")
-            #endif
-            let report = Self.parseContextReport(data)
-            allTracks.append(contentsOf: report.tracks)
-            allUids.append(contentsOf: report.uids)
-            metadata.merge(report.metadata) { first, _ in first }
-            nextPage = report.nextPageUrl.map { "/context-resolve/v1/\($0)" }
         }
 
-        debugLog("SPClient", "Context resolved: \(allTracks.count) track(s)")
+        debugLog("SPClient", "Context resolved: \(context.tracks.count) track(s)\(context.nextPageUrl == nil ? "" : ", more to come")")
+        return context
+    }
 
-        return ResolvedContext(tracks: allTracks, uids: allUids, metadata: metadata)
+    /// A context's next page, as `ResolvedContext.nextPageUrl` names it, with the url of the page
+    /// after it.
+    public func resolvePage(_ url: String) async throws -> ResolvedContext {
+        let page = try await fetchContextPage(Self.nextPagePath(url))
+        debugLog("SPClient", "Context page resolved: \(page.tracks.count) track(s)")
+        return page
+    }
+
+    /// One page of a context, at `path` of spclient.
+    private func fetchContextPage(_ path: String) async throws -> ResolvedContext {
+        let host = spclientHost ?? "spclient.wg.spotify.com"
+        guard let url = URL(string: "https://\(host)\(path)") else {
+            throw LibrespotError.invalidState("Context page path: \(path)")
+        }
+        debugLog("SPClient", "[GET] \(url.absoluteString.prefix(120))")
+        var request = URLRequest(url: url)
+        request.setValue("application/x-protobuf", forHTTPHeaderField: "Accept")
+        // The deadline is the page's, its retries included.
+        let data = try await Self.withTimeout(seconds: 20) { [self, request] in
+            try await fetch(request, named: "Context resolve")
+        }
+        debugLog("SPClient", "Context response received")
+
+        #if DEBUG
+            debugLog("SPClient", "Context response \(data.count) bytes: \(data.prefix(400).map { String(format: "%02x", $0) }.joined())")
+        #endif
+        return Self.parseContextReport(data)
+    }
+
+    /// Where a context's next page is asked for. An `hm://` url names a path of spclient's own,
+    /// as librespot's `get_next_page` and go-librespot's `hmRequestUrl` read it: a station's next
+    /// page, `hm://radio-apollo/v3/tracks/spotify:station:…`, asked of the resolver, was answered
+    /// 404, and failed the whole resolve (2026-10-02). Anything else goes through the resolver.
+    ///
+    /// A station's third page and on are named at `radio-router`, which spclient answers 404; the
+    /// same request at `radio-apollo`, where its second is named, answers the next 50 tracks
+    /// (2026-10-02). Its `prev_tracks` carry the station on: without them it starts over. They
+    /// are cut to `stationPageMemory`.
+    nonisolated static func nextPagePath(_ url: String) -> String {
+        guard url.hasPrefix("hm://") else { return "/context-resolve/v1/\(url)" }
+        let path = "/" + url.dropFirst("hm://".count)
+        let router = "/radio-router/"
+        return keepingRecentTracks(path.hasPrefix(router) ? "/radio-apollo/" + path.dropFirst(router.count) : path)
+    }
+
+    /// How many of the tracks a station played its next page names. A page's url names every
+    /// track played before it in `prev_tracks`, the latest page's first, 50 more with each page;
+    /// the eleventh page's, 500 tracks and 11,657 characters long, was refused with 431, which
+    /// ended the station 500 tracks in (2026-10-02). Those played last are kept, as the ones it
+    /// should not play again soon.
+    nonisolated static let stationPageMemory = 350
+
+    /// `path` with its `prev_tracks` cut to the first `stationPageMemory`.
+    private nonisolated static func keepingRecentTracks(_ path: String) -> String {
+        guard let start = path.range(of: "prev_tracks=")?.upperBound else { return path }
+        let end = path[start...].firstIndex(of: "&") ?? path.endIndex
+        let tracks = path[start ..< end].split(separator: ",")
+        return path.replacingCharacters(in: start ..< end, with: tracks.prefix(stationPageMemory).joined(separator: ","))
+    }
+
+    /// The tracks autoplay goes on with after `contextUri`: a station for it, from
+    /// `context-resolve/v1/autoplay`, seeded with tracks the context played, as librespot's
+    /// `get_autoplay_context` and go-librespot's `ContextResolveAutoplay` ask for it. Its first
+    /// page only, which go-librespot plays too.
+    public func resolveAutoplay(contextUri: String, recentTrackUris: [String]) async throws -> ResolvedContext {
+        let host = spclientHost ?? "spclient.wg.spotify.com"
+        debugLog("SPClient", "Resolving autoplay for \(contextUri), \(recentTrackUris.count) track(s) as its seed")
+
+        var request = URLRequest(url: URL(string: "https://\(host)/context-resolve/v1/autoplay")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Self.autoplayRequest(contextUri: contextUri, recentTrackUris: recentTrackUris)
+        let data = try await Self.withTimeout(seconds: 20) { [self, request] in
+            try await fetch(request, named: "Autoplay resolve")
+        }
+
+        let station = Self.parseContextReport(data)
+        debugLog("SPClient", "Autoplay resolved: \(station.tracks.count) track(s) from \(station.uri ?? "no uri")")
+        return station
+    }
+
+    /// `AutoplayContextRequest { required string context_uri = 1; repeated string
+    /// recent_track_uri = 2; }`. The answer is JSON, as a resolve's is.
+    nonisolated static func autoplayRequest(contextUri: String, recentTrackUris: [String]) -> Data {
+        ProtobufWriter.message {
+            $0.string(field: 1, contextUri)
+            for uri in recentTrackUris {
+                $0.string(field: 2, uri)
+            }
+        }
     }
 
     /// Parses the context resolver's answer. Despite the protobuf `Accept`
@@ -341,16 +403,18 @@ public actor SPClient {
     /// it and was always 0 — the guard ran after the append, and a context uri
     /// never matches a track uri anyway. Removed rather than guessed at: which
     /// field, if any, carries a resume point has to come off a real response.
-    nonisolated static func parseContextReport(_ data: Data) -> (tracks: [String], uids: [String?], nextPageUrl: String?, metadata: [String: String]) {
+    nonisolated static func parseContextReport(_ data: Data) -> ResolvedContext {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return ([], [], nil, [:])
+            return ResolvedContext(tracks: [], uids: [], metadata: [:])
         }
 
         var tracks: [String] = []
         var uids: [String?] = []
         var nextPageUrl: String?
 
-        let pages = json["pages"] as? [[String: Any]] ?? []
+        // A next page fetched at its `hm://` url is one page of its own, `{tracks, next_page_url}`,
+        // as go-librespot's `loadPage` reads it.
+        let pages = json["pages"] as? [[String: Any]] ?? [json]
         for page in pages {
             let pageTracks = page["tracks"] as? [[String: Any]] ?? []
             for track in pageTracks {
@@ -365,7 +429,8 @@ public actor SPClient {
 
         // String values only, as the player state's `context_metadata` is a map of strings.
         let metadata = (json["metadata"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
-        return (tracks, uids, nextPageUrl, metadata)
+        let restrictions = Restrictions(json: json["restrictions"] as? [String: Any] ?? [:])
+        return ResolvedContext(tracks: tracks, uids: uids, metadata: metadata, uri: json["uri"] as? String, nextPageUrl: nextPageUrl, restrictions: restrictions)
     }
 
     // MARK: - Timeout

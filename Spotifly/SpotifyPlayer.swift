@@ -70,6 +70,8 @@ nonisolated struct PlaybackState: Equatable {
     /// Whether Next goes anywhere. Always for this Mac, where Next on a context's last track
     /// goes back to its first, paused; for another device, unless its `restrictions` say no.
     var canSkipNext = true
+    /// Whether shuffle may be switched on: not on a station, whose context does not allow it.
+    var canShuffle = true
 }
 
 /// Playback that went past a track, or stopped, over an error.
@@ -158,8 +160,7 @@ enum SpotifyPlayer {
     /// path immediately rebuilds through `initialize`.
     private static func connectClient() async throws {
         try await LibrespotClient.shared.initialize(
-            tokenProvider: { try await KeymasterSession.shared.accessToken() },
-            clientTokenProvider: { try await ClientTokenProvider.shared.token() },
+            httpCredentials: .live,
             usernameProvider: { await KeymasterSession.shared.username },
             contextRowUids: { uri in await albumRowUids(uri) },
         )

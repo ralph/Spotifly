@@ -141,16 +141,34 @@ final class Recorder<Value: Sendable>: @unchecked Sendable {
 
 // MARK: - Stubbed clients
 
-func httpResponse(_ status: Int, url: URL = PartnerAPI.endpoint) -> HTTPURLResponse {
-    HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
+func httpResponse(_ status: Int, url: URL = PartnerAPI.endpoint, headers: [String: String]? = nil) -> HTTPURLResponse {
+    HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: headers)!
 }
 
-/// A `PartnerAPI` answered by `transport` rather than by the network.
+/// Credentials answered by `transport` rather than by the network. Its default fails every
+/// request, for a test that sends none.
 ///
 /// `invalidateClientToken` is left at the production default unless a test passes one, so a
 /// test that is not about the client token behaves exactly as the app does.
 ///
 /// A read retried after a failure that may pass does not wait, unless `pause` is given.
+func spotifyCredentials(
+    accessToken: String = "at",
+    clientToken: String = "ct",
+    invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
+    pause: @escaping SpotifyCredentials.Pause = { _ in },
+    transport: @escaping SpotifyCredentials.Transport = { _ in throw URLError(.notConnectedToInternet) },
+) -> SpotifyCredentials {
+    SpotifyCredentials(
+        accessToken: { accessToken },
+        clientToken: { clientToken },
+        invalidateClientToken: invalidateClientToken,
+        transport: transport,
+        pause: pause,
+    )
+}
+
+/// A `PartnerAPI` answered by `transport`; see `spotifyCredentials`.
 func partnerAPI(
     accessToken: String = "at",
     clientToken: String = "ct",
@@ -158,30 +176,32 @@ func partnerAPI(
     pause: @escaping SpotifyCredentials.Pause = { _ in },
     transport: @escaping PartnerAPI.Transport,
 ) -> PartnerAPI {
-    PartnerAPI(
-        accessToken: { accessToken },
-        clientToken: { clientToken },
+    PartnerAPI(credentials: spotifyCredentials(
+        accessToken: accessToken,
+        clientToken: clientToken,
         invalidateClientToken: invalidateClientToken,
-        transport: transport,
         pause: pause,
-    )
+        transport: transport,
+    ))
 }
 
 /// The same for the REST half.
 func spclientAPI(
-    accessToken: String = "at",
-    clientToken: String = "ct",
     invalidateClientToken: @escaping @Sendable (String) async -> Void = SpotifyCredentials.invalidateShared,
     pause: @escaping SpotifyCredentials.Pause = { _ in },
     transport: @escaping SpclientAPI.Transport,
 ) -> SpclientAPI {
-    SpclientAPI(
-        accessToken: { accessToken },
-        clientToken: { clientToken },
-        invalidateClientToken: invalidateClientToken,
-        transport: transport,
-        pause: pause,
-    )
+    SpclientAPI(credentials: spotifyCredentials(invalidateClientToken: invalidateClientToken, pause: pause, transport: transport))
+}
+
+// MARK: - Request bodies
+
+/// That a JSON body says what a captured one says, key order aside.
+func expectMatch(_ encoded: Data?, _ fixture: String) throws {
+    let json = { (data: Data?) in data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? NSDictionary } }
+    let ours = try #require(json(encoded))
+    let theirs = try #require(json(Data(fixture.utf8)))
+    #expect(ours == theirs)
 }
 
 // MARK: - Fixtures
@@ -193,4 +213,17 @@ private final class FixtureBundleToken {}
 func fixtureData(_ name: String, withExtension fileExtension: String = "json") throws -> Data {
     let url = try #require(Bundle(for: FixtureBundleToken.self).url(forResource: name, withExtension: fileExtension))
     return try Data(contentsOf: url)
+}
+
+// MARK: - Measured values
+
+extension Restrictions {
+    /// A station's, as the context resolver named them for Song Radio on 2026-10-02: no shuffle
+    /// and no repeat of the context, for "radio".
+    static var radio: Restrictions {
+        var restrictions = Restrictions()
+        restrictions.togglingRepeatContext = ["radio"]
+        restrictions.togglingShuffle = ["radio"]
+        return restrictions
+    }
 }

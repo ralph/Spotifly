@@ -14,8 +14,8 @@ struct TrackContextMenu: View {
     let selectionId: String?
     /// The playlist item this menu was opened from, where the caller knows which one.
     let itemUid: String?
-    let playbackViewModel: PlaybackViewModel
 
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
@@ -135,16 +135,16 @@ struct TrackContextMenu: View {
         } label: {
             Label("action.share", systemImage: "square.and.arrow.up")
         }
-        .disabled(track.externalUrl == nil)
+        .disabled(SpotifyURI.webURL(track.uri) == nil)
     }
 
     // MARK: - Actions
 
     private func copyToClipboard() {
-        guard let externalUrl = track.externalUrl else { return }
+        guard let link = SpotifyURI.webURL(track.uri) else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(externalUrl, forType: .string)
+        pasteboard.setString(link, forType: .string)
     }
 
     private func addToQueue() {
@@ -208,13 +208,11 @@ extension TrackContextMenu {
         currentSection: NavigationItem = .startpage,
         selectionId: String? = nil,
         itemUid: String? = nil,
-        playbackViewModel: PlaybackViewModel,
     ) {
         self.track = track
         self.currentSection = currentSection
         self.selectionId = selectionId
         self.itemUid = itemUid
-        self.playbackViewModel = playbackViewModel
         _showNewPlaylistDialog = .constant(false)
         onPlaylistAdded = nil
         onNavigate = nil
@@ -240,7 +238,7 @@ private struct PlaylistSubmenuContent: View {
         // placeholder and kick one off. Both cases used to be spelled out separately with
         // byte-identical bodies.
         if ownedPlaylists.isEmpty {
-            Text("playlist.loading")
+            Text("loading.playlists")
                 .foregroundStyle(.secondary)
                 .onAppear {
                     triggerLoadIfNeeded()

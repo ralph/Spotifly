@@ -52,18 +52,21 @@ struct PlaylistChangeBodyTests {
     "info":{"source":{"client":"WEBPLAYER"}}}]}
     """
 
+    /// `POST /playlist/v2/playlist/{id}/changes` — setting the cover, on 2026-10-02. The
+    /// picture is `register-image`'s answer, 28 characters of base64; this one stands in for it.
+    static let webClientCover = """
+    {"deltas":[{"ops":[{"kind":"UPDATE_LIST_ATTRIBUTES","updateListAttributes":{"newAttributes":\
+    {"values":{"picture":"q83vEjRWeJCrze8SNFZ4kKvN7xI="}}}}],"info":{"source":{"client":"WEBPLAYER"}}}]}
+    """
+
+    /// The same endpoint — removing the cover ("Foto entfernen"), on 2026-10-02, verbatim.
+    static let webClientRemoveCover = """
+    {"deltas":[{"ops":[{"kind":"UPDATE_LIST_ATTRIBUTES","updateListAttributes":{"newAttributes":\
+    {"values":{},"noValue":["LIST_PICTURE"]}}}],"info":{"source":{"client":"WEBPLAYER"}}}]}
+    """
+
     /// The instant in the follow fixture: 1786645835061 milliseconds after the epoch.
     static let followedAt = Date(timeIntervalSince1970: 1_786_645_835.061)
-
-    private func fields(_ data: Data) -> NSDictionary? {
-        (try? JSONSerialization.jsonObject(with: data)) as? NSDictionary
-    }
-
-    private func expectMatch(_ encoded: Data, _ fixture: String) throws {
-        let ours = try #require(fields(encoded))
-        let theirs = try #require(fields(Data(fixture.utf8)))
-        #expect(ours == theirs)
-    }
 
     @Test func `creating sends what the web client sends`() throws {
         let encoded = try JSONEncoder().encode(PlaylistCreation(name: "Meine Playlist Nr. 37"))
@@ -97,6 +100,18 @@ struct PlaylistChangeBodyTests {
         )
 
         try expectMatch(encoded, Self.webClientDelete)
+    }
+
+    @Test func `setting the cover sends what the web client sends`() throws {
+        let encoded = try JSONEncoder().encode(PlaylistListChanges(.picture("q83vEjRWeJCrze8SNFZ4kKvN7xI=")))
+
+        try expectMatch(encoded, Self.webClientCover)
+    }
+
+    @Test func `removing the cover sends what the web client sends`() throws {
+        let encoded = try JSONEncoder().encode(PlaylistListChanges(.removePicture))
+
+        try expectMatch(encoded, Self.webClientRemoveCover)
     }
 
     /// The partial-state rule, which is the one that would cost a user their words: renaming a
