@@ -227,4 +227,128 @@ struct AutoplayQueueTests {
         #expect(queue.currentUri == "s1")
         #expect(queue.history.isEmpty)
     }
+
+    /// What a handover names as the session's row: the track's, or after a queued track, the row
+    /// the context goes on with, however many tracks are queued.
+    @Test func `the session stands on the current row, or after a queued track on the next`() {
+        let queue = album(at: 0)
+        #expect(queue.sessionRow?.uri == "a1")
+
+        queue.enqueue("q1")
+        #expect(queue.advance() == "q1")
+        #expect(queue.sessionRow?.uri == "a2")
+        #expect(queue.sessionRow?.provider == "context")
+
+        let autoplay = album()
+        autoplay.appendAutoplay(["s1", "s2"], uids: ["x1", "x2"])
+        #expect(autoplay.advance() == "s1")
+        #expect(autoplay.sessionRow == QueueItem(uri: "s1", provider: "autoplay", uid: "x1"))
+        for index in 0 ..< 60 {
+            autoplay.enqueue("q\(index)")
+        }
+        #expect(autoplay.advance() == "q0")
+        #expect(autoplay.sessionRow == QueueItem(uri: "s2", provider: "autoplay", uid: "x2"))
+    }
+}
+
+/// What this Mac writes as its `transfer_data` while autoplay plays, which the backend hands the
+/// device taking over. See `plans/done/phone-takes-macs-autoplay-as-queued.md`.
+struct AutoplayHandoverTests {
+    private static let autoplayRow = QueueItem(uri: "spotify:track:s1", provider: "autoplay", uid: "x1")
+    private static let nextAutoplayRow = QueueItem(uri: "spotify:track:s2", provider: "autoplay", uid: "x2")
+
+    /// The moment of the report, 5 s after the player state's.
+    private static let now: Int64 = 1_790_000_005_000
+
+    private func state(
+        provider: String,
+        paused: Bool = true,
+        uid: String? = "x1",
+        sessionRow: QueueItem? = autoplayRow,
+        next: [QueueItem] = [nextAutoplayRow],
+        station: String? = "spotify:station:album:a",
+    ) -> SpircController.SpircPlayerState {
+        SpircController.SpircPlayerState(
+            isPlaying: true,
+            isPaused: paused,
+            trackUri: "spotify:track:s1",
+            positionMs: 12000,
+            durationMs: 200_000,
+            shuffle: false,
+            repeatMode: .off,
+            timestamp: 1_790_000_000_000,
+            contextUri: "spotify:album:a",
+            contextMetadata: ["context_description": "Album A"],
+            autoplayContextUri: station,
+            trackProvider: provider,
+            trackUid: uid,
+            sessionRow: sessionRow,
+            nextTracks: next,
+            previousTracks: [],
+        )
+    }
+
+    /// As the web player wrote it after taking this Mac's autoplay over (2026-10-02).
+    @Test func `an autoplay track is handed over as its station, after the context it followed`() throws {
+        let handover = try #require(SpircController.handover(of: state(provider: "autoplay"), atMs: Self.now))
+        let read = TransferState(parsing: handover.serialized)
+
+        #expect(read.contextUri == "spotify:station:album:a")
+        #expect(read.mainContextUri == "spotify:album:a")
+        // The station's rows from the one playing, which a phone does not resolve by itself.
+        #expect(read.contextTrackUris == ["spotify:track:s1", "spotify:track:s2"])
+        #expect(read.contextTrackUids == ["x1", "x2"])
+        #expect(read.currentTrackUri == "spotify:track:s1")
+        #expect(read.currentTrackUid == "x1")
+        #expect(read.currentIsAutoplay)
+        #expect(read.autoplayContextUri == "spotify:station:album:a")
+        #expect(read.queuedTrackUris.isEmpty)
+        #expect(!read.playsQueuedTrack)
+        // Paused, the position stands; it is told as of the report.
+        #expect(read.positionAsOfTimestamp == 12000)
+        #expect(read.timestamp == Self.now)
+        #expect(read.isPaused)
+
+        // The album goes with the resolver's metadata, which names it to the device taking over.
+        let mainContext = ProtobufReader.fields(in: handover.serialized).last(3)?.fields.last(8)?.fields
+        #expect(mainContext?.filter { $0.number == 3 }.map(\.mapEntry.key) == ["context_description"])
+    }
+
+    @Test func `a track queued during autoplay is handed over before the station's next row`() throws {
+        let queued = state(provider: "queue", uid: "q0", sessionRow: Self.nextAutoplayRow, next: [
+            QueueItem(uri: "spotify:track:q2", provider: "queue", uid: "q1"),
+            Self.nextAutoplayRow,
+        ])
+        let handover = try #require(SpircController.handover(of: queued, atMs: Self.now))
+        let read = TransferState(parsing: handover.serialized)
+
+        #expect(read.contextUri == "spotify:station:album:a")
+        #expect(read.playsQueuedTrack)
+        #expect(read.currentTrackUri == "spotify:track:s1")
+        #expect(!read.currentIsAutoplay)
+        #expect(read.contextResumeUid == "x2")
+        #expect(read.contextTrackUris == ["spotify:track:s2"])
+        #expect(read.queuedTrackUris == ["spotify:track:q2"])
+
+        // The queue's head is the playing track, with its uid, as a phone wrote one.
+        let head = ProtobufReader.fields(in: handover.serialized).last(4)?.fields.first { $0.number == 1 }?.fields
+        #expect(head?.last(2)?.string == "q0")
+    }
+
+    /// A phone took a handover's 0 at a track's start as it was, 98 s later (2026-10-02).
+    @Test func `a playing track is handed over where it is at the report`() throws {
+        let handover = try #require(SpircController.handover(of: state(provider: "autoplay", paused: false), atMs: Self.now))
+
+        #expect(handover.positionAsOfTimestamp == 17000)
+        #expect(handover.timestamp == Self.now)
+    }
+
+    @Test func `outside autoplay the backend builds the handover itself`() {
+        let albumRow = QueueItem(uri: "spotify:track:a3", provider: "context", uid: "c3")
+        #expect(SpircController.handover(of: state(provider: "context", sessionRow: albumRow), atMs: Self.now) == nil)
+        // A track queued in the album: the album's row comes next.
+        #expect(SpircController.handover(of: state(provider: "queue", sessionRow: albumRow, next: [albumRow]), atMs: Self.now) == nil)
+        // A station answered without its uri: there is no context to name.
+        #expect(SpircController.handover(of: state(provider: "autoplay", station: nil), atMs: Self.now) == nil)
+    }
 }

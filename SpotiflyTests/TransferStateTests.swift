@@ -31,6 +31,7 @@ struct TransferStateTests {
         currentTrack: @escaping (inout ProtobufWriter) -> Void = contextTrack(uri: "spotify:track:current"),
         queue: [String] = [],
         playingQueue: Bool = false,
+        mainContext: String? = nil,
     ) -> Data {
         ProtobufWriter.message {
             $0.message(field: 1) { options in
@@ -54,6 +55,9 @@ struct TransferStateTests {
                     }
                 }
                 session.string(field: 3, sessionUid)
+                if let mainContext {
+                    session.message(field: 8) { $0.string(field: 1, mainContext) }
+                }
             }
             $0.message(field: 4) { queued in
                 for uri in queue {
@@ -62,6 +66,16 @@ struct TransferStateTests {
                 queued.bool(field: 2, playingQueue)
             }
         }
+    }
+
+    /// The web player names the context autoplay went on from as the session's `main_context`,
+    /// beside the station (2026-10-02).
+    @Test func `the context autoplay went on from comes through`() {
+        let state = TransferState(parsing: Self.transfer(contextUri: "spotify:station:album:a", mainContext: "spotify:album:a"))
+
+        #expect(state.contextUri == "spotify:station:album:a")
+        #expect(state.mainContextUri == "spotify:album:a")
+        #expect(TransferState(parsing: Self.transfer()).mainContextUri == nil)
     }
 
     @Test func `the context, track, options and position come through`() {
