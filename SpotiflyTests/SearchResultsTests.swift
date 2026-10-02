@@ -16,8 +16,7 @@ struct SearchResultsTests {
         let renamed = playlist(id: "renamed")
         let deleted = playlist(id: "deleted")
         let withheld = track(id: "withheld")
-        // What `SearchService.search` does with an answer: the entities into the tables, then
-        // the ids into the cache.
+        // A search's answer: the entities in the tables, the ids in the cache.
         store.upsertPlaylists([renamed, deleted])
         store.upsertTracks([withheld])
         store.setSearchResults(

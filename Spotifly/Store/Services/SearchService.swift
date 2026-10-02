@@ -30,17 +30,7 @@ final class SearchService {
         store.searchIsLoading = true
 
         do {
-            let found = try await partnerSearch(query: query)
-
-            // Into the tables first: the results name them by id.
-            store.upsertTracks(found.tracks)
-            store.upsertAlbums(found.albums)
-            store.upsertArtists(found.artists)
-            store.upsertPlaylists(found.playlists)
-            store.setSearchResults(
-                SearchResults(albums: found.albums, artists: found.artists, playlists: found.playlists, tracks: found.tracks),
-                for: query,
-            )
+            try await store.setSearchResults(partnerSearch(query: query), for: query)
         } catch {
             store.setSearchFailure(error, for: query)
         }
@@ -48,24 +38,27 @@ final class SearchService {
         store.searchIsLoading = false
     }
 
-    /// Runs the four searches together and maps each result set into entities.
+    /// Runs the four searches together, upserts what they found, and returns the results as ids
+    /// into the tables.
     ///
     /// Concurrently, because they are four separate operations where the Web API served all
     /// four categories from one request — sequentially this would be four round-trips of
     /// latency for what the user experiences as a single search.
-    private func partnerSearch(
-        query: String,
-    ) async throws -> (albums: [Album], artists: [Artist], playlists: [Playlist], tracks: [Track]) {
-        async let tracks = partner.searchTracks(query, limit: 20)
-        async let albums = partner.searchAlbums(query, limit: 20)
-        async let artists = partner.searchArtists(query, limit: 20)
-        async let playlists = partner.searchPlaylists(query, limit: 20)
+    private func partnerSearch(query: String) async throws -> SearchResults {
+        async let trackAnswer = partner.searchTracks(query, limit: 20)
+        async let albumAnswer = partner.searchAlbums(query, limit: 20)
+        async let artistAnswer = partner.searchArtists(query, limit: 20)
+        async let playlistAnswer = partner.searchPlaylists(query, limit: 20)
 
-        return try await (
-            albums: albums.compactMap(Album.init(pathfinder:)),
-            artists: artists.compactMap(Artist.init(pathfinder:)),
-            playlists: playlists.compactMap(Playlist.init(pathfinder:)),
-            tracks: tracks.compactMap(Track.init(pathfinder:)),
-        )
+        let tracks = try await trackAnswer.compactMap(Track.init(pathfinder:))
+        let albums = try await albumAnswer.compactMap(Album.init(pathfinder:))
+        let artists = try await artistAnswer.compactMap(Artist.init(pathfinder:))
+        let playlists = try await playlistAnswer.compactMap(Playlist.init(pathfinder:))
+
+        store.upsertTracks(tracks)
+        store.upsertAlbums(albums)
+        store.upsertArtists(artists)
+        store.upsertPlaylists(playlists)
+        return SearchResults(albums: albums, artists: artists, playlists: playlists, tracks: tracks)
     }
 }

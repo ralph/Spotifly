@@ -384,10 +384,9 @@ enum TrackProvider: String, Codable {
 /// One search's four result lists, cached per query by `AppStore`, in the order Spotify ranked
 /// them.
 ///
-/// **Holds ids rather than entities**, like the start page's shelves, so the results page shows
-/// what the tables hold now. A copy did not: a track playback found withheld after the search
-/// stayed ungreyed on its card while "show all" greyed it, and a playlist renamed on its page kept
-/// its old name here. The entities themselves are upserted when the search answers.
+/// **Holds ids rather than entities**, like the start page's shelves, so a track greyed or a
+/// playlist renamed after the search shows that way here too. The entities themselves are
+/// upserted when the search answers.
 ///
 /// Each list is deduplicated: relinking can give two track results one market id (`AGENTS.md`,
 /// "Track identity is the market id"), and the page keys its rows by id.
