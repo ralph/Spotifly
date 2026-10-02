@@ -439,7 +439,7 @@ struct HomePage {
                 images: images,
                 uri: uri,
                 isPublic: true,
-                ownerId: "",
+                ownerId: contributor?.uri.flatMap { SpotifyURI.id(from: $0, kind: "user") } ?? "",
                 ownerName: contributor?.name ?? "",
                 items: [],
                 totalDurationMs: nil,
@@ -478,9 +478,9 @@ extension Playlist {
             images: ImageSet(pathfinderSources: (playlist.images?.items ?? []).first?.sources),
             uri: uri,
             isPublic: true,
-            // Pathfinder identifies the owner by name, not by id. Used for display only here;
-            // the playlist detail load supplies the id when it is needed.
-            ownerId: owner?.username ?? "",
+            // The username where the answer has it; the start page's playlists name their owner by
+            // uri only, `spotify:user:<id>` (2026-10-02).
+            ownerId: owner?.username ?? owner?.uri.flatMap { SpotifyURI.id(from: $0, kind: "user") } ?? "",
             ownerName: playlist.ownerName ?? "",
             items: [],
             totalDurationMs: nil,

@@ -311,8 +311,17 @@ final class AppStore {
     /// refresh failed, say — stays stale through a summary refresh, so the rows keep rendering
     /// while the next visit still refetches them. Claiming `true` here is what let a routine
     /// library refresh both erase those rows and declare the result loaded.
+    ///
+    /// A summary that names no owner says nothing about it either, and a playlist's owner never
+    /// changes, so the one a load found stays. Without it, the owner-only actions (Edit Details,
+    /// the cover, Delete) went from an owned playlist whenever a summary without one arrived.
     func upsertPlaylist(_ playlist: Playlist) {
         deletedEntitySelections.remove(.playlist(id: playlist.id))
+
+        var playlist = playlist
+        if playlist.ownerId.isEmpty, let known = playlists[playlist.id]?.ownerId {
+            playlist.ownerId = known
+        }
 
         guard let existing = playlists[playlist.id],
               !playlist.tracksLoaded,
