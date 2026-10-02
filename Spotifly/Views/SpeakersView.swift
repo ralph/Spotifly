@@ -170,7 +170,7 @@ struct SpeakerRow: View {
                             .foregroundStyle(.secondary)
 
                         if device.isActive {
-                            Text("•")
+                            Text("metadata.separator")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Text("speakers.active")
@@ -179,10 +179,10 @@ struct SpeakerRow: View {
                         }
 
                         if let volume = device.volumePercent {
-                            Text("•")
+                            Text("metadata.separator")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text("\(volume)%")
+                            Text(verbatim: "\(volume)%")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

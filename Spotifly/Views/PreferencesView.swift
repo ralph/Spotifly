@@ -121,7 +121,7 @@ struct InfoView: View {
                 .resizable()
                 .frame(width: 64, height: 64)
 
-            Text("Spotifly")
+            Text("app.name")
                 .font(.title2.weight(.semibold))
 
             Text("preferences.version \(appVersion) (\(buildNumber))")
@@ -135,7 +135,7 @@ struct InfoView: View {
             Link(destination: URL(string: "https://github.com/ralph/Spotifly")!) {
                 HStack(spacing: 4) {
                     Image(systemName: "link")
-                    Text("github.com/ralph/Spotifly")
+                    Text(verbatim: "github.com/ralph/Spotifly")
                 }
                 .font(.callout)
             }

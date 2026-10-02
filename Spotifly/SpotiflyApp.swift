@@ -213,15 +213,17 @@ struct SpotiflyCommands: Commands {
         }
 
         #if DEBUG
-            CommandMenu("Debug") {
-                Button("Dump Store to Clipboard") {
+            // Developer tools, in English only: titles passed as `String` are not looked up as
+            // localization keys.
+            CommandMenu("Debug" as String) {
+                Button("Dump Store to Clipboard" as String) {
                     AppStore.current?.debugDumpJSON()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
 
                 // The grant's own token, which is what every request now carries. Paste it
                 // into a curl and you are the app.
-                Button("Copy Access Token") {
+                Button("Copy Access Token" as String) {
                     Task {
                         guard let token = try? await KeymasterSession.shared.accessToken() else { return }
                         NSPasteboard.general.clearContents()

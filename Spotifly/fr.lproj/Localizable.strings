@@ -28,9 +28,6 @@
 
 /* Common Actions */
 "action.try_again" = "Réessayer";
-"action.copy_token" = "Copier le jeton dans le presse-papiers";
-"action.edit" = "Modifier";
-"action.done" = "OK";
 "action.cancel" = "Annuler";
 "action.create" = "Créer";
 "action.share" = "Partager";
@@ -38,7 +35,6 @@
 
 /* Track Context Menu */
 "track.menu.play_next" = "Écouter ensuite";
-"track.menu.add_to_queue" = "Ajouter à la file d'attente";
 "track.menu.start_radio" = "Accéder à la radio liée au titre";
 "track.menu.add_to_favorites" = "Sauvegarder dans Titres likés";
 "track.menu.remove_from_favorites" = "Supprimer des Titres likés";
@@ -56,8 +52,6 @@
 /* Playback */
 "playback.play_album" = "Écouter l'album";
 "playback.play_playlist" = "Écouter la playlist";
-"playback.play_track" = "Écouter le titre";
-"playback.play_top_tracks" = "Écouter les titres populaires";
 "playback.play_tracks" = "Écouter les titres";
 
 /* Mini Player */
@@ -70,17 +64,12 @@
 "loading.albums" = "Chargement des albums...";
 "loading.artists" = "Chargement des artistes...";
 "loading.tracks" = "Chargement des titres...";
-"loading.top_tracks" = "Chargement des titres populaires...";
 
 /* Error Messages */
 "error.load_favorites" = "Impossible de charger les titres likés";
 "error.load_playlists" = "Impossible de charger les playlists";
 "error.load_albums" = "Impossible de charger les albums";
 "error.load_artists" = "Impossible de charger les artistes";
-"error.load_queue" = "Impossible de charger la file d'attente";
-"error.remove_from_queue" = "Impossible de retirer le titre de la file d'attente";
-"error.reorder_queue" = "Impossible de réorganiser la file d'attente";
-"error.clear_queue" = "Impossible de vider la file d'attente";
 "error.no_playback_device" = "Ce Mac n'est pas connecté à Spotify et ne peut donc pas lancer la lecture ailleurs";
 "error.player_not_ready" = "Le lecteur ne s'est pas connecté à Spotify à temps";
 "error.player_not_initialized" = "Le lecteur n'est pas connecté à Spotify";
@@ -115,13 +104,10 @@
 "queue.open" = "Ouvrir la file d'attente";
 "queue.playing_from" = "Lecture depuis";
 "queue.on_device" = "sur";
+"queue.context_name %@" = "« %@ »";
 "queue.playing_on" = "Lecture sur";
 "queue.song_count %lld %lld" = "%lld titres (%lld à venir)";
 "queue.scroll_to_current" = "Aller au titre en cours";
-"queue.clear" = "Supprimer les titres à venir";
-"queue.clear.confirm.title" = "Vider la file d'attente";
-"queue.clear.confirm.message %lld" = "Cette action supprimera %lld titres à venir de la file d'attente.";
-"queue.clear.confirm.action" = "Vider";
 
 /* Startpage */
 "startpage.empty" = "Rien à afficher pour l'instant";
@@ -133,17 +119,11 @@
 "section.albums" = "Albums";
 "section.artists" = "Artistes";
 "section.playlists" = "Playlists";
-"section.top_tracks" = "Titres populaires";
 
 /* Metadata */
 "metadata.tracks" = "%d titres";
-"metadata.followers" = "%@ abonnés";
 "metadata.by_owner" = "Par %@";
 "metadata.separator" = "•";
-
-/* Version Info */
-"version.oauth_token" = "Jeton d'accès OAuth";
-"version.tap_count" = "Nombre de clics : %d";
 
 /* Show All Button */
 "show_all.tracks" = "Afficher les %d titres";
@@ -153,25 +133,14 @@
 "speakers.active" = "Actif";
 "speakers.empty" = "Aucun appareil trouvé";
 "speakers.empty_hint" = "Ouvrez Spotify sur un autre appareil pour le voir ici";
-"speakers.error.failed_to_transfer" = "Impossible de transférer la lecture";
-"speakers.now_playing" = "Titre en cours de lecture";
 "speakers.audio_output" = "AirPlay";
 "speakers.spotify_connect" = "Spotify Connect";
 "speakers.airplay_hint" = "Diffusez l'audio de ce Mac vers des enceintes AirPlay";
 "speakers.airplay_disabled_hint" = "AirPlay est uniquement disponible lorsque Spotifly est l'appareil actif";
 "speakers.spotify_connect_hint" = "Transférez la lecture vers un autre appareil Spotify";
 
-/* Spotify Connect */
-"connect.transfer_to_computer" = "Écouter sur cet ordinateur";
-
-/* Speakers - This Computer */
-"speakers.this_computer" = "Cet ordinateur";
-"speakers.this_computer.name" = "Spotifly";
-"speakers.this_computer.hint" = "Transférer la lecture ici";
-
 /* Volume */
 "volume.device_controls_itself %@" = "%@ règle son volume lui-même";
-
 
 /* Menu Commands */
 "menu.playback" = "Lecture";
@@ -186,12 +155,6 @@
 "menu.artists" = "Artistes";
 "menu.search" = "Rechercher";
 "menu.refresh" = "Actualiser";
-
-/* Playlist Edit Mode */
-"playlist.edit" = "Modifier";
-"playlist.edit.save" = "Enregistrer";
-"playlist.edit.cancel" = "Annuler";
-"playlist.edit.saving" = "Enregistrement...";
 
 /* Preferences */
 "preferences.general" = "Général";
@@ -268,7 +231,6 @@
 "error.reorder_tracks %@" = "Impossible de réorganiser les titres : %@";
 "error.remove_album %@" = "Impossible de retirer l'album : %@";
 "error.unfollow_artist %@" = "Impossible de ne plus suivre l'artiste : %@";
-"error.follow_artist %@" = "Impossible de suivre l'artiste : %@";
 "error.update_favorite %@" = "Impossible de mettre à jour les titres likés : %@";
 "error.add_to_playlist %@" = "Impossible d'ajouter le titre à la playlist : %@";
 "error.remove_from_playlist %@" = "Impossible de retirer le titre de la playlist : %@";
@@ -276,13 +238,10 @@
 
 /* Profile */
 "profile.logged_in_as %@" = "Connecté en tant que %@";
+"profile.id" = "Nom d'utilisateur";
 "profile.unavailable" = "Informations du compte indisponibles";
 "profile.unavailable.description" = "Déconnectez-vous puis reconnectez-vous pour relier votre compte Spotify.";
 "profile.open_in_spotify" = "Ouvrir dans Spotify";
-"profile.email" = "E-mail";
-"profile.country" = "Pays";
-"profile.subscription" = "Abonnement";
-"profile.followers" = "Abonnés";
 
 // L'autorisation : la connexion sur l'écran de login, la relance de la lecture ailleurs
 "auth.connect_cancel" = "En attente de votre navigateur — annuler";

@@ -172,12 +172,12 @@ struct QueueListView: View {
                     Button {
                         navigationCoordinator.navigate(to: route)
                     } label: {
-                        Text("\"\(context.name)\"")
+                        Text("queue.context_name \(context.name)")
                             .foregroundStyle(.green)
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Text("\"\(context.name)\"")
+                    Text("queue.context_name \(context.name)")
                 }
 
                 Text("queue.on_device")
