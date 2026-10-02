@@ -1,8 +1,8 @@
 # Some state is held twice, and the playback view model is passed by hand
 
-Status: **Open**, planned 2026-10-02 on `plan/state-held-twice` (#158). All four phases are in
-stacked PRs, checked live except where each says: #159 (phase 1) ← #160 (2) ← #161 (3) ← #162
-(4). Follow-ups are their own open plans, linked under Solution
+Status: **Open**, planned 2026-10-02 on `plan/state-held-twice` (#158). Phases 1 and 2 are
+merged (#159, #160). Phases 3 and 4 are in #161 and #162, stacked, checked live except for what
+their PRs list. Follow-ups are their own open plans, linked under Solution
 Components: `Spotifly/Store/AppStore.swift`, `Spotifly/Store/Entities.swift`,
 `Spotifly/Store/PlayerModel.swift`, `Spotifly/Store/Services/QueueService.swift`,
 `Spotifly/Store/Services/SearchService.swift`, `Spotifly/Store/Services/DeviceService.swift`,
