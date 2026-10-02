@@ -84,6 +84,10 @@ public actor SpircController {
         public var contextUri: String
         /// The resolver's metadata of the context, sent as `context_metadata`.
         public var contextMetadata: [String: String] = [:]
+        /// What the context does not allow, as the resolver named it: a station's shuffle and
+        /// repeat. Sent as the context's restrictions and the player's, as go-librespot sends
+        /// them, for other devices to grey those controls.
+        public var restrictions = Restrictions()
         public var contextIndex: Int?
         /// The station autoplay's rows came from, told with each of them.
         public var autoplayContextUri: String?
@@ -392,6 +396,8 @@ public actor SpircController {
             }
             playerStateProto.contextUri = ps.contextUri
             playerStateProto.contextMetadata = ps.contextMetadata
+            playerStateProto.contextRestrictions = ps.restrictions
+            playerStateProto.restrictions = ps.restrictions
             if !ps.contextUri.isEmpty {
                 playerStateProto.contextUrl = "context://\(ps.contextUri)"
             }

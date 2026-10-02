@@ -181,6 +181,29 @@ struct ConnectMessageParsingTests {
         #expect(next.disallowsSkippingNext)
     }
 
+    /// This Mac reports a station's restrictions as its context's and its own, where the web
+    /// player playing one sent them too (2026-10-02).
+    @Test func `restrictions are written at player.proto's numbers, and read back`() {
+        var state = PlayerState()
+        state.contextRestrictions = .radio
+        state.restrictions = .radio
+
+        let fields = ProtobufReader.fields(in: state.serialize())
+        let written = { (number: Int) in fields.last(number)?.fields.map { "\($0.number)=\($0.string)" } }
+        #expect(written(4) == ["8=radio", "10=radio"])
+        #expect(written(17) == ["8=radio", "10=radio"])
+
+        let read = PlayerState.parse(from: state.serialize())
+        #expect(read.contextRestrictions == .radio)
+        #expect(read.restrictions == .radio)
+        #expect(!read.disallowsSkippingNext)
+    }
+
+    @Test func `a context without restrictions writes none`() {
+        let fields = ProtobufReader.fields(in: PlayerState().serialize())
+        #expect(!fields.contains { $0.number == 4 || $0.number == 17 })
+    }
+
     @Test func `the context fields are read at player.proto's numbers`() {
         let data = ProtobufWriter.message {
             $0.string(field: 3, "context://spotify:album:abc") // context_url

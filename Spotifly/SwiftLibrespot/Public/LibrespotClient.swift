@@ -63,9 +63,6 @@ public actor LibrespotClient {
     /// Logical Connect volume (0…65535), mirrored into player state.
     private var logicalVolume: UInt32 = 32767
 
-    private var shuffleEnabled = false
-    private var repeatMode = PlaybackQueue.RepeatMode.off
-
     /// Tracks Spotify will not play for the account, as the app's lists said, replaced each
     /// time it tells. Next, Previous, auto-advance and the fetch-ahead step over them, and
     /// those learned below, without loading them. The context resolver's answer does not
@@ -478,7 +475,7 @@ public actor LibrespotClient {
         }
 
         let start = startingPoint(in: context.tracks, uids: uids, index: trackIndex, uri: startingAtUri, uid: startingAtUid, resumingAt: resumingAtUid)
-        try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, nextPage: context.nextPageUrl, playingQueued: start.queued, positionMs: positionMs, paused: paused)
+        try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, nextPage: context.nextPageUrl, restrictions: context.restrictions, playingQueued: start.queued, positionMs: positionMs, paused: paused)
         // Otherwise the rows take them when they come: a jump that names a row's uid then
         // reaches that row, not a queued copy of its track.
         if !uids.contains(where: { $0 != nil }), let rowUids {
@@ -681,8 +678,14 @@ public actor LibrespotClient {
         uri.hasPrefix("spotify:station:") ? 1 : 10
     }
 
+    /// Switches shuffle, unless the context does not allow it, as librespot refuses it: a station,
+    /// whose rows grow a page at a time, would mix those played long ago back in. The report
+    /// every remote command is answered with tells the sender it stayed off.
     public func setShuffle(_ enabled: Bool) async {
-        shuffleEnabled = enabled
+        guard !enabled || playbackQueue.restrictions.allowsShuffle else {
+            debugLog("LibrespotClient", "Shuffle refused: \(playbackQueue.restrictions.togglingShuffle)")
+            return
+        }
         playbackQueue.setShuffle(enabled)
         // Shuffle reorders what comes next, so the queue views move with it.
         publishQueue()
@@ -690,9 +693,13 @@ public actor LibrespotClient {
     }
 
     /// Repeat leaves the queue's order alone — only the flags move, so this
-    /// refreshes the playback state and nothing else.
+    /// refreshes the playback state and nothing else. A mode the context does not allow is
+    /// refused, as `setShuffle` refuses shuffle: a station's repeat would play every page again.
     func setRepeat(_ mode: PlaybackQueue.RepeatMode) async {
-        repeatMode = mode
+        guard playbackQueue.restrictions.allows(mode) else {
+            debugLog("LibrespotClient", "Repeat \(mode) refused")
+            return
+        }
         playbackQueue.setRepeat(mode)
         announceNextTrack()
         await publishPlaybackStateRefresh()
@@ -702,7 +709,7 @@ public actor LibrespotClient {
     /// before the current track ends. Under repeat-one that is the same track,
     /// which the pipeline already holds.
     private func announceNextTrack() {
-        let next = repeatMode == .track
+        let next = playbackQueue.repeatMode == .track
             ? playbackQueue.currentUri
             : playbackQueue.upcomingPlayable(skipping: knownUnplayable)
         lineUpNextPage()
@@ -758,7 +765,7 @@ public actor LibrespotClient {
     /// queue's publish can come before.
     private func lineUpAutoplay() {
         let contextUri = playbackQueue.contextUri
-        guard autoplay, localState != nil, repeatMode == .off, !playbackQueue.autoplayAsked,
+        guard autoplay, localState != nil, playbackQueue.repeatMode == .off, !playbackQueue.autoplayAsked,
               !contextUri.isEmpty, !contextUri.hasPrefix("spotify:station:"), playbackQueue.nextPageUrl == nil, let spclient,
               playbackQueue.upcomingPlayable(skipping: knownUnplayable) == nil
         else { return }
@@ -774,7 +781,7 @@ public actor LibrespotClient {
             }
             // Still playing here, the context it was asked for, with nothing after the track
             // playing, and still wanted: any of it may have changed meanwhile.
-            guard autoplay, localState != nil, repeatMode == .off, playbackQueue.contextUri == contextUri, playbackQueue.autoplayAsked,
+            guard autoplay, localState != nil, playbackQueue.repeatMode == .off, playbackQueue.contextUri == contextUri, playbackQueue.autoplayAsked,
                   playbackQueue.autoplayStart == nil, playbackQueue.upcomingPlayable(skipping: knownUnplayable) == nil
             else { return }
             playbackQueue.appendAutoplay(station.tracks, uids: station.uids, from: station.uri)
@@ -933,13 +940,14 @@ public actor LibrespotClient {
         startIndex: Int,
         metadata: [String: String] = [:],
         nextPage: String? = nil,
+        restrictions: Restrictions = .init(),
         playingQueued queued: String? = nil,
         playingAutoplay autoplay: (tracks: [String], uids: [String?], station: String?)? = nil,
         positionMs: UInt64,
         paused: Bool,
     ) async throws {
         contextMetadata = metadata
-        playbackQueue.setContext(uri: contextUri, tracks: tracks, uids: uids, startIndex: startIndex, nextPage: nextPage)
+        playbackQueue.setContext(uri: contextUri, tracks: tracks, uids: uids, startIndex: startIndex, nextPage: nextPage, restrictions: restrictions)
         // Before the load, so the row before it never shows as the one playing.
         if let autoplay, !autoplay.tracks.isEmpty {
             playbackQueue.playAutoplay(autoplay.tracks, uids: autoplay.uids, from: autoplay.station, after: queued)
@@ -1039,7 +1047,7 @@ public actor LibrespotClient {
             // advancing again passed over its track, and repeat-one played the old one again
             // under the new one's queue.
             guard uri == playbackQueue.currentUri else { return }
-            if repeatMode == .track {
+            if playbackQueue.repeatMode == .track {
                 await autoAdvance(to: uri)
                 return
             }
@@ -1319,6 +1327,7 @@ public actor LibrespotClient {
             timestamp: UInt64(max(0, current.timestampMs)),
             contextUri: playbackQueue.contextUri,
             contextMetadata: contextMetadata,
+            restrictions: playbackQueue.restrictions,
             contextIndex: playbackQueue.reportedIndex,
             autoplayContextUri: playbackQueue.autoplayContextUri,
             trackProvider: playbackQueue.currentProvider,
@@ -1469,6 +1478,8 @@ public actor LibrespotClient {
             // Measured 2026-10-01: on an album's last track with repeat off the web player lists
             // only hidden rows, and names no reason not to skip next.
             canSkipNext: !remote.disallowsSkippingNext,
+            // The web player playing a station names it, and greys its own Shuffle (2026-10-02).
+            canShuffle: remote.restrictions.allowsShuffle,
         )
         let queue = Self.mirroredQueue(of: remote)
         mirroredRemote = remote
@@ -1604,10 +1615,10 @@ public actor LibrespotClient {
     /// its queue, and the same context or list at the same track. A queued track plays as queued,
     /// and the context goes on with the row the other device had next.
     private func continuePlayback(of state: TransferState, positionMs: UInt64, paused: Bool) async throws {
-        shuffleEnabled = state.shuffle
+        // Into the queue as sent, where the context playing now does not refuse them: the one
+        // taken over turns off what it does not allow.
         playbackQueue.setShuffle(state.shuffle)
-        repeatMode = state.repeatTrack ? .track : (state.repeatContext ? .context : .off)
-        playbackQueue.setRepeat(repeatMode)
+        playbackQueue.setRepeat(state.repeatTrack ? .track : (state.repeatContext ? .context : .off))
         // Before loading, so the first report and the next-track fetch already
         // see the other device's queue, and none left over from before.
         playbackQueue.replaceUserQueue(with: state.queuedTrackUris)
@@ -1685,6 +1696,7 @@ public actor LibrespotClient {
             uids: context?.uids ?? [],
             startIndex: max(0, (context?.tracks.count ?? 0) - 1),
             metadata: context?.metadata ?? [:],
+            restrictions: context?.restrictions ?? .init(),
             playingQueued: queued,
             playingAutoplay: (rows, uids, stationUri),
             positionMs: positionMs,
@@ -1772,8 +1784,8 @@ public actor LibrespotClient {
             // librespot applies each flag that is present. Repeat-one wins over
             // repeat-context, as clients send both on for it.
             if repeatContext != nil || repeatTrack != nil {
-                let track = repeatTrack ?? (repeatMode == .track)
-                let context = repeatContext ?? (repeatMode == .context)
+                let track = repeatTrack ?? (playbackQueue.repeatMode == .track)
+                let context = repeatContext ?? (playbackQueue.repeatMode == .context)
                 await setRepeat(track ? .track : (context ? .context : .off))
             }
             if let shuffle {
@@ -1829,10 +1841,11 @@ public actor LibrespotClient {
             trackUri: trackUri,
             positionMs: positionMs,
             durationMs: knownDurationMs,
-            shuffle: shuffleEnabled,
-            repeatTrack: repeatMode == .track,
-            repeatContext: repeatMode == .context,
+            shuffle: playbackQueue.shuffleEnabled,
+            repeatTrack: playbackQueue.repeatMode == .track,
+            repeatContext: playbackQueue.repeatMode == .context,
             timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
+            canShuffle: playbackQueue.restrictions.allowsShuffle,
         )
         let arrived = localState == nil
         localState = state

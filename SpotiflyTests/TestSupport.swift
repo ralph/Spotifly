@@ -204,3 +204,16 @@ func fixtureData(_ name: String, withExtension fileExtension: String = "json") t
     let url = try #require(Bundle(for: FixtureBundleToken.self).url(forResource: name, withExtension: fileExtension))
     return try Data(contentsOf: url)
 }
+
+// MARK: - Measured values
+
+extension Restrictions {
+    /// A station's, as the context resolver named them for Song Radio on 2026-10-02: no shuffle
+    /// and no repeat of the context, for "radio".
+    static var radio: Restrictions {
+        var restrictions = Restrictions()
+        restrictions.togglingRepeatContext = ["radio"]
+        restrictions.togglingShuffle = ["radio"]
+        return restrictions
+    }
+}

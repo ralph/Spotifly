@@ -300,6 +300,13 @@ struct NowPlayingBarView: View {
         }
     }
 
+    private var shuffleHelp: String {
+        if !playbackViewModel.canShuffle {
+            return "Shuffle is not available for what is playing, such as a radio"
+        }
+        return playbackViewModel.isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"
+    }
+
     private var shuffleButton: some View {
         Button {
             playbackViewModel.toggleShuffle()
@@ -309,8 +316,8 @@ struct NowPlayingBarView: View {
                 .foregroundStyle(playbackViewModel.isShuffleEnabled ? .green : .secondary)
         }
         .buttonStyle(.plain)
-        .disabled(!hasPlayback)
-        .help(playbackViewModel.isShuffleEnabled ? "Disable shuffle" : "Enable shuffle")
+        .disabled(!hasPlayback || !playbackViewModel.canShuffle)
+        .help(shuffleHelp)
     }
 
     /// Current playback position (interpolated for smooth display)

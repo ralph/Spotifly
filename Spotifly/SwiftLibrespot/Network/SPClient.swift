@@ -266,6 +266,9 @@ public actor SPClient {
         /// The page after these tracks, where the resolve stopped short of the end, for
         /// `resolvePage`.
         public var nextPageUrl: String?
+        /// What the context does not allow, as the answer names it: a station's shuffle and
+        /// repeat.
+        public var restrictions = Restrictions()
     }
 
     /// Resolves an album, playlist, artist, or station uri into its tracks,
@@ -335,12 +338,28 @@ public actor SPClient {
     ///
     /// A station's third page and on are named at `radio-router`, which spclient answers 404; the
     /// same request at `radio-apollo`, where its second is named, answers the next 50 tracks
-    /// (2026-10-02). Its `prev_tracks` carry the station on: without them it starts over.
+    /// (2026-10-02). Its `prev_tracks` carry the station on: without them it starts over. They
+    /// are cut to `stationPageMemory`.
     nonisolated static func nextPagePath(_ url: String) -> String {
         guard url.hasPrefix("hm://") else { return "/context-resolve/v1/\(url)" }
         let path = "/" + url.dropFirst("hm://".count)
         let router = "/radio-router/"
-        return path.hasPrefix(router) ? "/radio-apollo/" + path.dropFirst(router.count) : path
+        return keepingRecentTracks(path.hasPrefix(router) ? "/radio-apollo/" + path.dropFirst(router.count) : path)
+    }
+
+    /// How many of the tracks a station played its next page names. A page's url names every
+    /// track played before it in `prev_tracks`, the latest page's first, 50 more with each page;
+    /// the eleventh page's, 500 tracks and 11,657 characters long, was refused with 431, which
+    /// ended the station 500 tracks in (2026-10-02). Those played last are kept, as the ones it
+    /// should not play again soon.
+    nonisolated static let stationPageMemory = 350
+
+    /// `path` with its `prev_tracks` cut to the first `stationPageMemory`.
+    private nonisolated static func keepingRecentTracks(_ path: String) -> String {
+        guard let start = path.range(of: "prev_tracks=")?.upperBound else { return path }
+        let end = path[start...].firstIndex(of: "&") ?? path.endIndex
+        let tracks = path[start ..< end].split(separator: ",")
+        return path.replacingCharacters(in: start ..< end, with: tracks.prefix(stationPageMemory).joined(separator: ","))
     }
 
     /// The tracks autoplay goes on with after `contextUri`: a station for it, from
@@ -410,7 +429,8 @@ public actor SPClient {
 
         // String values only, as the player state's `context_metadata` is a map of strings.
         let metadata = (json["metadata"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
-        return ResolvedContext(tracks: tracks, uids: uids, metadata: metadata, uri: json["uri"] as? String, nextPageUrl: nextPageUrl)
+        let restrictions = Restrictions(json: json["restrictions"] as? [String: Any] ?? [:])
+        return ResolvedContext(tracks: tracks, uids: uids, metadata: metadata, uri: json["uri"] as? String, nextPageUrl: nextPageUrl, restrictions: restrictions)
     }
 
     // MARK: - Timeout
