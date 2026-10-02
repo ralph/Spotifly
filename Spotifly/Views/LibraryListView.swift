@@ -294,25 +294,16 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                 openFolders.insert(uri)
             }
         } label: {
-            HStack(spacing: 10) {
-                // A folder has no cover; this is the placeholder a playlist without one shows.
-                Artwork(images: .empty, size: 36, shape: style.artworkShape, symbol: "folder", symbolFont: .system(size: 16))
-
-                Text(name)
-                    .font(.system(size: 13))
-                    .lineLimit(1)
-
-                Spacer()
-
+            // A folder has no cover; this is the placeholder a playlist without one shows.
+            LibraryRowLabel(
+                artwork: Artwork(images: .empty, size: 36, shape: style.artworkShape, symbol: "folder", symbolFont: .system(size: 16)),
+                name: name,
+            ) {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(isOpen ? 90 : 0))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityValue(isOpen ? Text("folder.open") : Text("folder.closed"))
@@ -360,27 +351,18 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
     /// row's actions too.
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 10) {
-                Artwork(
+            LibraryRowLabel(
+                artwork: Artwork(
                     images: entity.images,
                     size: 36,
                     shape: style.artworkShape,
                     symbol: style.placeholderGlyph,
                     symbolFont: .system(size: 16),
                     placeholderWhileLoading: true,
-                )
-
-                Text(entity.name)
-                    .font(.system(size: 13))
-                    .lineLimit(1)
-
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-            .contentShape(Rectangle())
+                ),
+                name: entity.name,
+                isSelected: isSelected,
+            )
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -406,5 +388,39 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
         Task {
             await playbackViewModel.play(uriOrUrl: entity.uri)
         }
+    }
+}
+
+/// What every row of a library section looks like, a folder's and an entry's: a 36-point image,
+/// the name, and what follows it.
+private struct LibraryRowLabel<Trailing: View>: View {
+    let artwork: Artwork
+    let name: String
+    var isSelected = false
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 10) {
+            artwork
+
+            Text(name)
+                .font(.system(size: 13))
+                .lineLimit(1)
+
+            Spacer()
+
+            trailing
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+        .contentShape(Rectangle())
+    }
+}
+
+extension LibraryRowLabel where Trailing == EmptyView {
+    init(artwork: Artwork, name: String, isSelected: Bool = false) {
+        self.init(artwork: artwork, name: name, isSelected: isSelected) { EmptyView() }
     }
 }
