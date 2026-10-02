@@ -1360,23 +1360,28 @@ final class PlaybackViewModel {
 
     /// Handle a playback state published by the client.
     private func handlePlaybackStateUpdate(_ state: PlaybackState?) {
-        guard let state else { return }
+        guard let state else {
+            // Nothing plays here any more: a load failed, a context had nothing left to play,
+            // another device took over, or the session went. The bar keeps the track, and the
+            // clock stops where it had got to.
+            if isPlaying {
+                anchorPosition(interpolatedPositionMs)
+                isPlaying = false
+                updateNowPlayingPosition()
+            }
+            return
+        }
 
         debugLog(
             "PlaybackViewModel",
             "Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
 
-        // Update playing state
-        // When active device: use SpotifyPlayer.isPlaying (local Spirc state)
-        // When not active: use cluster state (remote device's actual state)
-        let newIsPlaying: Bool = if SpotifyPlayer.isActiveDevice {
-            SpotifyPlayer.isPlaying
-        } else {
-            // Remote device: use cluster state - playing means actively playing (not paused)
-            state.isPlaying && !state.isPaused
-        }
-        isPlaying = newIsPlaying
+        // Playing and not paused, for this Mac's player and for a device it mirrors alike.
+        // While this Mac was active, the client's flag was read here instead; it is the same
+        // field of the newest snapshot, and never differed from this one (measured
+        // 2026-10-03, `plans/open/playback-view-model-mirrors-the-player.md`).
+        isPlaying = state.isPlaying
 
         // Update track if changed
         let trackChanged = !state.trackUri.isEmpty && state.trackUri != currentTrackUri
@@ -1599,17 +1604,6 @@ final class PlaybackViewModel {
         // Readiness gates interpolation, so recover here from a callback that never arrived
         // rather than leaving the progress bar stopped until the next one does.
         syncConnectionReadiness()
-
-        // Sync playing state with the player - only when we're the active device
-        // When monitoring remote playback, state comes from cluster updates
-        if SpotifyPlayer.isActiveDevice {
-            let playerIsPlaying = SpotifyPlayer.isPlaying
-            if playerIsPlaying != isPlaying {
-                isPlaying = playerIsPlaying
-                syncPositionAnchor()
-                didCorrectDrift = true
-            }
-        }
 
         // Check for significant drift from the player's position - only when active device
         // Remote playback position is interpolated from cluster timestamp, not real-time.
