@@ -196,6 +196,7 @@ final class PlaybackViewModel {
         setupVolumeDebounceSubscription()
         setupSeekSubscription()
         setupRemoteCommandCenter()
+        observeSystemSleep()
 
         // Load saved volume (but don't apply it yet - mixer isn't initialized)
         let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
@@ -978,6 +979,7 @@ final class PlaybackViewModel {
         commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                debugLog("PlaybackViewModel", "Media command: play")
                 if !self.isPlaying {
                     self.resume()
                 }
@@ -989,9 +991,8 @@ final class PlaybackViewModel {
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.isPlaying {
-                    self.pause()
-                }
+                debugLog("PlaybackViewModel", "Media command: pause")
+                self.pauseFromMediaControls()
             }
             return .success
         }
@@ -1000,8 +1001,9 @@ final class PlaybackViewModel {
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                debugLog("PlaybackViewModel", "Media command: play/pause")
                 if self.isPlaying {
-                    self.pause()
+                    self.pauseFromMediaControls()
                 } else {
                     self.resume()
                 }
@@ -1012,6 +1014,7 @@ final class PlaybackViewModel {
         // Next track command
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
+            debugLog("PlaybackViewModel", "Media command: next")
             next()
             return .success
         }
@@ -1019,6 +1022,7 @@ final class PlaybackViewModel {
         // Previous track command
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
+            debugLog("PlaybackViewModel", "Media command: previous")
             previous()
             return .success
         }
@@ -1029,10 +1033,55 @@ final class PlaybackViewModel {
                 guard let self else { return }
                 guard let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
                 let positionMs = UInt32(seekEvent.positionTime * 1000)
+                debugLog("PlaybackViewModel", "Media command: seek to \(positionMs)ms")
                 self.seek(to: positionMs)
             }
             return .success
         }
+    }
+
+    // MARK: - System Sleep
+
+    /// When the system last said it would sleep, until it says it woke.
+    ///
+    /// Watched here, for the life of the process, rather than in `LoggedInLifecycleModifier`,
+    /// whose observer goes with a closed window: the pause it guards against arrives either way.
+    private var systemWillSleepAt: Date?
+
+    /// How long after the system says it will sleep a pause is taken as the sleep's. Seen half
+    /// a second after it; long enough for that, and short enough that a sleep which never
+    /// happened, so never woke, does not silence the pause key for long.
+    private nonisolated static let sleepPauseWindow: TimeInterval = 10
+
+    private func observeSystemSleep() {
+        let center = NSWorkspace.shared.notificationCenter
+        // On the main queue, so the mark is set before a command that follows it is handled.
+        center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemWillSleepAt = Date() }
+        }
+        center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemWillSleepAt = nil }
+        }
+    }
+
+    /// A pause from the media controls, unless it is the one macOS sends the now-playing app as
+    /// the Mac goes to sleep while another device plays: `pause()` would send that on to the
+    /// device, and the sleep stops nothing that plays elsewhere. This Mac's own playback still
+    /// takes it; the sleep stops that audio anyway.
+    private func pauseFromMediaControls() {
+        guard isPlaying else { return }
+        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), isActiveDevice: SpotifyPlayer.isActiveDevice) {
+            debugLog("PlaybackViewModel", "Pause ignored: the Mac is going to sleep, and another device plays")
+            return
+        }
+        pause()
+    }
+
+    /// Whether a pause is the sleep's: another device plays, and the system said it will sleep
+    /// less than `sleepPauseWindow` ago and has not woken since.
+    nonisolated static func isSleepPause(willSleepAt: Date?, now: Date, isActiveDevice: Bool) -> Bool {
+        guard !isActiveDevice, let willSleepAt else { return false }
+        return now.timeIntervalSince(willSleepAt) < sleepPauseWindow
     }
 
     /// Title published while no logical track resolves.
