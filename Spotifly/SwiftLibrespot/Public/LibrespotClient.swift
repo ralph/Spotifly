@@ -478,7 +478,7 @@ public actor LibrespotClient {
         }
 
         let start = startingPoint(in: context.tracks, uids: uids, index: trackIndex, uri: startingAtUri, uid: startingAtUid, resumingAt: resumingAtUid)
-        try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, playingQueued: start.queued, positionMs: positionMs, paused: paused)
+        try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, nextPage: context.nextPageUrl, playingQueued: start.queued, positionMs: positionMs, paused: paused)
         // Otherwise the rows take them when they come: a jump that names a row's uid then
         // reaches that row, not a queued copy of its track.
         if !uids.contains(where: { $0 != nil }), let rowUids {
@@ -697,9 +697,35 @@ public actor LibrespotClient {
             ? playbackQueue.currentUri
             : playbackQueue.upcomingPlayable(skipping: knownUnplayable)
         if next == nil {
+            lineUpNextPage()
             lineUpAutoplay()
         }
         Task { [audioPipeline] in await audioPipeline?.setNextTrack(next) }
+    }
+
+    /// Fetches the context's next page when nothing comes after the track playing here: a
+    /// station's, which is resolved a page at a time (`SPClient.resolveContext`). Its rows are then
+    /// listed, reported and fetched ahead before the page playing ends, as autoplay's are.
+    private func lineUpNextPage() {
+        guard localState != nil, let spclient, playbackQueue.upcomingPlayable(skipping: knownUnplayable) == nil,
+              let url = playbackQueue.takeNextPage()
+        else { return }
+        let contextUri = playbackQueue.contextUri
+        Task {
+            let page: SPClient.ResolvedContext
+            do {
+                page = try await spclient.resolvePage(url)
+            } catch {
+                debugLog("LibrespotClient", "Next page of \(contextUri) failed: \(error.localizedDescription)")
+                return
+            }
+            // Still playing here, the same context, which has not named another page since.
+            guard localState != nil, playbackQueue.contextUri == contextUri, playbackQueue.nextPageUrl == nil else { return }
+            playbackQueue.appendPage(page.tracks, uids: page.uids, next: page.nextPageUrl)
+            debugLog("LibrespotClient", "Next page of \(contextUri) lined up: \(page.tracks.count) track(s)")
+            publishQueue()
+            reportPlaybackToCluster()
+        }
     }
 
     /// Asks for autoplay when nothing comes after the track playing here, with the account's
@@ -886,13 +912,14 @@ public actor LibrespotClient {
         uids: [String?] = [],
         startIndex: Int,
         metadata: [String: String] = [:],
+        nextPage: String? = nil,
         playingQueued queued: String? = nil,
         playingAutoplay autoplay: (tracks: [String], uids: [String?], station: String?)? = nil,
         positionMs: UInt64,
         paused: Bool,
     ) async throws {
         contextMetadata = metadata
-        playbackQueue.setContext(uri: contextUri, tracks: tracks, uids: uids, startIndex: startIndex)
+        playbackQueue.setContext(uri: contextUri, tracks: tracks, uids: uids, startIndex: startIndex, nextPage: nextPage)
         // Before the load, so the row before it never shows as the one playing.
         if let autoplay, !autoplay.tracks.isEmpty {
             playbackQueue.playAutoplay(autoplay.tracks, uids: autoplay.uids, from: autoplay.station, after: queued)

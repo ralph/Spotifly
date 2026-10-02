@@ -128,13 +128,38 @@ struct SPClientRequestTests {
         })
         let client = SPClient(credentials: credentials, deviceId: "device")
 
-        let context = try await client.resolveContext("spotify:station:album:x")
+        let context = try await client.resolveContext("spotify:playlist:x")
 
         #expect(context.tracks == ["spotify:track:a", "spotify:track:b"])
         #expect(context.uids == ["u1", "u2"])
+        #expect(context.nextPageUrl == nil)
         #expect(sent.values.last?.url?.path == "/radio-apollo/v3/tracks/spotify:station:album:x")
         #expect(sent.values.last?.url?.query == "count=1")
         #expect(SPClient.nextPagePath("spotify:album:x?page=2") == "/context-resolve/v1/spotify:album:x?page=2")
+    }
+
+    /// A station names pages without end: it is resolved a page at a time, the next named for
+    /// when its rows run out. From its third page on they are named at `radio-router`, which
+    /// spclient answers 404, and asked at `radio-apollo`, which answers them (2026-10-02).
+    @Test func `a station resolves a page at a time, its next page asked of the radio service`() async throws {
+        let sent = Recorder<URLRequest>()
+        let first = Data(#"{"pages":[{"tracks":[{"uri":"spotify:track:a"}],"next_page_url":"hm://radio-apollo/v3/tracks/spotify:station:track:x?count=50"}]}"#.utf8)
+        let second = Data(#"{"tracks":[{"uri":"spotify:track:b"}],"next_page_url":"hm://radio-router/v3/tracks/spotify:station:track:x?count=50&prev_tracks=a,b"}"#.utf8)
+        let credentials = spotifyCredentials(transport: { request in
+            sent.record(request)
+            return (sent.values.count == 1 ? first : second, httpResponse(200, url: request.url!))
+        })
+        let client = SPClient(credentials: credentials, deviceId: "device")
+
+        let station = try await client.resolveContext("spotify:station:track:x")
+        #expect(station.tracks == ["spotify:track:a"])
+        #expect(sent.values.count == 1)
+
+        let next = try await client.resolvePage(#require(station.nextPageUrl))
+        #expect(next.tracks == ["spotify:track:b"])
+        #expect(sent.values.last?.url?.path == "/radio-apollo/v3/tracks/spotify:station:track:x")
+
+        #expect(try SPClient.nextPagePath(#require(next.nextPageUrl)) == "/radio-apollo/v3/tracks/spotify:station:track:x?count=50&prev_tracks=a,b")
     }
 
     /// A station's third page was answered 404 (2026-10-02); the pages before it still play.
@@ -142,7 +167,9 @@ struct SPClientRequestTests {
         let first = Data(#"{"pages":[{"tracks":[{"uri":"spotify:track:a"}],"next_page_url":"hm://radio-router/v3/tracks/x"}]}"#.utf8)
         let client = spclient([200, 404], body: first, sent: Recorder())
 
-        #expect(try await client.resolveContext("spotify:station:album:x").tracks == ["spotify:track:a"])
+        let context = try await client.resolveContext("spotify:playlist:x")
+        #expect(context.tracks == ["spotify:track:a"])
+        #expect(context.nextPageUrl == nil)
 
         // The first page failing is the resolve failing.
         let refused = spclient([404], body: Data(), sent: Recorder())

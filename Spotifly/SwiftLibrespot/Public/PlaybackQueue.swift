@@ -150,12 +150,14 @@ final nonisolated class PlaybackQueue {
     /// Starts the context over at `startIndex`, with the rows it has: the end of it, played
     /// through with nothing to repeat. Autoplay's rows go, as the context's own come round again.
     func rewind(to startIndex: Int) {
-        setContext(uri: contextUri, tracks: Array(contextTracks.prefix(ownCount)), uids: Array(contextUids.prefix(ownCount)), startIndex: startIndex)
+        setContext(uri: contextUri, tracks: Array(contextTracks.prefix(ownCount)), uids: Array(contextUids.prefix(ownCount)), startIndex: startIndex, nextPage: nextPageUrl)
     }
 
-    /// Replaces the whole playing context, with its rows' uids where it has them.
-    func setContext(uri: String, tracks: [String], uids: [String?] = [], startIndex: Int) {
+    /// Replaces the whole playing context, with its rows' uids where it has them, and the url of
+    /// its next page where its rows are not all of it.
+    func setContext(uri: String, tracks: [String], uids: [String?] = [], startIndex: Int, nextPage: String? = nil) {
         contextUri = uri
+        nextPageUrl = nextPage
         contextTracks = tracks
         contextUids = Self.aligned(uids, to: tracks)
         autoplayStart = nil
@@ -226,6 +228,32 @@ final nonisolated class PlaybackQueue {
         if mode != .off {
             dropAutoplay()
         }
+    }
+
+    // MARK: - Pages
+
+    /// The context's next page, where its rows are not all of it: a station's, which names pages
+    /// without end and is resolved one at a time. `LibrespotClient.lineUpNextPage` fetches it
+    /// when nothing comes after the track playing.
+    private(set) var nextPageUrl: String?
+
+    /// The next page's url, to fetch it: taken, so it is asked for once.
+    func takeNextPage() -> String? {
+        defer { nextPageUrl = nil }
+        return nextPageUrl
+    }
+
+    /// Adds a page's rows to the context's own, and the url of the page after it. Shuffled, they
+    /// come after the rows not yet played, in an order of their own.
+    func appendPage(_ tracks: [String], uids: [String?], next: String?) {
+        guard autoplayStart == nil else { return }
+        let start = contextTracks.count
+        contextTracks += tracks
+        contextUids += Self.aligned(uids, to: tracks)
+        if shuffleEnabled {
+            shuffleOrder += Array(start ..< contextTracks.count).shuffled()
+        }
+        nextPageUrl = next
     }
 
     // MARK: - Autoplay
