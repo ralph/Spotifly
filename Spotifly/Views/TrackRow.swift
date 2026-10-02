@@ -37,7 +37,6 @@ struct TrackRow: View {
     let isCurrentTrack: Bool
     let isPlayedTrack: Bool // For queue - tracks that have already played
     let provider: TrackProvider? // Optional provider (queue, context, autoplay, unavailable)
-    let playbackViewModel: PlaybackViewModel
     let currentSection: NavigationItem // Current sidebar section (for "Go to" navigation)
     let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
     /// Which *occurrence* this row is, where the list knows — only a playlist does.
@@ -53,6 +52,7 @@ struct TrackRow: View {
     /// the list redraws.
     private static let artworkShape = AnyShape(.rect(cornerRadius: 4))
 
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(AppStore.self) private var store
     @Environment(TrackService.self) private var trackService
 
@@ -88,7 +88,6 @@ struct TrackRow: View {
         currentlyPlayingURI: String?,
         currentIndex: Int? = nil,
         provider: TrackProvider? = nil,
-        playbackViewModel: PlaybackViewModel,
         currentSection: NavigationItem = .startpage,
         selectionId: String? = nil,
         itemUid: String? = nil,
@@ -109,7 +108,6 @@ struct TrackRow: View {
             false
         }
         self.provider = provider
-        self.playbackViewModel = playbackViewModel
         self.currentSection = currentSection
         self.selectionId = selectionId
         self.itemUid = itemUid
@@ -199,7 +197,6 @@ struct TrackRow: View {
                     currentSection: currentSection,
                     selectionId: selectionId,
                     itemUid: itemUid,
-                    playbackViewModel: playbackViewModel,
                     showNewPlaylistDialog: $showNewPlaylistDialog,
                     onPlaylistAdded: showSuccessFeedback,
                 )
@@ -228,7 +225,6 @@ struct TrackRow: View {
                 currentSection: currentSection,
                 selectionId: selectionId,
                 itemUid: itemUid,
-                playbackViewModel: playbackViewModel,
                 showNewPlaylistDialog: $showNewPlaylistDialog,
                 onPlaylistAdded: showSuccessFeedback,
             )
@@ -249,7 +245,6 @@ struct TrackRow: View {
         .newPlaylistPrompt(
             isPresented: $showNewPlaylistDialog,
             trackId: track.id,
-            playbackViewModel: playbackViewModel,
             onAdded: showSuccessFeedback,
         )
     }
@@ -298,10 +293,10 @@ struct NewPlaylistPrompt: ViewModifier {
     /// The track to put in the new playlist — optional because the now-playing bar carries the
     /// prompt whether or not something is playing.
     let trackId: String?
-    let playbackViewModel: PlaybackViewModel
     let onAdded: () -> Void
 
     @Environment(PlaylistService.self) private var playlistService
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     @State private var newPlaylistName = ""
 
@@ -345,13 +340,11 @@ extension View {
     func newPlaylistPrompt(
         isPresented: Binding<Bool>,
         trackId: String?,
-        playbackViewModel: PlaybackViewModel,
         onAdded: @escaping () -> Void,
     ) -> some View {
         modifier(NewPlaylistPrompt(
             isPresented: isPresented,
             trackId: trackId,
-            playbackViewModel: playbackViewModel,
             onAdded: onAdded,
         ))
     }

@@ -48,7 +48,6 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     let load: @MainActor (_ forceRefresh: Bool) async throws -> Void
     let loadMore: @MainActor () async throws -> Void
     let style: LibrarySectionStyle
-    let playbackViewModel: PlaybackViewModel
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
@@ -177,7 +176,6 @@ struct LibraryListView<Entity: LibraryEntity>: View {
         LibraryRow(
             entity: entity,
             style: style,
-            playbackViewModel: playbackViewModel,
             isSelected: selectedId == entity.id,
             onSelect: {
                 select(entity.id, true)
@@ -206,9 +204,10 @@ struct LibraryListView<Entity: LibraryEntity>: View {
 private struct LibraryRow<Entity: LibraryEntity>: View {
     let entity: Entity
     let style: LibrarySectionStyle
-    let playbackViewModel: PlaybackViewModel
     let isSelected: Bool
     let onSelect: () -> Void
+
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     @State private var isHovering = false
 

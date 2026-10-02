@@ -108,6 +108,9 @@ struct SpotiflyApp: App {
             }
             .environment(windowState)
             .environment(PlayerModel.shared)
+            // Here rather than in `LoggedInView`, which reads it itself and so cannot be the one
+            // to inject it. It lives as long as the process, like the player model.
+            .environment(PlaybackViewModel.shared)
             .preferredColorScheme(appearanceMode.colorScheme)
             .onChange(of: appearanceMode, initial: true) { _, mode in
                 mode.apply()

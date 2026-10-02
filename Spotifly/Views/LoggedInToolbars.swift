@@ -45,12 +45,10 @@ struct LoggedInContentToolbar: ToolbarContent {
 }
 
 struct LoggedInDetailToolbar: ToolbarContent {
-    let playbackViewModel: PlaybackViewModel
-
     @ToolbarContentBuilder
     var body: some ToolbarContent {
         ToolbarItem(placement: .automatic) {
-            LoggedInContextToolbarActions(playbackViewModel: playbackViewModel)
+            LoggedInContextToolbarActions()
         }
     }
 }
@@ -87,7 +85,7 @@ private struct LoggedInContextToolbarActions: View {
     @Environment(ArtistService.self) private var artistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     var body: some View {
         switch navigationCoordinator.selectedNavigationItem {

@@ -11,7 +11,7 @@ struct SpeakersView: View {
     @Environment(AppStore.self) private var store
     @Environment(PlayerModel.self) private var player
     @Environment(AuthViewModel.self) private var authViewModel
-    let playbackViewModel: PlaybackViewModel
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     /// Whether AirPlay is available (only when Spotifly is the active device)
     private var isAirPlayEnabled: Bool {
