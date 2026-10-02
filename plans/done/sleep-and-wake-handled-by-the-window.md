@@ -1,7 +1,7 @@
 # Sleep and wake are handled by the window, so a closed window skips them
 
-Status: **Done** 2026-10-02. The closed-window path is verified with sleep and wake notifications
-posted inside the app; real sleeps are pending, see Verification.
+Status: **Done** 2026-10-02, verified live with real sleeps, and with sleep and wake notifications
+posted inside the app
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift` (`observeSystemSleep`,
 `systemWillSleep`, `systemDidWake`), `Spotifly/Views/LoggedInLifecycleModifier.swift` (the
 handlers removed), `Spotifly/SpotiflyApp.swift` (`hostsUnitTests`)
@@ -77,9 +77,23 @@ are not part of this check.
 Not checked: the wake's signed-out branch. Reaching it needs a logout, and logging in again is
 the user's.
 
-### Real sleeps, window closed
+### Real sleeps (2026-10-02, the user, #168's build)
 
-Pending: a phone playing, a phone paused, and this Mac playing.
+The user ran four sleeps of 11 to 18 s, and all four cases of the PR's manual test passed. Each
+one logged `System will sleep, disconnecting from Spotify` and `Disconnect requested`, then
+`System wake detected, reconnect under way`. No `no pong` appeared anywhere. Times UTC; the
+reconnect is the time from the wake to `Recovery succeeded`.
+
+| Sleep | Playing | Reconnect | After the wake |
+| --- | --- | --- | --- |
+| 20:04:00 | the phone (`c077d34a…`) | 0.6 s | mirrored playing, as the phone went on |
+| 20:04:49 | the phone, paused | 2.6 s | mirrored paused at 92458 ms |
+| 20:06:10 | this Mac | 1.4 s | loaded paused at 121957 ms, where it stopped |
+| 20:06:55 | this Mac | 6.5 s | loaded paused at 24574 ms, where it stopped |
+
+After the two sleeps where this Mac played, a play followed 5.5 s and 0.3 s after the reconnect.
+Neither was a media command (none were logged), and nothing calls `resume()` on a reconnect, so
+each was the bar's Play or the menu's Play/Pause, whose shortcut is the space bar.
 
 ### Seen in passing
 
