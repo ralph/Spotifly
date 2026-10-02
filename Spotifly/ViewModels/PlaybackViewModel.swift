@@ -1369,7 +1369,7 @@ final class PlaybackViewModel {
         UInt32(exactly: milliseconds)
     }
 
-    // Anchor-based position tracking, timed by positionClockNow(), which counts sleep
+    // Anchor-based position tracking, timed by positionClockNow()
     // UI reads interpolatedPositionMs (computed), not currentPositionMs directly
     private var positionAnchorMs: UInt32 = 0
     private var positionAnchorTime: Double = PlaybackViewModel.positionClockNow()
@@ -1379,9 +1379,7 @@ final class PlaybackViewModel {
     ///
     /// It has to count the time the Mac sleeps, as the wall clock does: a report's age is
     /// wall-clock time (`positionAnchor(forPosition:takenAt:)`), and another device plays on
-    /// while this Mac sleeps. `CACurrentMediaTime` stops in sleep, and left the bar behind a
-    /// phone by the time asleep. On Darwin, `CLOCK_MONOTONIC` is the wall-clock time since
-    /// boot, to the microsecond.
+    /// while this Mac sleeps. On Darwin, `CLOCK_MONOTONIC` is the wall-clock time since boot.
     nonisolated static func positionClockNow() -> Double {
         Double(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000
     }
@@ -1449,7 +1447,7 @@ final class PlaybackViewModel {
     }
 
     /// Computed position using anchor interpolation - UI should bind to this
-    /// Called by TimelineView on every frame for smooth updates
+    /// Read by the bar's TimelineView on each tick
     var interpolatedPositionMs: UInt32 {
         guard positionRuns else { return currentPositionMs }
         let elapsed = Self.positionClockNow() - positionAnchorTime

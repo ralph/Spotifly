@@ -30,11 +30,8 @@ struct PlaybackMillisecondsTests {
 
 /// The clock the displayed position runs on.
 struct PositionClockTests {
-    /// Seen on 2026-10-02: a phone played, the Mac slept for about 45 s, and the bar came back
-    /// behind the phone by that long. Its clock, `CACurrentMediaTime`, stops in sleep, while a
-    /// report's age is wall-clock time. The position clock has to have run with the wall clock
-    /// since boot, asleep or not. A clock that stops in sleep is behind it by every second this
-    /// Mac has slept since boot; on one that has not slept, this cannot tell the two apart.
+    /// A clock that stops in sleep is behind the wall clock by every second this Mac has slept
+    /// since boot; on a Mac that has not slept, this cannot tell the two apart.
     @Test func `the position clock is the wall clock since boot and so counts sleep`() throws {
         var bootTime = timeval()
         var size = MemoryLayout<timeval>.size
