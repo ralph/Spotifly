@@ -207,7 +207,7 @@ extension MirroredQueueTests {
         let taken = try #require(LibrespotClient.takeOverState(of: state))
         let current = try #require(taken.currentRow)
 
-        #expect(taken.currentIsAutoplay)
+        #expect(taken.continuesAutoplay)
         #expect(taken.autoplayContextUri == "spotify:station:album:a")
         #expect(Array(taken.contextTrackUris[current...]) == uris("s1", "s2"))
         #expect(Array(taken.contextTrackUids[current...]) == ["uid-s1", "uid-s2"])
@@ -226,11 +226,9 @@ extension MirroredQueueTests {
 
         let taken = try #require(LibrespotClient.takeOverState(of: state))
         #expect(taken.playsQueuedTrack)
-        #expect(taken.resumesInAutoplay)
         #expect(taken.continuesAutoplay)
         #expect(taken.contextResumeUid == "uid-s2")
         #expect(taken.autoplayContextUri == "spotify:station:album:a")
-        #expect(!taken.currentIsAutoplay)
 
         // Queued in the album itself, it goes on with the album.
         state.nextTracks = [row("a2")]

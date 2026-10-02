@@ -894,16 +894,9 @@ public actor LibrespotClient {
         contextMetadata = metadata
         playbackQueue.setContext(uri: contextUri, tracks: tracks, uids: uids, startIndex: startIndex)
         // Before the load, so the row before it never shows as the one playing.
-        if let autoplay {
-            if queued == nil {
-                playbackQueue.playAutoplay(autoplay.tracks, uids: autoplay.uids, from: autoplay.station)
-            } else {
-                // Behind the queued track, which goes on with the first of them.
-                playbackQueue.appendAutoplay(autoplay.tracks, uids: autoplay.uids, from: autoplay.station)
-                playbackQueue.markAutoplayAsked()
-            }
-        }
-        if let queued {
+        if let autoplay, !autoplay.tracks.isEmpty {
+            playbackQueue.playAutoplay(autoplay.tracks, uids: autoplay.uids, from: autoplay.station, after: queued)
+        } else if let queued {
             playbackQueue.playQueued(queued)
         }
         defer { publishQueue() }
@@ -1473,8 +1466,7 @@ public actor LibrespotClient {
         state.queuedTrackUris = ahead.filter { $0.provider == "queue" }.map(\.uri)
         state.contextResumeUid = resumingAt
         state.playsQueuedTrack = resumingAt != nil
-        state.currentIsAutoplay = current.provider == "autoplay"
-        state.resumesInAutoplay = resumingAt != nil && sessionRow?.provider == "autoplay"
+        state.continuesAutoplay = sessionRow?.provider == "autoplay"
         state.autoplayContextUri = sessionRow?.metadata["context_uri"].flatMap { $0.hasPrefix("spotify:station:") ? $0 : nil }
         state.shuffle = remote.options.shufflingContext
         state.repeatContext = remote.options.repeatingContext
@@ -1621,8 +1613,7 @@ public actor LibrespotClient {
         async let resolved: SPClient.ResolvedContext? = contextUri.isEmpty ? nil : try? await spclient.resolveContext(contextUri)
 
         let queued = state.playsQueuedTrack ? track : nil
-        let sessionUid = queued == nil ? state.currentTrackUid : state.contextResumeUid
-        let first = state.currentRow ?? sessionUid.flatMap { uid in state.contextTrackUids.firstIndex { $0 == uid } }
+        let first = state.currentRow ?? state.sessionUid.flatMap { state.contextTrackUids.firstIndex(of: $0) }
 
         var rows: [String]
         var uids: [String?]
@@ -1634,8 +1625,9 @@ public actor LibrespotClient {
             let seed = state.contextTrackUris.suffix(PlaybackQueue.autoplaySeedLimit - 1) + [track]
             let station = try? await spclient.resolveAutoplay(contextUri: contextUri, recentTrackUris: Array(seed))
             let after = zip(station?.tracks ?? [], station?.uids ?? []).filter { $0.0 != track }
-            rows = (queued == nil ? [track] : []) + after.map(\.0)
-            uids = (queued == nil ? [state.currentTrackUid] : []) + after.map(\.1)
+            let picked = (queued == nil ? [(track, state.currentTrackUid)] : []) + after
+            rows = picked.map(\.0)
+            uids = picked.map(\.1)
             stationUri = station?.uri ?? stationUri
         }
 

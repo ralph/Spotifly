@@ -279,16 +279,27 @@ final nonisolated class PlaybackQueue {
 
     /// Goes on with autoplay's rows after the context's row standing, as another device's autoplay
     /// is taken over: the first of them plays, and that row goes into the history for Previous.
-    func playAutoplay(_ tracks: [String], uids: [String?], from station: String? = nil) {
+    /// With `queued`, that track plays first, as queued, and autoplay's first row after it, as a
+    /// track queued during another device's autoplay is taken over. Shuffled, autoplay's rows
+    /// follow in their order either way.
+    func playAutoplay(_ tracks: [String], uids: [String?], from station: String? = nil, after queued: String? = nil) {
         guard autoplayStart == nil, !tracks.isEmpty else { return }
-        pushHistory()
+        let standing = currentIndex
+        if queued == nil {
+            pushHistory()
+        }
         appendAutoplay(tracks, uids: uids, from: station)
-        currentIndex = ownCount
+        if queued == nil {
+            currentIndex = ownCount
+        }
         if shuffleEnabled {
-            shuffleOrder = Array(currentIndex ..< contextTracks.count)
+            shuffleOrder = (queued == nil ? [] : [standing]) + Array(ownCount ..< contextTracks.count)
             shufflePosition = 0
         }
         autoplayAsked = true
+        if let queued {
+            playQueued(queued)
+        }
     }
 
     /// Takes autoplay's rows away again, unless one of them plays, and lets it be asked for

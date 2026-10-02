@@ -230,18 +230,20 @@ struct AutoplayQueueTests {
 
     /// Another device's queued track during its autoplay, taken over: it plays as queued, after the
     /// album's last row, and autoplay goes on after it from the first of the rows.
-    @Test func `a queued track taken over plays before autoplay's rows`() {
+    @Test(arguments: [false, true])
+    func `a queued track taken over plays before autoplay's rows`(shuffled: Bool) {
         let queue = album()
-        queue.appendAutoplay(["s2", "s3"], uids: ["x2", "x3"])
-        queue.markAutoplayAsked()
-        queue.playQueued("q0")
+        queue.setShuffle(shuffled)
+        queue.playAutoplay(["s2", "s3"], uids: ["x2", "x3"], after: "q0")
 
         #expect(queue.currentUri == "q0")
         #expect(queue.currentProvider == "queue")
         #expect(queue.history == ["a3"])
+        #expect(queue.autoplayAsked)
         #expect(queue.sessionRow == QueueItem(uri: "s2", provider: "autoplay", uid: "x2"))
         #expect(queue.advance() == "s2")
         #expect(queue.currentProvider == "autoplay")
+        #expect(queue.advance() == "s3")
     }
 
     /// What a handover names as the session's row: the track's, or after a queued track, the row
@@ -316,7 +318,7 @@ struct AutoplayHandoverTests {
         #expect(read.contextTrackUids == ["x1", "x2"])
         #expect(read.currentTrackUri == "spotify:track:s1")
         #expect(read.currentTrackUid == "x1")
-        #expect(read.currentIsAutoplay)
+        #expect(read.continuesAutoplay)
         #expect(read.autoplayContextUri == "spotify:station:album:a")
         #expect(read.queuedTrackUris.isEmpty)
         #expect(!read.playsQueuedTrack)
@@ -341,7 +343,6 @@ struct AutoplayHandoverTests {
         #expect(read.contextUri == "spotify:station:album:a")
         #expect(read.playsQueuedTrack)
         #expect(read.currentTrackUri == "spotify:track:s1")
-        #expect(!read.currentIsAutoplay)
         #expect(read.contextResumeUid == "x2")
         #expect(read.continuesAutoplay)
         #expect(read.contextTrackUris == ["spotify:track:s2"])

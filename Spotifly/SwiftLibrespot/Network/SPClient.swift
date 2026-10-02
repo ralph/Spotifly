@@ -294,9 +294,8 @@ public actor SPClient {
                     try await fetch(request, named: "Context resolve")
                 }
             } catch where !allTracks.isEmpty && !(error is CancellationError) {
-                // A later page failing leaves the context its pages so far, as go-librespot's
-                // resolver returns an empty page for one: a station names pages without end, and
-                // its third was answered 404 (2026-10-02).
+                // A later page failing leaves the context its pages so far: a station names pages
+                // without end, and its third was answered 404 (2026-10-02).
                 debugLog("SPClient", "Context page failed, keeping \(allTracks.count) track(s): \(error)")
                 break
             }

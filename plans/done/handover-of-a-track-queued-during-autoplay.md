@@ -3,8 +3,9 @@
 Status: **Done** 2026-10-02, seen with the web player as the other device; see Progress. Found in
 the altitude review of `plans/done/phone-takes-macs-autoplay-as-queued.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`continuePlayback`,
-`continueAutoplay`, `takeOverState`, `play`), `Spotifly/SwiftLibrespot/Proto/TransferState.swift`
-(`resumesInAutoplay`, `continuesAutoplay`), `Spotifly/SwiftLibrespot/Network/SPClient.swift`
+`continueAutoplay`, `takeOverState`, `play`), `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`
+(`playAutoplay(after:)`), `Spotifly/SwiftLibrespot/Proto/TransferState.swift`
+(`continuesAutoplay`, `sessionUid`), `Spotifly/SwiftLibrespot/Network/SPClient.swift`
 (`resolveContext`, `nextPagePath`, `parseContextReport`)
 Found: 2026-10-02, reviewing the handover this Mac writes during autoplay
 
@@ -34,24 +35,35 @@ Measured on 2026-10-02 with the web player in autoplay, a track queued there and
   `hm://radio-router/…`, 404: a station names pages without end.
 - **The 404 recorded in `plans/done/autoplay.md`** for a phone's station was this one: the first
   page had resolved there too.
+- **Song radio** (Start Song Radio, `playRadio`, `spotify:station:track:<id>`) failed the same way
+  on main: its second page was asked at `context-resolve/v1/hm://radio-apollo/…` and answered
+  404, so it never played.
 - **Play on the Mac** over such a mirrored state took the album as the context (the player state
   names the album), with the station's next row as the row to go on with, which the album does
   not have.
 
 ## Solution
 
-- **A session that goes on in autoplay** (`TransferState.continuesAutoplay`): an autoplay track,
-  or a queued track before autoplay's next row (`resumesInAutoplay`). A handover says the latter
-  by the station as its context beside a `main_context`; a mirror by the next row's provider
-  (`takeOverState`, which also takes the station from that row). A station played as it is, with
-  no `main_context`, plays as a context.
+- **A session that goes on in autoplay** (`TransferState.continuesAutoplay`), its row autoplay's:
+  an autoplay track, or a queued track before autoplay's next row. A handover says the latter by
+  the station as its context beside a `main_context`; a mirror by the session row's provider
+  (`takeOverState`, which also takes the station from that row), the test this Mac's own
+  handover writes by. A station played as it is plays as a context; whether a radio's handover
+  names a `main_context` too is not measured, so only a queued track goes by it.
 - **`continueAutoplay`** plays a queued track as queued, after the album's last row, with
-  autoplay's rows behind it (`PlaybackQueue.appendAutoplay`, then `playQueued`), from the row the
-  session goes on with. Rows the other device sent are used from that row (a mirror's, or this
-  Mac's own handover's page); a handover without them gets a station asked for.
+  autoplay's rows behind it (`PlaybackQueue.playAutoplay(after:)`, which keeps them in order when
+  shuffled), from the row the session goes on with (`sessionUid`). Rows the other device sent
+  are used from that row (a mirror's, or this Mac's own handover's page); a handover without
+  them gets a station asked for.
+- **Not the station as a context,** as librespot and go-librespot take a queued track: a station
+  is resolved afresh with each request (a `salt` in its page urls), so the row a handover names
+  is not among its rows; other devices would be told a radio, so this Mac's next handover would
+  not say autoplay; and Previous would have no album to go back into.
 - **Paging:** an `hm://` next page is asked of spclient at its path (`SPClient.nextPagePath`), and
-  read as one page; a later page that fails leaves the pages before it, as go-librespot's resolver
-  returns an empty page then. Only the first page failing fails the resolve.
+  read as one page; a later page that fails leaves the pages before it. Only the first page
+  failing fails the resolve. A station's pages are still fetched before it plays: two, 100
+  tracks, about 0.4 s more than one, then the third's 404 ends it. The deeper form is fetching a
+  next page when the queue nears its end, as librespot and go-librespot do; not built.
 
 ## Verification
 
@@ -68,7 +80,12 @@ Measured on 2026-10-02 with the web player in autoplay, a track queued there and
   next-page 404 and the Mac kept mirroring.
 - **Built and seen** (2026-10-02):
   - **The station played as it is** (`SPOTIFLY_DEBUG_AUTOPLAY` on its uri): two pages, 100
-    tracks, the third page's 404 left them, and it played.
+    tracks, the third page's 404 left them, and it played, 0.72 s after the request.
+  - **Song radio on main** (`spotify:station:track:…`): the second page's 404 failed it. On the
+    branch: two pages, 100 tracks, playing 0.58 s after the request.
+  - **After `/simplify`** (the queued track through `playAutoplay(after:)`): the handover again
+    gave the queued track, the album behind it and a station of 50 ahead; the web player had
+    stalled paused at 1.5 s, and the Mac took it over paused there.
   - **The handover:** the web player in autoplay, "Great Expectations" queued there and played,
     then this Mac picked. The Mac read `resumesInAutoplay`, resolved the album and a station of
     50, and played the queued track from 25.2 s. Its Queue section: the album's last track (C),

@@ -89,7 +89,6 @@ struct TransferStateTests {
             mainContext: "spotify:album:a",
         ))
         #expect(station.playsQueuedTrack)
-        #expect(station.resumesInAutoplay)
         #expect(station.continuesAutoplay)
         #expect(station.contextResumeUid == "station-row")
 
@@ -192,9 +191,9 @@ struct TransferStateTests {
             }
         }))
 
-        #expect(fromAutoplay.currentIsAutoplay)
+        #expect(fromAutoplay.continuesAutoplay)
         #expect(fromAutoplay.autoplayContextUri == "spotify:station:album:a")
-        #expect(!TransferState(parsing: Self.transfer()).currentIsAutoplay)
+        #expect(!TransferState(parsing: Self.transfer()).continuesAutoplay)
     }
 
     /// A phone handed its own autoplay over with the station as the context (2026-10-02).

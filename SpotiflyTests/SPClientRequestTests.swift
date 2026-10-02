@@ -139,18 +139,13 @@ struct SPClientRequestTests {
 
     /// A station's third page was answered 404 (2026-10-02); the pages before it still play.
     @Test func `a later page that fails leaves the pages before it`() async throws {
-        let sent = Recorder<URLRequest>()
         let first = Data(#"{"pages":[{"tracks":[{"uri":"spotify:track:a"}],"next_page_url":"hm://radio-router/v3/tracks/x"}]}"#.utf8)
-        let credentials = spotifyCredentials(transport: { request in
-            sent.record(request)
-            return sent.values.count == 1 ? (first, httpResponse(200, url: request.url!)) : (Data(), httpResponse(404, url: request.url!))
-        })
-        let client = SPClient(credentials: credentials, deviceId: "device")
+        let client = spclient([200, 404], body: first, sent: Recorder())
 
         #expect(try await client.resolveContext("spotify:station:album:x").tracks == ["spotify:track:a"])
 
         // The first page failing is the resolve failing.
-        let refused = SPClient(credentials: spotifyCredentials(transport: { (Data(), httpResponse(404, url: $0.url!)) }), deviceId: "device")
+        let refused = spclient([404], body: Data(), sent: Recorder())
         await #expect(throws: LibrespotError.self) {
             _ = try await refused.resolveContext("spotify:album:x")
         }
