@@ -77,7 +77,6 @@ final class AppStore {
     private(set) var searchResultsByQuery: [String: SearchResults] = [:]
     /// Oldest to newest, used to enforce the bounded query cache.
     private(set) var searchResultQueries: [String] = []
-    private(set) var lastDisplayedSearchQuery: String?
     private(set) var searchCacheEvictionRevision: UInt64 = 0
     var searchIsLoading = false
     /// The last submitted search that failed, which its results page shows in their place,
@@ -576,16 +575,7 @@ final class AppStore {
         guard searchResultQueries.count > Self.searchResultsLimit else { return }
         let evicted = searchResultQueries.removeFirst()
         searchResultsByQuery.removeValue(forKey: evicted)
-        if lastDisplayedSearchQuery == evicted {
-            lastDisplayedSearchQuery = nil
-        }
         searchCacheEvictionRevision &+= 1
-    }
-
-    /// The query the sidebar's search row reopens to: one with results, never a failed one.
-    func markSearchQueryDisplayed(_ query: String) {
-        guard searchResultsByQuery[query] != nil else { return }
-        lastDisplayedSearchQuery = query
     }
 
     /// Why the last search for `query` failed, where it was the last to fail.
@@ -650,7 +640,6 @@ final class AppStore {
 
                 let searchResultsByQuery: [String: SearchResults]
                 let searchResultQueries: [String]
-                let lastDisplayedSearchQuery: String?
 
                 let homeSections: [HomeSection]
             }
@@ -672,7 +661,6 @@ final class AppStore {
                 favoritesPagination: favoritesPagination,
                 searchResultsByQuery: searchResultsByQuery,
                 searchResultQueries: searchResultQueries,
-                lastDisplayedSearchQuery: lastDisplayedSearchQuery,
                 homeSections: homeSections,
             )
 

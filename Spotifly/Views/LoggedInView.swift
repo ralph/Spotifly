@@ -208,7 +208,7 @@ struct LoggedInView: View {
         SidebarView(
             selection: navigationSelectionBinding,
             // Or a failed search's page, while it shows: the selection is there.
-            hasSearchResults: store.lastDisplayedSearchQuery.flatMap(store.searchResults(for:)) != nil
+            hasSearchResults: navigationCoordinator.reopenableSearchQuery != nil
                 || navigationCoordinator.displayedSearchQuery != nil,
             userProfile: store.userProfile,
         )

@@ -191,7 +191,8 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // costs no request.
             .retryingWhenNetworkReturns { queueService.hydrate() }
             // Playback steps over what the lists said will not play. Initially too, which
-            // sends an empty set at login, so nothing of the previous account's is left.
+            // sends an empty set at login, so nothing of the previous account's is left. The
+            // other way, what playback found withheld into the store, is `QueueService`'s.
             .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
                 SpotifyPlayer.setUnplayable(uris)
             }

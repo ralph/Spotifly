@@ -15,6 +15,8 @@ final class NavigationCoordinator {
 
     private weak var store: AppStore?
     private var lastSelection: [NavigationItem: Selection] = [:]
+    /// The last search shown with results; see `reopenableSearchQuery`.
+    private var lastDisplayedSearchQuery: String?
 
     private(set) var current: Route = .startpage
     private(set) var back: [Route] = []
@@ -76,6 +78,13 @@ final class NavigationCoordinator {
         current.section == .searchResults ? current.query : nil
     }
 
+    /// The query the sidebar's search row reopens to: the last one shown with results, never a
+    /// failed one, while the cache still holds them.
+    var reopenableSearchQuery: String? {
+        guard let query = lastDisplayedSearchQuery, store?.searchResults(for: query) != nil else { return nil }
+        return query
+    }
+
     var needsThreeColumnLayout: Bool {
         switch current.section {
         case .albums, .artists, .playlists:
@@ -110,11 +119,7 @@ final class NavigationCoordinator {
         case .albums, .artists, .playlists:
             route = Route(section: section, selection: section.flatMap { lastSelection[$0] })
         case .searchResults:
-            guard let query = store?.lastDisplayedSearchQuery,
-                  store?.searchResults(for: query) != nil
-            else {
-                return
-            }
+            guard let query = reopenableSearchQuery else { return }
             route = Route(section: .searchResults, query: query)
         default:
             route = Route(section: section)
@@ -303,8 +308,8 @@ final class NavigationCoordinator {
             lastSelection[section] = selection
         }
 
-        if route.section == .searchResults, let query = route.query {
-            store?.markSearchQueryDisplayed(query)
+        if route.section == .searchResults, let query = route.query, store?.searchResults(for: query) != nil {
+            lastDisplayedSearchQuery = query
         }
     }
 

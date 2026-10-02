@@ -42,11 +42,19 @@ final class QueueService {
         self.player = player
     }
 
+    /// The observations hold the service weakly, but would otherwise wait on the player, which
+    /// outlives a logout, until its next change; withheld tracks can go unchanged until the app
+    /// quits.
+    isolated deinit {
+        queueObservation?.cancel()
+        withheldObservation?.cancel()
+    }
+
     /// Starts listening to the player. Call once, from the view that actually kept this
     /// instance — see `activate()` on the sibling services for why `init` must not do it.
     ///
-    /// Idempotent: a `.task` runs again when its view reappears, and the guard reads the
-    /// observation it protects rather than a separate flag that could drift from it.
+    /// Idempotent: a `.task` runs again when its view reappears, and the guard reads an
+    /// observation it protects, both set together, rather than a separate flag that could drift.
     func activate() {
         guard queueObservation == nil else { return }
         recordActivation(self)
