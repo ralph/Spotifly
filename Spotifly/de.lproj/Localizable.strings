@@ -27,6 +27,7 @@
 "nav.your_library" = "Deine Bibliothek";
 
 /* Common Actions */
+"action.play" = "Wiedergeben";
 "action.try_again" = "Erneut versuchen";
 "action.cancel" = "Abbrechen";
 "action.create" = "Erstellen";
