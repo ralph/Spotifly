@@ -1,6 +1,8 @@
 # This Mac has no autoplay
 
-Status: **Open**, not planned. Measured with a phone on 2026-10-02; see Problem.
+Status: **Open**, built 2026-10-02: the account's setting, a station lined up on a context's
+last row, and the take-over of another device's autoplay; see Progress. Seen on this Mac alone;
+the phone's cases are still to see.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (the end of a context,
 `takeOverState`, `continuePlayback`), `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift`,
 `Spotifly/SwiftLibrespot/Network/SPClient.swift` (a resolve for autoplay),
@@ -69,4 +71,74 @@ To find out first:
 
 ## Verification
 
-Not defined yet.
+- Unit tests: `AutoplayTests`, and the take-overs in `MirroredQueueTests` and
+  `TransferStateTests`; 542 tests and the lint pass.
+- On this Mac: see Progress.
+- With a phone, still to see: Play on the Mac over the phone's autoplay track, a handover of
+  one, the setting switched off while the Mac is on a last track, and the phone's queue while the
+  Mac plays its own autoplay.
+
+## Progress
+
+- **The account's setting** (2026-10-02).
+  - **At login:** the `ProductInfo` packet has `<autoplay>1</autoplay>` among its 103 elements,
+    a throwaway log found. `Accesspoint.autoplay` reads it, and the session hands it to the
+    client.
+  - **A change:** switching autoplay off and on again on the phone sent
+    `spotify:user:attributes:mutated` twice, 6.5 s apart. Each was a `UserAttributesMutation`
+    naming `autoplay`, with a timestamp and no value.
+  - The dealer turns it into a Connect command, `userAttributesMutated`, and the client flips
+    its setting, as librespot flips the "0" or "1" it keeps.
+- **Lining up a station** (2026-10-02). When nothing comes after the track playing here, with
+  autoplay on and repeat off, the client asks `context-resolve/v1/autoplay`
+  (`SPClient.resolveAutoplay`, from `announceNextTrack`). So a context that ends on a withheld
+  track is followed too. The queue keeps whether it was asked (`autoplayAsked`), once per
+  context, and again after its rows were taken away. The body is a
+  protobuf `AutoplayContextRequest`: the context uri, and its last 50 tracks as the seed. The
+  answer is the same JSON as a resolve's.
+  - **Where the rows go:** after the context's own, in `PlaybackQueue.appendAutoplay`. The
+    context stays the album, as the phone reports it; the rows' provider is `autoplay`, and they
+    are reported with `autoplay.is_autoplay` (`SpircController.provided`).
+  - **What follows from that:** auto-advance, Next, the fetch-ahead and Previous go through them
+    as through the context.
+  - **What takes them away:** repeat, the setting switched off, or a rewind, unless one plays.
+    Repeat switched on while one plays: the station plays out, then the context's own rows come
+    round again, without it. A round of the context, for repeat and shuffle, is its own rows.
+  - **Shuffled,** they stay after the context's own rows, in their order; shuffle switched on
+    while one plays goes on with the rest of them.
+  - **Not asked for:** a station's end (go-librespot's rule), or a bare list, which has no
+    context to name.
+- **Another device's autoplay** (2026-10-02).
+  - **Taken over from the mirror:** `takeOverState` marks an `autoplay` current track, with the
+    autoplay rows ahead of it.
+  - **Handed over:** a `TransferState` marks one by its track's `autoplay.is_autoplay` metadata.
+  - **Either way,** `continueAutoplay` resolves the context and stands on its last row, then
+    plays the autoplay rows from the one playing (`PlaybackQueue.playAutoplay`), as `playQueued`
+    takes over a queued track: that row goes into the history, so Previous goes back into the
+    album. A handover names no rows, so a station is asked for beside the context's resolve,
+    seeded with the track and what the handover sent of the context.
+- **Seen on this Mac** (2026-10-02, and again after the review's changes), `SPOTIFLY_DEBUG_AUTOPLAY` on "Teardrop (Bundle)" (2
+  tracks) with `SPOTIFLY_DEBUG_NEXT_AFTER=10`:
+  - the login read autoplay on;
+  - the first Next reached the last track, and the station was asked for at once, answered
+    with 50 tracks 0.23 s later; the queue went from 0 to 50 ahead;
+  - the second Next played "Heartbeats", the first autoplay track, with both album tracks behind
+    it;
+  - the Queue section listed the album's two rows as C and the rest as A, under "Wiedergabe von
+    'Teardrop (Bundle)'".
+- **`/code-review` found five, all fixed:**
+  - A repeat wrap after autoplay left the station's rows in the history, past the context's end,
+    which the next queue publish would have trapped on.
+  - The setting's change published this Mac's queue over the one mirrored from another device.
+  - A station answered after playback left this Mac was still lined up.
+  - The ask could miss the first track played here, before its state reported; it is asked
+    again then.
+  - The rewind after autoplay could pick an autoplay row.
+- **No UI:** the setting is the account's, switched on any device; this Mac reads it and does
+  not change it.
+- **Not done:**
+  - **Restrictions:** librespot reports shuffle and repeat as disallowed while an autoplay track
+    plays; this Mac does not.
+  - **Taken over or handed over,** an album's row uids, which `play(uriOrUrl:)` fetches beside
+    the resolve, are not fetched: a jump another device names into the album's rows goes by
+    track alone.

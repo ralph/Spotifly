@@ -306,6 +306,38 @@ public actor SPClient {
         return ResolvedContext(tracks: allTracks, uids: allUids, metadata: metadata)
     }
 
+    /// The tracks autoplay goes on with after `contextUri`: a station for it, from
+    /// `context-resolve/v1/autoplay`, seeded with tracks the context played, as librespot's
+    /// `get_autoplay_context` and go-librespot's `ContextResolveAutoplay` ask for it. Its first
+    /// page only, which go-librespot plays too.
+    public func resolveAutoplay(contextUri: String, recentTrackUris: [String]) async throws -> ResolvedContext {
+        let host = spclientHost ?? "spclient.wg.spotify.com"
+        debugLog("SPClient", "Resolving autoplay for \(contextUri), \(recentTrackUris.count) track(s) as its seed")
+
+        var request = URLRequest(url: URL(string: "https://\(host)/context-resolve/v1/autoplay")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-protobuf", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Self.autoplayRequest(contextUri: contextUri, recentTrackUris: recentTrackUris)
+        let data = try await Self.withTimeout(seconds: 20) { [self, request] in
+            try await fetch(request, named: "Autoplay resolve")
+        }
+
+        let report = Self.parseContextReport(data)
+        debugLog("SPClient", "Autoplay resolved: \(report.tracks.count) track(s)")
+        return ResolvedContext(tracks: report.tracks, uids: report.uids, metadata: report.metadata)
+    }
+
+    /// `AutoplayContextRequest { required string context_uri = 1; repeated string
+    /// recent_track_uri = 2; }`. The answer is JSON, as a resolve's is.
+    nonisolated static func autoplayRequest(contextUri: String, recentTrackUris: [String]) -> Data {
+        ProtobufWriter.message {
+            $0.string(field: 1, contextUri)
+            for uri in recentTrackUris {
+                $0.string(field: 2, uri)
+            }
+        }
+    }
+
     /// Parses the context resolver's answer. Despite the protobuf `Accept`
     /// header the endpoint replies **JSON**: `{metadata, pages: [{tracks:
     /// [{uri, uid}], next_page_url}], uri}`.

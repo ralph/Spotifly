@@ -143,6 +143,19 @@ struct TransferStateTests {
         #expect(state.contextResumeUid == "u2")
     }
 
+    @Test func `a handover says when its track came from autoplay`() {
+        let fromAutoplay = TransferState(parsing: Self.transfer(currentTrack: {
+            $0.string(field: 1, "spotify:track:current")
+            $0.message(field: 4) {
+                $0.string(field: 1, "autoplay.is_autoplay")
+                $0.string(field: 2, "true")
+            }
+        }))
+
+        #expect(fromAutoplay.currentIsAutoplay)
+        #expect(!TransferState(parsing: Self.transfer()).currentIsAutoplay)
+    }
+
     @Test func `a track sent only by gid gets its uri back`() {
         // spotify:track:6rqhFgbbKwnb9MLmUQDhG6 is gid d3aca7e43e3b452cbfa9ddd2eab9497e,
         // by base-62 decoding in Python.

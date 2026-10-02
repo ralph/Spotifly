@@ -384,7 +384,7 @@ public actor SpircController {
             playerStateProto.isBuffering = ps.isPaused
 
             if let uri = ps.trackUri {
-                playerStateProto.track = ProvidedTrack(uri: uri, uid: ps.trackUid ?? "", provider: ps.trackProvider)
+                playerStateProto.track = Self.provided(uri: uri, uid: ps.trackUid, provider: ps.trackProvider)
             }
             playerStateProto.contextUri = ps.contextUri
             playerStateProto.contextMetadata = ps.contextMetadata
@@ -394,9 +394,8 @@ public actor SpircController {
             if let index = ps.contextIndex {
                 playerStateProto.index = ContextIndex(page: 0, track: UInt32(index))
             }
-            // Proto3: a row without a uid sends "".
             let provided: (QueueItem) -> ProvidedTrack = { item in
-                var track = ProvidedTrack(uri: item.uri, uid: item.uid ?? "", provider: item.provider)
+                var track = Self.provided(uri: item.uri, uid: item.uid, provider: item.provider)
                 track.isHidden = item.hidden
                 return track
             }
@@ -414,6 +413,16 @@ public actor SpircController {
         }
 
         return device
+    }
+
+    /// A row as other devices are told it. Proto3: a row without a uid sends "". An autoplay row
+    /// says so in its metadata too, as a phone's do (2026-10-02) and librespot's.
+    nonisolated static func provided(uri: String, uid: String?, provider: String) -> ProvidedTrack {
+        var track = ProvidedTrack(uri: uri, uid: uid ?? "", provider: provider)
+        if provider == "autoplay" {
+            track.metadata["autoplay.is_autoplay"] = "true"
+        }
+        return track
     }
 
     /// A token that changes whenever what plays next does — librespot's

@@ -192,6 +192,25 @@ extension MirroredQueueTests {
         #expect(taken.shuffle)
     }
 
+    /// What a phone sent on 2026-10-02 while its first autoplay track played: the album as the
+    /// context, the autoplay rows ahead, then a hidden delimiter of its own.
+    @Test func `another device's autoplay track is taken over with its autoplay rows`() throws {
+        var state = PlayerState()
+        state.contextUri = "spotify:album:a"
+        state.prevTracks = [row("a1")]
+        state.track = row("s1", provider: "autoplay")
+        var autoplayDelimiter = ProvidedTrack(uri: "spotify:delimiter", uid: "delimiter0", provider: "autoplay")
+        autoplayDelimiter.isHidden = true
+        state.nextTracks = [row("s2", provider: "autoplay"), autoplayDelimiter]
+
+        let taken = try #require(LibrespotClient.takeOverState(of: state))
+        let current = try #require(taken.currentRow)
+
+        #expect(taken.currentIsAutoplay)
+        #expect(Array(taken.contextTrackUris[current...]) == uris("s1", "s2"))
+        #expect(Array(taken.contextTrackUids[current...]) == ["uid-s1", "uid-s2"])
+    }
+
     @Test func `nothing playing is nothing to take over`() {
         #expect(LibrespotClient.takeOverState(of: PlayerState()) == nil)
     }

@@ -50,6 +50,11 @@ public actor Accesspoint {
     /// after login. Nil until that packet arrives.
     public private(set) var accountType: String?
 
+    /// The account's autoplay setting, as the same packet names it (`<autoplay>1</autoplay>`,
+    /// measured 2026-10-02): whether a context that ends goes on with tracks like it. Nil until
+    /// that packet arrives, or when it names none.
+    public private(set) var autoplay: Bool?
+
     /// Sets the unexpected-disconnect hook.
     public func setCloseHandler(_ handler: (@Sendable () -> Void)?) {
         closeHandler = handler
@@ -764,7 +769,17 @@ public actor Accesspoint {
     /// flat elements, `<type>premium</type>` among them. The rest describe the plan, its
     /// billing and client flags, and nothing here reads them.
     nonisolated static func accountType(inProductInfo payload: Data) -> String? {
-        String(decoding: payload, as: UTF8.self).firstMatch(of: /<type>([^<]*)<\/type>/).map { String($0.1) }
+        attribute("type", inProductInfo: payload)
+    }
+
+    /// One of a `ProductInfo` payload's flat elements, `<name>value</name>`, which librespot
+    /// keeps as the session's user attributes.
+    nonisolated static func attribute(_ name: String, inProductInfo payload: Data) -> String? {
+        let xml = String(decoding: payload, as: UTF8.self)
+        guard let open = xml.range(of: "<\(name)>"),
+              let close = xml.range(of: "</\(name)>", range: open.upperBound ..< xml.endIndex)
+        else { return nil }
+        return String(xml[open.upperBound ..< close.lowerBound])
     }
 
     // MARK: - Background Tasks
@@ -804,7 +819,8 @@ public actor Accesspoint {
 
         case .productInfo:
             accountType = Self.accountType(inProductInfo: packet.payload)
-            debugLog("Accesspoint", "Account type: \(accountType ?? "none")")
+            autoplay = Self.attribute("autoplay", inProductInfo: packet.payload).map { $0 == "1" }
+            debugLog("Accesspoint", "Account type: \(accountType ?? "none"), autoplay: \(autoplay.map(String.init) ?? "not named")")
             #if DEBUG
                 // SPOTIFLY_DEBUG_ACCOUNT_TYPE=free: run a Premium account as a free one.
                 if let overridden = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_ACCOUNT_TYPE"] {
