@@ -9,19 +9,28 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var viewModel = AuthViewModel()
+    @Environment(LoggedInSessions.self) private var sessions
 
     var body: some View {
-        if viewModel.isLoading {
-            ProgressView(String(localized: "auth.loading"))
-                .frame(minWidth: 500, minHeight: 400)
-        } else if viewModel.isSignedIn {
-            LoggedInView(onLogout: { Task { await viewModel.logout() } })
-                // Speakers and the play alert both offer the grant again, and it is this view
-                // model that runs it.
-                .environment(viewModel)
-        } else {
-            loginView
-                .frame(minWidth: 500, minHeight: 400)
+        Group {
+            if viewModel.isLoading {
+                ProgressView(String(localized: "auth.loading"))
+                    .frame(minWidth: 500, minHeight: 400)
+            } else if viewModel.isSignedIn {
+                LoggedInView(session: sessions.session(), onLogout: { Task { await viewModel.logout() } })
+                    // Speakers and the play alert both offer the grant again, and it is this view
+                    // model that runs it.
+                    .environment(viewModel)
+            } else {
+                loginView
+                    .frame(minWidth: 500, minHeight: 400)
+            }
+        }
+        // Every way out of the account, the logout and a grant found revoked, ends here.
+        .onChange(of: viewModel.isSignedIn) { _, signedIn in
+            if !signedIn {
+                sessions.end()
+            }
         }
     }
 

@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct LoggedInView: View {
+    /// The store and services, which outlive this window; see `LoggedInSession`.
+    let session: LoggedInSession
     let onLogout: () -> Void
 
     @Environment(WindowState.self) private var windowState
@@ -16,44 +18,41 @@ struct LoggedInView: View {
 
     @Environment(PlaybackViewModel.self) private var playbackViewModel
 
-    /// Normalized state store.
-    @State private var store: AppStore
-
-    // Services that need Task deduplication or subscription persistence.
-    @State private var playlistService: PlaylistService
-    @State private var profileService: ProfileService
-    @State private var albumService: AlbumService
-    @State private var artistService: ArtistService
-    @State private var queueService: QueueService
-    @State private var deviceService: DeviceService
+    /// Where this window is, which goes with it.
     @State private var navigationCoordinator: NavigationCoordinator
 
-    /// Persisted because they store in-flight load tasks for dedup and
-    /// cancellation-resilience across view recreation.
-    @State private var trackService: TrackService
-    @State private var homeService: HomeService
-    /// Holds no state of its own, but kept like the others, so the environment hands the same
-    /// instance to every view rather than a new one per evaluation of the body.
-    @State private var searchService: SearchService
-
-    init(onLogout: @escaping () -> Void) {
+    init(session: LoggedInSession, onLogout: @escaping () -> Void) {
+        self.session = session
         self.onLogout = onLogout
+        _navigationCoordinator = State(initialValue: NavigationCoordinator(store: session.store))
+    }
 
-        let store = AppStore()
+    private var store: AppStore {
+        session.store
+    }
 
-        _store = State(initialValue: store)
-        let profileService = ProfileService(store: store)
-        _profileService = State(initialValue: profileService)
-        _playlistService = State(initialValue: PlaylistService(store: store, profileService: profileService))
-        _albumService = State(initialValue: AlbumService(store: store))
-        _artistService = State(initialValue: ArtistService(store: store))
-        let trackService = TrackService(store: store)
-        _queueService = State(initialValue: QueueService(store: store, trackService: trackService))
-        _deviceService = State(initialValue: DeviceService())
-        _navigationCoordinator = State(initialValue: NavigationCoordinator(store: store))
-        _trackService = State(initialValue: trackService)
-        _homeService = State(initialValue: HomeService(store: store))
-        _searchService = State(initialValue: SearchService(store: store))
+    private var playlistService: PlaylistService {
+        session.playlistService
+    }
+
+    private var albumService: AlbumService {
+        session.albumService
+    }
+
+    private var artistService: ArtistService {
+        session.artistService
+    }
+
+    private var trackService: TrackService {
+        session.trackService
+    }
+
+    private var homeService: HomeService {
+        session.homeService
+    }
+
+    private var searchService: SearchService {
+        session.searchService
     }
 
     @State private var searchText = ""
@@ -106,15 +105,15 @@ struct LoggedInView: View {
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
         // Inside the environment below, so the modifier reads the services from it.
         .modifier(LoggedInLifecycleModifier())
-        .environment(deviceService)
-        .environment(queueService)
+        .environment(session.deviceService)
+        .environment(session.queueService)
         .environment(homeService)
         .environment(searchService)
         .environment(navigationCoordinator)
         .environment(store)
         .environment(trackService)
         .environment(playlistService)
-        .environment(profileService)
+        .environment(session.profileService)
         .environment(albumService)
         .environment(artistService)
         // Scene values, which the menu sees whenever the window is key, whatever has focus

@@ -66,6 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct SpotiflyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var windowState = WindowState()
+    /// The signed-in account's store and services, which a closed window does not take with it.
+    @State private var sessions = LoggedInSessions()
     @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
 
     init() {
@@ -93,7 +95,7 @@ struct SpotiflyApp: App {
         }
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
         .commands {
-            SpotiflyCommands()
+            SpotiflyCommands(sessions: sessions)
         }
 
         Settings {
@@ -108,6 +110,7 @@ struct SpotiflyApp: App {
                 windowState.exitMiniPlayerMode(window: notification.object as? NSWindow)
             }
             .environment(windowState)
+            .environment(sessions)
             .environment(PlayerModel.shared)
             // Here rather than in `LoggedInView`, which reads it itself and so cannot be the one
             // to inject it. It lives as long as the process, like the player model.
@@ -126,6 +129,7 @@ struct SpotiflyApp: App {
 // MARK: - Menu Commands
 
 struct SpotiflyCommands: Commands {
+    let sessions: LoggedInSessions
     @FocusedValue(\.navigationSelection) var navigationSelection
     @FocusedValue(\.homeService) var homeService
 
@@ -218,7 +222,7 @@ struct SpotiflyCommands: Commands {
             // localization keys.
             CommandMenu("Debug" as String) {
                 Button("Dump Store to Clipboard" as String) {
-                    AppStore.current?.debugDumpJSON()
+                    sessions.current?.store.debugDumpJSON()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
 

@@ -22,20 +22,15 @@ struct LoggedInLifecycleModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .task {
-                // Everything here reads the instances SwiftUI *kept*: this task belongs to
-                // the surviving view, while `LoggedInView.init` may have run several times
-                // and built a store and services for each run. Those extra objects are
-                // inert — they subscribe to nothing and own no state anyone reads — which
-                // is only true as long as this stays the single place that wires them up.
+                // The session's, which outlives the window (`LoggedInSession`): this runs
+                // again when a window reopens on it, and each step is one that does nothing
+                // the second time, or only what a reopened window should, such as asking
+                // again for a start page that failed.
                 //
                 // Before the first `await`, so no Spirc notification can arrive while the
                 // player is unobserved.
                 queueService.activate()
                 playbackViewModel.attach(store: store, trackService: trackService)
-
-                #if DEBUG
-                    AppStore.current = store
-                #endif
 
                 // The profile and the start page are independent requests on the same grant, so
                 // they run together. Neither blocks: an app that cannot say who you are is
@@ -190,12 +185,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // offline is not asked for again until the queue changes. A track already loaded
             // costs no request.
             .retryingWhenNetworkReturns { queueService.hydrate() }
-            // Playback steps over what the lists said will not play. Initially too, which
-            // sends an empty set at login, so nothing of the previous account's is left. The
-            // other way, what playback found withheld into the store, is `QueueService`'s.
-            .onChange(of: store.unplayableTrackUris, initial: true) { _, uris in
-                SpotifyPlayer.setUnplayable(uris)
-            }
     }
 
     #if DEBUG

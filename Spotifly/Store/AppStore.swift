@@ -14,11 +14,6 @@ import SwiftUI
 @MainActor
 @Observable
 final class AppStore {
-    #if DEBUG
-        /// Debug-only reference for menu commands
-        weak static var current: AppStore?
-    #endif
-
     // MARK: - Entity Tables (Normalized)
 
     /// All tracks indexed by ID - single source of truth
@@ -169,8 +164,8 @@ final class AppStore {
                 unplayable.insert(track.uri)
             }
         }
-        // Written only when it changed: every write notifies, and the logged-in view passes
-        // it on to playback.
+        // Written only when it changed: every write notifies, and `QueueService` passes it on
+        // to playback.
         if unplayable != unplayableTrackUris {
             unplayableTrackUris = unplayable
         }
