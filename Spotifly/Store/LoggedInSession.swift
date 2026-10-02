@@ -5,7 +5,7 @@
 //  The signed-in account's store and services, for as long as it is signed in.
 //
 
-import Foundation
+import SwiftUI
 
 /// The signed-in account's store and services.
 ///
@@ -43,16 +43,16 @@ final class LoggedInSession {
 }
 
 /// The session of the account signed in, made the first time a window shows the signed-in app
-/// and ended when the account signs out, so the next sign-in starts from an empty store.
+/// and ended when the account signs out (`AuthViewModel.isSignedIn`), so the next sign-in starts
+/// from an empty store.
 ///
 /// Read from a view's body, so the session itself is not observed: making it there must not
 /// count as changing state during an update.
 @MainActor
-@Observable
 final class LoggedInSessions {
     /// The session, if a window has shown the signed-in app; for the menu commands, which have
     /// no window of their own.
-    @ObservationIgnored private(set) var current: LoggedInSession?
+    private(set) var current: LoggedInSession?
 
     /// The current session, made if there is none.
     func session() -> LoggedInSession {
@@ -66,5 +66,21 @@ final class LoggedInSessions {
 
     func end() {
         current = nil
+    }
+}
+
+extension View {
+    /// The session's store and services, for the views that read them from the environment.
+    func environment(session: LoggedInSession) -> some View {
+        environment(session.store)
+            .environment(session.profileService)
+            .environment(session.playlistService)
+            .environment(session.albumService)
+            .environment(session.artistService)
+            .environment(session.trackService)
+            .environment(session.queueService)
+            .environment(session.deviceService)
+            .environment(session.homeService)
+            .environment(session.searchService)
     }
 }

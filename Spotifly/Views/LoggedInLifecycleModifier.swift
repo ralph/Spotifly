@@ -181,10 +181,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // when that one then failed.
             .retryingWhenNetworkReturns(if: store.homeErrorMessage != nil) { await homeService.refresh() }
             .retryingWhenNetworkReturns(if: profileService.needsProfile) { await profileService.askAgain() }
-            // And the queue's tracks, which every change of the queue asks for: one that failed
-            // offline is not asked for again until the queue changes. A track already loaded
-            // costs no request.
-            .retryingWhenNetworkReturns { queueService.hydrate() }
     }
 
     #if DEBUG

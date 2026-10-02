@@ -149,6 +149,40 @@ struct QueueHydrationTests {
     }
 }
 
+extension QueueHydrationTests {
+    /// With the window closed too: the service is the session's, and Control Center shows the
+    /// queue's tracks.
+    @Test func `the network's return asks again for what a failed fetch left missing`() async throws {
+        let store = AppStore()
+        let player = PlayerModel()
+        var snapshot = PlayerSnapshot()
+        snapshot.queue = QueueState(contextUri: "", currentTrack: item("playing"), nextTracks: [], previousTracks: [])
+        player.apply(snapshot)
+        let attempts = MainActorCounter()
+        let trackService = TrackService(
+            store: store,
+            metadataFetcher: { trackIds in
+                attempts.count += 1
+                if attempts.count == 1 {
+                    throw URLError(.notConnectedToInternet)
+                }
+                return Dictionary(uniqueKeysWithValues: trackIds.map { ($0, track(id: $0)) })
+            },
+        )
+        let network = NetworkMonitor(satisfied: false)
+        let queueService = QueueService(store: store, trackService: trackService, player: player, network: network)
+
+        queueService.activate()
+        try await waitUntil { attempts.count == 1 }
+        await settle()
+        #expect(store.tracks["playing"] == nil)
+
+        network.update(satisfied: true)
+        try await waitUntil { store.tracks["playing"] != nil }
+        #expect(attempts.count == 2)
+    }
+}
+
 /// Which row of a list is drawn as playing.
 ///
 /// A list can legitimately hold the same recording twice — an album with a reprise, a playlist

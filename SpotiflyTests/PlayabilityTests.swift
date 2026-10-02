@@ -96,32 +96,29 @@ struct WithheldTrackTests {
         #expect(store.tracks["girlfriend"]?.isPlayable == false)
     }
 
-    /// The player's set reaches the store through `QueueService`: as it stands when the service
-    /// starts, which is a new login's store, and on every change.
     /// The other way, the store's set reaches playback, as it stands and on every change. With the
     /// window closed too: the service is the session's.
     @Test func `the queue service passes the store's unplayable tracks to playback`() async throws {
-        final class Told {
-            var sets: [Set<String>] = []
-        }
         let store = AppStore()
-        let told = Told()
+        let told = Recorder<Set<String>>()
         let queueService = QueueService(
             store: store,
             trackService: TrackService(store: store),
             player: PlayerModel(),
-            setUnplayable: { told.sets.append($0) },
+            setUnplayable: { told.record($0) },
         )
 
         queueService.activate()
-        try await waitUntil { told.sets == [[]] }
+        try await waitUntil { told.values == [[]] }
 
         var withheld = track(id: "girlfriend")
         withheld.playability = .unplayable(reason: nil)
         store.upsertTracks([withheld])
-        try await waitUntil { told.sets.last == ["spotify:track:girlfriend"] }
+        try await waitUntil { told.values.last == ["spotify:track:girlfriend"] }
     }
 
+    /// The player's set reaches the store through `QueueService`: as it stands when the service
+    /// starts, which is a new login's store, and on every change.
     @Test func `the queue service passes the player's withheld tracks to the store`() async throws {
         let store = AppStore()
         store.upsertTracks([track(id: "girlfriend"), track(id: "other")])

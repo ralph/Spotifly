@@ -15,11 +15,13 @@ final class QueueService {
     private let store: AppStore
     private let trackService: TrackService
     private let player: PlayerModel
+    private let network: NetworkMonitor
     /// Tells playback which tracks the lists said will not play; injected for tests.
     private let setUnplayable: @MainActor (Set<String>) -> Void
     private var queueObservation: Task<Void, Never>?
     private var withheldObservation: Task<Void, Never>?
     private var unplayableObservation: Task<Void, Never>?
+    private var networkObservation: Task<Void, Never>?
 
     /// Identifies this instance and the store it holds in the log. A session makes one, so a
     /// second tag in a run means a second session, after a logout and a login.
@@ -34,6 +36,7 @@ final class QueueService {
         store: AppStore,
         trackService: TrackService,
         player: PlayerModel = .shared,
+        network: NetworkMonitor = .shared,
         setUnplayable: @escaping @MainActor (Set<String>) -> Void = SpotifyPlayer.setUnplayable,
     ) {
         Self.instanceCount += 1
@@ -41,16 +44,18 @@ final class QueueService {
         self.store = store
         self.trackService = trackService
         self.player = player
+        self.network = network
         self.setUnplayable = setUnplayable
     }
 
-    /// The observations hold the service weakly, but would otherwise wait on the player, which
-    /// outlives a logout, until its next change; withheld tracks can go unchanged until the app
-    /// quits.
+    /// The observations hold the service weakly, but would otherwise wait on what they watch
+    /// until its next change: the player and the network outlive a logout, and withheld tracks
+    /// can go unchanged until the app quits.
     isolated deinit {
         queueObservation?.cancel()
         withheldObservation?.cancel()
         unplayableObservation?.cancel()
+        networkObservation?.cancel()
     }
 
     /// Starts following the player and the store, from the logged-in view's launch task.
@@ -88,10 +93,19 @@ final class QueueService {
         // And the other way: playback steps over what the lists said will not play. As it
         // stands too, which tells a new login's player an empty set, so nothing of the previous
         // account's is left. Here rather than in a window, which the store outlives.
-        unplayableObservation = Task { [weak self] in
-            for await uris in Observations({ [weak self] in self?.store.unplayableTrackUris ?? [] }) {
+        unplayableObservation = Task { [weak self, store] in
+            for await uris in Observations({ store.unplayableTrackUris }) {
                 guard let self else { return }
                 setUnplayable(uris)
+            }
+        }
+
+        // And the queue's tracks again when the network returns; see `hydrate()`. Here rather
+        // than in a window, as Control Center shows them with the window closed too.
+        networkObservation = Task { [weak self, network] in
+            for await _ in Observations({ network.returns }).dropFirst() {
+                guard let self else { return }
+                hydrate()
             }
         }
 

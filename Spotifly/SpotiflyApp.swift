@@ -66,8 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct SpotiflyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var windowState = WindowState()
-    /// The signed-in account's store and services, which a closed window does not take with it.
-    @State private var sessions = LoggedInSessions()
+    /// Sign-in, and with it the signed-in account's store and services, which a closed window
+    /// does not take with it (`LoggedInSession`). None in the unit-test host, where its grant
+    /// would sign the developer in, and a test's revocation could sign them out.
+    @State private var auth: AuthViewModel? = SpotiflyApp.hostsUnitTests ? nil : AuthViewModel()
     @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
 
     init() {
@@ -87,15 +89,13 @@ struct SpotiflyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if Self.hostsUnitTests {
-                EmptyView()
-            } else {
-                mainWindow
+            if let auth {
+                mainWindow(auth: auth)
             }
         }
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
         .commands {
-            SpotiflyCommands(sessions: sessions)
+            SpotiflyCommands(sessions: auth?.sessions)
         }
 
         Settings {
@@ -104,13 +104,15 @@ struct SpotiflyApp: App {
         }
     }
 
-    private var mainWindow: some View {
+    private func mainWindow(auth: AuthViewModel) -> some View {
         ContentView()
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { notification in
                 windowState.exitMiniPlayerMode(window: notification.object as? NSWindow)
             }
             .environment(windowState)
-            .environment(sessions)
+            // Speakers and the play alert offer the grant again, and it is this view model that
+            // runs it.
+            .environment(auth)
             .environment(PlayerModel.shared)
             // Here rather than in `LoggedInView`, which reads it itself and so cannot be the one
             // to inject it. It lives as long as the process, like the player model.
@@ -129,7 +131,8 @@ struct SpotiflyApp: App {
 // MARK: - Menu Commands
 
 struct SpotiflyCommands: Commands {
-    let sessions: LoggedInSessions
+    /// Nil in the unit-test host.
+    let sessions: LoggedInSessions?
     @FocusedValue(\.navigationSelection) var navigationSelection
     @FocusedValue(\.homeService) var homeService
 
@@ -222,7 +225,7 @@ struct SpotiflyCommands: Commands {
             // localization keys.
             CommandMenu("Debug" as String) {
                 Button("Dump Store to Clipboard" as String) {
-                    sessions.current?.store.debugDumpJSON()
+                    sessions?.current?.store.debugDumpJSON()
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
 
