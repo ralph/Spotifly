@@ -14,18 +14,22 @@ struct LoggedInContentRouterView: View {
 
     let onLogout: () -> Void
 
-    /// The route's last drill-down, or else its section's page.
+    /// The route's section's page, or a search's.
     ///
     /// Not a `NavigationStack`: the split view's detail column takes its pushes over and drops
-    /// everything `LoggedInView` lays around the router, the now-playing bar among it.
+    /// everything `LoggedInView` lays around the router, the now-playing bar among it. A search's
+    /// all-tracks page is drawn here from the search's own results, so the search's state governs
+    /// both of its pages.
     var body: some View {
-        if let destination = navigationCoordinator.current.path.last {
-            destinationView(for: destination)
-        } else if let query = navigationCoordinator.displayedSearchQuery,
-                  let searchResults = store.searchResults(for: query)
+        if let query = navigationCoordinator.displayedSearchQuery,
+           let searchResults = store.searchResults(for: query)
         {
-            SearchResultsView(searchResults: searchResults)
-                .navigationTitle("nav.search_results")
+            if navigationCoordinator.current.showsAllTracks {
+                SearchAllTracksView(trackIds: searchResults.trackIds)
+            } else {
+                SearchResultsView(searchResults: searchResults)
+                    .navigationTitle("nav.search_results")
+            }
         } else if let query = navigationCoordinator.displayedSearchQuery,
                   let failure = store.searchFailure(for: query)
         {
@@ -81,23 +85,6 @@ struct LoggedInContentRouterView: View {
         case .none:
             Text("empty.select_item")
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private func destinationView(for destination: NavigationDestination) -> some View {
-        switch destination {
-        case let .artist(id):
-            ArtistDetailView(artistId: id)
-
-        case let .album(id):
-            AlbumDetailView(albumId: id)
-
-        case let .playlist(id):
-            PlaylistDetailView(playlistId: id)
-
-        case let .searchTracks(ids):
-            SearchAllTracksView(trackIds: ids)
         }
     }
 }

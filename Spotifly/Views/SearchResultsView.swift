@@ -87,7 +87,7 @@ struct SearchResultsView: View {
 
                 if tracks.count > 5 {
                     Button {
-                        navigationCoordinator.push(.searchTracks(ids: searchResults.trackIds))
+                        navigationCoordinator.showAllSearchTracks()
                     } label: {
                         HStack(spacing: 4) {
                             Text(localizedNumberString("show_all.tracks", tracks.count))
