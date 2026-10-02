@@ -315,7 +315,10 @@ struct PlaylistDetailView: View {
     private func savePlaylistDetails() {
         let trimmedName = editingPlaylistName.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
-        let description = editingPlaylistDescription
+        // Only a description that was changed, so a rename leaves it alone. The field holds the
+        // text the description's HTML reads as; Spotify stores what it's sent and escapes it when
+        // read (2026-10-02), so a changed one goes back as typed.
+        let description = editingPlaylistDescription == playlistDescription ? nil : editingPlaylistDescription
         editingPlaylistName = ""
         editingPlaylistDescription = ""
 

@@ -17,7 +17,7 @@ extension String? {
     /// nil to fall back from. Normalised at the entity boundary rather than in the view, so
     /// every reader gets the same answer.
     ///
-    /// The description is HTML, and shown as the text it reads as (`String.htmlAsPlainText`).
+    /// The description is HTML, and shown as the text it reads as (`htmlAsPlainText`).
     nonisolated var normalizedPlaylistDescription: String? {
         guard let self, self != "null" else { return nil }
         let text = self.htmlAsPlainText
@@ -25,16 +25,21 @@ extension String? {
     }
 }
 
-extension String {
+private extension String {
     /// The text a playlist description's HTML reads as. Measured on the start page on 2026-10-02:
     /// Spotify's mixes link the artists in theirs, `<a href=spotify:playlist:…>Brian Fallon</a>`,
     /// and a user's description comes escaped, `Terri Hooley&#x27;s life`. The header showed
     /// both as they came.
     ///
     /// The tags go first, then the entities: a `<` the user typed arrives as `&lt;`, so a literal
-    /// tag is Spotify's own. A bare `&`, as in "Fest & Flauschig", stays.
+    /// tag is Spotify's own; that holds for a playlist description, so this is kept to them. A
+    /// bare `&`, as in "Fest & Flauschig", stays.
+    ///
+    /// Most descriptions hold neither `<` nor `&`, and pass untouched: each regex is built again on
+    /// every call, about 250 µs for the two.
     nonisolated var htmlAsPlainText: String {
-        replacing(/<\/?[a-zA-Z][^<>]*>/, with: "")
+        guard contains(where: { $0 == "<" || $0 == "&" }) else { return self }
+        return replacing(/<\/?[a-zA-Z][^<>]*>/, with: "")
             .replacing(/&(#[0-9]+|#[xX][0-9a-fA-F]+|amp|lt|gt|quot|apos);/) { match in
                 switch match.1 {
                 case "amp": "&"
@@ -48,11 +53,11 @@ extension String {
     }
 
     /// The character a numeric entity names, `#39` or `#x27`.
-    private nonisolated static func character(numbered entity: Substring) -> String? {
+    nonisolated static func character(numbered entity: Substring) -> String? {
         let hex = entity.hasPrefix("#x") || entity.hasPrefix("#X")
         guard let code = UInt32(entity.dropFirst(hex ? 2 : 1), radix: hex ? 16 : 10),
               let scalar = Unicode.Scalar(code)
         else { return nil }
-        return String(Character(scalar))
+        return String(scalar)
     }
 }

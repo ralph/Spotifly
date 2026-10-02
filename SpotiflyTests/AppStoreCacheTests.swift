@@ -113,11 +113,14 @@ struct PlaylistDescriptionTests {
             == "Die handverlesene Playlist zum Fest & Flauschig Podcast.")
     }
 
-    /// A `<` the user typed comes escaped, and stays a `<`; only Spotify's own tags go.
+    /// A `<` the user typed comes escaped, and stays a `<`; only Spotify's own tags go, before the
+    /// entities are decoded.
     @Test func `escaped characters come back as typed`() {
-        #expect("I &lt;3 this &amp; that &quot;song&quot; &#39;99".htmlAsPlainText == "I <3 this & that \"song\" '99")
-        #expect("a < b and c > d".htmlAsPlainText == "a < b and c > d")
-        #expect("&unknown; &#xZZ; stays".htmlAsPlainText == "&unknown; &#xZZ; stays")
-        #expect(String?("<a href=spotify:x></a>").normalizedPlaylistDescription == nil)
+        let text = { (html: String) in String?(html).normalizedPlaylistDescription }
+        #expect(text("I &lt;3 this &amp; that &quot;song&quot; &#39;99") == "I <3 this & that \"song\" '99")
+        #expect(text("a typed &lt;b&gt;tag&lt;/b&gt;") == "a typed <b>tag</b>")
+        #expect(text("a < b and c > d") == "a < b and c > d")
+        #expect(text("&unknown; &#xZZ; &#xD800; stays") == "&unknown; &#xZZ; &#xD800; stays")
+        #expect(text("<a href=spotify:x></a>") == nil)
     }
 }
