@@ -419,12 +419,7 @@ struct NowPlayingBarView: View {
     private var favoriteButton: some View {
         Button {
             Task {
-                guard let trackId = currentTrackId else { return }
-                do {
-                    try await trackService.toggleFavorite(trackId: trackId)
-                } catch {
-                    playbackViewModel.errorMessage = String(localized: "error.update_favorite \(error.localizedDescription)")
-                }
+                await playbackViewModel.toggleCurrentTrackFavorite()
             }
         } label: {
             Image(systemName: isCurrentTrackFavorited ? "heart.fill" : "heart")

@@ -316,3 +316,42 @@ struct PlaylistLibraryWriteTests {
         #expect(calls.rootlistWrites == 4)
     }
 }
+
+@MainActor
+struct ProfileServiceTests {
+    /// The network's return asks again while an earlier request may still be out. Joining one
+    /// the launch started offline would fail with it, so a reload makes a request of its own.
+    @Test func `a reload does not join a request in flight`() async throws {
+        let calls = Calls()
+        let held = AsyncGate()
+        let store = AppStore()
+        let service = ProfileService(store: store, partnerAPI: partnerAPI(transport: { _ in
+            let answer = calls.profile()
+            if calls.profileRequests == 1 {
+                await held.entered()
+                await held.wait()
+            }
+            return answer
+        }))
+
+        let write = Task { try await service.require() }
+        await held.waitUntilEntered()
+
+        try await service.reload()
+
+        #expect(calls.profileRequests == 2)
+        #expect(store.userProfile?.id == "qixixbr0ox6sik6jc6bkv6y6y")
+        await held.open()
+        _ = try await write.value
+    }
+
+    @Test func `a reload asks even with a profile in the store`() async throws {
+        let calls = Calls()
+        let service = ProfileService(store: AppStore(), partnerAPI: partnerAPI(transport: { _ in calls.profile() }))
+
+        try await service.reload()
+        try await service.reload()
+
+        #expect(calls.profileRequests == 2)
+    }
+}
