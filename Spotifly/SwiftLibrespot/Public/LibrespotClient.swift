@@ -582,9 +582,16 @@ public actor LibrespotClient {
         playbackQueue.setRepeat(repeatMode)
         if contextUri.isEmpty {
             // Started from a bare list of uris, so the list is all there is.
-            let list = mirroredRemote.flatMap(Self.takeOverList) ?? ([mirrored.trackUri], 0, [])
+            let list = mirroredRemote.flatMap(Self.takeOverList) ?? ([mirrored.trackUri], [], 0, [], nil)
             playbackQueue.replaceUserQueue(with: list.queued)
-            try await playTracks(list.tracks, trackIndex: list.index, startingAtUri: mirrored.trackUri, positionMs: positionMs)
+            try await playTracks(
+                list.tracks,
+                uids: list.uids,
+                trackIndex: list.index,
+                startingAtUri: mirrored.trackUri,
+                resumingAtUid: list.resumingAt,
+                positionMs: positionMs,
+            )
         } else if queue?.currentTrack?.provider == "queue" {
             // A queued track plays as queued here too: the queued rows after it stay queued, and the
             // context goes on with the row the other device had next, as a handover leaves them.
@@ -1391,16 +1398,33 @@ public actor LibrespotClient {
     /// The tracks before go in so repeat comes back to them. Queued rows ahead go to the queue,
     /// those already played are left out, and so are rows the sender hides, as `mirroredQueue`
     /// leaves them out.
-    nonisolated static func takeOverList(of remote: PlayerState) -> (tracks: [String], index: Int, queued: [String])? {
-        guard let current = remote.track?.uri, !current.isEmpty else { return nil }
+    ///
+    /// A queued track playing is not one of the list's rows: it plays as queued, and the list
+    /// goes on with the row after it, `resumingAt`, as a handover leaves them
+    /// (`plans/done/queued-track-handover-in-a-bare-list.md`). With no row after it, it goes into
+    /// the list where it plays, as before.
+    nonisolated static func takeOverList(
+        of remote: PlayerState,
+    ) -> (tracks: [String], uids: [String?], index: Int, queued: [String], resumingAt: String?)? {
+        guard let current = remote.track, !current.uri.isEmpty else { return nil }
         let before = remote.prevTracks.reversed().prefix { $0.uri != PlaybackQueue.delimiterUri }.reversed()
-            .filter { isShown($0) && $0.provider != "queue" }.map(\.uri)
+            .filter { isShown($0) && $0.provider != "queue" }
         let ahead = thisRound(of: remote.nextTracks).filter(isShown)
+        let listed = ahead.filter { $0.provider != "queue" }
+        let resumingAt = current.provider == "queue" ? listed.first.flatMap(rowUid) : nil
+        let rows = before + (resumingAt == nil ? [current] : []) + listed
         return (
-            before + [current] + ahead.filter { $0.provider != "queue" }.map(\.uri),
+            rows.map(\.uri),
+            rows.map(rowUid),
             before.count,
             ahead.filter { $0.provider == "queue" }.map(\.uri),
+            resumingAt,
         )
+    }
+
+    /// A row's uid, or none for one sent without; proto3 sends that as "".
+    private nonisolated static func rowUid(_ track: ProvidedTrack) -> String? {
+        track.uid.isEmpty ? nil : track.uid
     }
 
     /// The rows ahead up to the first `spotify:delimiter`, after which a device under repeat
@@ -1429,8 +1453,7 @@ public actor LibrespotClient {
     /// lists (`PlaybackQueue.Rounds.one`). Rows after it that are not the context stay, since a
     /// device may list autoplay there (librespot does; unmeasured).
     nonisolated static func mirroredQueue(of remote: PlayerState) -> QueueState {
-        // Proto3: a row without a uid has "".
-        let item: (ProvidedTrack) -> QueueItem = { QueueItem(uri: $0.uri, provider: $0.provider, uid: $0.uid.isEmpty ? nil : $0.uid) }
+        let item: (ProvidedTrack) -> QueueItem = { QueueItem(uri: $0.uri, provider: $0.provider, uid: rowUid($0)) }
         let round = thisRound(of: remote.nextTracks)
         let beyond = remote.nextTracks.dropFirst(round.count).filter { $0.provider != "context" && $0.uri != PlaybackQueue.delimiterUri }
         let ahead = round + beyond

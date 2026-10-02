@@ -99,12 +99,12 @@ mirroring it; librespot never sets `disallow_skipping_next_reasons`
   - **Its limits:** the cluster's previous rows are a window of ten (librespot's
     `SPOTIFY_MAX_PREV_TRACKS_SIZE`), so a list taken over further in than that loses its
     start, and repeat does not come back to it; a bare list carries no pages to read it from.
-    And a queued track playing when the list is taken over goes into the list as one of its
-    rows, where a context's take-over plays it as queued (`play(uriOrUrl:resumingAtUid:)`).
-    `playTracks` takes that start since 2026-10-02, for the handover of a bare list
-    (`plans/done/queued-track-handover-in-a-bare-list.md`); what is left is for
-    `takeOverList` to leave a queued current track out of the rows and name the row after it,
-    with the rows' uids, as `resume()` does for a context.
+  - **A queued track playing** (2026-10-02) went into the list as one of its rows, where a
+    context's take-over plays it as queued (`play(uriOrUrl:resumingAtUid:)`), and the handover
+    of a bare list now does too (`plans/done/queued-track-handover-in-a-bare-list.md`).
+    `takeOverList` now leaves it out of the rows and names the first row ahead that is not
+    queued (`resumingAt`), with the rows' uids, and `playTracks` places it from those as for a
+    handover. With no such row ahead, it goes into the list as before.
   - **Seen on a phone** (2026-10-01, by hand): a list from search's Play Tracks, handed to the
     phone with repeat on and skipped twice, then taken back with Play on the Mac: each track was
     listed once and repeat came back to the first. A track queued on the phone first was in the

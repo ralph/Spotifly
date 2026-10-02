@@ -135,6 +135,34 @@ extension MirroredQueueTests {
         #expect(list.queued == uris("q"))
     }
 
+    /// What a handover of the same state does: the queued track plays as queued, not as one of
+    /// the list's rows for repeat to play again, and the list goes on with the row after it.
+    /// `PlaybackQueueTests` has the placement from `resumingAt`.
+    @Test func `a queued track playing is left out of the list, which goes on at the row after it`() throws {
+        var state = PlayerState()
+        state.prevTracks = [row("t1"), row("q0", provider: "queue")]
+        state.track = row("q1", provider: "queue")
+        state.nextTracks = [row("q2", provider: "queue"), row("t2"), row("t3")]
+
+        let list = try #require(LibrespotClient.takeOverList(of: state))
+        #expect(list.tracks == uris("t1", "t2", "t3"))
+        #expect(list.uids == ["uid-t1", "uid-t2", "uid-t3"])
+        #expect(list.queued == uris("q2"))
+        #expect(list.resumingAt == "uid-t2")
+    }
+
+    /// Nothing ahead to go on with: the queued track is played where it is, as a row.
+    @Test func `a queued track at the list's end goes into the list`() throws {
+        var state = PlayerState()
+        state.prevTracks = [row("t1")]
+        state.track = row("q1", provider: "queue")
+
+        let list = try #require(LibrespotClient.takeOverList(of: state))
+        #expect(list.tracks == uris("t1", "q1"))
+        #expect(list.index == 1)
+        #expect(list.resumingAt == nil)
+    }
+
     @Test func `without a delimiter the list is every row after the current one`() throws {
         var state = PlayerState()
         state.track = row("t1")
