@@ -131,12 +131,6 @@ struct LoggedInView: View {
         .onChange(of: store.deletedEntitySelections) {
             navigationCoordinator.invalidateUnviewableRoutes()
         }
-        .onChange(of: navigationCoordinator.selectedNavigationItem) { _, newValue in
-            guard newValue == .favorites else { return }
-            Task {
-                await ensureFavoritesLoadedForSelection()
-            }
-        }
     }
 
     /// The content region — the detail column of the single, stable two-column
@@ -214,7 +208,7 @@ struct LoggedInView: View {
         SidebarView(
             selection: navigationSelectionBinding,
             // Or a failed search's page, while it shows: the selection is there.
-            hasSearchResults: store.lastDisplayedSearchQuery.flatMap(store.searchResults(for:)) != nil
+            hasSearchResults: navigationCoordinator.reopenableSearchQuery != nil
                 || navigationCoordinator.displayedSearchQuery != nil,
             userProfile: store.userProfile,
         )
@@ -255,7 +249,7 @@ struct LoggedInView: View {
 
     private func handleSearchTextChange(_ newValue: String) {
         guard newValue.isEmpty else { return }
-        store.clearSearchFailure()
+        searchService.clearFailure()
 
         if navigationCoordinator.selectedNavigationItem == .searchResults {
             navigationCoordinator.selectNavigationItem(.startpage)
@@ -295,17 +289,5 @@ struct LoggedInView: View {
         case .startpage, .searchResults, .queue, .speakers, .profile, nil:
             nil
         }
-    }
-
-    private func ensureFavoritesLoadedForSelection() async {
-        guard navigationCoordinator.selectedNavigationItem == .favorites else { return }
-        guard !store.favoritesPagination.isLoading else { return }
-
-        let needsInitialLoad = !store.favoritesPagination.isLoaded
-        let needsRecoveryRefresh = store.favoriteTracks.isEmpty && store.favoritesPagination.total > 0
-
-        guard needsInitialLoad || needsRecoveryRefresh else { return }
-
-        try? await trackService.loadFavorites(forceRefresh: needsRecoveryRefresh)
     }
 }

@@ -2,8 +2,9 @@
 //  QueueService.swift
 //  Spotifly
 //
-//  Keeps the store holding metadata for every track the player's queue names.
-//  The queue itself is the player's: `PlayerModel.queueEntries`.
+//  Keeps the store holding metadata for every track the player's queue names, and
+//  greys the tracks playback found withheld. The queue itself is the player's:
+//  `PlayerModel.queueEntries`.
 //
 
 import Foundation
@@ -15,6 +16,7 @@ final class QueueService {
     private let trackService: TrackService
     private let player: PlayerModel
     private var queueObservation: Task<Void, Never>?
+    private var withheldObservation: Task<Void, Never>?
 
     /// Identifies this instance and the store it holds in the log.
     ///
@@ -40,11 +42,19 @@ final class QueueService {
         self.player = player
     }
 
+    /// The observations hold the service weakly, but would otherwise wait on the player, which
+    /// outlives a logout, until its next change; withheld tracks can go unchanged until the app
+    /// quits.
+    isolated deinit {
+        queueObservation?.cancel()
+        withheldObservation?.cancel()
+    }
+
     /// Starts listening to the player. Call once, from the view that actually kept this
     /// instance — see `activate()` on the sibling services for why `init` must not do it.
     ///
-    /// Idempotent: a `.task` runs again when its view reappears, and the guard reads the
-    /// observation it protects rather than a separate flag that could drift from it.
+    /// Idempotent: a `.task` runs again when its view reappears, and the guard reads an
+    /// observation it protects, both set together, rather than a separate flag that could drift.
     func activate() {
         guard queueObservation == nil else { return }
         recordActivation(self)
@@ -58,6 +68,18 @@ final class QueueService {
                 let contextInfo = queue?.context.map { " context=\($0)," } ?? ""
                 log("Queue updated from the player:\(contextInfo) prev=\(rows.previousTracks.count), current=\(rows.currentTrack != nil ? 1 : 0), next=\(rows.nextTracks.count)")
                 hydrate()
+            }
+        }
+
+        // What playback found withheld, which no list said, is greyed. As it stands too, so the
+        // store of a new login starts from the player's set.
+        withheldObservation = Task { [weak self, player] in
+            for await uris in Observations({ player.withheld }) {
+                guard let self else { return }
+                if !uris.isEmpty {
+                    log("Playback found \(uris.count) withheld, greying them")
+                }
+                store.setWithheld(uris)
             }
         }
 

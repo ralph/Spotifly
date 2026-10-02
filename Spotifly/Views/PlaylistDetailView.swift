@@ -473,9 +473,8 @@ struct PlaylistReorderDropDelegate: DropDelegate {
               fromIndex != toIndex
         else { return }
 
-        // Optimistically update the store for visual feedback
         withAnimation(.default) {
-            store.movePlaylistTrack(
+            playlistService.previewMove(
                 playlistId: playlistId,
                 fromIndex: fromIndex,
                 toIndex: toIndex,

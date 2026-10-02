@@ -343,6 +343,25 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.displayedSearchQuery == "a")
     }
 
+    /// The memo is never cleared, so it is read through the cache: a query the cache evicted
+    /// reopens nothing, and one whose page showed a failure is not remembered.
+    @Test func `the search row reopens neither an evicted nor a failed query`() {
+        let store = AppStore()
+        let coordinator = NavigationCoordinator(store: store)
+        store.setSearchResults(emptySearchResults, for: "shown")
+        coordinator.navigateToSearchResults(query: "shown")
+        store.setSearchFailure(URLError(.notConnectedToInternet), for: "failed")
+        coordinator.navigateToSearchResults(query: "failed")
+        #expect(coordinator.reopenableSearchQuery == "shown")
+
+        for index in 0 ..< AppStore.searchResultsLimit {
+            store.setSearchResults(emptySearchResults, for: "other-\(index)")
+        }
+
+        #expect(store.searchResults(for: "shown") == nil)
+        #expect(coordinator.reopenableSearchQuery == nil)
+    }
+
     @Test func `search results cache is bounded and evicted routes are invalidated`() {
         let store = AppStore()
         let coordinator = NavigationCoordinator(store: store)
