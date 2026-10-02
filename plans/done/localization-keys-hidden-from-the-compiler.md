@@ -65,4 +65,4 @@ bundle's preferred localization, so both were checked:
 ### Seen in passing
 
 The same French header says "2 hr 44 min": `formatDuration` writes "hr" and "min" in English
-for every language. That is `plans/open/durations-are-written-in-english.md`.
+for every language. That is `plans/done/units-are-written-the-english-way.md`.
