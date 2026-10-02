@@ -463,7 +463,7 @@ public actor LibrespotClient {
         debugLog("LibrespotClient", "Resolving context \(uri)")
         // Beside the resolve, which gives an album's rows no uids. Only an album asks.
         let rowUids = contextRowUids.map { fetch in Task { await fetch(uri) } }
-        let context = try await spclient.resolveContext(uri)
+        let context = try await spclient.resolveContext(uri, pageLimit: Self.pagesUpFront(of: uri))
         guard !context.tracks.isEmpty else {
             throw LibrespotError.trackNotFound("Context has no tracks")
         }
@@ -478,7 +478,7 @@ public actor LibrespotClient {
         }
 
         let start = startingPoint(in: context.tracks, uids: uids, index: trackIndex, uri: startingAtUri, uid: startingAtUid, resumingAt: resumingAtUid)
-        try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, playingQueued: start.queued, positionMs: positionMs, paused: paused)
+        try await play(contextUri: uri, tracks: start.tracks, uids: start.uids, startIndex: start.index, metadata: context.metadata, nextPage: context.nextPageUrl, playingQueued: start.queued, positionMs: positionMs, paused: paused)
         // Otherwise the rows take them when they come: a jump that names a row's uid then
         // reaches that row, not a queued copy of its track.
         if !uids.contains(where: { $0 != nil }), let rowUids {
@@ -669,7 +669,16 @@ public actor LibrespotClient {
         guard let spclient else {
             throw LibrespotError.notInitialized
         }
-        return try await spclient.resolveContext(normalized).tracks
+        return try await spclient.resolveContext(normalized, pageLimit: Self.pagesUpFront(of: normalized)).tracks
+    }
+
+    /// How many of a context's pages are fetched before it plays or is queued: one of a station's,
+    /// which names pages without end; following them cost about 0.4 s before a station played
+    /// (2026-10-02), and the rest come as its rows run out (`lineUpNextPage`). Any other context
+    /// comes whole, as a 150-track playlist did in one page, for shuffle and repeat to have all
+    /// of its rows.
+    nonisolated static func pagesUpFront(of uri: String) -> Int {
+        uri.hasPrefix("spotify:station:") ? 1 : 10
     }
 
     public func setShuffle(_ enabled: Bool) async {
@@ -696,24 +705,61 @@ public actor LibrespotClient {
         let next = repeatMode == .track
             ? playbackQueue.currentUri
             : playbackQueue.upcomingPlayable(skipping: knownUnplayable)
+        lineUpNextPage()
         if next == nil {
             lineUpAutoplay()
         }
         Task { [audioPipeline] in await audioPipeline?.setNextTrack(next) }
     }
 
+    /// How few rows may be left before the context's next page is fetched, as librespot fetched a
+    /// station's under 5.
+    private static let rowsBeforeNextPage = 5
+
+    /// The next page being fetched, so it is asked for once at a time.
+    private var nextPageFetch: String?
+
+    /// Fetches the context's next page as its rows run out: a station's, resolved a page at a time
+    /// (`pagesUpFront`). Its rows are then listed, reported and fetched ahead before the page
+    /// playing ends, as autoplay's are, and other devices' lists of what comes next do not run
+    /// dry. The url stays in the queue until its page comes, so a failed fetch is asked again with
+    /// the next track, and autoplay waits for it.
+    private func lineUpNextPage() {
+        guard let url = playbackQueue.nextPageUrl, nextPageFetch == nil, localState != nil, let spclient,
+              playbackQueue.upcoming(limit: Self.rowsBeforeNextPage).count < Self.rowsBeforeNextPage
+        else { return }
+        nextPageFetch = url
+        Task {
+            defer { nextPageFetch = nil }
+            let page: SPClient.ResolvedContext
+            do {
+                page = try await spclient.resolvePage(url)
+            } catch {
+                debugLog("LibrespotClient", "Next page of \(playbackQueue.contextUri) failed: \(error.localizedDescription)")
+                return
+            }
+            // Still playing here, the context that named this page. A page without rows ends the
+            // paging, rather than asking for the one it names at once.
+            guard localState != nil, playbackQueue.nextPageUrl == url else { return }
+            playbackQueue.appendPage(page.tracks, uids: page.uids, next: page.tracks.isEmpty ? nil : page.nextPageUrl)
+            debugLog("LibrespotClient", "Next page of \(playbackQueue.contextUri) lined up: \(page.tracks.count) track(s)")
+            publishQueue()
+            reportPlaybackToCluster()
+        }
+    }
+
     /// Asks for autoplay when nothing comes after the track playing here, with the account's
     /// autoplay on and nothing to repeat: its tracks are then listed, reported and fetched ahead
     /// before the context ends, as librespot's `add_autoplay_resolving_when_required` has them. A
     /// station is followed by none, as under go-librespot, and a bare list has no context to ask
-    /// for.
+    /// for; a context that names another page waits for it (`lineUpNextPage`).
     ///
     /// Asked from `announceNextTrack`, and again once the first track here reports, which the
     /// queue's publish can come before.
     private func lineUpAutoplay() {
         let contextUri = playbackQueue.contextUri
         guard autoplay, localState != nil, repeatMode == .off, !playbackQueue.autoplayAsked,
-              !contextUri.isEmpty, !contextUri.hasPrefix("spotify:station:"), let spclient,
+              !contextUri.isEmpty, !contextUri.hasPrefix("spotify:station:"), playbackQueue.nextPageUrl == nil, let spclient,
               playbackQueue.upcomingPlayable(skipping: knownUnplayable) == nil
         else { return }
         playbackQueue.markAutoplayAsked()
@@ -886,13 +932,14 @@ public actor LibrespotClient {
         uids: [String?] = [],
         startIndex: Int,
         metadata: [String: String] = [:],
+        nextPage: String? = nil,
         playingQueued queued: String? = nil,
         playingAutoplay autoplay: (tracks: [String], uids: [String?], station: String?)? = nil,
         positionMs: UInt64,
         paused: Bool,
     ) async throws {
         contextMetadata = metadata
-        playbackQueue.setContext(uri: contextUri, tracks: tracks, uids: uids, startIndex: startIndex)
+        playbackQueue.setContext(uri: contextUri, tracks: tracks, uids: uids, startIndex: startIndex, nextPage: nextPage)
         // Before the load, so the row before it never shows as the one playing.
         if let autoplay, !autoplay.tracks.isEmpty {
             playbackQueue.playAutoplay(autoplay.tracks, uids: autoplay.uids, from: autoplay.station, after: queued)
