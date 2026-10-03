@@ -143,13 +143,11 @@ enum SpotifyPlayer {
     /// Initializes the player: accesspoint login, dealer socket, Spirc
     /// registration, audio pipeline.
     ///
-    /// Credentials resolve inside the client — the stored reusable login from
-    /// an earlier grant if there is one, else a fresh keymaster token.
-    ///
-    /// The one place the client is told where its credentials come from, the
-    /// post-grant connect included: that once spelled them out for itself and
-    /// left the client token out, which is not optional, since spclient signs
-    /// like the desktop client.
+    /// Every connect goes through here, the post-grant one included: the saved
+    /// volume is applied first, and the client is told where its credentials
+    /// come from — the stored reusable login from an earlier grant if there is
+    /// one, else a fresh keymaster token, with the client token spclient
+    /// requires.
     @SpotifyPlayerActor
     static func initialize() async throws {
         syncSettingsFromUserDefaults()

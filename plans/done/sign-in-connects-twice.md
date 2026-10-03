@@ -37,9 +37,16 @@ connecting (`syncSettingsFromUserDefaults`), and the post-grant connect did not.
 - The post-grant connect goes through `SpotifyPlayer.initialize()`, so it applies the saved
   volume as every other connect does. `connectClient` folded into it.
 - `AuthViewModel` calls `initializeIfNeeded()` instead of `forceReinitialize()`.
-- `initializeIfNeeded()` first adopts a client that is already up (`handleConnectionChange`),
+- `initializeIfNeeded()` first adopts a client that is already up (`handleConnectionChange`,
+  renamed `adoptConnectedSession`, whose log line no longer calls every adoption a recovery),
   since the snapshot that says so can still be on its way to the view model when the sign-in
   resumes. Without that, it would see an uninitialized model and rebuild all the same.
+
+### Left as it was
+
+The sign-in still connects outside `PlaybackViewModel.runInitialization`, as before: without
+its generation check, readiness wait or Premium handling, and before the account mismatch is
+checked. `plans/open/sign-in-connects-outside-the-player-lifecycle.md`.
 
 ## Verification
 
