@@ -384,6 +384,9 @@ final class PlaybackViewModel {
         // would not catch it, because by then the bumped generation is the current one.
         guard generationBeforeWaiting == lifecycleGeneration else { return }
         guard force || !isInitialized else { return }
+        // A run waited for that Spotify refused for want of Premium would be refused again;
+        // Reconnect in Speakers, which forces, still tries.
+        guard force || localPlayback != .needsPremium else { return }
 
         let task = Task { @MainActor in
             await performInitialization()
