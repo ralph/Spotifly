@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-03
+
 ### Added
 - **Back (⌘[) and Forward (⌘]) in the Navigate menu,** the toolbar's history arrows, under the shortcuts Safari, Finder and Music use; ⌘← and ⌘→ stay Previous and Next track. The window publishes its navigation coordinator, and the two items are a small view inside the menu, so they follow the history as it moves. ⌘1–⌘4 go through the same coordinator, where they used a focused binding of the sidebar's selection. Plan: `plans/done/history-has-no-keyboard-shortcut.md`.
 - **A playlist's cover can be set and removed.** For a playlist you own, the toolbar's cover menu chooses an image file or removes the cover. The image goes up as its centre square, at most 640 pixels, as a JPEG, in the three requests the web player makes (captured 2026-10-02): the image to `image-upload.spotify.com/v4/playlist` for a token, the token to the playlist's `register-image` for the image's id, and that id as the playlist's `picture`. Removing sends `LIST_PICTURE` as having no value, as the web player does. The playlist is read again afterwards, so its page and its library row show the new cover at once. Plan: `plans/done/playlist-attributes-not-written.md`.
