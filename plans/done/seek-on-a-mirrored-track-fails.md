@@ -58,24 +58,35 @@ when nothing is loaded here, read and played as `resume()` did before:
 - **A seek** loads it paused at the new position.
 - **Previous** loads it paused at its start, which is the restart: nothing has played here to go
   back to.
-- **Next** and **a queue row** load it paused at its start, then move on from it as from any
-  track loaded here. That costs one load of a track they leave.
+- **Next** and **a row ahead in the queue** load it paused at its start, then move on from it as
+  from any track loaded here, queued and autoplay rows included. That costs one load of a track
+  they leave; measured, 80 ms passed before Next's own track started loading.
+- **A row before it in the queue** plays the context, or the list, from that row
+  (`TransferState.startingOver`): none of the mirrored rows played here, so none is in the
+  history. Another device is asked the same (`PlaybackViewModel.play(queueRow:)`).
 
 The takeover claims the role, as a handover does; `takeOver` and the mirror share that in
-`continueAsActive`, which also lets the role go when the load fails.
+`continueAsActive`, which also lets the role go when the load fails. A command that comes while a
+takeover loads waits for it and acts on the track it loaded, so a double-click on the queue's
+current row, a Play and a seek to 0, takes the track over once (from the review).
 
 When Spotify doesn't make the Mac active, it holds the track paused without the role. Nothing
 stood such a track down: `handleClusterUpdate` stopped only a device that *had* been active, and
 skips the mirror while something is loaded. Measured: the web player started playing and the bar
-went on showing the Mac's paused track. Now a track held here paused gives way to any device the
-cluster names active, as a paused active device does.
+went on showing the Mac's paused track. Now a track held here paused gives way to a device the
+cluster names active and playing, as a paused active device does. Only playing: a device that is
+named but paused might be the sender of a paused handover still loading here.
+
+Left for `plans/open/shuffle-and-queue-on-a-mirrored-track.md`: Shuffle and Add to Queue still act
+on the empty local queue with no device active.
 
 Not changed: this Mac's Previous goes back to the previous track whenever there is one, where the
 web player restarts the track past its first seconds.
 
 ## Verification
 
-- [x] Build, 627 unit tests and `swiftformat --lint`, exit 0, no warnings.
+- [x] Build, 629 unit tests and `swiftformat --lint`, exit 0, no warnings. `MirroredQueueTests`
+      cover `startingOver`, for a context and for a bare list.
 - [x] Live, Debug build of the branch, each from a fresh launch with no device active:
   - [x] A click on the seek bar at 2:30: the track loads paused at 150709 ms, the Mac becomes
         active, the web player shows 2:30 with "Wiedergabe über Spotifly". No error.
@@ -89,3 +100,11 @@ web player restarts the track past its first seconds.
       the web player playing.
 - [x] A handover still plays: in that run, `SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER` pulled the web
       player's playback here, which took it over at 64923 ms and became active.
+- [x] After the review's changes, the same build:
+  - [x] A double-click on the queue's current row: one takeover, playing, then the seek to 0
+        on the loaded track; it plays from the start.
+  - [x] A double-click on "Sunset Bird", a row before the current one: it plays from 0:00, and
+        the queue lists the rows after it. It used to fail with "no longer in the queue".
+  - [x] A paused handover: the web player paused at 0:53, pulled here; taken over paused at
+        53391 ms, active, and not let go.
+  - [x] A seek: loads paused at 133154 ms, active.

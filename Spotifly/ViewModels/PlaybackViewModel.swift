@@ -772,17 +772,13 @@ final class PlaybackViewModel {
     /// no url to build — the same condition, now a precondition instead of a round trip, and
     /// one fewer request on a path the user is waiting on.
     ///
-    /// What the local fallback recovers is **resume**, which is also the only one that needs
-    /// recovering. A paused pipeline still holds its track, so resuming plays on from where
-    /// it stopped; with nothing loaded here, the client takes over the track another device
-    /// left, which the bar mirrors. Either way the playing state that follows is reported to
-    /// Spirc as this device being active, which takes the Connect role back with it. The others reach a pipeline
-    /// that is stopped or empty and do nothing — and that is the right outcome rather than a
-    /// gap to close: with nobody active there is no track playing, so there is nothing to
-    /// pause, skip or seek. Activating for them would take the Connect role away from the
-    /// user's other clients in order to accomplish nothing, and making them work would mean
-    /// silently starting playback in response to "next" or "seek" — a different feature, not
-    /// this fix.
+    /// The local fallback acts on what is loaded here. A paused pipeline still holds its track,
+    /// and plays, seeks or skips from where it stopped. With nothing loaded, the client takes
+    /// over the track another device left, which the bar mirrors, as the web player does with
+    /// nobody active (`LibrespotClient.takeOverMirror`): Play plays it, a seek loads it paused
+    /// where the seek went, Previous restarts it paused, and Next plays on from it. With nobody
+    /// active there is no role to take from another client. The playing state that follows is
+    /// reported to Spirc as this device being active, which takes the Connect role with it.
     ///
     /// `promisesPosition` marks the commands whose caller moves the display ahead of
     /// playback — skips and seeks — and so have a promise to withdraw if they fail. Any
