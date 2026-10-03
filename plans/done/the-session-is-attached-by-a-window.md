@@ -1,6 +1,6 @@
 # The session is attached to playback by a window, not when the account signs in
 
-Status: **Open**, small
+Status: **Done** (2026-10-03)
 Components: `Spotifly/ViewModels/AuthViewModel.swift` (`isSignedIn`),
 `Spotifly/Store/LoggedInSession.swift` (`LoggedInSessions`),
 `Spotifly/Views/ContentView.swift`, `Spotifly/Views/LoggedInLifecycleModifier.swift`
@@ -30,13 +30,22 @@ its start is still a window's.
 
 ## Solution
 
-Proposed: the session starts when the account signs in. `AuthViewModel.isSignedIn`'s `didSet`,
-which already ends it, makes it, activates the queue service and attaches it to
-`PlaybackViewModel`, outside any view update and before the sign-in's connect. `ContentView`
-reads the session (`sessions.current`) without making one, and the window's task no longer
-attaches.
+As proposed: `AuthViewModel.isSignedIn`'s `didSet` starts the session (`startSession`): makes
+it, activates the queue service and attaches it to `PlaybackViewModel`, outside any view update
+and before the sign-in's connect, which `authorizeStreaming` starts right after setting it. The
+steps do nothing the second time, for a grant renewed while signed in. `ContentView` reads
+`sessions.current` and makes nothing; the window's task no longer activates or attaches, and
+the modifier lost its queue and track service reads.
 
 ## Verification
 
-A launch and a sign-in (the faked one, without the browser): the queue service's first update
-and the bar's and Control Center's titles, with the session attached before the connect.
+With throwaways that logged the session's start, showed the login screen while the keychain
+kept its grant, and answered the grant with the held one after 2 s (not committed):
+
+- **A sign-in:** the session started at 46.865, with the sign-in; the queue service's first
+  update at 47.158, before the connect's `Initialization complete` at 47.532, whose queue it
+  hydrated at once (47.537); one service (`svc#1`), no second-session warning. The bar and
+  Control Center then named the album's first track.
+- **A launch:** the session started at 17.538, the queue service followed at 17.793, the
+  connect completed at 19.133; the bar and Control Center named the track.
+- 625 unit tests pass.
