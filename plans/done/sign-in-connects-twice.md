@@ -46,7 +46,7 @@ connecting (`syncSettingsFromUserDefaults`), and the post-grant connect did not.
 
 The sign-in still connects outside `PlaybackViewModel.runInitialization`, as before: without
 its generation check, readiness wait or Premium handling, and before the account mismatch is
-checked. `plans/open/sign-in-connects-outside-the-player-lifecycle.md`.
+checked. `plans/done/sign-in-connects-outside-the-player-lifecycle.md`.
 
 ## Verification
 

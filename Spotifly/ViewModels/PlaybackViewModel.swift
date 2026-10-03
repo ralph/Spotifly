@@ -250,7 +250,6 @@ final class PlaybackViewModel {
     /// Premium, as it would again. Reconnect in Speakers still tries.
     func initializeIfNeeded() async {
         guard localPlayback != .needsPremium else { return }
-        adoptConnectedSession()
         await runInitialization(force: false)
     }
 
@@ -1292,9 +1291,8 @@ final class PlaybackViewModel {
     }
 
     /// Takes a session the client brought up on its own as this model's, rather than
-    /// rebuilding it: a recovery after an explicit initialization failed, or the connect a
-    /// sign-in makes. Reads the client itself, since the snapshot that says it is up can
-    /// still be on its way.
+    /// rebuilding it: a recovery after an explicit initialization failed. Reads the client
+    /// itself, since the snapshot that says it is up can still be on its way.
     ///
     /// Do not clear `isInitialized` on a not-ready snapshot: a transient disconnect belongs
     /// to `LibrespotClient`'s auto-recovery, and clearing it would make the next user
