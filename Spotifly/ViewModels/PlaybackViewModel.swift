@@ -52,6 +52,8 @@ final class PlaybackViewModel {
 
     private struct ShownPlayback: Equatable {
         var trackUri: String
+        /// `trackUri`'s id, parsed once with the report rather than on each read.
+        var trackId: String?
         /// Playing and not paused, for this Mac's player and for a device it mirrors alike.
         var isPlaying: Bool
         /// Zero until the stream reports this track's length, and never the previous track's:
@@ -733,21 +735,7 @@ final class PlaybackViewModel {
         }
     }
 
-    // MARK: - Playback State Helpers
-
-    func togglePlayPause(trackId: String) async {
-        if isPlaying, currentTrackUri == trackId {
-            // Route through pause() rather than calling SpotifyPlayer directly: it carries
-            // the connect-state fallback for remote devices, and it leaves isPlaying to the
-            // playback state the client publishes instead of asserting it here
-            pause()
-        } else if !isPlaying, currentTrackUri == trackId {
-            resume()
-        } else {
-            // Play new track
-            await playTrack(trackId: trackId)
-        }
-    }
+    // MARK: - Session
 
     /// Gives the model the session's store and track service (`LoggedInSession`), which outlive
     /// the window. Held weakly, so ending the session at a logout frees them.
@@ -1170,7 +1158,7 @@ final class PlaybackViewModel {
     /// The id of the track the bar shows: the *logical* track, whose store entry owns the
     /// displayed metadata. The decoded audio item may be a relinked alternative with another id.
     var currentTrackId: String? {
-        currentTrackUri.flatMap(SpotifyAPI.parseTrackURI)
+        shown?.trackId
     }
 
     /// The store's entry for the track the bar shows, for the bar and Control Center alike; nil
@@ -1456,6 +1444,7 @@ final class PlaybackViewModel {
         let reportedDurationMs = Self.playbackMilliseconds(state.durationMs).flatMap { $0 > 0 ? $0 : nil }
         shown = ShownPlayback(
             trackUri: state.trackUri,
+            trackId: SpotifyAPI.parseTrackURI(state.trackUri),
             isPlaying: state.isPlaying,
             durationMs: reportedDurationMs ?? (trackChanged ? 0 : trackDurationMs),
             shuffle: state.shuffle,
@@ -1733,8 +1722,7 @@ final class PlaybackViewModel {
     /// Toggles the current track's favorite status, for the now-playing bar's heart and the Like
     /// menu item (⌘L), which works without the bar.
     func toggleCurrentTrackFavorite() async {
-        guard let trackId = currentTrackId, let trackService
-        else { return }
+        guard let trackId = currentTrackId, let trackService else { return }
 
         do {
             try await trackService.toggleFavorite(trackId: trackId)

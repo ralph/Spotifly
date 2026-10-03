@@ -88,13 +88,14 @@ struct NowPlayingBarView: View {
                     }
                     .popover(isPresented: $showAlbumArtMenu, arrowEdge: .top) {
                         VStack(alignment: .leading, spacing: 0) {
-                            if let artistId = playbackViewModel.currentTrack?.artistId {
+                            let track = playbackViewModel.currentTrack
+                            if let artistId = track?.artistId {
                                 albumArtMenuItem("track.menu.go_to_artist", systemImage: "person.circle") {
                                     navigationCoordinator.navigateToArtistSection(artistId: artistId)
                                 }
                             }
 
-                            if let albumId = playbackViewModel.currentTrack?.albumId {
+                            if let albumId = track?.albumId {
                                 albumArtMenuItem("track.menu.go_to_album", systemImage: "square.stack") {
                                     navigationCoordinator.navigateToAlbumSection(albumId: albumId)
                                 }
