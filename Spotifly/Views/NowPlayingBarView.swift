@@ -327,11 +327,6 @@ struct NowPlayingBarView: View {
         playbackViewModel.interpolatedPositionMs
     }
 
-    /// The current track's length, 0 while none is known; the same Control Center shows.
-    private var currentDurationMs: UInt32 {
-        playbackViewModel.displayedDurationMs ?? 0
-    }
-
     private var progressBar: some View {
         // Lower frame rate when not hovering: 10 FPS on hover, 1 FPS otherwise.
         // Paused while nothing plays: the position is not moving, and each
@@ -339,8 +334,10 @@ struct NowPlayingBarView: View {
         // app's CPU when idle. A seek or a new position still redraws it,
         // through the view model properties the content reads.
         TimelineView(.animation(minimumInterval: isHoveringSeekBar ? 0.1 : 1.0, paused: !playbackViewModel.isPlaying)) { _ in
+            // The length Control Center shows too, 0 while none is known.
+            let durationMs = playbackViewModel.displayedDurationMs ?? 0
             let position = formatTrackTime(milliseconds: Int(currentPositionMs))
-            let duration = formatTrackTime(milliseconds: Int(currentDurationMs))
+            let duration = formatTrackTime(milliseconds: Int(durationMs))
             HStack(spacing: 8) {
                 // Show timestamp only on hover
                 if isHoveringSeekBar {
@@ -358,7 +355,7 @@ struct NowPlayingBarView: View {
                             playbackViewModel.seek(to: UInt32(newValue))
                         },
                     ),
-                    in: 0 ... Double(max(currentDurationMs, 1)),
+                    in: 0 ... Double(max(durationMs, 1)),
                 )
                 .controlSize(.mini)
                 .tint(.green)
