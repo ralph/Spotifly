@@ -33,18 +33,6 @@ struct NowPlayingBarView: View {
         playbackViewModel.currentTrackUri != nil
     }
 
-    /// Extract track ID from URI (spotify:track:XXXX -> XXXX)
-    private var currentTrackId: String? {
-        guard let uri = playbackViewModel.currentTrackUri else { return nil }
-        return SpotifyAPI.parseTrackURI(uri)
-    }
-
-    /// Current track from global store (populated by QueueService)
-    private var currentTrack: Track? {
-        guard let trackId = currentTrackId else { return nil }
-        return store.tracks[trackId]
-    }
-
     // Fixed dimensions for the now playing bar (in points)
     private static let barWidth: CGFloat = 700
     private static let barHeight: CGFloat = 60
@@ -62,13 +50,13 @@ struct NowPlayingBarView: View {
             .padding([.bottom], windowState.isMiniPlayerMode ? 0 : Self.barBottomPadding)
             .newPlaylistPrompt(
                 isPresented: $showNewPlaylistDialog,
-                trackId: currentTrack?.id,
+                trackId: playbackViewModel.currentTrack?.id,
                 onAdded: showSuccessFeedback,
             )
-            .task(id: currentTrackId) {
+            .task(id: playbackViewModel.currentTrackId) {
                 await resolveCurrentTrackMetadataIfNeeded()
             }
-            .task(id: currentTrackId) {
+            .task(id: playbackViewModel.currentTrackId) {
                 await resolveCurrentTrackFavoriteStatusIfNeeded()
             }
     }
@@ -100,13 +88,13 @@ struct NowPlayingBarView: View {
                     }
                     .popover(isPresented: $showAlbumArtMenu, arrowEdge: .top) {
                         VStack(alignment: .leading, spacing: 0) {
-                            if let artistId = currentTrack?.artistId {
+                            if let artistId = playbackViewModel.currentTrack?.artistId {
                                 albumArtMenuItem("track.menu.go_to_artist", systemImage: "person.circle") {
                                     navigationCoordinator.navigateToArtistSection(artistId: artistId)
                                 }
                             }
 
-                            if let albumId = currentTrack?.albumId {
+                            if let albumId = playbackViewModel.currentTrack?.albumId {
                                 albumArtMenuItem("track.menu.go_to_album", systemImage: "square.stack") {
                                     navigationCoordinator.navigateToAlbumSection(albumId: albumId)
                                 }
@@ -167,7 +155,7 @@ struct NowPlayingBarView: View {
 
     @ViewBuilder
     private func albumArt(size: CGFloat) -> some View {
-        if let url = currentTrack?.images.url(for: size, scale: displayScale) {
+        if let url = playbackViewModel.currentTrack?.images.url(for: size, scale: displayScale) {
             let urlString = url.absoluteString
             if let cachedImage = cachedAlbumArtImage, cachedAlbumArtURL == urlString {
                 // Use cached image
@@ -251,7 +239,7 @@ struct NowPlayingBarView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(12)
                     }
-            } else if let track = currentTrack {
+            } else if let track = playbackViewModel.currentTrack {
                 Text(track.name)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
@@ -413,7 +401,7 @@ struct NowPlayingBarView: View {
 
     /// Whether the current track is favorited (from global store)
     private var isCurrentTrackFavorited: Bool {
-        guard let trackId = currentTrackId else { return false }
+        guard let trackId = playbackViewModel.currentTrackId else { return false }
         return store.isFavorite(trackId)
     }
 
@@ -432,7 +420,7 @@ struct NowPlayingBarView: View {
     }
 
     private func resolveCurrentTrackMetadataIfNeeded() async {
-        guard let trackId = currentTrackId else { return }
+        guard let trackId = playbackViewModel.currentTrackId else { return }
 
         do {
             try await trackService.ensureTracksLoaded(trackIds: [trackId])
@@ -460,7 +448,7 @@ struct NowPlayingBarView: View {
     /// unread, and which nothing subscribes to at all now (`plans/done/single-grant-partner-api.md`,
     /// task 12). Polling on view re-appearance was never going to be the right mechanism for that.
     private func resolveCurrentTrackFavoriteStatusIfNeeded() async {
-        guard let trackId = currentTrackId else { return }
+        guard let trackId = playbackViewModel.currentTrackId else { return }
 
         await trackService.ensureFavoriteStatuses(trackIds: [trackId])
     }
@@ -549,7 +537,7 @@ struct NowPlayingBarView: View {
 
     @ViewBuilder
     private var trackMenu: some View {
-        if let track = currentTrack {
+        if let track = playbackViewModel.currentTrack {
             Menu {
                 TrackContextMenu(
                     track: track,
