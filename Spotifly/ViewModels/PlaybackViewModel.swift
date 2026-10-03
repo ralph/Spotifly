@@ -46,7 +46,8 @@ final class PlaybackViewModel {
     /// `player.playback` instead, it would change at the player model's `apply`, one
     /// `Observations` delivery before the anchor, and a frame drawn in between runs a paused
     /// anchor on or stops a playing one. It holds no position, so a report that only moves the
-    /// position is an equal write, which the lists that mark the playing row do not hear.
+    /// position is an equal write, which the lists that mark the playing row do not hear; a
+    /// pause, a change of shuffle or a length arriving still reach them, once each.
     private var shown: ShownPlayback?
 
     private struct ShownPlayback: Equatable {
@@ -283,10 +284,7 @@ final class PlaybackViewModel {
             isLoggingOut = true
             defer { isLoggingOut = false }
 
-            await SpotifyPlayer.shutdownAndCleanup()
-            // After the teardown, whose last report has no playback: one still on its way
-            // would otherwise put the track back, and a report without playback keeps it.
-            clearPlaybackState()
+            await endSession()
         }
         logoutTask = task
         await task.value
@@ -394,13 +392,21 @@ final class PlaybackViewModel {
         // leaves a live session behind, and only this view model knows one happened.
         if generation != lifecycleGeneration {
             debugLog("PlaybackViewModel", "Initialization outlived a logout — tearing it back down")
-            await SpotifyPlayer.shutdownAndCleanup()
+            await endSession()
             isInitialized = false
             errorMessage = nil
-            // Whatever that session mirrored belongs to the account that left.
-            clearPlaybackState()
         }
         isLoading = false
+    }
+
+    /// Takes this Mac off Spotify Connect and forgets what the session played, which belongs
+    /// to an account that is leaving.
+    ///
+    /// Forgets after the teardown, whose last report has no playback: a report still on its
+    /// way would otherwise put the track back, and one without playback keeps it.
+    private func endSession() async {
+        await SpotifyPlayer.shutdownAndCleanup()
+        clearPlaybackState()
     }
 
     /// Forgets the track: publishes the stopped rate before clearing the URI, then removes

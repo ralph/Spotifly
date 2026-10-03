@@ -104,7 +104,8 @@ Done in the third step, **one value for what the bar shows**:
   a few ms later. Every load ends in a playing or paused report, so the report always does it.
 - **The local start's volume stays.** It is not the mixer's (the output gain is applied by
   `volume`'s `didSet`), but the Connect volume: `SpircController` registers at 50% and keeps
-  that until told, so other devices would draw this Mac's slider at half.
+  that until told, so other devices would draw this Mac's slider at half. That it does so
+  until the first start is `plans/open/this-mac-registers-at-half-volume.md`.
 
 Not done, deliberately: computing `isPlaying` and the track straight from `player.playback`.
 They would change one `Observations` delivery before the anchor (above), and every report
@@ -165,5 +166,6 @@ a failed load, and ran `shutdownForLogout` without touching the credentials.
   each track's length; when it quit, the bar kept its track, stopped at 9919 ms.
 - 617 unit tests pass.
 
-Seen on the way, filed: `plans/open/a-released-track-shows-its-last-reported-position.md`.
+Seen on the way, filed: `plans/open/a-released-track-shows-its-last-reported-position.md`, and
+from the review, `plans/open/this-mac-registers-at-half-volume.md`.
 
