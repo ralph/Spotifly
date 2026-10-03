@@ -226,6 +226,7 @@ final class PlaybackViewModel {
     /// Premium, as it would again. Reconnect in Speakers still tries.
     func initializeIfNeeded() async {
         guard localPlayback != .needsPremium else { return }
+        adoptConnectedSession()
         await runInitialization(force: false)
     }
 
@@ -1243,7 +1244,7 @@ final class PlaybackViewModel {
     private func observePlayer() {
         Task { [weak self, player] in
             for await _ in Observations({ player.connection }) {
-                self?.handleConnectionChange()
+                self?.adoptConnectedSession()
             }
         }
         Task { [weak self, player] in
@@ -1267,14 +1268,16 @@ final class PlaybackViewModel {
         }
     }
 
-    /// Adopts a recovery the client completed on its own after an explicit initialization
-    /// failed.
+    /// Takes a session the client brought up on its own as this model's, rather than
+    /// rebuilding it: a recovery after an explicit initialization failed, or the connect a
+    /// sign-in makes. Reads the client itself, since the snapshot that says it is up can
+    /// still be on its way.
     ///
     /// Do not clear `isInitialized` on a not-ready snapshot: a transient disconnect belongs
     /// to `LibrespotClient`'s auto-recovery, and clearing it would make the next user
     /// command start a destructive rebuild from here. An explicit initialization clears it
     /// itself before rebuilding.
-    private func handleConnectionChange() {
+    private func adoptConnectedSession() {
         syncConnectionReadiness()
 
         guard isConnectionReady,
@@ -1285,7 +1288,7 @@ final class PlaybackViewModel {
             return
         }
 
-        debugLog("PlaybackViewModel", "Adopting recovery the client completed on its own")
+        debugLog("PlaybackViewModel", "Adopting the session the client brought up on its own")
         isInitialized = true
         errorMessage = nil
     }

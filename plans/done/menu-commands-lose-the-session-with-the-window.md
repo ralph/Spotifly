@@ -1,6 +1,7 @@
 # The logged-in session went with its window
 
-Status: **Done** 2026-10-02, verified live, except a logout, which needs the user to sign in again
+Status: **Done** 2026-10-02, verified live; the logout and sign-in by the user on 2026-10-03,
+whose log showed a fresh store after the sign-in (`store:81`, then `store:691`)
 Components: `Spotifly/Store/LoggedInSession.swift` (new), `Spotifly/SpotiflyApp.swift`,
 `Spotifly/ViewModels/AuthViewModel.swift`, `Spotifly/Views/ContentView.swift`,
 `Spotifly/Views/LoggedInView.swift`, `Spotifly/Views/LoggedInLifecycleModifier.swift`,
