@@ -622,8 +622,9 @@ final class PlaybackViewModel {
             try await start()
             // The track, whether it plays and where are the player's reports, which anchor the
             // position as they come: every load ends in one that says playing or paused, and
-            // the start returns between the first and that one (measured). The client reports
-            // its own default volume to other devices until it is told the saved one.
+            // the start returns between the first and that one (measured). The volume goes
+            // with the start for a slider moved while no device was active, which the debounce
+            // sends nowhere; unchanged, Spirc reports nothing.
             SpotifyPlayer.setVolume(volume)
         } catch is CancellationError {
             // Another start overtook this one; it reports for itself.

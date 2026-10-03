@@ -43,7 +43,9 @@ public actor SpircController {
     /// Logical Connect volume (0…65535) this device reports. Other clients
     /// render their slider from it, so a hard-coded value pins every remote
     /// view of this Mac at that number no matter what it is really playing at.
-    private var volume: UInt32 = 65535 / 2
+    /// Registered with the one the session was given, which a new session
+    /// otherwise started at half.
+    private var volume: UInt32
 
     /// Heartbeat task; Spotify expects periodic PutState even without
     /// changes, and other clients drop devices that go quiet.
@@ -135,10 +137,12 @@ public actor SpircController {
         deviceInfo: DeviceInfo,
         accesspoint: Accesspoint,
         dealerConnection: DealerConnection,
+        volume: UInt32,
     ) {
         self.deviceInfo = deviceInfo
         self.accesspoint = accesspoint
         self.dealerConnection = dealerConnection
+        self.volume = volume
 
         debugLog("SpircController", "Created for device: \(deviceInfo.deviceName)")
     }

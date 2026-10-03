@@ -144,17 +144,21 @@ enum SpotifyPlayer {
     /// registration, audio pipeline.
     ///
     /// Every connect goes through here, the post-grant one included: the saved
-    /// volume is applied first, and the client is told where its credentials
+    /// volume is applied first, at the output and as the one this Mac registers
+    /// at on Spotify Connect, and the client is told where its credentials
     /// come from — the stored reusable login from an earlier grant if there is
     /// one, else a fresh keymaster token, with the client token spclient
     /// requires.
     @SpotifyPlayerActor
     static func initialize() async throws {
-        syncSettingsFromUserDefaults()
+        let volume = savedVolume
+        // At the output up front, so the first moments of audio do not play at full volume.
+        setOutputVolume(volume)
         try await LibrespotClient.shared.initialize(
             httpCredentials: .live,
             usernameProvider: { await KeymasterSession.shared.username },
             contextRowUids: { uri in await albumRowUids(uri) },
+            volume: volume,
         )
     }
 
@@ -502,11 +506,10 @@ enum SpotifyPlayer {
         UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
     }
 
-    private nonisolated static func syncSettingsFromUserDefaults() {
-        let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
-        // Apply the saved volume at the output up front so the first moments
-        // of audio do not play at full volume.
-        setOutputVolume(savedVolume > 0 ? savedVolume : 0.5)
+    /// The volume the slider last saved, or half when it never has.
+    private nonisolated static var savedVolume: Double {
+        let saved = UserDefaults.standard.double(forKey: "playbackVolume")
+        return saved > 0 ? saved : 0.5
     }
 }
 
