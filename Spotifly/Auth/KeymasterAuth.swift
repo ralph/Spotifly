@@ -124,8 +124,6 @@ nonisolated enum KeymasterAuth {
     // MARK: - The flow
 
     /// Runs the grant: opens the browser, waits for the loopback redirect, exchanges the code.
-    ///
-    /// Blocks on a human, so callers should not run it at a user-initiated QoS.
     static func authorize() async throws -> KeymasterTokens {
         let server = LoopbackCallbackServer()
         let port = try await server.start()

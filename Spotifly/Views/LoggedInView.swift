@@ -71,6 +71,25 @@ struct LoggedInView: View {
             }
         }
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
+        // A grant started in here, from Speakers or the play alert, that did not take: refused
+        // for another account, or failed. It waits for OK, since the grant finishes in the
+        // browser, where a passing message in the bar would be missed; and it is on the window
+        // rather than the content, which the mini player does not show.
+        .alert(
+            "auth.enable_playback_failed_title",
+            isPresented: Binding(
+                get: { authViewModel.errorMessage != nil },
+                set: {
+                    if !$0 {
+                        authViewModel.errorMessage = nil
+                    }
+                },
+            ),
+        ) {
+            Button("common.ok", role: .cancel) {}
+        } message: {
+            Text(authViewModel.errorMessage ?? "")
+        }
         // Inside the environment below, so the modifier reads the services from it.
         .modifier(LoggedInLifecycleModifier())
         .environment(session: session)
@@ -135,7 +154,7 @@ struct LoggedInView: View {
             Button("playback.needs_authorization_authorize") {
                 // Through the view model, so the grant this starts can be cancelled from
                 // Speakers — the alert is gone by the time the browser answers.
-                authViewModel.startStreamingAuthorization(expectedAccountId: session.store.userId)
+                authViewModel.startStreamingAuthorization()
             }
             Button("common.cancel", role: .cancel) {}
         } message: {
@@ -151,24 +170,6 @@ struct LoggedInView: View {
             Button("common.ok", role: .cancel) {}
         } message: {
             Text("playback.needs_premium_message")
-        }
-        // A grant started in here, from Speakers or the play alert, that did not take:
-        // refused for another account, or failed. It waits for OK, since the grant finishes in
-        // the browser, where a passing message in the bar would be missed.
-        .alert(
-            "auth.enable_playback_failed_title",
-            isPresented: Binding(
-                get: { authViewModel.errorMessage != nil },
-                set: {
-                    if !$0 {
-                        authViewModel.errorMessage = nil
-                    }
-                },
-            ),
-        ) {
-            Button("common.ok", role: .cancel) {}
-        } message: {
-            Text(authViewModel.errorMessage ?? "")
         }
     }
 
