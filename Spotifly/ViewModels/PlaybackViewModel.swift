@@ -226,6 +226,9 @@ final class PlaybackViewModel {
     /// Premium, as it would again. Reconnect in Speakers still tries.
     func initializeIfNeeded() async {
         guard localPlayback != .needsPremium else { return }
+        // The client may be up without this model having heard yet: a sign-in connects it
+        // itself, and the snapshot saying so can still be on its way. Adopted, not rebuilt.
+        handleConnectionChange()
         await runInitialization(force: false)
     }
 

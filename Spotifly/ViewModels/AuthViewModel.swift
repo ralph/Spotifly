@@ -141,11 +141,10 @@ final class AuthViewModel {
             }
 
             isSignedIn = true
-            // Build the session now rather than waiting for the next play. The grant only
-            // wrote credentials to disk; until something connects with them this Mac is
-            // still not registered with Spotify Connect, so it would stay missing from
-            // Speakers and the next play would raise the alert all over again.
-            await PlaybackViewModel.shared.forceReinitialize()
+            // The grant's connect has registered this Mac with Spotify Connect; the player
+            // takes that session as its own. Forcing a rebuild here, as it once did, tore a
+            // working session down 140 ms after it came up and built an identical one.
+            await PlaybackViewModel.shared.initializeIfNeeded()
         case .superseded:
             // A logout won the race and the credentials were removed again. Nothing went
             // wrong and there is nothing to report.
