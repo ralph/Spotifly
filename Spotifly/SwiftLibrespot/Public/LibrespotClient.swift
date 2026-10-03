@@ -608,9 +608,9 @@ public actor LibrespotClient {
             return
         }
 
-        // The playhead only while the pipeline holds the queue's track: while the one Previous
-        // went back to loads, it is still the track before's, and a second press would have
-        // restarted instead of going back again.
+        // The playhead only while the pipeline holds the queue's track: while a track Next moved
+        // to loads, it is still the one left, and a Previous at once would have restarted
+        // instead of going back to it.
         let holdsCurrent = localState.map { $0.trackUri == playbackQueue.currentUri } ?? false
         let positionMs = holdsCurrent ? await audioPipeline?.currentPositionMs() ?? 0 : 0
         guard positionMs < Self.previousGoesBackWithinMs,
