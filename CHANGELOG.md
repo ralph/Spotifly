@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Documented app-only AirPlay feasibility and a conditional implementation plan.** The macOS 27 renderer supports selecting a Core Audio output, but the native AirPlay picker accepts an `AVPlayer` and cannot directly route it. `plans/open/spotifly-only-airplay.md` uses Küche HomePod to test initiation, audio isolation and modern AirPlay behavior. Current HAL inventories already fail discovery; only a cheap signed-app confirmation comes next. Claude's review added explicit transport evidence, flush accounting, route-loss and teardown requirements. Legacy AirPlay support is outside scope; initiation remains unverified.
 - **Previous restarts the track once it is 3 seconds in, as on Spotify's clients.** It went back to the track before whenever there was one, however far into the current track. Measured with the web player: before 3 s Previous goes to the track before, which plays, even from paused; after that it restarts the track, playing or paused as it was. librespot's `handle_prev` uses the same 3 s. A mirrored track, with nothing playing anywhere, follows the same rule: within its first 3 s Previous plays the row the Queue section shows before it. Previous sent to another device is left to that device. Plan: `plans/done/previous-restarts-past-three-seconds.md`.
 
 ### Fixed
