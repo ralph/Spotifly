@@ -737,8 +737,9 @@ final class PlaybackViewModel {
 
     // MARK: - Session
 
-    /// Gives the model the session's store and track service (`LoggedInSession`), which outlive
-    /// the window. Held weakly, so ending the session at a logout frees them.
+    /// Gives the model the session's store and track service (`LoggedInSession`), as the account
+    /// signs in (`AuthViewModel.startSession`). Held weakly, so ending the session at a logout
+    /// frees them.
     func attach(store: AppStore, trackService: TrackService) {
         self.store = store
         self.trackService = trackService

@@ -58,10 +58,11 @@ final class QueueService {
         networkObservation?.cancel()
     }
 
-    /// Starts following the player and the store, from the logged-in view's launch task.
+    /// Starts following the player and the store, as the session starts
+    /// (`LoggedInSessions.start`).
     ///
-    /// Idempotent: that task runs again when a window reopens on the session, and the guard reads
-    /// an observation it protects, all set together, rather than a separate flag that could drift.
+    /// Idempotent: the guard reads an observation it protects, all set together, rather than a
+    /// separate flag that could drift.
     func activate() {
         guard queueObservation == nil else { return }
         recordActivation(self)

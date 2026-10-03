@@ -19,11 +19,13 @@ final class AuthViewModel {
     /// is the *other* half, and it is deliberately not consulted here: a grant whose accesspoint
     /// connect failed still browses, and the app already has a way to offer playback again.
     ///
-    /// Signed out, whatever the way, the session ends: the logout, a grant found revoked, and a
-    /// launch that finds no grant.
+    /// Signed in, the account's session starts (`startSession`). Signed out, whatever the way,
+    /// it ends: the logout, a grant found revoked, and a launch that finds no grant.
     var isSignedIn = false {
         didSet {
-            if !isSignedIn {
+            if isSignedIn {
+                startSession()
+            } else {
                 sessions.end()
             }
         }
@@ -32,6 +34,20 @@ final class AuthViewModel {
     /// The signed-in account's store and services, which outlive a window. Here because their
     /// lifetime is the sign-in's, and this view model, like them, is the app's.
     let sessions = LoggedInSessions()
+
+    /// Starts the account's session and hands it to playback at once: the queue service follows
+    /// the player, and `PlaybackViewModel` reads the track's metadata and the favorite toggle
+    /// through it. Nothing for a grant renewed while signed in, whose session goes on.
+    ///
+    /// Here, as the account signs in, rather than in the first window's task, which ran after
+    /// its first frame, and so after the connect a sign-in starts: a report arriving in between
+    /// was not hydrated. Not where the session is read, in `ContentView`'s body, which must not
+    /// change state.
+    private func startSession() {
+        guard sessions.current == nil else { return }
+        let session = sessions.start()
+        PlaybackViewModel.shared.attach(store: session.store, trackService: session.trackService)
+    }
 
     /// Why the last grant did not take: on the login screen while signed out, and as an alert
     /// in the signed-in app.
