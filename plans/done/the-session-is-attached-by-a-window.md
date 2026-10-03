@@ -30,10 +30,13 @@ its start is still a window's.
 
 ## Solution
 
-As proposed: `AuthViewModel.isSignedIn`'s `didSet` starts the session (`startSession`): makes
-it, activates the queue service and attaches it to `PlaybackViewModel`, outside any view update
-and before the sign-in's connect, which `authorizeStreaming` starts right after setting it. The
-steps do nothing the second time, for a grant renewed while signed in. `ContentView` reads
+As proposed: `AuthViewModel.isSignedIn`'s `didSet` starts the session (`startSession`),
+outside any view update and before the sign-in's connect, which `authorizeStreaming` starts
+right after setting it. From the review: `LoggedInSessions.start()`, which replaces
+`session()`, makes the session and activates its queue service, so a current session is always
+a started one, and `AuthViewModel` attaches it to `PlaybackViewModel`; a grant renewed while
+signed in finds the session and does nothing (re-attaching the same objects still notified
+observers). `ContentView` reads
 `sessions.current` and makes nothing; the window's task no longer activates or attaches, and
 the modifier lost its queue and track service reads.
 
@@ -48,4 +51,9 @@ kept its grant, and answered the grant with the held one after 2 s (not committe
   Control Center then named the album's first track.
 - **A launch:** the session started at 17.538, the queue service followed at 17.793, the
   connect completed at 19.133; the bar and Control Center named the track.
-- 625 unit tests pass.
+- The same again on the final code: the session at 36.024 with the sign-in, the queue service at
+  36.272, the connect at 36.654; at a launch 53.258, 53.664 and 54.944.
+- 624 unit tests pass (two of the session tests became one, as starting now activates).
+
+Left, from the review: the launch's connect still runs from the window's task, after the
+profile and start page requests, where a sign-in's runs from `AuthViewModel`. Not filed.
