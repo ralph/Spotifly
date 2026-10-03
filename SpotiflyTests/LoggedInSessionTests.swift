@@ -35,7 +35,7 @@ struct LoggedInSessionTests {
     /// them, and a cancelled observation ends.
     @Test func `an ended session is freed`() async throws {
         let sessions = LoggedInSessions()
-        weak var store = sessions.start().store
+        weak let store = sessions.start().store
         await settle()
 
         sessions.end()
