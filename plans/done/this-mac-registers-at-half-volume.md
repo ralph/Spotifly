@@ -24,10 +24,14 @@ did for the output gain), keeps it as `logicalVolume`, and passes it to each ses
 `connect`, which registers `SpircController` at it: the first connect and every recovery. A
 change goes on through `setVolume` as before.
 
-The push on every local start stays, against the plan's proposal: a slider moved while no
-device was active goes to neither this Mac nor a remote one (the debounce has no route), and
-the start is what tells the client. Unchanged, `SpircController.updateVolume` reports nothing,
-so it costs nothing.
+From the review: the slider's debounce sent a move to this Mac's client only while this Mac
+was the active device, so a move while no device was active went nowhere, and the cluster kept
+the old volume. It now goes to the client then too, whether the player is up or not.
+
+The push on every local start stays, against the plan's proposal: a remote device whose volume
+Connect does not say leaves the slider showing, and saving, this Mac's volume, while the
+debounce sends the move to that device; the start is what tells the client. Unchanged,
+`SpircController.updateVolume` reports nothing, so it costs nothing.
 
 ## Verification
 
@@ -38,4 +42,7 @@ in the running app, with nothing played:
 - **After:** `Spotifly:61` at 6, 12 and 20 s.
 - **A recovery** (`SPOTIFLY_DEBUG_DROP_AP_AFTER=8`): the transport lost at 9 s, the device
   registered again, and the cluster said 61 before and after.
+- **A move while no device was active** (a throwaway set the volume to 0.42, then back): the
+  cluster said 42 three seconds later, and 61 again after the restore, with a `volumeChanged`
+  PutState each time; the saved value went back to 0.6059375.
 - A unit test: `SpircController` registers at the volume it is given. 623 tests pass.

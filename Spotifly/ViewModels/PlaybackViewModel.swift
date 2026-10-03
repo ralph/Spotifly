@@ -222,12 +222,8 @@ final class PlaybackViewModel {
         setupRemoteCommandCenter()
         observeSystemSleep()
 
-        // Load saved volume (but don't apply it yet - mixer isn't initialized)
-        let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
-        if savedVolume > 0 {
-            volume = savedVolume
-        }
-        // Volume will be applied when playback starts
+        // The output gets it at `SpotifyPlayer.initialize`.
+        volume = SpotifyPlayer.savedVolume
 
         // Set initial Now Playing info to claim media controls
         var initialInfo: [String: Any] = [:]
@@ -623,8 +619,9 @@ final class PlaybackViewModel {
             // The track, whether it plays and where are the player's reports, which anchor the
             // position as they come: every load ends in one that says playing or paused, and
             // the start returns between the first and that one (measured). The volume goes
-            // with the start for a slider moved while no device was active, which the debounce
-            // sends nowhere; unchanged, Spirc reports nothing.
+            // with the start for a move the debounce sent to another device while the slider
+            // showed and saved it as this Mac's: one whose volume Connect does not say.
+            // Unchanged, Spirc reports nothing.
             SpotifyPlayer.setVolume(volume)
         } catch is CancellationError {
             // Another start overtook this one; it reports for itself.
@@ -1710,8 +1707,8 @@ final class PlaybackViewModel {
     /// Clears remote volume mode and restores the saved local volume.
     func becameLocalActiveDevice() {
         remoteVolume = nil
-        let saved = UserDefaults.standard.double(forKey: "playbackVolume")
-        guard saved > 0, volume != saved else { return }
+        let saved = SpotifyPlayer.savedVolume
+        guard volume != saved else { return }
         isSettingVolumeLocally = true
         volume = saved
         isSettingVolumeLocally = false
@@ -1736,12 +1733,17 @@ final class PlaybackViewModel {
         volumeDebounceSubscription = volumeSubject
             .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
             .sink { [weak self] newVolume in
-                guard let self, isInitialized else { return }
-                if SpotifyPlayer.isActiveDevice {
+                guard let self else { return }
+                // This Mac's own while it is the active device, and while no device is: the
+                // client keeps it, reports it on Connect, and registers each session at it,
+                // so it goes there whether the player is up or not. Sent only while this Mac
+                // was active, a move while nothing played went nowhere, and other devices
+                // went on showing the old volume.
+                if SpotifyPlayer.isActiveDevice || player.activeDeviceId == nil {
                     SpotifyPlayer.setVolume(newVolume)
                 } else {
                     let percent = Int((newVolume * 100).rounded())
-                    guard let route = connectRoute() else { return }
+                    guard isInitialized, let route = connectRoute() else { return }
                     Task {
                         try? await SpclientAPI().setVolume(
                             percent: percent,

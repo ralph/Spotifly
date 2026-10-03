@@ -506,8 +506,8 @@ enum SpotifyPlayer {
         UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
     }
 
-    /// The volume the slider last saved, or half when it never has.
-    private nonisolated static var savedVolume: Double {
+    /// This Mac's volume as the slider last saved it, or half when it never has.
+    nonisolated static var savedVolume: Double {
         let saved = UserDefaults.standard.double(forKey: "playbackVolume")
         return saved > 0 ? saved : 0.5
     }

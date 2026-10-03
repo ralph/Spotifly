@@ -60,8 +60,8 @@ public actor LibrespotClient {
     /// librespot does. Set with the context, and empty for a bare list.
     private var contextMetadata: [String: String] = [:]
 
-    /// Logical Connect volume (0…65535), mirrored into player state, and what each new
-    /// session registers this Mac at. The saved volume from `initialize`, then each change.
+    /// Logical Connect volume (0…65535), which each new session registers this Mac at: the
+    /// saved one from `initialize`, then each change.
     private var logicalVolume: UInt32 = 32767
 
     /// Tracks Spotify will not play for the account, as the app's lists said, replaced each
