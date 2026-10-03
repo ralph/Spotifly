@@ -26,9 +26,14 @@ devices might refuse only the stored login.
 ## Solution
 
 Proposed: a grant the app accepts supersedes the stored login. `AuthViewModel`, after the account
-check, has the client forget the reusable login (`StoredCredentialsStore.clear`, without the
-keymaster half), so the connect logs in with the new token and stores a fresh login. A grant it
-rejects already clears both.
+check, has the client forget the reusable login (`LibrespotClient.clearStreamingCredentials()`,
+which leaves the keymaster half to `SpotifyPlayer.clearStreamingCredentials()`), so the connect
+logs in with the new token and stores a fresh login. A grant it rejects already clears both.
+That method also bumps the client's lifecycle generation, which supersedes a connect in flight:
+say whether that is wanted just before the connect that follows. The connect is
+`AuthViewModel`'s `initializeIfNeeded()`, which relies on the stored login being preferred: a
+rebuild of a player already up would connect from the same login. With the login forgotten it
+would not, so the call needs a second look there.
 
 Or narrower: the client drops a stored login the accesspoint refuses as bad credentials, and
 tries the token at once.

@@ -124,10 +124,7 @@ final class AuthViewModel {
 
             if let mismatch {
                 debugLog("AuthViewModel", "Streaming grant rejected: \(mismatch)")
-                // Nothing connects with a grant before this check, but a play or retry may
-                // have initialized the player while the browser had it — from the new token,
-                // when there is no reusable login — so there can be a live session for the
-                // wrong account.
+                // Refused as a logout is done, so whatever the player has is torn down too.
                 //
                 // A mismatch caught at sign-in cannot arise — there is nothing to mismatch
                 // against — so this only ever refuses a *change* of account, and the previous
@@ -137,21 +134,20 @@ final class AuthViewModel {
                 return
             }
 
-            // Connected through the player's lifecycle, as every other connect is, and before
-            // the app shows, so the login screen's progress lasts until this Mac is on
-            // Spotify Connect. A connect that fails is said in the now-playing bar, as any
-            // other is; the app browses meanwhile, and Speakers offers the connect again.
-            await PlaybackViewModel.shared.initializeIfNeeded()
-            // A logout during the connect has torn down what it built.
-            guard startedAt == authLifecycle else { return }
             isSignedIn = true
+            // Connected through the player's lifecycle, as every other connect is, while the
+            // app shows: its profile and start page need no session, and the window's own
+            // `initializeIfNeeded` waits for this one. A connect that fails is said in the
+            // now-playing bar, as any other is, and Speakers offers it again.
+            await PlaybackViewModel.shared.initializeIfNeeded()
         case .cancelled:
             // The user closed the browser tab or pressed Cancel. They asked for this, so
             // there is nothing to report.
             break
         case .failed:
-            // The browser, the token exchange or the keychain failed. Read what survived
-            // rather than assuming: a grant this one was to replace still signs the app in.
+            // The browser or the token exchange failed, and nothing was written; or the
+            // keychain refused the tokens, which `KeymasterSession` holds for this launch all
+            // the same. Read which.
             isSignedIn = await KeymasterSession.shared.hasGrant
             errorMessage = String(localized: "auth.connect_failed")
         }

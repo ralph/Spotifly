@@ -226,7 +226,6 @@ final class PlaybackViewModel {
     /// Premium, as it would again. Reconnect in Speakers still tries.
     func initializeIfNeeded() async {
         guard localPlayback != .needsPremium else { return }
-        adoptConnectedSession()
         await runInitialization(force: false)
     }
 

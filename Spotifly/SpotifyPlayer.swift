@@ -338,8 +338,7 @@ enum SpotifyPlayer {
     /// Swift mints the token now — see `KeymasterAuth` — and adopts it into
     /// `KeymasterSession`. It does not connect: the caller checks the account first, and
     /// `PlaybackViewModel` connects, as it does every other time, with the client falling
-    /// back to this token when it holds no reusable login. That login is stored by the first
-    /// connect, which every later init connects from.
+    /// back to this token when it holds no reusable login.
     ///
     /// Blocks on a human, so it runs off the main actor, and it is cancellable for the same
     /// reason: the browser wait unwinds on cancellation, and so does the token exchange behind
