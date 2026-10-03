@@ -28,17 +28,24 @@ the adopt and the check, a play could connect with B's token, when there is no r
 
 Mint, check, then commit, as proposed:
 - `AuthViewModel.authorizeStreaming` runs `KeymasterAuth.authorize()` itself, which writes
-  nothing, then checks the logout and the account against `tokens.username`, and only then
-  adopts. A refused or abandoned grant needs no undoing. A logout that lands while the tokens
-  are written is still undone with `discardGrant`, by a second check after the adopt.
+  nothing, then checks the logout, and adopts. A refused or abandoned grant needs no undoing;
+  a logout that lands while the tokens are written is undone by a second check, which clears
+  the keymaster tokens (`KeymasterSession.clear()`).
+- **The account is checked in `KeymasterSession.adopt`**, against the grant it holds, in the
+  same step as the write: tokens for another account throw `otherAccount`, and holding none is
+  a sign-in. From the review: the first version compared with the profile's account
+  (`store.userId`), which is nil until the profile loads, and nil counted as agreement, so
+  another account got through right after a failed launch, when "Enable this Mac" is most
+  likely to show. `accountMismatch` and the callers' `expectedAccountId` are gone.
 - A refusal keeps the app signed in. `errorMessage` was shown only on the login screen, so the
-  signed-in app shows it as an alert ("This Mac was not enabled"), which waits for OK: the
-  grant finishes in the browser, where a passing message in the now-playing bar would be
-  missed, and it can start from Speakers or from the play alert. A failed token exchange while
-  signed in is said there too; before, its message went nowhere. `logout()` clears it.
+  signed-in app shows it as an alert ("This Mac was not enabled"), on the window so the mini
+  player shows it too, and it waits for OK: the grant finishes in the browser, where a passing
+  message in the now-playing bar would be missed, and it can start from Speakers or from the
+  play alert. A failed token exchange while signed in is said there too; before, its message
+  went nowhere. `logout()` clears it.
 - `SpotifyPlayer.authorizeStreaming`, `StreamingAuthResult` and `lastGrantAccountId()` are
-  gone: the grant no longer touches the player, and the account comes from the tokens rather
-  than the keychain.
+  gone: the grant no longer touches the player. `discardGrant` had one caller left and is part
+  of `logout()`.
 
 ## Verification
 
@@ -51,5 +58,9 @@ failed the first connect after launch, so Speakers offered "Enable this Mac" whi
 - **Accepted**, the browser back on the signed-in account: the token exchange at
   06:25:14.758, the device registered, `Initialization complete` at 06:25:15.261, and playing
   worked.
+- **Again with the check in `adopt`** (06:34): refused 105 ms after the other account's token
+  exchange, nothing after it; accepted with the signed-in account, `Initialization complete`
+  at 06:34:25.306.
 - Before (2026-10-03, #186's test): the refusal signed the app out.
-- 623 unit tests pass.
+- Unit tests for `adopt`: another account is refused and the held grant stays, unwritten; the
+  same account replaces it; with none held, any account signs in. 622 tests pass.
