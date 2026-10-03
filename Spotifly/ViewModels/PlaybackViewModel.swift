@@ -52,6 +52,8 @@ final class PlaybackViewModel {
 
     private struct ShownPlayback: Equatable {
         var trackUri: String
+        /// `trackUri`'s id, parsed once with the report rather than on each read.
+        var trackId: String?
         /// Playing and not paused, for this Mac's player and for a device it mirrors alike.
         var isPlaying: Bool
         /// Zero until the stream reports this track's length, and never the previous track's:
@@ -733,21 +735,7 @@ final class PlaybackViewModel {
         }
     }
 
-    // MARK: - Playback State Helpers
-
-    func togglePlayPause(trackId: String) async {
-        if isPlaying, currentTrackUri == trackId {
-            // Route through pause() rather than calling SpotifyPlayer directly: it carries
-            // the connect-state fallback for remote devices, and it leaves isPlaying to the
-            // playback state the client publishes instead of asserting it here
-            pause()
-        } else if !isPlaying, currentTrackUri == trackId {
-            resume()
-        } else {
-            // Play new track
-            await playTrack(trackId: trackId)
-        }
-    }
+    // MARK: - Session
 
     /// Gives the model the session's store and track service (`LoggedInSession`), which outlive
     /// the window. Held weakly, so ending the session at a logout frees them.
@@ -1167,19 +1155,22 @@ final class PlaybackViewModel {
     /// intact between tracks, after logout, and while metadata is still loading.
     private static let unresolvedTrackTitle = "Spotifly"
 
-    /// The store entry for the *logical* track, which owns the displayed metadata.
-    /// The decoded audio item may be a relinked alternative with a different ID.
-    private var currentNowPlayingTrack: Track? {
-        guard let currentTrackUri,
-              let trackId = SpotifyAPI.parseTrackURI(currentTrackUri)
-        else { return nil }
-        return store?.tracks[trackId]
+    /// The id of the track the bar shows: the *logical* track, whose store entry owns the
+    /// displayed metadata. The decoded audio item may be a relinked alternative with another id.
+    var currentTrackId: String? {
+        shown?.trackId
+    }
+
+    /// The store's entry for the track the bar shows, for the bar and Control Center alike; nil
+    /// until its metadata has loaded.
+    var currentTrack: Track? {
+        currentTrackId.flatMap { store?.tracks[$0] }
     }
 
     /// The current track's length as the bar's scrubber and Control Center show it, or nil
     /// while none is known; see `displayedDuration(streamMs:storedMs:)`.
     var displayedDurationMs: UInt32? {
-        Self.displayedDuration(streamMs: trackDurationMs, storedMs: currentNowPlayingTrack?.durationMs)
+        Self.displayedDuration(streamMs: trackDurationMs, storedMs: currentTrack?.durationMs)
     }
 
     /// The stream's length, which is authoritative, or the store's until the stream has one: a
@@ -1218,13 +1209,13 @@ final class PlaybackViewModel {
     /// Full Now Playing update — sets track metadata, duration, position, rate, and artwork.
     /// Call on: track start, next/prev, and when the queue's metadata arrives.
     func updateNowPlayingInfo() {
-        let currentTrack = currentNowPlayingTrack
+        let track = currentTrack
 
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
 
-        if let currentTrack {
-            nowPlayingInfo[MPMediaItemPropertyTitle] = currentTrack.name
-            nowPlayingInfo[MPMediaItemPropertyArtist] = currentTrack.artistName
+        if let track {
+            nowPlayingInfo[MPMediaItemPropertyTitle] = track.name
+            nowPlayingInfo[MPMediaItemPropertyArtist] = track.artistName
         } else {
             nowPlayingInfo[MPMediaItemPropertyTitle] = Self.unresolvedTrackTitle
             nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtist)
@@ -1243,7 +1234,7 @@ final class PlaybackViewModel {
         // Artwork arrives late — it has to be downloaded — so a changed cover is dropped
         // from the entry we publish now and reinstated by the download below. A missing
         // URL counts as a change: it drops the previous track's cover and downloads none.
-        let artworkURL = currentTrack?.images.mediumURL
+        let artworkURL = track?.images.mediumURL
         let artworkChanged = artworkURL?.absoluteString != lastAlbumArtURL
         if artworkChanged {
             nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtwork)
@@ -1269,7 +1260,7 @@ final class PlaybackViewModel {
                 await MainActor.run {
                     // The track may have moved on while this was downloading; publishing
                     // now would put the old cover next to the new title.
-                    guard self.currentNowPlayingTrack?.images.mediumURL == url else { return }
+                    guard self.currentTrack?.images.mediumURL == url else { return }
                     var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
                     // Mark closure as @Sendable to fix crash - MPNowPlayingInfoCenter executes
                     // the closure on an internal dispatch queue, not on MainActor
@@ -1453,6 +1444,7 @@ final class PlaybackViewModel {
         let reportedDurationMs = Self.playbackMilliseconds(state.durationMs).flatMap { $0 > 0 ? $0 : nil }
         shown = ShownPlayback(
             trackUri: state.trackUri,
+            trackId: SpotifyAPI.parseTrackURI(state.trackUri),
             isPlaying: state.isPlaying,
             durationMs: reportedDurationMs ?? (trackChanged ? 0 : trackDurationMs),
             shuffle: state.shuffle,
@@ -1730,9 +1722,7 @@ final class PlaybackViewModel {
     /// Toggles the current track's favorite status, for the now-playing bar's heart and the Like
     /// menu item (⌘L), which works without the bar.
     func toggleCurrentTrackFavorite() async {
-        guard let uri = currentTrackUri, let trackId = SpotifyAPI.parseTrackURI(uri),
-              let trackService
-        else { return }
+        guard let trackId = currentTrackId, let trackService else { return }
 
         do {
             try await trackService.toggleFavorite(trackId: trackId)
