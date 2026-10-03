@@ -8,6 +8,8 @@ Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePic
 `Spotifly/Store/LoggedInSession.swift`, a proposed audio-output routing service, localizations
 Found: 2026-10-03, user request: AirPlay currently starts from macOS Control Center; the
 Speakers section should start it for Spotifly's Spotify stream alone, without system sounds.
+Updated: 2026-10-03, user identified "Küche HomePod" in Control Center as an AirPlay speaker
+and prefers the latest AirPlay behavior; legacy support is not required.
 
 ## Summary
 
@@ -26,6 +28,11 @@ transport-manager and process-private endpoint-device APIs. If that gate passes 
 sandboxed app, implement a small AirPlay destination list in Speakers and retain the current
 renderer. If it fails, record the failure and stop this approach. The investigation does not
 justify promising this feature or replacing the renderer yet.
+
+Target **modern AirPlay 2 through Apple's current macOS 27 stack**, with "Küche HomePod" as
+the first test receiver. Prefer the newest behavior the native stack and receiver support.
+Do not add an AirPlay 1/legacy RAOP fallback or support for older OS renderer APIs. A generic
+HAL AirPlay output is not evidence that the connection uses the desired modern transport.
 
 ## Problem
 
@@ -50,6 +57,23 @@ justify promising this feature or replacing the renderer yet.
 Control Center selects the Mac's output. That can carry other applications' audio as well as
 Spotifly. This feature must select only Spotifly's output. It must not temporarily change the
 system output to establish a connection and then change it back.
+
+### Known receiver and AirPlay scope
+
+The user supplied a Control Center screenshot dated 2026-10-03, 19:05:57 local time. It lists
+**Küche HomePod** as an available output, with **LG UltraFine Display-Audio** selected. The
+user confirms that Küche HomePod is an AirPlay-enabled speaker. The screenshot establishes
+system discovery of a known receiver; it does not prove renderer access, an active connection,
+or the negotiated AirPlay version. "WohnzimmerStereo" is also listed, but its hardware and
+capabilities have not been established and are not needed for the first test.
+
+Apple documents [streaming from a Mac app to HomePod](https://support.apple.com/de-de/guide/mac-help/mchld7e543a0/27/mac/27).
+Its [custom audio sample](https://developer.apple.com/documentation/avfaudio/playing-custom-audio-with-your-own-player)
+describes AirPlay 2 with improved buffering and responsiveness. This is the desired modern
+experience, subject to the macOS API restrictions below. Legacy receivers, a hand-written
+RAOP sender, older macOS deployment targets and deprecated renderer feeding are outside scope.
+Multiroom controls remain a separate feature; preferring AirPlay 2 does not require building
+those controls in the first version.
 
 ### API evidence, checked against Xcode 27.0 / macOS 27.0 SDK
 
@@ -95,6 +119,10 @@ On this Mac, macOS **27.0.1 (26A434)**, with Apple Swift **6.4**:
   still exposed no AirPlay HAL device or transport manager. This flag does not identify the
   extra route or prove that an AirPlay endpoint can be activated through HAL. Detection was
   then disabled. No output, volume or playback was changed.
+- Repeating that inventory after the user identified Küche HomePod produced the same result:
+  extra routes detected, five HAL devices with no AirPlay transport, and no transport managers.
+  Combined with the screenshot, this is evidence of a gap between system discovery and HAL
+  exposure on this Mac, not evidence that the network has no AirPlay receiver.
 - The repository already measured renderer-specific device changes returning
   `enqueuedWithSuggestedFlush` on macOS 27. See
   [`docs/cpu-benchmark.md`, "Feeding the renderer"](../../docs/cpu-benchmark.md#feeding-the-renderer).
@@ -108,9 +136,11 @@ it. No AirPlay playback or signed-app sandbox test was performed for this plan.
 ### 1. Prove initiation and isolation before implementing the feature
 
 Build a disposable diagnostic target against macOS 27, signed and sandboxed like Spotifly
-with its existing entitlements. Use an idle, known-working AirPlay receiver. Confirm that the
-native macOS AirPlay UI can discover it, without relying on a pre-existing connection for the
-successful test. Do not change the system defaults during the diagnostic's routing attempt.
+with its existing entitlements. Use **Küche HomePod**, initially not selected as the Mac's
+output. Its availability in Control Center is already established by the user's screenshot;
+confirm it remains available when testing, without relying on a pre-existing connection for
+the successful test. Record its HomePod software version. Do not change the system defaults
+during the diagnostic's routing attempt.
 
 1. Read `kAudioHardwarePropertyDevices` and the transport-manager list. Filter output devices
    and managers by the public AirPlay transport type. Read endpoint UIDs and channel
@@ -126,15 +156,23 @@ successful test. Do not change the system defaults during the diagnostic's routi
 4. Disconnect and reconnect from the diagnostic, without Control Center establishing the
    connection first. Check the same path inside the sandbox, protected/pairing destinations,
    receiver loss, and cleanup. Destroy only the endpoint device the diagnostic created.
+5. Establish what AirPlay mode the selected public API path actually provides. Use supported
+   platform documentation and available diagnostics; record buffering and transport evidence.
+   `kAudioDeviceTransportTypeAirPlay`, discovery of an AirPlay 2-capable HomePod, and audible
+   PCM alone do not distinguish modern AirPlay from legacy streaming. Do not implement a
+   legacy compatibility path to make the prototype pass. If the modern mode cannot be
+   established, keep that requirement unverified and do not proceed to product implementation.
 
 **Pass condition:** the signed sandboxed process initiates a previously idle receiver,
 receives audible PCM through the macOS 27 receiver, leaves both default outputs unchanged,
-keeps unrelated audio local, and releases its own connection. Save receiver model, OS build,
-selectors, OSStatus results and audible observations here before proceeding.
+keeps unrelated audio local, provides the modern AirPlay behavior established in step 5, and
+releases its own connection. Save receiver model/software, OS build, selectors, OSStatus
+results, transport evidence and audible observations here before proceeding.
 
 **Fail condition:** no endpoints/manager are exposed, creation is refused, pairing needs an
-unsupported API, audio cannot render, or connection requires a global output change. Stop
-the remaining steps and record the exact limitation. A preconnected AirPlay HAL device alone
+unsupported API, audio cannot render, connection requires a global output change, or the
+approach depends on legacy AirPlay streaming. Stop the remaining steps and record the exact
+limitation. A preconnected AirPlay HAL device alone
 does not pass the initiation requirement. Do not ship a list of ordinary audio outputs under
 an AirPlay label as a substitute.
 
@@ -187,8 +225,8 @@ selection, logout, or a Connect handoff.
 ### 4. Make the Speakers section usable
 
 Replace the unbound native picker with a destination list backed by the APIs validated in
-step 1. Keep Spotify
-Connect devices in their existing section. AirPlay changes this Mac's audio output, not its
+step 1. Keep Spotify Connect devices in their existing section. AirPlay changes this Mac's
+audio output, not its
 Connect identity or the remote Spotify player.
 
 - Show available AirPlay destinations, the actual selected route, connection progress,
@@ -203,14 +241,15 @@ Connect identity or the remote Spotify player.
   Premium notices. A handoff away stops local output and releases the AirPlay connection;
   coming back uses the Mac's output until another explicit AirPlay choice.
 - First version: one destination at a time. Do not promise AirPlay 2 grouping, multiroom,
-  remote receiver volume, metadata or enhanced buffering from HAL transport alone. Verify
-  those separately if expanding the feature; the existing volume slider remains stream gain.
+  remote receiver volume or metadata from HAL transport alone. Modern transport and buffering
+  behavior must be established by step 1 before choosing this path; grouping and other extra
+  features can be verified separately. The existing volume slider remains stream gain.
 
 ### Alternatives considered
 
 | Approach | Assessment |
 | --- | --- |
-| Public HAL endpoint device + existing renderer | Recommended only after the initiation/isolation gate passes; preserves the macOS 27 playback path |
+| Public HAL endpoint device + existing renderer | Recommended only after initiation, isolation and modern AirPlay behavior are established; preserves the macOS 27 playback path |
 | Native picker + an empty/proxy `AVPlayer`, copying its UID to the renderer | Unverified: the API does not promise that selection publishes a transferable UID or that the player can relinquish the connection. Do not assume this is a supported bridge |
 | Actually render Spotify audio through `AVPlayer` for AirPlay | Fits the native picker, but needs an AVPlayer-readable media source and changes playback, buffering, clocks and gapless ownership. A separate architecture proposal if HAL fails; this plan keeps the existing renderer |
 | Change system defaults, private routing APIs, or implement RAOP/AirPlay ourselves | Does not meet the requested isolation or the scope of this plan |
@@ -230,13 +269,17 @@ it to `plans/done/` in the PR that completes the feature.
 
 - [ ] The signed-app hardware gate passes from an idle receiver, with no Control Center
       connection prerequisite, and its evidence is recorded above.
+- [ ] Küche HomePod is the first receiver tested. Record its software version and establish
+      modern AirPlay behavior; a generic HAL AirPlay flag is not sufficient version evidence.
+- [ ] The implementation has no AirPlay 1/legacy RAOP compatibility fallback and retains
+      the macOS 27 receiver API.
 - [ ] A protected or unavailable receiver fails with a useful error through supported APIs.
 - [ ] The gate runs with Spotifly's existing sandbox entitlements, or documents a specific
       supported entitlement requirement before changing them.
 
 ### Acceptance after the gate and implementation
 
-- [ ] Start a Spotify track here, choose an idle receiver in Speakers, and hear it there.
+- [ ] Start a Spotify track here, choose the idle Küche HomePod in Speakers, and hear it there.
       Browser audio and a macOS alert remain on the original Mac output. Both HAL default
       output IDs remain unchanged throughout connection, playback and disconnection.
 - [ ] Select before playing; select while paused, mid-track, at a gapless boundary and after
