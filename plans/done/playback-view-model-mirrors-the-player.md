@@ -1,9 +1,9 @@
 # The playback view model keeps its own copy of the player's playback state
 
-Status: **Open**, partly done in two steps (2026-10-02 and 2026-10-03, under Solution). What is
-left is named below, with where it is written
+Status: **Done** in three steps (2026-10-02 and twice on 2026-10-03, under Solution). One copy
+stays, deliberately: what the bar shows, written with the position anchor
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift`, `Spotifly/Store/PlayerModel.swift`,
-`Spotifly/Views/NowPlayingBarView.swift`
+`Spotifly/Views/NowPlayingBarView.swift`, `Spotifly/Views/LoggedInView.swift`
 Found: 2026-10-02, reviewing the store against current practice; deliberately left out of
 `plans/done/state-held-twice.md`, which it would have made far riskier
 
@@ -79,15 +79,37 @@ computed from `player.playback`, now reads off and the two `can…` flags read t
 keeps the track; that one copy would make `nil` uniform. It needs `currentTrackUri`'s `didSet`,
 which resets the duration, reworked.
 
-Next, in this order, each measured before it changes:
-1. **Logout.** `clearPlaybackState()` could become the player model's own reset. The client
-   already publishes no playback at teardown (`clearLocalState`), but since the second step
-   that means "stopped here, keep the track", as after a failed load: a logout needs another
-   signal, such as the connection going (`player.connection == nil`) or a shutdown state of
-   its own.
-2. **`trackDurationMs`, the position anchor and `isPlaying`**, last, since the clock depends on
-   them. With them, the local start's re-anchor, which repeats what the report already did, and its
-   volume, which belongs to the player: it knows when its mixer opens.
+Done in the third step, **one value for what the bar shows**:
+- `isPlaying`, `currentTrackUri` and `trackDurationMs` were three stored copies, the duration
+  reset by the track's `didSet`. They are now read from one `ShownPlayback`: the player's last
+  report that had playback, stopped when a later one had none, written in the same call as the
+  anchor. Shuffle, `hasNext` and `canShuffle` are read from it too, so a report without
+  playback keeps them with the track, where reading `player.playback` turned shuffle off and
+  Next on.
+- It holds no position, which the anchor has: a report that only moves the position is an
+  equal write, which the lists reading `currentTrackUri` do not hear. A pause, a change of
+  track or of shuffle still reaches them.
+- **Logout.** `clearPlaybackState()` stays the view model's, and runs in `shutdownForLogout`,
+  after the teardown. Every way out of the account goes through there (`discardGrant`): a
+  revoked grant and a refused one did not clear the bar or Control Center, since only Log Out
+  called `stop()`. After the teardown rather than before, since its last report has no
+  playback: one still on its way would put the track back, and a report without playback
+  keeps it. `stop()`, `SpotifyPlayer.stop()` and `LibrespotClient.stop()` had no other caller,
+  and are gone; the teardown stops the pipeline first, before anything that needs the network.
+  The player model's own reset, which the plan considered, would have needed a new signal for
+  "the session is gone" next to "nothing plays", for no gain over this.
+- **The local start's re-anchor is gone.** Measured twice: the start returned 229 ms and
+  192 ms after the loading report, and 5 ms and 4 ms before the playing one; the re-anchor
+  moved the display from 234 ms (197) back to 0, and the playing report anchored it at 0 again
+  a few ms later. Every load ends in a playing or paused report, so the report always does it.
+- **The local start's volume stays.** It is not the mixer's (the output gain is applied by
+  `volume`'s `didSet`), but the Connect volume: `SpircController` registers at 50% and keeps
+  that until told, so other devices would draw this Mac's slider at half. That it does so
+  until the first start is `plans/open/this-mac-registers-at-half-volume.md`.
+
+Not done, deliberately: computing `isPlaying` and the track straight from `player.playback`.
+They would change one `Observations` delivery before the anchor (above), and every report
+would reach the lists, position-only ones included.
 
 ## Verification
 
@@ -126,3 +148,24 @@ With the change:
   the bar said not playing 49 ms later, its position frozen at 10103 ms, and Control Center's
   rate was 0. The cluster's own report followed 70 ms after that. Before, the bar relied on the
   poll, within a second, or on that report.
+
+### Third step, one value for what the bar shows (2026-10-03)
+
+Throwaways, not committed: local playback muted, a sampler logging the bar's state each second,
+and hooks that toggled shuffle, published no playback without letting go of the active role, faked
+a failed load, and ran `shutdownForLogout` without touching the credentials.
+
+- **Start, pause, resume, two skips:** the track, `isPlaying` and the duration followed the
+  player model in all 28 samples, the duration the new track's from the first sample after each
+  skip.
+- **No playback, with shuffle on:** the bar kept the track, stopped at 5989 ms, with shuffle on
+  and Next enabled; Control Center's rate was 0 at 5.989 s.
+- **A faked sign-out while playing:** right after the teardown, the bar had no track, shuffle off,
+  Next disabled, and Control Center said "Spotifly", 0:00, rate 0. No playback report came after.
+- **The silent librespot device playing an album:** the bar followed it through its skip, with
+  each track's length; when it quit, the bar kept its track, stopped at 9919 ms.
+- 617 unit tests pass.
+
+Seen on the way, filed: `plans/open/a-released-track-shows-its-last-reported-position.md`, and
+from the review, `plans/open/this-mac-registers-at-half-volume.md`.
+

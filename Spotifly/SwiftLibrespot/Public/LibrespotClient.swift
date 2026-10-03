@@ -583,10 +583,6 @@ public actor LibrespotClient {
         try await continuePlayback(of: state, positionMs: positionMs, paused: false)
     }
 
-    public func stop() async {
-        await audioPipeline?.stop()
-    }
-
     public func seek(positionMs: UInt32) async throws {
         try await audioPipeline?.seek(positionMs: UInt64(positionMs))
     }
