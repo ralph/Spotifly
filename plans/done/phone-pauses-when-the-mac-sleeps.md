@@ -69,7 +69,7 @@ it came from.
   send the same command, and they should pause the phone.
 
 Sleep is now watched in two places, here and in the window's lifecycle modifier;
-`plans/open/sleep-and-wake-handled-by-the-window.md` takes that up.
+`plans/done/sleep-and-wake-handled-by-the-window.md` takes that up.
 
 ## Verification
 

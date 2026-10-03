@@ -69,7 +69,7 @@ track list, waited for Try again just the same. `InlineLoadError` now calls its 
 `NetworkMonitor`'s returns as well, when it offers one, which covers the album, artist and
 playlist pages, whole or a section of them. So the repro heals without a press. Other loads that
 wait for a manual retry, and failures while the network stays up, are recorded in
-`plans/open/failed-loads-wait-for-try-again.md`.
+`plans/done/failed-loads-wait-for-try-again.md`.
 
 ## Verification
 

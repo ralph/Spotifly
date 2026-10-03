@@ -47,7 +47,7 @@ The name travels with the queue, from where the player learns what it plays:
 
 ### Left for later
 
-From the altitude review; see `plans/open/context-uris-open-one-way.md`:
+From the altitude review; see `plans/done/context-uris-open-one-way.md`:
 - The header's uri-to-page mapping is the second one in the app, beside `SPOTIFLY_DEBUG_OPEN`'s,
   and only this one knows Liked Songs.
 - This Mac does not report `context_description` in its own cluster state, as librespot does.

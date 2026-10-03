@@ -10,7 +10,7 @@ Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (the end of a
 `Spotifly/SwiftLibrespot/Network/Accesspoint.swift` (the account's attributes),
 `Spotifly/SwiftLibrespot/Dealer/DealerConnection.swift` (`spotify:user:attributes:mutated`)
 Found: 2026-10-02, measuring what the mirrored queue took on trust about autoplay
-(`plans/open/mirrored-queue-beyond-the-web-player.md`)
+(`plans/done/mirrored-queue-beyond-the-web-player.md`)
 
 ## Summary
 
@@ -21,7 +21,7 @@ autoplay track plays that track in front of the album, and the album again after
 ## Problem
 
 Measured with a phone, the account's autoplay switched on there, and a throwaway build logging
-the rows the Mac mirrored (`plans/open/mirrored-queue-beyond-the-web-player.md`, Progress):
+the rows the Mac mirrored (`plans/done/mirrored-queue-beyond-the-web-player.md`, Progress):
 
 - **What the phone plays after an album:** on the last track of "Love & Hate", it lists 50
   tracks with provider `autoplay` after it, from `spotify:station:album:<the album's id>`

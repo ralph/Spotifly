@@ -43,7 +43,7 @@ hand now goes through it.
 
 ### Left for later
 
-From the reviews; see `plans/open/list-failures-the-retry-cannot-see.md`: a toolbar refresh
+From the reviews; see `plans/done/list-failures-the-retry-cannot-see.md`: a toolbar refresh
 offline shows a list's empty state, not its error; a failed later page; search errors, which
 are never shown; and the two profile loaders.
 

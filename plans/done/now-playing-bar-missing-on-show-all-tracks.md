@@ -64,7 +64,7 @@ path. With no stack, nothing writes the path but `push`, so all of that is gone:
 `setNavigationPath`, `navigateBackward(to:)`, `isDescendant(_:of:)`, `historyRestoreTarget` and
 `navigationPath`, the stack's binding, with the five tests of the stack's writes. `push` navigates
 to the route with the destination appended. The path itself is still an array, of which only the
-last entry is drawn; `plans/open/route-path-outlived-the-stack.md` takes that up.
+last entry is drawn; `plans/done/route-path-outlived-the-stack.md` takes that up.
 
 **What changes for the user, besides the bar:** the pushed page's back chevron is replaced by the
 history's back and forward control, which the toolbar shows on every other page. Back from "show

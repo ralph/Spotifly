@@ -75,7 +75,7 @@ context again.
 
 The (index, uri) addressing is a stopgap: no row in the queue has an identity. That, and the
 queue published after the track, which is what lets the view's split lag, are
-`plans/open/queue-rows-have-no-identity.md`.
+`plans/done/queue-rows-have-no-identity.md`.
 
 Not done: **starting a context by uid.** The resolver's tracks carry a `uid`, the same one
 `fetchPlaylistContents` gives a playlist item (`"uid":"87ced089511bc3c325f3"` for the first
