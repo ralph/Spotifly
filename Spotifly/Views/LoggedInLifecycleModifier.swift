@@ -33,6 +33,8 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 async let home: () = homeService.loadHome()
                 _ = await (profile, home)
 
+                // The session's start connects (`AuthViewModel.startSession`); this is the retry
+                // for a window that opens after that connect failed, and nothing otherwise.
                 await playbackViewModel.initializeIfNeeded()
 
                 #if DEBUG

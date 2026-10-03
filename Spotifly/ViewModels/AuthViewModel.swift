@@ -36,8 +36,11 @@ final class AuthViewModel {
     let sessions = LoggedInSessions()
 
     /// Starts the account's session and hands it to playback at once: the queue service follows
-    /// the player, and `PlaybackViewModel` reads the track's metadata and the favorite toggle
-    /// through it. Nothing for a grant renewed while signed in, whose session goes on.
+    /// the player, `PlaybackViewModel` reads the track's metadata and the favorite toggle through
+    /// it, and the player connects, so this Mac is on Spotify Connect without waiting for a
+    /// window or the requests a window makes. At a sign-in, `authorizeStreaming`'s own connect,
+    /// which a renewed grant needs, is the same one (`runInitialization` serializes them).
+    /// Nothing for a grant renewed while signed in, whose session goes on.
     ///
     /// Here, as the account signs in, rather than in the first window's task, which ran after
     /// its first frame, and so after the connect a sign-in starts: a report arriving in between
@@ -47,6 +50,7 @@ final class AuthViewModel {
         guard sessions.current == nil else { return }
         let session = sessions.start()
         PlaybackViewModel.shared.attach(store: session.store, trackService: session.trackService)
+        Task { await PlaybackViewModel.shared.initializeIfNeeded() }
     }
 
     /// Why the last grant did not take: on the login screen while signed out, and as an alert
