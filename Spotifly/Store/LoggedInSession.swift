@@ -42,16 +42,14 @@ final class LoggedInSession {
     }
 }
 
-/// The session of the account signed in, made the first time a window shows the signed-in app
-/// and ended when the account signs out (`AuthViewModel.isSignedIn`), so the next sign-in starts
-/// from an empty store.
+/// The session of the account signed in, made when it signs in and ended when it signs out
+/// (`AuthViewModel.isSignedIn`), so the next sign-in starts from an empty store.
 ///
-/// Read from a view's body, so the session itself is not observed: making it there must not
-/// count as changing state during an update.
+/// Read from a view's body, so the session itself is not observed.
 @MainActor
 final class LoggedInSessions {
-    /// The session, if a window has shown the signed-in app; for the menu commands, which have
-    /// no window of their own.
+    /// The session, while the account is signed in; for the windows, and for the menu
+    /// commands, which have no window of their own.
     private(set) var current: LoggedInSession?
 
     /// The current session, made if there is none.

@@ -15,8 +15,9 @@ struct ContentView: View {
         if viewModel.isLoading {
             ProgressView(String(localized: "auth.loading"))
                 .frame(minWidth: 500, minHeight: 400)
-        } else if viewModel.isSignedIn {
-            LoggedInView(session: viewModel.sessions.session(), onLogout: { Task { await viewModel.logout() } })
+        } else if viewModel.isSignedIn, let session = viewModel.sessions.current {
+            // Started as the account signed in (`AuthViewModel.startSession`); read here only.
+            LoggedInView(session: session, onLogout: { Task { await viewModel.logout() } })
         } else {
             loginView
                 .frame(minWidth: 500, minHeight: 400)
