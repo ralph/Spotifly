@@ -250,8 +250,8 @@ final class PlaybackViewModel {
     }
 
     /// Tears the streaming session down on logout, and forgets what it played: every way out
-    /// of the account comes through here (`AuthViewModel.discardGrant`), a revoked grant and
-    /// a refused one as well as Log Out.
+    /// of the account comes through here (`AuthViewModel.logout`), a revoked grant as well as
+    /// Log Out.
     ///
     /// Deliberately does not wait for an initialization that may be in flight. Waiting would
     /// hang the logout behind a stalled network setup, and it is not needed: `shutdown()`

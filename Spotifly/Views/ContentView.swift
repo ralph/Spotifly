@@ -50,9 +50,6 @@ struct ContentView: View {
             // Enabled while waiting, where it cancels rather than starting a second grant:
             // a browser tab closed without authorizing sends nothing, so this is the only
             // way back from the wait short of the listener's timeout.
-            //
-            // No account to compare against yet, so no `expectedAccountId` — at sign-in the
-            // account the browser grants *is* the account.
             Button {
                 if viewModel.isAuthorizingStreaming {
                     viewModel.cancelStreamingAuthorization()
