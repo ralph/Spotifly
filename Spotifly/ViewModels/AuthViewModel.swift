@@ -18,7 +18,21 @@ final class AuthViewModel {
     /// from `KeymasterSession`, the half every request needs. librespot's own credentials file
     /// is the *other* half, and it is deliberately not consulted here: a grant whose accesspoint
     /// connect failed still browses, and the app already has a way to offer playback again.
-    var isSignedIn = false
+    ///
+    /// Signed out, whatever the way, the session ends: the logout, a grant found revoked, and a
+    /// launch that finds no grant.
+    var isSignedIn = false {
+        didSet {
+            if !isSignedIn {
+                sessions.end()
+            }
+        }
+    }
+
+    /// The signed-in account's store and services, which outlive a window. Here because their
+    /// lifetime is the sign-in's, and this view model, like them, is the app's.
+    let sessions = LoggedInSessions()
+
     var errorMessage: String?
     var isLoading = true
 

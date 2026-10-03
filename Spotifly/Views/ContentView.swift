@@ -8,17 +8,15 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var viewModel = AuthViewModel()
+    /// The app's, not the window's, like the session it ends; see `SpotiflyApp`.
+    @Environment(AuthViewModel.self) private var viewModel
 
     var body: some View {
         if viewModel.isLoading {
             ProgressView(String(localized: "auth.loading"))
                 .frame(minWidth: 500, minHeight: 400)
         } else if viewModel.isSignedIn {
-            LoggedInView(onLogout: { Task { await viewModel.logout() } })
-                // Speakers and the play alert both offer the grant again, and it is this view
-                // model that runs it.
-                .environment(viewModel)
+            LoggedInView(session: viewModel.sessions.session(), onLogout: { Task { await viewModel.logout() } })
         } else {
             loginView
                 .frame(minWidth: 500, minHeight: 400)

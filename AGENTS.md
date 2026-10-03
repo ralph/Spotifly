@@ -206,8 +206,11 @@ Rules when adding a loading path:
   by a service observing `PlayerModel` (`QueueService`), not by a view's `.onChange`. Navigation
   state, such as the search the sidebar reopens to, is the coordinator's, not the store's.
 
-The services that hold registries are stored as `@State` in `LoggedInView` so the
-registries survive view recreation. `plans/done/section-request-pattern.md` has the full reasoning.
+The store and the services are a `LoggedInSession`, which the app holds for as long as the
+account is signed in (`AuthViewModel.sessions`), not a window: closing the window keeps them,
+and a reopened one shows the same session. A window keeps only its navigation. So a service's
+registries survive any view's recreation; `plans/done/section-request-pattern.md` has why they
+must, and `plans/done/menu-commands-lose-the-session-with-the-window.md` why not the window.
 
 ## Debug Logging
 

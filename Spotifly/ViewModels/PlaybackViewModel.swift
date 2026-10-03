@@ -20,8 +20,7 @@ final class PlaybackViewModel {
     /// What the player last published.
     private let player = PlayerModel.shared
 
-    /// Reference to AppStore for reading current track metadata (set when the logged-in view
-    /// appears).
+    /// The session's store, for reading the current track's metadata; see `attach`.
     private weak var store: AppStore?
 
     /// What ⌘L's favorite toggle goes through. Weak like the store, so a logout does not keep
@@ -684,7 +683,8 @@ final class PlaybackViewModel {
         clearPlaybackState()
     }
 
-    /// Gives the model the logged-in view's store and track service.
+    /// Gives the model the session's store and track service (`LoggedInSession`), which outlive
+    /// the window. Held weakly, so ending the session at a logout frees them.
     func attach(store: AppStore, trackService: TrackService) {
         self.store = store
         self.trackService = trackService
