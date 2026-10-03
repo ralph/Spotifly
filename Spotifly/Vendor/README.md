@@ -14,7 +14,11 @@ carry their own `main()` (`barkmel.c`, `psytune.c`, `tone.c`).
 
 Both libraries are BSD-style licensed; see the `COPYING-*.txt` file in each folder.
 The Xcode target compiles everything under this directory through its synced
-folder membership; the include paths are set in `HEADER_SEARCH_PATHS`.
+folder membership; the include paths are set in `HEADER_SEARCH_PATHS`. Each `.c`
+file is compiled with `-w`, set per file in the synced folder's exceptions
+(`additionalCompilerFlagsByRelativePath` in the project): the sources stay as
+released, and under the project's warnings they raise over 200, mostly
+`-Wshorten-64-to-32`. A file added here needs the same flag.
 
 Swift access goes through `Spotifly/SwiftLibrespot/Audio/VorbisDecoder.swift`,
 which wraps `libvorbisfile`'s streaming API.
