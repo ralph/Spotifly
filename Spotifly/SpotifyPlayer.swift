@@ -30,9 +30,6 @@ nonisolated struct QueueItem: Equatable {
 nonisolated enum StreamingAuthResult: Equatable {
     case authorized
     case failed
-    /// A logout landed while the grant was in flight, and the credentials it wrote were
-    /// removed again. Nothing went wrong, so this is reported as neither success nor error.
-    case superseded
     /// The user abandoned the flow — closed the browser tab, or pressed Cancel. Distinct from
     /// `failed` because there is nothing to report: they asked for this.
     case cancelled
@@ -143,9 +140,9 @@ enum SpotifyPlayer {
     /// Initializes the player: accesspoint login, dealer socket, Spirc
     /// registration, audio pipeline.
     ///
-    /// Every connect goes through here, the post-grant one included: the saved
-    /// volume is applied first, and the client is told where its credentials
-    /// come from — the stored reusable login from an earlier grant if there is
+    /// Every connect goes through here, from `PlaybackViewModel`'s lifecycle:
+    /// the saved volume is applied first, and the client is told where its
+    /// credentials come from — the stored reusable login from an earlier grant if there is
     /// one, else a fresh keymaster token, with the client token spclient
     /// requires.
     @SpotifyPlayerActor
@@ -338,21 +335,20 @@ enum SpotifyPlayer {
 
     /// Runs the one-time streaming authorization.
     ///
-    /// Swift mints the token now — see `KeymasterAuth` — and hands it to the
-    /// client, which logs the AP in once and stores the reusable credentials
-    /// every later init connects from. The token is adopted into
-    /// `KeymasterSession` before the connect rather than after, so it survives
-    /// even if the connect fails.
+    /// Swift mints the token now — see `KeymasterAuth` — and adopts it into
+    /// `KeymasterSession`. It does not connect: the caller checks the account first, and
+    /// `PlaybackViewModel` connects, as it does every other time, with the client falling
+    /// back to this token when it holds no reusable login. That login is stored by the first
+    /// connect, which every later init connects from.
     ///
     /// Blocks on a human, so it runs off the main actor, and it is cancellable for the same
     /// reason: the browser wait unwinds on cancellation, and so does the token exchange behind
-    /// it. The connect that follows does not — it is detached, so that a grant already written
-    /// to the keychain finishes registering this Mac rather than being abandoned half done.
+    /// it.
     static func authorizeStreaming() async -> StreamingAuthResult {
-        let tokens: KeymasterTokens
         do {
-            tokens = try await KeymasterAuth.authorize()
+            let tokens = try await KeymasterAuth.authorize()
             try await KeymasterSession.shared.adopt(tokens)
+            return .authorized
         } catch is CancellationError {
             debugLog("SpotifyPlayer", "Streaming authorization cancelled")
             return .cancelled
@@ -368,21 +364,6 @@ enum SpotifyPlayer {
             debugLog("SpotifyPlayer", "Streaming authorization failed: \(error)")
             return .failed
         }
-
-        // The connect runs detached: `.utility`, because a user-initiated caller parked on a
-        // lower-QoS worker is a priority inversion, and non-cancellable, because a grant
-        // already persisted should finish registering this Mac.
-        return await Task.detached(priority: .utility) {
-            do {
-                try await initialize()
-                return .authorized
-            } catch is CancellationError {
-                return .superseded
-            } catch {
-                debugLog("SpotifyPlayer", "Post-grant connect failed: \(error)")
-                return .failed
-            }
-        }.value
     }
 
     /// The Spotify account id the last successful grant authenticated as.
