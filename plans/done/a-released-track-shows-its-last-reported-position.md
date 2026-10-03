@@ -40,7 +40,9 @@ From the review: the release is queued with the client's other reports (`sendPla
 rather than awaited. Awaited, it held the bar's error, the thrown error of a play, and the
 pipeline's event loop behind a PutState, which waits out its 15 s timeout when the network is
 why playback failed. Queued, it still goes out in order: stopped while active, then the report
-that nothing plays here, and a start that follows after both.
+that nothing plays here, and a start that follows after both. The state is paused when playback stops, not
+when the report is sent: run on to the send, it overshot by however long the report before it
+took (the code review's finding).
 
 The mirror is unchanged: for a device that has gone, the raw position is still right.
 
@@ -57,6 +59,9 @@ cluster's last report came from then, and `playbackFailed` called 10 s in.
 - **After the review, queued:** the same, at 10158 ms (the model's last report at 2891 ms); the
   first PutState went out 2 ms after the failure, and the bar showed the error at the next
   sample.
+- **Paused at the release, final code:** the failure at 9403 ms, `paused 9404ms` reported, the
+  mirror and the bar at 9404 ms. A unit test pins that sending an already stopped state moves
+  nothing. 622 tests pass.
 - Unit tests for `stopped(_:atMs:)`: a playing track runs on by the time since its report, a
   paused one does not, neither past the track's end, and one of unknown length by the time
-  alone. 621 tests pass.
+  alone.

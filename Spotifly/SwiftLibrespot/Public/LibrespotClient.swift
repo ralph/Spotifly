@@ -1210,8 +1210,11 @@ public actor LibrespotClient {
     /// start that follows is reported after the release, not before it.
     private func releasePlayback() {
         releaseDue = true
-        // A second release before the first went out keeps the first's position.
-        stoppedToReport = stopReport(of: localState) ?? stoppedToReport
+        // Paused now, where it stopped: the report goes out once the one before it has, which
+        // can be seconds later, and a playing state would run on until then. A second release
+        // before the first went out keeps the first's position.
+        let now = UInt64(Date().timeIntervalSince1970 * 1000)
+        stoppedToReport = stopReport(of: localState).map { SpircController.stopped($0, atMs: now) } ?? stoppedToReport
         clearLocalState()
         reportPlaybackToCluster()
     }

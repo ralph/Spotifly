@@ -43,6 +43,15 @@ struct StoppedReportTests {
         #expect(stopped.shuffle)
     }
 
+    /// A release is paused when playback stops and sent later; sending it moves nothing.
+    @Test func `a state already stopped stays where it stopped`() {
+        let stopped = SpircController.stopped(state(playing: true), atMs: Self.reportedAt + 7242)
+        let sent = SpircController.stopped(stopped, atMs: Self.reportedAt + 22242)
+
+        #expect(sent.positionMs == 10079)
+        #expect(sent.timestamp == Self.reportedAt + 22242)
+    }
+
     @Test func `a paused track stops where it was`() {
         let stopped = SpircController.stopped(state(playing: false), atMs: Self.reportedAt + 60000)
 
