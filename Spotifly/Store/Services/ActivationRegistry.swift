@@ -27,12 +27,11 @@ import Foundation
 
     /// Warns when a *second* instance of a service goes live.
     ///
-    /// SwiftUI runs a View's `init` repeatedly and keeps only the first
-    /// `State(initialValue:)`, so a service built there exists in several copies. That is
-    /// harmless only while construction stays inert and exactly one copy is ever activated.
-    /// A second activation means a discarded instance came alive, and it would then handle
-    /// player notifications against an `AppStore` that nothing else reads — correct-looking
-    /// behaviour driven by state no view can see.
+    /// A `LoggedInSession` makes one of each service, and the app holds one session at a time,
+    /// so a second live activation means a second session is alive. It would then handle player
+    /// notifications against an `AppStore` that nothing else reads — correct-looking behaviour
+    /// driven by state no view can see. Services were once a view's `@State`, built in several
+    /// copies by SwiftUI's repeated `init`, which is how this was found.
     ///
     /// That is invisible in every other way. It went unnoticed until a queue log line
     /// reported metadata as cached and the very next line fetched it anyway; see
@@ -55,14 +54,14 @@ import Foundation
             }
         }
 
-        // A released predecessor is not a fault: logging out tears the whole logged-in
-        // view down, and the next sign-in rightly builds fresh services.
+        // A released predecessor is not a fault: logging out ends the session, and the next
+        // sign-in rightly builds fresh services.
         guard let previous = activatedServices[name]?.object, previous !== service else { return }
         debugLog(
             name,
             "WARNING: a second instance was activated while the first is still live — "
-                + "a discarded one came alive. Construction must stay inert; only the "
-                + "instance SwiftUI kept may be activated.",
+                + "a second session is alive. Construction must stay inert, and the app "
+                + "holds one session at a time.",
         )
     }
 #else

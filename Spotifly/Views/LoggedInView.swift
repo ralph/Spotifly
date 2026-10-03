@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct LoggedInView: View {
+    /// The store and services, which outlive this window; see `LoggedInSession`.
+    let session: LoggedInSession
     let onLogout: () -> Void
 
     @Environment(WindowState.self) private var windowState
@@ -16,44 +18,13 @@ struct LoggedInView: View {
 
     @Environment(PlaybackViewModel.self) private var playbackViewModel
 
-    /// Normalized state store.
-    @State private var store: AppStore
-
-    // Services that need Task deduplication or subscription persistence.
-    @State private var playlistService: PlaylistService
-    @State private var profileService: ProfileService
-    @State private var albumService: AlbumService
-    @State private var artistService: ArtistService
-    @State private var queueService: QueueService
-    @State private var deviceService: DeviceService
+    /// Where this window is, which goes with it.
     @State private var navigationCoordinator: NavigationCoordinator
 
-    /// Persisted because they store in-flight load tasks for dedup and
-    /// cancellation-resilience across view recreation.
-    @State private var trackService: TrackService
-    @State private var homeService: HomeService
-    /// Holds no state of its own, but kept like the others, so the environment hands the same
-    /// instance to every view rather than a new one per evaluation of the body.
-    @State private var searchService: SearchService
-
-    init(onLogout: @escaping () -> Void) {
+    init(session: LoggedInSession, onLogout: @escaping () -> Void) {
+        self.session = session
         self.onLogout = onLogout
-
-        let store = AppStore()
-
-        _store = State(initialValue: store)
-        let profileService = ProfileService(store: store)
-        _profileService = State(initialValue: profileService)
-        _playlistService = State(initialValue: PlaylistService(store: store, profileService: profileService))
-        _albumService = State(initialValue: AlbumService(store: store))
-        _artistService = State(initialValue: ArtistService(store: store))
-        let trackService = TrackService(store: store)
-        _queueService = State(initialValue: QueueService(store: store, trackService: trackService))
-        _deviceService = State(initialValue: DeviceService())
-        _navigationCoordinator = State(initialValue: NavigationCoordinator(store: store))
-        _trackService = State(initialValue: trackService)
-        _homeService = State(initialValue: HomeService(store: store))
-        _searchService = State(initialValue: SearchService(store: store))
+        _navigationCoordinator = State(initialValue: NavigationCoordinator(store: session.store))
     }
 
     @State private var searchText = ""
@@ -102,30 +73,21 @@ struct LoggedInView: View {
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
         // Inside the environment below, so the modifier reads the services from it.
         .modifier(LoggedInLifecycleModifier())
-        .environment(deviceService)
-        .environment(queueService)
-        .environment(homeService)
-        .environment(searchService)
+        .environment(session: session)
         .environment(navigationCoordinator)
-        .environment(store)
-        .environment(trackService)
-        .environment(playlistService)
-        .environment(profileService)
-        .environment(albumService)
-        .environment(artistService)
         // Scene values, which the menu sees whenever the window is key, whatever has focus
         // inside it. The Navigate menu's ⌘1–⌘4, ⌘[ and ⌘] are the only registration of those
         // shortcuts.
         .focusedSceneValue(\.navigationCoordinator, navigationCoordinator)
-        .focusedSceneValue(\.homeService, homeService)
-        .onChange(of: store.searchCacheEvictionRevision) {
+        .focusedSceneValue(\.homeService, session.homeService)
+        .onChange(of: session.store.searchCacheEvictionRevision) {
             navigationCoordinator.invalidateUnviewableRoutes()
         }
         // A failed search's page goes with its failure, from the history too.
-        .onChange(of: store.failedSearch?.query) {
+        .onChange(of: session.store.failedSearch?.query) {
             navigationCoordinator.invalidateUnviewableRoutes()
         }
-        .onChange(of: store.deletedEntitySelections) {
+        .onChange(of: session.store.deletedEntitySelections) {
             navigationCoordinator.invalidateUnviewableRoutes()
         }
     }
@@ -173,7 +135,7 @@ struct LoggedInView: View {
             Button("playback.needs_authorization_authorize") {
                 // Through the view model, so the grant this starts can be cancelled from
                 // Speakers — the alert is gone by the time the browser answers.
-                authViewModel.startStreamingAuthorization(expectedAccountId: store.userId)
+                authViewModel.startStreamingAuthorization(expectedAccountId: session.store.userId)
             }
             Button("common.cancel", role: .cancel) {}
         } message: {
@@ -207,7 +169,7 @@ struct LoggedInView: View {
             // Or a failed search's page, while it shows: the selection is there.
             hasSearchResults: navigationCoordinator.reopenableSearchQuery != nil
                 || navigationCoordinator.displayedSearchQuery != nil,
-            userProfile: store.userProfile,
+            userProfile: session.store.userProfile,
         )
         .navigationSplitViewColumnWidth(
             min: Self.sidebarMinWidth,
@@ -233,8 +195,8 @@ struct LoggedInView: View {
         let query = searchText
         Task {
             debugLog("Search", "Starting search for: \(query)")
-            await searchService.search(query: query)
-            debugLog("Search", "After search - results: \(store.searchResults(for: query) != nil), error: \(store.failedSearch?.failure.message ?? "nil")")
+            await session.searchService.search(query: query)
+            debugLog("Search", "After search - results: \(session.store.searchResults(for: query) != nil), error: \(session.store.failedSearch?.failure.message ?? "nil")")
             // The page opens for a failure too, to say so. The field can be cleared while the
             // request is in flight, which already left the results view; do not navigate back
             // into it behind the user.
@@ -246,7 +208,7 @@ struct LoggedInView: View {
 
     private func handleSearchTextChange(_ newValue: String) {
         guard newValue.isEmpty else { return }
-        searchService.clearFailure()
+        session.searchService.clearFailure()
 
         if navigationCoordinator.selectedNavigationItem == .searchResults {
             navigationCoordinator.selectNavigationItem(.startpage)
@@ -265,22 +227,22 @@ struct LoggedInView: View {
         switch section {
         case .playlists:
             {
-                try? await playlistService.loadSection(forceRefresh: true)
+                try? await session.playlistService.loadSection(forceRefresh: true)
             }
 
         case .albums:
             {
-                try? await albumService.loadUserAlbums(forceRefresh: true)
+                try? await session.albumService.loadUserAlbums(forceRefresh: true)
             }
 
         case .artists:
             {
-                try? await artistService.loadUserArtists(forceRefresh: true)
+                try? await session.artistService.loadUserArtists(forceRefresh: true)
             }
 
         case .favorites:
             {
-                try? await trackService.loadFavorites(forceRefresh: true)
+                try? await session.trackService.loadFavorites(forceRefresh: true)
             }
 
         case .startpage, .searchResults, .queue, .speakers, .profile, nil:

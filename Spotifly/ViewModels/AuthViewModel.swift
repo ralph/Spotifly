@@ -18,7 +18,21 @@ final class AuthViewModel {
     /// from `KeymasterSession`, the half every request needs. librespot's own credentials file
     /// is the *other* half, and it is deliberately not consulted here: a grant whose accesspoint
     /// connect failed still browses, and the app already has a way to offer playback again.
-    var isSignedIn = false
+    ///
+    /// Signed out, whatever the way, the session ends: the logout, a grant found revoked, and a
+    /// launch that finds no grant.
+    var isSignedIn = false {
+        didSet {
+            if !isSignedIn {
+                sessions.end()
+            }
+        }
+    }
+
+    /// The signed-in account's store and services, which outlive a window. Here because their
+    /// lifetime is the sign-in's, and this view model, like them, is the app's.
+    let sessions = LoggedInSessions()
+
     var errorMessage: String?
     var isLoading = true
 
@@ -127,11 +141,9 @@ final class AuthViewModel {
             }
 
             isSignedIn = true
-            // Build the session now rather than waiting for the next play. The grant only
-            // wrote credentials to disk; until something connects with them this Mac is
-            // still not registered with Spotify Connect, so it would stay missing from
-            // Speakers and the next play would raise the alert all over again.
-            await PlaybackViewModel.shared.forceReinitialize()
+            // The grant's connect has registered this Mac with Spotify Connect; the player
+            // takes that session over. A rebuild would take this Mac off Connect for a moment.
+            await PlaybackViewModel.shared.initializeIfNeeded()
         case .superseded:
             // A logout won the race and the credentials were removed again. Nothing went
             // wrong and there is nothing to report.
