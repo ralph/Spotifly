@@ -290,6 +290,8 @@ public actor LibrespotClient {
         // due would go out after the clear and say nothing plays here.
         let stopped = localState
         reportDue = false
+        releaseDue = false
+        stoppedToReport = nil
         clearLocalState()
         mirroredRemote = nil
         await pipeline?.stop()
@@ -1005,7 +1007,7 @@ public actor LibrespotClient {
             // gets back to the track Previous was pressed on.
             try await advanceUserInitiated()
         case let .stopped(error):
-            await playbackFailed(error)
+            playbackFailed(error)
             throw error
         }
     }
@@ -1063,7 +1065,7 @@ public actor LibrespotClient {
         } catch LibrespotError.premiumRequired {
             // Refused before any load, with the ended track still held: the account stopped
             // streaming here since it started, as a reconnect can find.
-            await playbackFailed(LibrespotError.premiumRequired)
+            playbackFailed(LibrespotError.premiumRequired)
         } catch {
             debugLog("LibrespotClient", "Auto-advance stopped: \(error.localizedDescription)")
         }
@@ -1104,10 +1106,9 @@ public actor LibrespotClient {
         guard let first = playbackQueue.ownTracks.firstIndex(where: { !isUnplayable($0) }) else {
             await audioPipeline?.stop()
             if let contextName = contextMetadata.contextName {
-                await playbackFailed(LibrespotError.trackUnavailable(name: contextName))
+                playbackFailed(LibrespotError.trackUnavailable(name: contextName))
             } else {
-                clearLocalState()
-                await releasePlayback()
+                releasePlayback()
             }
             return
         }
@@ -1171,7 +1172,7 @@ public actor LibrespotClient {
                 announceNextTrack()
             case let .error(error):
                 debugLog("LibrespotClient", "Audio pipeline error: \(error.localizedDescription)")
-                await playbackFailed(error)
+                playbackFailed(error)
             }
         }
     }
@@ -1188,19 +1189,33 @@ public actor LibrespotClient {
     /// The one place a failure ends playback, whoever started it. A play the
     /// app started shows the thrown error too, and `errorMessage` takes the
     /// same text only once.
-    private func playbackFailed(_ error: any Error) async {
-        clearLocalState()
-        await releasePlayback()
+    private func playbackFailed(_ error: any Error) {
+        releasePlayback()
         interrupt(error.localizedDescription)
     }
 
-    /// Lets go of the active role and reports that nothing plays here.
+    /// Ends playback here: the local state goes, and the next report says where it stopped,
+    /// while this is still the active device, then lets go of the role and reports that
+    /// nothing plays here.
     ///
     /// Clearing the local state alone told the cluster nothing: the last
     /// report stood, and on 2026-09-29 every heartbeat after a failed load
     /// went on telling the web player this Mac was playing the track at 0ms.
-    private func releasePlayback() async {
-        await session?.reportLocalActive(false)
+    /// Letting go without saying where left it standing too: "playing", at the position of
+    /// the last change, which whatever mirrored the cluster showed, this Mac included (6 s
+    /// back, in a failure faked 10 s into a track).
+    ///
+    /// Queued with the other reports rather than awaited: a failure is said at once, not after
+    /// a PutState that waits out its timeout when the network is why playback failed, and a
+    /// start that follows is reported after the release, not before it.
+    private func releasePlayback() {
+        releaseDue = true
+        // Paused now, where it stopped: the report goes out once the one before it has, which
+        // can be seconds later, and a playing state would run on until then. A second release
+        // before the first went out keeps the first's position.
+        let now = UInt64(Date().timeIntervalSince1970 * 1000)
+        stoppedToReport = stopReport(of: localState).map { SpircController.stopped($0, atMs: now) } ?? stoppedToReport
+        clearLocalState()
         reportPlaybackToCluster()
     }
 
@@ -1280,11 +1295,22 @@ public actor LibrespotClient {
 
     /// Whether another report is due once the one going out has been sent.
     private var reportDue = false
+    /// Whether the next report lets go of the active role first; see `releasePlayback`.
+    private var releaseDue = false
+    /// Where playback stopped, for that release to say; nil when there is nothing to say.
+    private var stoppedToReport: SpircController.SpircPlayerState?
     /// Sends the reports in turn; nil while none is going out.
     private var reporting: Task<Void, Never>?
 
     private func sendPlaybackReport() async {
+        let releasing = releaseDue
+        let stopped = stoppedToReport
+        releaseDue = false
+        stoppedToReport = nil
         guard let session else { return }
+        if releasing {
+            await session.releaseLocalPlayback(stopped: stopped)
+        }
         guard let current = localState else {
             await session.reportLocalPlayerState(nil, active: false)
             return
@@ -1602,7 +1628,7 @@ public actor LibrespotClient {
             // Let the role go again, or the cluster goes on showing this device
             // as the one playing — over silence, with every control sent here.
             debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
-            await releasePlayback()
+            releasePlayback()
         }
     }
 

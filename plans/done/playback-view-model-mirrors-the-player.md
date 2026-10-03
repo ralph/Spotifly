@@ -166,6 +166,6 @@ a failed load, and ran `shutdownForLogout` without touching the credentials.
   each track's length; when it quit, the bar kept its track, stopped at 9919 ms.
 - 617 unit tests pass.
 
-Seen on the way, filed: `plans/open/a-released-track-shows-its-last-reported-position.md`, and
+Seen on the way, filed: `plans/done/a-released-track-shows-its-last-reported-position.md`, and
 from the review, `plans/open/this-mac-registers-at-half-volume.md`.
 
