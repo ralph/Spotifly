@@ -240,4 +240,38 @@ extension MirroredQueueTests {
     @Test func `nothing playing is nothing to take over`() {
         #expect(LibrespotClient.takeOverState(of: PlayerState()) == nil)
     }
+
+    /// A double-click on a row played before (`startingOver`): the context from that row, at its
+    /// start, whatever played as queued or in autoplay when the mirror was taken.
+    @Test func `a row played before starts the context over from it`() throws {
+        var state = PlayerState()
+        state.contextUri = "spotify:album:a"
+        state.prevTracks = [row("t1"), row("t2")]
+        state.track = row("q1", provider: "queue")
+        state.nextTracks = [row("t3")]
+        state.positionAsOfTimestamp = 42000
+
+        let taken = try #require(LibrespotClient.takeOverState(of: state)).startingOver(at: "spotify:track:t1", uid: "uid-t1")
+        #expect(taken.contextUri == "spotify:album:a")
+        #expect(taken.currentTrackUri == "spotify:track:t1")
+        #expect(taken.currentTrackUid == "uid-t1")
+        #expect(taken.currentRow == nil)
+        #expect(!taken.playsQueuedTrack)
+        #expect(taken.contextResumeUid == nil)
+        #expect(!taken.continuesAutoplay)
+        #expect(taken.positionAsOfTimestamp == 0)
+    }
+
+    /// A bare list keeps its rows, the ones played before among them, for the row to be found in.
+    @Test func `a row played before in a bare list is found among its rows`() throws {
+        var state = PlayerState()
+        state.prevTracks = [row("t1")]
+        state.track = row("t2")
+        state.nextTracks = [row("t3")]
+
+        let taken = try #require(LibrespotClient.takeOverState(of: state)).startingOver(at: "spotify:track:t1", uid: "uid-t1")
+        #expect(taken.contextTrackUris == uris("t1", "t2", "t3"))
+        #expect(taken.currentTrackUri == "spotify:track:t1")
+        #expect(taken.currentRow == nil)
+    }
 }

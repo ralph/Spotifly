@@ -571,34 +571,36 @@ public actor LibrespotClient {
         await audioPipeline?.pause()
     }
 
-    /// Resumes what is loaded here. With nothing loaded while the snapshot
-    /// shows a track, that track is another device's, mirrored, and nobody
-    /// plays it: resuming then takes it over from where it was left, as Play
-    /// does on Spotify's own clients, instead of resuming an empty pipeline.
-    /// It is read as a handover would carry it (`takeOverState`) and played as
-    /// one is, from the position the mirror last showed: with no device active,
-    /// nothing has played on since.
+    /// Resumes what is loaded here, or plays the mirrored track from where it was left; see
+    /// `takeOverMirror`.
     public func resume() async throws {
-        guard localState == nil, latest.withLock({ $0.playback }) != nil,
-              let state = mirroredRemote.flatMap(Self.takeOverState), let track = state.currentTrackUri
-        else {
-            await audioPipeline?.resume()
+        if try await takeOverMirror() {
             return
         }
-        let positionMs = UInt64(max(0, state.positionAsOfTimestamp))
-        debugLog("LibrespotClient", "Taking over the mirrored \(track) in \(state.contextUri.isEmpty ? "a list of tracks" : state.contextUri) at \(positionMs)ms")
-        try await continuePlayback(of: state, positionMs: positionMs, paused: false)
+        await audioPipeline?.resume()
     }
 
+    /// Seeks what is loaded here, or loads the mirrored track paused where the seek went.
     public func seek(positionMs: UInt32) async throws {
+        if try await takeOverMirror(pausedAt: UInt64(positionMs)) {
+            return
+        }
         try await audioPipeline?.seek(positionMs: UInt64(positionMs))
     }
 
     public func next() async throws {
+        // The mirrored track is loaded first, so Next goes on from it as from any track loaded
+        // here, queued and autoplay rows included. It costs a load of a track it then leaves.
+        try await takeOverMirror(pausedAt: 0)
         try await advanceUserInitiated()
     }
 
     public func previous() async throws {
+        // The mirrored track loaded at its start is the whole of it: nothing has played here to
+        // go back to, so that is the restart.
+        if try await takeOverMirror(pausedAt: 0) {
+            return
+        }
         defer { publishQueue() }
 
         if let previous = playbackQueue.back(skipping: knownUnplayable) {
@@ -616,6 +618,8 @@ public actor LibrespotClient {
     /// Throws when the track is no longer listed: the caller has already moved
     /// the display to the start of a track, and only a failure takes that back.
     public func skip(toNext position: Int?, uri: String, uid: String?) async throws {
+        // As Next does.
+        try await takeOverMirror(pausedAt: 0)
         defer { publishQueue() }
         guard let next = playbackQueue.skip(toUpcoming: position, uri: uri, uid: uid) else {
             throw LibrespotError.trackNotFound("\(uri) is no longer in the queue")
@@ -627,6 +631,11 @@ public actor LibrespotClient {
     /// would, pressed that many times. See `PlaybackQueue.stepBack(toRecent:uri:)`.
     /// Throws as `skip(toNext:uri:)` does.
     public func skip(toPrevious index: Int, uri: String, uid: String?) async throws {
+        // A mirrored row played elsewhere, so none is in the history here: the context or the
+        // list plays from it, as another device is asked to (`PlaybackViewModel.play(queueRow:)`).
+        if try await takeOverMirror(from: (uri, uid)) {
+            return
+        }
         defer { publishQueue() }
         guard let previous = playbackQueue.stepBack(toRecent: index, uri: uri, uid: uid) else {
             throw LibrespotError.trackNotFound("\(uri) is no longer in the queue")
@@ -1458,6 +1467,16 @@ public actor LibrespotClient {
             if !activeId.isEmpty {
                 await standDown()
             }
+        } else if !nowActive, !activeId.isEmpty, let remote = cluster.playerState, remote.isPlaying, !remote.isPaused,
+                  localState?.isPlaying == false
+        {
+            // A track held here paused that never had the role: a mirrored one a seek or Previous
+            // loaded (`takeOverMirror`), which Spotify doesn't always make active. With it loaded
+            // nothing mirrors, so the bar went on showing it while the web player played. It gives
+            // way to a device that plays; one only named might be the sender of a paused handover
+            // still loading here.
+            debugLog("LibrespotClient", "\(activeId) is playing; letting go of the track held here paused")
+            await standDown()
         }
 
         if !nowActive, localState == nil, let remote = cluster.playerState {
@@ -1626,19 +1645,69 @@ public actor LibrespotClient {
             "Taking over \(track) in \(transfer.contextUri) at \(positionMs)ms (reported \(transfer.positionAsOfTimestamp)ms at \(transfer.timestamp))\(transfer.isPaused ? ", paused" : "")",
         )
 
-        // Active even when the handover arrives paused: the sender has already
-        // let go, and a paused player is still the one that holds playback.
-        await session?.reportLocalActive(true)
-
         do {
-            try await continuePlayback(of: transfer, positionMs: positionMs, paused: transfer.isPaused)
+            try await continueAsActive(of: transfer, positionMs: positionMs, paused: transfer.isPaused)
         } catch is CancellationError {
             // A newer load took over, and it reports for itself.
         } catch {
-            // Let the role go again, or the cluster goes on showing this device
-            // as the one playing — over silence, with every control sent here.
             debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
+        }
+    }
+
+    /// Takes over the track the bar mirrors, for a transport command meant for it, when nothing
+    /// is loaded here; says whether it did.
+    ///
+    /// With no device active the app sends its transport commands here, where they had nothing
+    /// to act on: a seek or a Previous failed with "No track loaded", and a Next changed nothing.
+    /// The web player takes the track over in the same state, and so does this Mac (measured
+    /// 2026-10-03, `plans/done/seek-on-a-mirrored-track-fails.md`). Spotify doesn't always make
+    /// a Connect device active from a paused report, so a track loaded here paused can be held
+    /// without the role; `handleClusterUpdate` has it give way.
+    ///
+    /// It is read as a handover would carry it (`takeOverState`), from `row` where one is named,
+    /// and played as one is: paused at `pausedAt`, or else playing from where the mirror last
+    /// showed it, as with no device active nothing has played on since.
+    ///
+    /// A command that comes while a takeover loads waits for it and acts on what it loaded. A
+    /// double-click on the current row of the queue, a Play and a seek to 0, took the track
+    /// over twice, and the paused load won.
+    @discardableResult
+    private func takeOverMirror(from row: (uri: String, uid: String?)? = nil, pausedAt positionMs: UInt64? = nil) async throws -> Bool {
+        if let mirrorTakeover {
+            try? await mirrorTakeover.value
+            return false
+        }
+        guard localState == nil, latest.withLock({ $0.playback }) != nil,
+              let mirrored = mirroredRemote.flatMap(Self.takeOverState)
+        else { return false }
+        let state = row.map { mirrored.startingOver(at: $0.uri, uid: $0.uid) } ?? mirrored
+        guard let track = state.currentTrackUri else { return false }
+        let paused = positionMs != nil
+        let positionMs = positionMs ?? UInt64(max(0, state.positionAsOfTimestamp))
+        debugLog("LibrespotClient", "Taking over the mirrored \(track) in \(state.contextUri.isEmpty ? "a list of tracks" : state.contextUri) at \(positionMs)ms\(paused ? ", paused" : "")")
+
+        let takeover = Task { try await self.continueAsActive(of: state, positionMs: positionMs, paused: paused) }
+        mirrorTakeover = takeover
+        defer { mirrorTakeover = nil }
+        try await takeover.value
+        return true
+    }
+
+    /// The mirrored track's takeover while it loads; see `takeOverMirror`.
+    private var mirrorTakeover: Task<Void, any Error>?
+
+    /// `continuePlayback` as the active device, which this Mac claims even paused: the device
+    /// before it has let go, and a paused player still holds playback. A paused report alone
+    /// does not claim the role. A load that fails lets it go again, or the cluster goes on
+    /// showing this device as the one playing, over silence, with every control sent here.
+    private func continueAsActive(of state: TransferState, positionMs: UInt64, paused: Bool) async throws {
+        await session?.reportLocalActive(true)
+        do {
+            try await continuePlayback(of: state, positionMs: positionMs, paused: paused)
+        } catch let error where !(error is CancellationError) {
+            // Not for a load a newer one cancelled: that one reports for itself.
             releasePlayback()
+            throw error
         }
     }
 
