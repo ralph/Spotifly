@@ -1,6 +1,6 @@
 # The launch's connect waits for a window and two requests
 
-Status: **Open**, small
+Status: **Done** (2026-10-03)
 Components: `Spotifly/Views/LoggedInLifecycleModifier.swift` (the window's task),
 `Spotifly/ViewModels/AuthViewModel.swift` (`startSession`, `authorizeStreaming`)
 Found: 2026-10-03, in the altitude review of `plans/done/the-session-is-attached-by-a-window.md`
@@ -22,13 +22,19 @@ token the connect was handed (`initializeIfNeeded(accessToken:)`, before #49).
 
 ## Solution
 
-Proposed: the session's start connects. `AuthViewModel.startSession`, which runs when the
-account signs in, at launch and at a sign-in alike, starts `initializeIfNeeded()`; at a sign-in,
-`authorizeStreaming`'s own call, which a renewed grant needs, coalesces with it
-(`runInitialization`). The window's call stays as the retry it is for a window that reopens
-after a connect failed, and says so.
+As proposed: `AuthViewModel.startSession` starts `PlaybackViewModel.initializeIfNeeded()`, so a
+session connects as it starts, at a launch and a sign-in alike. At a sign-in,
+`authorizeStreaming`'s own awaited call, which a renewed grant needs since its session is
+already started, comes first and the session's waits for it (`runInitialization`). The window's
+call stays, after its requests, as the retry for a window that opens after a connect failed.
 
 ## Verification
 
-A launch before and after: the connect's `Initialization complete` against the start page's
-load, and against the launch. A faked sign-in: still one connect.
+- **A launch, before** (main): launched at 43.438, the profile and start page requests at
+  43.86, the connect began at 44.847 ("Session created"), once both had answered, and completed
+  at 45.228: 1.79 s after the launch.
+- **After:** launched at 03.641, the connect began at 04.113, beside the two requests (04.109,
+  04.119), and completed at 04.494: 0.85 s after the launch. One `Initialization complete`.
+- **A faked sign-in** (throwaways, not committed): one `SpotifyPlayer.initialize`, one
+  `Initialization complete`.
+- 624 unit tests pass.
