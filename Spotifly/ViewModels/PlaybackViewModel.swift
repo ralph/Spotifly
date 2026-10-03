@@ -118,23 +118,45 @@ final class PlaybackViewModel {
 
     /// This Mac's volume (0–1), and only this Mac's: what its output plays at, what it
     /// registers at on Spotify Connect, and what is saved. A slider move made for another
-    /// device goes to `remoteVolume` instead (`setVolumeFromSlider`).
+    /// device does not touch it (`setVolumeFromSlider`).
     var volume: Double = 0.5 {
         didSet {
             // Apply the output gain immediately (not debounced) so local volume
             // changes are audible at once instead of after the render buffer drains.
             SpotifyPlayer.setOutputVolume(volume)
-            // Skip applying to Spirc if this change came from a remote volume callback
+            // Not sent back when it came from the client (`handleVolumeChange`).
             guard !isSettingVolumeLocally else { return }
-            // Debounce volume changes to avoid flooding Spirc with requests
+            // Debounced on to the client, and saved there, so a drag is one request and one
+            // write rather than one a frame.
             volumeSubject.send(volume)
-            saveVolume()
         }
     }
 
-    /// The active remote device's volume while another device plays, which the slider shows
-    /// then; nil while this Mac is the active device, or none is.
-    var remoteVolume: Double?
+    /// What the bar's slider shows: the active remote device's volume while another device
+    /// plays, this Mac's otherwise.
+    ///
+    /// Read from the player model, not kept: a copy kept up by the window's `onChange`s went
+    /// stale in the mini player, which has none, and showed one device's volume while moving
+    /// the other's. A drag shows its own value until the device reports a new volume.
+    var sliderVolume: Double {
+        guard let deviceId = player.activeRemoteDeviceId else { return volume }
+        let reported = player.activeDevice?.volumePercent
+        if let dragged = draggedRemoteVolume, dragged.deviceId == deviceId,
+           dragged.reportedPercent == reported
+        {
+            return dragged.volume
+        }
+        // Unknown only while the device list has not caught up with the active id.
+        return reported.map { Double($0) / 100 } ?? volume
+    }
+
+    /// Whether the device the slider moves refuses volume changes. Only ever another device:
+    /// this Mac's volume is the app's own. An iPhone says so, as iOS will not let one app set
+    /// system volume for another; the app used to find out from the
+    /// `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` its command got back, after the user had dragged.
+    var sliderRefused: Bool {
+        player.activeRemoteDeviceId != nil && player.activeDevice?.disableVolume == true
+    }
 
     /// Moves what the slider shows: the active remote device's volume while another device
     /// plays, this Mac's otherwise.
@@ -142,21 +164,27 @@ final class PlaybackViewModel {
     /// Both used to be written: `volume` followed a remote device's slider too, so this Mac's
     /// output gain did, and taking playback back here had to restore it from what was saved.
     func setVolumeFromSlider(_ newVolume: Double) {
-        if slidesRemoteDevice {
-            // Ahead of the device's own report, so the slider stays where it was let go.
-            remoteVolume = newVolume
-            remoteVolumeSubject.send(newVolume)
-        } else {
+        guard let deviceId = player.activeRemoteDeviceId else {
             volume = newVolume
+            return
         }
+        draggedRemoteVolume = DraggedVolume(
+            deviceId: deviceId,
+            volume: newVolume,
+            reportedPercent: player.activeDevice?.volumePercent,
+        )
+        remoteVolumeSubject.send(newVolume)
     }
 
-    /// Whether the slider moves another device: one is active, and it is not this Mac, as
-    /// `LoggedInView` decides between `becameLocalActiveDevice` and `becameRemoteActiveDevice`.
-    private var slidesRemoteDevice: Bool {
-        guard let active = player.activeDeviceId else { return false }
-        return active != player.ownDeviceId
+    /// A drag of another device's volume, which the slider shows ahead of the device's report.
+    private struct DraggedVolume {
+        let deviceId: String
+        let volume: Double
+        /// What the device reported when the drag moved; a report since replaces the drag.
+        let reportedPercent: Int?
     }
+
+    private var draggedRemoteVolume: DraggedVolume?
 
     var isShuffleEnabled: Bool {
         shown?.shuffle ?? false
@@ -1357,6 +1385,8 @@ final class PlaybackViewModel {
     /// back, or changed from another device. Moves the slider without sending it back.
     private func handleVolumeChange(_ newVolume: Double) {
         debugLog("PlaybackViewModel", "Volume published: \(newVolume)")
+        // The echo of a volume set here is no change.
+        guard newVolume != volume else { return }
         // Set flag to prevent feedback loop
         isSettingVolumeLocally = true
         volume = newVolume
@@ -1719,33 +1749,16 @@ final class PlaybackViewModel {
         return saved > 0 ? saved : 0.5
     }
 
-    // MARK: - Remote Device Volume Sync
-
-    /// Call when Spotifly becomes the active device, or no device is: the slider shows this
-    /// Mac's volume again, which a remote device's never touched.
-    func becameLocalActiveDevice() {
-        remoteVolume = nil
-    }
-
-    /// Call when a remote Spotify Connect device becomes active.
-    /// Sets remote volume mode so the slider reflects that device's volume.
-    func becameRemoteActiveDevice(volumePercent: Int?) {
-        remoteVolume = volumePercent.map { Double($0) / 100.0 }
-    }
-
-    /// Call when the active remote device's volume is refreshed from HTTP.
-    func remoteDeviceVolumeUpdated(_ volumePercent: Int) {
-        guard remoteVolume != nil else { return }
-        remoteVolume = Double(volumePercent) / 100.0
-    }
-
     /// Debounces the slider, so a drag does not flood Spirc or spclient with requests.
     private func setupVolumeDebounceSubscription() {
         // This Mac's, whether it plays, waits or is not up yet: the client keeps it, reports
         // it on Connect, and registers each session at it.
         volumeSubject
             .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
-            .sink { SpotifyPlayer.setVolume($0) }
+            .sink { [weak self] newVolume in
+                SpotifyPlayer.setVolume(newVolume)
+                self?.saveVolume()
+            }
             .store(in: &volumeDebounceSubscriptions)
         remoteVolumeSubject
             .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)

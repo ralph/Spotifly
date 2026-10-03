@@ -57,17 +57,6 @@ struct LoggedInView: View {
                 .searchable(text: $searchText)
                 .onSubmit(of: .search) { performSearch() }
                 .onChange(of: searchText) { _, newValue in handleSearchTextChange(newValue) }
-                .onChange(of: player.activeDeviceId) { _, newId in
-                    if newId == nil || newId == player.ownDeviceId {
-                        playbackViewModel.becameLocalActiveDevice()
-                    } else {
-                        playbackViewModel.becameRemoteActiveDevice(volumePercent: player.activeDevice?.volumePercent)
-                    }
-                }
-                .onChange(of: player.activeDevice?.volumePercent) { _, newPercent in
-                    guard let newPercent, player.activeDeviceId != player.ownDeviceId else { return }
-                    playbackViewModel.remoteDeviceVolumeUpdated(newPercent)
-                }
             }
         }
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
