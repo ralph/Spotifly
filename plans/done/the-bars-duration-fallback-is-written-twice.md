@@ -1,6 +1,6 @@
 # The now-playing bar's duration fallback is written twice
 
-Status: **Open**, small
+Status: **Done** (2026-10-03)
 Components: `Spotifly/Views/NowPlayingBarView.swift` (`currentDurationMs`),
 `Spotifly/ViewModels/PlaybackViewModel.swift` (`effectiveNowPlayingDurationMs`)
 Found: 2026-10-03, in the simplify review of `plans/done/playback-view-model-mirrors-the-player.md`
@@ -15,10 +15,16 @@ through its own `currentTrack`, the view model through `currentNowPlayingTrack`.
 
 ## Solution
 
-Proposed: one, in the view model (`displayedDurationMs`, say, nil while unknown), which both
-read. The bar's 0 for "unknown" maps to its `--:--` today; check that it still shows that.
+One rule, in the view model: `PlaybackViewModel.displayedDurationMs`, nil while unknown, which
+Control Center's timing and the bar's scrubber both read; the rule itself is the pure
+`displayedDuration(streamMs:storedMs:)`, so it is unit-tested. The bar maps nil to 0, which
+shows "0:00", as its 0 did before (not `--:--`, as this plan had it).
 
 ## Verification
 
-A unit test of the rule if the view model's store can be set up in one; otherwise a live check
-that the scrubber and Control Center show the same length on the first frames of a new track.
+- Unit tests: the stream's length wins over the store's, the store's stands in while the
+  stream has none, and with neither there is none.
+- Live, a muted album start and two skips: the scrubber's accessibility value and Control
+  Center's duration agreed on each track (3:35 and 215.205 s, 2:48 and 168.821 s, 3:21 and
+  201.759 s).
+- 625 unit tests pass.

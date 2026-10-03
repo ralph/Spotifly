@@ -327,12 +327,9 @@ struct NowPlayingBarView: View {
         playbackViewModel.interpolatedPositionMs
     }
 
-    /// Current track duration (from playback state, fallback to store metadata)
+    /// The current track's length, 0 while none is known; the same Control Center shows.
     private var currentDurationMs: UInt32 {
-        if playbackViewModel.trackDurationMs > 0 {
-            return playbackViewModel.trackDurationMs
-        }
-        return currentTrack.map { UInt32($0.durationMs) } ?? 0
+        playbackViewModel.displayedDurationMs ?? 0
     }
 
     private var progressBar: some View {
