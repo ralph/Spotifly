@@ -261,11 +261,6 @@ enum SpotifyPlayer {
         try await LibrespotClient.shared.resume()
     }
 
-    /// Stops playback.
-    static func stop() {
-        Task { await LibrespotClient.shared.stop() }
-    }
-
     /// Skips to the next track in the queue.
     static func next() async throws {
         try await LibrespotClient.shared.next()

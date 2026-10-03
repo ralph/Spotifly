@@ -245,7 +245,7 @@ struct PlaylistDetailView: View {
         let row = TrackRow(
             track: track,
             index: index,
-            currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+            currentlyPlayingURI: playbackViewModel.currentTrackUri,
             currentSection: .playlists,
             selectionId: playlistId,
             itemUid: item.uid,

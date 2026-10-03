@@ -148,7 +148,7 @@ struct AlbumDetailView: View {
                             TrackRow(
                                 track: track,
                                 showTrackNumber: true,
-                                currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+                                currentlyPlayingURI: playbackViewModel.currentTrackUri,
                                 currentSection: .albums,
                                 selectionId: albumId,
                                 onDoubleTap: {
