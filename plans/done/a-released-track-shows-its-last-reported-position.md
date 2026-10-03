@@ -33,10 +33,14 @@ The first: what librespot's `handle_disconnect` does, and what this Mac's own sh
 did (`SpircController.shutdown(stopped:)`). Letting go of playback now reports the track
 paused where it had got to, while still the active device, and then stands down
 (`SpircController.release(stopped:)`); the computation the shutdown had inline is
-`SpircController.stopped(_:atMs:)`, which both use. `LibrespotClient.releasePlayback` takes the
-local state as it was before it was cleared: a failed load (`playbackFailed`) and a context with
-nothing left to play pass theirs, and a handover that failed to load passes none, since a load
-that failed there has released with its own.
+`SpircController.stopped(_:atMs:)`, which both use. `LibrespotClient.releasePlayback()` takes the
+local state and clears it itself, so no caller can clear it first and lose the position.
+
+From the review: the release is queued with the client's other reports (`sendPlaybackReport`)
+rather than awaited. Awaited, it held the bar's error, the thrown error of a play, and the
+pipeline's event loop behind a PutState, which waits out its 15 s timeout when the network is
+why playback failed. Queued, it still goes out in order: stopped while active, then the report
+that nothing plays here, and a start that follows after both.
 
 The mirror is unchanged: for a device that has gone, the raw position is still right.
 
@@ -50,6 +54,9 @@ cluster's last report came from then, and `playbackFailed` called 10 s in.
 - **After:** `PutState playerStateChanged active=true: paused 10079ms`, then `active=false: no
   player state`; the cluster's answer mirrored the track paused at 10079 ms, and the bar stayed
   there for the next seven samples. The model's last report had said 2837 ms.
+- **After the review, queued:** the same, at 10158 ms (the model's last report at 2891 ms); the
+  first PutState went out 2 ms after the failure, and the bar showed the error at the next
+  sample.
 - Unit tests for `stopped(_:atMs:)`: a playing track runs on by the time since its report, a
   paused one does not, neither past the track's end, and one of unknown length by the time
   alone. 621 tests pass.

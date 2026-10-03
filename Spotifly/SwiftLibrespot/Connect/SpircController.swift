@@ -179,9 +179,7 @@ public actor SpircController {
         heartbeatTask?.cancel()
         heartbeatTask = nil
 
-        if let stopped {
-            await reportStopped(stopped)
-        }
+        await reportStopped(stopped)
 
         isReady = false
         subscriptions.removeAll()
@@ -196,14 +194,13 @@ public actor SpircController {
     /// where it stopped while still the active device, as `shutdown(stopped:)` does, then
     /// stands down. Nil reports nothing first.
     func release(stopped: SpircPlayerState?) async {
-        if let stopped {
-            await reportStopped(stopped)
-        }
+        await reportStopped(stopped)
         setActive(false)
     }
 
-    /// Reports `state` paused where it had got to.
-    private func reportStopped(_ state: SpircPlayerState) async {
+    /// Reports `state` paused where it had got to; nothing when there is none.
+    private func reportStopped(_ state: SpircPlayerState?) async {
+        guard let state else { return }
         playerState = Self.stopped(state, atMs: UInt64(Date().timeIntervalSince1970 * 1000))
         await publishState(reason: .playerStateChanged)
     }
