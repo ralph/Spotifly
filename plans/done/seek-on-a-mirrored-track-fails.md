@@ -80,8 +80,9 @@ named but paused might be the sender of a paused handover still loading here.
 Left for `plans/open/shuffle-and-queue-on-a-mirrored-track.md`: Shuffle and Add to Queue still act
 on the empty local queue with no device active.
 
-Not changed: this Mac's Previous goes back to the previous track whenever there is one, where the
-web player restarts the track past its first seconds.
+Not changed here: this Mac's Previous went back to the previous track whenever there was one,
+where the web player restarts the track past its first seconds. Done since in
+`plans/done/previous-restarts-past-three-seconds.md`.
 
 ## Verification
 

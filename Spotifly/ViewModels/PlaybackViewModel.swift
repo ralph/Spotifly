@@ -776,9 +776,10 @@ final class PlaybackViewModel {
     /// and plays, seeks or skips from where it stopped. With nothing loaded, the client takes
     /// over the track another device left, which the bar mirrors, as the web player does with
     /// nobody active (`LibrespotClient.takeOverMirror`): Play plays it, a seek loads it paused
-    /// where the seek went, Previous restarts it paused, and Next plays on from it. With nobody
-    /// active there is no role to take from another client. The playing state that follows is
-    /// reported to Spirc as this device being active, which takes the Connect role with it.
+    /// where the seek went, Previous restarts it paused, or within its first 3 s plays the track
+    /// before it, and Next plays on from it. With nobody active there is no role to take from
+    /// another client. The playing state that follows is reported to Spirc as this device being
+    /// active, which takes the Connect role with it.
     ///
     /// `promisesPosition` marks the commands whose caller moves the display ahead of
     /// playback — skips and seeks — and so have a promise to withdraw if they fail. Any
