@@ -217,7 +217,7 @@ struct QueueListView: View {
                     TrackRow(
                         track: item.track,
                         index: index,
-                        currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+                        currentlyPlayingURI: playbackViewModel.currentTrackUri,
                         currentIndex: player.queueEntries.currentIndex,
                         provider: item.provider,
                         currentSection: .queue,

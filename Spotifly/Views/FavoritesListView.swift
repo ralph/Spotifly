@@ -67,7 +67,7 @@ struct FavoritesListView: View {
                             TrackRow(
                                 track: track,
                                 index: index,
-                                currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+                                currentlyPlayingURI: playbackViewModel.currentTrackUri,
                                 currentSection: .favorites,
                                 onDoubleTap: {
                                     // The playlist the list was read from; see `LikedSongs`.

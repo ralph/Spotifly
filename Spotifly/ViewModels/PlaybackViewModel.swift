@@ -53,7 +53,9 @@ final class PlaybackViewModel {
         var trackUri: String
         /// Playing and not paused, for this Mac's player and for a device it mirrors alike.
         var isPlaying: Bool
-        /// Zero until the stream reports the track's length; see `clampedToTrack`.
+        /// Zero until the stream reports this track's length, and never the previous track's:
+        /// a report that names none keeps the one this track had, or none on a new track.
+        /// `clampedToTrack` and `positionAnchor(forPosition:takenAt:)` rely on it.
         var durationMs: UInt32
         var shuffle: Bool
         /// See `PlaybackState.canSkipNext`.
@@ -106,15 +108,9 @@ final class PlaybackViewModel {
     /// Whether the error's five seconds ran out while it was held.
     private var errorMessageExpired = false
 
-    /// Returns the URI of the currently playing track (alias for currentTrackUri)
-    var currentlyPlayingURI: String? {
-        currentTrackUri
-    }
-
-    /// Length of the current track, as the stream reports it. Zero until one is known, which
-    /// is what stops a previous track's length being applied to a new one — see
-    /// `clampedToTrack`. The position that goes with it is derived from the anchor rather
-    /// than stored alongside; see `interpolatedPositionMs`.
+    /// Length of the current track, as the stream reports it; see `ShownPlayback.durationMs`.
+    /// The position that goes with it is derived from the anchor rather than stored alongside;
+    /// see `interpolatedPositionMs`.
     var trackDurationMs: UInt32 {
         shown?.durationMs ?? 0
     }
@@ -1134,9 +1130,9 @@ final class PlaybackViewModel {
 
     /// The duration to publish, or nil while none is known.
     ///
-    /// The stream duration is authoritative but arrives after the URI does, and the URI
-    /// `didSet` clears it on every track change. The store's duration bridges that gap,
-    /// so the scrubber shows a length instead of --:-- for the first few frames.
+    /// The stream duration is authoritative but can arrive after the URI does, and a new
+    /// track starts without one (`handlePlaybackStateUpdate`). The store's duration bridges
+    /// that gap, so the scrubber shows a length instead of --:-- for the first few frames.
     private var effectiveNowPlayingDurationMs: UInt32? {
         if trackDurationMs > 0 {
             return trackDurationMs
@@ -1244,8 +1240,8 @@ final class PlaybackViewModel {
     /// No title, artist, or artwork processing. Call on: seek, play/pause, drift correction, and
     /// every playback state update.
     ///
-    /// Duration belongs here even though it is metadata: the URI `didSet` clears the stream
-    /// duration on every track change, so a path that only wrote elapsed time would leave
+    /// Duration belongs here even though it is metadata: a new track starts without the stream
+    /// duration, so a path that only wrote elapsed time would leave
     /// the previous track's duration standing against the new track's position.
     func updateNowPlayingPosition() {
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
@@ -1408,8 +1404,6 @@ final class PlaybackViewModel {
         shown = ShownPlayback(
             trackUri: state.trackUri,
             isPlaying: state.isPlaying,
-            // A report that names no length keeps the one this track had, and never applies
-            // the previous track's to a new one.
             durationMs: reportedDurationMs ?? (trackChanged ? 0 : trackDurationMs),
             shuffle: state.shuffle,
             canSkipNext: state.canSkipNext,
@@ -1555,7 +1549,7 @@ final class PlaybackViewModel {
     /// changing what the user sees.
     ///
     /// The bound reads `trackDurationMs` rather than taking a duration, so it is by
-    /// construction the same length the display clamps against; both callers refresh it from
+    /// construction the same length the display clamps against; its caller refreshes it from
     /// the same snapshot before anchoring. This guard used to live only on the Web API path,
     /// but staleness is a property of Spotify's timestamp, not of the endpoint that carried
     /// it — cluster updates forward `player_state.timestamp` unchanged and can be minutes
@@ -1584,9 +1578,7 @@ final class PlaybackViewModel {
 
     /// Caps a position at the track length, leaving it untouched while no length is known.
     ///
-    /// The unknown case is what makes a track change safe: the `currentTrackUri` `didSet`
-    /// clears the duration before the new track's position arrives, so the previous track's
-    /// length is never applied to it.
+    /// The unknown case is what makes a track change safe; see `ShownPlayback.durationMs`.
     private func clampedToTrack(_ positionMs: UInt32) -> UInt32 {
         trackDurationMs > 0 ? min(positionMs, trackDurationMs) : positionMs
     }
@@ -1605,7 +1597,7 @@ final class PlaybackViewModel {
         }
     }
 
-    /// Sync the position anchor with the player - call after seek, play, resume, track change
+    /// Re-anchors at the local player's position, for a seek that could not be issued.
     private func syncPositionAnchor() {
         let playerPosition = SpotifyPlayer.positionMs
         // Don't overwrite a valid position with 0: the player says 0 while nothing is loaded

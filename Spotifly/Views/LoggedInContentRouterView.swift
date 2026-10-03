@@ -74,9 +74,9 @@ struct LoggedInContentRouterView: View {
 
         case .profile:
             // Drawn whether or not the profile loaded. `onLogout` is the app's logout, which
-            // also stops playback — and which is the only way to clear a
-            // revoked grant from inside the app, so it must not be gated on a request that the
-            // same revoked grant would have failed.
+            // also stops playback — and which is the only way to clear a revoked grant from
+            // inside the app, so it must not be gated on a request that the same revoked grant
+            // would have failed.
             UserProfileView(userProfile: store.userProfile, onLogout: onLogout)
 
         case .searchResults:

@@ -87,7 +87,7 @@ Done in the third step, **one value for what the bar shows**:
   playback keeps them with the track, where reading `player.playback` turned shuffle off and
   Next on.
 - It holds no position, which the anchor has: a report that only moves the position is an
-  equal write, which the lists reading `currentlyPlayingURI` do not hear. A pause, a change of
+  equal write, which the lists reading `currentTrackUri` do not hear. A pause, a change of
   track or of shuffle still reaches them.
 - **Logout.** `clearPlaybackState()` stays the view model's, and runs in `shutdownForLogout`,
   after the teardown. Every way out of the account goes through there (`discardGrant`): a
