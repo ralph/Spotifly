@@ -112,7 +112,7 @@ final class PlaybackViewModel {
     /// Length of the current track, as the stream reports it; see `ShownPlayback.durationMs`.
     /// The position that goes with it is derived from the anchor rather than stored alongside;
     /// see `interpolatedPositionMs`.
-    var trackDurationMs: UInt32 {
+    private var trackDurationMs: UInt32 {
         shown?.durationMs ?? 0
     }
 
@@ -1176,19 +1176,23 @@ final class PlaybackViewModel {
         return store?.tracks[trackId]
     }
 
-    /// The duration to publish, or nil while none is known.
-    ///
-    /// The stream duration is authoritative but can arrive after the URI does, and a new
-    /// track starts without one (`handlePlaybackStateUpdate`). The store's duration bridges
-    /// that gap, so the scrubber shows a length instead of --:-- for the first few frames.
-    private var effectiveNowPlayingDurationMs: UInt32? {
-        if trackDurationMs > 0 {
-            return trackDurationMs
+    /// The current track's length as the bar's scrubber and Control Center show it, or nil
+    /// while none is known; see `displayedDuration(streamMs:storedMs:)`.
+    var displayedDurationMs: UInt32? {
+        Self.displayedDuration(streamMs: trackDurationMs, storedMs: currentNowPlayingTrack?.durationMs)
+    }
+
+    /// The stream's length, which is authoritative, or the store's until the stream has one: a
+    /// new track starts without it (`handlePlaybackStateUpdate`), and the store's bridges that
+    /// gap, so the first frames show a length. Nil while neither is known. The store is asked
+    /// only then, as the scrubber reads this on each tick.
+    nonisolated static func displayedDuration(streamMs: UInt32, storedMs: @autoclosure () -> Int?) -> UInt32? {
+        if streamMs > 0 {
+            return streamMs
         }
-        guard let storedDuration = currentNowPlayingTrack?.durationMs,
-              storedDuration > 0
+        guard let storedMs = storedMs(), let stored = playbackMilliseconds(Int64(storedMs)), stored > 0
         else { return nil }
-        return UInt32(storedDuration)
+        return stored
     }
 
     /// Writes duration, elapsed time, and playback rate into `info`.
@@ -1197,7 +1201,7 @@ final class PlaybackViewModel {
     /// *previous* track's duration is worse than no timing at all, so an unknown
     /// duration removes both keys rather than leaving one behind.
     private func applyNowPlayingTiming(to info: inout [String: Any]) {
-        if let durationMs = effectiveNowPlayingDurationMs {
+        if let durationMs = displayedDurationMs {
             info[MPMediaItemPropertyPlaybackDuration] = Double(durationMs) / 1000.0
             // Where the bar is now, not the anchor: macOS runs the elapsed time on from the
             // moment it is published, and an anchor can be seconds old by then, or back-dated

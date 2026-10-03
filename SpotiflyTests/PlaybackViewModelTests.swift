@@ -28,6 +28,23 @@ struct PlaybackMillisecondsTests {
     }
 }
 
+/// The length the scrubber and Control Center show, one rule for both.
+struct DisplayedDurationTests {
+    @Test func `the stream's length wins over the store's`() {
+        #expect(PlaybackViewModel.displayedDuration(streamMs: 215_205, storedMs: 215_000) == 215_205)
+    }
+
+    /// A new track starts without the stream's length; the store's bridges the gap.
+    @Test func `the store's length stands in until the stream has one`() {
+        #expect(PlaybackViewModel.displayedDuration(streamMs: 0, storedMs: 215_000) == 215_000)
+    }
+
+    @Test func `with neither known there is no length`() {
+        #expect(PlaybackViewModel.displayedDuration(streamMs: 0, storedMs: nil) == nil)
+        #expect(PlaybackViewModel.displayedDuration(streamMs: 0, storedMs: 0) == nil)
+    }
+}
+
 /// The clock the displayed position runs on.
 struct PositionClockTests {
     /// A clock that stops in sleep is behind the wall clock by every second this Mac has slept
