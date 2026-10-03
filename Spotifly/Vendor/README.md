@@ -14,11 +14,21 @@ carry their own `main()` (`barkmel.c`, `psytune.c`, `tone.c`).
 
 Both libraries are BSD-style licensed; see the `COPYING-*.txt` file in each folder.
 The Xcode target compiles everything under this directory through its synced
-folder membership; the include paths are set in `HEADER_SEARCH_PATHS`. Each `.c`
-file is compiled with `-w`, set per file in the synced folder's exceptions
-(`additionalCompilerFlagsByRelativePath` in the project): the sources stay as
-released, and under the project's warnings they raise over 200, mostly
-`-Wshorten-64-to-32`. A file added here needs the same flag.
+folder membership; the include paths are set in `HEADER_SEARCH_PATHS`.
+
+The sources stay as released, so the three warnings they raise under the project's
+settings are turned off for them alone, per file in the synced folder's exceptions
+(`additionalCompilerFlagsByRelativePath` in the project):
+
+- `-Wno-shorten-64-to-32` on every `.c` file. Both libraries use `long` as their
+  general integer and store it in `int` fields: a bit read of at most 32 bits, a
+  block size, an error code. On a 64-bit Mac each such store is a narrowing, 211 in
+  all. Xiph's own builds don't enable this warning; Xcode does.
+- `-Wno-unused-variable -Wno-strict-prototypes` on `vorbisfile.c`, for an `fpu`
+  variable used only on x86 and a function declared `()` rather than `(void)`.
+
+Every other warning still shows for these files. A file added here needs the same
+flag.
 
 Swift access goes through `Spotifly/SwiftLibrespot/Audio/VorbisDecoder.swift`,
 which wraps `libvorbisfile`'s streaming API.
