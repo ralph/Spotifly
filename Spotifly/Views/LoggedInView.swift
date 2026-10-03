@@ -152,6 +152,24 @@ struct LoggedInView: View {
         } message: {
             Text("playback.needs_premium_message")
         }
+        // A grant started in here, from Speakers or the play alert, that did not take:
+        // refused for another account, or failed. It waits for OK, since the grant finishes in
+        // the browser, where a passing message in the bar would be missed.
+        .alert(
+            "auth.enable_playback_failed_title",
+            isPresented: Binding(
+                get: { authViewModel.errorMessage != nil },
+                set: {
+                    if !$0 {
+                        authViewModel.errorMessage = nil
+                    }
+                },
+            ),
+        ) {
+            Button("common.ok", role: .cancel) {}
+        } message: {
+            Text(authViewModel.errorMessage ?? "")
+        }
     }
 
     /// The main content router with its content toolbar attached directly. Search is

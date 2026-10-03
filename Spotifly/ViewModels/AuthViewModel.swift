@@ -33,6 +33,9 @@ final class AuthViewModel {
     /// lifetime is the sign-in's, and this view model, like them, is the app's.
     let sessions = LoggedInSessions()
 
+    /// Why the last grant did not take. The login screen shows it while signed out, and the
+    /// signed-in app as an alert, since a grant there was started from Speakers or the play
+    /// alert and finishes in the browser, where a passing message would be missed.
     var errorMessage: String?
     var isLoading = true
 
@@ -101,56 +104,72 @@ final class AuthViewModel {
         // rebuild a player for an account that is gone.
         let startedAt = authLifecycle
 
-        switch await SpotifyPlayer.authorizeStreaming() {
-        case .authorized:
-            // The browser runs the grant with whatever account it is signed into, which need
-            // not be the one already signed in here. Accepting a mismatch would swap the
-            // account under a library, a queue and a now-playing bar that go on showing the
-            // previous one — with no visible sign of it.
-            let mismatch = Self.accountMismatch(
-                expected: expectedAccountId,
-                granted: SpotifyPlayer.lastGrantAccountId(),
-            )
-
-            guard startedAt == authLifecycle else {
-                // Logged out while the browser had the grant, and this run has to undo its
-                // own write rather than just walk away: the keymaster tokens belong to an
-                // account that is gone, and logout cleared the keychain before they were
-                // written.
-                debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
-                await discardGrant()
-                return
-            }
-
-            if let mismatch {
-                debugLog("AuthViewModel", "Streaming grant rejected: \(mismatch)")
-                // Refused as a logout is done, so whatever the player has is torn down too.
-                //
-                // A mismatch caught at sign-in cannot arise — there is nothing to mismatch
-                // against — so this only ever refuses a *change* of account, and the previous
-                // grant it declined to replace is the one that just went with the clear.
-                await discardGrant()
-                errorMessage = String(localized: "auth.enable_playback_wrong_account")
-                return
-            }
-
-            isSignedIn = true
-            // Connected through the player's lifecycle, as every other connect is, while the
-            // app shows: its profile and start page need no session, and the window's own
-            // `initializeIfNeeded` waits for this one. A connect that fails is said in the
-            // now-playing bar, as any other is, and Speakers offers it again.
-            await PlaybackViewModel.shared.initializeIfNeeded()
-        case .cancelled:
+        // Minted in the browser, and written only once it is known to be wanted: a grant
+        // refused here leaves the one it was to replace as it was, signed in.
+        let tokens: KeymasterTokens
+        do {
+            tokens = try await KeymasterAuth.authorize()
+        } catch is CancellationError {
             // The user closed the browser tab or pressed Cancel. They asked for this, so
             // there is nothing to report.
-            break
-        case .failed:
-            // The browser or the token exchange failed, and nothing was written; or the
-            // keychain refused the tokens, which `KeymasterSession` holds for this launch all
-            // the same. Read which.
+            debugLog("AuthViewModel", "Streaming authorization cancelled")
+            return
+        } catch let error as URLError where error.code == .cancelled {
+            // The same cancellation, reported differently. Only the browser wait answers with
+            // `CancellationError`; once the redirect has landed the flow is inside
+            // `URLSession`, which reports a cancelled task as a `URLError` of its own — and
+            // falling through to a failure there told the user their connection had failed
+            // when what happened is that they pressed Cancel.
+            debugLog("AuthViewModel", "Streaming authorization cancelled during token exchange")
+            return
+        } catch {
+            debugLog("AuthViewModel", "Streaming authorization failed: \(error)")
+            errorMessage = String(localized: "auth.connect_failed")
+            return
+        }
+
+        // Logged out while the browser had the grant: nothing was written, and nothing is.
+        guard startedAt == authLifecycle else {
+            debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
+            return
+        }
+
+        // The browser runs the grant with whatever account it is signed into, which need not
+        // be the one already signed in here. Accepting a mismatch would swap the account under
+        // a library, a queue and a now-playing bar that go on showing the previous one — with
+        // no visible sign of it. A mismatch caught at sign-in cannot arise — there is nothing
+        // to mismatch against — so this only ever refuses a *change* of account.
+        if let mismatch = Self.accountMismatch(expected: expectedAccountId, granted: tokens.username) {
+            debugLog("AuthViewModel", "Streaming grant rejected: \(mismatch)")
+            errorMessage = String(localized: "auth.enable_playback_wrong_account")
+            return
+        }
+
+        do {
+            try await KeymasterSession.shared.adopt(tokens)
+        } catch {
+            // The keychain refused the tokens, which `KeymasterSession` holds for this launch
+            // all the same.
+            debugLog("AuthViewModel", "Streaming grant not saved: \(error)")
             isSignedIn = await KeymasterSession.shared.hasGrant
             errorMessage = String(localized: "auth.connect_failed")
+            return
         }
+
+        // A logout that landed while the tokens were written cleared the keychain before or
+        // after them; this run undoes its own write either way.
+        guard startedAt == authLifecycle else {
+            debugLog("AuthViewModel", "Streaming grant abandoned: logged out while it was saved")
+            await discardGrant()
+            return
+        }
+
+        isSignedIn = true
+        // Connected through the player's lifecycle, as every other connect is, while the
+        // app shows: its profile and start page need no session, and the window's own
+        // `initializeIfNeeded` waits for this one. A connect that fails is said in the
+        // now-playing bar, as any other is, and Speakers offers it again.
+        await PlaybackViewModel.shared.initializeIfNeeded()
     }
 
     /// Starts the grant and keeps hold of it, so it can be abandoned.
@@ -248,6 +267,8 @@ final class AuthViewModel {
         // Invalidates any streaming grant still deciding, so it cannot resume into the
         // session this is tearing down.
         authLifecycle &+= 1
+        // A grant's refusal belongs to the session it was refused in, not to the login screen.
+        errorMessage = nil
 
         await discardGrant()
     }

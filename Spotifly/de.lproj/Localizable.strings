@@ -267,4 +267,5 @@
 "speakers.this_mac_needs_premium" = "Dieser Mac spielt nur für Premium-Konten";
 "common.ok" = "OK";
 "common.cancel" = "Abbrechen";
+"auth.enable_playback_failed_title" = "Dieser Mac wurde nicht aktiviert";
 "auth.enable_playback_wrong_account" = "Dieses Spotify-Konto ist nicht das, mit dem du angemeldet bist. Melde dich im Browser mit demselben Konto an und versuche es erneut.";
