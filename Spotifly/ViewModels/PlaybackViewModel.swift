@@ -34,14 +34,40 @@ final class PlaybackViewModel {
     /// for the notice that offers Logout.
     var showsPremiumNotice = false
 
-    var isPlaying = false
     var isLoading = false
+
+    /// What the bar shows of the player's playback: its last report that had any, stopped if
+    /// a later one had none. A nil report keeps the track, for a failed load or another device
+    /// taking over, and with it the options it played with, which reading `player.playback`
+    /// lost.
+    ///
+    /// A copy, deliberately, written in the same call as the position anchor
+    /// (`handlePlaybackStateUpdate`) and cleared with it (`clearPlaybackState`): read from
+    /// `player.playback` instead, it would change at the player model's `apply`, one
+    /// `Observations` delivery before the anchor, and a frame drawn in between runs a paused
+    /// anchor on or stops a playing one. It holds no position, so a report that only moves the
+    /// position is an equal write, which the lists that mark the playing row do not hear.
+    private var shown: ShownPlayback?
+
+    private struct ShownPlayback: Equatable {
+        var trackUri: String
+        /// Playing and not paused, for this Mac's player and for a device it mirrors alike.
+        var isPlaying: Bool
+        /// Zero until the stream reports the track's length; see `clampedToTrack`.
+        var durationMs: UInt32
+        var shuffle: Bool
+        /// See `PlaybackState.canSkipNext`.
+        var canSkipNext: Bool
+        /// See `PlaybackState.canShuffle`.
+        var canShuffle: Bool
+    }
+
+    var isPlaying: Bool {
+        shown?.isPlaying ?? false
+    }
+
     var currentTrackUri: String? {
-        didSet {
-            if oldValue != currentTrackUri {
-                trackDurationMs = 0
-            }
-        }
+        shown?.trackUri
     }
 
     /// The error the now-playing bar shows in place of the track's title. Views set it too,
@@ -89,7 +115,9 @@ final class PlaybackViewModel {
     /// is what stops a previous track's length being applied to a new one — see
     /// `clampedToTrack`. The position that goes with it is derived from the anchor rather
     /// than stored alongside; see `interpolatedPositionMs`.
-    var trackDurationMs: UInt32 = 0
+    var trackDurationMs: UInt32 {
+        shown?.durationMs ?? 0
+    }
 
     /// Volume (0.0 - 1.0)
     var volume: Double = 0.5 {
@@ -113,9 +141,8 @@ final class PlaybackViewModel {
     /// The volume slider uses this for display when set.
     var remoteVolume: Double?
 
-    /// The player's, as it last reported; nothing here keeps a copy of it.
     var isShuffleEnabled: Bool {
-        player.playback?.shuffle ?? false
+        shown?.shuffle ?? false
     }
 
     /// Whether the client has completed at least one usable initialization.
@@ -230,7 +257,9 @@ final class PlaybackViewModel {
         await runInitialization(force: false)
     }
 
-    /// Tears the streaming session down on logout.
+    /// Tears the streaming session down on logout, and forgets what it played: every way out
+    /// of the account comes through here (`AuthViewModel.discardGrant`), a revoked grant and
+    /// a refused one as well as Log Out.
     ///
     /// Deliberately does not wait for an initialization that may be in flight. Waiting would
     /// hang the logout behind a stalled network setup, and it is not needed: `shutdown()`
@@ -259,6 +288,9 @@ final class PlaybackViewModel {
             defer { isLoggingOut = false }
 
             await SpotifyPlayer.shutdownAndCleanup()
+            // After the teardown, whose last report has no playback: one still on its way
+            // would otherwise put the track back, and a report without playback keeps it.
+            clearPlaybackState()
         }
         logoutTask = task
         await task.value
@@ -378,9 +410,9 @@ final class PlaybackViewModel {
     /// Forgets the track: publishes the stopped rate before clearing the URI, then removes
     /// the old track's metadata.
     private func clearPlaybackState() {
-        isPlaying = false
+        shown?.isPlaying = false
         updateNowPlayingPosition()
-        currentTrackUri = nil
+        shown = nil
         updateNowPlayingInfo()
         anchorPosition(0)
     }
@@ -586,12 +618,11 @@ final class PlaybackViewModel {
 
         do {
             try await start()
-            // The track and whether it plays are the player's report, which normally arrives
-            // before the start returns (158 ms before, measured), and sets them when it comes.
-            // The mixer exists only once playback starts, so the volume goes now.
+            // The track, whether it plays and where are the player's reports, which anchor the
+            // position as they come: every load ends in one that says playing or paused, and
+            // the start returns between the first and that one (measured). The client reports
+            // its own default volume to other devices until it is told the saved one.
             SpotifyPlayer.setVolume(volume)
-            syncPositionAnchor()
-            updateNowPlayingPosition()
         } catch is CancellationError {
             // Another start overtook this one; it reports for itself.
         } catch {
@@ -672,16 +703,6 @@ final class PlaybackViewModel {
             // Play new track
             await playTrack(trackId: trackId)
         }
-    }
-
-    /// Stops playback and clears the view model's playback state. Called on logout.
-    ///
-    /// Deliberately not gated on the session being connected: `SpotifyPlayer.stop()` stops
-    /// the audio pipeline directly and works while disconnected. Guarding it meant logging
-    /// out during an outage left buffered audio playing and the previous track showing.
-    func stop() {
-        SpotifyPlayer.stop()
-        clearPlaybackState()
     }
 
     /// Gives the model the session's store and track service (`LoggedInSession`), which outlive
@@ -929,12 +950,12 @@ final class PlaybackViewModel {
 
     /// Whether Next goes anywhere; see `PlaybackState.canSkipNext`.
     var hasNext: Bool {
-        currentTrackUri != nil && player.playback?.canSkipNext != false
+        shown?.canSkipNext ?? false
     }
 
     /// Whether shuffle may be switched on; see `PlaybackState.canShuffle`.
     var canShuffle: Bool {
-        player.playback?.canShuffle != false
+        shown?.canShuffle ?? true
     }
 
     // MARK: - Media Keys & Now Playing
@@ -1367,7 +1388,7 @@ final class PlaybackViewModel {
             // clock stops where it had got to.
             if isPlaying {
                 freezePositionClock()
-                isPlaying = false
+                shown?.isPlaying = false
                 updateNowPlayingPosition()
             }
             return
@@ -1378,21 +1399,22 @@ final class PlaybackViewModel {
             "Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
 
-        // Playing and not paused, for this Mac's player and for a device it mirrors alike.
-        isPlaying = state.isPlaying
-
-        // Update track if changed
-        let trackChanged = !state.trackUri.isEmpty && state.trackUri != currentTrackUri
-        if trackChanged {
-            currentTrackUri = state.trackUri
-            // Note: Track metadata (name, artist, etc.) will be updated from queue
-        }
-
-        // Update duration. Connect snapshots carry these as signed 64-bit integers, so do
-        // not let a malformed one turn a narrowing conversion into a process trap.
-        if let durationMs = Self.playbackMilliseconds(state.durationMs), durationMs > 0 {
-            trackDurationMs = durationMs
-        }
+        // Every report names its track: the mirror skips a cluster's without one, and this
+        // Mac's come from its queue. Track metadata (name, artist, etc.) comes from the queue.
+        let trackChanged = state.trackUri != currentTrackUri
+        // Connect snapshots carry these as signed 64-bit integers, so do not let a malformed
+        // one turn a narrowing conversion into a process trap.
+        let reportedDurationMs = Self.playbackMilliseconds(state.durationMs).flatMap { $0 > 0 ? $0 : nil }
+        shown = ShownPlayback(
+            trackUri: state.trackUri,
+            isPlaying: state.isPlaying,
+            // A report that names no length keeps the one this track had, and never applies
+            // the previous track's to a new one.
+            durationMs: reportedDurationMs ?? (trackChanged ? 0 : trackDurationMs),
+            shuffle: state.shuffle,
+            canSkipNext: state.canSkipNext,
+            canShuffle: state.canShuffle,
+        )
 
         // Sync position anchor on state changes. When monitoring a remote device,
         // position_ms is the position at timestamp_ms, which can be minutes old.
