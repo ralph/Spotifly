@@ -1,6 +1,6 @@
 # The sign-in connects the player outside the player's lifecycle
 
-Status: **Done** (2026-10-03); a real sign-in for each outcome is left to the PR's manual test
+Status: **Done** (2026-10-03), verified with real sign-ins
 Components: `Spotifly/SpotifyPlayer.swift` (`authorizeStreaming`),
 `Spotifly/ViewModels/AuthViewModel.swift`, `Spotifly/ViewModels/PlaybackViewModel.swift`
 (`runInitialization`, `performInitialization`)
@@ -69,5 +69,14 @@ browser (not committed):
   same, one connect each.
 - 617 unit tests pass.
 
-Left for a real sign-in: a normal one, a cancelled one, and a re-authorization from Speakers
-with the browser signed into another account (which signs the app out, by design).
+With real sign-ins (the developer, 2026-10-03):
+
+- **A sign-in:** after a logout, the token exchange at 05:56:30.976, then one `Initialization
+  complete` at 05:56:31.620, and no adoption.
+- **A cancelled one:** `Streaming authorization cancelled`, the login screen stayed, no error;
+  the sign-in after it connected once.
+- **A re-authorization with the browser on another account**, from Speakers' "Enable this
+  Mac", which a throwaway made appear by failing the first connect after launch: the token
+  exchange at 06:06:29.948, `Streaming grant rejected` 215 ms later, then the shutdown, with no
+  `Registering device` and no `Initialization complete` in between, so this Mac was never on
+  Connect under that account. The app signed out and said why; signing back in connected once.
