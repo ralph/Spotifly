@@ -595,20 +595,46 @@ public actor LibrespotClient {
         try await advanceUserInitiated()
     }
 
+    /// Previous as Spotify's clients have it: within a track's first 3 s it goes back to the track
+    /// before, which plays; later it restarts the track, playing or paused as it was. Measured
+    /// with the web player on 2026-10-03 (back at 2 s, playing or paused; a restart at 4 s), and
+    /// librespot's `handle_prev` has the same 3 s. This Mac went back whenever it could.
     public func previous() async throws {
-        // The mirrored track loaded at its start is the whole of it: nothing has played here to
-        // go back to, so that is the restart.
-        if try await takeOverMirror(pausedAt: 0) {
+        // A mirrored track goes back to the row before it as the other device listed it, since
+        // none played here; past its first seconds, the track loaded paused at its start is the
+        // restart.
+        let tookOver = if let before = Self.rowBefore(mirrored: mirroredRemote) {
+            try await takeOverMirror(from: (before.uri, before.uid))
+        } else {
+            try await takeOverMirror(pausedAt: 0)
+        }
+        if tookOver {
             return
         }
-        defer { publishQueue() }
 
+        let positionMs = await audioPipeline?.currentPositionMs() ?? 0
+        if positionMs >= UInt64(Self.previousGoesBackWithinMs) {
+            try await audioPipeline?.seek(positionMs: 0)
+            return
+        }
+
+        defer { publishQueue() }
         if let previous = playbackQueue.back(skipping: knownUnplayable) {
             try await loadAndPlay(previous, going: .backward)
         } else {
             // Nowhere back: restart the current track, like every other client.
             try await audioPipeline?.seek(positionMs: 0)
         }
+    }
+
+    /// How far into a track Previous goes back to the one before it, rather than restarting it.
+    nonisolated static let previousGoesBackWithinMs: Int64 = 3000
+
+    /// The row Previous goes back to from another device's mirrored track: the last one shown
+    /// before it, while the track is within its first seconds. Nil past them, or with none.
+    nonisolated static func rowBefore(mirrored remote: PlayerState?) -> QueueItem? {
+        guard let remote, remote.positionAsOfTimestamp < previousGoesBackWithinMs else { return nil }
+        return mirroredQueue(of: remote).previousTracks.last
     }
 
     /// Plays `uri` from the next tracks this client publishes, the row `uid`

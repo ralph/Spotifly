@@ -262,6 +262,29 @@ extension MirroredQueueTests {
         #expect(taken.positionAsOfTimestamp == 0)
     }
 
+    /// Previous on a mirrored track within its first 3 s goes back to the row before it, the last
+    /// one the Queue section lists; as on Spotify's clients, it restarts the track after that.
+    @Test func `previous goes back to the last row shown before a mirrored track, within 3 s`() throws {
+        var state = PlayerState()
+        state.prevTracks = [row("t1"), row("t2"), row("t3", hidden: true)]
+        state.track = row("t4")
+        state.positionAsOfTimestamp = 2999
+
+        let before = try #require(LibrespotClient.rowBefore(mirrored: state))
+        #expect(before.uri == "spotify:track:t2")
+        #expect(before.uid == "uid-t2")
+
+        state.positionAsOfTimestamp = 3000
+        #expect(LibrespotClient.rowBefore(mirrored: state) == nil)
+    }
+
+    @Test func `with no row before a mirrored track, or none mirrored, previous restarts it`() {
+        var state = PlayerState()
+        state.track = row("t1")
+        #expect(LibrespotClient.rowBefore(mirrored: state) == nil)
+        #expect(LibrespotClient.rowBefore(mirrored: nil) == nil)
+    }
+
     /// A bare list keeps its rows, the ones played before among them, for the row to be found in.
     @Test func `a row played before in a bare list is found among its rows`() throws {
         var state = PlayerState()
