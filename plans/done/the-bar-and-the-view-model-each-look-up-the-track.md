@@ -1,6 +1,6 @@
 # The now-playing bar and the view model each look up the current track
 
-Status: **Open**, small
+Status: **Done** (2026-10-03)
 Components: `Spotifly/Views/NowPlayingBarView.swift` (`currentTrackId`, `currentTrack`),
 `Spotifly/ViewModels/PlaybackViewModel.swift` (`currentNowPlayingTrack`,
 `toggleCurrentTrackFavorite`)
@@ -16,11 +16,14 @@ a change to which id counts, the logical track or a relinked one, has to be made
 
 ## Solution
 
-Proposed: the view model's `currentTrackId` and `currentTrack`, which the bar reads in place of
-its own. The view model's store is attached by `LoggedInLifecycleModifier` before the first
-`await` of the window's first task; a bar drawn before that has no track to show anyway.
+As proposed: the view model's `currentTrackId` and `currentTrack` are the one lookup. The bar
+reads them for its title, artwork, artist and album links, heart and favorite checks;
+Control Center, the displayed length and `toggleCurrentTrackFavorite` use them too.
+`currentNowPlayingTrack` is gone, and the bar's own two properties.
 
 ## Verification
 
-Live, a muted album start and a skip: the bar's title and artist, its heart's name and Control
-Center's title name the same track, and follow the skip.
+Live, a muted album start and two skips, read from outside through accessibility: the bar's
+title and artist, its heart and Control Center's title named the same track each time ("Not Bad
+for New Jersey", "Better Before", "Pearls", by Brian Fallon; the heart "Add to Favorites").
+625 unit tests pass.
