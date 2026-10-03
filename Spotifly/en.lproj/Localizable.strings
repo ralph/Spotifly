@@ -268,3 +268,7 @@
 "common.ok" = "OK";
 "common.cancel" = "Cancel";
 "auth.enable_playback_wrong_account" = "That Spotify account is not the one you are signed in with. Sign the browser into the same account and try again.";
+
+/* A playlist folder's state, for accessibility */
+"folder.open" = "Open";
+"folder.closed" = "Closed";

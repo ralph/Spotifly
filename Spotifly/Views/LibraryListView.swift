@@ -20,6 +20,25 @@ extension Album: @MainActor LibraryEntity {}
 extension Artist: @MainActor LibraryEntity {}
 extension Playlist: @MainActor LibraryEntity {}
 
+/// A row of a library section shown in its folders: a folder, or an entry, at its depth.
+enum LibraryOutlineRow<Entity: LibraryEntity>: Identifiable {
+    case folder(uri: String, name: String, depth: Int)
+    case entity(Entity, depth: Int)
+
+    var id: String {
+        switch self {
+        case let .folder(uri, _, _): uri
+        case let .entity(entity, _): entity.id
+        }
+    }
+
+    var depth: Int {
+        switch self {
+        case let .folder(_, _, depth), let .entity(_, depth): depth
+        }
+    }
+}
+
 /// Everything the three sections show and say differently — the whole of it.
 struct LibrarySectionStyle {
     let loadingText: LocalizedStringKey
@@ -48,8 +67,15 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     let load: @MainActor (_ forceRefresh: Bool) async throws -> Void
     let loadMore: @MainActor () async throws -> Void
     let style: LibrarySectionStyle
+    /// The entries in their folders, shown instead of `items` where the section has folders.
+    /// `items` still decides what loads.
+    var outline: [LibraryOutlineRow<Entity>]?
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
+
+    /// The folders open in the list, by uri, one per line: kept across launches, as Spotify's
+    /// clients keep theirs. A folder starts closed.
+    @AppStorage("openLibraryFolders") private var openFolderList = ""
 
     /// Whether we have content to show (either the ephemeral entity or the library)
     private var hasContent: Bool {
@@ -141,18 +167,29 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                             }
                         }
 
-                        ForEach(items.enumerated(), id: \.element.id) { index, item in
+                        ForEach(rows.enumerated(), id: \.element.id) { index, outlineRow in
                             VStack(spacing: 0) {
                                 if index > 0 {
                                     Divider()
-                                        .padding(.leading, 56)
+                                        .padding(.leading, 56 + Self.indent(outlineRow.depth))
                                 }
 
-                                row(for: item)
+                                switch outlineRow {
+                                case let .folder(uri, name, depth):
+                                    folderRow(uri: uri, name: name)
+                                        .padding(.leading, Self.indent(depth))
+                                case let .entity(entity, depth):
+                                    row(for: entity)
+                                        .padding(.leading, Self.indent(depth))
+                                }
                             }
                         }
 
-                        LoadMoreRow(pagination: pagination, loadMore: loadMoreItems)
+                        // An outline is loaded whole, and the flat pages behind it are not
+                        // what it shows.
+                        if outline == nil {
+                            LoadMoreRow(pagination: pagination, loadMore: loadMoreItems)
+                        }
                     }
                     .padding()
                 }
@@ -170,6 +207,11 @@ struct LibraryListView<Entity: LibraryEntity>: View {
         .onChange(of: items) { _, _ in
             selectFirstIfNeeded()
         }
+        // The selection can be inside a closed folder: chosen from the flat list before the
+        // outline arrived, or opened from elsewhere. Its folders open, so its row shows.
+        .onChange(of: [selectedId] + (outline?.map(\.id) ?? []), initial: true) {
+            revealSelection()
+        }
     }
 
     private func row(for entity: Entity) -> some View {
@@ -183,11 +225,104 @@ struct LibraryListView<Entity: LibraryEntity>: View {
         )
     }
 
+    /// What the list shows: the outline, less what closed folders hold, or the flat entries.
+    private var rows: [LibraryOutlineRow<Entity>] {
+        outline.map(visibleRows(of:)) ?? items.map { .entity($0, depth: 0) }
+    }
+
+    private static func indent(_ depth: Int) -> CGFloat {
+        CGFloat(depth) * 20
+    }
+
+    private var openFolders: Set<String> {
+        get { Set(openFolderList.split(separator: "\n").map(String.init)) }
+        nonmutating set { openFolderList = newValue.sorted().joined(separator: "\n") }
+    }
+
+    /// The outline without what closed folders hold: the rows deeper than a closed folder, up
+    /// to the next row at its depth or above.
+    private func visibleRows(of outline: [LibraryOutlineRow<Entity>]) -> [LibraryOutlineRow<Entity>] {
+        let open = openFolders
+        var closedDepth: Int?
+        return outline.filter { row in
+            if let depth = closedDepth {
+                if row.depth > depth {
+                    return false
+                }
+                closedDepth = nil
+            }
+            if case let .folder(uri, _, depth) = row, !open.contains(uri) {
+                closedDepth = depth
+            }
+            return true
+        }
+    }
+
+    /// The folders an entry sits in, outermost first: the folders above it at each depth less
+    /// than its own.
+    static func folders(around entityId: String, in outline: [LibraryOutlineRow<Entity>]) -> [String] {
+        var enclosing: [String] = []
+        for row in outline {
+            enclosing = Array(enclosing.prefix(row.depth))
+            switch row {
+            case let .folder(uri, _, _):
+                enclosing.append(uri)
+            case let .entity(entity, _) where entity.id == entityId:
+                return enclosing
+            case .entity:
+                break
+            }
+        }
+        return []
+    }
+
+    private func revealSelection() {
+        guard let outline, let selectedId else { return }
+        let closed = Self.folders(around: selectedId, in: outline).filter { !openFolders.contains($0) }
+        guard !closed.isEmpty else { return }
+        openFolders.formUnion(closed)
+    }
+
+    /// A button, so accessibility can press it: a tap gesture with a button trait announced
+    /// itself as one and did nothing when pressed.
+    private func folderRow(uri: String, name: String) -> some View {
+        let isOpen = openFolders.contains(uri)
+        return Button {
+            if isOpen {
+                openFolders.remove(uri)
+            } else {
+                openFolders.insert(uri)
+            }
+        } label: {
+            // A folder has no cover; this is the placeholder a playlist without one shows.
+            LibraryRowLabel(
+                artwork: Artwork(images: .empty, size: 36, shape: style.artworkShape, symbol: "folder", symbolFont: .system(size: 16)),
+                name: name,
+            ) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isOpen ? 90 : 0))
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(isOpen ? Text("folder.open") : Text("folder.closed"))
+    }
+
     /// The section always shows a detail, so entering it lands on the first entry. The
     /// coordinator is told at this call site that the step is automatic, so it replaces the
     /// route rather than recording a history entry the user never asked for.
     private func selectFirstIfNeeded() {
-        guard selectedId == nil, let first = items.first else { return }
+        guard selectedId == nil else { return }
+        // The first row shown, which in an outline is not inside a closed folder.
+        let first = rows.lazy.compactMap { row -> Entity? in
+            if case let .entity(entity, _) = row {
+                entity
+            } else {
+                nil
+            }
+        }.first
+        guard let first else { return }
         select(first.id, false)
     }
 
@@ -216,27 +351,18 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
     /// row's actions too.
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 10) {
-                Artwork(
+            LibraryRowLabel(
+                artwork: Artwork(
                     images: entity.images,
                     size: 36,
                     shape: style.artworkShape,
                     symbol: style.placeholderGlyph,
                     symbolFont: .system(size: 16),
                     placeholderWhileLoading: true,
-                )
-
-                Text(entity.name)
-                    .font(.system(size: 13))
-                    .lineLimit(1)
-
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-            .contentShape(Rectangle())
+                ),
+                name: entity.name,
+                isSelected: isSelected,
+            )
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -263,5 +389,39 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
         Task {
             await playbackViewModel.play(uriOrUrl: entity.uri)
         }
+    }
+}
+
+/// What every row of a library section looks like, a folder's and an entry's: a 36-point image,
+/// the name, and what follows it.
+private struct LibraryRowLabel<Trailing: View>: View {
+    let artwork: Artwork
+    let name: String
+    var isSelected = false
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 10) {
+            artwork
+
+            Text(name)
+                .font(.system(size: 13))
+                .lineLimit(1)
+
+            Spacer()
+
+            trailing
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+        .contentShape(Rectangle())
+    }
+}
+
+extension LibraryRowLabel where Trailing == EmptyView {
+    init(artwork: Artwork, name: String, isSelected: Bool = false) {
+        self.init(artwork: artwork, name: name, isSelected: isSelected) { EmptyView() }
     }
 }
