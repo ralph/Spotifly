@@ -1,9 +1,10 @@
 # The volume slider writes another device's volume as this Mac's
 
-Status: **Open**
+Status: **Done** (2026-10-03)
 Components: `Spotifly/ViewModels/PlaybackViewModel.swift` (`volume`, `remoteVolume`,
 `becameLocalActiveDevice`, the volume debounce, `startLocally`),
-`Spotifly/Views/NowPlayingBarView.swift` (`setVolume`)
+`Spotifly/Views/NowPlayingBarView.swift` (`setVolume`), `Spotifly/SpotifyPlayer.swift`
+(`initialize`, `savedVolume`)
 Found: 2026-10-03, in the reviews of `plans/done/this-mac-registers-at-half-volume.md`
 
 ## Summary
@@ -33,17 +34,28 @@ What follows from the one value meaning two things:
 
 ## Solution
 
-Proposed: `volume` is only ever this Mac's.
-- A slider move goes through one view model method that writes `remoteVolume` while another
-  device is active (by `PlayerModel.activeDeviceId` against `ownDeviceId`, as `LoggedInView`
-  decides `becameLocal`/`becameRemoteActiveDevice`) and `volume` otherwise.
-- Two debounces, one per destination: `volume`'s goes to this Mac's client, always;
-  `remoteVolume`'s to the active device over spclient.
-- Then `becameLocalActiveDevice` only clears `remoteVolume`, `startLocally` no longer pushes the
-  volume, and `volume`'s `didSet` saves unconditionally.
+`volume` is only ever this Mac's:
+- The slider calls `PlaybackViewModel.setVolumeFromSlider`, which writes `remoteVolume` while
+  another device is active (`PlayerModel.activeDeviceId` against `ownDeviceId`, as
+  `LoggedInView` decides `becameLocal`/`becameRemoteActiveDevice`), and `volume` otherwise.
+- Two debounces: `volume`'s goes to this Mac's client, always; `remoteVolume`'s to the active
+  device over spclient.
+- `volume`'s `didSet` and `handleVolumeChange` save unconditionally; `becameLocalActiveDevice`
+  only clears `remoteVolume`; `startLocally` no longer pushes the volume.
+- The view model owns the saved setting, reading and writing it, and hands this Mac's volume
+  to `SpotifyPlayer.initialize(volume:)`; `SpotifyPlayer.savedVolume` is gone.
 
 ## Verification
 
-With the silent librespot device active and Spotifly mirroring it: a move of Spotifly's slider
-reaches the device (its volume in the cluster), and Spotifly's own volume in the cluster and its
-saved volume stay put. Then this Mac takes over: its volume is what it was, with no restore.
+Live, with throwaways that made the same call the slider makes (`setVolumeFromSlider`) and
+logged the view model and the cluster's device list:
+
+- **Another device active** (the silent librespot device, at 100%): a slide to 0.3 set the
+  device's volume in the cluster to 30 within 4 s, and this Mac's stayed as it was: `volume`
+  and the saved value 0.6059375, its cluster entry 61. When the device quit, `remoteVolume`
+  went back to nil and `volume` was unchanged, with nothing restored. Before, the same move set
+  `volume`, and with it this Mac's output gain, to 0.3 (`NowPlayingBarView.setVolume`).
+- **No device active:** a slide to 0.3 set `volume` and the saved value to 0.3, and the
+  cluster's entry for this Mac to 30 (a `volumeChanged` PutState); sliding back restored
+  0.6059375 and 61.
+- 622 unit tests pass.

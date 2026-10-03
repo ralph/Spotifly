@@ -487,14 +487,6 @@ struct NowPlayingBarView: View {
         }
     }
 
-    private func setVolume(_ volume: Double) {
-        // Optimistically update remoteVolume for immediate slider feedback
-        if playbackViewModel.remoteVolume != nil {
-            playbackViewModel.remoteVolume = volume / 100
-        }
-        playbackViewModel.volume = volume / 100
-    }
-
     /// Whether the device being controlled refuses volume changes.
     ///
     /// Only ever true for a *remote* device: the local player's volume is this app's own, and
@@ -526,7 +518,7 @@ struct NowPlayingBarView: View {
                     Slider(
                         value: Binding(
                             get: { currentVolume },
-                            set: { setVolume($0) },
+                            set: { playbackViewModel.setVolumeFromSlider($0 / 100) },
                         ),
                         in: 0 ... 100,
                     )
