@@ -34,28 +34,35 @@ What follows from the one value meaning two things:
 
 ## Solution
 
-`volume` is only ever this Mac's:
-- The slider calls `PlaybackViewModel.setVolumeFromSlider`, which writes `remoteVolume` while
-  another device is active (`PlayerModel.activeDeviceId` against `ownDeviceId`, as
-  `LoggedInView` decides `becameLocal`/`becameRemoteActiveDevice`), and `volume` otherwise.
-- Two debounces: `volume`'s goes to this Mac's client, always; `remoteVolume`'s to the active
-  device over spclient.
-- `volume`'s `didSet` and `handleVolumeChange` save unconditionally; `becameLocalActiveDevice`
-  only clears `remoteVolume`; `startLocally` no longer pushes the volume.
-- The view model owns the saved setting, reading and writing it, and hands this Mac's volume
-  to `SpotifyPlayer.initialize(volume:)`; `SpotifyPlayer.savedVolume` is gone.
+`volume` is only ever this Mac's, and what the slider shows is read, not kept:
+- **`sliderVolume`**, **`sliderRefused`** and **`setVolumeFromSlider`** in the view model
+  decide which device the slider is for in one place: `PlayerModel.activeRemoteDeviceId`, the
+  active device unless it is this Mac. While another device plays, the slider shows its volume
+  from the player model, and a drag shows its own value until the device reports a new one;
+  a drag goes to that device over spclient and never touches `volume`.
+- From the review: `remoteVolume` was a copy of the active device's volume, kept up by two
+  `onChange`s in `LoggedInView`'s window branch, which the mini player does not have, so it
+  went stale there and the slider could show one device's volume while moving the other's.
+  It is gone, with `becameLocalActiveDevice`, `becameRemoteActiveDevice`,
+  `remoteDeviceVolumeUpdated` and the `onChange`s.
+- Two debounces: `volume`'s goes to this Mac's client and is saved there, once per drag rather
+  than once a frame; the remote one goes to the active device. `handleVolumeChange` skips the
+  client's echo of a volume set here.
+- `startLocally` no longer pushes the volume. The view model owns the saved setting and hands
+  this Mac's volume to `SpotifyPlayer.initialize(volume:)`; `SpotifyPlayer.savedVolume` is gone.
 
 ## Verification
 
 Live, with throwaways that made the same call the slider makes (`setVolumeFromSlider`) and
-logged the view model and the cluster's device list:
+logged the view model, what the slider shows, the saved value and the cluster's device list:
 
-- **Another device active** (the silent librespot device, at 100%): a slide to 0.3 set the
-  device's volume in the cluster to 30 within 4 s, and this Mac's stayed as it was: `volume`
-  and the saved value 0.6059375, its cluster entry 61. When the device quit, `remoteVolume`
-  went back to nil and `volume` was unchanged, with nothing restored. Before, the same move set
-  `volume`, and with it this Mac's output gain, to 0.3 (`NowPlayingBarView.setVolume`).
-- **No device active:** a slide to 0.3 set `volume` and the saved value to 0.3, and the
-  cluster's entry for this Mac to 30 (a `volumeChanged` PutState); sliding back restored
-  0.6059375 and 61.
+- **Another device active** (the silent librespot device, at 100%): the slider showed 1.0 as
+  soon as the device was active. A slide to 0.3 showed 0.3 at once, and the device's volume in
+  the cluster was 30 two seconds later; sliding back set it to 100 again. This Mac's stayed as
+  it was throughout: `volume` and the saved value 0.6059375, its cluster entry 61. When the
+  device quit, the slider showed 0.6059375 again, with nothing restored. Before, the same move
+  set `volume`, and with it this Mac's output gain, to 0.3 (`NowPlayingBarView.setVolume`).
+- **No device active:** a slide to 0.3 set `volume` and the slider at once, and the saved value
+  and the cluster's entry for this Mac (30) after the debounce, with one `volumeChanged`
+  PutState; sliding back restored 0.6059375 and 61.
 - 622 unit tests pass.
