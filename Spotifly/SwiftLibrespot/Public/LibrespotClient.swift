@@ -60,7 +60,8 @@ public actor LibrespotClient {
     /// librespot does. Set with the context, and empty for a bare list.
     private var contextMetadata: [String: String] = [:]
 
-    /// Logical Connect volume (0…65535), mirrored into player state.
+    /// Logical Connect volume (0…65535), which each new session registers this Mac at: the
+    /// saved one from `initialize`, then each change.
     private var logicalVolume: UInt32 = 32767
 
     /// Tracks Spotify will not play for the account, as the app's lists said, replaced each
@@ -140,11 +141,15 @@ public actor LibrespotClient {
     /// Credentials are resolved inside: a previously captured reusable login
     /// comes first, falling back to a fresh bearer from `httpCredentials`. A
     /// successful token login stores its reusable credentials for next time.
+    /// `volume` (0–1) is the one this Mac registers at, as Spotify Connect
+    /// shows it to other devices.
     func initialize(
         httpCredentials: SpotifyCredentials,
         usernameProvider: @escaping @Sendable () async -> String?,
         contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])? = nil,
+        volume: Double,
     ) async throws {
+        logicalVolume = Self.logicalVolume(volume)
         self.httpCredentials = httpCredentials
         self.usernameProvider = usernameProvider
         self.contextRowUids = contextRowUids
@@ -168,7 +173,7 @@ public actor LibrespotClient {
 
         let welcome: APWelcome
         do {
-            welcome = try await newSession.connect(credentials: credentials, signing: httpCredentials)
+            welcome = try await newSession.connect(credentials: credentials, signing: httpCredentials, volume: logicalVolume)
         } catch LibrespotError.premiumRequired {
             // A logout that landed meanwhile has moved on to the next account, which this
             // must not be said of.
@@ -351,7 +356,7 @@ public actor LibrespotClient {
         let was = localState
 
         do {
-            _ = try await session.connect(credentials: credentials, signing: httpCredentials)
+            _ = try await session.connect(credentials: credentials, signing: httpCredentials, volume: logicalVolume)
 
             await attachTransport()
 
@@ -839,10 +844,15 @@ public actor LibrespotClient {
     /// one comes back out through the snapshot's volume into that same setter.
     public func setVolume(_ volume: Double) async {
         let clamped = max(0, min(1, volume))
-        logicalVolume = UInt32(clamped * 65535)
+        logicalVolume = Self.logicalVolume(clamped)
         publish { $0.volume = clamped }
         // Other clients draw this device's slider from what Spirc reports.
         await session?.reportLocalVolume(logicalVolume)
+    }
+
+    /// A volume of 0–1 on Connect's logical scale, 0…65535.
+    private static func logicalVolume(_ volume: Double) -> UInt32 {
+        UInt32(max(0, min(1, volume)) * 65535)
     }
 
     // MARK: - Synchronous State (read by the facade without awaiting)

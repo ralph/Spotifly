@@ -82,11 +82,13 @@ public actor LibrespotSession {
 
     /// Connects with the given credentials and returns the server welcome,
     /// whose reusable credentials are worth persisting. The dealer's requests
-    /// are signed with `httpCredentials`.
+    /// are signed with `httpCredentials`, and this Mac registers on Spotify
+    /// Connect at `volume`, the logical one (0…65535).
     @discardableResult
     func connect(
         credentials: APCredentials,
         signing httpCredentials: SpotifyCredentials,
+        volume: UInt32,
     ) async throws -> APWelcome {
         self.credentials = credentials
 
@@ -167,6 +169,7 @@ public actor LibrespotSession {
                 deviceInfo: device,
                 accesspoint: accesspoint!,
                 dealerConnection: dealerConnection!,
+                volume: volume,
             )
             try await spircController!.initialize()
             setupSpircSubscriptions()
