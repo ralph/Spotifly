@@ -32,8 +32,9 @@ paused player paused on the track before.
   or paused, as it does with no track before.
 - **Before that**, it goes back as before, and the track before plays.
 - **The position** is the pipeline's playhead, but only while the pipeline holds the track the
-  queue stands on. During a load, the playhead is still the track before's: Next then Previous at
-  once read the left track's 8 s and restarted instead of going back (from the review).
+  queue stands on. During a load, the playhead is still the track left's, so Next then Previous at
+  once would have read its 8 s and restarted instead of going back (found in review, from the
+  code; the fixed case is verified below).
 - **On a mirrored track** with nothing loaded here, within its first 3 s it takes the mirror over
   from the row shown before it (`rowBefore(mirrored:)`, the Queue section's last previous row),
   which plays. Past them, or with no row before, it loads the track paused at 0, as before.
