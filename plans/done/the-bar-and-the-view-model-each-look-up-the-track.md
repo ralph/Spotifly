@@ -21,9 +21,15 @@ reads them for its title, artwork, artist and album links, heart and favorite ch
 Control Center, the displayed length and `toggleCurrentTrackFavorite` use them too.
 `currentNowPlayingTrack` is gone, and the bar's own two properties.
 
+From the review: the id is parsed once, with the report, and kept in `ShownPlayback`, rather
+than on each of the bar's nine reads; `togglePlayPause(trackId:)`, a third copy, compared the
+playing uri with a bare id, so it never matched, and nothing called it, so it is gone. The
+review expanded the `@Observable` macro to confirm that the view model's weak `store` is
+tracked: a view reading through it hears `AppStore.tracks` as it did through the environment.
+
 ## Verification
 
 Live, a muted album start and two skips, read from outside through accessibility: the bar's
 title and artist, its heart and Control Center's title named the same track each time ("Not Bad
 for New Jersey", "Better Before", "Pearls", by Brian Fallon; the heart "Add to Favorites").
-625 unit tests pass.
+The same again on the final code. 625 unit tests pass.
