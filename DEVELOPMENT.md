@@ -7,7 +7,7 @@ How Spotifly is put together, and how to build, run and debug it.
 Spotifly is a SwiftUI app with no dependencies outside Apple's SDKs except two C
 libraries it vendors for Ogg Vorbis decoding. Everything else it needs from Spotify —
 signing in, the library, search, playback and Spotify Connect — it speaks itself, in
-Swift. There is no Rust, no package manager and no librespot.
+Swift.
 
 ```
  SwiftUI views ── view models ── AppStore + services (Store/)
@@ -31,7 +31,7 @@ Swift. There is no Rust, no package manager and no librespot.
 | `Spotifly/PartnerAPI/` | The APIs Spotify's own clients use: pathfinder GraphQL at `api-partner.spotify.com` for the library, search and pages, and spclient REST. The public Web API is not used. |
 | `Spotifly/Store/` | The normalized `AppStore` and the services that fill it, and `PlayerModel`, which holds what the UI shows of the player — see `AGENTS.md`. |
 | `Spotifly/SpotifyPlayer.swift` | The static facade the app sends playback commands through, backed by `LibrespotClient.shared`. The client publishes its state as snapshots, which `PlayerModel` applies on the main actor. |
-| `Spotifly/SwiftLibrespot/` | Playback and Spotify Connect. A Swift port of the protocol handling that [librespot](https://github.com/librespot-org/librespot) implements in Rust — hence the names — which neither links nor builds librespot. |
+| `Spotifly/SwiftLibrespot/` | Playback and Spotify Connect. A Swift port of [librespot](https://github.com/librespot-org/librespot)'s protocol handling, which is where the type names come from. |
 | `…/Network/` | Accesspoint resolution, the TCP connection with its Diffie-Hellman handshake and Shannon cipher, and the spclient HTTP client (metadata, `storage-resolve`, connect-state). |
 | `…/Dealer/`, `…/Connect/` | The dealer WebSocket, and `SpircController`, which publishes this device's state to the Connect cluster and turns remote commands into player calls. |
 | `…/Audio/` | `AudioPipeline`: metadata, then the audio key (over the accesspoint) and the CDN URL side by side, the download, AES-128-CTR through CommonCrypto, and Vorbis decoding into the `AudioRenderer`, a chunk at a time, each one awaited. The next track is fetched ahead and, with gapless playback on, decoded straight after the current one. |
@@ -110,5 +110,5 @@ Two things to know about signing in:
 ## Performance
 
 [`docs/cpu-benchmark.md`](docs/cpu-benchmark.md) records where the CPU goes while
-playing and while paused, against the last librespot release, with the scripts to
-repeat it.
+playing and while paused, against 1.2.7, the last release before the Swift stack, with
+the scripts to repeat it.
