@@ -33,10 +33,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 async let home: () = homeService.loadHome()
                 _ = await (profile, home)
 
-                // The session's start connects (`AuthViewModel.startSession`); this is the retry
-                // for a window that opens after that connect failed, and nothing otherwise.
-                await playbackViewModel.initializeIfNeeded()
-
                 #if DEBUG
                     // Headless test scaffolding: SPOTIFLY_DEBUG_AUTOPLAY=1 starts
                     // a fixed album shortly after launch so the Swift playback
@@ -177,6 +173,12 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // when that one then failed.
             .retryingWhenNetworkReturns(if: store.homeErrorMessage != nil) { await homeService.refresh() }
             .retryingWhenNetworkReturns(if: profileService.needsProfile) { await profileService.askAgain() }
+            // The connect, which the session's start makes (`AuthViewModel.startSession`), asked
+            // for again too, if it failed. It was asked again by this window's task, after the two
+            // loads, which tried at once after a failure, offline as well, and never again.
+            .retryingWhenNetworkReturns(if: playbackViewModel.localPlayback == .needsAuthorization) {
+                await playbackViewModel.initializeIfNeeded()
+            }
     }
 
     #if DEBUG

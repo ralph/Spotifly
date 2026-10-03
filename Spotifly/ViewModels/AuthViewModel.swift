@@ -38,9 +38,8 @@ final class AuthViewModel {
     /// Starts the account's session and hands it to playback at once: the queue service follows
     /// the player, `PlaybackViewModel` reads the track's metadata and the favorite toggle through
     /// it, and the player connects, so this Mac is on Spotify Connect without waiting for a
-    /// window or the requests a window makes. At a sign-in, `authorizeStreaming`'s own connect,
-    /// which a renewed grant needs, is the same one (`runInitialization` serializes them).
-    /// Nothing for a grant renewed while signed in, whose session goes on.
+    /// window or the requests a window makes. Nothing for a grant renewed while signed in, whose
+    /// session goes on (`authorizeStreaming` connects it).
     ///
     /// Here, as the account signs in, rather than in the first window's task, which ran after
     /// its first frame, and so after the connect a sign-in starts: a report arriving in between
@@ -165,12 +164,16 @@ final class AuthViewModel {
             return
         }
 
+        let renewing = sessions.current != nil
         isSignedIn = true
-        // Connected through the player's lifecycle, as every other connect is, while the
-        // app shows: its profile and start page need no session, and the window's own
-        // `initializeIfNeeded` waits for this one. A connect that fails is said in the
-        // now-playing bar, as any other is, and Speakers offers it again.
-        await PlaybackViewModel.shared.initializeIfNeeded()
+        // A sign-in's session connects as it starts (`startSession`). A renewed grant's was
+        // started before, so it is connected here, for the Speakers row or the play alert that
+        // offered the grant, whose progress lasts until it is done. One caller each: a second
+        // that waited for a connect that failed would build again at once. A connect that
+        // fails is said in the now-playing bar, as any other is, and Speakers offers it again.
+        if renewing {
+            await PlaybackViewModel.shared.initializeIfNeeded()
+        }
     }
 
     /// Starts the grant and keeps hold of it, so it can be abandoned.
