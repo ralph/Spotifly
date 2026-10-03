@@ -22,11 +22,20 @@ token the connect was handed (`initializeIfNeeded(accessToken:)`, before #49).
 
 ## Solution
 
-As proposed: `AuthViewModel.startSession` starts `PlaybackViewModel.initializeIfNeeded()`, so a
-session connects as it starts, at a launch and a sign-in alike. At a sign-in,
-`authorizeStreaming`'s own awaited call, which a renewed grant needs since its session is
-already started, comes first and the session's waits for it (`runInitialization`). The window's
-call stays, after its requests, as the retry for a window that opens after a connect failed.
+`AuthViewModel.startSession` starts `PlaybackViewModel.initializeIfNeeded()`, so a session
+connects as it starts, at a launch and a sign-in alike.
+
+From the review, one caller per path: `runInitialization` builds again for a caller that waited
+on a connect that failed, so a second caller doubles every failure.
+- `authorizeStreaming` connects only a renewed grant's session, which `startSession` leaves
+  alone, and awaits it, for the Speakers row or play alert whose progress lasts until then. A
+  sign-in's connect is the session's.
+- The window's task no longer connects after its two loads: as a retry it tried at once after a
+  failure, offline too, and never again. The window asks again when the network returns, as it
+  does for the start page and the profile (`retryingWhenNetworkReturns`), while this Mac cannot
+  play.
+- A caller that waited on a connect Spotify refused for want of Premium does not try again;
+  Reconnect in Speakers, which forces, still does.
 
 ## Verification
 
@@ -35,6 +44,13 @@ call stays, after its requests, as the retry for a window that opens after a con
   at 45.228: 1.79 s after the launch.
 - **After:** launched at 03.641, the connect began at 04.113, beside the two requests (04.109,
   04.119), and completed at 04.494: 0.85 s after the launch. One `Initialization complete`.
-- **A faked sign-in** (throwaways, not committed): one `SpotifyPlayer.initialize`, one
-  `Initialization complete`.
+- **On the final code**, with throwaways (not committed) that logged each
+  `SpotifyPlayer.initialize`, failed the first, took the network away and back
+  (`NetworkMonitor.update`), faked the grant with the held one, and opened Speakers:
+  - a launch: one connect, done 0.38 s after it began;
+  - a launch whose connect failed: no second attempt for the 11 s until the network came back,
+    then one, which connected;
+  - a sign-in (`renewing=false`): one connect, the session's;
+  - a renewed grant from Speakers' "Enable this Mac" after a failed connect (`renewing=true`):
+    one connect, the grant's, and the row was gone.
 - 624 unit tests pass.
