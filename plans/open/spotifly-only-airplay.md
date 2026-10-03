@@ -1,7 +1,8 @@
 # AirPlay from Speakers without sending the Mac's other audio
 
-Status: **Open**, 2026-10-03; draft proposal. Per-renderer output selection is supported;
-initiating an idle AirPlay receiver with the current renderer is not yet verified.
+Status: **Open**, 2026-10-04; draft proposal. The signed sandboxed inventory failed the
+first hardware gate: no AirPlay HAL devices or transport managers were exposed. Stop this
+HAL approach on the tested setup; initiation with the current renderer remains unverified.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -25,15 +26,15 @@ renderer's `audioOutputDeviceUniqueID`, without changing either system default o
 However, selecting an existing device is not the same as discovering and connecting an idle
 AirPlay receiver. No public bridge from the native picker to this renderer was found.
 
-The recommended next step is a **hardware feasibility gate**, using public Core Audio
-transport-manager and process-private endpoint-device APIs. **The current inventories
-already meet its first fail condition: no AirPlay device or transport manager is exposed.**
-Start with a cheap signed-app confirmation of that inventory, not the full playback probe.
-There is no evidence that signing/sandboxing will expose more than the unsandboxed tool did.
-If the same result holds, stop this approach. Only if an AirPlay manager and endpoints are
-exposed does the remaining gate make sense. Product implementation remains conditional on
-that gate passing; the investigation does not justify promising this feature or replacing
-the renderer yet.
+The **hardware feasibility gate** uses public Core Audio transport-manager and
+process-private endpoint-device APIs. **The signed sandboxed probe now confirms its first
+fail condition: no AirPlay device or transport manager is exposed.** Route detection finds
+additional routes, but does not expose an initiatable HAL endpoint. Stop this approach on
+the tested macOS 27.0.1 setup; no connection or PCM prototype was built. A changed platform
+condition or documented native discovery activation is needed before retesting. The
+remaining design is conditional reference material. A real `AVPlayer` media-source path
+would need a separate investigation and architecture plan; this result does not justify
+promising the feature or replacing the renderer yet.
 
 Target **modern AirPlay 2 through Apple's current macOS 27 stack**, with "Küche HomePod" as
 the first test receiver. Prefer the newest behavior the native stack and receiver support.
@@ -140,11 +141,50 @@ On this Mac, macOS **27.0.1 (26A434)**, with Apple Swift **6.4**:
 
 These checks establish the routing boundary and a candidate public API path. They do not
 establish that a disconnected HomePod, Apple TV or third-party receiver can be initiated with
-it. No AirPlay playback or signed-app sandbox test was performed for this plan.
+it. The signed-app inventory below confirms the initial failure; no AirPlay playback test
+was performed.
+
+### Signed sandboxed inventory result
+
+The disposable **Spotifly AirPlay Probe** ran on 2026-10-03, with its final report export
+verified on 2026-10-04. It was built with Swift 6 complete strict concurrency and
+`-warnings-as-errors`, targets macOS 27 and is Developer ID signed on Spotifly's team
+`89S4HZY343`, with bundle ID `rvdh.SpotiflyAirPlayProbe`. Its reported home is inside
+`Library/Containers/rvdh.SpotiflyAirPlayProbe/Data`, confirming the app container is active.
+`codesign --verify --strict` passed. Seven result-classification checks passed, including
+distinguishing failed HAL reads from confirmed absence and rejecting changed defaults.
+
+The probe retains Spotifly's sandbox, network client/server and selected-file read-only
+entitlements. Its unused shared keychain group is omitted: macOS refused that entitlement
+for the new bundle without a provisioning profile (AMFI -413). It never accesses Spotify
+credentials, and that omission does not expand audio or network permissions.
+
+On macOS **27.0.1 (26A434)**, before and after five seconds of `AVRouteDetector` discovery:
+
+- `multipleRoutesDetected` was **true**.
+- Five HAL devices were exposed, with USB, built-in and virtual transports; none used
+  `kAudioDeviceTransportTypeAirPlay`.
+- `kAudioHardwarePropertyTransportManagerList` (`tmg#`) was supported and returned **zero
+  bytes / zero managers with OSStatus 0**. This was a successful empty read, not a read error.
+- Two boxes were exposed, neither with AirPlay transport.
+- Default audio and alert outputs both remained **96**, the two-channel LG display device.
+  All reads used the public property APIs; no endpoint was created, output or volume set,
+  or audio played.
+
+**Result: first gate failed.** The signed app repeats the unsandboxed discovery limitation.
+The probe stops at inventory. Audible isolation, receiver initiation, disconnect behavior,
+HomePod software version and negotiated AirPlay mode remain untested. The local diagnostic
+source and app are kept outside the product repository in the workspace's `airplay-probe/`
+folder, with JSON and text reports available from its window; no diagnostic is shipped in
+Spotifly or included as product implementation in this PR.
 
 ## Solution
 
 ### 1. Prove initiation and isolation before implementing the feature
+
+**Current outcome: the inventory below was completed and failed; do not proceed to PCM or
+connection experiments on this setup.** Retain the following steps for a future changed
+condition.
 
 First run only the inventory in a minimal disposable target against macOS 27, signed and
 sandboxed like Spotifly with its existing entitlements. If it exposes no AirPlay transport
@@ -326,17 +366,18 @@ audio output, not its Connect identity or the remote Spotify player.
 
 | Approach | Assessment |
 | --- | --- |
-| Public HAL endpoint device + existing renderer | Recommended only after initiation, isolation and modern AirPlay behavior are established; preserves the macOS 27 playback path |
+| Public HAL endpoint device + existing renderer | First signed discovery gate failed on this Mac. Conditional only on a changed platform condition and a complete hardware pass; preserves the macOS 27 playback path |
 | Native picker + an empty/proxy `AVPlayer`, copying its UID to the renderer | Unverified: the API does not promise that selection publishes a transferable UID or that the player can relinquish the connection. Do not assume this is a supported bridge |
 | Actually render Spotify audio through `AVPlayer` for AirPlay | Fits the native picker, but needs an AVPlayer-readable media source and changes playback, buffering, clocks and gapless ownership. A separate architecture proposal if HAL fails; this plan keeps the existing renderer |
 | Change system defaults, private routing APIs, or implement RAOP/AirPlay ourselves | Does not meet the requested isolation or the scope of this plan |
 
 ### Implementation notes and handoff
 
-The plan is a proposal, not authorization to implement product code. The next implementation
-session starts with step 1's cheap signed inventory; the current unsandboxed result meets
-its first fail condition. No user product decision is needed for that check. A generic native
-connection with unverified AirPlay mode leaves the explicit decision described above open.
+The user authorized building the disposable probe, which completed step 1's cheap signed
+inventory and confirmed failure. Product implementation remains conditional and stopped.
+A future session must establish a changed discovery condition or investigate a separately
+planned `AVPlayer` media-source architecture before proposing product changes. A generic
+native connection with unverified AirPlay mode would leave the explicit decision above open.
 Keep measured findings and proposed
 departures here. Once the design is accepted, preserve its isolation and renderer boundaries;
 a necessary change to them requires an explicit design decision. Update this plan and move
@@ -348,7 +389,7 @@ it to `plans/done/` in the PR that completes the feature.
 
 - [ ] The signed-app hardware gate passes from an idle receiver, with no Control Center
       connection prerequisite, and its evidence is recorded above.
-- [ ] If the signed inventory repeats the current absence of AirPlay managers/endpoints,
+- [x] If the signed inventory repeats the current absence of AirPlay managers/endpoints,
       record failure and stop before implementing a connection or PCM prototype.
 - [ ] Küche HomePod is the first receiver tested. Record its software version and the outcome
       of the AirPlay evidence rule, including any deferred decision. A generic HAL AirPlay
@@ -356,7 +397,7 @@ it to `plans/done/` in the PR that completes the feature.
 - [ ] The implementation has no AirPlay 1/legacy RAOP compatibility fallback and retains
       the macOS 27 receiver API.
 - [ ] A protected or unavailable receiver fails with a useful error through supported APIs.
-- [ ] The gate runs with Spotifly's existing sandbox entitlements, or documents a specific
+- [x] The gate runs with Spotifly's existing sandbox entitlements, or documents a specific
       supported entitlement requirement before changing them.
 - [ ] Receiver loss cannot play through the default output; record the event order, fallback
       behavior and audible observations, not just device removal.
@@ -394,7 +435,9 @@ it to `plans/done/` in the PR that completes the feature.
 API typecheck and read-only device/route detection were performed as described above.
 Product code was not changed. Audio isolation, AirPlay initiation and connection cleanup
 remain untested. Markdown structure, local repository links and `git diff --check` passed.
-No app build or product test suite was run for these documentation-only changes.
+The separate diagnostic app was built, signed and run; its seven classification checks
+passed. No Spotifly app build or product test suite was run for these documentation-only
+repository changes.
 
 ### Independent review
 
@@ -408,4 +451,6 @@ working tree on 2026-10-03 marked all four findings resolved, with no important 
 remaining, and judged it ready as a conditional planning document. Its optional wording
 fixes on the evidence checklist, acknowledgment after idle selection and this review note
 are included. Claude did not re-run the typecheck, inventories or document checks; the
-document checks were run separately by the author. Hardware feasibility remains unproven.
+document checks were run separately by the author. That review preceded the signed probe;
+its subsequent measured first-gate failure is recorded above. Connection feasibility with
+the current renderer remains unproven, and the HAL candidate is stopped on this setup.
