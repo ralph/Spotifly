@@ -179,15 +179,8 @@ public actor SpircController {
         heartbeatTask?.cancel()
         heartbeatTask = nil
 
-        if var state = stopped {
-            let now = UInt64(Date().timeIntervalSince1970 * 1000)
-            let elapsed = state.isPlaying && now > state.timestamp ? now - state.timestamp : 0
-            state.positionMs = state.durationMs > 0 ? min(state.positionMs + elapsed, state.durationMs) : state.positionMs + elapsed
-            state.isPlaying = false
-            state.isPaused = true
-            state.timestamp = now
-            playerState = state
-            await publishState(reason: .playerStateChanged)
+        if let stopped {
+            await reportStopped(stopped)
         }
 
         isReady = false
@@ -197,6 +190,34 @@ public actor SpircController {
 
         // No goodbye: Spotify answers a `becameInactive` PutState 422, and the
         // disconnect that follows already takes this device off Connect.
+    }
+
+    /// Lets go of playback that stopped here, over an error or at a context's end: reports
+    /// where it stopped while still the active device, as `shutdown(stopped:)` does, then
+    /// stands down. Nil reports nothing first.
+    func release(stopped: SpircPlayerState?) async {
+        if let stopped {
+            await reportStopped(stopped)
+        }
+        setActive(false)
+    }
+
+    /// Reports `state` paused where it had got to.
+    private func reportStopped(_ state: SpircPlayerState) async {
+        playerState = Self.stopped(state, atMs: UInt64(Date().timeIntervalSince1970 * 1000))
+        await publishState(reason: .playerStateChanged)
+    }
+
+    /// `state` paused at `nowMs`: its position run on to then, if it was playing, and no
+    /// further than the track's end.
+    static func stopped(_ state: SpircPlayerState, atMs nowMs: UInt64) -> SpircPlayerState {
+        var state = state
+        let elapsed = state.isPlaying && nowMs > state.timestamp ? nowMs - state.timestamp : 0
+        state.positionMs = state.durationMs > 0 ? min(state.positionMs + elapsed, state.durationMs) : state.positionMs + elapsed
+        state.isPlaying = false
+        state.isPaused = true
+        state.timestamp = nowMs
+        return state
     }
 
     // MARK: - State Publishing

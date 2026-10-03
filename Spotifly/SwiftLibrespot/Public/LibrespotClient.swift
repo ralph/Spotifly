@@ -1106,8 +1106,9 @@ public actor LibrespotClient {
             if let contextName = contextMetadata.contextName {
                 await playbackFailed(LibrespotError.trackUnavailable(name: contextName))
             } else {
+                let stopped = localState
                 clearLocalState()
-                await releasePlayback()
+                await releasePlayback(stopped: stopped)
             }
             return
         }
@@ -1189,18 +1190,23 @@ public actor LibrespotClient {
     /// app started shows the thrown error too, and `errorMessage` takes the
     /// same text only once.
     private func playbackFailed(_ error: any Error) async {
+        let stopped = localState
         clearLocalState()
-        await releasePlayback()
+        await releasePlayback(stopped: stopped)
         interrupt(error.localizedDescription)
     }
 
-    /// Lets go of the active role and reports that nothing plays here.
+    /// Says where playback stopped, lets go of the active role, and reports that nothing plays
+    /// here. `stopped` is the local state as it was, before it was cleared.
     ///
     /// Clearing the local state alone told the cluster nothing: the last
     /// report stood, and on 2026-09-29 every heartbeat after a failed load
     /// went on telling the web player this Mac was playing the track at 0ms.
-    private func releasePlayback() async {
-        await session?.reportLocalActive(false)
+    /// Letting go without saying where left it standing too: "playing", at the position of
+    /// the last change, which whatever mirrored the cluster showed, this Mac included (6 s
+    /// back, in a failure faked 10 s into a track).
+    private func releasePlayback(stopped: PlaybackState?) async {
+        await session?.releaseLocalPlayback(stopped: stopReport(of: stopped))
         reportPlaybackToCluster()
     }
 
@@ -1602,7 +1608,8 @@ public actor LibrespotClient {
             // Let the role go again, or the cluster goes on showing this device
             // as the one playing — over silence, with every control sent here.
             debugLog("LibrespotClient", "Transfer failed to load: \(error.localizedDescription)")
-            await releasePlayback()
+            // Nothing to say where: a load that failed has released with its own state.
+            await releasePlayback(stopped: nil)
         }
     }
 

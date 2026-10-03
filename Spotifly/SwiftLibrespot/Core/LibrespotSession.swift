@@ -278,4 +278,9 @@ public actor LibrespotSession {
     func reportLocalActive(_ active: Bool) async {
         await spircController?.setActive(active)
     }
+
+    /// Tells Spirc that playback stopped here, and where; see `SpircController.release(stopped:)`.
+    func releaseLocalPlayback(stopped: SpircController.SpircPlayerState?) async {
+        await spircController?.release(stopped: stopped)
+    }
 }
