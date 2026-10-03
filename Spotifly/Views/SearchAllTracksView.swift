@@ -67,7 +67,7 @@ struct SearchAllTracksView: View {
                         TrackRow(
                             track: track,
                             index: index,
-                            currentlyPlayingURI: playbackViewModel.currentlyPlayingURI,
+                            currentlyPlayingURI: playbackViewModel.currentTrackUri,
                             currentSection: .searchResults,
                             onDoubleTap: {
                                 await playbackViewModel.playRadio(trackUri: track.uri)

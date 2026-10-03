@@ -113,14 +113,10 @@ final class AuthViewModel {
             )
 
             guard startedAt == authLifecycle else {
-                // Logged out while this was deciding, and this run has to undo its own
-                // writes rather than just walk away. The Rust path this replaced noticed a
-                // logout itself, because it held the browser wait and snapshotted its
-                // generation before it; Swift runs the browser half now, so the client's
-                // snapshot is taken *after* the logout and its own supersession check
-                // passes. Whatever this grant wrote —
-                // the AP credentials and the keymaster tokens — belongs to an account that
-                // is gone, and logout cleared the cache before either was written.
+                // Logged out while the browser had the grant, and this run has to undo its
+                // own write rather than just walk away: the keymaster tokens belong to an
+                // account that is gone, and logout cleared the keychain before they were
+                // written.
                 debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
                 await discardGrant()
                 return
@@ -128,9 +124,7 @@ final class AuthViewModel {
 
             if let mismatch {
                 debugLog("AuthViewModel", "Streaming grant rejected: \(mismatch)")
-                // A play or retry may have initialized the player from the cached
-                // credentials while the comparison was in flight, so there can be a live
-                // session for the wrong account.
+                // Refused as a logout is done, so whatever the player has is torn down too.
                 //
                 // A mismatch caught at sign-in cannot arise — there is nothing to mismatch
                 // against — so this only ever refuses a *change* of account, and the previous
@@ -141,23 +135,19 @@ final class AuthViewModel {
             }
 
             isSignedIn = true
-            // The grant's connect has registered this Mac with Spotify Connect; the player
-            // takes that session over. A rebuild would take this Mac off Connect for a moment.
+            // Connected through the player's lifecycle, as every other connect is, while the
+            // app shows: its profile and start page need no session, and the window's own
+            // `initializeIfNeeded` waits for this one. A connect that fails is said in the
+            // now-playing bar, as any other is, and Speakers offers it again.
             await PlaybackViewModel.shared.initializeIfNeeded()
-        case .superseded:
-            // A logout won the race and the credentials were removed again. Nothing went
-            // wrong and there is nothing to report.
-            break
         case .cancelled:
             // The user closed the browser tab or pressed Cancel. They asked for this, so
             // there is nothing to report.
             break
         case .failed:
-            // The two halves fail independently, and only one of them is the sign-in: the
-            // token is adopted *before* librespot connects, so a failure here can still leave
-            // a usable grant behind. Read what survived rather than assuming — an app that
-            // browses but cannot play is the honest outcome, and Speakers and the play alert
-            // both offer the connect again.
+            // The browser or the token exchange failed, and nothing was written; or the
+            // keychain refused the tokens, which `KeymasterSession` holds for this launch all
+            // the same. Read which.
             isSignedIn = await KeymasterSession.shared.hasGrant
             errorMessage = String(localized: "auth.connect_failed")
         }

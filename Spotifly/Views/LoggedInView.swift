@@ -147,7 +147,7 @@ struct LoggedInView: View {
             "playback.needs_premium_title",
             isPresented: Bindable(playbackViewModel).showsPremiumNotice,
         ) {
-            Button("auth.logout", action: handleLogout)
+            Button("auth.logout", action: onLogout)
             Button("common.ok", role: .cancel) {}
         } message: {
             Text("playback.needs_premium_message")
@@ -157,7 +157,7 @@ struct LoggedInView: View {
     /// The main content router with its content toolbar attached directly. Search is
     /// attached to the NavigationSplitView (see `body`), not here.
     private var contentRouter: some View {
-        LoggedInContentRouterView(onLogout: handleLogout)
+        LoggedInContentRouterView(onLogout: onLogout)
             .toolbar {
                 LoggedInContentToolbar(refreshAction: refreshAction(for: navigationCoordinator.selectedNavigationItem))
             }
@@ -184,11 +184,6 @@ struct LoggedInView: View {
             guard newWidth >= Self.sidebarMinWidth, Double(newWidth) != persistedSidebarWidth else { return }
             persistedSidebarWidth = Double(newWidth)
         }
-    }
-
-    private func handleLogout() {
-        playbackViewModel.stop()
-        onLogout()
     }
 
     private func performSearch() {

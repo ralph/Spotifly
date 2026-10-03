@@ -263,7 +263,7 @@ rather than an empty page with the error.
 
 Found while building the phases, and each recorded as an open plan of its own:
 
-- `plans/open/playback-view-model-mirrors-the-player.md`
+- `plans/done/playback-view-model-mirrors-the-player.md`
 - `plans/open/views-still-write-the-store.md`
 - `plans/open/menu-commands-lose-the-session-with-the-window.md`
 - `plans/open/ownership-checks-trust-the-launch-profile.md`
