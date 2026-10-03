@@ -56,4 +56,4 @@ With `osascript -l JavaScript` against the running Debug build (`AXDescription`,
 Not seen: the tooltips on hover, which needs the pointer over the window, and VoiceOver itself.
 
 Reading every control's name for this turned up the rest of the bar and the toolbar's arrows,
-named by their symbols or not at all: `plans/open/now-playing-bar-controls-named-by-their-symbols.md`.
+named by their symbols or not at all: `plans/done/now-playing-bar-controls-named-by-their-symbols.md`.

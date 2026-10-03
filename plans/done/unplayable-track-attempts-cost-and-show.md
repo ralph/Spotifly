@@ -2,7 +2,7 @@
 
 Status: **Done** 2026-10-01, for the item that shows: a withheld track is found out before
 anything says it plays. Seen in the running app; see Verification. The other items
-moved to `plans/open/withheld-tracks-left-to-find-out.md`, and a problem found on the way to
+moved to `plans/done/withheld-tracks-left-to-find-out.md`, and a problem found on the way to
 `plans/done/skip-onto-a-withheld-track-stops-playback.md`. What was left of
 `plans/done/unplayable-tracks-found-by-loading.md` once the fetch-ahead reported a withheld track.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`playTrack`, `playableMetadata`,

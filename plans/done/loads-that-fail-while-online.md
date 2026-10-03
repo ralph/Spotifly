@@ -73,7 +73,7 @@ offline already, and one on every cover of a list would be noise.
 
 **Not reached: playback's own requests.** `SPClient` (track metadata, the context resolver,
 the CDN url) signs its requests itself rather than through `SpotifyCredentials`, so a 5xx there
-still fails at once; see `plans/open/playback-requests-skip-the-shared-credentials.md`.
+still fails at once; see `plans/done/playback-requests-skip-the-shared-credentials.md`.
 
 **Not done: a page's own timed retry.** A page or list that failed for longer than the request
 retries still waits for Try again or the network's return. Retrying it on a timer would need its

@@ -471,10 +471,9 @@ struct NowPlayingBarView: View {
         await trackService.ensureFavoriteStatuses(trackIds: [trackId])
     }
 
-    /// Unified volume (0-100 scale).
-    /// Uses the remote device's volume when Spotify Connect is active, otherwise local.
+    /// The slider's value, 0–100; see `PlaybackViewModel.sliderVolume`.
     private var currentVolume: Double {
-        (playbackViewModel.remoteVolume ?? playbackViewModel.volume) * 100
+        playbackViewModel.sliderVolume * 100
     }
 
     private var volumeIconName: String {
@@ -487,23 +486,8 @@ struct NowPlayingBarView: View {
         }
     }
 
-    private func setVolume(_ volume: Double) {
-        // Optimistically update remoteVolume for immediate slider feedback
-        if playbackViewModel.remoteVolume != nil {
-            playbackViewModel.remoteVolume = volume / 100
-        }
-        playbackViewModel.volume = volume / 100
-    }
-
-    /// Whether the device being controlled refuses volume changes.
-    ///
-    /// Only ever true for a *remote* device: the local player's volume is this app's own, and
-    /// nothing can decline it. An iPhone declares it, because iOS will not let one app set
-    /// system volume for another — which the app previously discovered by sending the command
-    /// and reading `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` off the reply, having already let the
-    /// user drag the slider somewhere it would not stay.
     private var volumeRefused: Bool {
-        playbackViewModel.remoteVolume != nil && player.activeDevice?.disableVolume == true
+        playbackViewModel.sliderRefused
     }
 
     private var volumeControl: some View {
@@ -526,7 +510,7 @@ struct NowPlayingBarView: View {
                     Slider(
                         value: Binding(
                             get: { currentVolume },
-                            set: { setVolume($0) },
+                            set: { playbackViewModel.setVolumeFromSlider($0 / 100) },
                         ),
                         in: 0 ... 100,
                     )

@@ -2,7 +2,7 @@
 
 Status: **Done** 2026-09-29 (#100), for its main item, the fetch-ahead report. Built and
 unit-tested, and seen in the running app on 2026-09-30; see Verification. The other items moved to
-`plans/open/unplayable-track-attempts-cost-and-show.md`. Recorded 2026-09-29, left over from
+`plans/done/unplayable-track-attempts-cost-and-show.md`. Recorded 2026-09-29, left over from
 `plans/done/unplayable-tracks-look-playable.md` and #57.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift` (`fetchNextIfDue`,
 `Event.withheldAhead`), `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`markUnplayable`),
@@ -26,7 +26,7 @@ All read from the code; none has been observed since the follow-up.
   one after it cold, where it could have been gapless. The pipeline could report the failed
   fetch-ahead, so the client marks it and names the next one.
 The rest of the list, about what each attempt costs, is in
-`plans/open/unplayable-track-attempts-cost-and-show.md`.
+`plans/done/unplayable-track-attempts-cost-and-show.md`.
 
 ## Solution
 
@@ -71,4 +71,4 @@ A withheld track still has to be fetched ahead once to be found out.
       gap, and there was no `Playing` line for "Girlfriend". Liked Songs started on the Mac stepped
       over it as before. The handover route placed a relinked current track wrong, so the Mac was
       started by a play from the web player instead; see
-      `plans/open/handover-of-a-relinked-track-starts-at-the-top.md`.
+      `plans/done/handover-of-a-relinked-track-starts-at-the-top.md`.

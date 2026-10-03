@@ -55,4 +55,4 @@ through the same `play()` as the double-click.
 
 The children showed that every heart button, here and in the now-playing bar, is named by its
 symbol, "Liebe" in German, whether the track is saved or not:
-`plans/open/heart-buttons-are-named-love.md`.
+`plans/done/heart-buttons-are-named-love.md`.

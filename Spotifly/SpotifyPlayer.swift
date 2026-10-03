@@ -137,9 +137,9 @@ enum SpotifyPlayer {
     /// credentials come from — the stored reusable login from an earlier grant if there is
     /// one, else a fresh keymaster token, with the client token spclient
     /// requires.
+    /// - Parameter volume: this Mac's volume, 0–1.
     @SpotifyPlayerActor
-    static func initialize() async throws {
-        let volume = savedVolume
+    static func initialize(volume: Double) async throws {
         // At the output up front, so the first moments of audio do not play at full volume.
         setOutputVolume(volume)
         try await LibrespotClient.shared.initialize(
@@ -434,12 +434,6 @@ enum SpotifyPlayer {
     /// `bitrate`: applying it to a new pipeline must not wait for the main thread.
     nonisolated static var gapless: Bool {
         UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
-    }
-
-    /// This Mac's volume as the slider last saved it, or half when it never has.
-    nonisolated static var savedVolume: Double {
-        let saved = UserDefaults.standard.double(forKey: "playbackVolume")
-        return saved > 0 ? saved : 0.5
     }
 }
 

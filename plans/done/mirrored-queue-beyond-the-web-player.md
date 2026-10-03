@@ -5,7 +5,7 @@ Next on a context's last track, this Mac's own report of the next round under re
 take-over of a bare list and one round in the mirror were seen working (2026-10-01), and a phone's
 autoplay rows mirrored (2026-10-02), where what failed was this Mac's missing autoplay, now
 `plans/done/autoplay.md`. What needs librespot as the other device, or a device that refuses Next,
-moved to `plans/open/mirrored-queue-left-to-measure.md`. From the altitude review of
+moved to `plans/done/mirrored-queue-left-to-measure.md`. From the altitude review of
 `plans/done/mirrored-queue-runs-past-the-context.md`.
 Components: `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift` (`mirroredQueue`, the take-over
 of a mirrored bare list), `Spotifly/ViewModels/PlaybackViewModel.swift` (`hasNext`),
@@ -18,7 +18,7 @@ The mirrored queue leaves out the rows another device marks hidden, which is the
 player's own queue follows. The web player's rows were measured, and a phone's were seen working
 for a bare list and for the next round under repeat, and a phone's autoplay rows were logged. What
 is still taken on trust, librespot's rows and a device that refuses Next, is
-`plans/open/mirrored-queue-left-to-measure.md`.
+`plans/done/mirrored-queue-left-to-measure.md`.
 
 ## Problem
 
@@ -59,7 +59,7 @@ so for a librespot device the restrictions say nothing, and its autoplay rows ar
 - Next on the last track, and the next round under repeat: see Progress.
 - Autoplay on: a phone's rows logged on a context's last track; see Progress.
 - Not seen: a device that names a reason not to skip next, and librespot as the other device;
-  see `plans/open/mirrored-queue-left-to-measure.md`.
+  see `plans/done/mirrored-queue-left-to-measure.md`.
 
 ## Progress
 
