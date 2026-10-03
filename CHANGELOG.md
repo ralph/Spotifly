@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **What was left of the Client ID and of librespot in the docs and the bundle.** `Info.plist` still carried `SpotifyClientID`, filled from a `SPOTIFY_CLIENT_ID` build setting, which nothing has read since sign-in moved to Spotify's own desktop client id; it is gone. The README no longer explains the Client ID earlier versions asked for, and the README, `CONTRIBUTING.md`, `DEVELOPMENT.md` and the protocol docs no longer describe librespot or Rust as something the app once built with, keeping librespot only as the work the Swift stack follows. The Connect protocol reference's links to librespot's sources pointed into this repository, where those files do not exist, and now point at librespot's. The `RUST_LOG` section of `docs/librespot-connections.md` is gone.
+
 ## [1.3.0] - 2026-10-03
 
 ### Added

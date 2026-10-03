@@ -49,9 +49,7 @@ brew install ralph/spotifly/spotifly
 2. Click **Connect with Spotify**
 3. Authorize Spotifly in the browser tab that opens
 
-That is the whole setup. There is no Client ID to create and nothing to register: Spotifly authorizes with Spotify's own desktop client id, and the one authorization both signs you in and makes this Mac available as a Spotify Connect device.
-
-Earlier versions did ask for a Client ID, because they talked to the Spotify Web API and it will not answer without an app registered in the developer dashboard. Spotifly now uses the same APIs Spotify's own clients do, so that requirement is gone. If you created an app just for Spotifly, you can delete it.
+That is the whole setup: the one authorization both signs you in and makes this Mac available as a Spotify Connect device.
 
 ## Keyboard Shortcuts
 
@@ -82,7 +80,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for build instructions and architecture doc
 ## Acknowledgements
 
 Spotifly's playback and Spotify Connect are written in Swift, following the protocol work
-of [librespot](https://github.com/librespot-org/librespot), which earlier versions embedded.
+of [librespot](https://github.com/librespot-org/librespot).
 Ogg Vorbis decoding uses Xiph.Org's [libogg and libvorbis](https://xiph.org/vorbis/),
 included as source under their BSD licenses.
 

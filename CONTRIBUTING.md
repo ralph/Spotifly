@@ -5,9 +5,7 @@
 Clone this repository and open `Spotifly.xcodeproj`. That is all: there is nothing to
 check out beside it and nothing to build first. Playback and Spotify Connect are
 implemented in Swift under `Spotifly/SwiftLibrespot/`, and the Ogg Vorbis decoder is
-vendored C under `Spotifly/Vendor/`. Earlier versions built against a sibling
-[librespot](https://github.com/librespot-org/librespot) checkout through a Rust bridge;
-neither is needed any more.
+vendored C under `Spotifly/Vendor/`.
 
 [DEVELOPMENT.md](DEVELOPMENT.md) covers building, testing and debugging, and
 [AGENTS.md](AGENTS.md) the conventions the code follows.

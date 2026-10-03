@@ -1,8 +1,8 @@
 # Spotify Connect Protocol Reference
 
-A comprehensive reference for the Spotify Connect protocol, first written from librespot's
-implementation. Spotifly now speaks it itself, in `Spotifly/SwiftLibrespot/` — the dealer
-in `Dealer/`, the device state and remote commands in `Connect/SpircController.swift`.
+A comprehensive reference for the Spotify Connect protocol, written from librespot's
+implementation. Spotifly speaks it in `Spotifly/SwiftLibrespot/`: the dealer in
+`Dealer/`, the device state and remote commands in `Connect/SpircController.swift`.
 Where this document and a capture from a real client disagree, the capture wins.
 
 ## Table of Contents
@@ -909,16 +909,16 @@ LoggingParams {
 
 ## Source Files
 
-The protocol definitions can be found in:
+The librespot sources this reference was written from. Its protocol definitions:
 
-- [`protocol/proto/connect.proto`](protocol/proto/connect.proto) - Connect state messages
-- [`protocol/proto/player.proto`](protocol/proto/player.proto) - Player state messages
-- [`protocol/proto/context.proto`](protocol/proto/context.proto) - Context definitions
-- [`protocol/proto/transfer_state.proto`](protocol/proto/transfer_state.proto) - Transfer state
-- [`protocol/proto/devices.proto`](protocol/proto/devices.proto) - Device types
-- [`protocol/proto/social_connect_v2.proto`](protocol/proto/social_connect_v2.proto) - Social/Jam features
+- [`protocol/proto/connect.proto`](https://github.com/librespot-org/librespot/blob/dev/protocol/proto/connect.proto) - Connect state messages
+- [`protocol/proto/player.proto`](https://github.com/librespot-org/librespot/blob/dev/protocol/proto/player.proto) - Player state messages
+- [`protocol/proto/context.proto`](https://github.com/librespot-org/librespot/blob/dev/protocol/proto/context.proto) - Context definitions
+- [`protocol/proto/transfer_state.proto`](https://github.com/librespot-org/librespot/blob/dev/protocol/proto/transfer_state.proto) - Transfer state
+- [`protocol/proto/devices.proto`](https://github.com/librespot-org/librespot/blob/dev/protocol/proto/devices.proto) - Device types
+- [`protocol/proto/social_connect_v2.proto`](https://github.com/librespot-org/librespot/blob/dev/protocol/proto/social_connect_v2.proto) - Social/Jam features
 
-The command parsing is implemented in:
+Its command parsing:
 
-- [`core/src/dealer/protocol/request.rs`](core/src/dealer/protocol/request.rs) - Command definitions
-- [`connect/src/spirc.rs`](connect/src/spirc.rs) - Command handling
+- [`core/src/dealer/protocol/request.rs`](https://github.com/librespot-org/librespot/blob/dev/core/src/dealer/protocol/request.rs) - Command definitions
+- [`connect/src/spirc.rs`](https://github.com/librespot-org/librespot/blob/dev/connect/src/spirc.rs) - Command handling
