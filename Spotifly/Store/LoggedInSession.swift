@@ -42,23 +42,27 @@ final class LoggedInSession {
     }
 }
 
-/// The session of the account signed in, made when it signs in and ended when it signs out
+/// The session of the account signed in, started when it signs in and ended when it signs out
 /// (`AuthViewModel.isSignedIn`), so the next sign-in starts from an empty store.
 ///
-/// Read from a view's body, so the session itself is not observed.
+/// Not observed: views follow `isSignedIn`, which is set after the session is started.
 @MainActor
 final class LoggedInSessions {
     /// The session, while the account is signed in; for the windows, and for the menu
     /// commands, which have no window of their own.
     private(set) var current: LoggedInSession?
 
-    /// The current session, made if there is none.
-    func session() -> LoggedInSession {
+    /// The current session, made and started if there is none: its queue service follows the
+    /// player from here. A session is made inert (`ActivationRegistry`), so this is what starts
+    /// it, and a current session is always a started one.
+    @discardableResult
+    func start() -> LoggedInSession {
         if let current {
             return current
         }
         let session = LoggedInSession()
         current = session
+        session.queueService.activate()
         return session
     }
 

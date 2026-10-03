@@ -35,17 +35,17 @@ final class AuthViewModel {
     /// lifetime is the sign-in's, and this view model, like them, is the app's.
     let sessions = LoggedInSessions()
 
-    /// Makes the account's session, unless there is one, and hands it to playback at once: the
-    /// queue service follows the player, and `PlaybackViewModel` reads the track's metadata and
-    /// the favorite toggle through it.
+    /// Starts the account's session and hands it to playback at once: the queue service follows
+    /// the player, and `PlaybackViewModel` reads the track's metadata and the favorite toggle
+    /// through it. Nothing for a grant renewed while signed in, whose session goes on.
     ///
     /// Here, as the account signs in, rather than in the first window's task, which ran after
     /// its first frame, and so after the connect a sign-in starts: a report arriving in between
     /// was not hydrated. Not where the session is read, in `ContentView`'s body, which must not
-    /// change state. Each step does nothing the second time, for a grant renewed while signed in.
+    /// change state.
     private func startSession() {
-        let session = sessions.session()
-        session.queueService.activate()
+        guard sessions.current == nil else { return }
+        let session = sessions.start()
         PlaybackViewModel.shared.attach(store: session.store, trackService: session.trackService)
     }
 

@@ -25,6 +25,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // the second time, or only what a reopened window should, such as asking
                 // again for a start page that failed. The session follows the player from the
                 // sign-in (`AuthViewModel.startSession`), not from here.
+                //
                 // The profile and the start page are independent requests on the same grant, so
                 // they run together. Neither blocks: an app that cannot say who you are is
                 // still an app that plays music.

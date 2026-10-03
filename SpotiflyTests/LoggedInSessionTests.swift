@@ -11,41 +11,31 @@ import Testing
 
 @MainActor
 struct LoggedInSessionTests {
-    /// A window that closes and opens again shows the same session, so the store and services it
-    /// leaves behind are still the ones playback and the menus use.
-    @Test func `every window shows the one session`() {
+    /// Starting again, as a grant renewed while signed in does, keeps the session, so the store
+    /// and services playback and the menus use stay the ones the windows show.
+    @Test func `starting again keeps the one session`() {
         let sessions = LoggedInSessions()
 
-        #expect(sessions.session() === sessions.session())
+        #expect(sessions.start() === sessions.start())
     }
 
     /// The next account starts from an empty store.
     @Test func `signing out ends the session`() {
         let sessions = LoggedInSessions()
-        let first = sessions.session()
+        let first = sessions.start()
 
         sessions.end()
 
         #expect(sessions.current == nil)
-        #expect(sessions.session() !== first)
+        #expect(sessions.start() !== first)
     }
 
-    /// Nothing outside the session holds it: playback keeps it weakly, so ending it frees it.
-    @Test func `an ended session is freed`() {
+    /// Nothing outside the session holds it: playback keeps it weakly, and the queue service's
+    /// observations, started with it, hold the store only until the service's `deinit` cancels
+    /// them, and a cancelled observation ends.
+    @Test func `an ended session is freed`() async throws {
         let sessions = LoggedInSessions()
-        weak var store = sessions.session().store
-
-        sessions.end()
-
-        #expect(store == nil)
-    }
-
-    /// Activated, too: the queue service's observations hold the store until the service's
-    /// `deinit` cancels them, and a cancelled observation ends.
-    @Test func `an ended session that was activated is freed`() async throws {
-        let sessions = LoggedInSessions()
-        weak var store = sessions.session().store
-        sessions.current?.queueService.activate()
+        weak var store = sessions.start().store
         await settle()
 
         sessions.end()
