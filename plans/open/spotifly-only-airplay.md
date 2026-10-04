@@ -1,8 +1,9 @@
 # AirPlay from Speakers without sending the Mac's other audio
 
 Status: **Open**, 2026-10-04; draft proposal. Native `AVPlayer` AirPlay initiation and
-audible isolation passed with Küche HomePod after a receiver restart. No transferable HAL
-device or transport manager was exposed; routing the current renderer remains unverified.
+audible isolation passed with Küche HomePod after a receiver restart. The HAL candidate
+failed discovery, and the production renderer did not inherit the player's route in the
+two-tone test. An `AVPlayer` media-source/backend remains a separate design investigation.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -40,6 +41,15 @@ and PCM experiment in the tested app configuration on macOS 27.0.1. The remainin
 design is conditional reference material. A Spotify-compatible `AVPlayer` media-source and playback architecture
 would need a separate investigation and design decision; the successful AAC fixture does
 not justify replacing the macOS 27 renderer yet.
+
+**Implicit route inheritance also failed in the two-tone test.** With the unchanged
+production renderer in the same process, tone A reached HomePod through `AVPlayer`, but
+renderer tone B stayed on the Mac with A playing and paused. B accepted buffers and its
+clock advanced without recorded errors/stalls. The startup baseline was stale after a
+display disappeared, so the full-run unchanged-default criterion did not pass; the actual
+test snapshots all used the Mac for audio and alerts. This rejects the tested inheritance
+hypothesis, not every conceivable renderer integration. The next useful candidate is an
+actual `AVPlayer` media source, keeping the current renderer for local output.
 
 Target **modern AirPlay 2 through Apple's current macOS 27 stack**, with "Küche HomePod" as
 the first test receiver. Prefer the newest behavior the native stack and receiver support.
@@ -234,7 +244,7 @@ bytes, zero managers**. `multipleRoutesDetected` was true. No endpoint creation 
 was attempted in this inventory run. This independently repeats the HAL limitation after
 the receiver recovered; it does not contradict the native player's successful routing.
 
-### Route-inheritance experiment (built; listening pending)
+### Route-inheritance experiment result
 
 The user authorized a separate two-tone experiment on 2026-10-04. The signed sandboxed
 **Spotifly Renderer Route Experiment** compiles the unchanged production `AudioRenderer.swift`
@@ -253,9 +263,33 @@ HAL endpoint-creation candidate or prove a public picker-to-renderer bridge.
 The disposable app remains outside the product repository in `renderer-route-experiment/`.
 Its 22 diagnostic checks and strict Swift 6 build/signature verification passed. A silent
 signed-app launch confirmed an active sandbox, ready/paused AVPlayer, no B enqueue and an
-exact production renderer fingerprint. The listening test has not been performed. No
-Spotify/product code changed; an AVPlayer-readable media source remains the alternative
-to investigate if route inheritance fails.
+exact production renderer fingerprint. The user then supplied run
+`3D1CBCB4-2F66-400E-ADE0-06B62B9B9A39` on macOS **27.0.1 (26A434)**:
+
+- **B baseline: Mac; A on HomePod: Yes; B with A playing: Mac; B with A paused: Mac;
+  Other sounds stayed local: Yes.** The recorded renderer SHA-256 matches the unchanged
+  production source compiled into the app.
+- A was `playing` at rate 1 when B started. After pausing A, its item remained `ready`,
+  playback was `paused` at rate 0, and B continued accepting buffers with an advancing
+  clock. Two seconds after the pause B had played 463,132 frames and accepted 25 buffers.
+  No captured renderer issue or stall was recorded. This was audible local B playback,
+  not a silent renderer or failed feed being mistaken for a routing result.
+- All eight captured stages from the local B baseline through the final B stop used
+  **84/84**, the MacBook speakers, for default audio/alerts. HAL exposed three non-AirPlay
+  devices, zero managers and no explicit player output UID at these stages.
+- The report correctly says **defaults across sampled captures: changed**. Preparation
+  was at 14:01 Europe/Berlin with defaults **84/96** and LG display devices present. The
+  first B start at 20:05:28 already showed **84/84**, with the display devices absent;
+  Play A was later at 20:06:00. The alert-default change occurred between those samples
+  before Play A. Its exact time/cause and relationship to picker selection were not
+  captured. Do not attribute it to this app or claim full-run output stability. Future
+  isolation tests should start a fresh run after the intended Mac outputs are available.
+
+**Result: no implicit AVPlayer-to-renderer route inheritance was observed in either tested
+playback state.** The stale-baseline change prevents a whole-run isolation pass, but does
+not erase the user's negative B observation under the consistent active-test outputs.
+This does not prove that every possible renderer bridge is impossible. No Spotify/product
+code changed; an AVPlayer-readable media source is the next alternative to investigate.
 
 ## Solution
 
@@ -449,13 +483,15 @@ audio output, not its Connect identity or the remote Spotify player.
 | --- | --- |
 | Public HAL endpoint device + existing renderer | First signed discovery gate failed on this Mac. Conditional only on a changed platform condition and a complete hardware pass; preserves the macOS 27 playback path |
 | Native picker + an empty/proxy `AVPlayer`, copying its UID to the renderer | The real-player test supplied no UID or AirPlay HAL device even during successful audio. The API does not promise a transferable UID or connection ownership transfer; no supported bridge was demonstrated |
+| Implicit route inheritance from a real `AVPlayer` in the same process | Negative in the two-tone test: production-renderer B stayed on the Mac while A played on HomePod and while A was paused; B's feed/clock remained active |
 | Actually render Spotify audio through `AVPlayer` for AirPlay | Native AAC fixture initiation/isolation passed. Spotify still needs an AVPlayer-readable media source and a design for playback, buffering, clocks and gapless ownership. Requires a separate architecture proposal and decision; this plan keeps the existing renderer |
 | Change system defaults, private routing APIs, or implement RAOP/AirPlay ourselves | Does not meet the requested isolation or the scope of this plan |
 
 ### Implementation notes and handoff
 
-The user authorized both disposable probes. The signed HAL inventory failed; the native
+The user authorized the disposable probes. The signed HAL inventory failed; the native
 picker/player fixture passed initiation and isolation, without supplying a renderer UID.
+The subsequent production-renderer experiment observed no implicit route inheritance.
 Product implementation remains conditional and stopped. A future session must establish
 a changed HAL discovery condition or investigate a separately planned Spotify-compatible
 `AVPlayer` media-source architecture before proposing product changes. That investigation
@@ -476,6 +512,14 @@ its isolation and renderer boundaries; a necessary change requires an explicit d
 decision. Update this plan and move
 it to `plans/done/` in the PR that completes the feature.
 
+The first inexpensive `AVPlayer` media-source experiment should package generated decoded
+PCM as a complete temporary lossless WAV/CAF asset and play it through the same native
+picker. Confirm playability and isolated audio using a fresh baseline. This tests a media
+format boundary rather than attempting to transfer an AirPlay route. Only then evaluate
+delivery from the existing Spotify decoder, startup cost, seek/pause, queue/gapless clocks,
+incremental delivery if needed, temporary-file cleanup and safe transitions between outputs.
+A complete-file test does not prove live PCM delivery or select a production architecture.
+
 ## Verification
 
 ### Native picker fixture (completed)
@@ -492,6 +536,15 @@ it to `plans/done/` in the PR that completes the feature.
       latency and cleanup. Repeat initiation without restarting the receiver. Any proposed
       `AVPlayer` backend must pass its own gate preventing audible local fallback on loss.
       The fixture result does not pass those requirements.
+
+### Renderer inheritance fixture (negative result)
+
+- [x] The user confirms production-renderer B stays on the Mac with A playing on HomePod
+      and with A paused while its item remains loaded.
+- [x] The renderer source fingerprint matches; B's feed and clock remain active without
+      a captured issue/stall. Silence was not used as the negative routing observation.
+- [x] Record the alert-default change between preparation and the local baseline; preserve
+      the full-run changed flag rather than claiming a complete isolation pass.
 
 ### Required before product implementation
 
@@ -544,8 +597,11 @@ it to `plans/done/` in the PR that completes the feature.
 API typecheck and read-only device/route detection were performed as described above.
 Product code was not changed. The separate diagnostic app was built, signed and run; its
 twelve classification/default-comparison checks passed. The user verified native `AVPlayer`
-AAC initiation and audible isolation after a HomePod restart. Current-renderer initiation,
-Spotify playback through AirPlay and connection cleanup remain untested. Markdown structure,
+AAC initiation and audible isolation after a HomePod restart. The subsequent two-tone app's
+22 checks and silent startup passed; the user observed no production-renderer route
+inheritance with A playing or paused, with the stale-baseline caveat recorded above.
+Current-renderer initiation was not demonstrated. Spotify playback through AirPlay and
+connection cleanup remain untested. Markdown structure,
 local repository links and `git diff --check` passed. No Spotifly app build or product test
 suite was run for these documentation-only repository changes.
 
@@ -573,3 +629,5 @@ observations, app configuration, system-owned protocol negotiation and separate 
 route-loss/media-source gates. Those qualifications are included. This follow-up reviewed
 the supplied conclusions only; Claude did not inspect the final document, recheck the SDK,
 reproduce the hardware test or verify Spotify integration.
+That follow-up preceded the two-tone experiment; its subsequent negative observation and
+baseline qualification are recorded separately above.
