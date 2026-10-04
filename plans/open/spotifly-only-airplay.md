@@ -1,8 +1,8 @@
 # AirPlay from Speakers without sending the Mac's other audio
 
-Status: **Open**, 2026-10-04; draft proposal. The signed sandboxed inventory failed the
-first hardware gate: no AirPlay HAL devices or transport managers were exposed. Stop this
-HAL approach on the tested setup; initiation with the current renderer remains unverified.
+Status: **Open**, 2026-10-04; draft proposal. Native `AVPlayer` AirPlay initiation and
+audible isolation passed with Küche HomePod after a receiver restart. No transferable HAL
+device or transport manager was exposed; routing the current renderer remains unverified.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -26,20 +26,26 @@ renderer's `audioOutputDeviceUniqueID`, without changing either system default o
 However, selecting an existing device is not the same as discovering and connecting an idle
 AirPlay receiver. No public bridge from the native picker to this renderer was found.
 
-The **hardware feasibility gate** uses public Core Audio transport-manager and
-process-private endpoint-device APIs. **The signed sandboxed probe now confirms its first
-fail condition: no AirPlay device or transport manager is exposed.** Route detection finds
-additional routes, but does not expose an initiatable HAL endpoint. Stop this approach on
-the tested macOS 27.0.1 setup; no connection or PCM prototype was built. A changed platform
-condition or documented native discovery activation is needed before retesting. The
-remaining design is conditional reference material. A real `AVPlayer` media-source path
-would need a separate investigation and architecture plan; this result does not justify
-promising the feature or replacing the renderer yet.
+**Native app-only AirPlay passed in one hardware run on the tested setup.** A separately
+signed sandboxed `AVRoutePickerView` + real `AVPlayer` probe played its AAC tone on Küche HomePod
+while the user confirmed other sounds stayed local. Both system output defaults remained
+on the Mac's speakers. The earlier connection failure disappeared after restarting HomePod,
+without changing the probe code.
+
+**This does not provide a bridge to the current renderer.** The HAL inventory gate failed:
+no AirPlay device or transport manager was exposed. All sampled states, including successful
+native playback, exposed no AirPlay device/manager and `AVPlayer.audioOutputDeviceUniqueID`
+was `nil`, supplying no UID to give the sample-buffer renderer. Stop the HAL connection
+and PCM experiment in the tested app configuration on macOS 27.0.1. The remaining HAL
+design is conditional reference material. A Spotify-compatible `AVPlayer` media-source and playback architecture
+would need a separate investigation and design decision; the successful AAC fixture does
+not justify replacing the macOS 27 renderer yet.
 
 Target **modern AirPlay 2 through Apple's current macOS 27 stack**, with "Küche HomePod" as
 the first test receiver. Prefer the newest behavior the native stack and receiver support.
-Do not add an AirPlay 1/legacy RAOP fallback or support for older OS renderer APIs. A generic
-HAL AirPlay output is not evidence that the connection uses the desired modern transport.
+Do not implement an AirPlay 1/legacy RAOP sender or support older OS renderer APIs. Protocol
+negotiation through the native picker/player is owned by macOS and was not identified in
+this test. A generic HAL AirPlay output is not evidence of the desired modern transport.
 
 ## Problem
 
@@ -140,9 +146,8 @@ On this Mac, macOS **27.0.1 (26A434)**, with Apple Swift **6.4**:
   [`docs/cpu-benchmark.md`, "Feeding the renderer"](../../docs/cpu-benchmark.md#feeding-the-renderer).
 
 These checks establish the routing boundary and a candidate public API path. They do not
-establish that a disconnected HomePod, Apple TV or third-party receiver can be initiated with
-it. The signed-app inventory below confirms the initial failure; no AirPlay playback test
-was performed.
+establish receiver initiation through HAL. The signed-app inventory below confirms that
+candidate's initial failure. The subsequent native picker/player test is recorded separately.
 
 ### Signed sandboxed inventory result
 
@@ -171,20 +176,63 @@ On macOS **27.0.1 (26A434)**, before and after five seconds of `AVRouteDetector`
   All reads used the public property APIs; no endpoint was created, output or volume set,
   or audio played.
 
-**Result: first gate failed.** The signed app repeats the unsandboxed discovery limitation.
-The probe stops at inventory. Audible isolation, receiver initiation, disconnect behavior,
-HomePod software version and negotiated AirPlay mode remain untested. The local diagnostic
-source and app are kept outside the product repository in the workspace's `airplay-probe/`
-folder, with JSON and text reports available from its window; no diagnostic is shipped in
-Spotifly or included as product implementation in this PR.
+**Result: the first HAL gate failed.** The signed app repeats the unsandboxed discovery
+limitation, so no HAL connection or sample-buffer PCM prototype was built. The user then
+requested the separate native picker/player test below. The local diagnostic source and
+app are kept outside the product repository in the workspace's `airplay-probe/` folder,
+with JSON and text reports available from its window; no diagnostic is shipped in Spotifly
+or included as product implementation in this PR.
+
+### Native picker/player hardware result
+
+The follow-up probe assigns a real `AVPlayer` to `AVRoutePickerView.player`, loads a bundled
+120-second stereo AAC tone and starts paused. The user selects the receiver in the native
+picker and explicitly starts playback. It uses the same signed sandboxed target and permissions
+described above; it does not change either system output default. Twelve diagnostic checks
+passed: seven inventory classifications and five audio/alert-default comparisons. These
+checks validate report logic; the audible result comes from the user's hardware test.
+
+On **2026-10-04**, macOS **27.0.1 (26A434)**, run
+`7F3E3736-C5DE-40FB-89A2-FB1CD0E1E48B`:
+
+- The user reports that **restarting Küche HomePod resolved the connection failure**, then
+  confirms **Tone on HomePod: Yes** and **Other sounds stayed local: Yes** in the exported
+  report. No probe code changed between the failed and successful attempts.
+- Default audio and alert outputs both remained **83**, the MacBook's built-in speakers,
+  at preparation, picker dismissal, two seconds later, Play and a capture during playback
+  (07:42:24–07:44:00 Europe/Berlin). These are sampled observations, with audible isolation
+  confirmed by the user, rather than a claim of continuous HAL monitoring.
+- All five snapshots exposed four HAL devices, none using AirPlay transport, and **zero
+  transport managers**, including the capture during audible playback. Restarting HomePod
+  therefore did not expose the endpoint needed by the stopped HAL approach.
+- The player reached `ready` / `playing`, but its output-device UID was **nil** in all five
+  snapshots. In this run, that property's probe label "default output" did not predict the
+  observed picker-selected HomePod audio route. No explicit HAL UID was observed through it.
+- `isExternalPlaybackActive` remained false. The installed SDK describes this flag as
+  external **video** playback; it cannot reject the positive audio observation.
+- Platform logs show a 30-second control-connection timeout (`-6722 / kTimeoutErr`) for
+  the failed attempt at 07:37, then successful native activation in 498 ms at 07:42. This
+  is connection-activation timing, not media latency. No matching sandbox/TCC denial was
+  found in the failure window. Playback worked after the receiver restart; the underlying
+  reason for the earlier timeout is not established.
+
+**Result: native `AVPlayer` initiation and app-only audible isolation passed in one run
+for the AAC fixture on this HomePod after a restart.** This is positive evidence for using
+the native picker with an actual player; it is not evidence of a supported bridge to the
+sample-buffer renderer. Repeatability and whether future attempts need a receiver restart
+remain unverified. Spotify media delivery, gapless behavior, route loss and cleanup remain
+untested. HomePod software version, negotiated AirPlay version and sender buffering mode
+were not recorded.
 
 ## Solution
 
 ### 1. Prove initiation and isolation before implementing the feature
 
-**Current outcome: the inventory below was completed and failed; do not proceed to PCM or
-connection experiments on this setup.** Retain the following steps for a future changed
-condition.
+**Current HAL outcome: inventory failed at the sampled stages, including successful native
+`AVPlayer` playback; do not proceed to HAL connection or sample-buffer PCM experiments in
+this signed sandboxed app configuration.** The unsandboxed inventory also failed.
+The separate native-player fixture passed initiation/isolation above. Retain the following
+HAL steps for a future changed condition; they are not an implementation plan for `AVPlayer`.
 
 First run only the inventory in a minimal disposable target against macOS 27, signed and
 sandboxed like Spotifly with its existing entitlements. If it exposes no AirPlay transport
@@ -367,28 +415,56 @@ audio output, not its Connect identity or the remote Spotify player.
 | Approach | Assessment |
 | --- | --- |
 | Public HAL endpoint device + existing renderer | First signed discovery gate failed on this Mac. Conditional only on a changed platform condition and a complete hardware pass; preserves the macOS 27 playback path |
-| Native picker + an empty/proxy `AVPlayer`, copying its UID to the renderer | Unverified: the API does not promise that selection publishes a transferable UID or that the player can relinquish the connection. Do not assume this is a supported bridge |
-| Actually render Spotify audio through `AVPlayer` for AirPlay | Fits the native picker, but needs an AVPlayer-readable media source and changes playback, buffering, clocks and gapless ownership. A separate architecture proposal if HAL fails; this plan keeps the existing renderer |
+| Native picker + an empty/proxy `AVPlayer`, copying its UID to the renderer | The real-player test supplied no UID or AirPlay HAL device even during successful audio. The API does not promise a transferable UID or connection ownership transfer; no supported bridge was demonstrated |
+| Actually render Spotify audio through `AVPlayer` for AirPlay | Native AAC fixture initiation/isolation passed. Spotify still needs an AVPlayer-readable media source and a design for playback, buffering, clocks and gapless ownership. Requires a separate architecture proposal and decision; this plan keeps the existing renderer |
 | Change system defaults, private routing APIs, or implement RAOP/AirPlay ourselves | Does not meet the requested isolation or the scope of this plan |
 
 ### Implementation notes and handoff
 
-The user authorized building the disposable probe, which completed step 1's cheap signed
-inventory and confirmed failure. Product implementation remains conditional and stopped.
-A future session must establish a changed discovery condition or investigate a separately
-planned `AVPlayer` media-source architecture before proposing product changes. A generic
-native connection with unverified AirPlay mode would leave the explicit decision above open.
-Keep measured findings and proposed
-departures here. Once the design is accepted, preserve its isolation and renderer boundaries;
-a necessary change to them requires an explicit design decision. Update this plan and move
+The user authorized both disposable probes. The signed HAL inventory failed; the native
+picker/player fixture passed initiation and isolation, without supplying a renderer UID.
+Product implementation remains conditional and stopped. A future session must establish
+a changed HAL discovery condition or investigate a separately planned Spotify-compatible
+`AVPlayer` media-source architecture before proposing product changes. That investigation
+must cover seek/pause/Next, buffering and gapless clocks, route-loss isolation, cleanup,
+and modern AirPlay evidence. First establish an AVPlayer-readable delivery format for the
+Spotify stream, then verify that `AVPlayer` can meet each playback, stream-gain and gapless
+requirement; a playable local AAC file does not demonstrate that. Repeat initiation across
+multiple sessions, including without a HomePod restart. Give this candidate its own
+route-loss gate: loss must hold playback before local fallback becomes audible, with
+supported observability and recorded event order; reject the path if that cannot be ensured.
+The renderer UID/suggested-flush rules above apply to the HAL candidate, not the player.
+State whether AirPlay needs a separate output backend and what happens when returning to
+the existing macOS 27 renderer. No such backend change has been accepted or implemented.
+A native connection with unverified AirPlay mode leaves
+the transport evidence/decision rule above open.
+Keep measured findings and proposed departures here. Once the design is accepted, preserve
+its isolation and renderer boundaries; a necessary change requires an explicit design
+decision. Update this plan and move
 it to `plans/done/` in the PR that completes the feature.
 
 ## Verification
 
+### Native picker fixture (completed)
+
+- [x] The signed sandboxed app selects Küche HomePod through `AVRoutePickerView` attached
+      to a real `AVPlayer`, without Control Center selecting the Mac's output.
+- [x] The user hears the bundled tone on HomePod and confirms other sounds remain local.
+- [x] Audio and alert output IDs remain on the Mac at all five sampled stages.
+- [x] Capture during playback confirms no AirPlay HAL device/manager or player output UID
+      was exposed for transfer to the existing renderer.
+- [ ] Validate Spotify media delivery and playback transitions through a separately
+      designed `AVPlayer` path, if that architecture is accepted.
+- [ ] Record receiver software and modern AirPlay evidence; measure route loss, buffering,
+      latency and cleanup. Repeat initiation without restarting the receiver. Any proposed
+      `AVPlayer` backend must pass its own gate preventing audible local fallback on loss.
+      The fixture result does not pass those requirements.
+
 ### Required before product implementation
 
-- [ ] The signed-app hardware gate passes from an idle receiver, with no Control Center
-      connection prerequisite, and its evidence is recorded above.
+- [ ] The signed-app **HAL/receiver** hardware gate passes from an idle receiver, with no
+      Control Center connection prerequisite, and its evidence is recorded above. The
+      native `AVPlayer` fixture does not pass this current-renderer gate.
 - [x] If the signed inventory repeats the current absence of AirPlay managers/endpoints,
       record failure and stop before implementing a connection or PCM prototype.
 - [ ] Küche HomePod is the first receiver tested. Record its software version and the outcome
@@ -433,11 +509,12 @@ it to `plans/done/` in the PR that completes the feature.
 ### Verification of this plan PR
 
 API typecheck and read-only device/route detection were performed as described above.
-Product code was not changed. Audio isolation, AirPlay initiation and connection cleanup
-remain untested. Markdown structure, local repository links and `git diff --check` passed.
-The separate diagnostic app was built, signed and run; its seven classification checks
-passed. No Spotifly app build or product test suite was run for these documentation-only
-repository changes.
+Product code was not changed. The separate diagnostic app was built, signed and run; its
+twelve classification/default-comparison checks passed. The user verified native `AVPlayer`
+AAC initiation and audible isolation after a HomePod restart. Current-renderer initiation,
+Spotify playback through AirPlay and connection cleanup remain untested. Markdown structure,
+local repository links and `git diff --check` passed. No Spotifly app build or product test
+suite was run for these documentation-only repository changes.
 
 ### Independent review
 
@@ -451,6 +528,15 @@ working tree on 2026-10-03 marked all four findings resolved, with no important 
 remaining, and judged it ready as a conditional planning document. Its optional wording
 fixes on the evidence checklist, acknowledgment after idle selection and this review note
 are included. Claude did not re-run the typecheck, inventories or document checks; the
-document checks were run separately by the author. That review preceded the signed probe;
-its subsequent measured first-gate failure is recorded above. Connection feasibility with
-the current renderer remains unproven, and the HAL candidate is stopped on this setup.
+document checks were run separately by the author. That review preceded both signed probes;
+their subsequent HAL failure and native-player success are recorded above. Connection
+feasibility with the current renderer remains unproven, and the HAL candidate is stopped
+on this setup.
+
+On 2026-10-04, Claude reviewed a redacted, text-only summary of the new hardware findings
+and proposed conclusions, with tools/file access disabled. It found the conditional plan
+consistent and requested tighter wording on the single successful run, sampled UID/HAL
+observations, app configuration, system-owned protocol negotiation and separate player
+route-loss/media-source gates. Those qualifications are included. This follow-up reviewed
+the supplied conclusions only; Claude did not inspect the final document, recheck the SDK,
+reproduce the hardware test or verify Spotify integration.
