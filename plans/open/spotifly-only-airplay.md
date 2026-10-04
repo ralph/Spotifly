@@ -224,6 +224,16 @@ remain unverified. Spotify media delivery, gapless behavior, route loss and clea
 untested. HomePod software version, negotiated AirPlay version and sender buffering mode
 were not recorded.
 
+### Follow-up HAL inventory after the successful native test
+
+The user supplied another inventory run started on **2026-10-04 at 07:47:38 Europe/Berlin**
+(05:47:38 UTC), after the HomePod restart and successful native-player test. Before and
+after five seconds of discovery, both output defaults were **83**, four non-AirPlay HAL
+devices were exposed and the transport-manager read again returned **OSStatus 0, zero
+bytes, zero managers**. `multipleRoutesDetected` was true. No endpoint creation or playback
+was attempted in this inventory run. This independently repeats the HAL limitation after
+the receiver recovered; it does not contradict the native player's successful routing.
+
 ## Solution
 
 ### 1. Prove initiation and isolation before implementing the feature
