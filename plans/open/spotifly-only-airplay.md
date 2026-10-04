@@ -234,6 +234,29 @@ bytes, zero managers**. `multipleRoutesDetected` was true. No endpoint creation 
 was attempted in this inventory run. This independently repeats the HAL limitation after
 the receiver recovered; it does not contradict the native player's successful routing.
 
+### Route-inheritance experiment (built; listening pending)
+
+The user authorized a separate two-tone experiment on 2026-10-04. The signed sandboxed
+**Spotifly Renderer Route Experiment** compiles the unchanged production `AudioRenderer.swift`
+with its macOS 27 async Receiver; the compiled source's SHA-256 is recorded in each report.
+Tone A uses the proven native picker/player path. Tone B is distinct 220 Hz Float32 stereo
+PCM through the production renderer, with no explicit UID or system-output change.
+
+First confirm B plays locally, then choose HomePod for A, play both and pause A while
+keeping its item loaded. Record where B is heard, unrelated audio, both default outputs,
+A's actual playback state and B's enqueue/clock progress. B on HomePod with unrelated
+audio local would support implicit route inheritance on this configuration, requiring
+further lifecycle tests and a supported integration design. B on the Mac rejects that
+hypothesis; silence or enqueue errors are inconclusive. This does not revive the stopped
+HAL endpoint-creation candidate or prove a public picker-to-renderer bridge.
+
+The disposable app remains outside the product repository in `renderer-route-experiment/`.
+Its 22 diagnostic checks and strict Swift 6 build/signature verification passed. A silent
+signed-app launch confirmed an active sandbox, ready/paused AVPlayer, no B enqueue and an
+exact production renderer fingerprint. The listening test has not been performed. No
+Spotify/product code changed; an AVPlayer-readable media source remains the alternative
+to investigate if route inheritance fails.
+
 ## Solution
 
 ### 1. Prove initiation and isolation before implementing the feature
