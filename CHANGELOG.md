@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Playlist folders.** The Playlists section shows the playlists in the folders they are in on Spotify: a folder is a row that opens and closes in place, its playlists indented under it, and which folders are open is kept across launches. Measured from the web player's session: `libraryV3`, unflattened with every folder named in `expandedFolders`, returns the whole tree as one offset-paged list with each entry's depth, where the flattened list cannot carry it. The flat list is still what the add-to-playlist menus read, and an account without folders sees the section as before. Plan: `plans/done/playlist-folder-hierarchy.md`.
+
 ### Changed
 - **Previous restarts the track once it is 3 seconds in, as on Spotify's clients.** It went back to the track before whenever there was one, however far into the current track. Measured with the web player: before 3 s Previous goes to the track before, which plays, even from paused; after that it restarts the track, playing or paused as it was. librespot's `handle_prev` uses the same 3 s. A mirrored track, with nothing playing anywhere, follows the same rule: within its first 3 s Previous plays the row the Queue section shows before it. Previous sent to another device is left to that device. Plan: `plans/done/previous-restarts-past-three-seconds.md`.
 

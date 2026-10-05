@@ -1,0 +1,161 @@
+# Playlist folders: show the hierarchy Spotify has
+
+Status: **Done** 2026-09-29. The variables measured from the web player's session; built,
+unit-tested, and the section rendered in the test host; seen in the running app on 2026-09-30, all
+but creating and deleting a playlist; see Verification.
+Components: `Spotifly/PartnerAPI/PathfinderLibrary.swift` (`depth`), `Spotifly/PartnerAPI/PathfinderSearch.swift`
+(`PathfinderPlaylist.folderUri`), `Spotifly/PartnerAPI/PartnerAPI.swift` (`libraryPlaylistOutline`),
+`Spotifly/Store/Services/PlaylistService.swift` (`loadPlaylistOutline`), `Spotifly/Store/AppStore.swift`
+(`playlistOutline`), `Spotifly/Store/Entities.swift` (`PlaylistOutlineRow`),
+`Spotifly/Views/LibraryListView.swift` (`LibraryOutlineRow`), `Spotifly/Views/PlaylistsListView.swift`,
+`Spotifly/Views/LoggedInView.swift` (the refresh)
+Found: 2026-08-13, splitting the "does not attempt" note out of task 12 in
+`plans/done/single-grant-partner-api.md`
+
+## Summary
+
+The Playlists section is a flat list. Spotify's `libraryV3` has the folder hierarchy, and
+Spotifly drops it. Nothing is broken, because every playlist is shown, including those inside
+folders. Showing the tree is a feature the client APIs made possible, not a debt.
+
+## Problem
+
+### The flat list is not a workaround
+
+Worth stating first, because "folders are not built" invites someone to treat the current
+behaviour as broken. It is not: **every playlist is shown, including the ones inside folders.**
+That is exactly what `/me/playlists` returned for the Web API's whole life, so nothing regressed
+when the library moved to `libraryV3`, and nothing needs fixing to keep parity.
+
+What is new is that Spotify's own API *has* the hierarchy and this app throws it away. The Web
+API never exposed folders at all; `libraryV3` does. So this is a feature the client APIs made
+possible, not a debt the migration created.
+
+### What the API offers, measured
+
+Two variables decide it, measured 2026-08-13 against an account with four folders
+(`PathfinderLibraryVariables`):
+
+| `flatten` | `includeFoldersWhenFlattening` | result |
+| --- | --- | --- |
+| `false` | either | 14 items: 10 playlists and 4 folders, folder contents hidden |
+| `true` | `true` | 38 items: 34 playlists and 4 folders |
+| `true` | `false` | **34 items: every playlist, no folders** — what the app sends |
+
+Two more variables exist and are currently sent as their empty defaults: `expandedFolders:
+[String]` and `folderUri: String?`. Their names say what they are for, and **neither has been
+exercised** — nobody here has sent a folder uri or a non-empty expanded list and looked at the
+answer. That is the first thing to measure, and the cheapest: it decides whether the hierarchy
+arrives in one request or one request per open folder.
+
+### The trap already paid for
+
+**A folder decodes cleanly as a playlist.** It carries a `uri` and a `name` and nothing in the
+shape distinguishes it, so the only thing that tells them apart is the uri's kind:
+a folder is `spotify:user:<user>:folder:<hash>`, where a playlist is `spotify:playlist:<id>`.
+
+Taking the last component of a uri returns the hash and yields a folder that looks like a
+playlist with a plausible id — it renders as a row and answers "Spotify returned no data" when
+opened. `SpotifyURI.id(from:kind:)` exists because of this, and `PathfinderPlaylist.id` is
+kind-checked where the other entities are not.
+
+**That guard is what currently drops folders**, silently and by design. Anyone building this
+feature has to stop relying on it as a filter and start treating a folder as its own kind —
+which means the change is not additive: removing the drop without adding a `Folder` entity puts
+the broken rows straight back.
+
+## Solution
+
+### What was measured
+
+2026-09-29, from the web player's session in Chrome, the app's own `libraryV3` query and hash,
+recording counts and kinds only. The account had 38 playlists and 4 folders, none nested:
+
+| Variables | Answer |
+|---|---|
+| `flatten: false` | 18 entries: 14 playlists and 4 folders, all at `depth` 0, the folders closed |
+| `flatten: false`, `folderUri: <a folder>` | 2 entries: that folder's playlists |
+| `flatten: false`, `expandedFolders: [<a folder>]` | 20: the top level, that folder's 2 playlists after it at `depth` 1 |
+| `flatten: false`, `expandedFolders: [<all four>]` | **42: the whole tree in order, each folder followed by what it holds at `depth` 1** |
+| the same, `offset: 10, limit: 10` | the same sequence from its eleventh entry |
+| `flatten: true`, `includeFoldersWhenFlattening: true` | 42, but the 4 folders together in the middle and every entry at `depth` 0 |
+
+A folder is `__typename: "Folder"`, `{name, uri, playlistCount, folderCount}`, in a
+`LibraryFolderResponseWrapper`; every entry carries its `depth`. So the plan's first question
+has its answer: the hierarchy arrives in **one** offset-paged list once every folder is named in
+`expandedFolders`, and the flattened list, folders included or not, cannot carry it.
+
+### What changed
+
+- **The flat list stays what everything else reads.** `loadUserPlaylists` is unchanged:
+  flattened, without folders, every playlist, which the add-to-playlist menus and the section's
+  selection need, whatever is open.
+- **The outline is loaded beside it**, for the section alone, by
+  `PlaylistService.loadPlaylistOutline`: the top level unflattened, then again with the folders
+  it found named in `expandedFolders`, and again while a pass finds folders not named yet, which
+  only a folder inside a folder shows; six passes at most. An account with no folders costs the
+  one request. Each entry becomes a `PlaylistOutlineRow`, a folder keyed by its full uri or a
+  playlist by its id, with its depth (`PathfinderLibraryItem.depth`,
+  `PathfinderPlaylist.folderUri`). The playlists are upserted as they come.
+- **The section shows it when there are folders.** `LibraryListView` takes an optional outline
+  of `LibraryOutlineRow`s and shows it instead of its flat rows: a folder as a row with a folder
+  glyph and a chevron, closed until clicked, what it holds indented under it. Which folders are
+  open is kept in `@AppStorage`, across launches, as Spotify's clients keep theirs. Without
+  folders there is no outline, and the section is exactly the flat list it was, the plan's
+  fallback.
+- **The outline is the section's list whenever there is one.** It is loaded whole, where the
+  flat list pages as it is scrolled, so it holds every playlist from the start. The store's
+  library changes edit it as they edit the flat list: a playlist created or followed goes at
+  its top, where Spotify puts it, and one deleted or unfollowed leaves it. The section's first
+  selection is its first visible playlist, never one inside a closed folder, and it shows no
+  load-more spinner, since the flat pages behind it are not what it shows. Refresh loads both
+  lists again, side by side.
+- **Two things the code review found.** A load already in flight when a playlist is created
+  answers without it, and used to replace the outline that had it at the top: the store now
+  keeps what was added since the outline was last set, and puts back at the top what a load
+  missed. And the first selection is usually made from the flat list, which arrives before the
+  outline, so it could be a playlist inside a folder the outline shows closed: the list now
+  opens the folders around the selection whenever the outline or the selection changes, as a
+  Finder window reveals what it selects.
+
+Selecting a folder expands it in place, the plan's cheaper answer: no folder page. The trap the
+plan named stays shut: `PathfinderPlaylist.id` still refuses a folder's uri, so no folder becomes
+a playlist row.
+
+## Verification
+
+- [x] Measured, as above.
+- [x] Unit tests: a first pass that finds a folder is followed by one that names it, and the
+      outline has the folder's playlist at depth 1; an account with no folders costs one request
+      and has no outline; a playlist added to the library goes at the top of the outline, one
+      removed leaves it, and without folders none is made; one added while a load was in
+      flight is put back, once; the folders around a nested entry are found, outermost first.
+- [x] Rendered in the test host (a temporary test, deleted after): a playlist at the top, the
+      selected one, an open folder with its playlist indented under it and the chevron down, a
+      closed folder with its playlist hidden and the chevron right, and a last playlist.
+- [x] Build, unit tests and `swiftformat --swiftversion 6.4 --lint .`, exit 0.
+- [x] Live, 2026-09-30: the Playlists section shows the account's four folders, closed, among the
+      playlists. Opening one shows its playlists indented, with the chevron down; clicking it again
+      hides them. A folder left open stays open after a relaunch. Selecting a playlist in a folder
+      opens it as any other. A track's "Zu Playlist hinzufügen" menu lists the playlists inside a
+      closed folder.
+- [x] Live, 2026-09-30: Refresh keeps the folders and the selection.
+- [x] Live, 2026-10-02, after bringing the branch up to date with `main` (the toolbar's refresh
+      no longer restores the selection, #169; the rows read the playback view model from the
+      environment): the four folders show closed; one opens, with "Sprint" indented under it,
+      which opens as any playlist; it stays open after a relaunch, and closes again; the toolbar's
+      refresh fetches the flat list and the outline again and keeps both the folders and the
+      selection.
+- [x] **The folder row is a `Button`** since 2026-10-02. It was a tap gesture with a button trait,
+      which announced itself to accessibility as a button and did nothing when pressed: VoiceOver
+      could not open a folder, and neither could an accessibility press. It now opens and closes
+      by one, and says "Geöffnet" or "Geschlossen" as its value (`folder.open`, `folder.closed`).
+- [x] **One load for the section**, `PlaylistService.loadSection(forceRefresh:)`, since
+      2026-10-02: a forced one reloads the outline beside the flat list, and it is what the
+      toolbar's refresh, pull-to-refresh and Try again all call. Only the toolbar reloaded the
+      outline before. Live: the toolbar's refresh still made three `libraryV3` requests, the flat
+      page and the outline's two passes. The folder's glyph is `Artwork`'s placeholder, as a
+      playlist without a cover shows it.
+- [ ] Live: a new playlist appears at the top; a deleted one disappears. Not run: it changes the
+      library.
+- [ ] Live, an account or a check with no folders: the section looks as it did.

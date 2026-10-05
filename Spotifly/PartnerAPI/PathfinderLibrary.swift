@@ -65,6 +65,9 @@ nonisolated struct PathfinderLibraryItem<Entity: Decodable & Sendable>: Decodabl
     let addedAt: PathfinderTimestamp?
     let pinned: Bool?
     let item: Wrapper?
+    /// How deep in the folders the entry sits, 0 at the top. Only a list asked for unflattened
+    /// has anything but 0.
+    let depth: Int?
 }
 
 /// `{ "isoString": "2026-08-13T07:12:40Z" }`, which is how this API spells every timestamp.
