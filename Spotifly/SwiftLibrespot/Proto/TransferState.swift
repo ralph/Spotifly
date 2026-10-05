@@ -237,6 +237,21 @@ public nonisolated struct TransferState: Sendable {
         context.map(field: 3, metadata)
     }
 
+    /// The same playback from another of its rows, at that row's start, as a double-click on a
+    /// row played before asks: the context, or the list, from the row `uri` and `uid` name.
+    /// Nothing plays as queued, and autoplay waits for the context to come back to it.
+    func startingOver(at uri: String, uid: String?) -> TransferState {
+        var state = self
+        state.currentTrackUri = uri
+        state.currentTrackUid = uid
+        state.currentRow = nil
+        state.contextResumeUid = nil
+        state.playsQueuedTrack = false
+        state.continuesAutoplay = false
+        state.positionAsOfTimestamp = 0
+        return state
+    }
+
     /// Where the track is now: it kept playing on the sender since `timestamp`
     /// unless it was paused.
     ///

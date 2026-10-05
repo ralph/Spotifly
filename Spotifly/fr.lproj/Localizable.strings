@@ -267,6 +267,7 @@
 "speakers.this_mac_needs_premium" = "Ce Mac ne lit que pour les comptes Premium";
 "common.ok" = "OK";
 "common.cancel" = "Annuler";
+"auth.enable_playback_failed_title" = "Ce Mac n'a pas été activé";
 "auth.enable_playback_wrong_account" = "Ce compte Spotify n'est pas celui avec lequel vous êtes connecté. Connectez le navigateur au même compte, puis réessayez.";
 
 /* A playlist folder's state, for accessibility */

@@ -15,8 +15,9 @@ struct ContentView: View {
         if viewModel.isLoading {
             ProgressView(String(localized: "auth.loading"))
                 .frame(minWidth: 500, minHeight: 400)
-        } else if viewModel.isSignedIn {
-            LoggedInView(session: viewModel.sessions.session(), onLogout: { Task { await viewModel.logout() } })
+        } else if viewModel.isSignedIn, let session = viewModel.sessions.current {
+            // Started as the account signed in (`AuthViewModel.startSession`); read here only.
+            LoggedInView(session: session, onLogout: { Task { await viewModel.logout() } })
         } else {
             loginView
                 .frame(minWidth: 500, minHeight: 400)
@@ -50,9 +51,6 @@ struct ContentView: View {
             // Enabled while waiting, where it cancels rather than starting a second grant:
             // a browser tab closed without authorizing sends nothing, so this is the only
             // way back from the wait short of the listener's timeout.
-            //
-            // No account to compare against yet, so no `expectedAccountId` — at sign-in the
-            // account the browser grants *is* the account.
             Button {
                 if viewModel.isAuthorizingStreaming {
                     viewModel.cancelStreamingAuthorization()

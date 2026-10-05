@@ -183,6 +183,53 @@ struct KeymasterSessionTests {
         #expect(store.load() == fresh)
     }
 
+    /// The browser grants with whatever account it is signed into. Re-authorizing while signed
+    /// in with the browser on another account would swap the account under the library, the
+    /// queue and the now-playing bar; refused, the grant held stays as it was.
+    @Test func `a grant for another account is refused, and the one held stays`() async throws {
+        let held = tokens(access: "held", expiresAt: now.addingTimeInterval(3600), username: "userA")
+        let store = RecordingStore(initial: held)
+        let session = KeymasterSession(store: store, refresher: { _ in
+            Issue.record("a held grant with time left needs no refresh")
+            throw KeymasterSessionError.noGrant
+        })
+
+        let other = tokens(access: "other", expiresAt: now.addingTimeInterval(3600), username: "userB")
+        await #expect(throws: KeymasterSessionError.otherAccount(held: "userA", granted: "userB")) {
+            try await session.adopt(other)
+        }
+
+        #expect(try await session.accessToken(now: now) == "held")
+        #expect(store.writes.isEmpty)
+    }
+
+    @Test func `a grant for the same account replaces the one held`() async throws {
+        let store = RecordingStore(initial: tokens(access: "old", expiresAt: now.addingTimeInterval(3600), username: "userA"))
+        let session = KeymasterSession(store: store, refresher: { _ in
+            Issue.record("a fresh grant needs no refresh")
+            throw KeymasterSessionError.noGrant
+        })
+
+        let fresh = tokens(access: "new", expiresAt: now.addingTimeInterval(3600), username: "userA")
+        try await session.adopt(fresh)
+
+        #expect(try await session.accessToken(now: now) == "new")
+        #expect(store.load() == fresh)
+    }
+
+    /// With no grant held it is a sign-in, and the granted account is the account.
+    @Test func `with no grant held, any account signs in`() async throws {
+        let store = RecordingStore()
+        let session = KeymasterSession(store: store, refresher: { _ in
+            Issue.record("a fresh grant needs no refresh")
+            throw KeymasterSessionError.noGrant
+        })
+
+        try await session.adopt(tokens(access: "first", expiresAt: now.addingTimeInterval(3600), username: "userB"))
+
+        #expect(await session.username == "userB")
+    }
+
     @Test func `a revoked grant is discarded rather than retried`() async throws {
         // Left in place, a dead refresh token is spent again by every later request and
         // survives relaunch in the keychain — the app fails forever and looks authorized.

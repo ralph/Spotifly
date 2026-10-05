@@ -72,8 +72,20 @@ actor KeymasterSession {
         tokens?.username
     }
 
-    /// Records the outcome of a fresh grant.
+    /// Records the outcome of a fresh grant, unless it is for another account than the grant
+    /// held.
+    ///
+    /// The browser runs the grant with whatever account it is signed into, which need not be
+    /// the one signed in here, and taking it would swap the account under a library, a queue
+    /// and a now-playing bar that go on showing the previous one, with nothing on screen saying
+    /// so. Checked against the grant itself, in the same step as the write: the profile's
+    /// account, checked before, is unknown until the profile loads. With no grant held it is a
+    /// sign-in, and the granted account is the account; a held grant that never named its
+    /// account cannot be compared, and does not refuse.
     func adopt(_ newTokens: KeymasterTokens) throws {
+        if let held = tokens?.username, !held.isEmpty, held != newTokens.username {
+            throw KeymasterSessionError.otherAccount(held: held, granted: newTokens.username)
+        }
         supersedeRefresh()
         tokens = newTokens
         try store.save(newTokens)
@@ -191,6 +203,8 @@ nonisolated enum KeymasterSessionError: Error, LocalizedError, Equatable {
     /// says which of the two happened — a grant that never existed, or one that stopped being
     /// accepted mid-session.
     case grantRevoked
+    /// A fresh grant for another account than the one held, refused by `adopt`.
+    case otherAccount(held: String, granted: String)
 
     var errorDescription: String? {
         switch self {
@@ -198,6 +212,8 @@ nonisolated enum KeymasterSessionError: Error, LocalizedError, Equatable {
             "This Mac has not been authorized for playback yet"
         case .grantRevoked:
             "Session expired, please sign in again"
+        case let .otherAccount(held, granted):
+            "The grant is for account \(granted), not the signed-in account \(held)"
         }
     }
 }

@@ -57,7 +57,7 @@ row's uid, which is now passed on too.
 
 An album's relinked track is still placed by uri alone, since its resolve answer has no uids.
 That, a handover while a queued track plays, and a handed-over bare list are in
-`plans/open/handover-edge-cases.md`.
+`plans/done/handover-edge-cases.md`.
 
 ## Verification
 

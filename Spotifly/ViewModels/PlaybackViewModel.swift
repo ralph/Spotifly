@@ -52,6 +52,8 @@ final class PlaybackViewModel {
 
     private struct ShownPlayback: Equatable {
         var trackUri: String
+        /// `trackUri`'s id, parsed once with the report rather than on each read.
+        var trackId: String?
         /// Playing and not paused, for this Mac's player and for a device it mirrors alike.
         var isPlaying: Bool
         /// Zero until the stream reports this track's length, and never the previous track's:
@@ -112,31 +114,79 @@ final class PlaybackViewModel {
     /// Length of the current track, as the stream reports it; see `ShownPlayback.durationMs`.
     /// The position that goes with it is derived from the anchor rather than stored alongside;
     /// see `interpolatedPositionMs`.
-    var trackDurationMs: UInt32 {
+    private var trackDurationMs: UInt32 {
         shown?.durationMs ?? 0
     }
 
-    /// Volume (0.0 - 1.0)
+    /// This Mac's volume (0–1), and only this Mac's: what its output plays at, what it
+    /// registers at on Spotify Connect, and what is saved. A slider move made for another
+    /// device does not touch it (`setVolumeFromSlider`).
     var volume: Double = 0.5 {
         didSet {
             // Apply the output gain immediately (not debounced) so local volume
             // changes are audible at once instead of after the render buffer drains.
             SpotifyPlayer.setOutputVolume(volume)
-            // Skip applying to Spirc if this change came from a remote volume callback
+            // Not sent back when it came from the client (`handleVolumeChange`).
             guard !isSettingVolumeLocally else { return }
-            // Debounce volume changes to avoid flooding Spirc with requests
+            // Debounced on to the client, and saved there, so a drag is one request and one
+            // write rather than one a frame.
             volumeSubject.send(volume)
-            // Only persist when Spotifly is the active device; don't overwrite local volume
-            // with a remote device's volume if the user is dragging the slider in Connect mode.
-            if remoteVolume == nil {
-                saveVolume()
-            }
         }
     }
 
-    /// Volume of the active remote Spotify Connect device (nil when Spotifly is active).
-    /// The volume slider uses this for display when set.
-    var remoteVolume: Double?
+    /// What the bar's slider shows: the active remote device's volume while another device
+    /// plays, this Mac's otherwise.
+    ///
+    /// Read from the player model, not kept: a copy kept up by the window's `onChange`s went
+    /// stale in the mini player, which has none, and showed one device's volume while moving
+    /// the other's. A drag shows its own value until the device reports a new volume.
+    var sliderVolume: Double {
+        guard let deviceId = player.activeRemoteDeviceId else { return volume }
+        let reported = player.activeDevice?.volumePercent
+        if let dragged = draggedRemoteVolume, dragged.deviceId == deviceId,
+           dragged.reportedPercent == reported
+        {
+            return dragged.volume
+        }
+        // Unknown only while the device list has not caught up with the active id.
+        return reported.map { Double($0) / 100 } ?? volume
+    }
+
+    /// Whether the device the slider moves refuses volume changes. Only ever another device:
+    /// this Mac's volume is the app's own. An iPhone says so, as iOS will not let one app set
+    /// system volume for another; the app used to find out from the
+    /// `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` its command got back, after the user had dragged.
+    var sliderRefused: Bool {
+        player.activeRemoteDeviceId != nil && player.activeDevice?.disableVolume == true
+    }
+
+    /// Moves what the slider shows: the active remote device's volume while another device
+    /// plays, this Mac's otherwise.
+    ///
+    /// Both used to be written: `volume` followed a remote device's slider too, so this Mac's
+    /// output gain did, and taking playback back here had to restore it from what was saved.
+    func setVolumeFromSlider(_ newVolume: Double) {
+        guard let deviceId = player.activeRemoteDeviceId else {
+            volume = newVolume
+            return
+        }
+        draggedRemoteVolume = DraggedVolume(
+            deviceId: deviceId,
+            volume: newVolume,
+            reportedPercent: player.activeDevice?.volumePercent,
+        )
+        remoteVolumeSubject.send(newVolume)
+    }
+
+    /// A drag of another device's volume, which the slider shows ahead of the device's report.
+    private struct DraggedVolume {
+        let deviceId: String
+        let volume: Double
+        /// What the device reported when the drag moved; a report since replaces the drag.
+        let reportedPercent: Int?
+    }
+
+    private var draggedRemoteVolume: DraggedVolume?
 
     var isShuffleEnabled: Bool {
         shown?.shuffle ?? false
@@ -187,10 +237,12 @@ final class PlaybackViewModel {
     private var lastAlbumArtURL: String?
     /// Flag to prevent feedback loop when we set volume locally
     private var isSettingVolumeLocally = false
-    /// Subject for debouncing volume changes
+    /// This Mac's volume changes, debounced on their way to the client
     private let volumeSubject = PassthroughSubject<Double, Never>()
-    /// Subscription for debounced volume operations
-    private var volumeDebounceSubscription: AnyCancellable?
+    /// The active remote device's, debounced on their way to it
+    private let remoteVolumeSubject = PassthroughSubject<Double, Never>()
+    /// Subscriptions for the two debounced volumes
+    private var volumeDebounceSubscriptions: Set<AnyCancellable> = []
     /// Subject for debouncing seek requests
     private let seekSubject = PassthroughSubject<UInt32, Never>()
     /// Subscription for debounced seek operations
@@ -222,12 +274,7 @@ final class PlaybackViewModel {
         setupRemoteCommandCenter()
         observeSystemSleep()
 
-        // Load saved volume (but don't apply it yet - mixer isn't initialized)
-        let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
-        if savedVolume > 0 {
-            volume = savedVolume
-        }
-        // Volume will be applied when playback starts
+        volume = Self.savedVolume
 
         // Set initial Now Playing info to claim media controls
         var initialInfo: [String: Any] = [:]
@@ -254,8 +301,8 @@ final class PlaybackViewModel {
     }
 
     /// Tears the streaming session down on logout, and forgets what it played: every way out
-    /// of the account comes through here (`AuthViewModel.discardGrant`), a revoked grant and
-    /// a refused one as well as Log Out.
+    /// of the account comes through here (`AuthViewModel.logout`), a revoked grant as well as
+    /// Log Out.
     ///
     /// Deliberately does not wait for an initialization that may be in flight. Waiting would
     /// hang the logout behind a stalled network setup, and it is not needed: `shutdown()`
@@ -337,6 +384,9 @@ final class PlaybackViewModel {
         // would not catch it, because by then the bumped generation is the current one.
         guard generationBeforeWaiting == lifecycleGeneration else { return }
         guard force || !isInitialized else { return }
+        // A run waited for that Spotify refused for want of Premium would be refused again;
+        // Reconnect in Speakers, which forces, still tries.
+        guard force || localPlayback != .needsPremium else { return }
 
         let task = Task { @MainActor in
             await performInitialization()
@@ -361,7 +411,7 @@ final class PlaybackViewModel {
         clearPlaybackState()
         let generation = lifecycleGeneration
         do {
-            try await SpotifyPlayer.initialize()
+            try await SpotifyPlayer.initialize(volume: volume)
 
             // Readiness is the authoritative condition, not "initialize() returned". The
             // old code set isInitialized as soon as `initialize()` returned and then polled
@@ -621,9 +671,7 @@ final class PlaybackViewModel {
             try await start()
             // The track, whether it plays and where are the player's reports, which anchor the
             // position as they come: every load ends in one that says playing or paused, and
-            // the start returns between the first and that one (measured). The client reports
-            // its own default volume to other devices until it is told the saved one.
-            SpotifyPlayer.setVolume(volume)
+            // the start returns between the first and that one (measured).
         } catch is CancellationError {
             // Another start overtook this one; it reports for itself.
         } catch {
@@ -690,24 +738,11 @@ final class PlaybackViewModel {
         }
     }
 
-    // MARK: - Playback State Helpers
+    // MARK: - Session
 
-    func togglePlayPause(trackId: String) async {
-        if isPlaying, currentTrackUri == trackId {
-            // Route through pause() rather than calling SpotifyPlayer directly: it carries
-            // the connect-state fallback for remote devices, and it leaves isPlaying to the
-            // playback state the client publishes instead of asserting it here
-            pause()
-        } else if !isPlaying, currentTrackUri == trackId {
-            resume()
-        } else {
-            // Play new track
-            await playTrack(trackId: trackId)
-        }
-    }
-
-    /// Gives the model the session's store and track service (`LoggedInSession`), which outlive
-    /// the window. Held weakly, so ending the session at a logout frees them.
+    /// Gives the model the session's store and track service (`LoggedInSession`), as the account
+    /// signs in (`AuthViewModel.startSession`). Held weakly, so ending the session at a logout
+    /// frees them.
     func attach(store: AppStore, trackService: TrackService) {
         self.store = store
         self.trackService = trackService
@@ -737,17 +772,14 @@ final class PlaybackViewModel {
     /// no url to build — the same condition, now a precondition instead of a round trip, and
     /// one fewer request on a path the user is waiting on.
     ///
-    /// What the local fallback recovers is **resume**, which is also the only one that needs
-    /// recovering. A paused pipeline still holds its track, so resuming plays on from where
-    /// it stopped; with nothing loaded here, the client takes over the track another device
-    /// left, which the bar mirrors. Either way the playing state that follows is reported to
-    /// Spirc as this device being active, which takes the Connect role back with it. The others reach a pipeline
-    /// that is stopped or empty and do nothing — and that is the right outcome rather than a
-    /// gap to close: with nobody active there is no track playing, so there is nothing to
-    /// pause, skip or seek. Activating for them would take the Connect role away from the
-    /// user's other clients in order to accomplish nothing, and making them work would mean
-    /// silently starting playback in response to "next" or "seek" — a different feature, not
-    /// this fix.
+    /// The local fallback acts on what is loaded here. A paused pipeline still holds its track,
+    /// and plays, seeks or skips from where it stopped. With nothing loaded, the client takes
+    /// over the track another device left, which the bar mirrors, as the web player does with
+    /// nobody active (`LibrespotClient.takeOverMirror`): Play plays it, a seek loads it paused
+    /// where the seek went, Previous restarts it paused, or within its first 3 s plays the track
+    /// before it, and Next plays on from it. With nobody active there is no role to take from
+    /// another client. The playing state that follows is reported to Spirc as this device being
+    /// active, which takes the Connect role with it.
     ///
     /// `promisesPosition` marks the commands whose caller moves the display ahead of
     /// playback — skips and seeks — and so have a promise to withdraw if they fail. Any
@@ -1124,28 +1156,35 @@ final class PlaybackViewModel {
     /// intact between tracks, after logout, and while metadata is still loading.
     private static let unresolvedTrackTitle = "Spotifly"
 
-    /// The store entry for the *logical* track, which owns the displayed metadata.
-    /// The decoded audio item may be a relinked alternative with a different ID.
-    private var currentNowPlayingTrack: Track? {
-        guard let currentTrackUri,
-              let trackId = SpotifyAPI.parseTrackURI(currentTrackUri)
-        else { return nil }
-        return store?.tracks[trackId]
+    /// The id of the track the bar shows: the *logical* track, whose store entry owns the
+    /// displayed metadata. The decoded audio item may be a relinked alternative with another id.
+    var currentTrackId: String? {
+        shown?.trackId
     }
 
-    /// The duration to publish, or nil while none is known.
-    ///
-    /// The stream duration is authoritative but can arrive after the URI does, and a new
-    /// track starts without one (`handlePlaybackStateUpdate`). The store's duration bridges
-    /// that gap, so the scrubber shows a length instead of --:-- for the first few frames.
-    private var effectiveNowPlayingDurationMs: UInt32? {
-        if trackDurationMs > 0 {
-            return trackDurationMs
+    /// The store's entry for the track the bar shows, for the bar and Control Center alike; nil
+    /// until its metadata has loaded.
+    var currentTrack: Track? {
+        currentTrackId.flatMap { store?.tracks[$0] }
+    }
+
+    /// The current track's length as the bar's scrubber and Control Center show it, or nil
+    /// while none is known; see `displayedDuration(streamMs:storedMs:)`.
+    var displayedDurationMs: UInt32? {
+        Self.displayedDuration(streamMs: trackDurationMs, storedMs: currentTrack?.durationMs)
+    }
+
+    /// The stream's length, which is authoritative, or the store's until the stream has one: a
+    /// new track starts without it (`handlePlaybackStateUpdate`), and the store's bridges that
+    /// gap, so the first frames show a length. Nil while neither is known. The store is asked
+    /// only then, as the scrubber reads this on each tick.
+    nonisolated static func displayedDuration(streamMs: UInt32, storedMs: @autoclosure () -> Int?) -> UInt32? {
+        if streamMs > 0 {
+            return streamMs
         }
-        guard let storedDuration = currentNowPlayingTrack?.durationMs,
-              storedDuration > 0
+        guard let storedMs = storedMs(), let stored = playbackMilliseconds(Int64(storedMs)), stored > 0
         else { return nil }
-        return UInt32(storedDuration)
+        return stored
     }
 
     /// Writes duration, elapsed time, and playback rate into `info`.
@@ -1154,7 +1193,7 @@ final class PlaybackViewModel {
     /// *previous* track's duration is worse than no timing at all, so an unknown
     /// duration removes both keys rather than leaving one behind.
     private func applyNowPlayingTiming(to info: inout [String: Any]) {
-        if let durationMs = effectiveNowPlayingDurationMs {
+        if let durationMs = displayedDurationMs {
             info[MPMediaItemPropertyPlaybackDuration] = Double(durationMs) / 1000.0
             // Where the bar is now, not the anchor: macOS runs the elapsed time on from the
             // moment it is published, and an anchor can be seconds old by then, or back-dated
@@ -1171,13 +1210,13 @@ final class PlaybackViewModel {
     /// Full Now Playing update — sets track metadata, duration, position, rate, and artwork.
     /// Call on: track start, next/prev, and when the queue's metadata arrives.
     func updateNowPlayingInfo() {
-        let currentTrack = currentNowPlayingTrack
+        let track = currentTrack
 
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
 
-        if let currentTrack {
-            nowPlayingInfo[MPMediaItemPropertyTitle] = currentTrack.name
-            nowPlayingInfo[MPMediaItemPropertyArtist] = currentTrack.artistName
+        if let track {
+            nowPlayingInfo[MPMediaItemPropertyTitle] = track.name
+            nowPlayingInfo[MPMediaItemPropertyArtist] = track.artistName
         } else {
             nowPlayingInfo[MPMediaItemPropertyTitle] = Self.unresolvedTrackTitle
             nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtist)
@@ -1196,7 +1235,7 @@ final class PlaybackViewModel {
         // Artwork arrives late — it has to be downloaded — so a changed cover is dropped
         // from the entry we publish now and reinstated by the download below. A missing
         // URL counts as a change: it drops the previous track's cover and downloads none.
-        let artworkURL = currentTrack?.images.mediumURL
+        let artworkURL = track?.images.mediumURL
         let artworkChanged = artworkURL?.absoluteString != lastAlbumArtURL
         if artworkChanged {
             nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtwork)
@@ -1222,7 +1261,7 @@ final class PlaybackViewModel {
                 await MainActor.run {
                     // The track may have moved on while this was downloading; publishing
                     // now would put the old cover next to the new title.
-                    guard self.currentNowPlayingTrack?.images.mediumURL == url else { return }
+                    guard self.currentTrack?.images.mediumURL == url else { return }
                     var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
                     // Mark closure as @Sendable to fix crash - MPNowPlayingInfoCenter executes
                     // the closure on an internal dispatch queue, not on MainActor
@@ -1338,18 +1377,17 @@ final class PlaybackViewModel {
         isConnectionReady = isReady
     }
 
-    /// The logical Connect volume the client published: set here and echoed back, or
-    /// changed from another device. Moves the slider without sending it back.
+    /// This Mac's logical Connect volume as the client published it: set here and echoed
+    /// back, or changed from another device. Moves the slider without sending it back.
     private func handleVolumeChange(_ newVolume: Double) {
         debugLog("PlaybackViewModel", "Volume published: \(newVolume)")
+        // The echo of a volume set here is no change.
+        guard newVolume != volume else { return }
         // Set flag to prevent feedback loop
         isSettingVolumeLocally = true
         volume = newVolume
         isSettingVolumeLocally = false
-        // Only persist when Spotifly is the active device
-        if remoteVolume == nil {
-            saveVolume()
-        }
+        saveVolume()
     }
 
     /// Subscribe to debounced seek requests
@@ -1407,6 +1445,7 @@ final class PlaybackViewModel {
         let reportedDurationMs = Self.playbackMilliseconds(state.durationMs).flatMap { $0 > 0 ? $0 : nil }
         shown = ShownPlayback(
             trackUri: state.trackUri,
+            trackId: SpotifyAPI.parseTrackURI(state.trackUri),
             isPlaying: state.isPlaying,
             durationMs: reportedDurationMs ?? (trackChanged ? 0 : trackDurationMs),
             shuffle: state.shuffle,
@@ -1684,9 +1723,7 @@ final class PlaybackViewModel {
     /// Toggles the current track's favorite status, for the now-playing bar's heart and the Like
     /// menu item (⌘L), which works without the bar.
     func toggleCurrentTrackFavorite() async {
-        guard let uri = currentTrackUri, let trackId = SpotifyAPI.parseTrackURI(uri),
-              let trackService
-        else { return }
+        guard let trackId = currentTrackId, let trackService else { return }
 
         do {
             try await trackService.toggleFavorite(trackId: trackId)
@@ -1701,52 +1738,36 @@ final class PlaybackViewModel {
         UserDefaults.standard.set(volume, forKey: "playbackVolume")
     }
 
-    // MARK: - Remote Device Volume Sync
-
-    /// Call when Spotifly becomes the active device.
-    /// Clears remote volume mode and restores the saved local volume.
-    func becameLocalActiveDevice() {
-        remoteVolume = nil
+    /// This Mac's volume as it was last saved, or half when it never was.
+    private static var savedVolume: Double {
         let saved = UserDefaults.standard.double(forKey: "playbackVolume")
-        guard saved > 0, volume != saved else { return }
-        isSettingVolumeLocally = true
-        volume = saved
-        isSettingVolumeLocally = false
-        SpotifyPlayer.setVolume(volume)
+        return saved > 0 ? saved : 0.5
     }
 
-    /// Call when a remote Spotify Connect device becomes active.
-    /// Sets remote volume mode so the slider reflects that device's volume.
-    func becameRemoteActiveDevice(volumePercent: Int?) {
-        remoteVolume = volumePercent.map { Double($0) / 100.0 }
-    }
-
-    /// Call when the active remote device's volume is refreshed from HTTP.
-    func remoteDeviceVolumeUpdated(_ volumePercent: Int) {
-        guard remoteVolume != nil else { return }
-        remoteVolume = Double(volumePercent) / 100.0
-    }
-
-    /// Subscribe to debounced volume changes
-    /// Debounces rapid volume changes (e.g., slider dragging) to avoid flooding Spirc with requests
+    /// Debounces the slider, so a drag does not flood Spirc or spclient with requests.
     private func setupVolumeDebounceSubscription() {
-        volumeDebounceSubscription = volumeSubject
+        // This Mac's, whether it plays, waits or is not up yet: the client keeps it, reports
+        // it on Connect, and registers each session at it.
+        volumeSubject
             .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
             .sink { [weak self] newVolume in
-                guard let self, isInitialized else { return }
-                if SpotifyPlayer.isActiveDevice {
-                    SpotifyPlayer.setVolume(newVolume)
-                } else {
-                    let percent = Int((newVolume * 100).rounded())
-                    guard let route = connectRoute() else { return }
-                    Task {
-                        try? await SpclientAPI().setVolume(
-                            percent: percent,
-                            from: route.from,
-                            to: route.to,
-                        )
-                    }
+                SpotifyPlayer.setVolume(newVolume)
+                self?.saveVolume()
+            }
+            .store(in: &volumeDebounceSubscriptions)
+        remoteVolumeSubject
+            .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
+            .sink { [weak self] newVolume in
+                guard let self, isInitialized, let route = connectRoute() else { return }
+                let percent = Int((newVolume * 100).rounded())
+                Task {
+                    try? await SpclientAPI().setVolume(
+                        percent: percent,
+                        from: route.from,
+                        to: route.to,
+                    )
                 }
             }
+            .store(in: &volumeDebounceSubscriptions)
     }
 }

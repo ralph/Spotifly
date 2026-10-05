@@ -264,10 +264,10 @@ rather than an empty page with the error.
 Found while building the phases, and each recorded as an open plan of its own:
 
 - `plans/done/playback-view-model-mirrors-the-player.md`
-- `plans/open/views-still-write-the-store.md`
-- `plans/open/menu-commands-lose-the-session-with-the-window.md`
-- `plans/open/ownership-checks-trust-the-launch-profile.md`
-- `plans/open/toolbar-refresh-moves-the-selection.md`
+- `plans/done/views-still-write-the-store.md`
+- `plans/done/menu-commands-lose-the-session-with-the-window.md`
+- `plans/done/ownership-checks-trust-the-launch-profile.md`
+- `plans/done/toolbar-refresh-moves-the-selection.md`
 - `plans/done/now-playing-bar-missing-on-show-all-tracks.md`
 
 ### Not changing

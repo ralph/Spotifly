@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct SpeakersView: View {
-    @Environment(AppStore.self) private var store
     @Environment(PlayerModel.self) private var player
     @Environment(AuthViewModel.self) private var authViewModel
     @Environment(PlaybackViewModel.self) private var playbackViewModel
@@ -73,7 +72,7 @@ struct SpeakersView: View {
                             if authViewModel.isAuthorizingStreaming {
                                 authViewModel.cancelStreamingAuthorization()
                             } else {
-                                authViewModel.startStreamingAuthorization(expectedAccountId: store.userId)
+                                authViewModel.startStreamingAuthorization()
                             }
                         } label: {
                             HStack {

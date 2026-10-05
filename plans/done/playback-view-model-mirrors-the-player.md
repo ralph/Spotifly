@@ -105,7 +105,7 @@ Done in the third step, **one value for what the bar shows**:
 - **The local start's volume stays.** It is not the mixer's (the output gain is applied by
   `volume`'s `didSet`), but the Connect volume: `SpircController` registers at 50% and keeps
   that until told, so other devices would draw this Mac's slider at half. That it does so
-  until the first start is `plans/open/this-mac-registers-at-half-volume.md`.
+  until the first start is `plans/done/this-mac-registers-at-half-volume.md`.
 
 Not done, deliberately: computing `isPlaying` and the track straight from `player.playback`.
 They would change one `Observations` delivery before the anchor (above), and every report
@@ -167,5 +167,5 @@ a failed load, and ran `shutdownForLogout` without touching the credentials.
 - 617 unit tests pass.
 
 Seen on the way, filed: `plans/done/a-released-track-shows-its-last-reported-position.md`, and
-from the review, `plans/open/this-mac-registers-at-half-volume.md`.
+from the review, `plans/done/this-mac-registers-at-half-volume.md`.
 

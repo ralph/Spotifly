@@ -70,7 +70,7 @@ does not make one.
     take-over have no unit test: the client is a singleton.
 - 520 unit tests and the lint pass.
 - Not changed: Play on the Mac while another device plays a bare list (`takeOverList`) still
-  puts a queued track into the rows; see `plans/open/mirrored-queue-beyond-the-web-player.md`.
+  puts a queued track into the rows; see `plans/done/mirrored-queue-beyond-the-web-player.md`.
 - **Seen with the phone** (2026-10-02):
   - **The round:** Play Tracks for "oasis" on the Mac. On the phone: take it over, Next once to
     "Rock 'n' Roll Star", queue "Sheena Is a Punk Rocker" and Next to it, then pick the Mac.

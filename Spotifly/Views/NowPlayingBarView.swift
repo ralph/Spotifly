@@ -33,18 +33,6 @@ struct NowPlayingBarView: View {
         playbackViewModel.currentTrackUri != nil
     }
 
-    /// Extract track ID from URI (spotify:track:XXXX -> XXXX)
-    private var currentTrackId: String? {
-        guard let uri = playbackViewModel.currentTrackUri else { return nil }
-        return SpotifyAPI.parseTrackURI(uri)
-    }
-
-    /// Current track from global store (populated by QueueService)
-    private var currentTrack: Track? {
-        guard let trackId = currentTrackId else { return nil }
-        return store.tracks[trackId]
-    }
-
     // Fixed dimensions for the now playing bar (in points)
     private static let barWidth: CGFloat = 700
     private static let barHeight: CGFloat = 60
@@ -62,13 +50,13 @@ struct NowPlayingBarView: View {
             .padding([.bottom], windowState.isMiniPlayerMode ? 0 : Self.barBottomPadding)
             .newPlaylistPrompt(
                 isPresented: $showNewPlaylistDialog,
-                trackId: currentTrack?.id,
+                trackId: playbackViewModel.currentTrack?.id,
                 onAdded: showSuccessFeedback,
             )
-            .task(id: currentTrackId) {
+            .task(id: playbackViewModel.currentTrackId) {
                 await resolveCurrentTrackMetadataIfNeeded()
             }
-            .task(id: currentTrackId) {
+            .task(id: playbackViewModel.currentTrackId) {
                 await resolveCurrentTrackFavoriteStatusIfNeeded()
             }
     }
@@ -100,13 +88,14 @@ struct NowPlayingBarView: View {
                     }
                     .popover(isPresented: $showAlbumArtMenu, arrowEdge: .top) {
                         VStack(alignment: .leading, spacing: 0) {
-                            if let artistId = currentTrack?.artistId {
+                            let track = playbackViewModel.currentTrack
+                            if let artistId = track?.artistId {
                                 albumArtMenuItem("track.menu.go_to_artist", systemImage: "person.circle") {
                                     navigationCoordinator.navigateToArtistSection(artistId: artistId)
                                 }
                             }
 
-                            if let albumId = currentTrack?.albumId {
+                            if let albumId = track?.albumId {
                                 albumArtMenuItem("track.menu.go_to_album", systemImage: "square.stack") {
                                     navigationCoordinator.navigateToAlbumSection(albumId: albumId)
                                 }
@@ -167,7 +156,7 @@ struct NowPlayingBarView: View {
 
     @ViewBuilder
     private func albumArt(size: CGFloat) -> some View {
-        if let url = currentTrack?.images.url(for: size, scale: displayScale) {
+        if let url = playbackViewModel.currentTrack?.images.url(for: size, scale: displayScale) {
             let urlString = url.absoluteString
             if let cachedImage = cachedAlbumArtImage, cachedAlbumArtURL == urlString {
                 // Use cached image
@@ -251,7 +240,7 @@ struct NowPlayingBarView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(12)
                     }
-            } else if let track = currentTrack {
+            } else if let track = playbackViewModel.currentTrack {
                 Text(track.name)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
@@ -327,14 +316,6 @@ struct NowPlayingBarView: View {
         playbackViewModel.interpolatedPositionMs
     }
 
-    /// Current track duration (from playback state, fallback to store metadata)
-    private var currentDurationMs: UInt32 {
-        if playbackViewModel.trackDurationMs > 0 {
-            return playbackViewModel.trackDurationMs
-        }
-        return currentTrack.map { UInt32($0.durationMs) } ?? 0
-    }
-
     private var progressBar: some View {
         // Lower frame rate when not hovering: 10 FPS on hover, 1 FPS otherwise.
         // Paused while nothing plays: the position is not moving, and each
@@ -342,8 +323,10 @@ struct NowPlayingBarView: View {
         // app's CPU when idle. A seek or a new position still redraws it,
         // through the view model properties the content reads.
         TimelineView(.animation(minimumInterval: isHoveringSeekBar ? 0.1 : 1.0, paused: !playbackViewModel.isPlaying)) { _ in
+            // The length Control Center shows too, 0 while none is known.
+            let durationMs = playbackViewModel.displayedDurationMs ?? 0
             let position = formatTrackTime(milliseconds: Int(currentPositionMs))
-            let duration = formatTrackTime(milliseconds: Int(currentDurationMs))
+            let duration = formatTrackTime(milliseconds: Int(durationMs))
             HStack(spacing: 8) {
                 // Show timestamp only on hover
                 if isHoveringSeekBar {
@@ -361,7 +344,7 @@ struct NowPlayingBarView: View {
                             playbackViewModel.seek(to: UInt32(newValue))
                         },
                     ),
-                    in: 0 ... Double(max(currentDurationMs, 1)),
+                    in: 0 ... Double(max(durationMs, 1)),
                 )
                 .controlSize(.mini)
                 .tint(.green)
@@ -419,7 +402,7 @@ struct NowPlayingBarView: View {
 
     /// Whether the current track is favorited (from global store)
     private var isCurrentTrackFavorited: Bool {
-        guard let trackId = currentTrackId else { return false }
+        guard let trackId = playbackViewModel.currentTrackId else { return false }
         return store.isFavorite(trackId)
     }
 
@@ -438,7 +421,7 @@ struct NowPlayingBarView: View {
     }
 
     private func resolveCurrentTrackMetadataIfNeeded() async {
-        guard let trackId = currentTrackId else { return }
+        guard let trackId = playbackViewModel.currentTrackId else { return }
 
         do {
             try await trackService.ensureTracksLoaded(trackIds: [trackId])
@@ -466,15 +449,14 @@ struct NowPlayingBarView: View {
     /// unread, and which nothing subscribes to at all now (`plans/done/single-grant-partner-api.md`,
     /// task 12). Polling on view re-appearance was never going to be the right mechanism for that.
     private func resolveCurrentTrackFavoriteStatusIfNeeded() async {
-        guard let trackId = currentTrackId else { return }
+        guard let trackId = playbackViewModel.currentTrackId else { return }
 
         await trackService.ensureFavoriteStatuses(trackIds: [trackId])
     }
 
-    /// Unified volume (0-100 scale).
-    /// Uses the remote device's volume when Spotify Connect is active, otherwise local.
+    /// The slider's value, 0–100; see `PlaybackViewModel.sliderVolume`.
     private var currentVolume: Double {
-        (playbackViewModel.remoteVolume ?? playbackViewModel.volume) * 100
+        playbackViewModel.sliderVolume * 100
     }
 
     private var volumeIconName: String {
@@ -487,23 +469,8 @@ struct NowPlayingBarView: View {
         }
     }
 
-    private func setVolume(_ volume: Double) {
-        // Optimistically update remoteVolume for immediate slider feedback
-        if playbackViewModel.remoteVolume != nil {
-            playbackViewModel.remoteVolume = volume / 100
-        }
-        playbackViewModel.volume = volume / 100
-    }
-
-    /// Whether the device being controlled refuses volume changes.
-    ///
-    /// Only ever true for a *remote* device: the local player's volume is this app's own, and
-    /// nothing can decline it. An iPhone declares it, because iOS will not let one app set
-    /// system volume for another — which the app previously discovered by sending the command
-    /// and reading `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` off the reply, having already let the
-    /// user drag the slider somewhere it would not stay.
     private var volumeRefused: Bool {
-        playbackViewModel.remoteVolume != nil && player.activeDevice?.disableVolume == true
+        playbackViewModel.sliderRefused
     }
 
     private var volumeControl: some View {
@@ -526,7 +493,7 @@ struct NowPlayingBarView: View {
                     Slider(
                         value: Binding(
                             get: { currentVolume },
-                            set: { setVolume($0) },
+                            set: { playbackViewModel.setVolumeFromSlider($0 / 100) },
                         ),
                         in: 0 ... 100,
                     )
@@ -571,7 +538,7 @@ struct NowPlayingBarView: View {
 
     @ViewBuilder
     private var trackMenu: some View {
-        if let track = currentTrack {
+        if let track = playbackViewModel.currentTrack {
             Menu {
                 TrackContextMenu(
                     track: track,

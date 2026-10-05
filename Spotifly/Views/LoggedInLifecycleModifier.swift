@@ -11,10 +11,8 @@ struct LoggedInLifecycleModifier: ViewModifier {
     @Environment(AppStore.self) private var store
     @Environment(PlayerModel.self) private var player
     @Environment(PlaybackViewModel.self) private var playbackViewModel
-    @Environment(QueueService.self) private var queueService
     @Environment(HomeService.self) private var homeService
     @Environment(ProfileService.self) private var profileService
-    @Environment(TrackService.self) private var trackService
     /// Only the debug hooks use these two.
     @Environment(DeviceService.self) private var deviceService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
@@ -25,21 +23,15 @@ struct LoggedInLifecycleModifier: ViewModifier {
                 // The session's, which outlives the window (`LoggedInSession`): this runs
                 // again when a window reopens on it, and each step is one that does nothing
                 // the second time, or only what a reopened window should, such as asking
-                // again for a start page that failed.
+                // again for a start page that failed. The session follows the player from the
+                // sign-in (`AuthViewModel.startSession`), not from here.
                 //
-                // Before the first `await`, so no Spirc notification can arrive while the
-                // player is unobserved.
-                queueService.activate()
-                playbackViewModel.attach(store: store, trackService: trackService)
-
                 // The profile and the start page are independent requests on the same grant, so
                 // they run together. Neither blocks: an app that cannot say who you are is
                 // still an app that plays music.
                 async let profile: () = profileService.loadForSession()
                 async let home: () = homeService.loadHome()
                 _ = await (profile, home)
-
-                await playbackViewModel.initializeIfNeeded()
 
                 #if DEBUG
                     // Headless test scaffolding: SPOTIFLY_DEBUG_AUTOPLAY=1 starts
@@ -181,6 +173,12 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // when that one then failed.
             .retryingWhenNetworkReturns(if: store.homeErrorMessage != nil) { await homeService.refresh() }
             .retryingWhenNetworkReturns(if: profileService.needsProfile) { await profileService.askAgain() }
+            // The connect, which the session's start makes (`AuthViewModel.startSession`), asked
+            // for again too, if it failed. It was asked again by this window's task, after the two
+            // loads, which tried at once after a failure, offline as well, and never again.
+            .retryingWhenNetworkReturns(if: playbackViewModel.localPlayback == .needsAuthorization) {
+                await playbackViewModel.initializeIfNeeded()
+            }
     }
 
     #if DEBUG

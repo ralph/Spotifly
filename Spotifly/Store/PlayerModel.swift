@@ -78,6 +78,11 @@ final class PlayerModel {
         devices.first { $0.isActive }
     }
 
+    /// The active device's id, unless it is this Mac: what the bar's volume slider moves then.
+    var activeRemoteDeviceId: String? {
+        activeDeviceId == ownDeviceId ? nil : activeDeviceId
+    }
+
     /// This Mac's Connect id.
     var ownDeviceId: String? {
         connection?.deviceId

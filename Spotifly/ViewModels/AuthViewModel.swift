@@ -19,11 +19,13 @@ final class AuthViewModel {
     /// is the *other* half, and it is deliberately not consulted here: a grant whose accesspoint
     /// connect failed still browses, and the app already has a way to offer playback again.
     ///
-    /// Signed out, whatever the way, the session ends: the logout, a grant found revoked, and a
-    /// launch that finds no grant.
+    /// Signed in, the account's session starts (`startSession`). Signed out, whatever the way,
+    /// it ends: the logout, a grant found revoked, and a launch that finds no grant.
     var isSignedIn = false {
         didSet {
-            if !isSignedIn {
+            if isSignedIn {
+                startSession()
+            } else {
                 sessions.end()
             }
         }
@@ -33,6 +35,25 @@ final class AuthViewModel {
     /// lifetime is the sign-in's, and this view model, like them, is the app's.
     let sessions = LoggedInSessions()
 
+    /// Starts the account's session and hands it to playback at once: the queue service follows
+    /// the player, `PlaybackViewModel` reads the track's metadata and the favorite toggle through
+    /// it, and the player connects, so this Mac is on Spotify Connect without waiting for a
+    /// window or the requests a window makes. Nothing for a grant renewed while signed in, whose
+    /// session goes on (`authorizeStreaming` connects it).
+    ///
+    /// Here, as the account signs in, rather than in the first window's task, which ran after
+    /// its first frame, and so after the connect a sign-in starts: a report arriving in between
+    /// was not hydrated. Not where the session is read, in `ContentView`'s body, which must not
+    /// change state.
+    private func startSession() {
+        guard sessions.current == nil else { return }
+        let session = sessions.start()
+        PlaybackViewModel.shared.attach(store: session.store, trackService: session.trackService)
+        Task { await PlaybackViewModel.shared.initializeIfNeeded() }
+    }
+
+    /// Why the last grant did not take: on the login screen while signed out, and as an alert
+    /// in the signed-in app.
     var errorMessage: String?
     var isLoading = true
 
@@ -87,10 +108,7 @@ final class AuthViewModel {
     ///
     /// Blocks on the user finishing an authorization in their browser, so it can take a
     /// while; `isAuthorizingStreaming` drives the progress the UI shows meanwhile.
-    /// - Parameter expectedAccountId: the Spotify account the app is signed in as, when the
-    ///   caller knows it. Callers inside the app read it from the store; the login screen has
-    ///   no store to read and passes nil, which is a sign-in rather than a change of account.
-    func authorizeStreaming(expectedAccountId: String? = nil) async {
+    func authorizeStreaming() async {
         isAuthorizingStreaming = true
         defer { isAuthorizingStreaming = false }
 
@@ -101,55 +119,60 @@ final class AuthViewModel {
         // rebuild a player for an account that is gone.
         let startedAt = authLifecycle
 
-        switch await SpotifyPlayer.authorizeStreaming() {
-        case .authorized:
-            // The browser runs the grant with whatever account it is signed into, which need
-            // not be the one already signed in here. Accepting a mismatch would swap the
-            // account under a library, a queue and a now-playing bar that go on showing the
-            // previous one — with no visible sign of it.
-            let mismatch = Self.accountMismatch(
-                expected: expectedAccountId,
-                granted: SpotifyPlayer.lastGrantAccountId(),
-            )
+        // Minted in the browser, and written only once it is known to be wanted: a grant
+        // refused here leaves the one it was to replace as it was, signed in.
+        let tokens: KeymasterTokens
+        do {
+            tokens = try await KeymasterAuth.authorize()
+        } catch where isCancellation(error) {
+            // The user closed the browser tab or pressed Cancel, during the browser wait or the
+            // token exchange after it. They asked for this, so there is nothing to report.
+            debugLog("AuthViewModel", "Streaming authorization cancelled")
+            return
+        } catch {
+            debugLog("AuthViewModel", "Streaming authorization failed: \(error)")
+            errorMessage = String(localized: "auth.connect_failed")
+            return
+        }
 
-            guard startedAt == authLifecycle else {
-                // Logged out while the browser had the grant, and this run has to undo its
-                // own write rather than just walk away: the keymaster tokens belong to an
-                // account that is gone, and logout cleared the keychain before they were
-                // written.
-                debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
-                await discardGrant()
-                return
-            }
+        // Logged out while the browser had the grant: nothing was written, and nothing is.
+        guard startedAt == authLifecycle else {
+            debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
+            return
+        }
 
-            if let mismatch {
-                debugLog("AuthViewModel", "Streaming grant rejected: \(mismatch)")
-                // Refused as a logout is done, so whatever the player has is torn down too.
-                //
-                // A mismatch caught at sign-in cannot arise — there is nothing to mismatch
-                // against — so this only ever refuses a *change* of account, and the previous
-                // grant it declined to replace is the one that just went with the clear.
-                await discardGrant()
-                errorMessage = String(localized: "auth.enable_playback_wrong_account")
-                return
-            }
-
-            isSignedIn = true
-            // Connected through the player's lifecycle, as every other connect is, while the
-            // app shows: its profile and start page need no session, and the window's own
-            // `initializeIfNeeded` waits for this one. A connect that fails is said in the
-            // now-playing bar, as any other is, and Speakers offers it again.
-            await PlaybackViewModel.shared.initializeIfNeeded()
-        case .cancelled:
-            // The user closed the browser tab or pressed Cancel. They asked for this, so
-            // there is nothing to report.
-            break
-        case .failed:
-            // The browser or the token exchange failed, and nothing was written; or the
-            // keychain refused the tokens, which `KeymasterSession` holds for this launch all
-            // the same. Read which.
+        do {
+            try await KeymasterSession.shared.adopt(tokens)
+        } catch let KeymasterSessionError.otherAccount(held, granted) {
+            debugLog("AuthViewModel", "Streaming grant rejected: account \(granted) is not the signed-in account \(held)")
+            errorMessage = String(localized: "auth.enable_playback_wrong_account")
+            return
+        } catch {
+            // The keychain refused the tokens, which `KeymasterSession` holds for this launch
+            // all the same.
+            debugLog("AuthViewModel", "Streaming grant not saved: \(error)")
             isSignedIn = await KeymasterSession.shared.hasGrant
             errorMessage = String(localized: "auth.connect_failed")
+            return
+        }
+
+        // A logout that landed while the tokens were written cleared the keychain before or
+        // after them; this run undoes its own write either way.
+        guard startedAt == authLifecycle else {
+            debugLog("AuthViewModel", "Streaming grant abandoned: logged out while it was saved")
+            await KeymasterSession.shared.clear()
+            return
+        }
+
+        let renewing = sessions.current != nil
+        isSignedIn = true
+        // A sign-in's session connects as it starts (`startSession`). A renewed grant's was
+        // started before, so it is connected here, for the Speakers row or the play alert that
+        // offered the grant, whose progress lasts until it is done. One caller each: a second
+        // that waited for a connect that failed would build again at once. A connect that
+        // fails is said in the now-playing bar, as any other is, and Speakers offers it again.
+        if renewing {
+            await PlaybackViewModel.shared.initializeIfNeeded()
         }
     }
 
@@ -158,13 +181,13 @@ final class AuthViewModel {
     /// The task lives here rather than in the view because the view that started it can be
     /// torn down — switching away from Speakers, or the login step giving way to the app —
     /// while the browser round-trip is still outstanding.
-    func startStreamingAuthorization(expectedAccountId: String? = nil) {
+    func startStreamingAuthorization() {
         guard streamingAuthorization == nil else { return }
 
         authorizationRun &+= 1
         let run = authorizationRun
         streamingAuthorization = Task { [weak self] in
-            await self?.authorizeStreaming(expectedAccountId: expectedAccountId)
+            await self?.authorizeStreaming()
             self?.finishStreamingAuthorization(run)
         }
     }
@@ -191,35 +214,8 @@ final class AuthViewModel {
         streamingAuthorization = nil
     }
 
-    /// Describes the mismatch between the account already signed in and the one the browser
-    /// just granted, or nil when they agree.
-    ///
-    /// Pure, so the rule is testable and so the common path performs no I/O at all: callers
-    /// inside the app already know who is signed in.
-    ///
-    /// Not knowing either account counts as agreement. Refusing a grant because an identity was
-    /// briefly unavailable would be worse than the case being guarded against, which needs
-    /// the user to have deliberately signed the browser into a second account.
-    ///
-    /// **This guard outlived its original reason.** It was written when two grants could
-    /// disagree permanently — the app browsing account A on a dashboard token while playing
-    /// account B on a streaming one — and there is one grant now, so that state cannot exist.
-    /// What it still catches is the case that actually arises: re-authorizing from Speakers or
-    /// the play alert while signed in, where the browser is signed into a different account.
-    /// Replacing the grant there is not a partial failure but it is silent — the library, the
-    /// queue and the now-playing bar go on showing the previous account until a relaunch — so
-    /// it is still refused rather than accepted.
-    ///
-    /// Signing in has nothing to compare against and passes nil, which is agreement by the
-    /// rule above. That is not a gap: at that point the granted account *is* the account.
-    static func accountMismatch(expected: String?, granted: String?) -> String? {
-        guard let expected, let granted, expected != granted else { return nil }
-        return "streaming account \(granted) is not the signed-in account \(expected)"
-    }
-
-    /// Gives up the grant: tears the librespot session down, removes both credentials, and
-    /// leaves the app signed out. The whole of logging out, and of undoing a grant that must
-    /// not stand.
+    /// Logs out: tears the librespot session down, removes both credentials, and leaves the
+    /// app signed out. Also what a revoked grant does.
     ///
     /// The teardown comes first, and is awaited. Without it the Spirc connection stayed
     /// registered on Spotify Connect for the account that just logged out — and because
@@ -238,17 +234,15 @@ final class AuthViewModel {
     /// librespot's AP credentials, which are a file and would otherwise let the next launch
     /// connect the account that just logged out. After the teardown, so no live session can
     /// write them back.
-    private func discardGrant() async {
-        await PlaybackViewModel.shared.shutdownForLogout()
-        await SpotifyPlayer.clearStreamingCredentials()
-        isSignedIn = false
-    }
-
     func logout() async {
         // Invalidates any streaming grant still deciding, so it cannot resume into the
         // session this is tearing down.
         authLifecycle &+= 1
+        // A grant's refusal belongs to the session it was refused in, not to the login screen.
+        errorMessage = nil
 
-        await discardGrant()
+        await PlaybackViewModel.shared.shutdownForLogout()
+        await SpotifyPlayer.clearStreamingCredentials()
+        isSignedIn = false
     }
 }

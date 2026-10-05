@@ -34,7 +34,7 @@ The app dropped the delimiter row, since it is not a track, and showed the hidde
 if they came next.
 
 The cluster also names the context in its metadata, `context_description`; see
-`plans/open/queue-header-names-no-liked-songs.md`.
+`plans/done/queue-header-names-no-liked-songs.md`.
 
 ## Solution
 
@@ -46,7 +46,7 @@ moved out of `mirror` into that static function so it can be tested.
 
 The review of it found what the rule still takes on trust: a bare list taken over with repeat
 on, Next on a context's last track while another device has autoplay, and the rows of devices
-other than the web player. See `plans/open/mirrored-queue-beyond-the-web-player.md`.
+other than the web player. See `plans/done/mirrored-queue-beyond-the-web-player.md`.
 
 ## Verification
 

@@ -302,24 +302,7 @@ SessionDisconnected event
 
 ---
 
-## Debug Logging
-
-**This is librespot's logging, not Spotifly's.** Spotifly no longer embeds librespot,
-so `RUST_LOG` does nothing to it — see the Debug Logging section of `CLAUDE.md` for the
-module prefixes the Swift stack logs under.
-
-Against a librespot build, raw Spirc state transitions come from:
-
-```bash
-RUST_LOG=librespot_connect::spirc=trace ./librespot
-```
-
-which shows Mercury frames, Connect state changes, device updates and cluster
-notifications.
-
----
-
-## Key Source Files
+## Key librespot Source Files
 
 | File | Purpose |
 |------|---------|

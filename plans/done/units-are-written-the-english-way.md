@@ -78,8 +78,8 @@ The uptime with hours was checked in a script only, as "1h 2min 5s" in German an
 
 ### Seen in passing
 
-- `plans/open/track-counts-have-no-plural.md`: a one-track playlist says "1 tracks".
-- `plans/open/release-dates-shown-as-iso.md`: an album's header shows "1969-09-26" in every
+- `plans/done/track-counts-have-no-plural.md`: a one-track playlist says "1 tracks".
+- `plans/done/release-dates-shown-as-iso.md`: an album's header shows "1969-09-26" in every
   language.
 - The device types in Speakers, "computer" and "avr", are Spotify's own words, shown as they
   come. Left as is.

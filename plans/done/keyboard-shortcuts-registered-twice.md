@@ -62,5 +62,7 @@ a text field, which gets its space, and it can be the one registration.
       its thing once.
 - [x] Live, 2026-09-30: with search results showing, ⌘→, ⌘←, ⌘2 and ⌘3 work. Focus stays in the
       search field there, so Space types. In the mini player, Space plays and pauses.
+      Later (2026-10-03): it stayed there whatever was clicked next, so Space never played or
+      paused again until the field lost focus; a click elsewhere now ends its editing.
 - [ ] Live: at the login screen, the Navigate menu's Favorites to Artists and Refresh are greyed.
       Not run: it needs signing out.

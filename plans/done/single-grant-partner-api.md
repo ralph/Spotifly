@@ -14,7 +14,7 @@ registers a Spotify developer application, and nothing in the app calls the Web 
 longer. The 16 ticked tasks below are Track A. Track B, playback in Swift, shipped as #65.
 
 Two pieces were deliberately cut from Track A rather than left unfinished, and each has its
-own plan: `plans/open/playlist-attributes-not-written.md` and
+own plan: `plans/done/playlist-attributes-not-written.md` and
 `plans/done/playlist-folder-hierarchy.md`.
 
 ## Problem
@@ -571,7 +571,7 @@ Only once no `api.spotify.com` call remains — **which is now the case.**
 
       Not built: setting a playlist's **cover image**, `collaborative`, or `pl3_version`. No
       screen offers any of them, and *reading* a cover was never affected — see
-      `plans/open/playlist-attributes-not-written.md`, which also records that the image is not part
+      `plans/done/playlist-attributes-not-written.md`, which also records that the image is not part
       of the attributes message at all and needs an endpoint nobody here has measured.
 
 - [x] **Task 13: Retire the dashboard app.** `SpotifyConfig`, `SpotifyAuth`, `SpotifySession`,

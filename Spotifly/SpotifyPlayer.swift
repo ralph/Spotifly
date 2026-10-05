@@ -26,15 +26,6 @@ nonisolated struct QueueItem: Equatable {
     var hidden = false
 }
 
-/// Outcome of the one-time streaming authorization.
-nonisolated enum StreamingAuthResult: Equatable {
-    case authorized
-    case failed
-    /// The user abandoned the flow — closed the browser tab, or pressed Cancel. Distinct from
-    /// `failed` because there is nothing to report: they asked for this.
-    case cancelled
-}
-
 /// The queue around the current track, and the context it plays from.
 nonisolated struct QueueState: Equatable {
     /// Empty when playback started from a bare list of tracks.
@@ -141,17 +132,21 @@ enum SpotifyPlayer {
     /// registration, audio pipeline.
     ///
     /// Every connect goes through here, from `PlaybackViewModel`'s lifecycle:
-    /// the saved volume is applied first, and the client is told where its
+    /// the saved volume is applied first, at the output and as the one this Mac
+    /// registers at on Spotify Connect, and the client is told where its
     /// credentials come from — the stored reusable login from an earlier grant if there is
     /// one, else a fresh keymaster token, with the client token spclient
     /// requires.
+    /// - Parameter volume: this Mac's volume, 0–1.
     @SpotifyPlayerActor
-    static func initialize() async throws {
-        syncSettingsFromUserDefaults()
+    static func initialize(volume: Double) async throws {
+        // At the output up front, so the first moments of audio do not play at full volume.
+        setOutputVolume(volume)
         try await LibrespotClient.shared.initialize(
             httpCredentials: .live,
             usernameProvider: { await KeymasterSession.shared.username },
             contextRowUids: { uri in await albumRowUids(uri) },
+            volume: volume,
         )
     }
 
@@ -326,48 +321,7 @@ enum SpotifyPlayer {
         try await LibrespotClient.shared.playRadio(trackUri: trackUri)
     }
 
-    // MARK: - Streaming Authorization
-
-    /// Runs the one-time streaming authorization.
-    ///
-    /// Swift mints the token now — see `KeymasterAuth` — and adopts it into
-    /// `KeymasterSession`. It does not connect: the caller checks the account first, and
-    /// `PlaybackViewModel` connects, as it does every other time, with the client falling
-    /// back to this token when it holds no reusable login.
-    ///
-    /// Blocks on a human, so it runs off the main actor, and it is cancellable for the same
-    /// reason: the browser wait unwinds on cancellation, and so does the token exchange behind
-    /// it.
-    static func authorizeStreaming() async -> StreamingAuthResult {
-        do {
-            let tokens = try await KeymasterAuth.authorize()
-            try await KeymasterSession.shared.adopt(tokens)
-            return .authorized
-        } catch is CancellationError {
-            debugLog("SpotifyPlayer", "Streaming authorization cancelled")
-            return .cancelled
-        } catch let error as URLError where error.code == .cancelled {
-            // The same cancellation, reported differently. Only the browser wait answers with
-            // `CancellationError`; once the redirect has landed the flow is inside
-            // `URLSession`, which reports a cancelled task as a `URLError` of its own — and
-            // falling through to `.failed` there told the user their connection had failed
-            // when what happened is that they pressed Cancel.
-            debugLog("SpotifyPlayer", "Streaming authorization cancelled during token exchange")
-            return .cancelled
-        } catch {
-            debugLog("SpotifyPlayer", "Streaming authorization failed: \(error)")
-            return .failed
-        }
-    }
-
-    /// The Spotify account id the last successful grant authenticated as.
-    ///
-    /// The browser runs the grant with whatever account it is signed into, which need not be
-    /// the one already signed in here. Read straight from the keychain so the answer stays
-    /// synchronous and does not depend on a live session object.
-    static func lastGrantAccountId() -> String? {
-        KeymasterKeychainStore().load()?.username
-    }
+    // MARK: - Streaming Credentials
 
     /// Removes the cached streaming credentials so the next launch cannot connect the
     /// account that just logged out.
@@ -480,13 +434,6 @@ enum SpotifyPlayer {
     /// `bitrate`: applying it to a new pipeline must not wait for the main thread.
     nonisolated static var gapless: Bool {
         UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
-    }
-
-    private nonisolated static func syncSettingsFromUserDefaults() {
-        let savedVolume = UserDefaults.standard.double(forKey: "playbackVolume")
-        // Apply the saved volume at the output up front so the first moments
-        // of audio do not play at full volume.
-        setOutputVolume(savedVolume > 0 ? savedVolume : 0.5)
     }
 }
 

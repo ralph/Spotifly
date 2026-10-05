@@ -36,6 +36,13 @@ extension FocusedValues {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var allowedTermination = false
 
+    func applicationDidFinishLaunching(_: Notification) {
+        _ = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { event in
+            endSearchEditing(onClickOf: event)
+            return event
+        }
+    }
+
     /// Holds the quit until the player has shut down: it tells Spotify where playback
     /// stopped, and its disconnect takes this Mac off the other Connect devices. Sent
     /// from `applicationWillTerminate`, the report never got out before the process
@@ -286,6 +293,19 @@ private func focusToolbarSearchField() {
             return
         }
     }
+}
+
+/// Ends the search field's editing on a click anywhere else in its window.
+///
+/// SwiftUI's lists and grids take no focus when clicked, so once the toolbar's field had it, from
+/// a click or ⌘F, it kept it: Space typed into the field and never reached the Playback menu's
+/// Play/Pause. In an AppKit window, the list clicked on would have taken the focus.
+func endSearchEditing(onClickOf event: NSEvent) {
+    guard let window = event.window,
+          let field = (window.firstResponder as? NSText)?.delegate as? NSSearchField,
+          !field.bounds.contains(field.convert(event.locationInWindow, from: nil))
+    else { return }
+    window.makeFirstResponder(nil)
 }
 
 private func firstSearchField(in view: NSView?) -> NSSearchField? {

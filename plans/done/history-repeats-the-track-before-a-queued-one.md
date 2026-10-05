@@ -3,7 +3,7 @@
 Status: **Done** 2026-09-29. Built and unit-tested; not yet seen in the running app; see
 Verification.
 Components: `Spotifly/SwiftLibrespot/Public/PlaybackQueue.swift` (`advance`, `pushHistory`,
-`backward`), `plans/open/queue-rows-have-no-identity.md`
+`backward`), `plans/done/queue-rows-have-no-identity.md`
 Found: 2026-09-29, while writing `plans/done/queue-double-click-restarts-the-context.md`
 
 ## Summary
@@ -47,7 +47,7 @@ played.
 in `prev_tracks`: "only add songs from our context to our previous tracks". Keeping everything
 would need `backward()` to know that an entry was queued, so as to play it as a queued track
 rather than look for it in the context; `PlaybackQueue` keeps the history as bare uris, so that
-belongs with `plans/open/queue-rows-have-no-identity.md`. And this client reports the history as
+belongs with `plans/done/queue-rows-have-no-identity.md`. And this client reports the history as
 its `prev_tracks`, where librespot's rule is the one other devices already see.
 
 `pushHistory` records the context track at `contextPosition`, and nothing while a queued track
@@ -61,7 +61,7 @@ So:
 `backward()` needed no change: its comment already assumed that the entry before a queued track
 names the context track to return to, and now it always does.
 
-`plans/open/queue-rows-have-no-identity.md` said its history rework belonged with this plan,
+`plans/done/queue-rows-have-no-identity.md` said its history rework belonged with this plan,
 because the history would need to know which entries were queued. It no longer does, so that plan
 now says the history can become context indices on its own.
 
