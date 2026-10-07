@@ -7,7 +7,8 @@ two-tone test. Complete Float32 WAV and CAF fixtures passed HomePod playback/iso
 with fresh baselines and qualified seek checks. A disposable build using the unchanged
 Spotify decoder and the app's cached real-track input also passed HomePod playback, concurrent
 Safari/alert isolation, pause/resume and an active seek for one song. An `AVPlayer` production
-backend remains a separate design decision.
+backend remains a separate design decision. The passive output-change observation build
+passed local silent checks; deselection and receiver-loss listening remain pending.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -711,6 +712,47 @@ backward seek while playing, not receiver seek accuracy, latency or every seek s
 Remote volume interactions, picker route-state accuracy, Now Playing/remote commands and
 background/sleep/relaunch behavior were not checked by this listening run.
 
+### Receiver loss and deselection observation (hardware pending)
+
+The next user-authorized disposable spike extends the actual-track experiment with two
+separate **60-second passive observation windows**: intentionally choosing the Mac in the
+native picker, and physically disconnecting HomePod power while the song is playing. The
+user requested overnight work to remain silent; speaker and alert tests are deferred until
+the user explicitly resumes listening tests. The earlier successful real-song result is
+unchanged. No scheduled or automatic playback is authorized.
+
+This build preserves the prior listening app as a separate local artifact and retains the
+same app identity/signing configuration. It adds no loss protection or automatic routing.
+Starting/stopping/expiring an observation leaves playback unchanged. Ordinary renderer
+resume monitoring remains separately labeled, so its protective pause cannot be mistaken
+for an automatic AVPlayer response to loss.
+
+- Record player state/rate/position, waiting reason/error and audio/alert default IDs at
+  nominal half-second intervals, plus work/scheduling. HAL/player reads are not atomic.
+  Samples and ordered item-notification callbacks use monotonic elapsed time. Callback
+  timestamps describe delivery, not the exact physical disconnect or audible transition.
+  Background scheduling can miss short transitions, and receiver buffering can outlast
+  recording. The observation window does not bound later fallback.
+- Listen separately for intentional local return and unexpected local fallback after loss;
+  record Mac/HomePod/Both/Silence and temporary changes. A manual change marker is only
+  a listener action marker. Begin near the song's start with sufficient remaining duration;
+  an end-of-item notification distinguishes natural completion from loss.
+- Item stalled, failed-to-end, time-jump, end-of-item and new-error-log notifications are
+  scoped to the experiment's item and preparation generation. These generic public events
+  are not assumed to be guaranteed receiver-loss or route-deselection signals. Missing
+  events or silence during one finite window cannot establish fallback prevention.
+  Record receiver firmware, trial order/count and the particular loss mechanism. This
+  first power-loss case supplies no network-loss, takeover, sleep/wake or other-receiver
+  evidence. Picker presentation callbacks describe UI presentation, not route success.
+- Preserve completed/interrupted traces in the technical report and reject stale item,
+  run/watch, monitor and preparation callbacks after replacement/close/reopening. Reports
+  and source/build artifacts stay local. Default comparisons include the watch samples.
+
+After listening, use the observed event order and audible outcome to design receiver-loss
+handling and bidirectional output handoff. No production protection is accepted until
+observability and timing can prevent unintended local audio. Hardware results for both
+cases remain pending; local silent lifecycle checks cannot supply them.
+
 ### Implementation notes and handoff
 
 The user authorized the disposable probes. The signed HAL inventory failed; the native
@@ -835,6 +877,22 @@ its separately controlled AVPlayer still does not exercise a production backend 
 - [ ] Use the measured result to decide whether to design a production AVPlayer backend;
       this probe does not implement handoff, queue/gapless clocks or route-loss isolation.
 
+### Receiver loss and deselection observation
+
+- [x] Strict signed build, 12 recorder/monitor and 10 converter checks, source review and
+      muted silent lifecycle checks pass. All 630 copied app unit tests pass. Silent mode
+      uses a bundled fixture and skips account authentication; its 27 complete reports
+      remain paused at position zero, muted and at zero volume. No route or Play request
+      was made. This is not a receiver-loss hardware result.
+- [ ] User confirms HomePod playback, then deliberately selects Mac while recording; retain
+      audible destination, interruptions, notification ordering and sampled output defaults.
+- [ ] User confirms HomePod playback, then disconnects receiver power while recording;
+      retain whether music falls back to Mac, stops, stalls or behaves otherwise, including
+      changes during the window. Do not select Mac or restart the song during observation.
+- [ ] Copy/save separate completed/interrupted traces and listener observations before
+      another preparation/baseline resets the run. Do not treat a finite negative result as
+      proof of product loss protection or a guaranteed early notification.
+
 ### Required before product implementation
 
 - [ ] The signed-app **HAL/receiver** hardware gate passes from an idle receiver, with no
@@ -909,6 +967,23 @@ found one localization failure in experiment labels, fixed before the passing fu
 Source review also found and then cleared close/reopen and in-flight control races. The
 guided real-song hardware result is recorded separately from fixture smoke above. Raw
 reports and the sanitized local listening record remain outside this repository.
+
+The subsequent passive observation build passed its final strict Release build, Developer ID
+verification, 22 focused checks, all 630 copied app unit tests and SwiftFormat lint (0/18
+files require formatting). The unit-test host is separately ad-hoc signed; it is not the
+sandboxed listening-app identity. Final signed fixture-only smoke exited successfully with
+27 complete reports and 130 recorded player states including events/watch samples, all
+muted, paused and at zero volume/position, no errors and empty stderr. Synthetic item
+notifications checked observer scoping; no Play request or route selection was made.
+Source review found three cleanup races: an old monitor closing a reopened run, ownership
+changing during a conversion join leaving preparation busy, and stale preparation completion
+clearing a replacement conversion task. Ownership/generation guards and cancellation/join
+cleanup fixed them; deterministic regression checks failed before and passed after the fixes.
+The stale-completion check exercises the completion guard and actual replacement-task
+cancellation/join, not full decoder scheduling. Focused re-review found no remaining Critical
+or Important issue. Decoder/current-renderer fingerprints remain unchanged. Passive watch
+expiry/stop does not pause or reroute playback. Both listening cases remain pending under
+the user's no-audio instruction; no overnight hardware test was performed.
 
 ### Independent review
 
@@ -987,3 +1062,10 @@ need explicit evidence and pass criteria. It recommended observing loss/deselect
 choosing protection logic. This was a reasoning review, not independent verification of the
 actual Spotify test, its metrics, final document or implementation. The user's observations
 and the author's local report/log checks supply that run's evidence.
+
+Claude also reviewed a **generic hypothetical passive observer** with no project facts,
+source, reports, measurements or hardware identities supplied and tools/file access disabled.
+It accepted a bounded observational experiment and emphasized indirect routing evidence,
+picker presentation versus selection, buffering/scheduling limits, natural completion,
+case/trial scope and listener evidence. Those qualifications are recorded above. It did not
+inspect or verify this build, local test results, document or physical receiver behavior.
