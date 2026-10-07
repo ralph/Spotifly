@@ -5,8 +5,9 @@ audible isolation passed with Küche HomePod after a receiver restart. The HAL c
 failed discovery, and the production renderer did not inherit the player's route in the
 two-tone test. Complete Float32 WAV and CAF fixtures passed HomePod playback/isolation
 with fresh baselines and qualified seek checks. A disposable build using the unchanged
-Spotify decoder and the app's cached real-track input is ready; real-song listening is pending.
-An `AVPlayer` media-source/backend remains a separate design investigation.
+Spotify decoder and the app's cached real-track input also passed HomePod playback, concurrent
+Safari/alert isolation, pause/resume and an active seek for one song. An `AVPlayer` production
+backend remains a separate design decision.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -60,7 +61,17 @@ stayed on the Mac concurrently. Both runs had fresh baselines; all 45 sampled au
 output checks remained on the Mac, with no reported errors. Audible pause/resume passed
 for both; WAV seeks were paused then resumed, while CAF continued after a seek during
 playback. The prior 22 checks and silent runtime passed too. This supports the complete-file
-media-source candidate; actual Spotify delivery and a backend design remain unresolved.
+media-source candidate; the subsequent real-track test below checks actual decoder delivery.
+
+**One cached real Spotify track also passed app-only HomePod playback.** The disposable
+Spotifly copy used the unchanged production decoder to prepare a complete Float32 CAF, then
+played the song through the native picker/player. The user confirmed a Mac baseline, HomePod-only
+music, concurrent Safari/alert audio local, audible pause/resume and a recognizable backward
+seek while playback continued. All 17 pasted captures retained Mac output defaults. For the
+210.56-second track, cached-input preparation including complete verification took 0.94 seconds
+and temporary storage was 74.3 MB. Earlier download/decryption is excluded. This establishes
+one complete-file Spotify media-source candidate; production handoff, queue/gapless, route-loss
+and negotiated AirPlay mode remain untested.
 
 Target **modern AirPlay 2 through Apple's current macOS 27 stack**, with "Küche HomePod" as
 the first test receiver. Prefer the newest behavior the native stack and receiver support.
@@ -314,9 +325,9 @@ narrower question of whether the renderer's **Float32 PCM format**, packaged as 
 file, is also usable by that player/picker path. It cheaply checks a container/format
 boundary; the hardware pass only modestly reduces integration risk. The actual pipeline
 downloads a complete encrypted track before decoding it, then emits PCM in paced chunks.
-Turning that into an AVPlayer media source with suitable startup, clocks and queue behavior
-is still the main unresolved work. These Float32 results do not validate or exclude Int16
-PCM, ALAC or other sample formats.
+The later actual-decoder experiment below establishes a complete CAF for one cached track;
+a production media source still needs suitable startup, clocks, queue behavior and output
+handoff. These Float32 results do not validate or exclude Int16 PCM, ALAC or other sample formats.
 
 - The input is the same generated low 220 Hz pulse used for B in the inheritance test:
   **44.1 kHz, stereo interleaved Float32**, matching the decoder/renderer PCM format.
@@ -595,12 +606,12 @@ audio output, not its Connect identity or the remote Spotify player.
 | Public HAL endpoint device + existing renderer | First signed discovery gate failed on this Mac. Conditional only on a changed platform condition and a complete hardware pass; preserves the macOS 27 playback path |
 | Native picker + an empty/proxy `AVPlayer`, copying its UID to the renderer | The real-player test supplied no UID or AirPlay HAL device even during successful audio. The API does not promise a transferable UID or connection ownership transfer; no supported bridge was demonstrated |
 | Implicit route inheritance from a real `AVPlayer` in the same process | Negative in the two-tone test: production-renderer B stayed on the Mac while A played on HomePod and while A was paused; B's feed/clock remained active |
-| Actually render Spotify audio through `AVPlayer` for AirPlay | Native AAC fixture initiation/isolation passed. Spotify still needs an AVPlayer-readable media source and a design for playback, buffering, clocks and gapless ownership. Requires a separate architecture proposal and decision; this plan keeps the existing renderer |
+| Actually render Spotify audio through `AVPlayer` for AirPlay | Native AAC and generated PCM fixtures passed, followed by one cached actual Spotify track decoded to complete CAF with HomePod-only playback. A production design for startup, handoff, buffering, clocks, queue/gapless and route-loss remains required; this plan keeps the existing renderer |
 | Change system defaults, private routing APIs, or implement RAOP/AirPlay ourselves | Does not meet the requested isolation or the scope of this plan |
 
-### Actual Spotify decoder experiment (built; listening pending)
+### Actual Spotify decoder experiment (hardware results)
 
-The next authorized spike is a disposable copy of Spotifly, based on commit `17dc2ff`,
+The authorized spike is a disposable copy of Spotifly, based on commit `17dc2ff`,
 with an **AirPlay Experiment → Open Spotify audio experiment** window. The user first
 plays a song locally through this copy's ordinary Spotify pipeline. A gated hook pauses
 that pipeline inside its existing transition serialization and snapshots the loaded track's
@@ -614,7 +625,7 @@ credential or network URL is exported to the experiment report.
 
 The probe requires a finite 44.1 kHz stereo Vorbis track. It verifies the advertised decoded
 frame count, actual CAF header/PCM format, every readback sample byte against a second
-independent decoder, AVURLAsset playability/frame-derived duration and AVPlayer readiness.
+instance of the same decoder, AVURLAsset playability/frame-derived duration and AVPlayer readiness.
 Readback honors short reads before EOF. The native picker is bound to this actual AVPlayer;
 route selection and Play are manual, with a fresh local baseline captured explicitly.
 CAF is chosen to bound this experiment to one container, not because the earlier tests
@@ -645,9 +656,60 @@ If ordinary rendering later resumes, monitoring pauses the experiment, but that 
 proof that every possible overlap race is prevented. Temporary PCM is removed on replacement,
 window close and normal quit; unexpected termination may leave a temporary folder. Technical
 reports retain metadata, not audio or account secrets. No queue/gapless, return-to-renderer,
-route-loss or AirPlay-version capability is inferred. Real Spotify-song HomePod listening,
-concurrent unrelated audio/alerts, pause/resume, active seeking and full-song cost measurements
-remain pending. The source snapshot/build recipe stays outside this documentation-only PR.
+route-loss or AirPlay-version capability is inferred. The source snapshot/build recipe stays
+outside this documentation-only PR.
+
+On **2026-10-07**, the user completed the guided real-song test on macOS 27.0.1
+(build 26A434). The pasted report and the experimental app's own launch log correlate
+by run ID and matching decoder/renderer source fingerprints. Its input was the exact cached
+post-page-removal Vorbis stream from ordinary Spotify playback, not the bundled test fixture.
+The signed listening build retained the ordinary app identity/entitlements. No code change
+occurred during this listening run. The copied unit-test host remains a separate configuration.
+
+| Measurement for this one cached track | Result |
+| --- | --- |
+| Cached Vorbis input | 7,300,765 bytes; byte range `0..<7300765` |
+| Complete decoded PCM | 9,285,794 frames; 44.1 kHz, stereo, 32-bit Float32 |
+| Frame-derived and playable asset duration | 210.562222 seconds |
+| Spotify metadata duration | 210.562 seconds; decoded-minus-metadata delta approximately 0.22 ms |
+| Temporary CAF | 74,290,448 bytes (74.3 MB decimal); same-decoder PCM bytes preserved |
+| Decode/write | 0.4214 seconds |
+| Complete verification readback | 0.3922 seconds, using another instance of the same decoder |
+| Cached-input preparation through AVPlayer readiness | 0.9385 seconds, including verification; earlier network/decryption excluded |
+
+- The user heard ordinary Spotifly playback and the experiment's fresh baseline on the Mac.
+  After selecting only Küche HomePod in the experiment's native picker, the user heard the
+  actual song on **HomePod only**.
+- Safari YouTube audio and a system alert preview each stayed on the **Mac while the song
+  continued on HomePod**. This is the user's concurrent listening observation. The later
+  manual routing capture was taken after the user had paused; it does not itself prove
+  concurrent audibility.
+- Audible Pause stopped the HomePod song before its end, at player position approximately
+  97.15 seconds; Play resumed it on HomePod only. An active seek completed at 21:45:19
+  Europe/Berlin, with player rate 1 and position 30 seconds; its delayed capture showed
+  31.577 seconds, still playing. The user recognized the earlier part of the song and
+  confirmed continuation without pressing Play again. Exact receiver position/latency was
+  not measured. No additional final manual capture appears in the pasted snapshot.
+- All **17 pasted captures** from baseline at 21:27:25 through the delayed seek capture
+  at 21:45:21 Europe/Berlin retained Mac defaults for audio and alerts. Local Play followed
+  the fresh baseline by 44 seconds. These are samples, not continuous monitoring. Long gaps
+  included explicit user pauses during the guided conversation. No reported error, AirPlay
+  HAL device/manager or transferable player output UID appeared.
+
+**Result: the complete cached-track CAF candidate passed real Spotify-song playback/isolation
+and the tested controls on this setup.** The duration difference satisfies the predeclared
+exploratory 1-second criterion. Neither complete asset conversion nor this listening test
+proves uninterrupted start-to-end playback, general track-format support, uncached startup
+cost, production backend transitions, queue/gapless behavior, receiver loss or a negotiated
+AirPlay version. This is one song on one receiver. No receiver restart was requested as part
+of this guided run; receiver uptime and repeated-session reliability were not established.
+Here, app-only isolation describes this AVPlayer's Spotify audio versus other apps and system
+alerts. Arbitrary other audio sources in the same app were not tested; the ordinary renderer
+was paused. Listener-reported HomePod-only output does not measure brief local bleed during
+selection/startup. The controls result covers audible pause/resume and one recognizable
+backward seek while playing, not receiver seek accuracy, latency or every seek state.
+Remote volume interactions, picker route-state accuracy, Now Playing/remote commands and
+background/sleep/relaunch behavior were not checked by this listening run.
 
 ### Implementation notes and handoff
 
@@ -658,12 +720,14 @@ Product implementation remains conditional and stopped. A future session must es
 a changed HAL discovery condition or investigate a separately planned Spotify-compatible
 `AVPlayer` media-source architecture before proposing product changes. That investigation
 must cover seek/pause/Next, buffering and gapless clocks, route-loss isolation, cleanup,
-and modern AirPlay evidence. First establish an AVPlayer-readable delivery format for the
-Spotify stream, then verify that `AVPlayer` can meet each playback, stream-gain and gapless
-requirement; a playable local AAC file does not demonstrate that. Repeat initiation across
-multiple sessions, including without a HomePod restart. Give this candidate its own
+and modern AirPlay evidence. A complete CAF from one cached Spotify track now establishes
+a readable delivery candidate. The production design must verify that `AVPlayer` can meet
+each playback, stream-gain and gapless requirement and quantify uncached end-to-end startup.
+Repeat initiation across multiple sessions, including without a HomePod restart. Give this candidate its own
 route-loss gate: loss must hold playback before local fallback becomes audible, with
 supported observability and recorded event order; reject the path if that cannot be ensured.
+First run a bounded loss/deselection probe to observe actual player behavior and notification
+ordering on this OS; no pause/fallback behavior is assumed from the successful listening run.
 The renderer UID/suggested-flush rules above apply to the HAL candidate, not the player.
 State whether AirPlay needs a separate output backend and what happens when returning to
 the existing macOS 27 renderer. No such backend change has been accepted or implemented.
@@ -678,9 +742,9 @@ The first inexpensive `AVPlayer` media-source experiment is now built: generated
 the decoder's format is packaged as complete temporary lossless WAV/CAF assets and loaded
 through the same native picker/player. Local playability and the fresh-baseline HomePod
 listening tests passed for both formats. This establishes the generated media-format boundary.
-The next actual-decoder experiment described above is now built and has passed local
-conversion, build and silent-startup checks; its real-song listening and full-song preparation
-costs still need user validation. A separate architecture investigation must then evaluate
+The actual-decoder experiment described above also passed local conversion, build, silent
+startup and one guided real-song listening run, with full-track size and cached preparation
+costs recorded. A separate architecture investigation must now evaluate
 end-to-end startup cost, seek/pause, queue/gapless clocks, incremental delivery if needed,
 temporary-file cleanup and safe transitions between outputs.
 A complete-file test does not prove live PCM delivery or select a production architecture.
@@ -689,11 +753,17 @@ That next design must make the renderer/player handoff concrete: prepare a real 
 item and bind its `AVPlayer` before route selection; define which backend plays before,
 during and after selection; transfer the current position and clock without overlapping
 audio or restarting the track; and define returning to the local renderer on deselection.
+Define an authoritative position source and how receiver buffering/presentation offset affects
+both directions of handoff. Give backend exclusivity and audible gaps separate pass criteria.
+Choose the complete-file/preparation strategy or investigate incremental delivery before
+queue/gapless design, with measured storage and startup budgets. Define ownership of normal
+player state, Spotify Connect, Now Playing, remote commands and interruptions across the switch.
 None of those product handoffs was exercised by the complete-file probe. Receiver loss
 and reconnection also remain untested. The gate preventing audible local fallback is an
 **untested product design requirement**, not an observed `AVPlayer` behavior on this OS.
-The separate probe's omitted keychain entitlement and different process model also limit
-extrapolation to the product.
+The earlier standalone fixture probe omitted the keychain entitlement and used a different
+process model. The real-song experiment retained the ordinary app identity/entitlements, but
+its separately controlled AVPlayer still does not exercise a production backend handoff.
 
 ## Verification
 
@@ -705,8 +775,9 @@ extrapolation to the product.
 - [x] Audio and alert output IDs remain on the Mac at all five sampled stages.
 - [x] Capture during playback confirms no AirPlay HAL device/manager or player output UID
       was exposed for transfer to the existing renderer.
-- [ ] Validate Spotify media delivery and playback transitions through a separately
-      designed `AVPlayer` path, if that architecture is accepted.
+- [ ] Validate production Spotify delivery and playback transitions through a separately
+      designed `AVPlayer` path, if that architecture is accepted. The disposable complete-track
+      decoder experiment below does not implement those transitions.
 - [ ] Record receiver software and modern AirPlay evidence; measure route loss, buffering,
       latency and cleanup. Repeat initiation without restarting the receiver. Any proposed
       `AVPlayer` backend must pass its own gate preventing audible local fallback on loss.
@@ -736,10 +807,11 @@ extrapolation to the product.
       resumed afterward; CAF continued automatically after a seek while playing. Reports
       corroborate the respective states/positions. Identical pulses cannot establish an
       exact content position at the receiver.
-- [ ] Investigate actual decoder delivery and a separate backend design now that this
-      fixture passed; do not infer Spotify/live PCM/gapless/route-loss support from it.
+- [x] Investigate complete-file actual decoder delivery in the separate real-track experiment
+      below; the generated fixture itself supplies no Spotify/live PCM/gapless/route-loss proof.
+- [ ] Design and accept a production backend separately from these complete-file experiments.
 
-### Actual Spotify decoder experiment (local checks complete; hardware pending)
+### Actual Spotify decoder experiment (local and bounded hardware checks passed)
 
 - [x] Convert the existing real Vorbis stereo fixture through the unchanged production decoder
       into actual CAF; 10 checks cover channel content, sample-byte preservation, frame/duration
@@ -749,14 +821,17 @@ extrapolation to the product.
 - [x] Silent signed mode: item ready/paused at zero, explicit baseline, cleanup, reopening
       invalidates controls, re-preparation requires a fresh baseline, and closing during a
       baseline action leaves no active run. No Spotify login or audio is initiated.
-- [ ] Prepare an actual Spotify song in the app; record full-track decoded/metadata duration,
+- [x] Prepare an actual Spotify song in the app; record full-track decoded/metadata duration,
       file size and preparation timings with verification overhead and the network/decryption
       exclusion explicit. Require decoded/metadata duration within 1 second as an exploratory
       spike criterion; investigate a larger difference before treating the run as a pass.
-      This tolerance is not an assertion of a codec or Spotify trimming rule.
-- [ ] User confirms local baseline, then music on HomePod only while unrelated app sound and
-      an alert stay local concurrently, with unchanged sampled system defaults.
-- [ ] Confirm audible pause/resume and an active seek without a separate Play request.
+      This tolerance is not an assertion of a codec or Spotify trimming rule. The one-track
+      duration delta is approximately 0.22 ms; CAF storage 74.3 MB and verification-inclusive
+      cached preparation 0.94 seconds.
+- [x] User confirms local baseline, then music on HomePod only while unrelated app sound and
+      an alert stay local concurrently; all 17 pasted captures retain Mac defaults.
+- [x] Confirm audible pause/resume and an active recognizable seek without a separate Play
+      request. The automatic post-seek captures corroborate continued player advancement.
 - [ ] Use the measured result to decide whether to design a production AVPlayer backend;
       this probe does not implement handoff, queue/gapless clocks or route-loss isolation.
 
@@ -821,15 +896,19 @@ and 17 CAF captures retained Mac defaults. Paused WAV seeks and an active CAF se
 are recorded separately, without an exact receiver-content-position claim. Source review
 found no remaining actionable blocker within that spike after recovery fixes. Its local
 validation record and raw smoke logs stay in the workspace outside this repository.
-Current-renderer initiation was not demonstrated. Spotify playback through AirPlay and
-connection cleanup remain untested. Markdown structure,
+Current-renderer initiation was not demonstrated. The subsequent real-song experiment
+passed Spotify playback through AVPlayer AirPlay for one cached complete-track CAF, with
+concurrent Safari/alert isolation, audible pause/resume, an active recognizable seek, 17
+unchanged sampled defaults and measured cached preparation/storage. Production handoff
+and receiver-connection cleanup remain untested. Markdown structure,
 local repository links and `git diff --check` passed. The repository remains documentation
 only. Separately, the actual-decoder source snapshot's signed strict build, 10 converter checks,
 630 copied app unit tests, SwiftFormat lint and signed silent runtime passed. A first test
 runner timed out before connection during macOS startup permission; the first connected run
 found one localization failure in experiment labels, fixed before the passing full rerun.
-Source review also found and then cleared close/reopen and in-flight control races. Real
-Spotify-song hardware validation remains pending; fixture smoke does not supply it.
+Source review also found and then cleared close/reopen and in-flight control races. The
+guided real-song hardware result is recorded separately from fixture smoke above. Raw
+reports and the sanitized local listening record remain outside this repository.
 
 ### Independent review
 
@@ -896,3 +975,15 @@ CAF-integrity scope and verification-inclusive timing. Audible HomePod-only outp
 recognizable seek behavior must come from the listener, not player readiness/time. The final
 signed close-race smoke passed. Claude did not inspect source, signatures, SDK, final document
 or hardware and took the supplied check results as facts.
+
+After the real-song run, Claude reviewed only a **generic hypothetical native-picker/player
+validation scenario**, with no project details, test measurements, source, raw reports or
+hardware identities supplied and tools/file access disabled. It found the bounded listener
+inference and design-before-integration approach reasonable. Its useful qualifications are
+incorporated: isolation belongs to the tested player, same-app sources and brief local bleed
+were not checked, the backward-seek result does not establish receiver accuracy, sampled
+settings are distinct from audibility, and clock/command ownership and receiver-loss behavior
+need explicit evidence and pass criteria. It recommended observing loss/deselection before
+choosing protection logic. This was a reasoning review, not independent verification of the
+actual Spotify test, its metrics, final document or implementation. The user's observations
+and the author's local report/log checks supply that run's evidence.
