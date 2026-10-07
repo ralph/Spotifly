@@ -4,7 +4,8 @@ Status: **Open**, 2026-10-07; draft proposal. Native `AVPlayer` AirPlay initiati
 audible isolation passed with Küche HomePod after a receiver restart. The HAL candidate
 failed discovery, and the production renderer did not inherit the player's route in the
 two-tone test. Complete Float32 WAV and CAF fixtures passed HomePod playback/isolation
-with fresh baselines and qualified seek checks.
+with fresh baselines and qualified seek checks. A disposable build using the unchanged
+Spotify decoder and the app's cached real-track input is ready; real-song listening is pending.
 An `AVPlayer` media-source/backend remains a separate design investigation.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
@@ -597,6 +598,57 @@ audio output, not its Connect identity or the remote Spotify player.
 | Actually render Spotify audio through `AVPlayer` for AirPlay | Native AAC fixture initiation/isolation passed. Spotify still needs an AVPlayer-readable media source and a design for playback, buffering, clocks and gapless ownership. Requires a separate architecture proposal and decision; this plan keeps the existing renderer |
 | Change system defaults, private routing APIs, or implement RAOP/AirPlay ourselves | Does not meet the requested isolation or the scope of this plan |
 
+### Actual Spotify decoder experiment (built; listening pending)
+
+The next authorized spike is a disposable copy of Spotifly, based on commit `17dc2ff`,
+with an **AirPlay Experiment → Open Spotify audio experiment** window. The user first
+plays a song locally through this copy's ordinary Spotify pipeline. A gated hook pauses
+that pipeline inside its existing transition serialization and snapshots the loaded track's
+already downloaded/decrypted Ogg bytes. The cache is populated only after a successful
+whole-file `URLSession.download` with HTTP 200, decryption and removal of Spotify's leading
+Ogg pages; it is not progressively filled. The hook uses exactly the resulting `current.ogg`
+stream handed to normal playback, from cached byte zero through its end. A separate instance of the **unchanged production
+`VorbisDecoder`** writes the complete decoded track to a temporary Float32 stereo CAF.
+The existing macOS 27 `AudioRenderer` is also unchanged and stays paused. No Spotify key,
+credential or network URL is exported to the experiment report.
+
+The probe requires a finite 44.1 kHz stereo Vorbis track. It verifies the advertised decoded
+frame count, actual CAF header/PCM format, every readback sample byte against a second
+independent decoder, AVURLAsset playability/frame-derived duration and AVPlayer readiness.
+Readback honors short reads before EOF. The native picker is bound to this actual AVPlayer;
+route selection and Play are manual, with a fresh local baseline captured explicitly.
+CAF is chosen to bound this experiment to one container, not because the earlier tests
+established an advantage over WAV.
+
+Its report records decrypted input size, decoded frames/rate/channels, frame-derived and
+Spotify-metadata duration, temporary CAF bytes, decode/write and complete-readback time,
+and total preparation **including the verification pass** through item readiness. The second
+instance of the same decoder checks CAF write/read integrity, not independent codec
+correctness. The report labels that verification time separately and records the cached
+input byte range and decoded-minus-metadata duration difference. **Download and decryption happened earlier
+in ordinary playback and are excluded from preparation time.** Local sample-byte equality
+preserves decoded PCM; it says nothing about the earlier lossy encoding or AirPlay wire format.
+Source fingerprints confirm the compiled decoder and renderer match the product checkout.
+
+This copy retains the ordinary app identity, developer team, sandbox/network/selected-file/
+keychain entitlements and matching signing profile, so it reuses the existing account.
+Quit ordinary Spotifly before launching it; do not obtain a second OAuth grant for the probe.
+The user approved macOS's startup permission. Its silent mode skips authorization and
+obsolete-grant cleanup entirely and uses only the bundled short Vorbis fixture. The copied
+unit-test host uses different, ad-hoc signing; it does not establish production-entitlement
+behavior. The signed smoke validates the listening app's own sandboxed startup.
+
+**This is a cached complete-track experiment, not a backend handoff.** Its separate player
+starts at zero; the ordinary playback bar and Spotify Connect state remain paused and do
+not represent experiment playback. Experimental Play pauses the ordinary pipeline first.
+If ordinary rendering later resumes, monitoring pauses the experiment, but that is not a
+proof that every possible overlap race is prevented. Temporary PCM is removed on replacement,
+window close and normal quit; unexpected termination may leave a temporary folder. Technical
+reports retain metadata, not audio or account secrets. No queue/gapless, return-to-renderer,
+route-loss or AirPlay-version capability is inferred. Real Spotify-song HomePod listening,
+concurrent unrelated audio/alerts, pause/resume, active seeking and full-song cost measurements
+remain pending. The source snapshot/build recipe stays outside this documentation-only PR.
+
 ### Implementation notes and handoff
 
 The user authorized the disposable probes. The signed HAL inventory failed; the native
@@ -626,9 +678,11 @@ The first inexpensive `AVPlayer` media-source experiment is now built: generated
 the decoder's format is packaged as complete temporary lossless WAV/CAF assets and loaded
 through the same native picker/player. Local playability and the fresh-baseline HomePod
 listening tests passed for both formats. This establishes the generated media-format boundary.
-The next separate investigation must evaluate delivery from the existing Spotify decoder,
-startup cost, seek/pause, queue/gapless clocks,
-incremental delivery if needed, temporary-file cleanup and safe transitions between outputs.
+The next actual-decoder experiment described above is now built and has passed local
+conversion, build and silent-startup checks; its real-song listening and full-song preparation
+costs still need user validation. A separate architecture investigation must then evaluate
+end-to-end startup cost, seek/pause, queue/gapless clocks, incremental delivery if needed,
+temporary-file cleanup and safe transitions between outputs.
 A complete-file test does not prove live PCM delivery or select a production architecture.
 
 That next design must make the renderer/player handoff concrete: prepare a real media
@@ -684,6 +738,27 @@ extrapolation to the product.
       exact content position at the receiver.
 - [ ] Investigate actual decoder delivery and a separate backend design now that this
       fixture passed; do not infer Spotify/live PCM/gapless/route-loss support from it.
+
+### Actual Spotify decoder experiment (local checks complete; hardware pending)
+
+- [x] Convert the existing real Vorbis stereo fixture through the unchanged production decoder
+      into actual CAF; 10 checks cover channel content, sample-byte preservation, frame/duration
+      agreement, partial final chunks, invalid input, existing-file preservation and cancellation.
+- [x] Build and strictly verify the signed sandboxed disposable app; confirm decoder and
+      current-renderer source fingerprints. Full copied app unit suite passes 630/630.
+- [x] Silent signed mode: item ready/paused at zero, explicit baseline, cleanup, reopening
+      invalidates controls, re-preparation requires a fresh baseline, and closing during a
+      baseline action leaves no active run. No Spotify login or audio is initiated.
+- [ ] Prepare an actual Spotify song in the app; record full-track decoded/metadata duration,
+      file size and preparation timings with verification overhead and the network/decryption
+      exclusion explicit. Require decoded/metadata duration within 1 second as an exploratory
+      spike criterion; investigate a larger difference before treating the run as a pass.
+      This tolerance is not an assertion of a codec or Spotify trimming rule.
+- [ ] User confirms local baseline, then music on HomePod only while unrelated app sound and
+      an alert stay local concurrently, with unchanged sampled system defaults.
+- [ ] Confirm audible pause/resume and an active seek without a separate Play request.
+- [ ] Use the measured result to decide whether to design a production AVPlayer backend;
+      this probe does not implement handoff, queue/gapless clocks or route-loss isolation.
 
 ### Required before product implementation
 
@@ -748,8 +823,13 @@ found no remaining actionable blocker within that spike after recovery fixes. It
 validation record and raw smoke logs stay in the workspace outside this repository.
 Current-renderer initiation was not demonstrated. Spotify playback through AirPlay and
 connection cleanup remain untested. Markdown structure,
-local repository links and `git diff --check` passed. No Spotifly app build or product test
-suite was run for these documentation-only repository changes.
+local repository links and `git diff --check` passed. The repository remains documentation
+only. Separately, the actual-decoder source snapshot's signed strict build, 10 converter checks,
+630 copied app unit tests, SwiftFormat lint and signed silent runtime passed. A first test
+runner timed out before connection during macOS startup permission; the first connected run
+found one localization failure in experiment labels, fixed before the passing full rerun.
+Source review also found and then cleared close/reopen and in-flight control races. Real
+Spotify-song hardware validation remains pending; fixture smoke does not supply it.
 
 ### Independent review
 
@@ -803,3 +883,16 @@ and probe/product configuration differences remain explicit. The final tested bu
 used for listening and the report run IDs correlate with its launch log; no source change
 occurred between them. This review did not inspect the final document, source, SDK,
 signatures or captures, and did not independently verify hardware or Spotify integration.
+
+
+Claude then reviewed a redacted summary of the real-decoder experiment with tools/file access
+disabled. It supported a user-guided real-song test after the close-race smoke passed, and
+asked for explicit whole-input/offset parity, same-decoder readback scope, listener evidence
+and verification overhead. Source inspection confirms this pipeline already completes its
+whole HTTP 200 download before caching and uses the same post-page-removal Vorbis bytes;
+the summary review's hypothetical progressively filled cache does not describe this code.
+The report/criteria now state the cached byte range, duration-difference check, same-decoder
+CAF-integrity scope and verification-inclusive timing. Audible HomePod-only output and
+recognizable seek behavior must come from the listener, not player readiness/time. The final
+signed close-race smoke passed. Claude did not inspect source, signatures, SDK, final document
+or hardware and took the supplied check results as facts.
