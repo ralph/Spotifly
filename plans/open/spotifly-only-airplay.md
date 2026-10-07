@@ -1,9 +1,10 @@
 # AirPlay from Speakers without sending the Mac's other audio
 
-Status: **Open**, 2026-10-04; draft proposal. Native `AVPlayer` AirPlay initiation and
+Status: **Open**, 2026-10-07; draft proposal. Native `AVPlayer` AirPlay initiation and
 audible isolation passed with Küche HomePod after a receiver restart. The HAL candidate
 failed discovery, and the production renderer did not inherit the player's route in the
-two-tone test. An `AVPlayer` media-source/backend remains a separate design investigation.
+two-tone test. A complete Float32 PCM WAV/CAF probe is built; HomePod listening is pending.
+An `AVPlayer` media-source/backend remains a separate design investigation.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -50,6 +51,12 @@ display disappeared, so the full-run unchanged-default criterion did not pass; t
 test snapshots all used the Mac for audio and alerts. This rejects the tested inheritance
 hypothesis, not every conceivable renderer integration. The next useful candidate is an
 actual `AVPlayer` media source, keeping the current renderer for local output.
+
+**The next complete-file PCM probe is built, with hardware listening pending.** A separate
+signed sandboxed app packages generated Float32 PCM into verified lossless WAV and CAF
+assets and loads both through `AVPlayer`. Its 22 checks and silent runtime passed, including
+format changes, fresh-baseline/observation reset, failure reporting/recovery and temporary
+asset cleanup. This is a media-source experiment, not Spotify integration or a backend choice.
 
 Target **modern AirPlay 2 through Apple's current macOS 27 stack**, with "Küche HomePod" as
 the first test receiver. Prefer the newest behavior the native stack and receiver support.
@@ -291,6 +298,70 @@ not erase the user's negative B observation under the consistent active-test out
 This does not prove that every possible renderer bridge is impossible. No Spotify/product
 code changed; an AVPlayer-readable media source is the next alternative to investigate.
 
+### Complete PCM asset fixture (built; listening pending)
+
+On **2026-10-07**, the user authorized the next disposable experiment. The app and sources
+are kept outside the product repository in the workspace's `pcm-asset-airplay-probe/`
+folder, with build and listening instructions in its README. It uses a distinct bundle
+from the earlier probes, preserving their reports. No product source changed.
+
+The AAC fixture already established native initiation/isolation once. This probe asks the
+narrower question of whether the renderer's **Float32 PCM format**, packaged as a complete
+file, is also usable by that player/picker path. It cheaply checks a container/format
+boundary; even a hardware pass only modestly reduces integration risk. The actual pipeline
+downloads a complete encrypted track before decoding it, then emits PCM in paced chunks.
+Turning that into an AVPlayer media source with suitable startup, clocks and queue behavior
+is still the main unresolved work. A failure here would not exclude Int16 PCM or ALAC;
+a pass would not validate other sample formats.
+
+- The input is the same generated low 220 Hz pulse used for B in the inheritance test:
+  **44.1 kHz, stereo interleaved Float32**, matching the decoder/renderer PCM format.
+  This app does not compile the Spotify decoder or the current production renderer.
+- `AVAudioFile` writes complete **WAV** and **CAF** files in half-second chunks, then
+  closes their headers. Actual container signatures, PCM format/frame count and every
+  sample are verified by complete readback. There is no AAC intermediary or PCM compression.
+  Each 120-second asset has **5,292,000 frames** and is **42,340,096 bytes** on this runtime.
+  Both `AVURLAsset` playability/duration checks and `AVPlayer` item readiness passed.
+- A native `AVRoutePickerView` is attached to that real `AVPlayer`. The app starts paused
+  and requires a user Play action. Controls include per-stream gain, pause/resume and
+  seeking to 30 seconds. File format changes pause playback and archive the previous report.
+- **Start new run / capture baseline** records the baseline immediately before testing;
+  startup does not implicitly establish it. Changing format clears the baseline and
+  listening observations and disables Play until another explicit run starts. All sampled
+  comparisons are retained so a later unchanged read cannot hide an earlier changed or
+  unreadable audio/alert default. Picker dismissal is recorded without asserting selection.
+- Reports include asset metadata, generation/readback/check timing, player state/position,
+  actions, HAL inventory/default IDs and manual observations. An item-load failure is saved
+  and can be copied; another format remains selectable. Normal shutdown unloads the player
+  and removes generated temporary assets while keeping reports in the app's sandbox.
+- The final Swift 6 strict-concurrency/warnings-as-errors build, Developer ID signature,
+  **22 checks** and signed sandboxed silent runtime passed. Runtime checks exercised
+  WAV → CAF → WAV, seeded observation reset, four distinct fresh run IDs, a deliberately
+  withheld CAF file with persisted failure and recovery to WAV, and asset cleanup. Every
+  logged state had zero rate/position and paused control; stderr was empty. No audio was
+  played and no remote route was selected. Source review found two recovery/cleanup gaps;
+  both were fixed and rechecked. Initial player-load failure was source-reviewed, not
+  separately simulated; format-load recovery was exercised in the signed runtime.
+
+Preparation of both synthetic files, full readback and asset checks took about **2.13 s**
+in that diagnostic run, before the first player item became ready. It excludes Spotify
+download/decode and is not a product startup estimate. The two files use about 85 MB together;
+production delivery/storage/lifecycle still need design.
+
+**Hardware validation is pending separately for WAV and CAF.** Keep the Mac system audio
+and alerts local, choose the Mac in this app's picker, start a fresh run, and play/record the
+local baseline. Pause, select Küche HomePod in the same picker, play and record where the
+pulse is heard. **While the pulse continues on HomePod**, play an unrelated app sound and
+a macOS alert and confirm they are local; then check pause/resume and seek. Capture while
+audio is audible and copy the report. Choose the Mac again and repeat with the other container
+and a new baseline. Record receiver software and any connection failure.
+
+Local file sample equality establishes a lossless asset, not lossless AirPlay transport.
+A successful listening test would establish this generated complete-file candidate on the
+tested setup. It would not prove actual Spotify decoding, incremental/live PCM delivery,
+queue/gapless clocks, reliable reconnection, safe route loss, negotiated AirPlay version or
+the accepted production backend. No hardware pass is inferred from local asset readiness.
+
 ## Solution
 
 ### 1. Prove initiation and isolation before implementing the feature
@@ -512,10 +583,11 @@ its isolation and renderer boundaries; a necessary change requires an explicit d
 decision. Update this plan and move
 it to `plans/done/` in the PR that completes the feature.
 
-The first inexpensive `AVPlayer` media-source experiment should package generated decoded
-PCM as a complete temporary lossless WAV/CAF asset and play it through the same native
-picker. Confirm playability and isolated audio using a fresh baseline. This tests a media
-format boundary rather than attempting to transfer an AirPlay route. Only then evaluate
+The first inexpensive `AVPlayer` media-source experiment is now built: generated PCM in
+the decoder's format is packaged as complete temporary lossless WAV/CAF assets and loaded
+through the same native picker/player. Local playability passed; isolated HomePod audio
+still needs the fresh-baseline listening test above. This tests a media-format boundary.
+Only if hardware listening passes, evaluate
 delivery from the existing Spotify decoder, startup cost, seek/pause, queue/gapless clocks,
 incremental delivery if needed, temporary-file cleanup and safe transitions between outputs.
 A complete-file test does not prove live PCM delivery or select a production architecture.
@@ -545,6 +617,20 @@ A complete-file test does not prove live PCM delivery or select a production arc
       a captured issue/stall. Silence was not used as the negative routing observation.
 - [x] Record the alert-default change between preparation and the local baseline; preserve
       the full-run changed flag rather than claiming a complete isolation pass.
+
+### Complete PCM asset fixture (listening pending)
+
+- [x] Create actual WAV/CAF containers preserving all generated Float32 stereo samples;
+      independently check channel order and a partial final chunk in tests.
+- [x] Both complete 120-second assets pass AVPlayer playability/duration and item readiness
+      in the signed sandboxed app, without a Play command.
+- [x] Exercise explicit fresh baselines, format/observation resets, persisted load failure,
+      recovery and normal temporary-asset cleanup in the silent runtime.
+- [ ] User confirms each container's tone plays on HomePod while unrelated app audio and
+      macOS alerts stay local, with fresh unchanged sampled audio/alert defaults.
+- [ ] User checks audible pause/resume and seeking and supplies the listening reports.
+- [ ] Investigate actual decoder delivery and a separate backend design only after this
+      candidate passes; do not infer Spotify/live PCM/gapless/route-loss support from it.
 
 ### Required before product implementation
 
@@ -600,6 +686,10 @@ twelve classification/default-comparison checks passed. The user verified native
 AAC initiation and audible isolation after a HomePod restart. The subsequent two-tone app's
 22 checks and silent startup passed; the user observed no production-renderer route
 inheritance with A playing or paused, with the stale-baseline caveat recorded above.
+The complete PCM asset probe's 22 checks, strict signed build and silent runtime also
+passed on 2026-10-07, with hardware listening pending for WAV and CAF. Source review
+found no remaining actionable blocker within that spike after recovery fixes. Its local
+validation record and raw smoke logs stay in the workspace outside this repository.
 Current-renderer initiation was not demonstrated. Spotify playback through AirPlay and
 connection cleanup remain untested. Markdown structure,
 local repository links and `git diff --check` passed. No Spotifly app build or product test
@@ -631,3 +721,18 @@ the supplied conclusions only; Claude did not inspect the final document, rechec
 reproduce the hardware test or verify Spotify integration.
 That follow-up preceded the two-tone experiment; its subsequent negative observation and
 baseline qualification are recorded separately above.
+
+On 2026-10-07, Claude reviewed a redacted technical summary of the complete PCM asset
+experiment and next-step conclusions, with tools/file access disabled. It found them
+internally consistent and mostly well scoped, while stressing that this is only a narrow
+container/format test and does little to resolve actual Spotify delivery. The plan now
+states that motivation, limits results to Float32, and explicitly requires unrelated audio
+to play concurrently with the HomePod tone. Local asset equality is not a wire-format
+claim; route-loss behavior remains unknown. The earlier AAC report's baseline was captured
+at 07:42:24 Europe/Berlin, with Play at 07:42:34 and the last capture at 07:44:00; its fresh
+two-minute sampling interval is distinct from the inheritance test's six-hour stale baseline.
+The tested HAL/inheritance candidates remain stopped as project decisions for this
+configuration, not universal API impossibility claims. The probe uses the earlier stated
+sandbox/network/file permissions and omits the unused provisioning-restricted keychain
+group; this is not an exact production-entitlement reproduction. Claude did not inspect
+code, SDK, final document, UI, signatures or hardware and took check results as reported.
