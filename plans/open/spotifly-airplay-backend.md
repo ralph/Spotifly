@@ -4,7 +4,8 @@ Status: **Open**, 2026-10-08; proposed design in [PR #202](https://github.com/ra
 The user requested this design and a Claude review. Product implementation has not started.
 The disposable one-song handoff prototype is built and silently verified. Moving its AirPlay
 controls into a separate Speakers panel resolved the user's picker-opening symptom; the user
-confirmed switching to HomePod. The user then reported that picker volume works, bar volume
+confirmed switching to HomePod and subsequently confirmed ordinary pause/play. Picker volume
+works, but bar volume
 has no audible effect, and seeking returns audio to the Mac. A seek-picker lifetime correction
 passes a silent regression; receiver retention and the volume failure remain under supervised
 verification. Carried audible position and return remain unconfirmed. Receiver-loss
@@ -508,7 +509,10 @@ from opening the menu or its selection checkmark.
 
 The next supervised check failed two controls: the native picker's volume changed HomePod
 loudness, but the now-playing bar's volume had no audible effect, and seeking returned audio
-to the Mac. Keep these failures separate from the earlier standalone-player seek result.
+to the Mac. The user subsequently said everything else worked, explicitly including
+pause/play. Record ordinary pause/resume as a reported success; other unnamed controls and
+the specific build/run are not identified by that follow-up. Keep the two failures separate
+from the earlier standalone-player seek result.
 Source inspection found that a native seek publishes `switching`, which made both picker
 hosts disappear; their dismantling clears `AVRoutePickerView.player`. An actual signed,
 paused, zero-gain fixture reproduced that detachment: the new regression failed on retaining

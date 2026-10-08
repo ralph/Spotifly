@@ -20,7 +20,8 @@ screen while the same-player report picker opened. Moving the controls into a se
 panel resolved the opening/selection symptom: the user confirmed that it opens and switches to
 HomePod, with the supplied screenshot showing Küche HomePod selected. The precise old
 intercepting view remains unknown. The user then reported working picker volume, ineffective
-bar volume and a seek returning audio to the Mac. The backend design records a silent
+bar volume and a seek returning audio to the Mac; ordinary pause/play worked. The backend
+design records a silent
 regression and picker lifetime correction; hardware route retention and gain remain unverified.
 Integrated carried position and return tests continue.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
