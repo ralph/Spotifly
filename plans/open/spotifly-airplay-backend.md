@@ -3,7 +3,8 @@
 Status: **Open**, 2026-10-08; proposed design in [PR #202](https://github.com/ralph/Spotifly/pull/202).
 The user requested this design and a Claude review. Product implementation has not started.
 The disposable one-song handoff prototype is built and silently verified; supervised handoff
-listening remains pending. Receiver-loss
+listening is blocked by the integrated native picker failing to open. A diagnostic build is
+ready for a paused presentation comparison. Receiver-loss
 protection, production startup/storage budgets, queue/gapless and transport evidence remain open.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -460,6 +461,22 @@ carried audible position, receiver gain, queue/gapless and release readiness rem
 Start the supervised session with a fresh Mac-default baseline, then a paused mid-song
 entry and explicit receiver selection, normal Play, and an explicit return. The app's
 Handoff experiment menu provides state markers and a saved/copyable listening report.
+
+The first supervised attempt did not complete destination selection: the user reported no
+response from the Speakers picker, then a briefly opened menu followed by loss of local
+Connect ownership. Repeating with only the handoff app running still did not open the picker.
+The cause is unresolved; this does not invalidate the earlier separate-player listening
+results or establish a failure of AVPlayer routing itself.
+
+The disposable diagnostic revision records picker clicks/lifecycle/presentation callbacks
+and local Connect requests/ownership changes in a bounded local trace. A second native view
+in the report window binds to the same prepared player for comparison outside the Speakers
+List. Presentation remains user initiated and is not route evidence. A logging-induced
+redraw loop was caught and corrected in silent validation before this build was offered.
+Fresh verification passed: strict signed Release build, 17 controller checks, 11 converter
+checks, 38 signed silent checks (including actual picker refresh/teardown and trace writing),
+and all 630 copied app unit tests, with no failures or skips. Renderer/decoder fingerprints
+still match production. Original picker presentation remains unverified; no bug fix is claimed.
 
 - [x] Add only the one-song experiment scope above. Keep ordinary production output behavior
   unchanged unless the experiment is explicitly enabled. Label incomplete loss protection.

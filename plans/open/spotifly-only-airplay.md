@@ -15,7 +15,8 @@ The proposed backend ownership, mode-entry/return UX and one-song handoff are no
 in [the backend design](spotifly-airplay-backend.md). It is not an accepted or implemented
 product change; the release gates remain open. The disposable one-song handoff prototype
 now passes silent build, unit, controller and real adapter/integration checks, recorded in
-that design. Its supervised audible handoff tests are still pending.
+that design. Its supervised audible handoff tests are blocked by the integrated native
+picker failing to open; a diagnostic comparison build is ready, with the cause unresolved.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
