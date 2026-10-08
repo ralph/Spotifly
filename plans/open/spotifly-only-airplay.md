@@ -1,14 +1,16 @@
 # AirPlay from Speakers without sending the Mac's other audio
 
-Status: **Open**, 2026-10-07; draft proposal. Native `AVPlayer` AirPlay initiation and
+Status: **Open**, 2026-10-08; draft proposal. Native `AVPlayer` AirPlay initiation and
 audible isolation passed with Küche HomePod after a receiver restart. The HAL candidate
 failed discovery, and the production renderer did not inherit the player's route in the
 two-tone test. Complete Float32 WAV and CAF fixtures passed HomePod playback/isolation
 with fresh baselines and qualified seek checks. A disposable build using the unchanged
 Spotify decoder and the app's cached real-track input also passed HomePod playback, concurrent
 Safari/alert isolation, pause/resume and an active seek for one song. An `AVPlayer` production
-backend remains a separate design decision. The passive output-change observation build
-passed local silent checks; deselection and receiver-loss listening remain pending.
+backend remains a separate design decision. The passive observation build passed local
+silent checks and two bounded listening cases: fast intentional return to Mac, and silence
+after HomePod power loss with no heard local fallback. The sampled player clock kept advancing
+through the loss case; this supplies no production loss-protection guarantee.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -71,8 +73,9 @@ music, concurrent Safari/alert audio local, audible pause/resume and a recogniza
 seek while playback continued. All 17 pasted captures retained Mac output defaults. For the
 210.56-second track, cached-input preparation including complete verification took 0.94 seconds
 and temporary storage was 74.3 MB. Earlier download/decryption is excluded. This establishes
-one complete-file Spotify media-source candidate; production handoff, queue/gapless, route-loss
-and negotiated AirPlay mode remain untested.
+one complete-file Spotify media-source candidate; production handoff, queue/gapless, loss
+protection and negotiated AirPlay mode remain untested. The later bounded power-loss
+observation found silence without heard Mac fallback while the player clock advanced.
 
 Target **modern AirPlay 2 through Apple's current macOS 27 stack**, with "Küche HomePod" as
 the first test receiver. Prefer the newest behavior the native stack and receiver support.
@@ -712,14 +715,15 @@ backward seek while playing, not receiver seek accuracy, latency or every seek s
 Remote volume interactions, picker route-state accuracy, Now Playing/remote commands and
 background/sleep/relaunch behavior were not checked by this listening run.
 
-### Receiver loss and deselection observation (hardware pending)
+### Receiver loss and deselection observation (bounded hardware results)
 
-The next user-authorized disposable spike extends the actual-track experiment with two
+The user-authorized disposable spike extends the actual-track experiment with two
 separate **60-second passive observation windows**: intentionally choosing the Mac in the
 native picker, and physically disconnecting HomePod power while the song is playing. The
-user requested overnight work to remain silent; speaker and alert tests are deferred until
-the user explicitly resumes listening tests. The earlier successful real-song result is
-unchanged. No scheduled or automatic playback is authorized.
+user requested overnight work to remain silent on 2026-10-07, then explicitly resumed
+listening on 2026-10-08. No overnight hardware playback occurred. The earlier successful
+real-song result is unchanged; the new observations below do not re-test its unrelated-audio
+or active-seek claims. No scheduled or automatic playback is authorized.
 
 This build preserves the prior listening app as a separate local artifact and retains the
 same app identity/signing configuration. It adds no loss protection or automatic routing.
@@ -750,8 +754,43 @@ for an automatic AVPlayer response to loss.
 
 After listening, use the observed event order and audible outcome to design receiver-loss
 handling and bidirectional output handoff. No production protection is accepted until
-observability and timing can prevent unintended local audio. Hardware results for both
-cases remain pending; local silent lifecycle checks cannot supply them.
+the route behavior or a preventive mechanism can prevent unintended local audio; a reactive
+pause can arrive after fallback has begun. Local silent lifecycle checks do not supply
+that guarantee.
+
+On **2026-10-08**, one restarted fresh run completed both cases in this order on
+macOS **27.0.1 (26A434)**. A screenshot supplied after the tests reports HomePod software
+**27.0 (24J361)** and model code **MY5H2D/A**. Both Mac audio/alert defaults were **83**
+at baseline. The same complete 210.56-second Spotify CAF was used; the decoder/current
+renderer fingerprints match. The earlier mistaken attempt is excluded from these results.
+
+| Case | Recording | Listener result | Sampled player result |
+| --- | --- | --- | --- |
+| Intentional native-picker Mac selection | 60.17 s; 104 entries, including 97 output polls | Music returned to Mac; user described device switches as fast | Every sample ready/playing, rate 1; position 17.55 → 76.93 s; one delivered time-jump notification |
+| Physical HomePod power removal | 60.12 s; 86 entries, including 84 output polls | After unplugging, music stayed silent and never returned to Mac during the user's observation | Every sample ready/playing, rate 1; position 36.40 → 95.87 s; no recorded item notifications, waiting reason or error |
+
+All **181 watch output polls** and **23 ordinary full captures** retained both Mac default
+IDs against the fresh baseline. The defaults stayed local at those recorded times;
+the listener supplies audible-destination evidence. Both windows ended
+by timer expiry. The user manually paused afterward and captured **After choosing Mac: Mac**
+and **After HomePod loss: Silence**. Neither window reached the asset's natural end.
+
+The loss marker was recorded **10.68 s after recording began**, leaving approximately
+**49.45 s after the marker**, not 60 seconds after disconnection. The instruction placed
+the marker before unplugging; exact physical-loss time is unknown. The selection case has
+three later manual markers and one time-jump callback around picker presentation. These
+are insufficient to measure audible switching latency or make that callback a route signal.
+"Fast" is the user's qualitative report, with no quantified gap/overlap result. Polling may
+miss brief transitions. Reconnecting power afterward is not a controlled reconnect/resume
+test. Receiver network loss, takeover, sleep/wake, repeated trials and longer intervals
+remain untested. The raw final report and sanitized listening record stay local.
+
+**Design consequence:** player state/clock and generic item events did not identify this
+power-loss case. No automatic pause/hold was observed in the samples, and the experiment
+implemented none. Do not build loss detection solely from those fields or infer guaranteed
+no-fallback behavior from this single silent outcome. The AVPlayer candidate still needs
+supported audio-route observability or a preventive routing contract, explicit local-return
+intent, reconnect policy and hardware validation before accepting production isolation.
 
 ### Implementation notes and handoff
 
@@ -768,8 +807,10 @@ each playback, stream-gain and gapless requirement and quantify uncached end-to-
 Repeat initiation across multiple sessions, including without a HomePod restart. Give this candidate its own
 route-loss gate: loss must hold playback before local fallback becomes audible, with
 supported observability and recorded event order; reject the path if that cannot be ensured.
-First run a bounded loss/deselection probe to observe actual player behavior and notification
-ordering on this OS; no pause/fallback behavior is assumed from the successful listening run.
+The bounded loss/deselection pilot above is now complete for one power-loss and one
+intentional-selection case. It found no heard fallback, but also no sampled pause or
+notification detecting power loss. Supported audio-route observability and a preventive
+routing contract remain factual investigation; the pilot does not accept a protection design.
 The renderer UID/suggested-flush rules above apply to the HAL candidate, not the player.
 State whether AirPlay needs a separate output backend and what happens when returning to
 the existing macOS 27 renderer. No such backend change has been accepted or implemented.
@@ -800,9 +841,11 @@ both directions of handoff. Give backend exclusivity and audible gaps separate p
 Choose the complete-file/preparation strategy or investigate incremental delivery before
 queue/gapless design, with measured storage and startup budgets. Define ownership of normal
 player state, Spotify Connect, Now Playing, remote commands and interruptions across the switch.
-None of those product handoffs was exercised by the complete-file probe. Receiver loss
-and reconnection also remain untested. The gate preventing audible local fallback is an
-**untested product design requirement**, not an observed `AVPlayer` behavior on this OS.
+None of those product handoffs was exercised by the complete-file probe. One subsequent
+receiver power-loss observation stayed silent while the sampled player clock advanced.
+Other loss modes and controlled reconnection/resume remain untested. The gate preventing
+audible local fallback is an **unverified product design requirement**; the bounded result
+does not establish a platform guarantee or an implemented hold policy.
 The earlier standalone fixture probe omitted the keychain entitlement and used a different
 process model. The real-song experiment retained the ordinary app identity/entitlements, but
 its separately controlled AVPlayer still does not exercise a production backend handoff.
@@ -884,12 +927,15 @@ its separately controlled AVPlayer still does not exercise a production backend 
       uses a bundled fixture and skips account authentication; its 27 complete reports
       remain paused at position zero, muted and at zero volume. No route or Play request
       was made. This is not a receiver-loss hardware result.
-- [ ] User confirms HomePod playback, then deliberately selects Mac while recording; retain
-      audible destination, interruptions, notification ordering and sampled output defaults.
-- [ ] User confirms HomePod playback, then disconnects receiver power while recording;
+- [x] User confirms HomePod playback, then deliberately selects Mac while recording; retain
+      audible destination, notification ordering and sampled output defaults. One run
+      returned audio to Mac with switches described as fast; exact gaps/overlap unmeasured.
+- [x] User confirms HomePod playback, then disconnects receiver power while recording;
       retain whether music falls back to Mac, stops, stalls or behaves otherwise, including
-      changes during the window. Do not select Mac or restart the song during observation.
-- [ ] Copy/save separate completed/interrupted traces and listener observations before
+      changes during the window. User heard silence with no Mac return. All samples kept
+      playing/advancing without loss notifications; approximately 49.45 s followed the
+      pre-unplug marker. No manual destination change or restart was instructed during loss.
+- [x] Save separate completed traces and listener observations before
       another preparation/baseline resets the run. Do not treat a finite negative result as
       proof of product loss protection or a guaranteed early notification.
 
@@ -903,6 +949,8 @@ its separately controlled AVPlayer still does not exercise a production backend 
 - [ ] Küche HomePod is the first receiver tested. Record its software version and the outcome
       of the AirPlay evidence rule, including any deferred decision. A generic HAL AirPlay
       flag is not sufficient version evidence; an unresolved decision still blocks product work.
+      Receiver software is now reported as 27.0 (24J361), model code MY5H2D/A; negotiated
+      wire mode and the transport decision remain unresolved.
 - [ ] The implementation has no AirPlay 1/legacy RAOP compatibility fallback and retains
       the macOS 27 receiver API.
 - [ ] A protected or unavailable receiver fails with a useful error through supported APIs.
@@ -982,8 +1030,13 @@ cleanup fixed them; deterministic regression checks failed before and passed aft
 The stale-completion check exercises the completion guard and actual replacement-task
 cancellation/join, not full decoder scheduling. Focused re-review found no remaining Critical
 or Important issue. Decoder/current-renderer fingerprints remain unchanged. Passive watch
-expiry/stop does not pause or reroute playback. Both listening cases remain pending under
-the user's no-audio instruction; no overnight hardware test was performed.
+expiry/stop does not pause or reroute playback. No overnight hardware test was performed.
+The user explicitly resumed on 2026-10-08; both bounded listening cases above then completed.
+The author preserved and checked the final report emitted in the launch log: two expired windows,
+190 unique watch entries, 181 unchanged-default polls, 23 unchanged full captures, persisted
+Mac/Silence observations, no natural end and unchanged source fingerprints. The final manual
+capture was paused; the watch samples supply the earlier playing-state evidence. These are
+read-only hardware-report checks, not fresh build/unit-test runs or product handoff tests.
 
 ### Independent review
 
@@ -1069,3 +1122,10 @@ It accepted a bounded observational experiment and emphasized indirect routing e
 picker presentation versus selection, buffering/scheduling limits, natural completion,
 case/trial scope and listener evidence. Those qualifications are recorded above. It did not
 inspect or verify this build, local test results, document or physical receiver behavior.
+
+A further generic reasoning-only Claude review on 2026-10-08 received no project facts,
+code, hardware outcomes, measurements or identities. It distinguished a finite observation,
+notification observability, a tested hold policy and guaranteed absence of fallback. Its
+useful qualifications are included: the pre-action recording time does not count as
+post-loss coverage, a reactive pause can race with fallback, and reconnect/network loss
+are separate cases. It did not review the actual report, screenshot, source or final plan.
