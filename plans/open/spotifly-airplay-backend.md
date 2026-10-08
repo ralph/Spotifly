@@ -3,8 +3,9 @@
 Status: **Open**, 2026-10-08; proposed design in [PR #202](https://github.com/ralph/Spotifly/pull/202).
 The user requested this design and a Claude review. Product implementation has not started.
 The disposable one-song handoff prototype is built and silently verified; supervised handoff
-listening is blocked by the integrated native picker failing to open. A diagnostic build is
-ready for a paused presentation comparison. Receiver-loss
+listening is blocked by the integrated native picker failing to open. The user's comparison
+trace isolates click interception in the live Speakers screen; a separate Speakers panel
+is ready for a user presentation retry. Receiver-loss
 protection, production startup/storage budgets, queue/gapless and transport evidence remain open.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -477,6 +478,23 @@ Fresh verification passed: strict signed Release build, 17 controller checks, 11
 checks, 38 signed silent checks (including actual picker refresh/teardown and trace writing),
 and all 630 copied app unit tests, with no failures or skips. Renderer/decoder fingerprints
 still match production. Original picker presentation remains unverified; no bug fix is claimed.
+
+The user's copied comparison report then showed eight Speakers mouse-down events with
+`reachesPicker=false`, and two report-window opens with both mouse events reaching the
+native view and its presentation delegate firing. Both views used the same prepared player;
+it remained ready and locally owned, without a Connect transfer request or ownership change.
+The report entered native mode while playing, so it does not verify paused entry, acoustics
+or position carry. Its sampled Mac audio and alert defaults stayed unchanged.
+
+Silent static/dynamic List layouts, including the actual controls, received native hits;
+they did not reproduce the live interception. The exact intercepting view remains unknown.
+The next disposable candidate moves the same AirPlay controls into a separate panel above
+the Speakers List, following the working comparison's placement outside a list row. Click
+traces now include the hit view's class and local coordinates if the retry fails. The strict
+signed build, formatting and 40 silent checks pass, including dynamic panel hit handling and
+preservation of the paused zero-gain item; all 630 copied app unit tests pass with no failures
+or skips after retaining the original speaker hints. These checks do not prove the user's original
+presentation symptom is fixed; a live Speakers click remains the next gate.
 
 - [x] Add only the one-song experiment scope above. Keep ordinary production output behavior
   unchanged unless the experiment is explicitly enabled. Label incomplete loss protection.

@@ -16,7 +16,10 @@ in [the backend design](spotifly-airplay-backend.md). It is not an accepted or i
 product change; the release gates remain open. The disposable one-song handoff prototype
 now passes silent build, unit, controller and real adapter/integration checks, recorded in
 that design. Its supervised audible handoff tests are blocked by the integrated native
-picker failing to open; a diagnostic comparison build is ready, with the cause unresolved.
+picker failing to open. The user's comparison trace identifies click interception in the
+live Speakers screen while the same-player report picker opens. A separate Speakers panel
+passes silent checks and is ready for a live retry; the exact intercepting view and original
+symptom's resolution remain unverified.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
