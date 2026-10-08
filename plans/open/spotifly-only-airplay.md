@@ -13,7 +13,9 @@ after HomePod power loss with no heard local fallback. The sampled player clock 
 through the loss case; this supplies no production loss-protection guarantee.
 The proposed backend ownership, mode-entry/return UX and one-song handoff are now specified
 in [the backend design](spotifly-airplay-backend.md). It is not an accepted or implemented
-product change; the release gates remain open.
+product change; the release gates remain open. The disposable one-song handoff prototype
+now passes silent build, unit, controller and real adapter/integration checks, recorded in
+that design. Its supervised audible handoff tests are still pending.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,

@@ -2,7 +2,8 @@
 
 Status: **Open**, 2026-10-08; proposed design in [PR #202](https://github.com/ralph/Spotifly/pull/202).
 The user requested this design and a Claude review. Product implementation has not started.
-The next proposed implementation is a disposable, one-song handoff prototype. Receiver-loss
+The disposable one-song handoff prototype is built and silently verified; supervised handoff
+listening remains pending. Receiver-loss
 protection, production startup/storage budgets, queue/gapless and transport evidence remain open.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -32,7 +33,7 @@ output** switches back to the existing renderer. Preserve play/pause intent acro
 successful switch. Until a receiver is selected, the native player can play on its current
 route, including locally. Dismissing the picker, cancelling selection or selecting Mac in
 the picker does not switch backends. This two-step entry is a proposed UX choice, not an
-implemented or previously accepted product behavior.
+shipping product behavior. It is now implemented only in the disposable prototype.
 
 Do not claim that entering this mode means a HomePod is connected. Do not infer a route
 from a picker callback, discovery flag, player clock or readiness. The bounded power-loss
@@ -426,9 +427,41 @@ It supplied no new selected-audio-route API or protection guarantee. Its unverif
 comments and generic export-reader examples are not evidence about this application's
 decoder, assets or current SDK; source/header checks remain the author's responsibility.
 
-### Next disposable handoff prototype
+### Disposable handoff prototype, 2026-10-08
 
-- [ ] Add only the one-song experiment scope above. Keep ordinary production output behavior
+The user authorized building this experiment. It lives outside Git in the workspace sibling
+`spotify-handoff-airplay-experiment`, with a retained source archive of commit `6321396`,
+integration script, tests and `build/Spotifly Playback Handoff.app`. Production source remains
+unchanged. The prototype uses one pipeline-owned controller and the same facade/client,
+snapshots, normal controls and Connect owner. The native picker binds to its actual AVPlayer.
+Use AirPlay and Return to Mac are explicit; preparation preserves intent and current gain.
+The same song is held at native end; unsupported new-track commands are rejected before
+queue mutation. Entry is refused once local gapless continuation has begun; test earlier
+in the song. Crash-startup scavenging is deferred; live item/file cleanup is implemented.
+
+Silent author verification passed: 17 controller checks, 11 CAF converter checks, all 630
+copied app unit tests, and 33 signed adapter/pipeline/client smoke checks. The strict Swift 6
+Release build and signature verification passed; SwiftFormat 6.4 lint found no changes in
+the 13 source/test and 20 generated integration files. The decoder and macOS 27 renderer
+fingerprints match production. Native fixtures stayed paused at zero gain; renderer fixtures
+were muted and held. No music, alert, route selection or disconnection was initiated.
+
+A fresh local source reviewer found five Important issues, all reproduced then fixed with
+silent regressions: existing/suspended continuation and queued refill crossing ownership,
+stale AirPlay projection after stop/recovery, a refused return-preroll buffer releasing the
+song, an awaited old failure overwriting a new position, and preparation failure disabling
+normal Mac Resume. Tests passed after the fix pass; no second review or hardware result is
+claimed. A minor display issue remains: a native paused callback can label an end hold ready,
+while playback remains paused and native track changes stay blocked. Detailed local evidence
+and rulings are in the sibling's `results/validation.md`; raw reports/code are not in this PR.
+
+This adds no new audible or transport evidence. Receiver-loss protection, audible gap/tail,
+carried audible position, receiver gain, queue/gapless and release readiness remain open.
+Start the supervised session with a fresh Mac-default baseline, then a paused mid-song
+entry and explicit receiver selection, normal Play, and an explicit return. The app's
+Handoff experiment menu provides state markers and a saved/copyable listening report.
+
+- [x] Add only the one-song experiment scope above. Keep ordinary production output behavior
   unchanged unless the experiment is explicitly enabled. Label incomplete loss protection.
 - [ ] Test the transition controller with controllable backend fakes: one running owner;
   prepare/seek failure; Pause/Seek/Stop during preparation; superseded item/output requests;
