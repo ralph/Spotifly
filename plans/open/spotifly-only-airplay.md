@@ -11,6 +11,9 @@ backend remains a separate design decision. The passive observation build passed
 silent checks and two bounded listening cases: fast intentional return to Mac, and silence
 after HomePod power loss with no heard local fallback. The sampled player clock kept advancing
 through the loss case; this supplies no production loss-protection guarantee.
+The proposed backend ownership, mode-entry/return UX and one-song handoff are now specified
+in [the backend design](spotifly-airplay-backend.md). It is not an accepted or implemented
+product change; the release gates remain open.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -23,6 +26,11 @@ Updated: 2026-10-03, user identified "Küche HomePod" in Control Center as an Ai
 and prefers the latest AirPlay behavior; legacy support is not required.
 
 ## Summary
+
+**Current next step:** review [the dual-backend design](spotifly-airplay-backend.md), then
+build its disposable one-song handoff prototype if accepted. This file retains the
+feasibility evidence and conditional HAL reference. The new design defines the native-player
+path's own verification gates; it does not require the failed HAL approach to succeed.
 
 **The existing picker cannot directly route the existing renderer on macOS 27.**
 `AVRoutePickerView.player` accepts an `AVPlayer`. The installed SDK explicitly limits its
@@ -794,6 +802,13 @@ intent, reconnect policy and hardware validation before accepting production iso
 
 ### Implementation notes and handoff
 
+The current proposed handoff is specified in [the backend design](spotifly-airplay-backend.md).
+It retains the local renderer and the existing playback/Connect owners, with an explicit
+native-player mode and return action. Its entry preserves intent and can play on the native
+player's current route before the listener selects a receiver; picker dismissal never
+selects a backend. This UX choice is proposed for review. The remainder of this section
+records the investigation requirements that led to that design, not a second active design.
+
 The user authorized the disposable probes. The signed HAL inventory failed; the native
 picker/player fixture passed initiation and isolation, without supplying a renderer UID.
 The subsequent production-renderer experiment observed no implicit route inheritance.
@@ -940,6 +955,11 @@ its separately controlled AVPlayer still does not exercise a production backend 
       proof of product loss protection or a guaranteed early notification.
 
 ### Required before product implementation
+
+The HAL/renderer-specific items below apply only if that candidate is revived. The tested
+HAL path is stopped. For the native-player proposal, use the corresponding prototype and
+release gates in [the backend design](spotifly-airplay-backend.md), while preserving the
+isolation, renderer and modern-transport requirements recorded here.
 
 - [ ] The signed-app **HAL/receiver** hardware gate passes from an idle receiver, with no
       Control Center connection prerequisite, and its evidence is recorded above. The
