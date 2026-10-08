@@ -19,7 +19,10 @@ that design. The user's comparison trace identified click interception in the li
 screen while the same-player report picker opened. Moving the controls into a separate Speakers
 panel resolved the opening/selection symptom: the user confirmed that it opens and switches to
 HomePod, with the supplied screenshot showing Küche HomePod selected. The precise old
-intercepting view remains unknown. Integrated carried position, controls and return tests continue.
+intercepting view remains unknown. The user then reported working picker volume, ineffective
+bar volume and a seek returning audio to the Mac. The backend design records a silent
+regression and picker lifetime correction; hardware route retention and gain remain unverified.
+Integrated carried position and return tests continue.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,

@@ -4,8 +4,10 @@ Status: **Open**, 2026-10-08; proposed design in [PR #202](https://github.com/ra
 The user requested this design and a Claude review. Product implementation has not started.
 The disposable one-song handoff prototype is built and silently verified. Moving its AirPlay
 controls into a separate Speakers panel resolved the user's picker-opening symptom; the user
-confirmed switching to HomePod. Carried audible position, normal controls and return remain
-under supervised verification. Receiver-loss
+confirmed switching to HomePod. The user then reported that picker volume works, bar volume
+has no audible effect, and seeking returns audio to the Mac. A seek-picker lifetime correction
+passes a silent regression; receiver retention and the volume failure remain under supervised
+verification. Carried audible position and return remain unconfirmed. Receiver-loss
 protection, production startup/storage budgets, queue/gapless and transport evidence remain open.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -503,6 +505,32 @@ view in the old layout remains unidentified. Continued audible position, paused-
 normal controls, return to Mac, unrelated-sound isolation and heard overlap/gaps still need
 qualified observations in this integrated prototype. No full handoff or release verdict follows
 from opening the menu or its selection checkmark.
+
+The next supervised check failed two controls: the native picker's volume changed HomePod
+loudness, but the now-playing bar's volume had no audible effect, and seeking returned audio
+to the Mac. Keep these failures separate from the earlier standalone-player seek result.
+Source inspection found that a native seek publishes `switching`, which made both picker
+hosts disappear; their dismantling clears `AVRoutePickerView.player`. An actual signed,
+paused, zero-gain fixture reproduced that detachment: the new regression failed on retaining
+the bound Speakers picker through `switching`. Removing the transient-phase exclusion keeps
+the same native view/player/delegate through switching, waiting and ready; all 44 silent
+checks then pass. This establishes the UI lifetime defect and its correction, not that the
+HomePod route survives a real seek. A fresh listening retry is required.
+
+The bar's local gain path is present through facade, client, pipeline and controller to
+`NativePlayerOutput.setGain`, which assigns `AVPlayer.volume`; receiver loudness is not
+observable through that property. The old report is requested before diagnosing a missing
+command versus ineffective native gain. The next disposable build records bar-command target,
+accepted native gain/revision and seek item/position separately from listener observations.
+No volume fix, receiver-volume API, or successful integrated seek is claimed.
+
+The final control-diagnostics candidate passes a fresh strict Swift 6 Release build with
+Swift/C warnings as errors, Developer ID strict signature verification, all 44 signed silent
+checks and all 630 copied app unit tests (0 failed/skipped). Formatting is clean and the
+production renderer/decoder fingerprints still match. It is packaged separately as
+`../spotify-handoff-airplay-experiment/build/Spotifly Playback Handoff Controls.app`, keeping
+the current experiment available for the failed-run report. Audible playback and route
+selection remain manual. Production Git changes are documentation only.
 
 - [x] Add only the one-song experiment scope above. Keep ordinary production output behavior
   unchanged unless the experiment is explicitly enabled. Label incomplete loss protection.
