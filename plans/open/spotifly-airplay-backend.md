@@ -2,10 +2,10 @@
 
 Status: **Open**, 2026-10-08; proposed design in [PR #202](https://github.com/ralph/Spotifly/pull/202).
 The user requested this design and a Claude review. Product implementation has not started.
-The disposable one-song handoff prototype is built and silently verified; supervised handoff
-listening is blocked by the integrated native picker failing to open. The user's comparison
-trace isolates click interception in the live Speakers screen; a separate Speakers panel
-is ready for a user presentation retry. Receiver-loss
+The disposable one-song handoff prototype is built and silently verified. Moving its AirPlay
+controls into a separate Speakers panel resolved the user's picker-opening symptom; the user
+confirmed switching to HomePod. Carried audible position, normal controls and return remain
+under supervised verification. Receiver-loss
 protection, production startup/storage budgets, queue/gapless and transport evidence remain open.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -466,8 +466,8 @@ Handoff experiment menu provides state markers and a saved/copyable listening re
 The first supervised attempt did not complete destination selection: the user reported no
 response from the Speakers picker, then a briefly opened menu followed by loss of local
 Connect ownership. Repeating with only the handoff app running still did not open the picker.
-The cause is unresolved; this does not invalidate the earlier separate-player listening
-results or establish a failure of AVPlayer routing itself.
+At that stage the cause was unresolved; this does not invalidate the earlier separate-player
+listening results or establish a failure of AVPlayer routing itself.
 
 The disposable diagnostic revision records picker clicks/lifecycle/presentation callbacks
 and local Connect requests/ownership changes in a bounded local trace. A second native view
@@ -477,7 +477,7 @@ redraw loop was caught and corrected in silent validation before this build was 
 Fresh verification passed: strict signed Release build, 17 controller checks, 11 converter
 checks, 38 signed silent checks (including actual picker refresh/teardown and trace writing),
 and all 630 copied app unit tests, with no failures or skips. Renderer/decoder fingerprints
-still match production. Original picker presentation remains unverified; no bug fix is claimed.
+still match production. That diagnostic build did not itself resolve the picker symptom.
 
 The user's copied comparison report then showed eight Speakers mouse-down events with
 `reachesPicker=false`, and two report-window opens with both mouse events reaching the
@@ -488,13 +488,21 @@ or position carry. Its sampled Mac audio and alert defaults stayed unchanged.
 
 Silent static/dynamic List layouts, including the actual controls, received native hits;
 they did not reproduce the live interception. The exact intercepting view remains unknown.
-The next disposable candidate moves the same AirPlay controls into a separate panel above
+The disposable revision moves the same AirPlay controls into a separate panel above
 the Speakers List, following the working comparison's placement outside a list row. Click
 traces now include the hit view's class and local coordinates if the retry fails. The strict
 signed build, formatting and 40 silent checks pass, including dynamic panel hit handling and
 preservation of the paused zero-gain item; all 630 copied app unit tests pass with no failures
-or skips after retaining the original speaker hints. These checks do not prove the user's original
-presentation symptom is fixed; a live Speakers click remains the next gate.
+or skips after retaining the original speaker hints. Silent checks alone did not establish
+resolution of the live presentation symptom.
+
+The user then confirmed that the revised Speakers picker opens and switches to HomePod.
+The supplied screenshot shows that native menu open with Küche HomePod selected. This
+resolves the reported opening/selection symptom on the tested setup; the precise intercepting
+view in the old layout remains unidentified. Continued audible position, paused-entry intent,
+normal controls, return to Mac, unrelated-sound isolation and heard overlap/gaps still need
+qualified observations in this integrated prototype. No full handoff or release verdict follows
+from opening the menu or its selection checkmark.
 
 - [x] Add only the one-song experiment scope above. Keep ordinary production output behavior
   unchanged unless the experiment is explicitly enabled. Label incomplete loss protection.

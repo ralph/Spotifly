@@ -15,11 +15,11 @@ The proposed backend ownership, mode-entry/return UX and one-song handoff are no
 in [the backend design](spotifly-airplay-backend.md). It is not an accepted or implemented
 product change; the release gates remain open. The disposable one-song handoff prototype
 now passes silent build, unit, controller and real adapter/integration checks, recorded in
-that design. Its supervised audible handoff tests are blocked by the integrated native
-picker failing to open. The user's comparison trace identifies click interception in the
-live Speakers screen while the same-player report picker opens. A separate Speakers panel
-passes silent checks and is ready for a live retry; the exact intercepting view and original
-symptom's resolution remain unverified.
+that design. The user's comparison trace identified click interception in the live Speakers
+screen while the same-player report picker opened. Moving the controls into a separate Speakers
+panel resolved the opening/selection symptom: the user confirmed that it opens and switches to
+HomePod, with the supplied screenshot showing Küche HomePod selected. The precise old
+intercepting view remains unknown. Integrated carried position, controls and return tests continue.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
