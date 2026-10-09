@@ -1,14 +1,15 @@
 # Keep one Spotify player while switching between Mac output and AirPlay
 
-Status: **Open**, 2026-10-08; proposed design in [PR #202](https://github.com/ralph/Spotifly/pull/202).
+Status: **Open**, 2026-10-09; proposed design in [PR #202](https://github.com/ralph/Spotifly/pull/202).
 The user requested this design and a Claude review. Product implementation has not started.
 The disposable one-song handoff prototype is built and silently verified. Moving its AirPlay
 controls into a separate Speakers panel resolved the user's picker-opening symptom; the user
-confirmed switching to HomePod and subsequently confirmed ordinary pause/play. Picker volume
-works, but bar volume
-has no audible effect, and seeking returns audio to the Mac. A seek-picker lifetime correction
-passes a silent regression; receiver retention and the volume failure remain under supervised
-verification. Carried audible position and return remain unconfirmed. Receiver-loss
+confirmed switching to HomePod, ordinary pause/play and, after the picker lifetime correction,
+working seeking. Picker volume works, but bar volume still has no audible effect. A stale
+SwiftUI volume-slider focus mask is reproduced and corrected with an AppKit slider in the
+disposable prototype; its focus, keyboard and accessibility checks pass. The volume-command
+report and live visual retry remain pending. Carried audible position and return remain
+unconfirmed. Receiver-loss
 protection, production startup/storage budgets, queue/gapless and transport evidence remain open.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -535,6 +536,32 @@ production renderer/decoder fingerprints still match. It is packaged separately 
 `../spotify-handoff-airplay-experiment/build/Spotifly Playback Handoff Controls.app`, keeping
 the current experiment available for the failed-run report. Audible playback and route
 selection remain manual. Production Git changes are documentation only.
+
+### HomePod seek retry and volume-slider focus, 2026-10-09
+
+The user confirms that seeking now works in the corrected candidate. Record this as a
+supervised integrated seek success on HomePod after keeping the same picker/player bound
+through the transition. It does not measure receiver presentation position or qualify all
+handoff/return cases. The user still reports that only the native picker's volume changes
+loudness, and supplies a screenshot of a blue ring left at the bar slider's former position.
+
+A silent UI-only probe reproduces that ring's underlying defect on macOS 27: the SwiftUI
+thumb moves from 30% to 80%, while its public `NSView.focusRingMaskBounds` remains at the
+30% knob rectangle, even after `noteFocusRingMaskChanged()`. An activated app repeats the
+failure. The candidate replaces only the disposable bar's slider with a standard `NSSlider`
+representable, preserving its existing volume binding, green track, disabled state and
+localized accessibility label. The native focus mask follows the thumb; a real dispatched
+arrow key writes the binding, and the accessible slider cell and disabled state pass checks.
+No private framework method is called and no user setting is changed.
+
+The separate `../spotify-handoff-airplay-experiment/build/Spotifly Playback Handoff Slider.app`
+passes a strict Swift 6 Release build with Swift/C warnings as errors, strict Developer ID
+signature verification, all 44 signed silent handoff checks and all 630 copied app unit tests
+(0 failed/skipped). Source/generated formatting passes (0/15 and 0/23); renderer/decoder
+fingerprints still match production. The original and Controls apps are retained for the
+current report. The volume path is unchanged: request the new bar-command/native-gain trace
+before distinguishing missed commands from ineffective receiver gain. Live visual confirmation
+and a HomePod gain fix are not claimed. Production source remains unchanged.
 
 - [x] Add only the one-song experiment scope above. Keep ordinary production output behavior
   unchanged unless the experiment is explicitly enabled. Label incomplete loss protection.

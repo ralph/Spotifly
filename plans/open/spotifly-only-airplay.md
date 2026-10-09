@@ -1,6 +1,6 @@
 # AirPlay from Speakers without sending the Mac's other audio
 
-Status: **Open**, 2026-10-08; draft proposal. Native `AVPlayer` AirPlay initiation and
+Status: **Open**, 2026-10-09; draft proposal. Native `AVPlayer` AirPlay initiation and
 audible isolation passed with Küche HomePod after a receiver restart. The HAL candidate
 failed discovery, and the production renderer did not inherit the player's route in the
 two-tone test. Complete Float32 WAV and CAF fixtures passed HomePod playback/isolation
@@ -20,9 +20,11 @@ screen while the same-player report picker opened. Moving the controls into a se
 panel resolved the opening/selection symptom: the user confirmed that it opens and switches to
 HomePod, with the supplied screenshot showing Küche HomePod selected. The precise old
 intercepting view remains unknown. The user then reported working picker volume, ineffective
-bar volume and a seek returning audio to the Mac; ordinary pause/play worked. The backend
-design records a silent
-regression and picker lifetime correction; hardware route retention and gain remain unverified.
+bar volume and a seek returning audio to the Mac; ordinary pause/play worked. After the picker
+lifetime correction, the user confirms that seeking now works on HomePod. Bar volume remains
+ineffective, and the backend design records a reproduced stale SwiftUI slider focus mask,
+an AppKit-slider correction and passing UI/build/silent/unit checks. The new command trace
+and live visual retry remain pending; receiver gain is not qualified.
 Integrated carried position and return tests continue.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
@@ -37,8 +39,9 @@ and prefers the latest AirPlay behavior; legacy support is not required.
 
 ## Summary
 
-**Current next step:** review [the dual-backend design](spotifly-airplay-backend.md), then
-build its disposable one-song handoff prototype if accepted. This file retains the
+**Current next step:** continue the disposable one-song prototype's supervised volume and
+handoff/return checks, recorded in [the dual-backend design](spotifly-airplay-backend.md).
+This file retains the
 feasibility evidence and conditional HAL reference. The new design defines the native-player
 path's own verification gates; it does not require the failed HAL approach to succeed.
 
