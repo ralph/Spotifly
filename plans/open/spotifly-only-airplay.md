@@ -25,8 +25,9 @@ lifetime correction, the user confirms that seeking now works on HomePod. Bar vo
 ineffective, and the backend design records a reproduced stale SwiftUI slider focus mask,
 an AppKit-slider correction and passing UI/build/silent/unit checks. The new command trace
 confirms bar volume reaches AVPlayer during playback. A separate audio-mix candidate passes
-PCM attenuation/mute, 50 signed silent checks and all 630 app tests. HomePod gain and live
-visual retry remain pending; receiver gain is not qualified.
+offline PCM attenuation/mute, 50 signed silent checks and all 630 app tests, but the user
+reports no HomePod gain change with that build. The blue ring is confirmed gone; custom
+bar gain remains unresolved. The backend design records the failed retry and native-menu option.
 Integrated carried position and return tests continue.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,

@@ -9,8 +9,8 @@ working seeking. Picker volume works, but bar volume still has no audible effect
 SwiftUI volume-slider focus mask is reproduced and corrected with an AppKit slider in the
 disposable prototype; its focus, keyboard and accessibility checks pass. The new report
 confirms bar commands reach AVPlayer during playback. A separate audio-mix gain candidate
-passes PCM attenuation/mute and signed silent tests; HomePod gain and live visual retry
-remain pending. Carried audible position and return remain unconfirmed. Receiver-loss
+passes offline PCM attenuation/mute and signed silent tests, but its HomePod volume
+retry failed. The user confirms the blue-ring correction. Custom bar gain remains open. Carried audible position and return remain unconfirmed. Receiver-loss
 protection, production startup/storage budgets, queue/gapless and transport evidence remain open.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -595,7 +595,7 @@ both read back full-amplitude samples, and mute still contains audio. It then pa
 with quarter ratio 0.25, half ratio 0.5 and mute RMS 0.0, comparing every Float32
 sample and checking stale-volume rejection, item/position preservation and backward
 seek coverage. It reads the prepared item's mix through `AVAssetReaderAudioMixOutput`
-and never starts playback. This verifies sender-side processing, not remote loudness.
+and never starts playback. This verifies offline mix processing, not AVPlayer’s transmitted samples or remote loudness.
 
 The candidate at `../spotify-handoff-airplay-experiment/build/Spotifly Playback Handoff Volume.app`
 passes a strict Swift 6 Release build with Swift/C warnings as errors, strict
@@ -608,6 +608,39 @@ Local evidence: `results/volume-command-evidence.json`, `volume-pcm-red.txt`,
 Previous apps and test-result bundles are retained. Production Git remains documentation
 only. HomePod bar volume/mute, live slider appearance and carried position/return
 remain supervised checks; no receiver gain fix is claimed yet.
+
+### Audio-mix HomePod retry failed; slider appearance confirmed, 2026-10-09
+
+The user explicitly tested `Spotifly Playback Handoff Volume.app` and reports no
+volume change on HomePod. They also confirm that the stale blue ring is gone.
+Record the appearance correction as a live success and the audio-mix gain candidate
+as a live failure. Do not count the offline PCM tests as proof of transmitted gain:
+`AVAssetReaderAudioMixOutput` applies the item's mix to independently read samples;
+it does not observe the audio sent by AVPlayer to the selected receiver.
+
+Two gain mechanisms now lack an audible effect on this setup: AVPlayer volume and
+live item audio-mix updates. The earlier command report confirms delivery for the
+first mechanism; a fresh report of the audio-mix run has not been supplied. No
+universal claim that AirPlay ignores all mixes, or that the failure is definitely
+inside the framework, follows from these results. Ordinary pause/play, seeking and
+native-picker receiver volume remain the user's reported working controls.
+
+A primary [Apple developer forum report from January 2022](https://developer.apple.com/forums/thread/698988)
+describes the same macOS AVPlayer-volume symptom. An Apple media engineer replies
+by asking for an enhancement request. That corroborates a historical report,
+not a current API guarantee or a macOS 27 diagnosis. The macOS 27 public
+AVRoutePickerView surface binds an AVPlayer and exposes presentation callbacks;
+it offers no receiver-volume getter/setter. AVPlayer's external-playback flags
+are documented for video and cannot establish the selected audio receiver.
+The native picker is the receiver-volume interface that has worked in this trial.
+
+The next bounded UX option is a persistent native picker directly in the Now Playing
+bar during native-player mode, giving access to its working receiver slider without
+showing a misleading app-gain slider. It must keep the same player binding through
+seek phases and ordinary bar redraws, following the lifetime fix already tested in
+Speakers. The user's preference between that menu and continuing custom-slider
+research is pending. No additional speculative gain change or audible automation
+has run. The Volume bundle is retained; it is a failed gain candidate, not a fix.
 
 - [x] Add only the one-song experiment scope above. Keep ordinary production output behavior
   unchanged unless the experiment is explicitly enabled. Label incomplete loss protection.
