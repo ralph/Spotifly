@@ -7,9 +7,10 @@ controls into a separate Speakers panel resolved the user's picker-opening sympt
 confirmed switching to HomePod, ordinary pause/play and, after the picker lifetime correction,
 working seeking. Picker volume works, but bar volume still has no audible effect. A stale
 SwiftUI volume-slider focus mask is reproduced and corrected with an AppKit slider in the
-disposable prototype; its focus, keyboard and accessibility checks pass. The volume-command
-report and live visual retry remain pending. Carried audible position and return remain
-unconfirmed. Receiver-loss
+disposable prototype; its focus, keyboard and accessibility checks pass. The new report
+confirms bar commands reach AVPlayer during playback. A separate audio-mix gain candidate
+passes PCM attenuation/mute and signed silent tests; HomePod gain and live visual retry
+remain pending. Carried audible position and return remain unconfirmed. Receiver-loss
 protection, production startup/storage budgets, queue/gapless and transport evidence remain open.
 Components: `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
 `Spotifly/SwiftLibrespot/Public/LibrespotClient.swift`, `Spotifly/SpotifyPlayer.swift`,
@@ -562,6 +563,51 @@ fingerprints still match production. The original and Controls apps are retained
 current report. The volume path is unchanged: request the new bar-command/native-gain trace
 before distinguishing missed commands from ineffective receiver gain. Live visual confirmation
 and a HomePod gain fix are not claimed. Production source remains unchanged.
+
+### Bar gain trace and audio-mix candidate, 2026-10-09
+
+The supplied report (run `2858D592-3570-466A-A69C-4F73BA846538`) isolates the
+command path. At 4083.315 seconds the bar requests 40.44% for the local owner;
+21 ms later the native adapter accepts revision 8, setting `AVPlayer.volume` to
+0.016339628 at rate 1.0. Its previous accepted gain was 0.43580967. Revision 9
+repeats the command. The user reports no audible HomePod change despite that large
+gain reduction. Command delivery is confirmed; the receiver's handling of that
+property remains an inference. The report retains 11,546 entries beginning at
+1030.036 seconds, and system defaults vary earlier in that retained interval.
+It does not establish full-run audio isolation or receiver presentation position.
+
+The separate Volume candidate applies the same stream gain through
+`AVPlayerItem.audioMix`, using `AVMutableAudioMixInputParameters` for the prepared
+CAF's loaded audio tracks. A constant value at time zero covers forward and backward
+seeks. `AVPlayer.volume` stays at unity while an item is loaded, preventing double
+attenuation locally; the empty player stays at zero. Gain changes preserve the
+player, item, position and picker binding. Track loading checks cancellation and
+operation identity before item installation, and uses the latest accepted gain.
+Stop clears the tracks and removes the item before deleting its leased CAF.
+Native diagnostics now identify the audio-mix mechanism and track count separately
+from the player volume. Receiver loudness is still not observable to the app.
+Apple documents [the item audio mix](https://developer.apple.com/documentation/avfoundation/avplayeritem/audiomix)
+and [file-based mix gain](https://developer.apple.com/library/archive/qa/qa1716/_index.html);
+those APIs do not establish this candidate's HomePod behavior.
+
+A new paused, real-PCM regression fails before this change: quarter and half gain
+both read back full-amplitude samples, and mute still contains audio. It then passes
+with quarter ratio 0.25, half ratio 0.5 and mute RMS 0.0, comparing every Float32
+sample and checking stale-volume rejection, item/position preservation and backward
+seek coverage. It reads the prepared item's mix through `AVAssetReaderAudioMixOutput`
+and never starts playback. This verifies sender-side processing, not remote loudness.
+
+The candidate at `../spotify-handoff-airplay-experiment/build/Spotifly Playback Handoff Volume.app`
+passes a strict Swift 6 Release build with Swift/C warnings as errors, strict
+Developer ID signature verification, 50 signed silent checks with empty stderr,
+and all 630 copied app unit tests (0 failed/skipped). Formatting passes (0/16 source
+and test files, 0/24 generated files); renderer/decoder fingerprints match production.
+Local evidence: `results/volume-command-evidence.json`, `volume-pcm-red.txt`,
+`volume-pcm-green.txt`, `volume-build.txt`, `volume-package.txt`, `volume-smoke.txt`,
+`volume-smoke-stderr.txt` and `volume-unit-summary.json` in the disposable experiment.
+Previous apps and test-result bundles are retained. Production Git remains documentation
+only. HomePod bar volume/mute, live slider appearance and carried position/return
+remain supervised checks; no receiver gain fix is claimed yet.
 
 - [x] Add only the one-song experiment scope above. Keep ordinary production output behavior
   unchanged unless the experiment is explicitly enabled. Label incomplete loss protection.

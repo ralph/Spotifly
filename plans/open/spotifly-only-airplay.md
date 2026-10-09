@@ -24,7 +24,9 @@ bar volume and a seek returning audio to the Mac; ordinary pause/play worked. Af
 lifetime correction, the user confirms that seeking now works on HomePod. Bar volume remains
 ineffective, and the backend design records a reproduced stale SwiftUI slider focus mask,
 an AppKit-slider correction and passing UI/build/silent/unit checks. The new command trace
-and live visual retry remain pending; receiver gain is not qualified.
+confirms bar volume reaches AVPlayer during playback. A separate audio-mix candidate passes
+PCM attenuation/mute, 50 signed silent checks and all 630 app tests. HomePod gain and live
+visual retry remain pending; receiver gain is not qualified.
 Integrated carried position and return tests continue.
 Components: `Spotifly/Views/SpeakersView.swift`, `Spotifly/Views/AirPlayRoutePickerView.swift`,
 `Spotifly/AudioRenderer.swift`, `Spotifly/SwiftLibrespot/Audio/AudioPipeline.swift`,
