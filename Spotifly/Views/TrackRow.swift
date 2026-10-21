@@ -120,7 +120,7 @@ struct TrackRow: View {
             ZStack {
                 if isCurrentTrack {
                     Image(systemName: "waveform")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.tint)
                 } else if showTrackNumber, let trackNumber = track.trackNumber {
                     Text(verbatim: "\(trackNumber)")
                         .foregroundStyle(.secondary)
@@ -148,7 +148,7 @@ struct TrackRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.name)
                     .font(isCurrentTrack ? .subheadline.weight(.semibold) : .subheadline)
-                    .foregroundStyle(isCurrentTrack ? .green : .primary)
+                    .foregroundStyle(isCurrentTrack ? Color.accentColor : Color.primary)
                     .lineLimit(1)
 
                 Text(track.artistName)
@@ -206,7 +206,7 @@ struct TrackRow: View {
                 Label("action.more", systemImage: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
                     .labelStyle(.iconOnly)
                     .font(.caption)
-                    .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
+                    .foregroundStyle(showPlaylistAddedSuccess ? Color.accentColor : Color.secondary)
                     .frame(width: 20, height: 20)
                     .contentShape(Rectangle())
                     .animation(.easeInOut(duration: 0.2), value: showPlaylistAddedSuccess)
@@ -219,7 +219,7 @@ struct TrackRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(isCurrentTrack ? Color.green.opacity(0.1) : Color.clear)
+        .background(isCurrentTrack ? Color.accentColor.opacity(0.1) : Color.clear)
         .opacity(isPlayedTrack || isUnavailable ? 0.5 : 1.0)
         .help(ifAny: track.unplayableMessage)
         .contentShape(Rectangle())

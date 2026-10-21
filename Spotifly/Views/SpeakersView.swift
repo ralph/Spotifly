@@ -155,7 +155,7 @@ struct SpeakerRow: View {
             HStack(spacing: 12) {
                 Image(systemName: deviceService.deviceIcon(for: device.type))
                     .font(.title3)
-                    .foregroundStyle(device.isActive ? .green : .secondary)
+                    .foregroundStyle(device.isActive ? Color.accentColor : Color.secondary)
                     .frame(width: 30)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -174,7 +174,7 @@ struct SpeakerRow: View {
                                 .foregroundStyle(.secondary)
                             Text("speakers.active")
                                 .font(.caption)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.tint)
                         }
 
                         if let volume = device.volumePercent {
@@ -193,7 +193,7 @@ struct SpeakerRow: View {
 
                 if device.isActive {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.tint)
                 }
             }
             .padding(.vertical, 8)

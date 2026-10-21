@@ -205,7 +205,6 @@ struct PlaylistDetailView: View {
                 .padding(.vertical, 12)
         }
         .buttonStyle(.borderedProminent)
-        .tint(.green)
         .disabled(tracks.isEmpty)
     }
 

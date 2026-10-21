@@ -246,7 +246,7 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
                 Button(action: play) {
                     Image(systemName: "play.fill")
                         .font(.system(size: 12))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.tint)
                 }
                 .buttonStyle(.plain)
                 .disabled(playbackViewModel.isLoading)

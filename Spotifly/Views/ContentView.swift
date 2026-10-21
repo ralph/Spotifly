@@ -37,7 +37,7 @@ struct ContentView: View {
             Image(systemName: "music.note.list")
                 .imageScale(.large)
                 .font(.system(size: 60))
-                .foregroundStyle(.green)
+                .foregroundStyle(.tint)
 
             Text("app.name")
                 .font(.largeTitle)
@@ -73,7 +73,6 @@ struct ContentView: View {
                 .frame(minWidth: 200)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.green)
 
             if let error = viewModel.errorMessage {
                 Text(error)

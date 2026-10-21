@@ -178,7 +178,7 @@ struct QueueListView: View {
                         navigationCoordinator.navigate(to: route)
                     } label: {
                         Text("queue.context_name \(context.name)")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(.tint)
                     }
                     .buttonStyle(.plain)
                 } else {

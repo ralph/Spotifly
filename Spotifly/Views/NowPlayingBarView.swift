@@ -302,7 +302,7 @@ struct NowPlayingBarView: View {
         } label: {
             Image(systemName: "shuffle")
                 .font(.caption)
-                .foregroundStyle(playbackViewModel.isShuffleEnabled ? .green : .secondary)
+                .foregroundStyle(playbackViewModel.isShuffleEnabled ? Color.accentColor : Color.secondary)
         }
         .buttonStyle(.plain)
         .disabled(!hasPlayback || !playbackViewModel.canShuffle)
@@ -347,7 +347,6 @@ struct NowPlayingBarView: View {
                     in: 0 ... Double(max(durationMs, 1)),
                 )
                 .controlSize(.mini)
-                .tint(.green)
                 // Its value is milliseconds, which accessibility would read out as they are.
                 .accessibilityLabel("now_playing.position")
                 .accessibilityValue(Text("now_playing.position_value \(position) \(duration)"))
@@ -497,7 +496,6 @@ struct NowPlayingBarView: View {
                         ),
                         in: 0 ... 100,
                     )
-                    .tint(.green)
                     .frame(width: 120)
                     .disabled(volumeRefused)
                     .accessibilityLabel("volume.title")
@@ -557,7 +555,7 @@ struct NowPlayingBarView: View {
                 Label("action.more", systemImage: showPlaylistAddedSuccess ? "checkmark.circle.fill" : "ellipsis")
                     .labelStyle(.iconOnly)
                     .font(.body)
-                    .foregroundStyle(showPlaylistAddedSuccess ? .green : .secondary)
+                    .foregroundStyle(showPlaylistAddedSuccess ? Color.accentColor : Color.secondary)
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
                     .animation(.easeInOut(duration: 0.2), value: showPlaylistAddedSuccess)

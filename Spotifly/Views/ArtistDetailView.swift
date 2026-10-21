@@ -101,7 +101,7 @@ struct ArtistDetailView: View {
                                     }
                                 }
                                 .font(.subheadline)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.tint)
                             }
                         }
                         .padding(.horizontal)
