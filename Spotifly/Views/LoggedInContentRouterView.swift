@@ -13,6 +13,8 @@ struct LoggedInContentRouterView: View {
     @Environment(SearchService.self) private var searchService
 
     let onLogout: () -> Void
+    /// The toolbar field's text, which filters Favorites while it shows.
+    var favoritesFilter = ""
 
     /// The route's section's page, or a search's.
     ///
@@ -45,7 +47,7 @@ struct LoggedInContentRouterView: View {
                 .navigationTitle("nav.startpage")
 
         case .favorites:
-            FavoritesListView()
+            FavoritesListView(filter: favoritesFilter)
                 .navigationTitle("nav.favorites")
 
         case .playlists:

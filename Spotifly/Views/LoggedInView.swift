@@ -58,8 +58,22 @@ struct LoggedInView: View {
                 // Always-visible search field, attached to the NavigationSplitView
                 // itself — attaching it to an inner view inside the detail column
                 // does not surface the field in the window toolbar.
-                .searchable(text: $searchText, prompt: Text("search.prompt"))
-                .onSubmit(of: .search) { performSearch() }
+                // On Favorites the field filters the list, and Return searches nothing.
+                .searchable(text: $searchText, prompt: Text(isFilteringFavorites ? "favorites.filter_prompt" : "search.prompt"))
+                .onSubmit(of: .search) {
+                    if !isFilteringFavorites {
+                        performSearch()
+                    }
+                }
+                // A filter stays with Favorites: it starts empty there, and leaving puts back the
+                // search shown, if any.
+                .onChange(of: navigationCoordinator.selectedNavigationItem) { old, new in
+                    if new == .favorites {
+                        searchText = ""
+                    } else if old == .favorites {
+                        searchText = navigationCoordinator.displayedSearchQuery ?? ""
+                    }
+                }
                 .onChange(of: searchText) { _, newValue in handleSearchTextChange(newValue) }
                 // The field shows the search on screen, as Back and a recent search change it, and
                 // nothing on the search page before a search.
@@ -180,7 +194,7 @@ struct LoggedInView: View {
     /// The main content router with its content toolbar attached directly. Search is
     /// attached to the NavigationSplitView (see `body`), not here.
     private var contentRouter: some View {
-        LoggedInContentRouterView(onLogout: onLogout)
+        LoggedInContentRouterView(onLogout: onLogout, favoritesFilter: isFilteringFavorites ? searchText : "")
             .toolbar {
                 LoggedInContentToolbar(refreshAction: refreshAction(for: navigationCoordinator.selectedNavigationItem))
             }
@@ -204,6 +218,10 @@ struct LoggedInView: View {
             guard newWidth >= Self.sidebarMinWidth, Double(newWidth) != persistedSidebarWidth else { return }
             persistedSidebarWidth = Double(newWidth)
         }
+    }
+
+    private var isFilteringFavorites: Bool {
+        navigationCoordinator.selectedNavigationItem == .favorites
     }
 
     private func performSearch() {

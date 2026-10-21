@@ -20,6 +20,15 @@
 "search.no_results_description" = "Check the spelling or try another term.";
 "search.load_more" = "Load More";
 "search.prompt" = "Songs, Artists, Albums, Playlists";
+"favorites.filter_prompt" = "Search in Favorites";
+"detail.play" = "Play";
+"detail.shuffle" = "Shuffle";
+"detail.kind.playlist" = "Playlist";
+"table.number" = "#";
+"table.title" = "Title";
+"table.album" = "Album";
+"table.added" = "Date Added";
+"table.duration" = "Duration";
 "search.recent" = "Recent Searches";
 "search.recent_footer" = "Kept on this Mac only.";
 "search.remove_recent" = "Remove";

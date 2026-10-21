@@ -389,8 +389,7 @@ final class PlaybackViewModel {
         // to the account that just left, so building with it would put that account straight
         // back on Spotify Connect — and the lifecycle check inside `performInitialization`
         // would not catch it, because by then the bumped generation is the current one.
-        guard generationBeforeWaiting == lifecycleGeneration else { return }
-        guard force || !isInitialized else { return }
+        guard generationBeforeWaiting == lifecycleGeneration, force || !isInitialized else { return }
         // A run waited for that Spotify refused for want of Premium would be refused again;
         // Reconnect in Speakers, which forces, still tries.
         guard force || localPlayback != .needsPremium else { return }
@@ -543,6 +542,19 @@ final class PlaybackViewModel {
 
     func playTrack(trackId: String) async {
         await play(uriOrUrl: "spotify:track:\(trackId)")
+    }
+
+    /// Plays a context shuffled, as the pages' Zufällig buttons do: shuffle on, then the context
+    /// from a random one of `trackUris`. `PlaybackQueue.setContext` keeps shuffle across a new
+    /// context and shuffles around the starting row, so the two commands end the same in either
+    /// order, here and on another device.
+    func playShuffled(uriOrUrl: String, trackUris: [String]) async {
+        guard let index = trackUris.indices.randomElement() else { return }
+        await play(uriOrUrl: uriOrUrl, trackIndex: index, startingAtUri: trackUris[index])
+        // After the play, so the context that plays now is the one asked: one that refuses
+        // shuffle, as a radio does, refused it while it still played. Set, not toggled: the
+        // state shown may still be the old context's.
+        setShuffle(true)
     }
 
     func playTracks(_ trackUris: [String]) async {
@@ -979,7 +991,11 @@ final class PlaybackViewModel {
     }
 
     func toggleShuffle() {
-        let targetShuffle = !isShuffleEnabled
+        setShuffle(!isShuffleEnabled)
+    }
+
+    func setShuffle(_ enabled: Bool) {
+        let targetShuffle = enabled
 
         sendTransportCommand(
             "toggleShuffle()",
@@ -1089,8 +1105,7 @@ final class PlaybackViewModel {
         // Seek command
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             Task { @MainActor in
-                guard let self else { return }
-                guard let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
+                guard let self, let seekEvent = event as? MPChangePlaybackPositionCommandEvent else { return }
                 let positionMs = UInt32(seekEvent.positionTime * 1000)
                 debugLog("PlaybackViewModel", "Media command: seek to \(positionMs)ms")
                 self.seek(to: positionMs)

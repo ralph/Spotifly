@@ -20,6 +20,15 @@
 "search.no_results_description" = "Vérifiez l'orthographe ou essayez un autre terme.";
 "search.load_more" = "Charger plus";
 "search.prompt" = "Titres, artistes, albums, playlists";
+"favorites.filter_prompt" = "Rechercher dans les titres likés";
+"detail.play" = "Lecture";
+"detail.shuffle" = "Aléatoire";
+"detail.kind.playlist" = "Playlist";
+"table.number" = "#";
+"table.title" = "Titre";
+"table.album" = "Album";
+"table.added" = "Ajouté le";
+"table.duration" = "Durée";
 "search.recent" = "Recherches récentes";
 "search.recent_footer" = "Conservées sur ce Mac uniquement.";
 "search.remove_recent" = "Supprimer";

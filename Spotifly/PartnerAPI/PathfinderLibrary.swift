@@ -70,6 +70,10 @@ nonisolated struct PathfinderLibraryItem<Entity: Decodable & Sendable>: Decodabl
 /// `{ "isoString": "2026-08-13T07:12:40Z" }`, which is how this API spells every timestamp.
 nonisolated struct PathfinderTimestamp: Decodable, Sendable {
     let isoString: String?
+
+    var date: Date? {
+        isoString.flatMap { try? Date($0, strategy: .iso8601) }
+    }
 }
 
 // MARK: - Liked Songs

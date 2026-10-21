@@ -228,8 +228,8 @@ extension PathfinderPlaylistUnion {
 extension Track {
     /// One track of a playlist. Carries its own album, unlike an album's tracks.
     ///
-    /// The item's `addedAt` is deliberately not read: `Track` has never had a field for it, and
-    /// nothing renders one.
+    /// The item's `addedAt` is not the track's: it belongs to the list, and Favorites keeps it
+    /// beside the list (`addedAtByTrackId`).
     init?(pathfinderPlaylistTrack track: PathfinderPlaylistTrack) {
         guard let id = track.id, let uri = track.uri else { return nil }
 
@@ -258,6 +258,18 @@ extension PathfinderPlaylistUnion.Content {
     /// same tolerance every other list here has.
     var tracks: [Track] {
         (items ?? []).compactMap { $0.track.flatMap(Track.init(pathfinderPlaylistTrack:)) }
+    }
+
+    /// When each track was added, by its id, for the rows that say; Favorites' "Hinzugefügt".
+    var addedAtByTrackId: [String: Date] {
+        Dictionary(
+            (items ?? []).compactMap { item in
+                guard let id = item.track?.id, let date = item.addedAt?.date else { return nil }
+                return (id, date)
+            },
+            // Relinking can name a track twice; the earlier addition stands.
+            uniquingKeysWith: { min($0, $1) },
+        )
     }
 }
 

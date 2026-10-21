@@ -130,6 +130,9 @@ final class AppStore {
         userArtistIds.compactMap { artists[$0] }
     }
 
+    /// When each favorite was added, by track id, as Liked Songs lists it.
+    private(set) var favoriteAddedAt: [String: Date] = [:]
+
     /// User's favorite tracks in display order
     var favoriteTracks: [Track] {
         savedTrackIds.compactMap { tracks[$0] }
@@ -406,14 +409,18 @@ final class AppStore {
     /// A knock-on worth knowing: the list can be shorter than the `total` Spotify reports,
     /// because that counts saved entries and this counts tracks. Pagination is unaffected —
     /// offsets are Spotify's side of the conversation.
-    func setSavedTrackIds(_ ids: [String]) {
+    /// The first page of favorites, with when each was added where Liked Songs says.
+    func setSavedTrackIds(_ ids: [String], addedAt: [String: Date] = [:]) {
         savedTrackIds = ids.uniqued()
+        favoriteAddedAt = addedAt
     }
 
     /// Append saved track IDs for Favorites pagination. Deduplicated across the whole list
     /// rather than per page, so two pages can each name the same relinked recording.
-    func appendSavedTrackIds(_ ids: [String]) {
+    func appendSavedTrackIds(_ ids: [String], addedAt: [String: Date] = [:]) {
         savedTrackIds = (savedTrackIds + ids).uniqued()
+        // A track a later page names again keeps its earlier addition, as within a page.
+        favoriteAddedAt.merge(addedAt) { min($0, $1) }
     }
 
     // MARK: - Favorite Actions
@@ -424,6 +431,8 @@ final class AppStore {
         resolvedFavoriteTrackIds.insert(trackId)
         if !savedTrackIds.contains(trackId) {
             savedTrackIds.insert(trackId, at: 0)
+            // Added now, as Liked Songs will say when it is read again.
+            favoriteAddedAt[trackId] = Date()
         }
     }
 
@@ -432,6 +441,7 @@ final class AppStore {
         favoriteTrackIds.remove(trackId)
         resolvedFavoriteTrackIds.insert(trackId)
         savedTrackIds.removeAll { $0 == trackId }
+        favoriteAddedAt[trackId] = nil
     }
 
     /// Update favorite status for multiple tracks (from API check)
