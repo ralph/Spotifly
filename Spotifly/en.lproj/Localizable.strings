@@ -144,15 +144,24 @@
 "show_all.tracks" = "Show all %d tracks";
 
 /* Speakers */
-"speakers.title" = "Speakers";
-"speakers.active" = "Active";
+"speakers.type_active %@" = "%@ · Active";
+"device_type.this_mac" = "This Mac";
+"device_type.computer" = "Computer";
+"device_type.smartphone" = "Smartphone";
+"device_type.tablet" = "Tablet";
+"device_type.speaker" = "Speaker";
+"device_type.tv" = "TV";
+"device_type.avr" = "AV Receiver";
+"device_type.stb" = "Set-Top Box";
+"device_type.automobile" = "Car";
 "speakers.empty" = "No speakers found";
 "speakers.empty_hint" = "Open Spotify on another device to see it here";
 "speakers.audio_output" = "AirPlay";
+"speakers.output_device" = "Output Device";
 "speakers.spotify_connect" = "Spotify Connect";
-"speakers.airplay_hint" = "Stream audio from this Mac to AirPlay speakers";
+"speakers.airplay_hint" = "Chooses an AirPlay receiver for this Mac's output. Needs access to the local network.";
 "speakers.airplay_disabled_hint" = "AirPlay is only available when Spotifly is the active device";
-"speakers.spotify_connect_hint" = "Transfer playback to another Spotify device";
+"speakers.spotify_connect_hint" = "Shows every device connected to your account right now.";
 
 /* Volume */
 "volume.device_controls_itself %@" = "%@ controls its own volume";
@@ -227,15 +236,17 @@
 "playlist.unfollow.message %@" = "Are you sure you want to unfollow \"%@\"?";
 
 /* Connection Status */
-"connection.status" = "Connection Status";
-"connection.session" = "Session";
-"connection.uptime" = "Uptime";
+"connection.status" = "Status";
 "connection.reconnect_attempts" = "Reconnect Attempts";
 "connection.device_id" = "Device ID";
 "connection.reconnect" = "Reconnect";
 "connection.no_data" = "No Connection Data";
 "connection.connected" = "Connected";
 "connection.disconnected" = "Disconnected";
+"connection.connected_for %@" = "Connected for %@";
+"connection.details" = "Details";
+"connection.last_error" = "Last Error";
+"connection.reconnect_hint" = "Only needed when playback is stuck.";
 
 /* Speakers */
 "speakers.spotify_connection" = "Spotify Connection";

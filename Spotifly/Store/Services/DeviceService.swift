@@ -96,6 +96,22 @@ final class DeviceService {
 
     // MARK: - Helpers
 
+    /// What a device type is called, as the Connect list says it: "Computer", "Smartphone",
+    /// "Speaker", and the cluster's own word for a type with no name here.
+    func deviceTypeName(for type: String) -> String {
+        switch type.lowercased() {
+        case "computer": String(localized: "device_type.computer")
+        case "smartphone": String(localized: "device_type.smartphone")
+        case "tablet": String(localized: "device_type.tablet")
+        case "speaker": String(localized: "device_type.speaker")
+        case "tv": String(localized: "device_type.tv")
+        case "avr": String(localized: "device_type.avr")
+        case "stb": String(localized: "device_type.stb")
+        case "automobile": String(localized: "device_type.automobile")
+        default: type
+        }
+    }
+
     /// Get appropriate icon name for device type
     func deviceIcon(for type: String) -> String {
         switch type.lowercased() {

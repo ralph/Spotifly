@@ -88,6 +88,11 @@ final class PlayerModel {
         connection?.deviceId
     }
 
+    /// Whether this Mac is the active device.
+    var isPlayingHere: Bool {
+        activeDeviceId != nil && activeDeviceId == ownDeviceId
+    }
+
     /// Adopts a snapshot. Each part is written only when it changed, so what
     /// observes one part does not hear about another.
     func apply(_ snapshot: PlayerSnapshot) {

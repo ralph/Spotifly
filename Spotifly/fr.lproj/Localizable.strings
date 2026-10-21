@@ -144,15 +144,24 @@
 "show_all.tracks" = "Afficher les %d titres";
 
 /* Speakers */
-"speakers.title" = "Appareils";
-"speakers.active" = "Actif";
+"speakers.type_active %@" = "%@ · Actif";
+"device_type.this_mac" = "Ce Mac";
+"device_type.computer" = "Ordinateur";
+"device_type.smartphone" = "Smartphone";
+"device_type.tablet" = "Tablette";
+"device_type.speaker" = "Enceinte";
+"device_type.tv" = "Téléviseur";
+"device_type.avr" = "Ampli-tuner";
+"device_type.stb" = "Décodeur";
+"device_type.automobile" = "Voiture";
 "speakers.empty" = "Aucun appareil trouvé";
 "speakers.empty_hint" = "Ouvrez Spotify sur un autre appareil pour le voir ici";
 "speakers.audio_output" = "AirPlay";
+"speakers.output_device" = "Sortie audio";
 "speakers.spotify_connect" = "Spotify Connect";
-"speakers.airplay_hint" = "Diffusez l'audio de ce Mac vers des enceintes AirPlay";
+"speakers.airplay_hint" = "Choisit un récepteur AirPlay pour la sortie de ce Mac. Nécessite l'accès au réseau local.";
 "speakers.airplay_disabled_hint" = "AirPlay est uniquement disponible lorsque Spotifly est l'appareil actif";
-"speakers.spotify_connect_hint" = "Transférez la lecture vers un autre appareil Spotify";
+"speakers.spotify_connect_hint" = "Affiche tous les appareils connectés à votre compte en ce moment.";
 
 /* Volume */
 "volume.device_controls_itself %@" = "%@ règle son volume lui-même";
@@ -227,15 +236,17 @@
 "playlist.unfollow.message %@" = "Voulez-vous vraiment ne plus suivre \"%@\" ?";
 
 /* Connection Status */
-"connection.status" = "État de la connexion";
-"connection.session" = "Session";
-"connection.uptime" = "Temps de fonctionnement";
+"connection.status" = "État";
 "connection.reconnect_attempts" = "Tentatives de reconnexion";
 "connection.device_id" = "ID de l'appareil";
 "connection.reconnect" = "Se reconnecter";
 "connection.no_data" = "Aucune donnée de connexion";
 "connection.connected" = "Connecté";
 "connection.disconnected" = "Déconnecté";
+"connection.connected_for %@" = "Connecté depuis %@";
+"connection.details" = "Détails";
+"connection.last_error" = "Dernière erreur";
+"connection.reconnect_hint" = "Utile seulement si la lecture est bloquée.";
 
 /* Speakers */
 "speakers.spotify_connection" = "Connexion à Spotify";
