@@ -348,8 +348,7 @@ public actor LibrespotClient {
 
     private func runRecovery() async {
         defer { flags.withLock { $0.recovering = false } }
-        guard !shuttingDown else { return }
-        guard let session, let credentials = await session.currentCredentials, let httpCredentials else { return }
+        guard !shuttingDown, let session, let credentials = await session.currentCredentials, let httpCredentials else { return }
 
         // What to come back to, read before reconnecting: the new session's
         // first cluster can arrive while it is still being set up.
@@ -948,9 +947,9 @@ public actor LibrespotClient {
     /// new session builds, so a rebuilt session does not silently fall back
     /// to the defaults.
     ///
-    /// The bitrate lives in `SpotifyPlayer.Bitrate`, which owns both the
-    /// stored value and the names the user sees; this is the only place it is
-    /// turned into a quality the pipeline can select files by.
+    /// The bitrate lives in `SpotifyPlayer.Bitrate`, which owns the stored
+    /// value; this is the only place it is turned into a quality the pipeline
+    /// can select files by.
     public func applyPlaybackSettings() async {
         let quality: AudioPipeline.Quality = switch SpotifyPlayer.bitrate {
         case .low: .low

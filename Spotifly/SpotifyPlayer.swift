@@ -397,24 +397,21 @@ enum SpotifyPlayer {
 
     /// Streaming bitrate options
     enum Bitrate: UInt8, CaseIterable, Identifiable {
-        case low = 0 // 96 kbps
-        case normal = 1 // 160 kbps (default)
-        case high = 2 // 320 kbps
+        case low = 0
+        case normal = 1 // the default
+        case high = 2
 
         var id: UInt8 {
             rawValue
         }
 
-        var displayName: String {
+        /// The rate in kbit/s, which the settings name it by.
+        var kilobitsPerSecond: Int {
             switch self {
-            case .low: "Low (96 kbps)"
-            case .normal: "Normal (160 kbps)"
-            case .high: "High (320 kbps)"
+            case .low: 96
+            case .normal: 160
+            case .high: 320
             }
-        }
-
-        var isDefault: Bool {
-            self == .normal
         }
     }
 

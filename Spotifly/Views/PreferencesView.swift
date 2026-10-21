@@ -2,37 +2,50 @@
 //  PreferencesView.swift
 //  Spotifly
 //
-//  Preferences window with tabbed interface
+//  The settings window: General, Playback and Shortcuts, with the version at its foot
 //
 
 import SwiftUI
 
+/// The redesign's settings window (`plans/done/redesign-settings.md`): only what the app acts on.
+/// The handoff's offline cache, Dock and notification switches, volume levelling and Autoplay
+/// have nothing behind them here, so they are not offered.
 struct PreferencesView: View {
     var body: some View {
+        // Each tab its own height, so the window fits the tab shown, as a settings window does.
         TabView {
             Tab("preferences.general", systemImage: "gearshape") {
                 GeneralSettingsView()
+                    .settingsPage(height: 90)
             }
 
             Tab("preferences.playback", systemImage: "speaker.wave.3") {
                 PlaybackSettingsView()
+                    .settingsPage(height: 170)
             }
 
-            // No start-page tab. It configured which of three fixed sections to show and over
-            // what time range, and the page no longer has fixed sections: Spotify decides what
-            // is on it. Toggling a shelf Spotify may not send next time is not a setting.
-
-            Tab("preferences.info", systemImage: "info.circle") {
-                InfoView()
+            Tab("preferences.shortcuts", systemImage: "command") {
+                ShortcutsSettingsView()
+                    .settingsPage(height: 420)
             }
         }
-        .frame(width: 450)
     }
 }
 
-// MARK: - General Settings Tab
+private extension View {
+    /// A tab of the window: 600 pt wide, the height given, and the version at its foot.
+    func settingsPage(height: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            frame(height: height)
+            VersionFooter()
+        }
+        .frame(width: 600)
+    }
+}
 
-struct GeneralSettingsView: View {
+// MARK: - General
+
+private struct GeneralSettingsView: View {
     @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
 
     var body: some View {
@@ -48,14 +61,16 @@ struct GeneralSettingsView: View {
                     Text(mode.titleKey).tag(mode)
                 }
             }
+            .pickerStyle(.segmented)
         }
         .formStyle(.grouped)
+        .scrollDisabled(true)
     }
 }
 
-// MARK: - Playback Settings Tab
+// MARK: - Playback
 
-struct PlaybackSettingsView: View {
+private struct PlaybackSettingsView: View {
     @AppStorage("streamingBitrate") private var bitrateRawValue: Int = 1
     @AppStorage("gaplessPlayback") private var gaplessEnabled: Bool = true
 
@@ -65,83 +80,67 @@ struct PlaybackSettingsView: View {
 
     var body: some View {
         Form {
-            Picker("preferences.streaming_quality", selection: Binding(
-                get: { selectedBitrate },
-                set: { newValue in
-                    bitrateRawValue = Int(newValue.rawValue)
-                    SpotifyPlayer.setBitrate(newValue)
-                },
-            )) {
-                ForEach(SpotifyPlayer.Bitrate.allCases) { bitrate in
-                    Text(bitrate.isDefault ? "\(bitrate.displayName) (\(String(localized: "preferences.default")))" : bitrate.displayName)
-                        .tag(bitrate)
+            Section {
+                Picker("preferences.streaming_quality", selection: Binding(
+                    get: { selectedBitrate },
+                    // The player stores it, and the storage tells this view.
+                    set: { SpotifyPlayer.setBitrate($0) },
+                )) {
+                    ForEach(SpotifyPlayer.Bitrate.allCases) { bitrate in
+                        Text(verbatim: "\(bitrate.kilobitsPerSecond) kbit/s")
+                            .tag(bitrate)
+                    }
                 }
+
+                Toggle("preferences.gapless_playback", isOn: Binding(
+                    get: { gaplessEnabled },
+                    set: { SpotifyPlayer.setGapless($0) },
+                ))
+            } footer: {
+                Text("preferences.restart_note")
             }
-
-            Toggle("preferences.gapless_playback", isOn: Binding(
-                get: { gaplessEnabled },
-                set: { newValue in
-                    gaplessEnabled = newValue
-                    SpotifyPlayer.setGapless(newValue)
-                },
-            ))
-
-            Text("preferences.restart_note")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
-        .onAppear {
-            // Sync UI with actual player settings
-            SpotifyPlayer.setBitrate(selectedBitrate)
-            SpotifyPlayer.setGapless(gaplessEnabled)
-        }
+        .scrollDisabled(true)
     }
 }
 
-// MARK: - Info Tab
+// MARK: - Shortcuts
 
-struct InfoView: View {
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+/// The app's shortcuts, read-only, from the table the menus bind (`AppShortcut`).
+private struct ShortcutsSettingsView: View {
+    var body: some View {
+        Form {
+            ForEach(AppShortcut.allCases, id: \.self) { shortcut in
+                LabeledContent(shortcut.title) {
+                    Text(verbatim: shortcut.glyphs)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
     }
+}
 
-    private var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-    }
+// MARK: - Footer
 
-    private var copyrightYear: String {
-        let year = Calendar.current.component(.year, from: Date())
-        return String(year)
+/// The version and where the source lives, under every tab.
+private struct VersionFooter: View {
+    private var version: String {
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "\(DeviceInfo.appVersion) (\(build))"
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .frame(width: 64, height: 64)
-
-            Text("app.name")
-                .font(.title2.weight(.semibold))
-
-            Text("preferences.version \(appVersion) (\(buildNumber))")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            Text("preferences.copyright \(copyrightYear)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
+        HStack(spacing: 6) {
+            Text(verbatim: "\(String(localized: "app.name")) \(version)")
+            Text("metadata.separator")
             Link(destination: URL(string: "https://github.com/ralph/Spotifly")!) {
-                HStack(spacing: 4) {
-                    Image(systemName: "link")
-                    Text(verbatim: "github.com/ralph/Spotifly")
-                }
-                .font(.callout)
+                Text(verbatim: "github.com/ralph/Spotifly")
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 12)
-        .padding(.bottom, 24)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 10)
     }
 }

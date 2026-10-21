@@ -231,13 +231,12 @@
 "preferences.appearance.light" = "Hell";
 "preferences.appearance.dark" = "Dunkel";
 "preferences.playback" = "Wiedergabe";
-"preferences.info" = "Info";
+"preferences.shortcuts" = "Kurzbefehle";
+"preferences.shortcut.sidebar" = "Seitenleiste ein-/ausblenden";
+"preferences.shortcut.space" = "Leertaste";
 "preferences.streaming_quality" = "Streaming-Qualität";
 "preferences.gapless_playback" = "Lückenlose Wiedergabe";
-"preferences.default" = "Standard";
 "preferences.restart_note" = "Änderungen werden bei Neustart der Wiedergabe wirksam.";
-"preferences.version %@ (%@)" = "Version %@ (%@)";
-"preferences.copyright %@" = "© %@ Ralph von der Heyden";
 
 /* Album Context Menu & Alerts */
 "album.remove.title" = "Aus Bibliothek entfernen";

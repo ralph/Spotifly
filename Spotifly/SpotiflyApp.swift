@@ -161,11 +161,11 @@ struct SpotiflyCommands: Commands {
                 get: { windowState.isMiniPlayerMode },
                 set: { _ in windowState.toggleMiniPlayerMode() },
             ))
-            .keyboardShortcut("m", modifiers: [.command, .option])
+            .keyboardShortcut(AppShortcut.miniPlayer)
             .disabled(navigationCoordinator == nil && !windowState.isMiniPlayerMode)
 
             Toggle("inspector.title", isOn: Bindable(windowState).isInspectorPresented)
-                .keyboardShortcut("i", modifiers: [.command, .option])
+                .keyboardShortcut(AppShortcut.inspector)
                 .disabled(navigationCoordinator == nil || windowState.isMiniPlayerMode)
         }
 
@@ -178,17 +178,17 @@ struct SpotiflyCommands: Commands {
                     playbackViewModel.resume()
                 }
             }
-            .keyboardShortcut(" ", modifiers: [])
+            .keyboardShortcut(AppShortcut.playPause)
 
             Button("menu.next_track") {
                 playbackViewModel.next()
             }
-            .keyboardShortcut(.rightArrow, modifiers: .command)
+            .keyboardShortcut(AppShortcut.nextTrack)
 
             Button("menu.previous_track") {
                 playbackViewModel.previous()
             }
-            .keyboardShortcut(.leftArrow, modifiers: .command)
+            .keyboardShortcut(AppShortcut.previousTrack)
 
             Divider()
 
@@ -201,7 +201,7 @@ struct SpotiflyCommands: Commands {
                     await playbackViewModel.toggleCurrentTrackFavorite()
                 }
             }
-            .keyboardShortcut("l", modifiers: .command)
+            .keyboardShortcut(AppShortcut.likeTrack)
         }
 
         // Navigation menu
@@ -213,25 +213,25 @@ struct SpotiflyCommands: Commands {
             Button("menu.favorites") {
                 navigationCoordinator?.selectNavigationItem(.favorites)
             }
-            .keyboardShortcut("1", modifiers: .command)
+            .keyboardShortcut(AppShortcut.favorites)
             .disabled(navigationCoordinator == nil)
 
             Button("menu.playlists") {
                 navigationCoordinator?.selectNavigationItem(.playlists)
             }
-            .keyboardShortcut("2", modifiers: .command)
+            .keyboardShortcut(AppShortcut.playlists)
             .disabled(navigationCoordinator == nil)
 
             Button("menu.albums") {
                 navigationCoordinator?.selectNavigationItem(.albums)
             }
-            .keyboardShortcut("3", modifiers: .command)
+            .keyboardShortcut(AppShortcut.albums)
             .disabled(navigationCoordinator == nil)
 
             Button("menu.artists") {
                 navigationCoordinator?.selectNavigationItem(.artists)
             }
-            .keyboardShortcut("4", modifiers: .command)
+            .keyboardShortcut(AppShortcut.artists)
             .disabled(navigationCoordinator == nil)
 
             Divider()
@@ -239,7 +239,7 @@ struct SpotiflyCommands: Commands {
             Button("menu.search") {
                 focusToolbarSearchField()
             }
-            .keyboardShortcut("f", modifiers: .command)
+            .keyboardShortcut(AppShortcut.search)
 
             Button("menu.refresh") {
                 guard let homeService else { return }
@@ -247,7 +247,7 @@ struct SpotiflyCommands: Commands {
                     await homeService.refresh()
                 }
             }
-            .keyboardShortcut("r", modifiers: .command)
+            .keyboardShortcut(AppShortcut.refresh)
             // Greyed where there is nothing to act on, as at the login screen or with Settings
             // key, rather than enabled and doing nothing.
             .disabled(homeService == nil)
@@ -286,13 +286,13 @@ private struct VolumeMenuItems: View {
         Button("menu.volume_up") {
             playbackViewModel.stepVolume(by: 0.1)
         }
-        .keyboardShortcut(.upArrow, modifiers: .command)
+        .keyboardShortcut(AppShortcut.volumeUp)
         .disabled(playbackViewModel.sliderRefused)
 
         Button("menu.volume_down") {
             playbackViewModel.stepVolume(by: -0.1)
         }
-        .keyboardShortcut(.downArrow, modifiers: .command)
+        .keyboardShortcut(AppShortcut.volumeDown)
         .disabled(playbackViewModel.sliderRefused)
     }
 }
@@ -309,13 +309,13 @@ private struct NavigationHistoryMenuItems: View {
         Button("nav.back") {
             coordinator?.navigateBackward()
         }
-        .keyboardShortcut("[", modifiers: .command)
+        .keyboardShortcut(AppShortcut.back)
         .disabled(coordinator?.canNavigateBackward != true)
 
         Button("nav.forward") {
             coordinator?.navigateForward()
         }
-        .keyboardShortcut("]", modifiers: .command)
+        .keyboardShortcut(AppShortcut.forward)
         .disabled(coordinator?.canNavigateForward != true)
     }
 }

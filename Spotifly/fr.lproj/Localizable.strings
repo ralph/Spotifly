@@ -231,13 +231,12 @@
 "preferences.appearance.light" = "Clair";
 "preferences.appearance.dark" = "Sombre";
 "preferences.playback" = "Lecture";
-"preferences.info" = "Infos";
+"preferences.shortcuts" = "Raccourcis";
+"preferences.shortcut.sidebar" = "Afficher/masquer la barre latérale";
+"preferences.shortcut.space" = "Espace";
 "preferences.streaming_quality" = "Qualité audio";
 "preferences.gapless_playback" = "Lecture en continu";
-"preferences.default" = "Par défaut";
 "preferences.restart_note" = "Les modifications prennent effet au redémarrage de la lecture.";
-"preferences.version %@ (%@)" = "Version %@ (%@)";
-"preferences.copyright %@" = "© %@ Ralph von der Heyden";
 
 /* Album Context Menu & Alerts */
 "album.remove.title" = "Retirer de la Bibliothèque";
