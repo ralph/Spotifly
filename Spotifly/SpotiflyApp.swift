@@ -103,6 +103,8 @@ struct SpotiflyApp: App {
         }
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
         .commands {
+            // "Show/Hide Sidebar", ⌃⌘S, in the View menu.
+            SidebarCommands()
             SpotiflyCommands(sessions: auth?.sessions, windowState: windowState)
         }
 
@@ -190,6 +192,10 @@ struct SpotiflyCommands: Commands {
 
             Divider()
 
+            VolumeMenuItems(playbackViewModel: playbackViewModel)
+
+            Divider()
+
             Button("menu.like_track") {
                 Task {
                     await playbackViewModel.toggleCurrentTrackFavorite()
@@ -267,6 +273,27 @@ struct SpotiflyCommands: Commands {
                 }
             }
         #endif
+    }
+}
+
+/// ⌘↑ and ⌘↓, ten points of the volume the bar's slider moves, greyed as the slider is while the
+/// device playing controls its own. A view of its own, for the reason the history items below
+/// are: so it follows the device as it changes.
+private struct VolumeMenuItems: View {
+    let playbackViewModel: PlaybackViewModel
+
+    var body: some View {
+        Button("menu.volume_up") {
+            playbackViewModel.stepVolume(by: 0.1)
+        }
+        .keyboardShortcut(.upArrow, modifiers: .command)
+        .disabled(playbackViewModel.sliderRefused)
+
+        Button("menu.volume_down") {
+            playbackViewModel.stepVolume(by: -0.1)
+        }
+        .keyboardShortcut(.downArrow, modifiers: .command)
+        .disabled(playbackViewModel.sliderRefused)
     }
 }
 

@@ -181,6 +181,14 @@ final class PlaybackViewModel {
         remoteVolumeSubject.send(newVolume)
     }
 
+    /// Moves what the slider shows by `delta`, held to 0–1, as ⌘↑ and ⌘↓ do. A step at either
+    /// end sends nothing.
+    func stepVolume(by delta: Double) {
+        let stepped = min(1, max(0, sliderVolume + delta))
+        guard stepped != sliderVolume else { return }
+        setVolumeFromSlider(stepped)
+    }
+
     /// A drag of another device's volume, which the slider shows ahead of the device's report.
     private struct DraggedVolume {
         let deviceId: String

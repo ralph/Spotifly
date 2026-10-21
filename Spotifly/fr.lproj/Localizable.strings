@@ -213,6 +213,8 @@
 "menu.play_pause" = "Lecture/Pause";
 "menu.next_track" = "Titre suivant";
 "menu.previous_track" = "Titre précédent";
+"menu.volume_up" = "Augmenter le volume";
+"menu.volume_down" = "Baisser le volume";
 "menu.like_track" = "Liker/Ne plus liker le titre";
 "menu.navigate" = "Navigation";
 "menu.favorites" = "Titres likés";

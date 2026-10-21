@@ -213,6 +213,8 @@
 "menu.play_pause" = "Play / Pause";
 "menu.next_track" = "Next Track";
 "menu.previous_track" = "Previous Track";
+"menu.volume_up" = "Volume Up";
+"menu.volume_down" = "Volume Down";
 "menu.like_track" = "Like / Unlike Track";
 "menu.navigate" = "Navigate";
 "menu.favorites" = "Favorites";
