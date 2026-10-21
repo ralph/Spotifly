@@ -1554,6 +1554,7 @@ public actor LibrespotClient {
             // The web player playing a station names it, and greys its own Shuffle, and
             // librespot does while it plays autoplay (2026-10-02).
             canShuffle: remote.restrictions.allowsShuffle,
+            canRepeat: remote.restrictions.allows(.context),
         )
         let queue = Self.mirroredQueue(of: remote)
         mirroredRemote = remote
@@ -1743,7 +1744,7 @@ public actor LibrespotClient {
         // Into the queue as sent, where the context playing now does not refuse them: the one
         // taken over turns off what it does not allow.
         playbackQueue.setShuffle(state.shuffle)
-        playbackQueue.setRepeat(state.repeatTrack ? .track : (state.repeatContext ? .context : .off))
+        playbackQueue.setRepeat(.init(context: state.repeatContext, track: state.repeatTrack))
         // Before loading, so the first report and the next-track fetch already
         // see the other device's queue, and none left over from before.
         playbackQueue.replaceUserQueue(with: state.queuedTrackUris)
@@ -1906,12 +1907,12 @@ public actor LibrespotClient {
             await setRepeat(repeatMode)
 
         case let .setOptions(shuffle, repeatContext, repeatTrack):
-            // librespot applies each flag that is present. Repeat-one wins over
-            // repeat-context, as clients send both on for it.
+            // librespot applies each flag that is present.
             if repeatContext != nil || repeatTrack != nil {
-                let track = repeatTrack ?? (playbackQueue.repeatMode == .track)
-                let context = repeatContext ?? (playbackQueue.repeatMode == .context)
-                await setRepeat(track ? .track : (context ? .context : .off))
+                await setRepeat(.init(
+                    context: repeatContext ?? (playbackQueue.repeatMode == .context),
+                    track: repeatTrack ?? (playbackQueue.repeatMode == .track),
+                ))
             }
             if let shuffle {
                 await setShuffle(shuffle)
@@ -1971,6 +1972,7 @@ public actor LibrespotClient {
             repeatContext: playbackQueue.repeatMode == .context,
             timestampMs: Int64(Date().timeIntervalSince1970 * 1000),
             canShuffle: playbackQueue.restrictions.allowsShuffle,
+            canRepeat: playbackQueue.restrictions.allows(.context),
         )
         let arrived = localState == nil
         localState = state

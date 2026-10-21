@@ -58,16 +58,20 @@
 "playback.play_tracks" = "Écouter les titres";
 
 /* Mini Player */
-"mini_player.enter" = "Ouvrir le lecteur réduit";
 "mini_player.restore" = "Restaurer la fenêtre complète";
+"mini_player.menu" = "Mini-lecteur";
 
 /* Now Playing Bar */
-"now_playing.cover_menu" = "Aller à l'artiste, à l'album ou à la file d'attente";
 "now_playing.position" = "Position";
 "now_playing.position_value %@ %@" = "%1$@ sur %2$@";
+"now_playing.playing_on" = "Lecture sur…";
 "shuffle.enable" = "Activer la lecture aléatoire";
 "shuffle.disable" = "Désactiver la lecture aléatoire";
 "shuffle.unavailable" = "La lecture aléatoire n'est pas disponible pour ce qui est en cours, comme une radio";
+"repeat.off" = "Répéter";
+"repeat.context" = "Répéter : tout";
+"repeat.track" = "Répéter : ce titre";
+"repeat.unavailable" = "La répétition n'est pas disponible pour ce qui est en cours de lecture, comme une radio";
 
 /* Loading States */
 "loading.favorites" = "Chargement des titres likés...";
@@ -112,7 +116,6 @@
 
 /* Queue */
 "queue.title" = "File d'attente";
-"queue.open" = "Ouvrir la file d'attente";
 "queue.playing_from" = "Lecture depuis";
 "queue.on_device" = "sur";
 "queue.context_name %@" = "« %@ »";

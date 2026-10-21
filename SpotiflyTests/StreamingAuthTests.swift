@@ -167,6 +167,28 @@ struct ConnectCommandTests {
         #expect(try encoded(.shuffle(false)).contains("\"value\":false"))
     }
 
+    /// The web player's repeat button, clicked through all, one and off while Spotifly played,
+    /// captured from open.spotify.com's `fetch` in Chrome on 2026-10-21. `command_id` differs on
+    /// every command, so it is the one field not compared.
+    @Test func `repeat is the set_options the web player sends`() throws {
+        let captured: [(PlaybackQueue.RepeatMode, String)] = [
+            (.context, #"{"command":{"repeating_context":true,"repeating_track":false,"endpoint":"set_options","logging_params":{"command_id":"1e5a3a8d7125dc36fc44c46611bcda48"}}}"#),
+            (.track, #"{"command":{"repeating_context":true,"repeating_track":true,"endpoint":"set_options","logging_params":{"command_id":"68d7566f74aa7b1ffd1577f5b7dda49d"}}}"#),
+            (.off, #"{"command":{"repeating_context":false,"repeating_track":false,"endpoint":"set_options","logging_params":{"command_id":"6a41c4e077fd7e35786faec188979e1b"}}}"#),
+        ]
+        for (mode, body) in captured {
+            let envelope = try #require(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+            let expected = try #require(envelope["command"] as? [String: Any])
+
+            let command = try fields(.repeatMode(mode))
+
+            #expect(Set(command.keys) == Set(expected.keys))
+            #expect(command["endpoint"] as? String == "set_options")
+            #expect(command["repeating_context"] as? Bool == expected["repeating_context"] as? Bool)
+            #expect(command["repeating_track"] as? Bool == expected["repeating_track"] as? Bool)
+        }
+    }
+
     /// The web player's own request, captured from open.spotify.com's network tab on
     /// 2026-09-27 (Firefox) while queueing a track on another device. `command_id` is a fresh
     /// correlation id on every command, so it is the one field not compared.

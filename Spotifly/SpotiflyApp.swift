@@ -103,7 +103,7 @@ struct SpotiflyApp: App {
         }
         .windowResizability(windowState.isMiniPlayerMode ? .contentSize : .automatic)
         .commands {
-            SpotiflyCommands(sessions: auth?.sessions)
+            SpotiflyCommands(sessions: auth?.sessions, windowState: windowState)
         }
 
         Settings {
@@ -141,6 +141,7 @@ struct SpotiflyApp: App {
 struct SpotiflyCommands: Commands {
     /// Nil in the unit-test host.
     let sessions: LoggedInSessions?
+    let windowState: WindowState
     @FocusedValue(\.navigationCoordinator) var navigationCoordinator
     @FocusedValue(\.homeService) var homeService
 
@@ -151,6 +152,16 @@ struct SpotiflyCommands: Commands {
     var body: some Commands {
         // Replace default New Window command
         CommandGroup(replacing: .newItem) {}
+
+        // The View menu, as in Music. Only a signed-in window has a player to shrink to.
+        CommandGroup(after: .sidebar) {
+            Toggle("mini_player.menu", isOn: Binding(
+                get: { windowState.isMiniPlayerMode },
+                set: { _ in windowState.toggleMiniPlayerMode() },
+            ))
+            .keyboardShortcut("m", modifiers: [.command, .option])
+            .disabled(navigationCoordinator == nil && !windowState.isMiniPlayerMode)
+        }
 
         // Playback menu
         CommandMenu("menu.playback") {

@@ -60,6 +60,8 @@ nonisolated struct PlaybackState: Equatable {
     var canSkipNext = true
     /// Whether shuffle may be switched on: not on a station, whose context does not allow it.
     var canShuffle = true
+    /// Whether repeat may be switched on from off, which a station does not allow either.
+    var canRepeat = true
 }
 
 /// Playback that went past a track, or stopped, over an error.
@@ -313,6 +315,11 @@ enum SpotifyPlayer {
     /// Enables or disables shuffle on the local player.
     static func setShuffle(_ enabled: Bool) {
         Task { await LibrespotClient.shared.setShuffle(enabled) }
+    }
+
+    /// Sets repeat on the local player.
+    static func setRepeat(_ mode: PlaybackQueue.RepeatMode) {
+        Task { await LibrespotClient.shared.setRepeat(mode) }
     }
 
     /// Plays radio for a seed track.

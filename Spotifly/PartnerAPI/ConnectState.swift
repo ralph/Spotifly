@@ -22,8 +22,8 @@ import Foundation
 /// which is how "the request shape is right" was established separately from "the target was
 /// there".
 nonisolated struct ConnectCommand: Encodable, Sendable {
-    /// The `endpoint` values this app sends. Spotify defines more — `set_options` for repeat —
-    /// which stay out until something calls for them.
+    /// The `endpoint` values this app sends. Spotify defines more, which stay out until
+    /// something calls for them.
     enum Kind: String, Encodable, Sendable {
         case pause
         case resume
@@ -31,6 +31,7 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         case skipPrev = "skip_prev"
         case seekTo = "seek_to"
         case setShufflingContext = "set_shuffling_context"
+        case setOptions = "set_options"
         case play
         case addToQueue = "add_to_queue"
     }
@@ -163,6 +164,9 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
     var track: QueuedTrack?
     /// Sent under the same `track` key as `track`; only one is ever set.
     var skipTarget: SkipTarget?
+    /// `set_options`' repeat flags, both sent, as the web player sends them.
+    var repeatingContext: Bool?
+    var repeatingTrack: Bool?
 
     enum CodingKeys: String, CodingKey {
         case endpoint
@@ -172,6 +176,8 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         case playOrigin = "play_origin"
         case options
         case track
+        case repeatingContext = "repeating_context"
+        case repeatingTrack = "repeating_track"
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -193,6 +199,8 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
         }
         try container.encodeIfPresent(track, forKey: .track)
         try container.encodeIfPresent(skipTarget, forKey: .track)
+        try container.encodeIfPresent(repeatingContext, forKey: .repeatingContext)
+        try container.encodeIfPresent(repeatingTrack, forKey: .repeatingTrack)
     }
 
     static let pause = ConnectCommand(endpoint: .pause)
@@ -211,6 +219,12 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
 
     static func shuffle(_ enabled: Bool) -> ConnectCommand {
         ConnectCommand(endpoint: .setShufflingContext, boolValue: enabled)
+    }
+
+    /// Sets repeat, as the web player's repeat button does: `set_options` with both flags, and
+    /// repeat-one with the context's flag on too (captured from open.spotify.com on 2026-10-21).
+    static func repeatMode(_ mode: PlaybackQueue.RepeatMode) -> ConnectCommand {
+        ConnectCommand(endpoint: .setOptions, repeatingContext: mode != .off, repeatingTrack: mode == .track)
     }
 
     static func play(uri: String, trackIndex: Int? = nil, trackUri: String? = nil) -> ConnectCommand {

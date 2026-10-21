@@ -16,7 +16,8 @@ final class WindowState {
     /// Store the previous window frame to restore when exiting mini player
     private var savedWindowFrame: NSRect?
 
-    static let miniPlayerSize = NSSize(width: 600, height: 96)
+    /// Wide enough for the whole bar, volume and time included.
+    static let miniPlayerSize = NSSize(width: NowPlayingBarView.maxBarWidth, height: 96)
     static let defaultSize = NSSize(width: 800, height: 600)
 
     func toggleMiniPlayerMode() {

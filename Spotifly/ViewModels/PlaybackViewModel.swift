@@ -61,10 +61,13 @@ final class PlaybackViewModel {
         /// `clampedToTrack` and `positionAnchor(forPosition:takenAt:)` rely on it.
         var durationMs: UInt32
         var shuffle: Bool
+        var repeatMode: PlaybackQueue.RepeatMode
         /// See `PlaybackState.canSkipNext`.
         var canSkipNext: Bool
         /// See `PlaybackState.canShuffle`.
         var canShuffle: Bool
+        /// See `PlaybackState.canRepeat`.
+        var canRepeat: Bool
     }
 
     var isPlaying: Bool {
@@ -190,6 +193,10 @@ final class PlaybackViewModel {
 
     var isShuffleEnabled: Bool {
         shown?.shuffle ?? false
+    }
+
+    var repeatMode: PlaybackQueue.RepeatMode {
+        shown?.repeatMode ?? .off
     }
 
     /// Whether the client has completed at least one usable initialization.
@@ -981,6 +988,16 @@ final class PlaybackViewModel {
         )
     }
 
+    /// Steps repeat on to its next mode; see `RepeatMode.next`.
+    func cycleRepeat() {
+        let target = repeatMode.next
+        sendTransportCommand(
+            "cycleRepeat()",
+            local: { SpotifyPlayer.setRepeat(target) },
+            remote: { try await SpclientAPI().sendCommand(.repeatMode(target), from: $0, to: $1) },
+        )
+    }
+
     /// Whether Next goes anywhere; see `PlaybackState.canSkipNext`.
     var hasNext: Bool {
         shown?.canSkipNext ?? false
@@ -989,6 +1006,11 @@ final class PlaybackViewModel {
     /// Whether shuffle may be switched on; see `PlaybackState.canShuffle`.
     var canShuffle: Bool {
         shown?.canShuffle ?? true
+    }
+
+    /// Whether repeat may be switched on; see `PlaybackState.canRepeat`.
+    var canRepeat: Bool {
+        shown?.canRepeat ?? true
     }
 
     // MARK: - Media Keys & Now Playing
@@ -1449,8 +1471,10 @@ final class PlaybackViewModel {
             isPlaying: state.isPlaying,
             durationMs: reportedDurationMs ?? (trackChanged ? 0 : trackDurationMs),
             shuffle: state.shuffle,
+            repeatMode: .init(context: state.repeatContext, track: state.repeatTrack),
             canSkipNext: state.canSkipNext,
             canShuffle: state.canShuffle,
+            canRepeat: state.canRepeat,
         )
 
         // Sync position anchor on state changes. When monitoring a remote device,

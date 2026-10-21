@@ -20,6 +20,21 @@ final nonisolated class PlaybackQueue {
         case off
         case context
         case track
+
+        /// The mode two flags name. A track's repeat wins, as clients send both on for it.
+        init(context: Bool, track: Bool) {
+            self = track ? .track : (context ? .context : .off)
+        }
+
+        /// The mode a repeat button steps on to, as on Spotify's clients: off, the context,
+        /// the track, off again.
+        var next: RepeatMode {
+            switch self {
+            case .off: .context
+            case .context: .track
+            case .track: .off
+            }
+        }
     }
 
     private(set) var contextUri = ""
