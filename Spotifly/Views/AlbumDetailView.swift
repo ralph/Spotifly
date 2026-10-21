@@ -112,10 +112,10 @@ struct AlbumDetailView: View {
                     Text(album.artistName)
                 }
                 // After the artist: the count, and the length once the tracks are in.
-                Text(verbatim: [
+                Text(verbatim: "\(String(localized: "metadata.separator")) " + metadataLine(
                     localizedNumberString("metadata.tracks", album.trackCount),
                     tracks.isEmpty ? nil : totalDuration(of: tracks),
-                ].compactMap(\.self).map { "\(String(localized: "metadata.separator")) \($0)" }.joined(separator: " "))
+                ))
             }
         } actions: {
             PlayAndShuffleButtons {

@@ -174,11 +174,6 @@ struct Queue {
         previousTracks.count + (currentTrack != nil ? 1 : 0) + nextTracks.count
     }
 
-    /// The current row's position among all of them.
-    var currentIndex: Int {
-        previousTracks.count
-    }
-
     /// The next tracks the store has metadata for, each with the row a click on it plays. A track
     /// whose metadata has not arrived has no row, so each keeps its index among `nextTracks`.
     func nextRows(in tracks: [String: Track]) -> [(entry: QueueEntry, track: Track, row: PlaybackViewModel.QueueRow)] {

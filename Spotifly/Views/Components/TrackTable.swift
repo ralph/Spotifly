@@ -18,6 +18,10 @@ struct TrackTableRow: Identifiable {
     var addedAt: Date?
     /// The playlist item's uid, which removing it from its playlist names.
     var itemUid: String?
+    /// Greyed: in the queue, a row already played or one the player could not name.
+    var isDimmed = false
+    /// A short tag after the title: in the queue, where the row came from (Q, C, A).
+    var tag: String?
 
     var title: String {
         track.name
@@ -33,6 +37,23 @@ struct TrackTableRow: Identifiable {
 
     var durationMs: Int {
         track.durationMs
+    }
+
+    /// Whether this row is the one playing.
+    ///
+    /// **Position wins over uri where the list knows it.** A list can legitimately hold the
+    /// same recording twice — an album with a reprise, a playlist a track was added to twice,
+    /// or two catalogue entries that relink to one market id (see AGENTS.md, "Relinking is
+    /// many-to-one") — and matching on uri lights up every one of them. That drew two rows of
+    /// an eleven-track queue green while only one of them advanced.
+    ///
+    /// Only the queue names a current row, because only the queue has a current *position*.
+    /// An album page or a playlist has nothing better than the uri to go on.
+    func isPlaying(currentRowId: String?, playingUri: String?) -> Bool {
+        if let currentRowId {
+            return id == currentRowId
+        }
+        return track.uri == playingUri
     }
 }
 
@@ -56,6 +77,9 @@ struct TrackTable: View {
     var selectionId: String?
     /// Whether the headers sort; a queue keeps its order.
     var sortable = true
+    /// The row playing, where the list knows it by position (`TrackTableRow.isPlaying`); the
+    /// table scrolls to it on "Scroll to Current Track".
+    var currentRowId: String?
     /// Moves the row with this id to sit before the row now at the index, or last past the end;
     /// nil where rows do not move.
     var reorder: (@MainActor @Sendable (_ id: String, _ insertionIndex: Int) -> Void)?
@@ -78,16 +102,28 @@ struct TrackTable: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
+            table
+                .onReceive(NotificationCenter.default.publisher(for: .scrollToCurrentTrack)) { _ in
+                    guard let currentRowId else { return }
+                    withAnimation {
+                        proxy.scrollTo(currentRowId, anchor: .center)
+                    }
+                }
+        }
+    }
+
+    private var table: some View {
         Table(of: TrackTableRow.self, selection: $selection, sortOrder: sortable ? $sortOrder : .constant([])) {
             TableColumn("table.number", value: \.number) { row in
-                NumberCell(number: row.number, trackUri: row.track.uri)
+                NumberCell(row: row, currentRowId: currentRowId)
                     .modifier(cellEnvironment)
             }
             .width(36)
             .defaultVisibility(columns.contains(.number) ? .visible : .hidden)
 
             TableColumn("table.title", value: \.title) { row in
-                TitleCell(track: row.track)
+                TitleCell(row: row, currentRowId: currentRowId)
                     .modifier(cellEnvironment)
             }
 
@@ -154,8 +190,9 @@ struct TrackTable: View {
         .safeAreaInset(edge: .bottom) {
             Spacer().frame(height: NowPlayingBarView.contentClearance)
         }
-        // One check for every row's heart, rather than one per row as it scrolls in.
-        .task(id: rows.count) {
+        // One check for every row's heart, rather than one per row as it scrolls in; again when
+        // the rows change, which a queue does at the same count.
+        .task(id: rows.map(\.track.id)) {
             await trackService.ensureFavoriteStatuses(trackIds: rows.map(\.track.id))
         }
         .newPlaylistPrompt(
@@ -226,19 +263,19 @@ private struct CellEnvironment: ViewModifier {
 /// The row's number, or a waveform moving while its track plays. Each cell follows the playing
 /// track itself, so a change of it redraws two cells rather than the whole table.
 private struct NumberCell: View {
-    let number: Int
-    let trackUri: String
+    let row: TrackTableRow
+    let currentRowId: String?
 
     @Environment(PlaybackViewModel.self) private var playbackViewModel
 
     var body: some View {
         Group {
-            if playbackViewModel.currentTrackUri == trackUri {
+            if row.isPlaying(currentRowId: currentRowId, playingUri: playbackViewModel.currentTrackUri) {
                 Image(systemName: "waveform")
                     .foregroundStyle(.tint)
                     .symbolEffect(.variableColor.iterative, isActive: playbackViewModel.isPlaying)
             } else {
-                Text(number, format: .number)
+                Text(row.number, format: .number)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -247,15 +284,20 @@ private struct NumberCell: View {
     }
 }
 
-/// A 32 pt cover beside the title over the artist; the accent while the track plays, and dimmed,
-/// with the reason as tooltip, where Spotify will not play it.
+/// A 32 pt cover beside the title over the artist; the accent while the track plays, and dimmed
+/// once played, or, with the reason as tooltip, where Spotify will not play it.
 private struct TitleCell: View {
-    let track: Track
+    let row: TrackTableRow
+    let currentRowId: String?
 
     @Environment(PlaybackViewModel.self) private var playbackViewModel
 
+    private var track: Track {
+        row.track
+    }
+
     private var isPlaying: Bool {
-        playbackViewModel.currentTrackUri == track.uri
+        row.isPlaying(currentRowId: currentRowId, playingUri: playbackViewModel.currentTrackUri)
     }
 
     private static let artworkShape = AnyShape(.rect(cornerRadius: 4))
@@ -273,9 +315,18 @@ private struct TitleCell: View {
                     .foregroundStyle(.secondary)
             }
             .lineLimit(1)
+
+            if let tag = row.tag {
+                Text(verbatim: tag)
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(.quaternary, in: .rect(cornerRadius: 3))
+            }
         }
         .padding(.vertical, 4)
-        .opacity(track.isPlayable ? 1 : 0.5)
+        .opacity(track.isPlayable && !row.isDimmed ? 1 : 0.5)
         .help(ifAny: track.unplayableMessage)
     }
 }

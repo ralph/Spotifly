@@ -161,6 +161,7 @@
 "queue.context_name %@" = "“%@”";
 "queue.playing_on" = "Playing on";
 "queue.scroll_to_current" = "Scroll to current track";
+"queue.upcoming %lld" = "%lld upcoming";
 
 /* Startpage */
 "startpage.empty" = "Nothing to show yet";

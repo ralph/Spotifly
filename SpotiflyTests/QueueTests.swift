@@ -38,7 +38,6 @@ struct QueueEntriesTests {
         #expect(queue.previousTracks.map(\.trackId) == ["earlier", "played"])
         #expect(queue.currentTrack?.trackId == "playing")
         #expect(queue.nextTracks.map(\.trackId) == ["pending", "later"])
-        #expect(queue.currentIndex == 2)
         #expect(queue.length == 5)
         #expect(queue.trackIds == ["earlier", "played", "playing", "pending", "later"])
     }
@@ -191,41 +190,29 @@ extension QueueHydrationTests {
 /// only one of them advanced.
 @MainActor
 struct CurrentRowIdentityTests {
-    /// The queue knows a current *position*, so position is what it uses.
-    @Test func `only the row at the current index is current`() {
-        let currentIndex = 0
-        let uris = [
-            "spotify:track:street",
-            "spotify:track:away",
-            "spotify:track:street",
-        ]
+    private let rows = ["street", "away", "street"].enumerated().map { index, id in
+        TrackTableRow(id: "row\(index)", number: index + 1, track: track(id: id))
+    }
 
-        let flags = uris.indices.map { index in
-            TrackRow.isCurrent(index: index, currentIndex: currentIndex, uri: uris[index], playingUri: uris[0])
-        }
+    /// The queue knows a current *position*, so position is what it uses.
+    @Test func `only the current row is current`() {
+        let flags = rows.map { $0.isPlaying(currentRowId: "row0", playingUri: "spotify:track:street") }
 
         #expect(flags == [true, false, false])
     }
 
-    @Test func `a later position is current when playback has advanced`() {
-        let uris = ["spotify:track:street", "spotify:track:away", "spotify:track:street"]
-
-        let flags = uris.indices.map { index in
-            TrackRow.isCurrent(index: index, currentIndex: 2, uri: uris[index], playingUri: uris[2])
-        }
+    @Test func `a later row is current when playback has advanced`() {
+        let flags = rows.map { $0.isPlaying(currentRowId: "row2", playingUri: "spotify:track:street") }
 
         #expect(flags == [false, false, true])
     }
 
-    /// Lists with no current position — an album page, a playlist, search results — have
-    /// nothing better than the uri to go on, and keep the old behaviour.
-    @Test func `without a current index the uri decides`() {
-        #expect(TrackRow.isCurrent(index: 3, currentIndex: nil, uri: "spotify:track:a", playingUri: "spotify:track:a"))
-        #expect(!TrackRow.isCurrent(index: 3, currentIndex: nil, uri: "spotify:track:a", playingUri: "spotify:track:b"))
-    }
+    /// Lists with no current position — an album page, a playlist — have nothing better than
+    /// the uri to go on.
+    @Test func `without a current row the uri decides`() {
+        let flags = rows.map { $0.isPlaying(currentRowId: nil, playingUri: "spotify:track:street") }
 
-    @Test func `a row with no index at all falls back to the uri`() {
-        #expect(TrackRow.isCurrent(index: nil, currentIndex: 0, uri: "spotify:track:a", playingUri: "spotify:track:a"))
+        #expect(flags == [true, false, true])
     }
 }
 

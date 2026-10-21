@@ -112,7 +112,10 @@ struct FavoritesListView: View {
                 }
         } metadata: {
             // Of the whole list, as Spotify counts it, rather than of the pages loaded so far.
-            Text(verbatim: "\(localizedNumberString("metadata.tracks", max(store.favoritesPagination.total, tracks.count))) \(String(localized: "metadata.separator")) \(totalDuration(of: tracks))")
+            Text(verbatim: metadataLine(
+                localizedNumberString("metadata.tracks", max(store.favoritesPagination.total, tracks.count)),
+                totalDuration(of: tracks),
+            ))
         } actions: {
             PlayAndShuffleButtons {
                 Task { await playbackViewModel.play(uriOrUrl: LikedSongs.uri) }

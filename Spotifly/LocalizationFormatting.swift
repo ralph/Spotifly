@@ -19,6 +19,11 @@ func localizedNumberString(_ key: LocalizedStringResource, _ value: Int) -> Stri
     String(format: String(localized: key), value)
 }
 
+/// A page's metadata line, "a · b · c", leaving out the parts it has not got.
+func metadataLine(_ parts: String?...) -> String {
+    parts.compactMap(\.self).joined(separator: " \(String(localized: "metadata.separator")) ")
+}
+
 func localizedTextString(_ key: LocalizedStringResource, _ value: String) -> String {
     // String(format:) is intentional: same reasons as localizedNumberString,
     // plus it correctly handles positional specifiers (%1$@) if ever added.

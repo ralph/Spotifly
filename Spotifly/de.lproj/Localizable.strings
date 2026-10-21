@@ -161,6 +161,7 @@
 "queue.context_name %@" = "„%@“";
 "queue.playing_on" = "Wiedergabe auf";
 "queue.scroll_to_current" = "Zum aktuellen Track scrollen";
+"queue.upcoming %lld" = "%lld ausstehend";
 
 /* Startpage */
 "startpage.empty" = "Noch nichts zu zeigen";

@@ -89,18 +89,6 @@ struct LocalizationTests {
         #expect(localizedNumberString(key, count) == expected)
     }
 
-    /// The queue's count, which `Text` formats from its interpolation, takes the plural too.
-    @Test(arguments: [
-        ("en", 1, "1 song (0 upcoming)"), ("en", 3, "3 songs (2 upcoming)"),
-        ("de", 1, "1 Song (0 ausstehend)"), ("fr", 1, "1 titre (0 à venir)"),
-    ])
-    func `the queue's song count takes the language's plural`(language: String, count: Int, expected: String) {
-        var key = LocalizedStringResource("queue.song_count \(count) \(count - 1)")
-        key.locale = Locale(identifier: language)
-
-        #expect(String(localized: key) == expected)
-    }
-
     @Test(arguments: Bundle.main.localizations.filter { $0 != "en" && $0 != "Base" })
     func `a language names the same strings as English`(language: String) throws {
         let english = try keys("en")

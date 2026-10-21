@@ -7,45 +7,12 @@
 
 import SwiftUI
 
-/// Reusable track row view
+/// A track as a list row: search's Songs, the one list the track table does not show.
 struct TrackRow: View {
-    /// Whether this row is the one playing.
-    ///
-    /// **Position wins over uri where the list knows both.** A list can legitimately hold the
-    /// same recording twice — an album with a reprise, a playlist a track was added to twice,
-    /// or two catalogue entries that relink to one market id (see AGENTS.md, "Relinking is
-    /// many-to-one") — and matching on uri lights up every one of them. That drew two rows of
-    /// an eleven-track queue green while only one of them advanced.
-    ///
-    /// Only the queue passes `currentIndex`, because only the queue has a current *position*.
-    /// An album page or a search result has nothing better than the uri to go on.
-    static func isCurrent(
-        index: Int?,
-        currentIndex: Int?,
-        uri: String,
-        playingUri: String?,
-    ) -> Bool {
-        if let index, let currentIndex {
-            return index == currentIndex
-        }
-        return playingUri == uri
-    }
-
     let track: Track
-    let showTrackNumber: Bool // Show track number instead of index
-    let index: Int? // Optional index for queue
+    let index: Int? // Optional index, shown as the row's number
     let isCurrentTrack: Bool
-    let isPlayedTrack: Bool // For queue - tracks that have already played
-    let provider: TrackProvider? // Optional provider (queue, context, autoplay, unavailable)
     let currentSection: NavigationItem // Current sidebar section (for "Go to" navigation)
-    let selectionId: String? // Current selection ID (e.g., playlist ID) for back navigation
-    /// Which *occurrence* this row is, where the list knows — only a playlist does.
-    ///
-    /// `selectionId` names the list and `track` names the song, and between them they still do
-    /// not name a row: a playlist can hold the same song twice, and the two rows are equal on
-    /// both. The uid is the only thing that tells them apart, which is why removing from the
-    /// context menu needs it.
-    let itemUid: String?
     let onDoubleTap: (@MainActor () async -> Void)? // Plays the row, on a double-click or by accessibility
 
     /// Made once, not in every row's body, so a row hands its artwork the same shape each time
@@ -65,52 +32,17 @@ struct TrackRow: View {
         store.isFavorite(track.id)
     }
 
-    /// Provider symbol for display (Q=queue, C=context, A=autoplay, nil for unavailable)
-    private var providerSymbol: String? {
-        switch provider {
-        case .queue: "Q"
-        case .context: "C"
-        case .autoplay: "A"
-        case .unavailable, .none: nil
-        }
-    }
-
-    /// Whether the row is greyed out: a queue entry the player could not name, or a track
-    /// Spotify said it will not play here, as its own clients grey those.
-    private var isUnavailable: Bool {
-        provider == .unavailable || !track.isPlayable
-    }
-
     init(
         track: Track,
-        showTrackNumber: Bool = false,
         index: Int? = nil,
         currentlyPlayingURI: String?,
-        currentIndex: Int? = nil,
-        provider: TrackProvider? = nil,
         currentSection: NavigationItem = .startpage,
-        selectionId: String? = nil,
-        itemUid: String? = nil,
         onDoubleTap: (@MainActor () async -> Void)? = nil,
     ) {
         self.track = track
-        self.showTrackNumber = showTrackNumber
         self.index = index
-        isCurrentTrack = Self.isCurrent(
-            index: index,
-            currentIndex: currentIndex,
-            uri: track.uri,
-            playingUri: currentlyPlayingURI,
-        )
-        isPlayedTrack = if let index, let currentIndex {
-            index < currentIndex
-        } else {
-            false
-        }
-        self.provider = provider
+        isCurrentTrack = currentlyPlayingURI == track.uri
         self.currentSection = currentSection
-        self.selectionId = selectionId
-        self.itemUid = itemUid
         self.onDoubleTap = onDoubleTap
     }
 
@@ -121,9 +53,6 @@ struct TrackRow: View {
                 if isCurrentTrack {
                     Image(systemName: "waveform")
                         .foregroundStyle(.tint)
-                } else if showTrackNumber, let trackNumber = track.trackNumber {
-                    Text(verbatim: "\(trackNumber)")
-                        .foregroundStyle(.secondary)
                 } else if let index {
                     Text(verbatim: "\(index + 1)")
                         .foregroundStyle(.secondary)
@@ -131,7 +60,7 @@ struct TrackRow: View {
                 // Otherwise no number is shown.
             }
             .font(.caption)
-            .frame(width: 30, alignment: showTrackNumber ? .trailing : .center)
+            .frame(width: 30)
 
             // Album art. A track with none leaves the column out rather than show a placeholder.
             if !track.images.isEmpty {
@@ -155,17 +84,6 @@ struct TrackRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            }
-
-            // Provider indicator (Q=queue, C=context, A=autoplay)
-            if let symbol = providerSymbol {
-                Text(symbol)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                    .background(.quaternary)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
             }
 
             Spacer()
@@ -196,8 +114,8 @@ struct TrackRow: View {
                 TrackContextMenu(
                     track: track,
                     currentSection: currentSection,
-                    selectionId: selectionId,
-                    itemUid: itemUid,
+                    selectionId: nil,
+                    itemUid: nil,
                     showNewPlaylistDialog: $showNewPlaylistDialog,
                     onPlaylistAdded: showSuccessFeedback,
                 )
@@ -220,15 +138,15 @@ struct TrackRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(isCurrentTrack ? Color.accentColor.opacity(0.1) : Color.clear)
-        .opacity(isPlayedTrack || isUnavailable ? 0.5 : 1.0)
+        .opacity(track.isPlayable ? 1.0 : 0.5)
         .help(ifAny: track.unplayableMessage)
         .contentShape(Rectangle())
         .contextMenu {
             TrackContextMenu(
                 track: track,
                 currentSection: currentSection,
-                selectionId: selectionId,
-                itemUid: itemUid,
+                selectionId: nil,
+                itemUid: nil,
                 showNewPlaylistDialog: $showNewPlaylistDialog,
                 onPlaylistAdded: showSuccessFeedback,
             )

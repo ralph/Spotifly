@@ -196,11 +196,11 @@ struct PlaylistDetailView: View {
         ) {
             Artwork.detailHeader(playlist.images, symbol: "music.note.list")
         } metadata: {
-            Text(verbatim: [
+            Text(verbatim: metadataLine(
                 localizedTextString("metadata.by_owner", playlist.ownerName),
                 localizedNumberString("metadata.tracks", tracks.isEmpty ? playlist.trackCount : tracks.count),
                 tracks.isEmpty ? nil : totalDuration(of: tracks),
-            ].compactMap(\.self).joined(separator: " \(String(localized: "metadata.separator")) "))
+            ))
         } actions: {
             PlayAndShuffleButtons {
                 playAllTracks()

@@ -161,6 +161,7 @@
 "queue.context_name %@" = "« %@ »";
 "queue.playing_on" = "Lecture sur";
 "queue.scroll_to_current" = "Aller au titre en cours";
+"queue.upcoming %lld" = "%lld à venir";
 
 /* Startpage */
 "startpage.empty" = "Rien à afficher pour l'instant";

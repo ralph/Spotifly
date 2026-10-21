@@ -41,48 +41,107 @@ extension View {
 struct QueueListView: View {
     @Environment(AppStore.self) private var store
     @Environment(PlayerModel.self) private var player
-    @Environment(DeviceService.self) private var deviceService
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
-    @Environment(TrackService.self) private var trackService
     @Environment(PlaybackViewModel.self) private var playbackViewModel
 
-    @State private var scrollPosition = ScrollPosition(idType: Int.self)
-
-    /// Queue item with track and provider info, and the row a double-click plays.
-    private struct QueueDisplayItem {
-        let track: Track
-        let provider: TrackProvider
-        let row: PlaybackViewModel.QueueRow
-    }
-
-    /// How many of the next tracks the store has metadata for, which the header counts.
-    private var nextTracksWithMetadata: Int {
-        player.queueEntries.nextTracks.count(where: { store.tracks[$0.trackId] != nil })
-    }
-
-    /// Flattened queue with provider info: previous + current + next. A track whose metadata
-    /// has not arrived has no row, so each item keeps its index in its own list.
-    private var allQueueItems: [QueueDisplayItem] {
-        var items: [QueueDisplayItem] = []
+    /// The queue as table rows, numbered over the whole queue: previous, current, next, beside
+    /// the row of the queue a double-click on each plays, at the same index. A track whose
+    /// metadata has not arrived has no row.
+    ///
+    /// A row is named by its uid where it has one, which stays with it as the queue moves on,
+    /// so a skip shifts no ids and the rows keep their covers, as the inspector's do.
+    private func queueRows() -> (rows: [TrackTableRow], plays: [PlaybackViewModel.QueueRow], currentRowId: String?) {
         let queue = player.queueEntries
+        var rows: [TrackTableRow] = []
+        var plays: [PlaybackViewModel.QueueRow] = []
+        var currentRowId: String?
+        var usedIds: Set<String> = []
+
+        func append(_ entry: QueueEntry, _ track: Track, _ play: PlaybackViewModel.QueueRow) {
+            var id: String = switch play {
+            case let .previous(index, _, _): entry.uid ?? "p\(index)"
+            case .current: entry.uid ?? "current"
+            case let .next(index, _, _): entry.uid ?? "n\(index)"
+            }
+            // A context repeating wraps into the next tracks with the uids of rows already
+            // listed; a table needs every id once.
+            if !usedIds.insert(id).inserted {
+                id += "#\(rows.count)"
+                usedIds.insert(id)
+            }
+            if case .current = play {
+                currentRowId = id
+            }
+            let isPast = if case .previous = play {
+                true
+            } else {
+                false
+            }
+            rows.append(TrackTableRow(
+                id: id,
+                number: rows.count + 1,
+                track: track,
+                isDimmed: isPast || entry.provider == .unavailable,
+                tag: entry.provider.tag,
+            ))
+            plays.append(play)
+        }
 
         for (index, entry) in queue.previousTracks.enumerated() {
             if let track = store.tracks[entry.trackId] {
-                let row = PlaybackViewModel.QueueRow.previous(index: index, trackUri: track.uri, uid: entry.uid)
-                items.append(QueueDisplayItem(track: track, provider: entry.provider, row: row))
+                append(entry, track, .previous(index: index, trackUri: track.uri, uid: entry.uid))
             }
         }
-
         if let entry = queue.currentTrack, let track = store.tracks[entry.trackId] {
-            items.append(QueueDisplayItem(track: track, provider: entry.provider, row: .current))
+            append(entry, track, .current)
         }
-
         for next in queue.nextRows(in: store.tracks) {
-            items.append(QueueDisplayItem(track: next.track, provider: next.entry.provider, row: next.row))
+            append(next.entry, next.track, next.row)
         }
-
-        return items
+        return (rows, plays, currentRowId)
     }
+
+    var body: some View {
+        let queue = queueRows()
+
+        VStack(alignment: .leading, spacing: 0) {
+            QueueHeader()
+
+            if queue.rows.isEmpty {
+                emptyView
+            } else {
+                // The table is not sortable, so a row's number is its place in `plays`.
+                TrackTable(rows: queue.rows, currentSection: .queue, sortable: false, currentRowId: queue.currentRowId) { row in
+                    playbackViewModel.play(queueRow: queue.plays[row.number - 1])
+                }
+            }
+        }
+    }
+
+    // MARK: - Empty State
+
+    private var emptyView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "list.bullet")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text("empty.queue_empty")
+                .font(.headline)
+            Text("empty.queue_empty.description")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// "Warteschlange", the counts, and where the queue plays from. A view of its own, so the device
+/// reports it reads, a volume change among them, redraw it and not the table.
+private struct QueueHeader: View {
+    @Environment(AppStore.self) private var store
+    @Environment(PlayerModel.self) private var player
+    @Environment(DeviceService.self) private var deviceService
+    @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     /// The context the queue plays from: its name, and the page the name opens, where it has
     /// one. Read from the player, which says what it plays from with every queue it publishes:
@@ -108,57 +167,30 @@ struct QueueListView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Fixed header
-            queueHeader
+        let queue = player.queueEntries
 
-            Divider()
+        VStack(alignment: .leading, spacing: 4) {
+            Text("queue.title")
+                .font(.largeTitle.bold())
 
-            // Scrollable content
-            if allQueueItems.isEmpty {
-                emptyView
-            } else {
-                normalModeContent
-            }
-        }
-        .task {
-            await syncQueueFavoriteStatuses()
-        }
-        .onChange(of: player.queueEntries.currentTrack?.trackId) { _, _ in
-            Task {
-                await syncQueueFavoriteStatuses()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .scrollToCurrentTrack)) { _ in
-            scrollToCurrentTrack()
-        }
-    }
-
-    // MARK: - Header
-
-    private var queueHeader: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("queue.title")
-                    .font(.headline)
-
-                // "Playing from X on Y" subtitle
-                if let device = player.activeDevice {
-                    playingFromText(device: device)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if player.queueEntries.length > 0 {
-                    // Fallback to song count if no active device
-                    Text("queue.song_count \(player.queueEntries.length) \(nextTracksWithMetadata)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            if queue.length > 0 {
+                Text(verbatim: metadataLine(
+                    localizedNumberString("metadata.tracks", queue.length),
+                    String(localized: "queue.upcoming \(queue.nextTracks.count)"),
+                ))
+                .foregroundStyle(.secondary)
             }
 
-            Spacer()
+            // "Playing from X on Y"
+            if let device = player.activeDevice {
+                playingFromText(device: device)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding()
-        .background(.regularMaterial)
+        .padding(.horizontal, 28)
+        .padding(.top, 8)
+        .padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -191,68 +223,17 @@ struct QueueListView: View {
             Text(device.name)
         }
     }
+}
 
-    private func syncQueueFavoriteStatuses() async {
-        let trackIds = allQueueItems.map(\.track.id)
-        guard !trackIds.isEmpty else { return }
-
-        await trackService.ensureFavoriteStatuses(trackIds: trackIds)
-    }
-
-    // MARK: - Normal Mode Content
-
-    private var normalModeContent: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(allQueueItems.enumerated(), id: \.offset) { index, item in
-                    if index > 0 {
-                        Divider()
-                            .padding(.leading, 78)
-                    }
-
-                    TrackRow(
-                        track: item.track,
-                        index: index,
-                        currentlyPlayingURI: playbackViewModel.currentTrackUri,
-                        currentIndex: player.queueEntries.currentIndex,
-                        provider: item.provider,
-                        currentSection: .queue,
-                        onDoubleTap: {
-                            playbackViewModel.play(queueRow: item.row)
-                        },
-                    )
-                    .id(index)
-                }
-            }
-            .scrollTargetLayout()
-        }
-        .scrollPosition($scrollPosition)
-    }
-
-    // MARK: - Empty State
-
-    private var emptyView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "list.bullet")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-            Text("empty.queue_empty")
-                .font(.headline)
-            Text("empty.queue_empty.description")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
-        .frame(maxHeight: .infinity)
-    }
-
-    // MARK: - Navigation
-
-    private func scrollToCurrentTrack() {
-        let currentIndex = player.queueEntries.currentIndex
-        guard currentIndex < allQueueItems.count else { return }
-        withAnimation {
-            scrollPosition.scrollTo(id: currentIndex, anchor: .center)
+private extension TrackProvider {
+    /// The tag a queue row shows: Q queued by hand, C from the context, A autoplay; none for
+    /// a track the player could not name.
+    var tag: String? {
+        switch self {
+        case .queue: "Q"
+        case .context: "C"
+        case .autoplay: "A"
+        case .unavailable: nil
         }
     }
 }
