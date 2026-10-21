@@ -5,7 +5,7 @@
 "auth.connect.description" = "Connect your Spotify account to get started. This authorizes Spotifly in your browser and makes this Mac available as a Spotify Connect device.";
 "auth.connect.button" = "Connect with Spotify";
 "auth.loading" = "Loading...";
-"auth.logout" = "Logout";
+"auth.logout" = "Log Out";
 
 /* Navigation */
 "nav.startpage" = "Startpage";
@@ -68,6 +68,7 @@
 
 /* Common Actions */
 "action.play" = "Play";
+"action.copy" = "Copy";
 "action.copy_link" = "Copy Link";
 "action.pause" = "Pause";
 "action.more" = "More Options";
@@ -306,11 +307,20 @@
 "error.create_playlist %@" = "Failed to create playlist: %@";
 
 /* Profile */
-"profile.logged_in_as %@" = "Logged in as %@";
-"profile.id" = "Username";
 "profile.unavailable" = "Account details unavailable";
 "profile.unavailable.description" = "Sign out and back in to reconnect your Spotify account.";
 "profile.open_in_spotify" = "Open in Spotify";
+"profile.section.account" = "Account";
+"profile.display_name" = "Display Name";
+"profile.id" = "User ID";
+"profile.web" = "Profile on the Web";
+"profile.manage_account" = "Manage Account";
+"profile.manage_account.footer" = "Manage your subscription, payment details and privacy in your Spotify account.";
+"profile.app_settings" = "App Settings";
+"profile.open_settings" = "Settings…";
+"profile.logout" = "Log Out…";
+"profile.logout.title" = "Log out of Spotify?";
+"profile.logout.message" = "You can log in again at any time.";
 
 // The grant: signing in on the login screen, re-authorizing playback everywhere else
 "auth.connect_cancel" = "Waiting for your browser — cancel";

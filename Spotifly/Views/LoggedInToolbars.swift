@@ -261,8 +261,7 @@ private struct LoggedInContextToolbarActions: View {
 
     private func copyLink(of uri: String) {
         guard let link = SpotifyURI.webURL(uri) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(link, forType: .string)
+        NSPasteboard.copy(link)
     }
 }
 

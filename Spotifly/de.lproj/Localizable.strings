@@ -68,6 +68,7 @@
 
 /* Common Actions */
 "action.play" = "Wiedergeben";
+"action.copy" = "Kopieren";
 "action.copy_link" = "Link kopieren";
 "action.pause" = "Pause";
 "action.more" = "Weitere Optionen";
@@ -306,11 +307,20 @@
 "error.create_playlist %@" = "Playlist konnte nicht erstellt werden: %@";
 
 /* Profile */
-"profile.logged_in_as %@" = "Angemeldet als %@";
-"profile.id" = "Benutzername";
 "profile.unavailable" = "Kontodaten nicht verfügbar";
 "profile.unavailable.description" = "Melde dich ab und wieder an, um dein Spotify-Konto neu zu verbinden.";
 "profile.open_in_spotify" = "In Spotify öffnen";
+"profile.section.account" = "Konto";
+"profile.display_name" = "Anzeigename";
+"profile.id" = "Benutzer-ID";
+"profile.web" = "Profil im Web";
+"profile.manage_account" = "Konto verwalten";
+"profile.manage_account.footer" = "Abo, Zahlungsdaten und Datenschutz verwaltest du in deinem Spotify-Konto.";
+"profile.app_settings" = "App-Einstellungen";
+"profile.open_settings" = "Einstellungen …";
+"profile.logout" = "Abmelden …";
+"profile.logout.title" = "Von Spotify abmelden?";
+"profile.logout.message" = "Du kannst dich jederzeit wieder anmelden.";
 
 // Die Autorisierung: Anmeldung auf dem Login-Screen, Wiedergabe-Freigabe überall sonst
 "auth.connect_cancel" = "Warte auf deinen Browser — abbrechen";

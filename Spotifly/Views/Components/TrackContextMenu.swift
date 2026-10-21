@@ -142,9 +142,7 @@ struct TrackContextMenu: View {
 
     private func copyToClipboard() {
         guard let link = SpotifyURI.webURL(track.uri) else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(link, forType: .string)
+        NSPasteboard.copy(link)
     }
 
     private func addToQueue() {

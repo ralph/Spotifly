@@ -185,11 +185,7 @@ struct TrackTable: View {
                 playRow(row)
             }
         }
-        // Room under the last row, which the bar floats over: no content margin reaches a table,
-        // not the region's nor its own (seen at the end of Favorites), as none reaches a `List`.
-        .safeAreaInset(edge: .bottom) {
-            Spacer().frame(height: NowPlayingBarView.contentClearance)
-        }
+        .playerBarClearance()
         // One check for every row's heart, rather than one per row as it scrolls in; again when
         // the rows change, which a queue does at the same count.
         .task(id: rows.map(\.track.id)) {

@@ -529,3 +529,14 @@ private struct NowPlayingBarBackground: ViewModifier {
         }
     }
 }
+
+extension View {
+    /// Room under the end of a form, list or table, which the bar floats over: the content
+    /// margin the logged-in view sets reaches a scroll view but none of these, not the region's
+    /// nor their own (seen at the end of Favorites).
+    func playerBarClearance() -> some View {
+        safeAreaInset(edge: .bottom) {
+            Spacer().frame(height: NowPlayingBarView.contentClearance)
+        }
+    }
+}

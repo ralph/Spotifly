@@ -62,6 +62,7 @@ struct SearchHomeView: View {
                     }
                 }
                 .formStyle(.grouped)
+                .playerBarClearance()
             }
         }
         .onAppear {

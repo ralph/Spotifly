@@ -21,15 +21,21 @@ struct UserProfileView: View {
     let userProfile: UserProfile?
     let onLogout: () -> Void
 
+    @State private var showLogoutConfirmation = false
+
+    /// Spotify's own account page, where subscription, payment and privacy are managed.
+    private static let accountURL = URL(string: "https://www.spotify.com/account/overview/")!
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Profile header
-                VStack(spacing: 12) {
+        Form {
+            // Centred over the form, as a header, which has no card behind it: the avatar and
+            // the name, or why there is none.
+            Section {} header: {
+                VStack(spacing: 10) {
                     ProfileAvatarView(userProfile: userProfile, size: 96)
 
                     if let userProfile {
-                        Text("profile.logged_in_as \(userProfile.displayName)")
+                        Text(userProfile.displayName)
                             .font(.title2.bold())
                     } else {
                         Text("profile.unavailable")
@@ -40,50 +46,74 @@ struct UserProfileView: View {
                             .multilineTextAlignment(.center)
                     }
                 }
-                .padding(.top, 24)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 12)
+            }
 
-                // Account info
-                if let userProfile {
-                    GroupBox {
-                        VStack(spacing: 0) {
-                            profileRow(label: "profile.id", value: userProfile.id)
+            if let userProfile {
+                Section("profile.section.account") {
+                    LabeledContent("profile.display_name", value: userProfile.displayName)
+
+                    LabeledContent("profile.id") {
+                        HStack(spacing: 6) {
+                            Text(verbatim: userProfile.id)
+                                .monospaced()
+                                .textSelection(.enabled)
+                            Button {
+                                NSPasteboard.copy(userProfile.id)
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .buttonStyle(.borderless)
+                            .named("action.copy")
                         }
                     }
-                    .frame(maxWidth: 400)
+
+                    if let externalUrl = userProfile.externalUrl, let url = URL(string: externalUrl) {
+                        LabeledContent("profile.web") {
+                            Link(destination: url) {
+                                Text(verbatim: externalUrl.replacing("https://", with: ""))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                        }
+                    }
                 }
+            }
 
-                // Actions
-                VStack(spacing: 12) {
-                    if let externalUrl = userProfile?.externalUrl,
-                       let url = URL(string: externalUrl)
-                    {
-                        Link(destination: url) {
-                            Label("profile.open_in_spotify", systemImage: "arrow.up.right")
-                        }
-                        .buttonStyle(.bordered)
-                    }
-
-                    Button(role: .destructive, action: onLogout) {
-                        Label("auth.logout", systemImage: "rectangle.portrait.and.arrow.right")
+            Section {
+                LabeledContent("profile.manage_account") {
+                    Link(destination: Self.accountURL) {
+                        Label("profile.open_in_spotify", systemImage: "arrow.up.right")
                     }
                     .buttonStyle(.bordered)
                 }
 
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .navigationTitle("nav.profile")
-    }
+                LabeledContent("profile.app_settings") {
+                    SettingsLink {
+                        Text("profile.open_settings")
+                    }
+                }
+            } footer: {
+                VStack(alignment: .leading, spacing: 24) {
+                    Text("profile.manage_account.footer")
 
-    private func profileRow(label: LocalizedStringKey, value: String) -> some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
+                    Button("profile.logout", role: .destructive) {
+                        showLogoutConfirmation = true
+                    }
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity)
+                }
+            }
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
+        .formStyle(.grouped)
+        .playerBarClearance()
+        .navigationTitle("nav.profile")
+        .confirmationDialog("profile.logout.title", isPresented: $showLogoutConfirmation) {
+            Button("auth.logout", role: .destructive, action: onLogout)
+        } message: {
+            Text("profile.logout.message")
+        }
     }
 }

@@ -117,10 +117,7 @@ struct SpeakersView: View {
                 outputDeviceName = name
             }
         }
-        // A form takes no content margins on macOS, so it leaves the bar's room itself.
-        .safeAreaInset(edge: .bottom) {
-            Spacer().frame(height: NowPlayingBarView.contentClearance)
-        }
+        .playerBarClearance()
     }
 }
 
