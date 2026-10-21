@@ -43,6 +43,8 @@ struct AlbumsListView: View {
                 placeholderGlyph: "square.stack",
                 artworkShape: AnyShape(.rect(cornerRadius: 4)),
             ),
+            filterPrompt: "library.filter.albums",
+            subtitle: { $0.artistName },
         )
     }
 }

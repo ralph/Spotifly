@@ -24,6 +24,9 @@
 "detail.play" = "Play";
 "detail.shuffle" = "Shuffle";
 "detail.kind.playlist" = "Playlist";
+"detail.kind.followed_playlist" = "Playlist · Following";
+"detail.in_library" = "In Library";
+"detail.add_to_library" = "Add to Library";
 "table.number" = "#";
 "table.title" = "Title";
 "table.album" = "Album";
@@ -50,9 +53,13 @@
 "nav.forward" = "Forward";
 "nav.currently_viewing" = "Currently Viewing";
 "nav.your_library" = "Your Library";
+"library.filter.playlists" = "Filter Playlists";
+"library.filter.albums" = "Filter Albums";
+"library.filter.artists" = "Filter Artists";
 
 /* Common Actions */
 "action.play" = "Play";
+"action.copy_link" = "Copy Link";
 "action.pause" = "Pause";
 "action.more" = "More Options";
 "action.try_again" = "Try Again";
@@ -79,7 +86,6 @@
 
 /* Playback */
 "playback.play_album" = "Play Album";
-"playback.play_playlist" = "Play Playlist";
 
 /* Mini Player */
 "mini_player.restore" = "Restore full window";
@@ -246,7 +252,6 @@
 "playlist.menu.delete" = "Delete Playlist";
 "playlist.menu.unfollow" = "Unfollow Playlist";
 "playlist.menu.follow" = "Follow Playlist";
-"playlist.menu.cover" = "Cover Image";
 "playlist.menu.choose_cover" = "Choose Image…";
 "playlist.menu.remove_cover" = "Remove Image";
 "playlist.remove_cover.title" = "Remove Cover Image";

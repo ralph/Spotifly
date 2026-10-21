@@ -13,7 +13,6 @@ struct PlaylistDetailView: View {
 
     @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(AppStore.self) private var store
-    @Environment(TrackService.self) private var trackService
     @Environment(PlaylistService.self) private var playlistService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
@@ -26,10 +25,6 @@ struct PlaylistDetailView: View {
     @State private var showUnfollowConfirmation = false
     @State private var editingPlaylistName = ""
     @State private var editingPlaylistDescription = ""
-
-    // Drag-drop state
-    @State private var draggedUid: String?
-    @State private var draggedFromIndex: Int?
 
     /// The playlist from the store — the only copy. Whatever a load puts there
     /// shows up here, including a load whose original view was torn down mid-flight.
@@ -82,9 +77,6 @@ struct PlaylistDetailView: View {
         .navigationTitle(playlistName)
         .task(id: playlistId) {
             await loadPlaylist()
-        }
-        .task(id: tracks.map(\.id).joined()) {
-            await resolveFavoriteStatusesForTracks()
         }
         .alert("playlist.edit_details.title", isPresented: $showEditDetailsDialog) {
             TextField("playlist.edit_details.name", text: $editingPlaylistName)
@@ -147,142 +139,118 @@ struct PlaylistDetailView: View {
     }
 
     private func playlistContent(_ playlist: Playlist) -> some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                playlistHeader(playlist)
-                trackListSection
-            }
-        }
-    }
+        // Built once per redraw: a playlist can hold thousands of rows, and each read of `rows`
+        // looks every track up again (`plans/done/playlist-rows-built-once-per-row.md`).
+        let rows = rows
+        let tracks = rows.map(\.track)
 
-    // MARK: - Subviews
+        return VStack(spacing: 0) {
+            header(playlist, tracks: tracks)
 
-    private func playlistHeader(_ playlist: Playlist) -> some View {
-        VStack(spacing: 16) {
-            Artwork.header(playlist.images, symbol: "music.note.list")
-            playlistMetadata(playlist)
-            playlistActions()
-        }
-        .padding(.top, 24)
-    }
-
-    private func playlistMetadata(_ playlist: Playlist) -> some View {
-        VStack(spacing: 8) {
-            Text(playlistName)
-                .font(.title2.weight(.semibold))
-                .multilineTextAlignment(.center)
-
-            if !playlistDescription.isEmpty {
-                Text(playlistDescription)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-            }
-
-            HStack(spacing: 4) {
-                Text(localizedTextString("metadata.by_owner", playlist.ownerName))
-                Text("metadata.separator")
-                // Use actual track count once loaded, otherwise fall back to playlist metadata
-                Text(localizedNumberString("metadata.tracks", tracks.isEmpty ? playlist.trackCount : tracks.count))
-                if !tracks.isEmpty {
-                    Text("metadata.separator")
-                    Text(totalDuration(of: tracks))
+            if isLoading, tracks.isEmpty {
+                ProgressView("loading.tracks")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let failure, tracks.isEmpty {
+                InlineLoadError(failure: failure) { await reloadTracks() }
+                    .frame(maxHeight: .infinity, alignment: .top)
+            } else {
+                // A failed edit, delete, unfollow or move over the rows there are, with a retry
+                // that reads the playlist again.
+                if let failure {
+                    InlineLoadError(failure: failure) { await reloadTracks() }
+                        .padding(.bottom, 8)
+                }
+                TrackTable(
+                    rows: tableRows(rows),
+                    columns: [.number, .album],
+                    currentSection: .playlists,
+                    selectionId: playlistId,
+                    // Only one's own playlist takes a move.
+                    reorder: isOwner ? { @MainActor @Sendable uid, index in move(uid: uid, toInsertionIndex: index) } : nil,
+                ) { row in
+                    Task {
+                        await playbackViewModel.play(uriOrUrl: playlist.uri, trackIndex: row.number - 1, startingAtUri: row.track.uri)
+                    }
                 }
             }
-            .font(.subheadline)
-            .foregroundStyle(.tertiary)
         }
     }
 
-    private func playlistActions() -> some View {
-        Button {
-            playAllTracks()
-        } label: {
-            Label("playback.play_playlist", systemImage: "play.fill")
-                .font(.headline)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(tracks.isEmpty)
-    }
-
-    @ViewBuilder
-    private var trackListSection: some View {
-        if isLoading {
-            ProgressView("loading.tracks")
-                .padding()
-        } else if let failure {
-            InlineLoadError(failure: failure) { await reloadTracks() }
-        } else if !tracks.isEmpty {
-            trackList
+    /// The rows, each named by its item's uid: a playlist can hold one song twice, and moving
+    /// or removing a row names the occurrence.
+    private func tableRows(_ rows: [(item: PlaylistItem, track: Track)]) -> [TrackTableRow] {
+        rows.enumerated().map { index, row in
+            TrackTableRow(id: row.item.uid, number: index + 1, track: row.track, itemUid: row.item.uid)
         }
     }
 
-    /// Lazy, because a playlist can hold thousands of tracks. The divider goes above each row
-    /// but the first, so no row reads `rows`, which is built anew on every read. See
-    /// `plans/done/playlist-rows-built-once-per-row.md`.
-    private var trackList: some View {
-        LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(rows.enumerated(), id: \.offset) { index, row in
-                if index > 0 {
-                    Divider()
-                        .padding(.leading, 94)
+    private var isFollowed: Bool {
+        store.userPlaylistIds.contains(playlistId)
+    }
+
+    private func header(_ playlist: Playlist, tracks: [Track]) -> some View {
+        DetailHeader(
+            kind: isOwner || !isFollowed ? String(localized: "detail.kind.playlist") : String(localized: "detail.kind.followed_playlist"),
+            title: playlistName,
+            description: playlistDescription,
+        ) {
+            Artwork(images: playlist.images, size: 132, shape: AnyShape(.rect(cornerRadius: 10)), symbol: "music.note.list", symbolFont: .system(size: 48))
+        } metadata: {
+            Text(verbatim: [
+                localizedTextString("metadata.by_owner", playlist.ownerName),
+                localizedNumberString("metadata.tracks", tracks.isEmpty ? playlist.trackCount : tracks.count),
+                tracks.isEmpty ? nil : totalDuration(of: tracks),
+            ].compactMap(\.self).joined(separator: " \(String(localized: "metadata.separator")) "))
+        } actions: {
+            PlayAndShuffleButtons {
+                playAllTracks()
+            } shuffle: {
+                Task { await playbackViewModel.playShuffled(uriOrUrl: playlist.uri, trackUris: tracks.map(\.uri)) }
+            }
+            .disabled(tracks.isEmpty)
+
+            // Someone else's playlist is in the library or not; one's own always is.
+            if !isOwner {
+                Button {
+                    if isFollowed {
+                        showUnfollowConfirmation = true
+                    } else {
+                        updating { try await playlistService.followPlaylist(playlistId: playlistId) }
+                    }
+                } label: {
+                    Label(isFollowed ? "detail.in_library" : "detail.add_to_library", systemImage: isFollowed ? "checkmark" : "plus")
                 }
-
-                trackRowView(item: row.item, track: row.track, index: index)
+                .buttonStyle(.bordered)
             }
         }
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(.rect(cornerRadius: 8))
-        .padding(.horizontal)
     }
 
-    @ViewBuilder
-    private func trackRowView(item: PlaylistItem, track: Track, index: Int) -> some View {
-        let row = TrackRow(
-            track: track,
-            index: index,
-            currentlyPlayingURI: playbackViewModel.currentTrackUri,
-            currentSection: .playlists,
-            selectionId: playlistId,
-            itemUid: item.uid,
-            onDoubleTap: {
-                guard let uri = playlist?.uri else { return }
-                await playbackViewModel.play(
-                    uriOrUrl: uri,
-                    trackIndex: index,
-                    startingAtUri: track.uri,
-                )
-            },
-        )
+    /// Moves a row to sit before the row now at `index`, or last past the end: first in the
+    /// store, so the table shows it at once, then on Spotify, named by uids. A failure reads the
+    /// playlist again, so the list on screen is the one Spotify has.
+    private func move(uid: String, toInsertionIndex index: Int) {
+        guard let items = store.playlists[playlistId]?.items,
+              let from = items.firstIndex(where: { $0.uid == uid }),
+              index != from, index != from + 1
+        else { return }
+        let beforeUid = index < items.count ? items[index].uid : nil
 
-        if isOwner {
-            row
-                .opacity(draggedUid == item.uid ? 0.5 : 1.0)
-                .onDrag {
-                    draggedUid = item.uid
-                    // Only to tell a real move from a drop in the same place; the move itself
-                    // is expressed entirely in uids.
-                    draggedFromIndex = store.playlists[playlistId]?.items
-                        .firstIndex { $0.uid == item.uid }
-                    return NSItemProvider(object: item.uid as NSString)
+        withAnimation {
+            playlistService.previewMove(playlistId: playlistId, fromIndex: from, toIndex: index > from ? index - 1 : index)
+        }
+        Task {
+            do {
+                try await playlistService.movePlaylistItem(playlistId: playlistId, uid: uid, beforeUid: beforeUid)
+            } catch {
+                // A newer move cancelled this one's reconciliation, and owns the order now.
+                guard !isCancellation(error) else { return }
+                debugLog("PlaylistReorder", "Failed to reorder: \(error)")
+                do {
+                    try await playlistService.reloadPlaylistTracks(playlistId: playlistId)
+                } catch {
+                    failure = LoadFailure(message: String(localized: "error.reorder_tracks \(error.localizedDescription)"))
                 }
-                .onDrop(
-                    of: [.text],
-                    delegate: PlaylistReorderDropDelegate(
-                        targetUid: item.uid,
-                        playlistId: playlistId,
-                        draggedUid: $draggedUid,
-                        draggedFromIndex: $draggedFromIndex,
-                        failure: $failure,
-                        store: store,
-                        playlistService: playlistService,
-                    ),
-                )
-        } else {
-            row
+            }
         }
     }
 
@@ -336,12 +304,6 @@ struct PlaylistDetailView: View {
         }
     }
 
-    private func resolveFavoriteStatusesForTracks() async {
-        guard !tracks.isEmpty else { return }
-
-        await trackService.ensureFavoriteStatuses(trackIds: tracks.map(\.id))
-    }
-
     private func loadPlaylist() async {
         // Only claim to be loading when the track list is actually missing —
         // a cached playlist must not flash a spinner over its tracks.
@@ -387,105 +349,5 @@ struct PlaylistDetailView: View {
             // This properly loads the playlist context instead of individual tracks
             await playbackViewModel.play(uriOrUrl: playlist.uri)
         }
-    }
-}
-
-// MARK: - Drag and Drop for Playlist Reordering
-
-/// Drop delegate for reordering tracks in a playlist
-struct PlaylistReorderDropDelegate: DropDelegate {
-    let targetUid: String
-    let playlistId: String
-    @Binding var draggedUid: String?
-    @Binding var draggedFromIndex: Int?
-    @Binding var failure: LoadFailure?
-    let store: AppStore
-    let playlistService: PlaylistService
-
-    /// Sends the move the user just made, expressed in uids.
-    ///
-    /// The optimistic reorder has already happened by now, so the store holds exactly the order
-    /// on screen — and the request is simply "put this item before whatever now follows it".
-    /// Reading the desired order out of the store rather than reconstructing it from drag
-    /// bookkeeping is what makes this correct: the previous version mixed frames, indexing the
-    /// *already reordered* array with an index captured *before* the reorder, and so named the
-    /// wrong item to move. It survived on the Web API only because that took positions, which
-    /// Spotify applied against the server's own order.
-    func performDrop(info _: DropInfo) -> Bool {
-        defer {
-            draggedUid = nil
-            draggedFromIndex = nil
-        }
-
-        guard let movingUid = draggedUid,
-              let playlist = store.playlists[playlistId],
-              let newIndex = playlist.items.firstIndex(where: { $0.uid == movingUid })
-        else {
-            return false
-        }
-
-        // Dropped where it started: the frames agree, so there is nothing to send.
-        guard newIndex != draggedFromIndex else { return true }
-
-        let items = playlist.items
-        // Past the end is the bottom, which the service spells as its own move type rather
-        // than as a position.
-        let beforeUid = newIndex + 1 < items.count ? items[newIndex + 1].uid : nil
-
-        Task { [movingUid, beforeUid] in
-            do {
-                try await playlistService.movePlaylistItem(
-                    playlistId: playlistId,
-                    uid: movingUid,
-                    beforeUid: beforeUid,
-                )
-            } catch {
-                // A newer reorder cancelled this one's reconciliation. It owns the
-                // final order now; rolling back here would only cancel it in turn.
-                guard !isCancellation(error) else { return }
-
-                debugLog("PlaylistReorder", "Failed to reorder: \(error)")
-                // Revert the optimistic update by re-fetching the real order. This
-                // has to bypass the cache — the optimistic update already wrote the
-                // order we are trying to undo. If even that fails, say so: the list
-                // on screen is then not the one the server has.
-                do {
-                    try await playlistService.reloadPlaylistTracks(playlistId: playlistId)
-                } catch {
-                    failure = LoadFailure(message: String(localized: "error.reorder_tracks \(error.localizedDescription)"))
-                }
-            }
-        }
-
-        return true
-    }
-
-    func dropEntered(info _: DropInfo) {
-        guard let movingUid = draggedUid,
-              let playlist = store.playlists[playlistId]
-        else { return }
-
-        let items = playlist.items
-
-        guard let fromIndex = items.firstIndex(where: { $0.uid == movingUid }),
-              let toIndex = items.firstIndex(where: { $0.uid == targetUid }),
-              fromIndex != toIndex
-        else { return }
-
-        withAnimation(.default) {
-            playlistService.previewMove(
-                playlistId: playlistId,
-                fromIndex: fromIndex,
-                toIndex: toIndex,
-            )
-        }
-    }
-
-    func dropUpdated(info _: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func dropExited(info _: DropInfo) {
-        // Keep draggedUid until performDrop
     }
 }

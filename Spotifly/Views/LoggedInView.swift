@@ -139,8 +139,9 @@ struct LoggedInView: View {
         Group {
             if navigationCoordinator.needsThreeColumnLayout {
                 HSplitView {
+                    // clamp(200, 28 %, 300) in the handoff.
                     contentRouter
-                        .frame(minWidth: 280, idealWidth: 380, maxWidth: 560, maxHeight: .infinity)
+                        .frame(minWidth: 200, idealWidth: 260, maxWidth: 300, maxHeight: .infinity)
 
                     LoggedInDetailRouterView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -305,6 +305,8 @@ struct NewPlaylistPrompt: ViewModifier {
     /// prompt whether or not something is playing.
     let trackId: String?
     let onAdded: () -> Void
+    /// Where the new playlist is wanted, such as opening it; told after the track is added.
+    var onCreated: (Playlist) -> Void = { _ in }
 
     @Environment(PlaylistService.self) private var playlistService
     @Environment(PlaybackViewModel.self) private var playbackViewModel
@@ -330,16 +332,20 @@ struct NewPlaylistPrompt: ViewModifier {
 
     private func createAndAddToPlaylist(name: String) {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmedName.isEmpty, let trackId else { return }
+        guard !trimmedName.isEmpty else { return }
 
         Task {
             do {
                 let newPlaylist = try await playlistService.createPlaylist(name: trimmedName)
-                try await playlistService.addTracksToPlaylist(
-                    playlistId: newPlaylist.id,
-                    trackIds: [trackId],
-                )
+                // Empty without a track, as the toolbar's New Playlist makes it.
+                if let trackId {
+                    try await playlistService.addTracksToPlaylist(
+                        playlistId: newPlaylist.id,
+                        trackIds: [trackId],
+                    )
+                }
                 onAdded()
+                onCreated(newPlaylist)
             } catch {
                 playbackViewModel.errorMessage = String(localized: "error.create_playlist \(error.localizedDescription)")
             }
@@ -370,11 +376,13 @@ extension View {
         isPresented: Binding<Bool>,
         trackId: String?,
         onAdded: @escaping () -> Void,
+        onCreated: @escaping (Playlist) -> Void = { _ in },
     ) -> some View {
         modifier(NewPlaylistPrompt(
             isPresented: isPresented,
             trackId: trackId,
             onAdded: onAdded,
+            onCreated: onCreated,
         ))
     }
 }

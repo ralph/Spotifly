@@ -81,6 +81,8 @@ private struct LoggedInContextToolbarActions: View {
 
     @Environment(PlaybackViewModel.self) private var playbackViewModel
 
+    @State private var showNewPlaylist = false
+
     var body: some View {
         switch navigationCoordinator.selectedNavigationItem {
         case .albums:
@@ -96,10 +98,21 @@ private struct LoggedInContextToolbarActions: View {
                 artistToolbarActions(artist: artist)
             }
         case .playlists:
-            if let playlistId = navigationCoordinator.selectedPlaylistId,
-               let playlist = store.playlists[playlistId]
-            {
-                playlistToolbarActions(playlist: playlist)
+            // New Playlist with or without a playlist selected: an account with none needs it most.
+            HStack(spacing: 8) {
+                ToolbarActionButton(title: "playlist.new.title", systemImage: "plus") {
+                    showNewPlaylist = true
+                }
+
+                if let playlistId = navigationCoordinator.selectedPlaylistId,
+                   let playlist = store.playlists[playlistId]
+                {
+                    playlistToolbarActions(playlist: playlist)
+                }
+            }
+            // A new playlist opens as soon as it is made.
+            .newPlaylistPrompt(isPresented: $showNewPlaylist, trackId: nil, onAdded: {}) { created in
+                navigationCoordinator.selectPlaylist(created.id)
             }
         default:
             EmptyView()
@@ -165,52 +178,67 @@ private struct LoggedInContextToolbarActions: View {
         }
     }
 
+    /// Share, and a menu with the rest, as the handoff's playlist toolbar has it.
     private func playlistToolbarActions(playlist: Playlist) -> some View {
         HStack(spacing: 8) {
-            ToolbarActionButton(
-                title: "track.menu.play_next",
-                systemImage: "text.line.first.and.arrowtriangle.forward",
-            ) {
-                Task {
-                    await playbackViewModel.addToQueue(uri: playlist.uri)
-                }
-            }
-
-            ShareToolbarButton(uri: playlist.uri)
-
-            if playlist.ownerId == store.userId {
-                ToolbarActionButton(title: "playlist.menu.edit_details", systemImage: "pencil") {
-                    NotificationCenter.default.post(name: .showPlaylistEditDetails, object: playlist.id)
-                }
-
-                Menu {
-                    Button("playlist.menu.choose_cover") {
-                        NotificationCenter.default.post(name: .showPlaylistCoverPicker, object: playlist.id)
-                    }
-                    Button("playlist.menu.remove_cover", role: .destructive) {
-                        NotificationCenter.default.post(name: .showPlaylistRemoveCoverConfirmation, object: playlist.id)
-                    }
-                } label: {
-                    Label("playlist.menu.cover", systemImage: "photo")
+            if let link = SpotifyURI.webURL(playlist.uri).flatMap(URL.init(string:)) {
+                ShareLink(item: link) {
+                    Label("action.share", systemImage: "square.and.arrow.up")
                 }
                 .labelStyle(.iconOnly)
-                .help("playlist.menu.cover")
+                .help("action.share")
+            }
 
-                ToolbarActionButton(title: "playlist.menu.delete", systemImage: "trash", role: .destructive) {
-                    NotificationCenter.default.post(name: .showPlaylistDeleteConfirmation, object: playlist.id)
+            Menu {
+                Button("action.play", systemImage: "play.fill") {
+                    Task { await playbackViewModel.play(uriOrUrl: playlist.uri) }
                 }
-            } else if store.userPlaylistIds.contains(playlist.id) {
-                ToolbarActionButton(title: "playlist.menu.unfollow", systemImage: "minus.circle", role: .destructive) {
-                    NotificationCenter.default.post(name: .showPlaylistUnfollowConfirmation, object: playlist.id)
+                Button("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                    Task { await playbackViewModel.addToQueue(uri: playlist.uri) }
                 }
-            } else {
-                ToolbarActionButton(title: "playlist.menu.follow", systemImage: "plus.circle") {
-                    Task {
-                        try? await playlistService.followPlaylist(playlistId: playlist.id)
+
+                Divider()
+
+                if playlist.ownerId == store.userId {
+                    Button("playlist.menu.edit_details", systemImage: "pencil") {
+                        NotificationCenter.default.post(name: .showPlaylistEditDetails, object: playlist.id)
+                    }
+                    Button("playlist.menu.choose_cover", systemImage: "photo") {
+                        NotificationCenter.default.post(name: .showPlaylistCoverPicker, object: playlist.id)
+                    }
+                    Button("playlist.menu.remove_cover") {
+                        NotificationCenter.default.post(name: .showPlaylistRemoveCoverConfirmation, object: playlist.id)
+                    }
+                    Button("playlist.menu.delete", systemImage: "trash", role: .destructive) {
+                        NotificationCenter.default.post(name: .showPlaylistDeleteConfirmation, object: playlist.id)
+                    }
+                } else if store.userPlaylistIds.contains(playlist.id) {
+                    Button("playlist.menu.unfollow", systemImage: "minus.circle") {
+                        NotificationCenter.default.post(name: .showPlaylistUnfollowConfirmation, object: playlist.id)
+                    }
+                } else {
+                    Button("playlist.menu.follow", systemImage: "plus.circle") {
+                        Task { try? await playlistService.followPlaylist(playlistId: playlist.id) }
                     }
                 }
+
+                Divider()
+
+                Button("action.copy_link", systemImage: "link") {
+                    copyLink(of: playlist.uri)
+                }
+            } label: {
+                Label("action.more", systemImage: "ellipsis")
             }
+            .labelStyle(.iconOnly)
+            .help("action.more")
         }
+    }
+
+    private func copyLink(of uri: String) {
+        guard let link = SpotifyURI.webURL(uri) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(link, forType: .string)
     }
 }
 

@@ -43,6 +43,8 @@ struct PlaylistsListView: View {
                 placeholderGlyph: "music.note.list",
                 artworkShape: AnyShape(.rect(cornerRadius: 4)),
             ),
+            filterPrompt: "library.filter.playlists",
+            subtitle: { localizedTextString("metadata.by_owner", $0.ownerName) },
         )
     }
 }

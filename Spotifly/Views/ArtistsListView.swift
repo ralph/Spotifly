@@ -43,6 +43,7 @@ struct ArtistsListView: View {
                 placeholderGlyph: "person.fill",
                 artworkShape: AnyShape(.circle),
             ),
+            filterPrompt: "library.filter.artists",
         )
     }
 }

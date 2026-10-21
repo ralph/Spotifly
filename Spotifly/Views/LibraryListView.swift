@@ -48,8 +48,23 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     let load: @MainActor (_ forceRefresh: Bool) async throws -> Void
     let loadMore: @MainActor () async throws -> Void
     let style: LibrarySectionStyle
+    /// The column's own filter field's prompt.
+    let filterPrompt: LocalizedStringKey
+    /// The row's second line, under the name, where the kind has one.
+    var subtitle: (Entity) -> String? = { _ in nil }
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
+
+    @State private var filter = ""
+
+    /// The loaded entries the filter leaves, by name and second line.
+    private var filteredItems: [Entity] {
+        let query = filter.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return items }
+        return items.filter {
+            $0.name.localizedStandardContains(query) || (subtitle($0)?.localizedStandardContains(query) ?? false)
+        }
+    }
 
     /// Whether we have content to show (either the ephemeral entity or the library)
     private var hasContent: Bool {
@@ -100,64 +115,71 @@ struct LibraryListView<Entity: LibraryEntity>: View {
                 }
                 .padding()
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        // Back button when navigated from another section
-                        if ephemeral != nil, let backTitle = navigationCoordinator.backNavigationTitle {
-                            Button {
-                                navigationCoordinator.navigateBackward()
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left")
+                VStack(spacing: 0) {
+                    TextField(filterPrompt, text: $filter)
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 4)
+                        .padding(.bottom, 6)
+
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            // Back button when navigated from another section
+                            if ephemeral != nil, let backTitle = navigationCoordinator.backNavigationTitle {
+                                Button {
+                                    navigationCoordinator.navigateBackward()
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "chevron.left")
+                                            .font(.caption.weight(.semibold))
+                                        Text("nav.back_to \(backTitle)")
+                                            .font(.subheadline)
+                                    }
+                                    .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.bottom, 8)
+                            }
+
+                            // Ephemeral "Currently Viewing" section
+                            if let ephemeral {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("nav.currently_viewing")
                                         .font(.caption.weight(.semibold))
-                                    Text("nav.back_to \(backTitle)")
-                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .textCase(.uppercase)
+
+                                    row(for: ephemeral)
                                 }
-                                .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.bottom, 8)
-                        }
 
-                        // Ephemeral "Currently Viewing" section
-                        if let ephemeral {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("nav.currently_viewing")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .textCase(.uppercase)
-
-                                row(for: ephemeral)
-                            }
-
-                            if !items.isEmpty {
-                                Divider()
-                                    .padding(.vertical, 8)
-
-                                Text("nav.your_library")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .textCase(.uppercase)
-                            }
-                        }
-
-                        ForEach(items.enumerated(), id: \.element.id) { index, item in
-                            VStack(spacing: 0) {
-                                if index > 0 {
+                                if !items.isEmpty {
                                     Divider()
-                                        .padding(.leading, 56)
-                                }
+                                        .padding(.vertical, 8)
 
+                                    Text("nav.your_library")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .textCase(.uppercase)
+                                }
+                            }
+
+                            let shown = filteredItems
+                            ForEach(shown) { item in
                                 row(for: item)
                             }
-                        }
 
-                        LoadMoreRow(pagination: pagination, loadMore: loadMoreItems)
+                            if shown.isEmpty {
+                                ContentUnavailableView.search(text: filter)
+                            } else if filter.isEmpty {
+                                LoadMoreRow(pagination: pagination, loadMore: loadMoreItems)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 8)
                     }
-                    .padding()
-                }
-                .refreshable {
-                    await loadItems(forceRefresh: true)
+                    .refreshable {
+                        await loadItems(forceRefresh: true)
+                    }
                 }
             }
         }
@@ -175,6 +197,7 @@ struct LibraryListView<Entity: LibraryEntity>: View {
     private func row(for entity: Entity) -> some View {
         LibraryRow(
             entity: entity,
+            subtitle: subtitle(entity),
             style: style,
             isSelected: selectedId == entity.id,
             onSelect: {
@@ -203,6 +226,7 @@ struct LibraryListView<Entity: LibraryEntity>: View {
 
 private struct LibraryRow<Entity: LibraryEntity>: View {
     let entity: Entity
+    let subtitle: String?
     let style: LibrarySectionStyle
     let isSelected: Bool
     let onSelect: () -> Void
@@ -226,16 +250,22 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
                     placeholderWhileLoading: true,
                 )
 
-                Text(entity.name)
-                    .font(.system(size: 13))
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entity.name)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .lineLimit(1)
 
                 Spacer()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear, in: .rect(cornerRadius: 7))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

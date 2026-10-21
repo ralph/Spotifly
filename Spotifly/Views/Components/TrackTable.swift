@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One row of a `TrackTable`: a track at its place in the list it came from.
 struct TrackTableRow: Identifiable {
@@ -55,6 +56,9 @@ struct TrackTable: View {
     var selectionId: String?
     /// Whether the headers sort; a queue keeps its order.
     var sortable = true
+    /// Moves the row with this id to sit before the row now at the index, or last past the end;
+    /// nil where rows do not move.
+    var reorder: (@MainActor @Sendable (_ id: String, _ insertionIndex: Int) -> Void)?
     let play: (TrackTableRow) -> Void
 
     @Environment(PlaybackViewModel.self) private var playbackViewModel
@@ -74,7 +78,7 @@ struct TrackTable: View {
     }
 
     var body: some View {
-        Table(sortedRows, selection: $selection, sortOrder: sortable ? $sortOrder : .constant([])) {
+        Table(of: TrackTableRow.self, selection: $selection, sortOrder: sortable ? $sortOrder : .constant([])) {
             TableColumn("table.number", value: \.number) { row in
                 NumberCell(number: row.number, trackUri: row.track.uri)
                     .modifier(cellEnvironment)
@@ -118,6 +122,20 @@ struct TrackTable: View {
                 .modifier(cellEnvironment)
             }
             .width(56)
+        } rows: {
+            // Draggable while the rows are in the list's own order, where an index means a place
+            // in it; a page that lets them move says so with `reorder`.
+            ForEach(sortedRows) { row in
+                TableRow(row)
+                    .draggable(row.id)
+            }
+            .onInsert(of: [.plainText]) { index, providers in
+                guard let reorder, isInListOrder, let provider = providers.first else { return }
+                _ = provider.loadObject(ofClass: NSString.self) { id, _ in
+                    guard let id = id as? String else { return }
+                    Task { @MainActor in reorder(id, index) }
+                }
+            }
         }
         .contextMenu(forSelectionType: TrackTableRow.ID.self) { ids in
             if let row = row(for: ids) {
@@ -162,6 +180,13 @@ struct TrackTable: View {
             playlistService: playlistService,
             navigationCoordinator: navigationCoordinator,
         )
+    }
+
+    /// Whether the rows stand in the list's own order: unsorted, or sorted by # ascending, which
+    /// the header leaves behind once clicked back.
+    private var isInListOrder: Bool {
+        guard let first = sortOrder.first else { return true }
+        return sortOrder.count == 1 && first.keyPath == \TrackTableRow.number && first.order == .forward
     }
 
     /// The row a click or a menu names: the first of the selection.
