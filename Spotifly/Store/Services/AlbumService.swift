@@ -26,12 +26,21 @@ final class AlbumService {
     private static let listKey = "user-albums"
     private let notFound = NotFoundMemory(.album)
 
+    private let defaults: UserDefaults
+    private static let sortKey = "albumSort"
+
+    /// The order of the saved albums, which Spotify sorts the whole list in. Kept across launches.
+    private(set) var sort: AlbumSort
+
     init(
         store: AppStore,
         partnerAPI: PartnerAPI = PartnerAPI(),
+        defaults: UserDefaults = .standard,
     ) {
         self.store = store
         self.partnerAPI = partnerAPI
+        self.defaults = defaults
+        sort = defaults.string(forKey: Self.sortKey).flatMap(AlbumSort.init(rawValue:)) ?? .recentlyAdded
     }
 
     // MARK: - User Albums
@@ -50,7 +59,7 @@ final class AlbumService {
 
         try await listRequests.run(Self.listKey) {
             try await self.store.loadLibraryPage(\.albumsPagination) { offset in
-                let page = try await self.partnerAPI.libraryAlbums(offset: offset)
+                let page = try await self.partnerAPI.libraryAlbums(offset: offset, sort: self.sort)
                 // A force refresh cancels this run and starts another. Cancellation is
                 // cooperative, so without this the superseded page would still be
                 // written — over the reset its replacement just performed.
@@ -69,6 +78,14 @@ final class AlbumService {
                 return (page.items?.count ?? 0, page.totalCount ?? 0)
             }
         }
+    }
+
+    /// Sorts the saved albums anew, reading the list again from its first page.
+    func setSort(_ sort: AlbumSort) async throws {
+        guard sort != self.sort else { return }
+        self.sort = sort
+        defaults.set(sort.rawValue, forKey: Self.sortKey)
+        try await loadUserAlbums(forceRefresh: true)
     }
 
     /// Load more albums (pagination)

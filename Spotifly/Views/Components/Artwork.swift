@@ -97,6 +97,11 @@ extension Artwork {
         )
     }
 
+    /// The art of the redesign's `DetailHeader`.
+    static func detailHeader(_ images: ImageSet, symbol: String) -> Artwork {
+        Artwork(images: images, size: 132, shape: AnyShape(.rect(cornerRadius: 10)), symbol: symbol, symbolFont: .system(size: 48))
+    }
+
     /// The artwork at the top of an album's, an artist's or a playlist's page.
     static func header(
         _ images: ImageSet,

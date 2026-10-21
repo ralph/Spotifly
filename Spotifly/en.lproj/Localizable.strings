@@ -27,6 +27,8 @@
 "detail.kind.followed_playlist" = "Playlist · Following";
 "detail.in_library" = "In Library";
 "detail.add_to_library" = "Add to Library";
+"detail.kind.album" = "Album";
+"detail.kind.album %@" = "Album · %@";
 "table.number" = "#";
 "table.title" = "Title";
 "table.album" = "Album";
@@ -55,6 +57,10 @@
 "nav.your_library" = "Your Library";
 "library.filter.playlists" = "Filter Playlists";
 "library.filter.albums" = "Filter Albums";
+"library.sort" = "Sort By";
+"library.sort.recently_added" = "Recently Added";
+"library.sort.title" = "Title";
+"library.sort.artist" = "Artist";
 "library.filter.artists" = "Filter Artists";
 
 /* Common Actions */
@@ -85,7 +91,6 @@
 "playlist.new.message" = "Enter a name for the new playlist";
 
 /* Playback */
-"playback.play_album" = "Play Album";
 
 /* Mini Player */
 "mini_player.restore" = "Restore full window";
@@ -232,8 +237,6 @@
 "preferences.copyright %@" = "© %@ Ralph von der Heyden";
 
 /* Album Context Menu & Alerts */
-"album.menu.remove_from_library" = "Remove from Library";
-"album.menu.add_to_library" = "Add to Library";
 "album.remove.title" = "Remove from Library";
 "album.remove.action" = "Remove";
 "album.remove.message %@" = "Are you sure you want to remove \"%@\" from your library?";
@@ -291,6 +294,7 @@
 "error.update_playlist %@" = "Failed to update playlist: %@";
 "error.reorder_tracks %@" = "Failed to reorder tracks: %@";
 "error.remove_album %@" = "Failed to remove album: %@";
+"error.save_album %@" = "Failed to save album: %@";
 "error.unfollow_artist %@" = "Failed to unfollow artist: %@";
 "error.update_favorite %@" = "Failed to update favorite: %@";
 "error.add_to_playlist %@" = "Failed to add to playlist: %@";

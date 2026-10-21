@@ -27,6 +27,8 @@
 "detail.kind.followed_playlist" = "Playlist · Gefolgt";
 "detail.in_library" = "In Bibliothek";
 "detail.add_to_library" = "Zur Bibliothek";
+"detail.kind.album" = "Album";
+"detail.kind.album %@" = "Album · %@";
 "table.number" = "#";
 "table.title" = "Titel";
 "table.album" = "Album";
@@ -55,6 +57,10 @@
 "nav.your_library" = "Deine Bibliothek";
 "library.filter.playlists" = "Playlists filtern";
 "library.filter.albums" = "Alben filtern";
+"library.sort" = "Sortieren nach";
+"library.sort.recently_added" = "Zuletzt hinzugefügt";
+"library.sort.title" = "Titel";
+"library.sort.artist" = "Künstler";
 "library.filter.artists" = "Künstler filtern";
 
 /* Common Actions */
@@ -85,7 +91,6 @@
 "playlist.new.message" = "Gib einen Namen für die neue Playlist ein";
 
 /* Playback */
-"playback.play_album" = "Album abspielen";
 
 /* Mini Player */
 "mini_player.restore" = "Vollständiges Fenster wiederherstellen";
@@ -232,8 +237,6 @@
 "preferences.copyright %@" = "© %@ Ralph von der Heyden";
 
 /* Album Context Menu & Alerts */
-"album.menu.remove_from_library" = "Aus Bibliothek entfernen";
-"album.menu.add_to_library" = "Zur Bibliothek hinzufügen";
 "album.remove.title" = "Aus Bibliothek entfernen";
 "album.remove.action" = "Entfernen";
 "album.remove.message %@" = "Bist du sicher, dass du \"%@\" aus deiner Bibliothek entfernen möchtest?";
@@ -291,6 +294,7 @@
 "error.update_playlist %@" = "Playlist konnte nicht aktualisiert werden: %@";
 "error.reorder_tracks %@" = "Titel konnten nicht neu sortiert werden: %@";
 "error.remove_album %@" = "Album konnte nicht entfernt werden: %@";
+"error.save_album %@" = "Album konnte nicht gesichert werden: %@";
 "error.unfollow_artist %@" = "Künstler konnte nicht entfolgt werden: %@";
 "error.update_favorite %@" = "Favorit konnte nicht aktualisiert werden: %@";
 "error.add_to_playlist %@" = "Titel konnte nicht zur Playlist hinzugefügt werden: %@";

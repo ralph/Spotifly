@@ -194,7 +194,7 @@ struct PlaylistDetailView: View {
             title: playlistName,
             description: playlistDescription,
         ) {
-            Artwork(images: playlist.images, size: 132, shape: AnyShape(.rect(cornerRadius: 10)), symbol: "music.note.list", symbolFont: .system(size: 48))
+            Artwork.detailHeader(playlist.images, symbol: "music.note.list")
         } metadata: {
             Text(verbatim: [
                 localizedTextString("metadata.by_owner", playlist.ownerName),

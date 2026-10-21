@@ -222,7 +222,7 @@ extension TrackContextMenu {
 // MARK: - Playlist Submenu Content (lazy loading)
 
 /// A view that loads playlists on-demand when the submenu appears
-private struct PlaylistSubmenuContent: View {
+struct PlaylistSubmenuContent: View {
     let store: AppStore
     let playlistService: PlaylistService
     let onAddToPlaylist: (String) -> Void

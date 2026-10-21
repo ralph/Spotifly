@@ -189,6 +189,32 @@ nonisolated struct PathfinderLibraryVariables: Encodable, Sendable {
     var includeFoldersWhenFlattening: Bool = false
 }
 
+/// The orders the album list offers, as `libraryV3`'s `order` names them. Measured in the web
+/// player on 2026-10-21: the response lists `Recents` (what no order selects), `Recently
+/// Added`, `Alphabetical`, `Creator` and `Release Date`; `Creator` sorts albums by their artist.
+nonisolated enum AlbumSort: String, CaseIterable, Sendable {
+    case recentlyAdded
+    case title
+    case artist
+
+    var order: String {
+        switch self {
+        case .recentlyAdded: "Recently Added"
+        case .title: "Alphabetical"
+        case .artist: "Creator"
+        }
+    }
+
+    /// What the sort menu calls it.
+    var title: LocalizedStringResource {
+        switch self {
+        case .recentlyAdded: "library.sort.recently_added"
+        case .title: "library.sort.title"
+        case .artist: "library.sort.artist"
+        }
+    }
+}
+
 /// The library kinds this app asks for.
 ///
 /// `Audiobooks` is deliberately absent: the account in testing had two, `libraryV3` will happily

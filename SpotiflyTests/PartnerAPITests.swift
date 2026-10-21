@@ -516,3 +516,27 @@ struct NotFoundMemoryTests {
         #expect(requests.count == 2)
     }
 }
+
+/// The album list's sort is Spotify's: the order goes in the request, and is kept for the next
+/// launch.
+@MainActor
+struct AlbumSortTests {
+    @Test func `a sort asks Spotify for the list in its order, and is remembered`() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "AlbumSortTests"))
+        defaults.removePersistentDomain(forName: "AlbumSortTests")
+        let orders = Recorder<String>()
+        let service = AlbumService(store: AppStore(), partnerAPI: partnerAPI { request in
+            let body = try #require(request.httpBody)
+            let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let variables = try #require(json["variables"] as? [String: Any])
+            try orders.record(#require(variables["order"] as? String))
+            return (Data(#"{"data":{}}"#.utf8), httpResponse(200))
+        }, defaults: defaults)
+
+        #expect(service.sort == .recentlyAdded)
+        _ = try? await service.setSort(.artist)
+
+        #expect(orders.values == ["Creator"])
+        #expect(AlbumService(store: AppStore(), defaults: defaults).sort == .artist)
+    }
+}

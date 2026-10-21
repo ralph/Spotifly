@@ -5,7 +5,6 @@
 //  Shows details for an album with track list, using normalized store
 //
 
-import AppKit
 import SwiftUI
 
 struct AlbumDetailView: View {
@@ -14,7 +13,6 @@ struct AlbumDetailView: View {
     @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(AppStore.self) private var store
     @Environment(AlbumService.self) private var albumService
-    @Environment(TrackService.self) private var trackService
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
     @State private var isLoading = false
@@ -49,9 +47,6 @@ struct AlbumDetailView: View {
         .task(id: albumId) {
             await loadAlbum()
         }
-        .task(id: tracks.map(\.id).joined()) {
-            await resolveFavoriteStatusesForTracks()
-        }
         .alert("album.remove.title", isPresented: $showRemoveConfirmation) {
             Button("action.cancel", role: .cancel) {}
             Button("album.remove.action", role: .destructive) {
@@ -60,111 +55,92 @@ struct AlbumDetailView: View {
         } message: {
             Text("album.remove.message \(album?.name ?? "")")
         }
-        .onToolbarAction(.showAlbumRemoveConfirmation, addressedTo: albumId) {
-            showRemoveConfirmation = true
-        }
     }
 
     private func albumContent(_ album: Album) -> some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Album art and metadata
-                VStack(spacing: 16) {
-                    Artwork.header(album.images, symbol: "music.note")
+        // Looked up once per redraw, for the header and the table both.
+        let tracks = tracks
 
-                    VStack(spacing: 8) {
-                        Text(album.name)
-                            .font(.title2.weight(.semibold))
-                            .multilineTextAlignment(.center)
+        return VStack(spacing: 0) {
+            header(album, tracks: tracks)
 
-                        // The same label either way; only an album that names its artist can
-                        // offer the way to them.
-                        let artistLabel = Text(album.artistName)
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-
-                        if let artistId = album.artistId {
-                            Button {
-                                navigationCoordinator.navigateToArtistSection(artistId: artistId)
-                            } label: {
-                                artistLabel
-                            }
-                            .buttonStyle(.plain)
-                            .onHover { hovering in
-                                if hovering {
-                                    NSCursor.pointingHand.push()
-                                } else {
-                                    NSCursor.pop()
-                                }
-                            }
-                        } else {
-                            artistLabel
-                        }
-
-                        HStack(spacing: 4) {
-                            Text(localizedNumberString("metadata.tracks", album.trackCount))
-                            if !tracks.isEmpty {
-                                Text("metadata.separator")
-                                Text(totalDuration(of: tracks))
-                            }
-                            if let releaseDate = album.releaseDate {
-                                Text("metadata.separator")
-                                Text(formatReleaseDate(releaseDate))
-                            }
-                        }
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                    }
-
-                    // Play All button
-                    Button {
-                        playAllTracks()
-                    } label: {
-                        Label("playback.play_album", systemImage: "play.fill")
-                            .font(.headline)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(tracks.isEmpty)
-                }
-                .padding(.top, 24)
-
-                // Track list
-                if isLoading {
-                    ProgressView("loading.tracks")
-                        .padding()
-                } else if let failure {
+            if isLoading, tracks.isEmpty {
+                ProgressView("loading.tracks")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let failure, tracks.isEmpty {
+                InlineLoadError(failure: failure) { await loadAlbum() }
+                    .frame(maxHeight: .infinity, alignment: .top)
+            } else {
+                // A failed save or removal over the tracks there are.
+                if let failure {
                     InlineLoadError(failure: failure) { await loadAlbum() }
-                } else if !tracks.isEmpty {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(tracks.enumerated(), id: \.offset) { index, track in
-                            if index > 0 {
-                                Divider()
-                                    .padding(.leading, 54)
-                            }
-
-                            TrackRow(
-                                track: track,
-                                showTrackNumber: true,
-                                currentlyPlayingURI: playbackViewModel.currentTrackUri,
-                                currentSection: .albums,
-                                selectionId: albumId,
-                                onDoubleTap: {
-                                    await playbackViewModel.play(
-                                        uriOrUrl: album.uri,
-                                        trackIndex: index,
-                                        startingAtUri: track.uri,
-                                    )
-                                },
-                            )
-                        }
+                        .padding(.bottom, 8)
+                }
+                TrackTable(
+                    rows: tracks.enumerated().map { TrackTableRow(id: "\($0.offset)", number: $0.offset + 1, track: $0.element) },
+                    currentSection: .albums,
+                    selectionId: albumId,
+                    // An album is read in its own order.
+                    sortable: false,
+                ) { row in
+                    Task {
+                        await playbackViewModel.play(uriOrUrl: album.uri, trackIndex: row.number - 1, startingAtUri: row.track.uri)
                     }
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .clipShape(.rect(cornerRadius: 8))
-                    .padding(.horizontal)
                 }
             }
+        }
+    }
+
+    private func header(_ album: Album, tracks: [Track]) -> some View {
+        let isSaved = store.userAlbumIds.contains(albumId)
+
+        return DetailHeader(
+            kind: releaseYear(of: album).map { String(localized: "detail.kind.album \($0)") } ?? String(localized: "detail.kind.album"),
+            title: album.name,
+        ) {
+            Artwork.detailHeader(album.images, symbol: "music.note")
+        } metadata: {
+            HStack(spacing: 4) {
+                // Only an album that names its artist can offer the way to them.
+                if let artistId = album.artistId {
+                    Button(album.artistName) {
+                        navigationCoordinator.navigateToArtistSection(artistId: artistId)
+                    }
+                    .buttonStyle(.link)
+                    .fontWeight(.semibold)
+                } else {
+                    Text(album.artistName)
+                }
+                // After the artist: the count, and the length once the tracks are in.
+                Text(verbatim: [
+                    localizedNumberString("metadata.tracks", album.trackCount),
+                    tracks.isEmpty ? nil : totalDuration(of: tracks),
+                ].compactMap(\.self).map { "\(String(localized: "metadata.separator")) \($0)" }.joined(separator: " "))
+            }
+        } actions: {
+            PlayAndShuffleButtons {
+                Task { await playbackViewModel.play(uriOrUrl: album.uri) }
+            } shuffle: {
+                Task { await playbackViewModel.playShuffled(uriOrUrl: album.uri, trackUris: tracks.map(\.uri)) }
+            }
+            .disabled(tracks.isEmpty)
+
+            Button {
+                if isSaved {
+                    showRemoveConfirmation = true
+                } else {
+                    Task {
+                        do {
+                            try await albumService.saveAlbumToLibrary(albumId: albumId)
+                        } catch {
+                            failure = LoadFailure(message: String(localized: "error.save_album \(error.localizedDescription)"))
+                        }
+                    }
+                }
+            } label: {
+                Label(isSaved ? "detail.in_library" : "detail.add_to_library", systemImage: isSaved ? "checkmark" : "plus")
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -187,27 +163,17 @@ struct AlbumDetailView: View {
         isLoading = false
     }
 
-    private func resolveFavoriteStatusesForTracks() async {
-        guard !tracks.isEmpty else { return }
-
-        await trackService.ensureFavoriteStatuses(trackIds: tracks.map(\.id))
-    }
-
-    private func playAllTracks() {
-        guard let album else { return }
-        Task {
-            // Use album URI to load via Spirc.load(LoadRequest::from_context_uri())
-            // This properly loads the album context instead of individual tracks
-            await playbackViewModel.play(uriOrUrl: album.uri)
-        }
+    /// The year a release date starts with, which Spotify gives as a year, a month or a day.
+    private func releaseYear(of album: Album) -> String? {
+        album.releaseDate.map { String($0.prefix(4)) }.flatMap { Int($0) != nil ? $0 : nil }
     }
 
     private func removeFromLibrary() {
         Task {
             do {
+                // The page stays, as the toggle it was: the list keeps showing the album
+                // selected while it is open.
                 try await albumService.removeAlbumFromLibrary(albumId: albumId)
-                // Navigate away from the removed album
-                navigationCoordinator.clearAlbumSelection()
             } catch {
                 failure = LoadFailure(message: String(localized: "error.remove_album \(error.localizedDescription)"))
             }

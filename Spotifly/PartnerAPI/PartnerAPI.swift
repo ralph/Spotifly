@@ -339,10 +339,12 @@ nonisolated struct PartnerAPI: Sendable {
         try await libraryPage(filter: LibraryFilter.playlists, offset: offset, limit: limit)
     }
 
-    func libraryAlbums(offset: Int, limit: Int = LibraryFilter.pageLimit) async throws
+    /// One page of the user's saved albums, in the order `sort` names, which Spotify applies to
+    /// the whole list.
+    func libraryAlbums(offset: Int, sort: AlbumSort = .recentlyAdded, limit: Int = LibraryFilter.pageLimit) async throws
         -> PathfinderLibraryPage<PathfinderAlbum>
     {
-        try await libraryPage(filter: LibraryFilter.albums, offset: offset, limit: limit)
+        try await libraryPage(filter: LibraryFilter.albums, offset: offset, limit: limit, order: sort.order)
     }
 
     func libraryArtists(offset: Int, limit: Int = LibraryFilter.pageLimit) async throws
@@ -359,6 +361,7 @@ nonisolated struct PartnerAPI: Sendable {
         filter: String,
         offset: Int,
         limit: Int,
+        order: String? = nil,
     ) async throws -> PathfinderLibraryPage<Entity> {
         let response: PathfinderLibraryResponse<Entity> = try await query(
             .libraryV3,
@@ -366,6 +369,7 @@ nonisolated struct PartnerAPI: Sendable {
                 filters: [filter],
                 offset: offset,
                 limit: limit,
+                order: order,
             ),
         )
 
