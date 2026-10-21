@@ -128,6 +128,16 @@
 /* Startpage */
 "startpage.empty" = "Rien à afficher pour l'instant";
 "startpage.empty.description" = "Spotify compose cette page à partir de ce que vous écoutez.";
+"home.recently_played" = "Écoutés récemment";
+"home.top_tracks" = "Vos titres préférés";
+"home.top_content_failed" = "Impossible de charger vos titres préférés.";
+"home.range" = "Période";
+"home.range.short" = "4 semaines";
+"home.range.mid" = "6 mois";
+"home.range.long" = "1 an";
+"home.top_artists" = "Vos artistes préférés";
+"home.your_playlists" = "Vos playlists";
+"home.show_all" = "Tout afficher";
 "startpage.error" = "Impossible de charger la page d'accueil";
 
 /* Sections */

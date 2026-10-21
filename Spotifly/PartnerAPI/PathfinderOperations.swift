@@ -191,6 +191,13 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
         sha256Hash: "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a",
     )
 
+    /// The listener's most played tracks and artists over a time range, which the web player's
+    /// profile page shows. Captured from its network tab on 2026-10-21.
+    static let userTopContent = PathfinderOperation(
+        name: "userTopContent",
+        sha256Hash: "61b7353d3625780022dbc63d459eb64cd609e7e5e2a820f9160d65030efe2e15",
+    )
+
     /// Who the listener is, replacing `/me`.
     static let profileAttributes = PathfinderOperation(
         name: "profileAttributes",

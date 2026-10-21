@@ -11,6 +11,7 @@ struct ArtistCard: View {
     let id: String
     let name: String
     let images: ImageSet
+    var size = Artwork.cardSize
 
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
@@ -19,13 +20,13 @@ struct ArtistCard: View {
             navigationCoordinator.navigateToArtistSection(artistId: id)
         } label: {
             VStack(spacing: 8) {
-                Artwork.card(images, shape: AnyShape(.circle), symbol: "person.circle.fill", symbolSize: 60)
+                Artwork.card(images, size: size, shape: AnyShape(.circle), symbol: "person.circle.fill", symbolSize: 60)
 
                 Text(name)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(2)
+                    .font(.headline)
+                    .lineLimit(1)
                     .multilineTextAlignment(.center)
-                    .frame(width: Artwork.cardSize)
+                    .frame(width: size)
             }
         }
         .buttonStyle(.plain)
@@ -36,9 +37,10 @@ struct ArtistCard: View {
 
 extension ArtistCard {
     /// Initialize from an Artist entity
-    init(artist: Artist) {
+    init(artist: Artist, size: CGFloat = Artwork.cardSize) {
         id = artist.id
         name = artist.name
         images = artist.images
+        self.size = size
     }
 }

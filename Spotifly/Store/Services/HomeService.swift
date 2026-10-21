@@ -14,10 +14,9 @@ import Foundation
 /// those named its items by uri only — so every album, playlist and artist in the recent strip
 /// cost a further request to resolve. `home` returns the shelves with their contents inline.
 ///
-/// **The layout is Spotify's, not the app's.** There is no fixed set of sections to ask for and
-/// no ordering to impose: the response is a list of titled shelves, and this renders whatever
-/// arrives. That is why there is no per-section loading state — one request either produced a
-/// page or did not.
+/// The page shows one of its shelves, the contexts last played, beside the listener's top
+/// tracks and artists, which `userTopContent` gives by time range (`plans/done/redesign-home.md`).
+/// The shelves are one request and one loading state; each range of top content is another.
 @MainActor
 @Observable
 final class HomeService {
@@ -37,6 +36,16 @@ final class HomeService {
     /// still running. Pressing ⌘R six times in four seconds, which is exactly what a refresh
     /// that changes nothing visible invites, is enough to reach it.
     private var loadGeneration = 0
+
+    /// One load per top-content range, keyed by its raw value.
+    private let topContentRequests = InFlightRequests<Void>()
+
+    /// The ranges the page has asked for, loaded or not, which a refresh loads again: one that
+    /// failed is absent from the store, and would otherwise never be retried.
+    private var requestedTopContentRanges: Set<TopContentRange> = []
+
+    /// How many top tracks and artists a range lists.
+    private static let topContentLimit = 10
 
     init(store: AppStore, partnerAPI: PartnerAPI = PartnerAPI()) {
         self.store = store
@@ -79,8 +88,43 @@ final class HomeService {
         await task.value
     }
 
+    /// Reloads the shelves and every top-content range already shown, all at once.
     func refresh() async {
-        await loadHome(forceRefresh: true)
+        await withTaskGroup { group in
+            group.addTask { await self.loadHome(forceRefresh: true) }
+            for range in requestedTopContentRanges {
+                group.addTask { await self.loadTopContent(range: range, forceRefresh: true) }
+            }
+        }
+    }
+
+    /// Loads one range's top tracks and artists, or joins the load already running. Does
+    /// nothing once loaded unless `forceRefresh` is set. A failure leaves the range as it was:
+    /// the section shows what it had, or nothing, as the start page has no error per section.
+    func loadTopContent(range: TopContentRange, forceRefresh: Bool = false) async {
+        requestedTopContentRanges.insert(range)
+        if !forceRefresh, store.topContent[range] != nil {
+            return
+        }
+
+        do {
+            try await topContentRequests.run(range.rawValue) {
+                let response = try await self.partnerAPI.topContent(range: range, limit: Self.topContentLimit)
+                try Task.checkCancellation()
+                let tracks = response.tracks
+                let artists = response.artists
+                // Only the tracks the store has not got: these name no playability, and would
+                // mark a track an album or playlist knows to be unplayable playable again.
+                self.store.upsertTracks(tracks.filter { self.store.tracks[$0.id] == nil })
+                self.store.upsertArtists(artists)
+                self.store.setTopContent(
+                    TopContent(trackIds: tracks.map(\.id), artistIds: artists.map(\.id)),
+                    for: range,
+                )
+            }
+        } catch {
+            debugLog("HomeService", "Top content \(range.rawValue) failed: \(error)")
+        }
     }
 
     private func performLoad() async {
@@ -94,7 +138,7 @@ final class HomeService {
             store.upsertAlbums(page.albums)
             store.upsertPlaylists(page.playlists)
             store.upsertArtists(page.artists)
-            store.setHomePage(sections: page.sections, greeting: page.greeting)
+            store.setHomePage(sections: page.sections)
 
             store.hasLoadedHome = true
         } catch is CancellationError {

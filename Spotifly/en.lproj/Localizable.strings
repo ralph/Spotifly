@@ -128,6 +128,16 @@
 /* Startpage */
 "startpage.empty" = "Nothing to show yet";
 "startpage.empty.description" = "Spotify builds this page from what you listen to.";
+"home.recently_played" = "Recently Played";
+"home.top_tracks" = "Your Top Tracks";
+"home.top_content_failed" = "Could not load your top tracks.";
+"home.range" = "Time Range";
+"home.range.short" = "4 Weeks";
+"home.range.mid" = "6 Months";
+"home.range.long" = "1 Year";
+"home.top_artists" = "Your Top Artists";
+"home.your_playlists" = "Your Playlists";
+"home.show_all" = "Show All";
 "startpage.error" = "Could not load the startpage";
 
 /* Sections */

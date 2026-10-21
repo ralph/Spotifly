@@ -252,7 +252,12 @@ struct LoggedInView: View {
                 try? await session.trackService.loadFavorites(forceRefresh: true)
             }
 
-        case .startpage, .searchResults, .queue, .speakers, .profile, nil:
+        case .startpage:
+            {
+                await session.homeService.refresh()
+            }
+
+        case .searchResults, .queue, .speakers, .profile, nil:
             nil
         }
     }

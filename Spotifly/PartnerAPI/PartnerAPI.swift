@@ -431,6 +431,11 @@ nonisolated struct PartnerAPI: Sendable {
 
     // MARK: - Home
 
+    /// The listener's top tracks and artists over `range`, `limit` of each.
+    func topContent(range: TopContentRange, limit: Int) async throws -> PathfinderTopContentResponse {
+        try await query(.userTopContent, variables: PathfinderTopContentVariables(range: range, limit: limit))
+    }
+
     /// The start page, in one request.
     ///
     /// Everything the shelves draw arrives inline — names, cover art, artists — so this is the

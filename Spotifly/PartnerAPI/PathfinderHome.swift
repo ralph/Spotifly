@@ -49,12 +49,10 @@ nonisolated struct PathfinderHome: Decodable, Sendable {
     }
 
     let typename: String?
-    let greeting: Label?
     let sectionContainer: SectionContainer?
 
     private enum CodingKeys: String, CodingKey {
         case typename = "__typename"
-        case greeting
         case sectionContainer
     }
 
@@ -71,17 +69,32 @@ nonisolated struct PathfinderHome: Decodable, Sendable {
 
 /// One shelf: a title, and the entities under it.
 ///
-/// **The section's own `__typename` decides presentation, and the app deliberately ignores it.**
+/// **The section's own `__typename` decides presentation, and the app reads it once.**
 /// One account's page carried `HomeGenericSectionData`, `HomeShortsSectionData`,
 /// `HomeRecentlyPlayedSectionData` and `HomeFeedBaselineSectionData` in a single response, and
-/// the set is Spotify's to extend. Rendering by *item kind* rather than by section kind means an
-/// unknown section still draws as a shelf of whatever it holds, rather than disappearing.
+/// the set is Spotify's to extend. The start page shows only the recently played one, as the
+/// redesign's "Zuletzt gehört" (`plans/done/redesign-home.md`); see `isRecentlyPlayed`.
 ///
 /// `HomeShortsSectionData` carries no title at all, so a section with no title is a real case
 /// rather than a decode failure.
 nonisolated struct PathfinderHomeSection: Decodable, Sendable {
     struct SectionData: Decodable, Sendable {
+        let typename: String?
         let title: PathfinderHome.Label?
+
+        private enum CodingKeys: String, CodingKey {
+            case typename = "__typename"
+            case title
+        }
+    }
+
+    /// Whether it holds the contexts last played. **It comes in two forms**, both seen on
+    /// 2026-10-21 for the same account and the same persisted query: the web player got a
+    /// `HomeRecentlyPlayedSectionData` "Zuletzt" (`…0JQ5DAroEmF9ANbLaiJ7XR`, one list of 20
+    /// contexts), the app a `HomeGenericSectionData` "Zuletzt gehört"
+    /// (`spotify:section:0JQ5DAob0KZzPQKc9YbqhR`, ten contexts). Either is taken.
+    var isRecentlyPlayed: Bool {
+        data?.typename == "HomeRecentlyPlayedSectionData" || uri == "spotify:section:0JQ5DAob0KZzPQKc9YbqhR"
     }
 
     struct SectionItems: Decodable, Sendable {

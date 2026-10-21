@@ -162,13 +162,23 @@ nonisolated struct PathfinderTrack: Decodable, Sendable {
         let coverArt: PathfinderImage?
     }
 
-    let id: String?
+    /// Sent by search; `userTopContent` sends only the uri, which names the same id.
+    private let decodedId: String?
     let uri: String?
     let name: String?
     let albumOfTrack: AlbumOfTrack?
     let artists: PathfinderArtistList?
     let duration: PathfinderDuration?
     let playability: PathfinderPlayability?
+
+    var id: String? {
+        decodedId ?? uri.flatMap(SpotifyURI.id(from:))
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case decodedId = "id"
+        case uri, name, albumOfTrack, artists, duration, playability
+    }
 
     var durationMs: Int? {
         duration?.totalMilliseconds

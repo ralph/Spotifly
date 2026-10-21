@@ -82,13 +82,14 @@ extension Artwork {
     /// a circle for an artist.
     static func card(
         _ images: ImageSet,
-        shape: AnyShape = AnyShape(.rect(cornerRadius: 4)),
+        size: CGFloat = cardSize,
+        shape: AnyShape = AnyShape(.rect(cornerRadius: 8)),
         symbol: String,
         symbolSize: CGFloat = 40,
     ) -> Artwork {
         Artwork(
             images: images,
-            size: cardSize,
+            size: size,
             shape: shape,
             symbol: symbol,
             symbolFont: .system(size: symbolSize),

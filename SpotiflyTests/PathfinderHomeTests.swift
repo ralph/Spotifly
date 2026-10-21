@@ -128,7 +128,6 @@ struct PathfinderHomeTests {
     @Test func `the page decodes into shelves of ids`() throws {
         let page = try HomePage(pathfinder: decodeHome(homeJSON))
 
-        #expect(page.greeting == "Hello there")
         #expect(page.sections.map(\.title) == [nil, "More like Brian Fallon", "Recents"])
         // The section uri, not its index: Spotify reorders the page between requests, and the
         // uri is what lets SwiftUI recognise a shelf it has already drawn.

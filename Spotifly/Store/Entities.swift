@@ -293,6 +293,14 @@ struct HomeSection: Identifiable, Hashable, Encodable {
     /// Absent for shelves Spotify draws without a heading — the "shorts" row is one.
     let title: String?
     let items: [HomeItem]
+    /// Whether it holds the contexts last played, which the start page shows as "Zuletzt gehört".
+    var isRecentlyPlayed = false
+}
+
+/// The listener's top tracks and artists over one time range, as ids into the store.
+struct TopContent: Hashable, Encodable {
+    let trackIds: [String]
+    let artistIds: [String]
 }
 
 /// What a shelf entry points at. Deliberately only the three kinds this app can open: a row

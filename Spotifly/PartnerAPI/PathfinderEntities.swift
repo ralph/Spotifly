@@ -341,7 +341,6 @@ extension UserProfile {
 /// response rather than against a network. Main-actor isolated because the store entities it
 /// builds are — the decoded response it reads is not, and crosses on its own.
 struct HomePage {
-    var greeting: String?
     var sections: [HomeSection] = []
     var albums: [Album] = []
     var playlists: [Playlist] = []
@@ -356,8 +355,6 @@ struct HomePage {
     ///   Spotify does repeat an entity inside one section.
     /// - **A section with no uri is dropped**, since the uri is its identity across refreshes.
     init(pathfinder home: PathfinderHome) {
-        greeting = home.greeting?.transformedLabel
-
         for section in home.sections {
             guard let uri = section.uri else { continue }
 
@@ -373,7 +370,7 @@ struct HomePage {
 
             guard !items.isEmpty else { continue }
 
-            sections.append(HomeSection(id: uri, title: section.title, items: items))
+            sections.append(HomeSection(id: uri, title: section.title, items: items, isRecentlyPlayed: section.isRecentlyPlayed))
         }
     }
 
