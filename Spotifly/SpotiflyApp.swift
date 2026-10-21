@@ -299,7 +299,7 @@ private struct NavigationHistoryMenuItems: View {
 /// to focus an always-visible search field, so we make the underlying NSSearchField
 /// the window's first responder. No-op if the field can't be found.
 @MainActor
-private func focusToolbarSearchField() {
+func focusToolbarSearchField() {
     let windows = NSApp.windows.sorted { $0.isKeyWindow && !$1.isKeyWindow }
     for window in windows where window.isVisible {
         // The toolbar lives in the window frame view, above contentView.

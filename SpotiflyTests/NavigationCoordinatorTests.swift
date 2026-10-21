@@ -27,7 +27,7 @@ struct NavigationCoordinatorTests {
         visited.append(coordinator.current)
         coordinator.navigateToSearchResults(query: "q")
         visited.append(coordinator.current)
-        coordinator.showAllSearchTracks()
+        coordinator.showSearchScope(.tracks)
         visited.append(coordinator.current)
         coordinator.selectNavigationItem(.playlists)
         visited.append(coordinator.current)
@@ -68,7 +68,7 @@ struct NavigationCoordinatorTests {
         store.setSearchResults(emptySearchResults, for: "q")
         let coordinator = NavigationCoordinator(store: store)
         coordinator.navigateToSearchResults(query: "q")
-        coordinator.showAllSearchTracks()
+        coordinator.showSearchScope(.tracks)
         let expected = coordinator.current
 
         coordinator.selectNavigationItem(.favorites)
@@ -121,7 +121,7 @@ struct NavigationCoordinatorTests {
         #expect(coordinator.current == artistsRoute)
     }
 
-    @Test func `history titles name the section, the selection and the all-tracks page`() {
+    @Test func `history titles name the section, the selection and the search scope`() {
         let store = AppStore()
         let coordinator = NavigationCoordinator(store: store)
         store.upsertAlbum(album(id: "album-a", name: "Named Album"))
@@ -141,9 +141,9 @@ struct NavigationCoordinatorTests {
 
         store.setSearchResults(emptySearchResults, for: "q")
         coordinator.navigateToSearchResults(query: "q")
-        coordinator.showAllSearchTracks()
+        coordinator.showSearchScope(.tracks)
         coordinator.selectNavigationItem(.favorites)
-        #expect(coordinator.backNavigationTitle == String(localized: "section.tracks"))
+        #expect(coordinator.backNavigationTitle == SearchKind.tracks.title)
     }
 
     /// The entity is named by its section, never by its kind.
@@ -165,9 +165,9 @@ struct NavigationCoordinatorTests {
         let coordinator = NavigationCoordinator(store: store)
         coordinator.navigateToSearchResults(query: "q")
 
-        coordinator.showAllSearchTracks()
+        coordinator.showSearchScope(.tracks)
 
-        #expect(coordinator.current == Route(section: .searchResults, query: "q", showsAllTracks: true))
+        #expect(coordinator.current == Route(section: .searchResults, query: "q", searchScope: .tracks))
         #expect(coordinator.displayedSearchQuery == "q")
         coordinator.navigateBackward()
         #expect(coordinator.current == Route(section: .searchResults, query: "q"))
@@ -179,7 +179,7 @@ struct NavigationCoordinatorTests {
         let coordinator = NavigationCoordinator(store: store)
         coordinator.selectNavigationItem(.albums)
 
-        coordinator.showAllSearchTracks()
+        coordinator.showSearchScope(.tracks)
 
         #expect(coordinator.current == Route(section: .albums))
     }
@@ -190,7 +190,7 @@ struct NavigationCoordinatorTests {
         store.setSearchResults(emptySearchResults, for: "q")
         let coordinator = NavigationCoordinator(store: store)
         coordinator.navigateToSearchResults(query: "q")
-        coordinator.showAllSearchTracks()
+        coordinator.showSearchScope(.tracks)
         coordinator.selectNavigationItem(.albums)
 
         coordinator.selectNavigationItem(.searchResults)

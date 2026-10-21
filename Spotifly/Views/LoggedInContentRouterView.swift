@@ -24,18 +24,14 @@ struct LoggedInContentRouterView: View {
         if let query = navigationCoordinator.displayedSearchQuery,
            let searchResults = store.searchResults(for: query)
         {
-            if navigationCoordinator.current.showsAllTracks {
-                SearchAllTracksView(trackIds: searchResults.trackIds)
-            } else {
-                SearchResultsView(searchResults: searchResults)
-                    .navigationTitle("nav.search_results")
-            }
+            SearchResultsView(query: query, searchResults: searchResults, scope: navigationCoordinator.current.searchScope)
+                .navigationTitle("nav.search")
         } else if let query = navigationCoordinator.displayedSearchQuery,
                   let failure = store.searchFailure(for: query)
         {
             InlineLoadError(failure: failure) { await searchService.search(query: query) }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .navigationTitle("nav.search_results")
+                .navigationTitle("nav.search")
         } else {
             contentView
         }
@@ -80,7 +76,9 @@ struct LoggedInContentRouterView: View {
             UserProfileView(userProfile: store.userProfile, onLogout: onLogout)
 
         case .searchResults:
-            EmptyView()
+            // The search page before a search; a query's results are drawn above.
+            SearchHomeView()
+                .navigationTitle("nav.search")
 
         case .none:
             Text("empty.select_item")

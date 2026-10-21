@@ -9,7 +9,23 @@
 
 /* Navigation */
 "nav.startpage" = "Accueil";
-"nav.search_results" = "Résultats de recherche";
+"nav.search" = "Rechercher";
+"search.scope" = "Afficher";
+"search.scope.all" = "Tout";
+"search.scope.tracks" = "Titres";
+"search.scope.artists" = "Artistes";
+"search.scope.albums" = "Albums";
+"search.scope.playlists" = "Playlists";
+"search.no_results %@" = "Aucun résultat pour « %@ »";
+"search.no_results_description" = "Vérifiez l'orthographe ou essayez un autre terme.";
+"search.load_more" = "Charger plus";
+"search.prompt" = "Titres, artistes, albums, playlists";
+"search.recent" = "Recherches récentes";
+"search.recent_footer" = "Conservées sur ce Mac uniquement.";
+"search.remove_recent" = "Supprimer";
+"search.clear_recent" = "Effacer l'historique";
+"search.no_recent" = "Aucune recherche récente";
+"search.no_recent_description" = "Recherchez des titres, artistes, albums et playlists.";
 "nav.favorites" = "Titres likés";
 "nav.playlists" = "Playlists";
 "nav.albums" = "Albums";
@@ -55,7 +71,6 @@
 /* Playback */
 "playback.play_album" = "Écouter l'album";
 "playback.play_playlist" = "Écouter la playlist";
-"playback.play_tracks" = "Écouter les titres";
 
 /* Mini Player */
 "mini_player.restore" = "Restaurer la fenêtre complète";
@@ -141,17 +156,12 @@
 "startpage.error" = "Impossible de charger la page d'accueil";
 
 /* Sections */
-"section.tracks" = "Titres";
 "section.albums" = "Albums";
-"section.artists" = "Artistes";
-"section.playlists" = "Playlists";
 
 /* Metadata */
 "metadata.by_owner" = "Par %@";
 "metadata.separator" = "•";
 
-/* Show All Button */
-"show_all.tracks" = "Afficher les %d titres";
 
 /* Speakers */
 "speakers.type_active %@" = "%@ · Actif";

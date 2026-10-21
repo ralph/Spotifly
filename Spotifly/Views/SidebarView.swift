@@ -37,7 +37,7 @@ enum NavigationItem: Hashable, Identifiable {
         case .startpage:
             String(localized: "nav.startpage")
         case .searchResults:
-            String(localized: "nav.search_results")
+            String(localized: "nav.search")
         case .favorites:
             String(localized: "nav.favorites")
         case .playlists:
@@ -81,10 +81,9 @@ enum NavigationItem: Hashable, Identifiable {
 
 struct SidebarView: View {
     @Binding var selection: NavigationItem?
-    var hasSearchResults: Bool = false
     var userProfile: UserProfile?
 
-    private static let mainNavItems: [NavigationItem] = [.startpage, .queue, .speakers]
+    private static let mainNavItems: [NavigationItem] = [.startpage, .searchResults, .queue, .speakers]
     private static let libraryNavItems: [NavigationItem] = [.favorites, .playlists, .albums, .artists]
 
     var body: some View {
@@ -92,10 +91,6 @@ struct SidebarView: View {
             Section {
                 ForEach(Self.mainNavItems) { item in
                     navigationLink(for: item)
-                }
-
-                if hasSearchResults {
-                    navigationLink(for: .searchResults)
                 }
             }
 

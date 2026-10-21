@@ -58,9 +58,20 @@ struct LoggedInView: View {
                 // Always-visible search field, attached to the NavigationSplitView
                 // itself — attaching it to an inner view inside the detail column
                 // does not surface the field in the window toolbar.
-                .searchable(text: $searchText)
+                .searchable(text: $searchText, prompt: Text("search.prompt"))
                 .onSubmit(of: .search) { performSearch() }
                 .onChange(of: searchText) { _, newValue in handleSearchTextChange(newValue) }
+                // The field shows the search on screen, as Back and a recent search change it, and
+                // nothing on the search page before a search.
+                .onChange(of: navigationCoordinator.displayedSearchQuery) { _, query in
+                    if let query {
+                        if query != searchText {
+                            searchText = query
+                        }
+                    } else if navigationCoordinator.selectedNavigationItem == .searchResults {
+                        searchText = ""
+                    }
+                }
             }
         }
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
@@ -178,9 +189,6 @@ struct LoggedInView: View {
     private func sidebarView() -> some View {
         SidebarView(
             selection: $navigationCoordinator.selectedNavigationItem,
-            // Or a failed search's page, while it shows: the selection is there.
-            hasSearchResults: navigationCoordinator.reopenableSearchQuery != nil
-                || navigationCoordinator.displayedSearchQuery != nil,
             userProfile: session.store.userProfile,
         )
         .navigationSplitViewColumnWidth(
@@ -217,8 +225,8 @@ struct LoggedInView: View {
         guard newValue.isEmpty else { return }
         session.searchService.clearFailure()
 
-        if navigationCoordinator.selectedNavigationItem == .searchResults {
-            navigationCoordinator.selectNavigationItem(.startpage)
+        if navigationCoordinator.displayedSearchQuery != nil {
+            navigationCoordinator.showSearchHome()
         }
     }
 

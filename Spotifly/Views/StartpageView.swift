@@ -32,15 +32,15 @@ struct StartpageView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if let recent = store.recentlyPlayedSection {
-                    header("home.recently_played")
-                    cardRow {
+                    SectionHeader(Text("home.recently_played"))
+                    CardRow {
                         ForEach(recent.items) { item in
                             card(for: item)
                         }
                     }
                 }
 
-                header("home.top_tracks") {
+                SectionHeader(title: Text("home.top_tracks")) {
                     Picker("home.range", selection: $range) {
                         ForEach(TopContentRange.allCases, id: \.self) { range in
                             Text(range.titleKey).tag(range)
@@ -53,8 +53,8 @@ struct StartpageView: View {
                 topTracks
 
                 if !topArtists.isEmpty {
-                    header("home.top_artists")
-                    cardRow {
+                    SectionHeader(Text("home.top_artists"))
+                    CardRow {
                         ForEach(topArtists) { artist in
                             ArtistCard(artist: artist, size: 130)
                         }
@@ -62,13 +62,13 @@ struct StartpageView: View {
                 }
 
                 if !playlists.isEmpty {
-                    header("home.your_playlists") {
+                    SectionHeader(title: Text("home.your_playlists")) {
                         Button("home.show_all") {
                             navigationCoordinator.selectNavigationItem(.playlists)
                         }
                         .buttonStyle(.link)
                     }
-                    cardRow {
+                    CardRow {
                         ForEach(playlists) { playlist in
                             PlaylistCard(playlist: playlist, subtitle: subtitle(for: playlist), size: Self.cardSize)
                         }
@@ -107,33 +107,6 @@ struct StartpageView: View {
     }
 
     // MARK: - Sections
-
-    private func header(_ title: LocalizedStringKey) -> some View {
-        header(title) { EmptyView() }
-    }
-
-    private func header(_ title: LocalizedStringKey, @ViewBuilder trailing: () -> some View) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.title2.bold())
-            Spacer()
-            trailing()
-        }
-        .padding(.horizontal, 28)
-        .padding(.top, 24)
-        .padding(.bottom, 10)
-    }
-
-    /// A horizontal row of cards, 16 pt apart.
-    private func cardRow(@ViewBuilder content: () -> some View) -> some View {
-        ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: 16) {
-                content()
-            }
-            .padding(.horizontal, 28)
-        }
-        .scrollIndicators(.hidden)
-    }
 
     /// An id with no entity draws nothing: the shelf is stored as ids, and a card cannot be drawn
     /// from one alone.

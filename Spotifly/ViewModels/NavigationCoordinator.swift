@@ -113,16 +113,14 @@ final class NavigationCoordinator {
     // MARK: - Navigation
 
     func selectNavigationItem(_ section: NavigationItem?) {
-        let route: Route
-
-        switch section {
+        let route = switch section {
         case .albums, .artists, .playlists:
-            route = Route(section: section, selection: section.flatMap { lastSelection[$0] })
+            Route(section: section, selection: section.flatMap { lastSelection[$0] })
         case .searchResults:
-            guard let query = reopenableSearchQuery else { return }
-            route = Route(section: .searchResults, query: query)
+            // The last search shown, or the search page with recent searches.
+            Route(section: .searchResults, query: reopenableSearchQuery)
         default:
-            route = Route(section: section)
+            Route(section: section)
         }
 
         navigate(to: route)
@@ -145,12 +143,18 @@ final class NavigationCoordinator {
         setSelection(playlistId.map { .playlist(id: $0) }, for: .playlists, recordsHistory: recordsHistory)
     }
 
-    /// Opens all of the shown search's tracks, as a step of its own in the history.
-    func showAllSearchTracks() {
-        guard displayedSearchQuery != nil else { return }
+    /// Shows one kind of the shown search's results, or all of them, as a step of its own in
+    /// the history.
+    func showSearchScope(_ scope: SearchKind?) {
+        guard displayedSearchQuery != nil, scope != current.searchScope else { return }
         var route = current
-        route.showsAllTracks = true
+        route.searchScope = scope
         navigate(to: route)
+    }
+
+    /// The search page before a search, as the field is emptied.
+    func showSearchHome() {
+        navigate(to: Route(section: .searchResults))
     }
 
     /// Navigate directly to the Albums section and a specific album.
@@ -315,8 +319,9 @@ final class NavigationCoordinator {
     }
 
     private func isViewable(_ route: Route) -> Bool {
-        if route.section == .searchResults {
-            guard let query = route.query, store?.canShowSearch(for: query) == true else { return false }
+        // The search page without a query, recent searches, is always there to show.
+        if route.section == .searchResults, let query = route.query {
+            guard store?.canShowSearch(for: query) == true else { return false }
         }
 
         if let selection = route.selection, store?.deletedEntitySelections.contains(selection) == true {
@@ -328,8 +333,8 @@ final class NavigationCoordinator {
 
     /// An entity missing from the store falls back to the route's own section.
     private func title(for route: Route) -> String {
-        if route.showsAllTracks {
-            return String(localized: "section.tracks")
+        if let scope = route.searchScope {
+            return scope.title
         }
 
         let sectionTitle = route.section?.title ?? String(localized: "app.name")

@@ -149,36 +149,39 @@ nonisolated struct PartnerAPI: Sendable {
 
     // MARK: - Searches
 
-    func searchTracks(_ term: String, limit: Int = 30) async throws -> [PathfinderTrack] {
+    // Each answers a page, not just its entities: paging counts the rows Spotify sent,
+    // unreadable ones included (`PathfinderItems.sent`).
+
+    func searchTracks(_ term: String, offset: Int = 0, limit: Int = 30) async throws -> PathfinderItems<PathfinderTrack> {
         let response: PathfinderResponse<PathfinderTrackResults> = try await query(
             .searchTracks,
-            variables: PathfinderSearchVariables(searchTerm: term, limit: limit),
+            variables: PathfinderSearchVariables(searchTerm: term, offset: offset, limit: limit),
         )
-        return response.results?.tracksV2?.entities ?? []
+        return response.results?.tracksV2 ?? PathfinderItems(items: [], totalCount: 0)
     }
 
-    func searchAlbums(_ term: String, limit: Int = 30) async throws -> [PathfinderAlbum] {
+    func searchAlbums(_ term: String, offset: Int = 0, limit: Int = 30) async throws -> PathfinderItems<PathfinderAlbum> {
         let response: PathfinderResponse<PathfinderAlbumResults> = try await query(
             .searchAlbums,
-            variables: PathfinderSearchVariables(searchTerm: term, limit: limit),
+            variables: PathfinderSearchVariables(searchTerm: term, offset: offset, limit: limit),
         )
-        return response.results?.albumsV2?.entities ?? []
+        return response.results?.albumsV2 ?? PathfinderItems(items: [], totalCount: 0)
     }
 
-    func searchArtists(_ term: String, limit: Int = 30) async throws -> [PathfinderArtist] {
+    func searchArtists(_ term: String, offset: Int = 0, limit: Int = 30) async throws -> PathfinderItems<PathfinderArtist> {
         let response: PathfinderResponse<PathfinderArtistResults> = try await query(
             .searchArtists,
-            variables: PathfinderSearchVariables(searchTerm: term, limit: limit),
+            variables: PathfinderSearchVariables(searchTerm: term, offset: offset, limit: limit),
         )
-        return response.results?.artists?.entities ?? []
+        return response.results?.artists ?? PathfinderItems(items: [], totalCount: 0)
     }
 
-    func searchPlaylists(_ term: String, limit: Int = 30) async throws -> [PathfinderPlaylist] {
+    func searchPlaylists(_ term: String, offset: Int = 0, limit: Int = 30) async throws -> PathfinderItems<PathfinderPlaylist> {
         let response: PathfinderResponse<PathfinderPlaylistResults> = try await query(
             .searchPlaylists,
-            variables: PathfinderSearchVariables(searchTerm: term, limit: limit),
+            variables: PathfinderSearchVariables(searchTerm: term, offset: offset, limit: limit),
         )
-        return response.results?.playlists?.entities ?? []
+        return response.results?.playlists ?? PathfinderItems(items: [], totalCount: 0)
     }
 
     // MARK: - Album

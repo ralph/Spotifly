@@ -399,16 +399,57 @@ enum TrackProvider: String, Codable {
 /// Each list is deduplicated: relinking can give two track results one market id (`AGENTS.md`,
 /// "Track identity is the market id"), and the page keys its rows by id.
 struct SearchResults: Encodable {
-    let albumIds: [String]
-    let artistIds: [String]
-    let playlistIds: [String]
-    let trackIds: [String]
+    /// Which run of the search these are: a page loaded for an earlier run of the same query
+    /// does not continue a later one's offsets.
+    let id = UUID()
+    private(set) var ids: [SearchKind: [String]] = [:]
+    /// Where each kind's next page starts: every result Spotify has sent, duplicates included,
+    /// as `PaginationState` counts its offset.
+    private(set) var nextOffset: [SearchKind: Int] = [:]
+    /// The kinds whose last page came back short, so there is nothing more to load.
+    private(set) var exhausted: Set<SearchKind> = []
+
+    var trackIds: [String] {
+        ids(for: .tracks)
+    }
+
+    var albumIds: [String] {
+        ids(for: .albums)
+    }
+
+    var artistIds: [String] {
+        ids(for: .artists)
+    }
+
+    var playlistIds: [String] {
+        ids(for: .playlists)
+    }
+
+    /// One kind's ids, in the order found.
+    func ids(for kind: SearchKind) -> [String] {
+        ids[kind] ?? []
+    }
+
+    /// Adds a page of one kind: its ids, leaving out those already listed, and how many results
+    /// Spotify sent for it, which a page short of `pageSize` marks as the last.
+    mutating func append(_ newIds: [String], to kind: SearchKind, sent: Int, pageSize: Int) {
+        let known = Set(ids(for: kind))
+        ids[kind, default: []] += newIds.uniqued().filter { !known.contains($0) }
+        nextOffset[kind, default: 0] += sent
+        if sent < pageSize {
+            exhausted.insert(kind)
+        }
+    }
+
+    init() {}
 
     init(albums: [Album], artists: [Artist], playlists: [Playlist], tracks: [Track]) {
-        albumIds = albums.map(\.id).uniqued()
-        artistIds = artists.map(\.id).uniqued()
-        playlistIds = playlists.map(\.id).uniqued()
-        trackIds = tracks.map(\.id).uniqued()
+        ids = [
+            .albums: albums.map(\.id).uniqued(),
+            .artists: artists.map(\.id).uniqued(),
+            .playlists: playlists.map(\.id).uniqued(),
+            .tracks: tracks.map(\.id).uniqued(),
+        ]
     }
 }
 

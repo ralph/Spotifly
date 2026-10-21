@@ -45,7 +45,7 @@ struct PassingFailureRetryTests {
 
         let results = try await api.searchTracks("x")
 
-        #expect(results.first?.name == "Good")
+        #expect(results.entities.first?.name == "Good")
         #expect(attempts.count == 2)
         #expect(pauses.values == [.seconds(1)])
     }

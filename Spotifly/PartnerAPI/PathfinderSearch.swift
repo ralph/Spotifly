@@ -69,6 +69,12 @@ nonisolated struct PathfinderItems<Item: Decodable & Sendable>: Decodable, Senda
     var entities: [Item] {
         (items ?? []).compactMap(\.entity)
     }
+
+    /// How many rows the page had, readable or not, which is how far the next page's offset
+    /// moves on.
+    var sent: Int {
+        items?.count ?? 0
+    }
 }
 
 // MARK: - Per-kind payloads

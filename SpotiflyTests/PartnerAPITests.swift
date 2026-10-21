@@ -99,7 +99,7 @@ struct PathfinderResponseTests {
         """
 
         let api = partnerAPI { _ in (searchPayload(kind: "tracksV2", items: track), httpResponse(200)) }
-        let results = try await api.searchTracks("daft punk")
+        let results = try await api.searchTracks("daft punk").entities
 
         #expect(results.count == 1)
         let first = try #require(results.first)
@@ -121,7 +121,7 @@ struct PathfinderResponseTests {
         """
 
         let api = partnerAPI { _ in (searchPayload(kind: "albumsV2", items: album), httpResponse(200)) }
-        let results = try await api.searchAlbums("discovery")
+        let results = try await api.searchAlbums("discovery").entities
 
         let first = try #require(results.first)
         // AppStore keys albums by id, so deriving this is not cosmetic.
@@ -138,7 +138,7 @@ struct PathfinderResponseTests {
         """
 
         let api = partnerAPI { _ in (searchPayload(kind: "artists", items: artist), httpResponse(200)) }
-        let results = try await api.searchArtists("daft")
+        let results = try await api.searchArtists("daft").entities
 
         let first = try #require(results.first)
         #expect(first.id == "a1")
@@ -154,7 +154,7 @@ struct PathfinderResponseTests {
         """
 
         let api = partnerAPI { _ in (searchPayload(kind: "playlists", items: playlist), httpResponse(200)) }
-        let results = try await api.searchPlaylists("mix")
+        let results = try await api.searchPlaylists("mix").entities
 
         let first = try #require(results.first)
         #expect(first.id == "p1")
@@ -174,7 +174,7 @@ struct PathfinderResponseTests {
         let api = partnerAPI { _ in
             (searchPayload(kind: "tracksV2", items: "\(wrapped),\(direct)"), httpResponse(200))
         }
-        let results = try await api.searchTracks("x")
+        let results = try await api.searchTracks("x").entities
 
         #expect(results.map(\.name) == ["Wrapped", "Direct"])
     }
@@ -185,10 +185,14 @@ struct PathfinderResponseTests {
         """
 
         let api = partnerAPI { _ in (searchPayload(kind: "tracksV2", items: items), httpResponse(200)) }
-        let results = try await api.searchTracks("x")
+        let page = try await api.searchTracks("x")
+        let results = page.entities
 
         #expect(results.count == 1)
         #expect(results.first?.name == "Good")
+        // Paging still counts all three: the next page starts after them, and a page of 20 with
+        // one unreadable row is not the last.
+        #expect(page.sent == 3)
     }
 
     @Test func `an empty result set is empty, not an error`() async throws {
@@ -196,7 +200,7 @@ struct PathfinderResponseTests {
             (Data(#"{"data":{"searchV2":{"tracksV2":{"totalCount":0,"items":[]}}}}"#.utf8), httpResponse(200))
         }
 
-        #expect(try await api.searchTracks("nothing at all").isEmpty)
+        #expect(try await api.searchTracks("nothing at all").entities.isEmpty)
     }
 
     @Test func `a retired persisted query is reported as such`() async throws {
@@ -329,7 +333,7 @@ struct ClientTokenRecoveryTests {
                 : (payload, httpResponse(200))
         }
 
-        let results = try await api.searchTracks("x")
+        let results = try await api.searchTracks("x").entities
 
         #expect(results.first?.name == "Good")
         #expect(attempts.count == 2)
