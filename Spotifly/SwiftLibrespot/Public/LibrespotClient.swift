@@ -410,7 +410,7 @@ public actor LibrespotClient {
         let pipeline = AudioPipeline(
             audioKeyProvider: AudioKeyProvider { [weak session] in await session?.connectedAccesspoint },
             spclient: spclient,
-            sink: SpotifyPlayer.audioRenderer,
+            sink: SpotifyPlayer.audioOutput,
         )
         audioPipeline = pipeline
         subscribeToPipeline(pipeline)

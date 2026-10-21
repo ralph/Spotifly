@@ -232,7 +232,8 @@ filtering on the module prefix:
 - `DealerConnection` — the WebSocket: connection id, cluster pushes, remote commands, pings
 - `Accesspoint` — the TCP connection to Spotify: connect, handshake, login, audio keys
 - `LibrespotSession`, `LibrespotClient` — session lifecycle, recovery, command dispatch
-- `AudioPipeline`, `AudioRenderer` — track loads, decoding, position, end of track
+- `AudioPipeline`, `AudioOutput` — track loads, decoding, position, end of track; the player's
+  loader requests, seeks and stalls
 
 ## Plans
 

@@ -118,15 +118,10 @@ nonisolated struct PlayerSnapshot: Equatable {
     var interruption: PlaybackInterruption?
 }
 
-/// The one audio output. Fed by the decode loop inside the pipeline; volume,
-/// routing recovery and pacing all live in it.
-private nonisolated let audioRendererInstance = AudioRenderer()
-
 enum SpotifyPlayer {
-    /// The shared audio sink the client's pipeline renders into.
-    nonisolated static var audioRenderer: AudioRenderer {
-        audioRendererInstance
-    }
+    /// The one audio output, which the client's pipeline plays into. Volume and pacing live in
+    /// it, and its player is the one the AirPlay picker routes.
+    nonisolated static let audioOutput = AudioOutput()
 
     // MARK: - Lifecycle
 
@@ -293,7 +288,7 @@ enum SpotifyPlayer {
     /// buffer-independent response. The slider value is passed through a
     /// logarithmic taper so the perceived loudness curve matches librespot's.
     nonisolated static func setOutputVolume(_ volume: Double) {
-        audioRenderer.setVolume(Float(librespotLogAttenuation(volume)))
+        audioOutput.setVolume(Float(librespotLogAttenuation(volume)))
     }
 
     /// Mirrors librespot's default `VolumeCtrl::Log(60 dB)` mapping

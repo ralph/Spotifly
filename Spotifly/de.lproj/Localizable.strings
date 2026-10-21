@@ -200,13 +200,15 @@
 "speakers.audio_output" = "AirPlay";
 "speakers.output_device" = "Ausgabegerät";
 "speakers.spotify_connect" = "Spotify Connect";
-"speakers.airplay_hint" = "Wählt einen AirPlay-Empfänger für die Ausgabe dieses Macs. Erfordert Zugriff auf das lokale Netzwerk.";
+"speakers.airplay_hint" = "Sendet nur Spotifly an den Empfänger; alle anderen Töne bleiben auf diesem Mac. Die Lautstärke des Empfängers stellst du in der Auswahl ein.";
+"now_playing.airplay" = "AirPlay";
 "speakers.airplay_disabled_hint" = "AirPlay ist nur verfügbar, wenn Spotifly das aktive Gerät ist";
 "speakers.spotify_connect_hint" = "Zeigt alle Geräte, die gerade mit deinem Konto verbunden sind.";
 
 /* Lautstärke */
 "volume.device_controls_itself %@" = "%@ regelt die Lautstärke selbst";
 "volume.title" = "Lautstärke";
+"volume.airplay_help" = "Lautstärke. Die eines AirPlay-Empfängers stellst du in der AirPlay-Auswahl ein.";
 
 /* Menu Commands */
 "menu.playback" = "Wiedergabe";

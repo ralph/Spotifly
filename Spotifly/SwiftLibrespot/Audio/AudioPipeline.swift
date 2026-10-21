@@ -18,7 +18,7 @@ import Foundation
 /// Coordinates downloading, decryption, decoding, and playback of a track.
 ///
 /// Concurrency: the actor owns all playback state, and the decode loop runs on
-/// it too. It spends nearly all its time suspended in `AudioRenderer.enqueue`,
+/// it too. It spends nearly all its time suspended in `AudioOutput.enqueue`,
 /// which lets every control call through meanwhile.
 actor AudioPipeline {
     // MARK: - Dependencies
@@ -27,7 +27,7 @@ actor AudioPipeline {
     /// replaces the socket, leaves the pipeline as it is.
     private let audioKeyProvider: AudioKeyProvider
     private let spclient: SPClient?
-    private let sink: AudioRenderer
+    private let sink: AudioOutput
 
     // MARK: - Events
 
@@ -96,13 +96,7 @@ actor AudioPipeline {
     /// reached the end of the track.
     private var decoded: (frames: Int64, finished: Bool) = (0, false)
 
-    /// Numbers each decode, so a refill a decode asked for is dropped once
-    /// another has replaced it, and a replaced decode's last chunk is not
-    /// counted as the new one's.
-    private var decodeRun = 0
-
-    /// Frames per chunk handed to the sink, 93 ms. The renderer takes about
-    /// six at a time.
+    /// Frames per chunk handed to the sink, 93 ms.
     private static let chunkFrames = 4096
 
     private var positionTimer: Task<Void, Never>?
@@ -149,7 +143,7 @@ actor AudioPipeline {
 
     // MARK: - Initialization
 
-    init(audioKeyProvider: AudioKeyProvider, spclient: SPClient?, sink: AudioRenderer) {
+    init(audioKeyProvider: AudioKeyProvider, spclient: SPClient?, sink: AudioOutput) {
         self.audioKeyProvider = audioKeyProvider
         self.spclient = spclient
         self.sink = sink
@@ -181,15 +175,15 @@ actor AudioPipeline {
 
     // MARK: - Transitions
 
-    /// Whether a transition — loading, seeking, pausing, resuming, stopping,
-    /// refilling — is under way; see `transition`.
+    /// Whether a transition — loading, seeking, pausing, resuming, stopping —
+    /// is under way; see `transition`.
     private var transitionInProgress = false
     private var waitingTransitions: [CheckedContinuation<Void, Never>] = []
 
     /// Runs `body` as the only transition under way. Others wait their turn,
     /// in order, and ticks and continuations stand aside until it is done.
     ///
-    /// A transition awaits the renderer and the decode it retires, and this
+    /// A transition awaits the output and the decode it retires, and this
     /// actor lets anything in at those awaits. Interleaved there, a stop was
     /// overridden by the start it landed in, a tick adopted a continuation a
     /// seek was retiring, and a seek positioned a track loaded meanwhile —
@@ -465,7 +459,7 @@ actor AudioPipeline {
     }
 
     /// The decode, if still running, waits out the pause inside the sink: a
-    /// paused renderer takes nothing more once it is full.
+    /// paused output takes nothing more once it has enough.
     func pause() async {
         await transition {
             guard let uri = currentTrackUri, isPlaying, !isPaused else { return }
@@ -602,20 +596,20 @@ actor AudioPipeline {
         publish(keepPaused ? .paused(trackUri: currentTrackUri ?? "") : .playing(trackUri: currentTrackUri ?? ""))
     }
 
+    /// The decode before it has been retired, or has finished: one decode at a
+    /// time feeds the sink, and counts into `decoded`.
     private func startDecodeTask(_ decoder: VorbisDecoder) {
-        decodeTask?.cancel()
-        decodeRun += 1
-        let run = decodeRun
+        assert(decodeTask == nil || decoded.finished, "a decode is still feeding the sink")
         decoded = (0, false)
-        decodeTask = Task { await self.decode(decoder, run: run) }
+        decodeTask = Task { await self.decode(decoder) }
     }
 
     /// Decodes into the sink until the track ends or the task is cancelled.
     ///
-    /// Each `enqueue` suspends until the renderer wants the chunk, which paces
+    /// Each `enqueue` suspends until the output wants the chunk, which paces
     /// the loop, holds it through a pause and frees this actor meanwhile.
     /// Decoding a chunk takes about a tenth of a millisecond.
-    private func decode(_ decoder: VorbisDecoder, run: Int) async {
+    private func decode(_ decoder: VorbisDecoder) async {
         let channels = decoder.format.channels
         let samples = UnsafeMutablePointer<Float>.allocate(capacity: Self.chunkFrames * channels)
         defer { samples.deallocate() }
@@ -623,45 +617,21 @@ actor AudioPipeline {
         while !Task.isCancelled {
             let frames = decoder.read(into: samples, maxFrames: Self.chunkFrames)
             guard frames > 0 else {
-                if run == decodeRun {
-                    decoded.finished = true
-                    debugLog("AudioPipeline", "Decode finished: \(decoded.frames) frames")
-                }
+                decoded.finished = true
+                debugLog("AudioPipeline", "Decode finished: \(decoded.frames) frames")
                 return
             }
 
             let pcm = Data(bytes: samples, count: frames * channels * MemoryLayout<Float>.size)
             switch await sink.enqueue(pcm, frames: frames) {
-            case .accepted where run == decodeRun:
+            case .accepted:
                 decoded.frames += Int64(frames)
-            case .accepted, .flushed:
-                return
-            case .outputChanged:
-                // Refilled from a task of its own: the refill retires this
-                // decode, and awaiting that from inside it would never end.
-                Task { await self.refill(after: run) }
+            case .flushed:
                 return
             case .failed:
                 eventSink.yield(.error(.decodingFailed("the audio output refused a buffer")))
                 return
             }
-        }
-    }
-
-    /// The output changed or stalled and the renderer dropped what it had
-    /// queued: load again from the playhead, as a seek to the same place would.
-    /// What played in the meantime was silence, and is skipped.
-    private func refill(after run: Int) async {
-        await transition {
-            guard run == decodeRun, currentTrackUri != nil, isPlaying else { return }
-            // A stall is noticed a second or so after it starts, so near the
-            // end of a track the clock may have run into the next one before a
-            // tick made it the loaded track. Measured against this one, the
-            // playhead would sit at its end, and the refill would decode
-            // nothing more of it.
-            adoptContinuationIfReached()
-            debugLog("AudioPipeline", "Refilling the output from the playhead")
-            try? await performSeek(positionMs: currentPositionMs())
         }
     }
 
@@ -697,12 +667,6 @@ actor AudioPipeline {
         continuation = (track, decoder, startFrame)
         debugLog("AudioPipeline", "Decoding \(uri) behind the current track, from sink frame \(startFrame)")
         startDecodeTask(decoder)
-    }
-
-    private func adoptContinuationIfReached() {
-        if let continuation, sink.playedFrames >= continuation.startFrame {
-            adoptContinuation()
-        }
     }
 
     /// The playhead has reached the continuation: it is now the loaded track,
@@ -785,15 +749,19 @@ actor AudioPipeline {
         positionTimer = nil
     }
 
-    /// Periodic tick: publish position, detect end of track and a stalled output.
+    /// Periodic tick: publish position, detect end of track.
     private func tick() async {
         // A transition under way owns the state this reads and changes.
         guard !transitionInProgress, currentTrackUri != nil, isPlaying, !isPaused else { return }
 
-        adoptContinuationIfReached()
+        if let continuation, sink.playedFrames >= continuation.startFrame {
+            adoptContinuation()
+        }
 
-        let positionMs = frameToMs(currentTrackFrame())
-        eventSink.yield(.position(UInt64(positionMs)))
+        // Clamped to the track: the output's playhead can move back past the
+        // track's start, when a seek on an AirPlay receiver lands late.
+        let positionMs = currentPositionMs()
+        eventSink.yield(.position(positionMs))
         fetchNextIfDue(positionMs: Int64(positionMs))
 
         // While a continuation waits for the playhead, the decode is its. A
@@ -817,14 +785,6 @@ actor AudioPipeline {
                 eventSink.yield(.endOfTrack(currentTrackUri ?? ""))
                 return
             }
-        }
-
-        // Last, because it awaits the renderer: a stop can land meanwhile, and
-        // nothing may act afterwards on what was true before it.
-        let run = decodeRun
-        if decodeTask != nil, await sink.isStalled {
-            debugLog("AudioPipeline", "The output stopped taking audio")
-            Task { await refill(after: run) }
         }
     }
 

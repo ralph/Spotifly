@@ -22,7 +22,7 @@ Swift.
                                                                │   ├── Accesspoint (TCP, Shannon cipher)
                                                                │   ├── DealerConnection (WebSocket)
                                                                │   └── SpircController (Connect state)
-                                                               └── AudioPipeline ──▶ AudioRenderer
+                                                               └── AudioPipeline ──▶ AudioOutput
 ```
 
 | Where | What it does |
@@ -34,9 +34,9 @@ Swift.
 | `Spotifly/SwiftLibrespot/` | Playback and Spotify Connect. A Swift port of [librespot](https://github.com/librespot-org/librespot)'s protocol handling, which is where the type names come from. |
 | `…/Network/` | Accesspoint resolution, the TCP connection with its Diffie-Hellman handshake and Shannon cipher, and the spclient HTTP client (metadata, `storage-resolve`, connect-state). |
 | `…/Dealer/`, `…/Connect/` | The dealer WebSocket, and `SpircController`, which publishes this device's state to the Connect cluster and turns remote commands into player calls. |
-| `…/Audio/` | `AudioPipeline`: metadata, then the audio key (over the accesspoint) and the CDN URL side by side, the download, AES-128-CTR through CommonCrypto, and Vorbis decoding into the `AudioRenderer`, a chunk at a time, each one awaited. The next track is fetched ahead and, with gapless playback on, decoded straight after the current one. |
+| `…/Audio/` | `AudioPipeline`: metadata, then the audio key (over the accesspoint) and the CDN URL side by side, the download, AES-128-CTR through CommonCrypto, and Vorbis decoding into the `AudioOutput`, a chunk at a time, each one awaited. The next track is fetched ahead and, with gapless playback on, decoded straight after the current one. |
 | `…/Proto/` | A small hand-written protobuf reader and writer, and the messages built with it. |
-| `Spotifly/AudioRenderer.swift` | The output: `AVSampleBufferAudioRenderer` on a render synchronizer, fed through its macOS 27 receiver, whose `enqueue` suspends until it wants more audio — the only pacing there is. It keeps AirPlay 2 and Spatial Audio working. |
+| `Spotifly/AudioOutput.swift` | The output: an `AVPlayer` playing the pushed PCM as one CAF stream served by a resource loader, whose `enqueue` suspends until the player wants more audio — the only pacing there is. Being an `AVPlayer`, the AirPlay picker can route it alone to a receiver; Spatial Audio is allowed for stereo. See `plans/done/avplayer-output.md`. |
 | `Spotifly/Vendor/` | libogg 1.3.5 and libvorbis 1.3.7, unmodified, compiled by Xcode — see `Vendor/README.md`. |
 
 ## Prerequisites
