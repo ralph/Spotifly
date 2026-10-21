@@ -191,11 +191,6 @@ final class NavigationCoordinator {
 
     // MARK: - Selection Helpers
 
-    /// Select the first remaining artist without adding an automatic history step.
-    func clearArtistSelection() {
-        selectArtist(store?.userArtistIds.first, recordsHistory: false)
-    }
-
     /// Remove deleted playlist routes from the complete history sequence.
     func clearPlaylistSelection() {
         invalidateUnviewableRoutes()

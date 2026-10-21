@@ -65,10 +65,10 @@ struct DetailHeader<Art: View, Metadata: View, Actions: View>: View {
     }
 }
 
-/// The header's two playback buttons: Abspielen, prominent, and Zufällig.
+/// The header's playback buttons: Abspielen, prominent, and Zufällig where the page has it.
 struct PlayAndShuffleButtons: View {
     let play: () -> Void
-    let shuffle: () -> Void
+    var shuffle: (() -> Void)?
 
     var body: some View {
         Button(action: play) {
@@ -76,8 +76,27 @@ struct PlayAndShuffleButtons: View {
         }
         .buttonStyle(.borderedProminent)
 
-        Button(action: shuffle) {
-            Label("detail.shuffle", systemImage: "shuffle")
+        if let shuffle {
+            Button(action: shuffle) {
+                Label("detail.shuffle", systemImage: "shuffle")
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+}
+
+/// The header's toggle for whether the page's subject is in the library: off, it adds; on, it
+/// asks the page to confirm the removal.
+struct LibraryToggleButton: View {
+    let isOn: Bool
+    var onTitle: LocalizedStringKey = "detail.in_library"
+    var offTitle: LocalizedStringKey = "detail.add_to_library"
+    let add: () -> Void
+    let confirmRemoval: () -> Void
+
+    var body: some View {
+        Button(action: isOn ? confirmRemoval : add) {
+            Label(isOn ? onTitle : offTitle, systemImage: isOn ? "checkmark" : "plus")
         }
         .buttonStyle(.bordered)
     }

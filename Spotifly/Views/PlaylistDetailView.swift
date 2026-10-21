@@ -211,16 +211,11 @@ struct PlaylistDetailView: View {
 
             // Someone else's playlist is in the library or not; one's own always is.
             if !isOwner {
-                Button {
-                    if isFollowed {
-                        showUnfollowConfirmation = true
-                    } else {
-                        updating { try await playlistService.followPlaylist(playlistId: playlistId) }
-                    }
-                } label: {
-                    Label(isFollowed ? "detail.in_library" : "detail.add_to_library", systemImage: isFollowed ? "checkmark" : "plus")
+                LibraryToggleButton(isOn: isFollowed) {
+                    updating { try await playlistService.followPlaylist(playlistId: playlistId) }
+                } confirmRemoval: {
+                    showUnfollowConfirmation = true
                 }
-                .buttonStyle(.bordered)
             }
         }
     }

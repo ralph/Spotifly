@@ -130,10 +130,9 @@ struct SearchResultsView: View {
                 ForEach(entities) { card($0) }
             }
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 16, alignment: .top)], spacing: 18) {
+            CardGrid {
                 ForEach(entities) { card($0) }
             }
-            .padding(.horizontal, 28)
         }
     }
 }

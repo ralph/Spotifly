@@ -39,8 +39,8 @@ nonisolated struct PathfinderArtistUnion: Decodable, Sendable, PathfinderEntityU
     /// The discography, whichever operation filled it in.
     ///
     /// The overview splits releases into `albums`, `singles` and `compilations`, each holding
-    /// a sample; `queryArtistDiscographyAll` puts every release in `all`. The app shows one
-    /// list, so it reads `all` and falls back to the sampled sections.
+    /// a sample; `queryArtistDiscographyAll` puts every release in `all`, each with its `type`.
+    /// The app reads `all`, and groups it by type itself, falling back to the sampled sections.
     struct Discography: Decodable, Sendable {
         let all: PathfinderReleaseGroup?
         let albums: PathfinderReleaseGroup?

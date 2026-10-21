@@ -119,8 +119,8 @@ struct Album: Identifiable, Hashable, Encodable {
     let name: String
     let uri: String
     let images: ImageSet
-    let releaseDate: String?
-    let albumType: String?
+    var releaseDate: String?
+    var albumType: String?
 
     // Relationships
     let artistId: String?
@@ -149,6 +149,11 @@ struct Album: Identifiable, Hashable, Encodable {
     /// Track count - uses loaded trackIds if available, otherwise falls back to API count
     var trackCount: Int {
         tracksLoaded ? trackIds.count : (_knownTrackCount ?? 0)
+    }
+
+    /// The year the release date starts with, which Spotify gives as a year, a month or a day.
+    var releaseYear: String? {
+        releaseDate.map { String($0.prefix(4)) }.flatMap { Int($0) != nil ? $0 : nil }
     }
 
     /// Memberwise initializer with all fields

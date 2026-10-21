@@ -33,6 +33,18 @@ extension SectionHeader where Trailing == EmptyView {
     }
 }
 
+/// A wrapping grid of cards at least 150 pt wide, 16 pt apart, on the page's 28 pt inset.
+struct CardGrid<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 16, alignment: .top)], spacing: 18) {
+            content
+        }
+        .padding(.horizontal, 28)
+    }
+}
+
 /// A horizontal row of cards, 16 pt apart, on the page's 28 pt inset.
 struct CardRow<Content: View>: View {
     @ViewBuilder var content: Content

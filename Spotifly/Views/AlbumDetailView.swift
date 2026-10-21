@@ -95,7 +95,7 @@ struct AlbumDetailView: View {
         let isSaved = store.userAlbumIds.contains(albumId)
 
         return DetailHeader(
-            kind: releaseYear(of: album).map { String(localized: "detail.kind.album \($0)") } ?? String(localized: "detail.kind.album"),
+            kind: album.releaseYear.map { String(localized: "detail.kind.album \($0)") } ?? String(localized: "detail.kind.album"),
             title: album.name,
         ) {
             Artwork.detailHeader(album.images, symbol: "music.note")
@@ -125,22 +125,17 @@ struct AlbumDetailView: View {
             }
             .disabled(tracks.isEmpty)
 
-            Button {
-                if isSaved {
-                    showRemoveConfirmation = true
-                } else {
-                    Task {
-                        do {
-                            try await albumService.saveAlbumToLibrary(albumId: albumId)
-                        } catch {
-                            failure = LoadFailure(message: String(localized: "error.save_album \(error.localizedDescription)"))
-                        }
+            LibraryToggleButton(isOn: isSaved) {
+                Task {
+                    do {
+                        try await albumService.saveAlbumToLibrary(albumId: albumId)
+                    } catch {
+                        failure = LoadFailure(message: String(localized: "error.save_album \(error.localizedDescription)"))
                     }
                 }
-            } label: {
-                Label(isSaved ? "detail.in_library" : "detail.add_to_library", systemImage: isSaved ? "checkmark" : "plus")
+            } confirmRemoval: {
+                showRemoveConfirmation = true
             }
-            .buttonStyle(.bordered)
         }
     }
 
@@ -161,11 +156,6 @@ struct AlbumDetailView: View {
         }
 
         isLoading = false
-    }
-
-    /// The year a release date starts with, which Spotify gives as a year, a month or a day.
-    private func releaseYear(of album: Album) -> String? {
-        album.releaseDate.map { String($0.prefix(4)) }.flatMap { Int($0) != nil ? $0 : nil }
     }
 
     private func removeFromLibrary() {

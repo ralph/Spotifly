@@ -29,6 +29,9 @@
 "detail.add_to_library" = "Ajouter à la bibliothèque";
 "detail.kind.album" = "Album";
 "detail.kind.album %@" = "Album · %@";
+"detail.kind.artist" = "Artiste";
+"detail.follow" = "Suivre";
+"detail.following" = "Abonné";
 "table.number" = "#";
 "table.title" = "Titre";
 "table.album" = "Album";
@@ -72,7 +75,6 @@
 "action.cancel" = "Annuler";
 "action.create" = "Créer";
 "action.share" = "Partager";
-"action.link_copied" = "Lien copié";
 
 /* Track Context Menu */
 "track.menu.play_next" = "Écouter ensuite";
@@ -175,9 +177,6 @@
 "home.show_all" = "Tout afficher";
 "startpage.error" = "Impossible de charger la page d'accueil";
 
-/* Sections */
-"section.albums" = "Albums";
-
 /* Metadata */
 "metadata.by_owner" = "Par %@";
 "metadata.separator" = "•";
@@ -247,8 +246,11 @@
 "artist.unfollow.title" = "Ne plus suivre l'artiste";
 "artist.unfollow.action" = "Ne plus suivre";
 "artist.unfollow.message %@" = "Voulez-vous vraiment ne plus suivre \"%@\" ?";
-"artist.show_less" = "Voir moins";
-"artist.show_all %lld" = "Tout afficher (%lld)";
+"artist.discography" = "Discographie";
+"artist.discography.albums" = "Albums";
+"artist.discography.singles" = "Singles et EP";
+"artist.discography.compilations" = "Compilations";
+"artist.discography.empty" = "Rien ici.";
 
 /* Playlist Context Menu & Alerts */
 "playlist.menu.edit_details" = "Modifier les détails";
@@ -296,6 +298,7 @@
 "error.remove_album %@" = "Impossible de retirer l'album : %@";
 "error.save_album %@" = "Impossible d'enregistrer l'album : %@";
 "error.unfollow_artist %@" = "Impossible de ne plus suivre l'artiste : %@";
+"error.follow_artist %@" = "Impossible de suivre l'artiste : %@";
 "error.update_favorite %@" = "Impossible de mettre à jour les titres likés : %@";
 "error.add_to_playlist %@" = "Impossible d'ajouter le titre à la playlist : %@";
 "error.remove_from_playlist %@" = "Impossible de retirer le titre de la playlist : %@";

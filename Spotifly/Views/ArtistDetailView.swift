@@ -2,7 +2,7 @@
 //  ArtistDetailView.swift
 //  Spotifly
 //
-//  Shows details for an artist with top tracks, using normalized store
+//  Shows an artist and their discography, using normalized store
 //
 
 import SwiftUI
@@ -10,24 +10,20 @@ import SwiftUI
 struct ArtistDetailView: View {
     let artistId: String
 
-    @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(AppStore.self) private var store
     @Environment(ArtistService.self) private var artistService
 
     @State private var isLoadingAlbums = false
     @State private var failure: LoadFailure?
-    @State private var showAllAlbums = false
+    /// The group picked, or nil for the first one with releases in it.
+    @State private var pickedGroup: DiscographyGroup?
     @State private var showUnfollowConfirmation = false
 
     /// The artist from the store — the only copy. Whatever a load puts there shows
     /// up here, including a load whose original view was torn down mid-flight.
     private var artist: Artist? {
         store.artists[artistId]
-    }
-
-    /// The artist's albums, cached in the store rather than re-fetched per visit.
-    private var albums: [Album] {
-        store.albums(forArtist: artistId) ?? []
     }
 
     var body: some View {
@@ -61,99 +57,82 @@ struct ArtistDetailView: View {
     }
 
     private func artistContent(_ artist: Artist) -> some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Artist image and metadata
-                VStack(spacing: 16) {
-                    Artwork.header(artist.images, shape: AnyShape(.circle), symbol: "person.circle.fill", symbolSize: 100)
+        // Looked up once per redraw, for the picker's default and the grid.
+        let releases = store.albums(forArtist: artistId) ?? []
+        let group = pickedGroup ?? DiscographyGroup.allCases.first { group in releases.contains(where: group.contains) } ?? .albums
 
-                    Text(artist.name)
-                        .font(.title)
-                        .bold()
-                        .multilineTextAlignment(.center)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                header(artist)
+
+                SectionHeader(title: Text("artist.discography")) {
+                    Picker("artist.discography", selection: Binding(get: { group }, set: { pickedGroup = $0 })) {
+                        ForEach(DiscographyGroup.allCases, id: \.self) { group in
+                            Text(group.title).tag(group)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                .padding(.top, 24)
 
-                // Albums Section
                 if isLoadingAlbums {
                     ProgressView("loading.albums")
+                        .frame(maxWidth: .infinity)
                         .padding()
-                } else if let failure {
+                } else if let failure, releases.isEmpty {
                     InlineLoadError(failure: failure) { await loadArtist() }
-                } else if !albums.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("section.albums")
-                                .font(.headline)
-
-                            Spacer()
-
-                            if albums.count > 5 {
-                                Button {
-                                    withAnimation {
-                                        showAllAlbums.toggle()
-                                    }
-                                } label: {
-                                    if showAllAlbums {
-                                        Text("artist.show_less")
-                                    } else {
-                                        Text("artist.show_all \(albums.count)")
-                                    }
-                                }
-                                .font(.subheadline)
-                                .foregroundStyle(.tint)
-                            }
-                        }
-                        .padding(.horizontal)
-
-                        let displayedAlbums = showAllAlbums ? albums : Array(albums.prefix(5))
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 180), spacing: 16)], spacing: 16) {
-                            ForEach(displayedAlbums) { album in
-                                AlbumCard(album: album) {
-                                    navigationCoordinator.navigateToAlbumSection(albumId: album.id)
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
+                } else {
+                    // A failed follow or unfollow over the releases there are.
+                    if let failure {
+                        InlineLoadError(failure: failure) { await loadArtist() }
+                            .padding(.bottom, 8)
                     }
+                    releasesGrid(releases.filter(group.contains))
                 }
             }
         }
     }
 
-    /// A card view for displaying an album in the grid
-    private struct AlbumCard: View {
-        let album: Album
-        let onTap: () -> Void
-
-        var body: some View {
-            Button(action: onTap) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Artwork(
-                        images: album.images,
-                        size: 150,
-                        shape: AnyShape(.rect(cornerRadius: 8)),
-                        symbol: "music.note",
-                        symbolFont: .system(size: 40),
-                    )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(album.name)
-                            .font(.subheadline.weight(.medium))
-                            .lineLimit(1)
-
-                        Text(formatReleaseYear(album.releaseDate))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+    /// The chosen group's releases, or a line saying there are none.
+    @ViewBuilder
+    private func releasesGrid(_ releases: [Album]) -> some View {
+        if releases.isEmpty {
+            Text("artist.discography.empty")
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 28)
+        } else {
+            CardGrid {
+                ForEach(releases) { album in
+                    AlbumCard(album: album, subtitle: album.releaseYear ?? "", size: 150)
                 }
             }
-            .buttonStyle(.plain)
         }
+    }
 
-        private func formatReleaseYear(_ dateString: String?) -> String {
-            guard let dateString else { return "" }
-            return String(dateString.prefix(4))
+    private func header(_ artist: Artist) -> some View {
+        let isFollowed = store.userArtistIds.contains(artistId)
+
+        return DetailHeader(kind: String(localized: "detail.kind.artist"), title: artist.name) {
+            Artwork.detailHeader(artist.images, shape: AnyShape(.circle), symbol: "person.fill")
+        } metadata: {
+            EmptyView()
+        } actions: {
+            PlayAndShuffleButtons {
+                Task { await playbackViewModel.play(uriOrUrl: artist.uri) }
+            }
+
+            LibraryToggleButton(isOn: isFollowed, onTitle: "detail.following", offTitle: "detail.follow") {
+                Task {
+                    do {
+                        try await artistService.followArtist(artistId: artistId)
+                    } catch {
+                        failure = LoadFailure(message: String(localized: "error.follow_artist \(error.localizedDescription)"))
+                    }
+                }
+            } confirmRemoval: {
+                showUnfollowConfirmation = true
+            }
         }
     }
 
@@ -179,12 +158,37 @@ struct ArtistDetailView: View {
     private func unfollowArtist() {
         Task {
             do {
+                // The page stays, as the toggle it was: the list keeps showing the artist
+                // selected while it is open.
                 try await artistService.unfollowArtist(artistId: artistId)
-                // Navigate away from the unfollowed artist
-                navigationCoordinator.clearArtistSelection()
             } catch {
                 failure = LoadFailure(message: String(localized: "error.unfollow_artist \(error.localizedDescription)"))
             }
+        }
+    }
+}
+
+/// The handoff's three groups of a discography. Spotify types a release `ALBUM`, `SINGLE`, `EP`
+/// or `COMPILATION` (measured for Green Day on 2026-10-21), and files EPs under singles. A
+/// release of no type or another one counts as an album, so every release is in some group.
+private enum DiscographyGroup: CaseIterable {
+    case albums
+    case singles
+    case compilations
+
+    func contains(_ album: Album) -> Bool {
+        switch self {
+        case .albums: !Self.singles.contains(album) && !Self.compilations.contains(album)
+        case .singles: album.albumType == "single" || album.albumType == "ep"
+        case .compilations: album.albumType == "compilation"
+        }
+    }
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .albums: "artist.discography.albums"
+        case .singles: "artist.discography.singles"
+        case .compilations: "artist.discography.compilations"
         }
     }
 }

@@ -203,6 +203,10 @@ final class AppStore {
         guard album.detailsLoaded || !existing.detailsLoaded else { return }
 
         var merged = album
+        // A summary that names no type or date, such as a start page entry, keeps what an
+        // artist's discography said: the artist page groups releases by type.
+        merged.albumType = album.albumType ?? existing.albumType
+        merged.releaseDate = album.releaseDate ?? existing.releaseDate
         if existing.tracksLoaded, !merged.tracksLoaded {
             merged.trackIds = existing.trackIds
             merged.totalDurationMs = existing.totalDurationMs

@@ -103,7 +103,7 @@ final class ArtistService {
     /// Two requests, because the operations divide that way: `queryArtistOverview` knows who
     /// the artist is but returns only a *sample* of releases — ten albums of fifteen for Daft
     /// Punk — while `queryArtistDiscographyAll` returns all thirty-seven and no profile. The
-    /// artist page offers "show all", so it needs the full list. They run concurrently.
+    /// artist page shows the whole discography, so it needs the full list. They run concurrently.
     private func loadArtist(artistId: String) async throws {
         async let overviewTask = partnerAPI.artist(id: artistId)
         async let discographyTask = partnerAPI.artistDiscography(id: artistId)

@@ -22,6 +22,18 @@ struct AppStoreCacheTests {
         #expect(store.albums["a"]?.detailsLoaded == true)
     }
 
+    /// A start page entry names no type, and replaced a discography's single, which the artist
+    /// page then listed among the albums.
+    @Test func `a summary naming no type or date keeps the discography's`() {
+        let store = AppStore()
+        store.upsertAlbum(album(id: "a", releaseDate: "2024", albumType: "single", detailsLoaded: false))
+
+        store.upsertAlbum(stubAlbum(id: "a", name: "Stub Name"))
+
+        #expect(store.albums["a"]?.albumType == "single")
+        #expect(store.albums["a"]?.releaseDate == "2024")
+    }
+
     @Test func `fetched metadata replaces a stub`() {
         let store = AppStore()
         store.upsertAlbum(stubAlbum(id: "a", name: "Stub Name"))

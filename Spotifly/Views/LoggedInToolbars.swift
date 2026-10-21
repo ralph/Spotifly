@@ -173,23 +173,16 @@ private struct LoggedInContextToolbarActions: View {
         }
     }
 
+    /// The handoff's artist toolbar: nothing to queue, as an artist is not a list of tracks.
     private func artistToolbarActions(artist: Artist) -> some View {
-        HStack(spacing: 8) {
-            ShareToolbarButton(uri: artist.uri)
-
+        shareAndMoreMenu(uri: artist.uri, canQueue: false) {
             if store.userArtistIds.contains(artist.id) {
-                ToolbarActionButton(
-                    title: "artist.menu.unfollow",
-                    systemImage: "person.badge.minus",
-                    role: .destructive,
-                ) {
+                Button("artist.menu.unfollow", systemImage: "person.badge.minus") {
                     NotificationCenter.default.post(name: .showArtistUnfollowConfirmation, object: artist.id)
                 }
             } else {
-                ToolbarActionButton(title: "artist.menu.follow", systemImage: "person.badge.plus") {
-                    Task {
-                        try? await artistService.followArtist(artistId: artist.id)
-                    }
+                Button("artist.menu.follow", systemImage: "person.badge.plus") {
+                    Task { try? await artistService.followArtist(artistId: artist.id) }
                 }
             }
         }
@@ -226,7 +219,7 @@ private struct LoggedInContextToolbarActions: View {
     }
 
     /// Share, and a menu of Play, Play Next, what the page adds, and Copy Link.
-    private func shareAndMoreMenu(uri: String, @ViewBuilder pageItems: () -> some View) -> some View {
+    private func shareAndMoreMenu(uri: String, canQueue: Bool = true, @ViewBuilder pageItems: () -> some View) -> some View {
         HStack(spacing: 8) {
             shareLink(for: uri)
 
@@ -234,8 +227,10 @@ private struct LoggedInContextToolbarActions: View {
                 Button("action.play", systemImage: "play.fill") {
                     Task { await playbackViewModel.play(uriOrUrl: uri) }
                 }
-                Button("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                    Task { await playbackViewModel.addToQueue(uri: uri) }
+                if canQueue {
+                    Button("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                        Task { await playbackViewModel.addToQueue(uri: uri) }
+                    }
                 }
 
                 pageItems()
@@ -276,54 +271,13 @@ private struct LoggedInContextToolbarActions: View {
 private struct ToolbarActionButton: View {
     let title: LocalizedStringKey
     let systemImage: String
-    var role: ButtonRole?
     let action: () -> Void
 
     var body: some View {
-        Button(role: role, action: action) {
+        Button(action: action) {
             Label(title, systemImage: systemImage)
         }
         .labelStyle(.iconOnly)
         .help(title)
-    }
-}
-
-/// Copies an item's open.spotify.com link, made from its uri (`SpotifyURI.webURL`).
-private struct ShareToolbarButton: View {
-    let uri: String
-
-    private var link: String? {
-        SpotifyURI.webURL(uri)
-    }
-
-    @State private var showLinkCopied = false
-    @State private var linkCopiedDismissTask: Task<Void, Never>?
-
-    var body: some View {
-        ToolbarActionButton(title: "action.share", systemImage: "square.and.arrow.up") {
-            guard let link else { return }
-
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setString(link, forType: .string)
-
-            showLinkCopied = true
-            linkCopiedDismissTask?.cancel()
-            linkCopiedDismissTask = Task {
-                try? await Task.sleep(for: .seconds(1.5))
-                guard !Task.isCancelled else { return }
-                showLinkCopied = false
-            }
-        }
-        .disabled(link == nil)
-        .popover(isPresented: $showLinkCopied, arrowEdge: .bottom) {
-            Text("action.link_copied")
-                .font(.callout)
-                .padding(8)
-        }
-        .onDisappear {
-            linkCopiedDismissTask?.cancel()
-            linkCopiedDismissTask = nil
-        }
     }
 }

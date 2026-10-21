@@ -10,7 +10,8 @@ import SwiftUI
 struct AlbumCard: View {
     let id: String
     let name: String
-    let artistName: String
+    /// The line under the name: the artist, or on an artist's page the year.
+    let subtitle: String
     let images: ImageSet
     var size = Artwork.cardSize
 
@@ -27,7 +28,7 @@ struct AlbumCard: View {
                     Text(name)
                         .font(.headline)
                         .lineLimit(1)
-                    Text(artistName)
+                    Text(subtitle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -42,11 +43,11 @@ struct AlbumCard: View {
 // MARK: - Convenience initializers
 
 extension AlbumCard {
-    /// Initialize from an Album entity
-    init(album: Album, size: CGFloat = Artwork.cardSize) {
+    /// Initialize from an Album entity, under its artist unless told otherwise.
+    init(album: Album, subtitle: String? = nil, size: CGFloat = Artwork.cardSize) {
         id = album.id
         name = album.name
-        artistName = album.artistName
+        self.subtitle = subtitle ?? album.artistName
         images = album.images
         self.size = size
     }
