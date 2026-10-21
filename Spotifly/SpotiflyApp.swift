@@ -161,6 +161,10 @@ struct SpotiflyCommands: Commands {
             ))
             .keyboardShortcut("m", modifiers: [.command, .option])
             .disabled(navigationCoordinator == nil && !windowState.isMiniPlayerMode)
+
+            Toggle("inspector.title", isOn: Bindable(windowState).isInspectorPresented)
+                .keyboardShortcut("i", modifiers: [.command, .option])
+                .disabled(navigationCoordinator == nil || windowState.isMiniPlayerMode)
         }
 
         // Playback menu

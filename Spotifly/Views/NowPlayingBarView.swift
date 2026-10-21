@@ -114,7 +114,8 @@ struct NowPlayingBarView: View {
                 VolumeControl()
             }
 
-            // Its only way back to the full window that is not in a menu.
+            // The mini player has no inspector, and this is its only way back to the full window
+            // that is not in a menu.
             if isMini {
                 Button {
                     windowState.toggleMiniPlayerMode()
@@ -122,6 +123,12 @@ struct NowPlayingBarView: View {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                 }
                 .named("mini_player.restore")
+            } else {
+                Toggle(isOn: Bindable(windowState).isInspectorPresented) {
+                    Image(systemName: "sidebar.right")
+                }
+                .toggleStyle(.button)
+                .named("inspector.title")
             }
         }
         .buttonStyle(.borderless)

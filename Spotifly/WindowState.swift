@@ -12,6 +12,8 @@ import SwiftUI
 @Observable
 final class WindowState {
     var isMiniPlayerMode = false
+    /// Whether the Now Playing inspector shows beside the content.
+    var isInspectorPresented = false
 
     /// Store the previous window frame to restore when exiting mini player
     private var savedWindowFrame: NSRect?

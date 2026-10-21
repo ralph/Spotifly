@@ -174,6 +174,16 @@ struct Queue {
         previousTracks.count
     }
 
+    /// The next tracks the store has metadata for, each with the row a click on it plays. A track
+    /// whose metadata has not arrived has no row, so each keeps its index among `nextTracks`.
+    func nextRows(in tracks: [String: Track]) -> [(entry: QueueEntry, track: Track, row: PlaybackViewModel.QueueRow)] {
+        nextTracks.enumerated().compactMap { index, entry in
+            tracks[entry.trackId].map { track in
+                (entry, track, .next(index: index, trackUri: track.uri, uid: entry.uid))
+            }
+        }
+    }
+
     /// Every row's track id, in play order, which is what a metadata fetch needs.
     var trackIds: [String] {
         (previousTracks + (currentTrack.map { [$0] } ?? []) + nextTracks).map(\.trackId)

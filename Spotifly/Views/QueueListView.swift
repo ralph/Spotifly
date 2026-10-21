@@ -78,11 +78,8 @@ struct QueueListView: View {
             items.append(QueueDisplayItem(track: track, provider: entry.provider, row: .current))
         }
 
-        for (index, entry) in queue.nextTracks.enumerated() {
-            if let track = store.tracks[entry.trackId] {
-                let row = PlaybackViewModel.QueueRow.next(index: index, trackUri: track.uri, uid: entry.uid)
-                items.append(QueueDisplayItem(track: track, provider: entry.provider, row: row))
-            }
+        for next in queue.nextRows(in: store.tracks) {
+            items.append(QueueDisplayItem(track: next.track, provider: next.entry.provider, row: next.row))
         }
 
         return items

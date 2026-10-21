@@ -60,6 +60,9 @@
 /* Mini Player */
 "mini_player.restore" = "Restaurer la fenêtre complète";
 "mini_player.menu" = "Mini-lecteur";
+"inspector.title" = "À l'écoute";
+"inspector.up_next" = "À suivre";
+"inspector.nothing_playing" = "Aucune lecture";
 
 /* Now Playing Bar */
 "now_playing.position" = "Position";

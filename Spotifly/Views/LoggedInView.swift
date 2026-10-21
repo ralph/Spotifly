@@ -51,6 +51,10 @@ struct LoggedInView: View {
                     contentRegion
                 }
                 .navigationSplitViewStyle(.automatic)
+                .inspector(isPresented: Bindable(windowState).isInspectorPresented) {
+                    NowPlayingInspector()
+                        .inspectorColumnWidth(320)
+                }
                 // Always-visible search field, attached to the NavigationSplitView
                 // itself — attaching it to an inner view inside the detail column
                 // does not surface the field in the window toolbar.
