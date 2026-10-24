@@ -270,6 +270,11 @@ nonisolated struct PathfinderPlaylist: Decodable, Sendable {
         ownerV2?.data?.displayName
     }
 
+    /// The uri when this is a playlist *folder*, which decodes as this type too; see `id`.
+    var folderUri: String? {
+        uri.flatMap(SpotifyURI.folderUri)
+    }
+
     var imageURL: String? {
         (images?.items ?? []).first?.largestURL
     }
@@ -297,6 +302,16 @@ nonisolated enum SpotifyURI {
     /// hash and the folder became a playlist with a plausible-looking id — one that rendered as
     /// a row and answered "Spotify returned no data" when opened. Requiring the kind is what
     /// tells `spotify:playlist:x` from anything else wearing an id at the end.
+    /// The uri itself when it names a playlist folder, `spotify:user:<user>:folder:<hash>`, or
+    /// nil. A folder is keyed by its whole uri: the hash is not unique across users.
+    static func folderUri(_ uri: String) -> String? {
+        let parts = uri.split(separator: ":")
+        guard parts.count == 5, parts[0] == "spotify", parts[1] == "user", parts[3] == "folder" else {
+            return nil
+        }
+        return uri
+    }
+
     static func id(from uri: String, kind: String) -> String? {
         parts(of: uri).flatMap { $0.kind == kind ? String($0.id) : nil }
     }

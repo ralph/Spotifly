@@ -230,7 +230,7 @@ struct LoggedInView: View {
         switch section {
         case .playlists:
             {
-                try? await session.playlistService.loadUserPlaylists(forceRefresh: true)
+                try? await session.playlistService.loadSection(forceRefresh: true)
             }
 
         case .albums:

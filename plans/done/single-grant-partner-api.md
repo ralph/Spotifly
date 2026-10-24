@@ -15,7 +15,7 @@ longer. The 16 ticked tasks below are Track A. Track B, playback in Swift, shipp
 
 Two pieces were deliberately cut from Track A rather than left unfinished, and each has its
 own plan: `plans/done/playlist-attributes-not-written.md` and
-`plans/open/playlist-folder-hierarchy.md`.
+`plans/done/playlist-folder-hierarchy.md`.
 
 ## Problem
 
@@ -401,7 +401,7 @@ Order runs cheapest-first, and each task is independently shippable and revertib
       Folder *hierarchy* — showing the tree, nesting playlists under folders — remains unbuilt
       and is a genuine feature rather than a migration gap. Deferred deliberately; the shape of
       the work and the two variables still unmeasured are in
-      `plans/open/playlist-folder-hierarchy.md`.
+      `plans/done/playlist-folder-hierarchy.md`.
 
       **Audiobooks are not asked for.** The account in testing had two, and the app has no
       entity, screen or playback path for one. Not requesting the filter is the whole of

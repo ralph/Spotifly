@@ -336,6 +336,22 @@ nonisolated struct PartnerAPI: Sendable {
         try await libraryPage(filter: LibraryFilter.playlists, offset: offset, limit: limit)
     }
 
+    /// One page of the playlists as Spotify nests them: the top level in its order, and inside
+    /// each folder named in `expandedFolders`, its playlists and folders, one level deeper
+    /// (`PathfinderLibraryItem.depth`). The folders not named come back closed. Measured on
+    /// 2026-09-29: with every folder named, the whole tree arrives as one offset-paged list.
+    func libraryPlaylistOutline(offset: Int, expandedFolders: [String], limit: Int = LibraryFilter.pageLimit)
+        async throws -> PathfinderLibraryPage<PathfinderPlaylist>
+    {
+        try await libraryPage(variables: PathfinderLibraryVariables(
+            filters: [LibraryFilter.playlists],
+            offset: offset,
+            limit: limit,
+            flatten: false,
+            expandedFolders: expandedFolders,
+        ))
+    }
+
     func libraryAlbums(offset: Int, limit: Int = LibraryFilter.pageLimit) async throws
         -> PathfinderLibraryPage<PathfinderAlbum>
     {
@@ -357,14 +373,17 @@ nonisolated struct PartnerAPI: Sendable {
         offset: Int,
         limit: Int,
     ) async throws -> PathfinderLibraryPage<Entity> {
-        let response: PathfinderLibraryResponse<Entity> = try await query(
-            .libraryV3,
-            variables: PathfinderLibraryVariables(
-                filters: [filter],
-                offset: offset,
-                limit: limit,
-            ),
-        )
+        try await libraryPage(variables: PathfinderLibraryVariables(
+            filters: [filter],
+            offset: offset,
+            limit: limit,
+        ))
+    }
+
+    private func libraryPage<Entity: Decodable & Sendable>(
+        variables: PathfinderLibraryVariables,
+    ) async throws -> PathfinderLibraryPage<Entity> {
+        let response: PathfinderLibraryResponse<Entity> = try await query(.libraryV3, variables: variables)
 
         guard let page = response.page else {
             throw PartnerAPIError.emptyPayload
