@@ -56,6 +56,14 @@ public actor AudioKeyProvider {
         return key
     }
 
+    #if DEBUG
+        /// Issue #223's key matrix: asks the accesspoint for one file's key under one gid, past
+        /// the cache, which is keyed on the file alone.
+        func uncachedKey(fileId: Data, trackId: Data) async throws -> Data {
+            try await connectedAccesspoint().requestAudioKey(fileId: fileId, trackId: trackId)
+        }
+    #endif
+
     /// The accesspoint to ask, once there is one. A track needed while the
     /// session reconnects — a press of Next, auto-advance, the fetch-ahead —
     /// waits for it, rather than failing on the socket it replaces and leaving

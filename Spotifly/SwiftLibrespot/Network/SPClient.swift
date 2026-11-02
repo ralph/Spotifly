@@ -66,6 +66,17 @@ public actor SPClient {
         public let durationMs: Int
         public let files: [AudioFile]
 
+        #if DEBUG
+            /// Issue #223's key matrix: the track's own gid and files, then each alternative's.
+            public var keyCandidates: [KeyCandidate] = []
+
+            public struct KeyCandidate: Sendable {
+                public let label: String
+                public let gid: Data
+                public let files: [AudioFile]
+            }
+        #endif
+
         public struct AudioFile: Sendable {
             public let fileId: Data
             public let format: AudioFormat
@@ -112,6 +123,7 @@ public actor SPClient {
         let url = URL(string: "https://\(host)/extended-metadata/v0/extended-metadata")!
 
         debugLog("SPClient", "[POST] extended-metadata \(entityUri)")
+        debugLog("TrackDiag", "extended-metadata header: country \(countryCode ?? "none"), catalogue \(catalogue)")
 
         // A read sent as a POST, and asked again as one.
         var request = URLRequest(url: url)
@@ -162,6 +174,10 @@ public actor SPClient {
             for entry in array.fields where entry.number == 3 {
                 // EntityExtensionData { 1: header{1 status}, 3: extension_data = Any }, and
                 // google.protobuf.Any { 2: value }, the value a full `Track`
+                #if DEBUG
+                    let header = entry.fields.last(1)?.fields ?? []
+                    debugLog("TrackDiag", "entity header: \(header.map { "\($0.number)=\($0.wireType == 2 ? $0.string : String($0.value))" }.joined(separator: " "))")
+                #endif
                 if let track = entry.fields.last(3)?.fields.last(2) {
                     return trackMetadata(track.fields)
                 }
@@ -216,8 +232,81 @@ public actor SPClient {
 
         debugLog("SPClient", "Parsed track: \(name), duration=\(duration)ms, files=\(files.count)")
 
-        return TrackMetadata(name: name, durationMs: duration, files: files)
+        #if DEBUG
+            var metadata = TrackMetadata(name: name, durationMs: duration, files: files)
+            metadata.keyCandidates = logTrackDiagnostics(fields, label: "track")
+            return metadata
+        #else
+            return TrackMetadata(name: name, durationMs: duration, files: files)
+        #endif
     }
+
+    #if DEBUG
+        /// Issue #223: everything a `Track` says about who it is, where it plays and what files it
+        /// has, and the same for each alternative, as the answer gave it. Returns the gids and
+        /// files for the key matrix.
+        nonisolated static func logTrackDiagnostics(_ fields: [ProtobufField], label: String) -> [TrackMetadata.KeyCandidate] {
+            let gid = fields.last(1)?.bytes ?? Data()
+            let present = Dictionary(grouping: fields, by: \.number).keys.sorted()
+                .map { number in "\(number)×\(fields.filter { $0.number == number }.count)" }
+            debugLog("TrackDiag", "\(label): gid \(gid.hexString) = \(SpotifyGID.base62(fromGID: gid.hexString) ?? "?"), name '\(fields.last(2)?.string ?? "")', fields [\(present.joined(separator: " "))]")
+
+            for externalId in fields where externalId.number == 10 {
+                debugLog("TrackDiag", "\(label): external id \(externalId.fields.last(1)?.string ?? "?")=\(externalId.fields.last(2)?.string ?? "?")")
+            }
+            for (index, restriction) in fields.filter({ $0.number == 11 }).enumerated() {
+                logRestriction(restriction.fields, label: "\(label) restriction[\(index)]")
+            }
+            for (index, period) in fields.filter({ $0.number == 14 }).enumerated() {
+                debugLog("TrackDiag", "\(label) sale_period[\(index)]: fields \(period.fields.map(\.number))")
+                for restriction in period.fields where restriction.number == 1 {
+                    logRestriction(restriction.fields, label: "\(label) sale_period[\(index)] restriction")
+                }
+            }
+            for (index, availability) in fields.filter({ $0.number == 19 }).enumerated() {
+                let catalogues = availability.fields.filter { $0.number == 1 }.map(\.string)
+                debugLog("TrackDiag", "\(label) availability[\(index)]: catalogues \(catalogues), start \(availability.fields.last(2).map { describeDate($0.fields) } ?? "none")")
+            }
+            if let earliest = fields.last(17) {
+                debugLog("TrackDiag", "\(label): earliest_live_timestamp \(earliest.int64)")
+            }
+            let files = fields.filter { $0.number == 12 }.compactMap { audioFile($0.fields) }
+            for file in fields where file.number == 12 {
+                let format = file.fields.last(2).map { String($0.value) } ?? "none"
+                debugLog("TrackDiag", "\(label) file: \(file.fields.last(1)?.bytes.hexString ?? "?") format \(format)")
+            }
+            if files.isEmpty {
+                debugLog("TrackDiag", "\(label): no files of its own")
+            }
+
+            var candidates = [TrackMetadata.KeyCandidate(label: label, gid: gid, files: files)]
+            for (index, alternative) in fields.filter({ $0.number == 13 }).enumerated() {
+                candidates += logTrackDiagnostics(alternative.fields, label: "\(label).alternative[\(index)]")
+            }
+            return candidates
+        }
+
+        /// `Restriction { 1 catalogue[], 2 countries_allowed, 3 countries_forbidden, 4 type, 5 catalogue_str[] }`.
+        private nonisolated static func logRestriction(_ fields: [ProtobufField], label: String) {
+            let catalogues = fields.filter { $0.number == 1 }.map(\.value)
+            let catalogueNames = fields.filter { $0.number == 5 }.map(\.string)
+            let allowed = fields.last(2)?.string
+            let forbidden = fields.last(3)?.string
+            func countries(_ list: String?) -> String {
+                guard let list else { return "absent" }
+                let codes = stride(from: 0, to: list.count, by: 2).map {
+                    String(list.dropFirst($0).prefix(2))
+                }
+                return "\(codes.count) [DE \(codes.contains("DE") ? "in" : "out")] \(list.prefix(80))\(list.count > 80 ? "…" : "")"
+            }
+            debugLog("TrackDiag", "\(label): catalogue \(catalogues) \(catalogueNames), type \(fields.last(4).map { String($0.value) } ?? "none"), allowed \(countries(allowed)), forbidden \(countries(forbidden))")
+        }
+
+        /// `Date { 1 year, 2 month, 3 day, 4 hour, 5 minute }`.
+        private nonisolated static func describeDate(_ fields: [ProtobufField]) -> String {
+            (1 ... 5).map { fields.last($0).map { String($0.value) } ?? "-" }.joined(separator: "/")
+        }
+    #endif
 
     /// A `Track`'s playable files. They sit at `Track.file` (12); a relinked
     /// recording answers with an empty list plus its playable copy under

@@ -640,6 +640,7 @@ public actor Accesspoint {
         payload.append(contentsOf: [0x00, 0x00])
 
         let packet = SpotifyPacket(command: .requestKey, payload: payload)
+        debugLog("Accesspoint", "Audio key request seq=\(seqId): file \(fileId.hexString), track gid \(trackId.hexString) = \(SpotifyGID.base62(fromGID: trackId.hexString) ?? "?"), payload \(payload.count) bytes")
 
         // Register the waiter before the request goes out: the receive loop
         // shares this actor, so a response can only be dispatched after this
@@ -865,7 +866,7 @@ public actor Accesspoint {
                 UInt16(bigEndian: $0.load(as: UInt16.self))
             }
 
-            debugLog("Accesspoint", "Audio key error for seq=\(seqId), code=\(errorCode)")
+            debugLog("Accesspoint", "Audio key error for seq=\(seqId), code=\(errorCode), payload \(packet.payload.hexString)")
 
             if let continuation = pendingAudioKeyRequests.removeValue(forKey: seqId) {
                 continuation.resume(throwing: LibrespotError.audioKeyError(Int(errorCode)))
