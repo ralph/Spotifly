@@ -86,7 +86,7 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
         case let .audioKeyFailed(message):
             "Failed to get audio key: \(message)"
         case let .audioKeyError(code):
-            "Audio key error: \(code)"
+            String(localized: "error.audio_key_refused \(code)")
         case let .decryptionFailed(message):
             "Decryption failed: \(message)"
         case let .decodingFailed(message):

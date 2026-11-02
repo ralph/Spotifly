@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **The mouse's back and forward buttons step through the history, as in Safari.** Its fourth and fifth buttons go back and forward in the window they are pressed in, as the toolbar's arrows and ⌘[ and ⌘] do. AppKit hands them to the view under the pointer, which ignores them, and SwiftUI has no gesture for them, so each window reads them with a local event monitor before any view does (`MouseNavigationButtons`).
+- **Debug builds log what decides whether a track plays.** For each track they log what the extended-metadata answer says: gid, ISRC, restrictions, sale periods, availability, every file with its format, and the same for each alternative. They also log every audio key request with its file and gid, and every refusal with its raw payload. `SPOTIFLY_DEBUG_KEY_MATRIX=1` asks for every file's key under every gid the metadata names, and a list of track uris adds control tracks. One run then tells a refused account from a refused track (#223).
+
+### Changed
+- **A refused audio key is said in words.** Some accounts get the key to decrypt a track refused by Spotify, and for some it happens with every track (#223, librespot#1649). Playback then stops with "Spotify refused the key to play this track (error 1)" instead of "Audio key error: 1". The track is not relinked, and the same files' keys are given to other accounts, so nothing in the request is wrong. Plan: `plans/open/audio-key-refused.md`.
 
 ## [1.4.0] - 2026-10-24
 

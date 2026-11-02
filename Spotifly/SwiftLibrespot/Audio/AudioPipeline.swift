@@ -399,9 +399,52 @@ actor AudioPipeline {
 
         debugLog("AudioPipeline", "Track '\(metadata.name)': \(metadata.files.count) file(s), \(metadata.durationMs)ms")
 
+        #if DEBUG
+            if let extra = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_KEY_MATRIX"], !keyMatrixRan {
+                keyMatrixRan = true
+                let controls = extra.split(separator: ",").map(String.init).filter { $0.hasPrefix("spotify:track:") }
+                await runKeyMatrix(controls + [uri], using: spclient)
+            }
+        #endif
+
         let quality = quality
         return try (metadata, Self.fileToPlay(metadata, uri: uri, preferring: quality), quality)
     }
+
+    #if DEBUG
+        private var keyMatrixRan = false
+
+        /// Issue #223: for each track, asks for every file's key under every gid the metadata
+        /// names (the track's own and each alternative's), and the first file under an all-zero
+        /// gid, 1.5 s apart, and logs which the accesspoint gives. The controls go first, so a
+        /// refusal of the track is not one the matrix's own requests brought on.
+        private func runKeyMatrix(_ uris: [String], using spclient: SPClient) async {
+            for uri in uris {
+                guard let metadata = try? await spclient.getTrack(uri: uri) else {
+                    debugLog("KeyMatrix", "\(uri): no metadata")
+                    continue
+                }
+                let candidates = metadata.keyCandidates
+                let files = candidates.flatMap(\.files)
+                var gids = candidates.map { ($0.label, $0.gid) }
+                gids.append(("zero", Data(count: 16)))
+                debugLog("KeyMatrix", "\(uri) '\(metadata.name)': \(files.count) file(s) × \(gids.count) gid(s)")
+                for (index, file) in files.enumerated() {
+                    for (label, gid) in gids where label != "zero" || index == 0 {
+                        try? await Task.sleep(for: .milliseconds(1500))
+                        let outcome: String
+                        do {
+                            let key = try await audioKeyProvider.uncachedKey(fileId: file.fileId, trackId: gid)
+                            outcome = "KEY (\(key.count) bytes)"
+                        } catch {
+                            outcome = "\(error)"
+                        }
+                        debugLog("KeyMatrix", "'\(metadata.name)' file \(file.fileId.prefix(8).hexString) format \(file.format) × gid \(label) \(SpotifyGID.base62(fromGID: gid.hexString) ?? "?"): \(outcome)")
+                    }
+                }
+            }
+        }
+    #endif
 
     /// The audio key and the CDN url side by side, then the download and decryption.
     private func download(_ resolved: ResolvedFile, of uri: String) async throws -> PreparedTrack {
