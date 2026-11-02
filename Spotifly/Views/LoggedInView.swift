@@ -99,6 +99,7 @@ struct LoggedInView: View {
             }
         }
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
+        .background(MouseNavigationButtons(coordinator: navigationCoordinator))
         // A grant started in here, from Speakers or the play alert, that did not take: refused
         // for another account, or failed. It waits for OK, since the grant finishes in the
         // browser, where a passing message in the bar would be missed; and it is on the window

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The mouse's back and forward buttons step through the history, as in Safari.** Its fourth and fifth buttons go back and forward in the window they are pressed in, as the toolbar's arrows and ⌘[ and ⌘] do. AppKit hands them to the view under the pointer, which ignores them, and SwiftUI has no gesture for them, so each window reads them with a local event monitor before any view does (`MouseNavigationButtons`).
+
 ## [1.4.0] - 2026-10-24
 
 ### Changed
