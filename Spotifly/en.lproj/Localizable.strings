@@ -137,6 +137,7 @@
 "error.playlist_failed" = "Spotify could not load this playlist.";
 "error.track_unavailable %@" = "Not available on Spotify: “%@”";
 "error.track_unavailable_in_country %@" = "Not available in your country: “%@”";
+"error.audio_key_refused %lld" = "Spotify refused the key to play this track (error %lld)";
 "playback.skipped_unavailable %@" = "Skipped, not available: “%@”";
 
 /* Empty States */
