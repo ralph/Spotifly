@@ -1,7 +1,8 @@
 # Spotify Soloist as the playback engine
 
 Status: **Open**, draft. Decided on 2026-11-05: Spotifly drops the App Sandbox. The rest of
-the direction is not agreed, and the live pairing probe (step 1) has not run. Researched
+the direction is not agreed. The live pairing probe ran on 2026-11-09 (probe 4); shuffle,
+repeat, AirPlay output, inline lists and a Free account are still untested. Researched
 2026-11-02 against Soloist 1.3.10.35 (macOS build of 2026-11-02); Spotifast's setup and the
 Homebrew cask checked 2026-11-03 (1.3.10.37, built that day).
 Components: proposed new `Spotifly/Soloist/` (manager, WebSocket client, setup);
@@ -101,7 +102,7 @@ Soloist covers, what it does not, and what Spotifly has to change to use it.
 - **Features.** Lossless up to 24-bit/44.1 kHz, loudness normalization, crossfade,
   automix, Jam, podcasts and audiobooks.
 
-### Probes run on 2026-11-02
+### Probes run from 2026-11-02 to 2026-11-09
 
 1. **The Soloist key is not a Web API credential.** Sent as a Bearer token to
    `/v1/me`, `/v1/search`, `/v1/tracks/{id}` and `/v1/me/player/devices`, it got 401
@@ -133,6 +134,29 @@ Soloist covers, what it does not, and what Spotifly has to change to use it.
 
    `/usr/bin/true` started normally. So a sandboxed Spotifly cannot start Soloist from any
    install location.
+4. **Live pairing probe** (2026-11-09). Soloist 1.3.10.37 ran by hand with its own data
+   directory and `-i 10`. `soloist ctl trace` recorded the WebSocket. The controller was the
+   installed Spotifly 1.4.0. Results:
+   - Pairing from the Spotify app on the iPhone worked at once. Soloist logged in and became
+     the active device. Spotifly's Speakers list showed it, marked active.
+   - A playlist started on the phone from row 3 played from row 3, with rows 1 and 2 before
+     it.
+   - Spotifly's connect-state commands all worked on Soloist: pause, resume, seek, skip
+     next, skip previous, volume, add to queue, and `skip_next` naming a queued row. The
+     queued track came first in Soloist's queue, with `source: "queue"`.
+   - A click on an earlier row in Spotifly's queue sends `play` with a `skip_to` that has
+     only a `track_uri`. Soloist played that track, but put it in front of the whole
+     context, so the rows before it followed it again. The track was "The Letter", the
+     relinked track in `CLAUDE.md`. If the playlist lists it by its original id, the uri
+     in `skip_to` matches no row. So the cause is open: Soloist, or the relink.
+   - When the phone took over, Soloist sent `device_changed` with `is_active: false`. After
+     that it still sent `queue_changed` and `position_sync`, but no `playback_state`.
+     `soloist ctl now` then gave its last own state, with `is_active: false`.
+   - Soloist writes its data directory with modes 644 and 755, the stored login included.
+     Any local user can read it unless a parent directory is private.
+   - Not covered: shuffle and repeat, AirPlay output, a restart that restores the login,
+     and a Free account. An inline track list could not be sent: while the installed app can
+     stream, it plays every list start itself, so it never sends one to another device.
 
 ### Prior art: Spotifast
 
@@ -244,7 +268,8 @@ code. Nothing visible changes except where the files live.
 4. Launch with:
    - `-n "<device name>"`;
    - `-k <key from the Keychain>`;
-   - `-D` and `-C` under `Application Support/Spotifly/Soloist/`;
+   - `-D` and `-C` under `Application Support/Spotifly/Soloist/`, created with mode 700,
+     because Soloist writes the stored login readable by all (probe 4);
    - `-w 127.0.0.1:0`;
    - `-i` set to the last volume.
 
@@ -334,10 +359,11 @@ Peter Schorn's SpotifyAPI is not a fit:
 3. **Transport over the WebSocket or connect-state.** The WebSocket is official and local.
    Connect-state is already built and is the only route for starts with an offset. The
    proposal: connect-state for everything first, because it is one path and already tested;
-   move to the WebSocket where it has the same command.
+   move to the WebSocket where it has the same command. Probe 4 supports this: every
+   connect-state command it tried worked on Soloist. Shuffle and repeat are untested.
 4. **Queue editing while Soloist plays.** Soloist has no remove or reorder. Either hide
    these controls, as Spotifast does, or try connect-state's queue writes on Soloist's
-   device (unverified).
+   device (unverified; probe 4 tested only adding).
 5. **Two Connect devices.** Spotifly registers its own Connect device to send commands. With
    Soloist running, other apps see both "Spotifly" and the Soloist device. Decide whether
    Spotifly's own registration can be hidden or not playable.
@@ -346,21 +372,18 @@ Peter Schorn's SpotifyAPI is not a fit:
 
 ### Step 1: live pairing probe (manual, no app code)
 
-This needs Ralph's phone. Keep the volume low and keep playback off WohnzimmerStereo.
+Ran on 2026-11-09; probe 4 has the results. Still to do, in a second round with the same
+data directory (keep the volume low and keep playback off WohnzimmerStereo):
 
-1. Run the downloaded `soloist` by hand with `-n "Spotifly Soloist Test" -i 10 -w 127.0.0.1:0`.
-   Give it its own `-D`/`-C` in the scratchpad.
-2. Pair from the Spotify app on the phone.
-3. Check that the device appears in the installed Spotifly's Speakers list.
-4. From Spotifly, play a playlist from a middle row (`skip_to`), an inline track list, and a
-   queue add; then pause, seek and skip. Note what Soloist does and what its WebSocket
-   reports.
-5. Play from the phone instead, and record what the WebSocket reports while Soloist is not
-   the active device.
-6. Note which output Soloist uses when the Mac's output is the HomePod.
-7. If a Free account is available, check whether it can pick the paired device and play.
+1. Restart Soloist and check that it logs in without the phone.
+2. From Spotifly, toggle shuffle and cycle repeat while Soloist plays.
+3. In Spotifly's queue, click an earlier row whose track is not relinked. If Soloist keeps
+   the context's order, the relink caused the reorder in probe 4.
+4. With the Mac's output set to the HomePod, note where Soloist plays (part of decision 2).
+5. If a Free account is available, check whether it can pick the paired device and play.
 
-This step settles open decisions 3 and 4 and part of 2.
+An inline track list can only be tested once Spotifly sends its starts to Soloist, so it
+moves to the manual run after implementation.
 
 ### Step 2: leaving the sandbox (manual, with a release-signed build)
 
@@ -392,7 +415,7 @@ Tests:
 Manual run:
 - setup from a clean state;
 - pairing, then a restart that restores the session;
-- a play from a row in a playlist;
+- a play from a row in a playlist, and an inline track list;
 - an expired build (simulate with exit code 10);
 - killing the child mid-track.
 
