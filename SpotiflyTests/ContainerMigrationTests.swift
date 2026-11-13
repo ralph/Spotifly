@@ -10,7 +10,7 @@ import Foundation
 import Testing
 
 /// Each test builds a container of its own in a temporary directory and migrates it into a
-/// defaults suite, so nothing touches the developer's settings.
+/// defaults suite, so nothing touches the developer's settings or keychain.
 ///
 /// One suite name, emptied before and after each test, so serialized: the test host is not
 /// sandboxed, so a suite is a file in the developer's own `~/Library/Preferences`, and
@@ -31,8 +31,17 @@ struct ContainerMigrationTests {
         try PropertyListSerialization.data(fromPropertyList: settings, format: .binary, options: 0).write(to: plist)
     }
 
-    private func migrate() {
-        ContainerMigration.runOnce(defaults: defaults, domain: domain, container: container)
+    private var credentialsFile: URL {
+        container.appending(path: "Library/Application Support/Spotifly/credentials.json")
+    }
+
+    private func writeCredentials(_ data: Data) throws {
+        try FileManager.default.createDirectory(at: credentialsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: credentialsFile)
+    }
+
+    private func migrate(saveLogin: (StoredLogin) throws -> Void = { _ in }) {
+        ContainerMigration.runOnce(defaults: defaults, domain: domain, container: container, saveLogin: saveLogin)
     }
 
     init() {
@@ -71,23 +80,42 @@ struct ContainerMigrationTests {
         #expect(defaults.object(forKey: "later") == nil)
     }
 
+    @Test func `the stored login moves into the keychain and the file goes`() throws {
+        defer { cleanUp() }
+        let login = StoredLogin(username: "someone", authData: Data([1, 2, 3]), authType: 1)
+        try writeCredentials(JSONEncoder().encode(login))
+        var saved: StoredLogin?
+
+        migrate { saved = $0 }
+
+        #expect(saved?.username == "someone")
+        #expect(saved?.authData == Data([1, 2, 3]))
+        #expect(saved?.authType == 1)
+        #expect(!FileManager.default.fileExists(atPath: credentialsFile.path))
+    }
+
     @Test func `an unreadable container is skipped, and not retried`() throws {
         defer { cleanUp() }
         let plist = container.appending(path: "Library/Preferences/\(domain).plist")
         try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("not a plist".utf8).write(to: plist)
+        try writeCredentials(Data("not json".utf8))
+        var saveCalled = false
 
-        migrate()
+        migrate { _ in saveCalled = true }
 
+        #expect(!saveCalled)
         #expect(defaults.bool(forKey: ContainerMigration.doneKey))
         #expect(defaults.persistentDomain(forName: domain)?.keys.sorted() == [ContainerMigration.doneKey])
     }
 
     @Test func `a Mac that never ran the sandboxed app is only marked done`() {
         defer { cleanUp() }
+        var saveCalled = false
 
-        migrate()
+        migrate { _ in saveCalled = true }
 
+        #expect(!saveCalled)
         #expect(defaults.bool(forKey: ContainerMigration.doneKey))
     }
 }

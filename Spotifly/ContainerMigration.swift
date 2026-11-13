@@ -2,7 +2,7 @@
 //  ContainerMigration.swift
 //  Spotifly
 //
-//  Brings the settings out of the old App Sandbox container, once
+//  Brings the settings and the stored login out of the old App Sandbox container, once
 //
 
 import Foundation
@@ -12,12 +12,14 @@ import Foundation
 /// Spotifly ran in the App Sandbox until it started Spotify's Soloist, which a sandboxed app
 /// cannot run (`plans/open/soloist-playback.md`). Sandboxed, `UserDefaults` and Application
 /// Support resolved into `~/Library/Containers/rvdh.Spotifly/Data`; now they resolve into the
-/// user's own `~/Library`. Without this, an upgraded Mac would start with default settings and
-/// a new Connect device id (`DeviceInfo`). Caches are left behind: they refill.
+/// user's own `~/Library`. Without this, an upgraded Mac would start with default settings, a
+/// new Connect device id (`DeviceInfo`) and no stored login. Caches are left behind: they
+/// refill.
 ///
 /// Runs once, first thing at launch, before anything reads a setting. Not in the unit-test
 /// host, which writes this domain too (`copySettings` says why that matters). If the container
-/// cannot be read, nothing is retried: the settings start from their defaults.
+/// cannot be read, nothing is retried: the user signs in once more, and the settings start from
+/// their defaults.
 nonisolated enum ContainerMigration {
     static let doneKey = "migratedFromSandboxContainer"
 
@@ -26,6 +28,7 @@ nonisolated enum ContainerMigration {
         domain: String = Bundle.main.bundleIdentifier ?? "rvdh.Spotifly",
         container: URL = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Containers/rvdh.Spotifly/Data"),
+        saveLogin: (StoredLogin) throws -> Void = KeychainManager.saveStoredLogin,
     ) {
         guard !defaults.bool(forKey: doneKey) else { return }
         defer { defaults.set(true, forKey: doneKey) }
@@ -35,6 +38,10 @@ nonisolated enum ContainerMigration {
             from: container.appending(path: "Library/Preferences/\(domain).plist"),
             into: defaults,
             domain: domain,
+        )
+        moveLogin(
+            from: container.appending(path: "Library/Application Support/Spotifly/credentials.json"),
+            saveLogin: saveLogin,
         )
     }
 
@@ -54,6 +61,18 @@ nonisolated enum ContainerMigration {
             debugLog("ContainerMigration", "Copied \(old.count) settings")
         } catch {
             debugLog("ContainerMigration", "Settings not copied: \(error)")
+        }
+    }
+
+    /// Into the keychain, and the file deleted, since it is a reusable login in plain text.
+    private static func moveLogin(from file: URL, saveLogin: (StoredLogin) throws -> Void) {
+        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        do {
+            try saveLogin(JSONDecoder().decode(StoredLogin.self, from: Data(contentsOf: file)))
+            try FileManager.default.removeItem(at: file)
+            debugLog("ContainerMigration", "Moved the stored login into the keychain")
+        } catch {
+            debugLog("ContainerMigration", "Stored login not moved: \(error)")
         }
     }
 }

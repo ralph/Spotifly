@@ -58,6 +58,29 @@ nonisolated enum KeychainManager {
         delete(key: keymasterTokensKey, service: keymasterService)
     }
 
+    // MARK: - Stored accesspoint login
+
+    private static let storedLoginService = "com.spotifly.librespot"
+    private static let storedLoginKey = "stored_login"
+
+    /// The reusable login `APWelcome` hands out (`StoredCredentialsStore`). It was a file in the
+    /// App Sandbox container until the app left the sandbox, where any process of the user
+    /// could have read it.
+    static func saveStoredLogin(_ login: StoredLogin) throws {
+        try save(key: storedLoginKey, data: JSONEncoder().encode(login), service: storedLoginService)
+    }
+
+    static func loadStoredLogin() -> StoredLogin? {
+        guard let data = load(key: storedLoginKey, service: storedLoginService) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(StoredLogin.self, from: data)
+    }
+
+    static func clearStoredLogin() {
+        delete(key: storedLoginKey, service: storedLoginService)
+    }
+
     // MARK: - Private Keychain Operations
 
     private static func save(key: String, data: Data, service: String) throws {
