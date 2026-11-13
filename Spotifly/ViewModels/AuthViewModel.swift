@@ -15,8 +15,8 @@ final class AuthViewModel {
     ///
     /// There used to be two: a dashboard OAuth that gated the app, and a streaming grant that
     /// gated playback. One authorization writes both halves of what is left, so this is read
-    /// from `KeymasterSession`, the half every request needs. librespot's own credentials file
-    /// is the *other* half, and it is deliberately not consulted here: a grant whose accesspoint
+    /// from `KeymasterSession`, the half every request needs. librespot's stored login is the
+    /// *other* half, and it is deliberately not consulted here: a grant whose accesspoint
     /// connect failed still browses, and the app already has a way to offer playback again.
     ///
     /// Signed in, the account's session starts (`startSession`). Signed out, whatever the way,
@@ -80,8 +80,8 @@ final class AuthViewModel {
 
         // A grant Spotify has refused cannot be retried into working, and `KeymasterSession`
         // has already forgotten it by the time this fires. What is left is the rest of logging
-        // out — the Spirc session still registered for that account, librespot's credentials
-        // file, the login screen — and that is exactly what a deliberate logout does, so it
+        // out — the Spirc session still registered for that account, librespot's stored
+        // login, the login screen — and that is exactly what a deliberate logout does, so it
         // runs the same path rather than a second one that could drift from it.
         // `receive(on:)` is load-bearing rather than tidy: the announcement is sent from
         // `KeymasterSession`'s own executor, and this closure is main-actor isolated like

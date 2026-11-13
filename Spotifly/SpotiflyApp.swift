@@ -77,10 +77,18 @@ struct SpotiflyApp: App {
     /// Sign-in, and with it the signed-in account's store and services, which a closed window
     /// does not take with it (`LoggedInSession`). None in the unit-test host, where its grant
     /// would sign the developer in, and a test's revocation could sign them out.
-    @State private var auth: AuthViewModel? = SpotiflyApp.hostsUnitTests ? nil : AuthViewModel()
+    @State private var auth: AuthViewModel?
     @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
 
     init() {
+        // Before anything reads what the first launch outside the App Sandbox finds in the old
+        // container. `auth` is built after it for that reason. Not when hosting the tests,
+        // which must not move the developer's data.
+        if !Self.hostsUnitTests {
+            ContainerMigration.runOnce()
+        }
+        _auth = State(initialValue: Self.hostsUnitTests ? nil : AuthViewModel())
+
         // Set activation policy to regular to support media keys
         NSApplication.shared.setActivationPolicy(.regular)
 
