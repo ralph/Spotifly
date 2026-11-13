@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Spotifly no longer runs in the App Sandbox.** It is the first step towards playing through Spotify's own Soloist, which a sandboxed app cannot start from any place it could install it: the sandbox refuses to run any binary in the container, a downloaded file is quarantined on top of that, and a Soloist installed elsewhere, by Homebrew or by Spotifast, was refused too (`plans/open/soloist-playback.md`). The hardened runtime and notarization stay. Settings now live in `~/Library/Preferences/rvdh.Spotifly.plist` rather than in `~/Library/Containers/rvdh.Spotifly`, and the first launch copies the container's settings there, so the volume, the bitrate and the Connect device id survive the upgrade (`ContainerMigration`). The container's values win over any already in the new place: before the first launch only a Debug run or the unit-test host writes there, and its fresh Connect device id would otherwise make Spotify see a new device. Caches are left behind and refill.
+
 ### Added
 - **The mouse's back and forward buttons step through the history, as in Safari.** Its fourth and fifth buttons go back and forward in the window they are pressed in, as the toolbar's arrows and ⌘[ and ⌘] do. AppKit hands them to the view under the pointer, which ignores them, and SwiftUI has no gesture for them, so each window reads them with a local event monitor before any view does (`MouseNavigationButtons`).
 
