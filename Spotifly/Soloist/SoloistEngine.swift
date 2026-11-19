@@ -5,10 +5,8 @@
 //  Runs Spotify's Soloist as this Mac's player, and says whether it is ready
 //
 
-import AppKit
 import Darwin
 import Foundation
-import Synchronization
 
 /// Spotify's Soloist, run as a child process, is this Mac's player once the user has chosen it.
 ///
@@ -62,26 +60,9 @@ final class SoloistEngine {
     private var process: Process?
     private var socket: URLSessionWebSocketTask?
     private var isStarting = false
-    private var isStopping = false
     private var restartsInARow = 0
 
-    /// The child's pid, for `atexit`, which cannot reach the main actor.
-    private nonisolated static let childPID = Atomic<Int32>(0)
-
-    private init() {
-        // A crash or a force quit skips `stop()`. The child must not outlive the app.
-        atexit {
-            let pid = SoloistEngine.childPID.load(ordering: .relaxed)
-            if pid > 0 {
-                kill(pid, SIGKILL)
-            }
-        }
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification, object: nil, queue: .main,
-        ) { _ in
-            MainActor.assumeIsolated { SoloistEngine.shared.stop() }
-        }
-    }
+    private init() {}
 
     // MARK: - Files
 
@@ -106,7 +87,7 @@ final class SoloistEngine {
     // MARK: - Choosing it
 
     /// Stores the key, makes Soloist this Mac's player, and starts it. This Mac's own device
-    /// registers again, hidden, so the account does not list two players for it.
+    /// registers again meanwhile, hidden, so the account does not list two players for it.
     func choose(key: String) async {
         do {
             try KeychainManager.saveSoloistKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -116,14 +97,15 @@ final class SoloistEngine {
         }
         UserDefaults.standard.set(true, forKey: Self.chosenKey)
         restartsInARow = 0
-        await start()
+        async let started: Void = start()
         await PlaybackViewModel.shared.forceReinitialize()
+        await started
     }
 
     /// Back to the built-in player.
     func turnOff() async {
         UserDefaults.standard.set(false, forKey: Self.chosenKey)
-        stop()
+        await stop()
         status = .off
         await PlaybackViewModel.shared.forceReinitialize()
     }
@@ -136,7 +118,6 @@ final class SoloistEngine {
             return
         }
         isStarting = true
-        isStopping = false
         defer { isStarting = false }
 
         do {
@@ -147,14 +128,14 @@ final class SoloistEngine {
                 throw SoloistInstaller.Failure.notSpotifys
             }
             status = .starting
-            stopLeftoverChild()
+            await stopLeftoverChild()
             try launch(executable, key: key)
             deviceId = try? String(contentsOf: Self.data.appending(path: ".device_id"), encoding: .utf8)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             try await connectSocket()
         } catch {
             debugLog("Soloist", "Start failed: \(error)")
-            stop()
+            await stop()
             status = .failed(error.localizedDescription)
         }
     }
@@ -197,33 +178,36 @@ final class SoloistEngine {
         process.standardOutput = output
         process.standardError = output
         // Its log names the account and the track; the key is taken out in case it names that too.
+        // At end of file the handler would be called again and again with nothing, so it goes.
         output.fileHandleForReading.readabilityHandler = { handle in
-            let text = String(decoding: handle.availableData, as: UTF8.self)
-            for line in text.split(separator: "\n") {
+            let data = handle.availableData
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                return
+            }
+            for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
                 debugLog("Soloist", line.replacingOccurrences(of: key, with: "<key>"))
             }
         }
         process.terminationHandler = { process in
-            let status = process.terminationStatus
-            Task { @MainActor in SoloistEngine.shared.processEnded(status: status) }
+            let (pid, status) = (process.processIdentifier, process.terminationStatus)
+            Task { @MainActor in SoloistEngine.shared.processEnded(pid: pid, status: status) }
         }
 
         try process.run()
         self.process = process
-        Self.childPID.store(process.processIdentifier, ordering: .relaxed)
         debugLog("Soloist", "Started pid \(process.processIdentifier)")
     }
 
-    /// Restarts a child that ended on its own. Exit code 10 means the build expired, which a
-    /// fresh download fixes.
-    private func processEnded(status exitStatus: Int32) {
+    /// Restarts a child that ended on its own; one `stop()` ended is no longer `process`. Exit
+    /// code 10 means the build expired, which a fresh download fixes.
+    private func processEnded(pid: Int32, status exitStatus: Int32) {
         debugLog("Soloist", "Exited with status \(exitStatus)")
-        Self.childPID.store(0, ordering: .relaxed)
+        guard process?.processIdentifier == pid else { return }
         process = nil
         socket?.cancel()
         socket = nil
         isActive = false
-        guard !isStopping, Self.isChosen else { return }
 
         if exitStatus == 10 {
             try? FileManager.default.removeItem(at: Self.root.appending(path: "build.json"))
@@ -234,35 +218,33 @@ final class SoloistEngine {
             return
         }
         status = .starting
-        Task { @MainActor in
+        Task {
             try? await Task.sleep(for: .seconds(2))
             await start()
         }
     }
 
-    /// Stops the child. Called on quit, and when the user turns Soloist off.
-    func stop() {
-        isStopping = true
+    /// Stops the child: on quit (`AppDelegate`), when the user turns Soloist off, and when a
+    /// start fails. A moment to leave Spotify Connect cleanly, then it goes regardless. A crash
+    /// of the app leaves it running, and the next start stops it (`stopLeftoverChild`).
+    func stop() async {
         socket?.cancel()
         socket = nil
-        if let process, process.isRunning {
-            process.terminate()
-            // A moment to leave Spotify Connect cleanly; `atexit` kills what is left.
-            let deadline = Date().addingTimeInterval(1)
-            while process.isRunning, Date() < deadline {
-                usleep(20000)
-            }
-        }
-        if process?.isRunning != true {
-            Self.childPID.store(0, ordering: .relaxed)
-        }
-        process = nil
         isActive = false
+        guard let process else { return }
+        self.process = nil
+        process.terminate()
+        for _ in 0 ..< 20 where process.isRunning {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+        }
     }
 
     /// A child left over from a run of the app that did not stop it: Soloist refuses to share
     /// its data directory, so it would block this start.
-    private func stopLeftoverChild() {
+    private func stopLeftoverChild() async {
         guard let text = try? String(contentsOf: Self.data.appending(path: "soloist.pid"), encoding: .utf8),
               let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0
         else { return }
@@ -272,15 +254,16 @@ final class SoloistEngine {
         else { return }
         debugLog("Soloist", "Stopping leftover pid \(pid)")
         kill(pid, SIGTERM)
-        usleep(500_000)
+        try? await Task.sleep(for: .milliseconds(500))
     }
 
     // MARK: - The socket
 
+    /// Waits for the port Soloist writes once it listens, while the child still runs.
     private func connectSocket() async throws {
         let portFile = Self.data.appending(path: "ws.port")
         var port: Int?
-        for _ in 0 ..< 100 {
+        for _ in 0 ..< 100 where process != nil {
             if let text = try? String(contentsOf: portFile, encoding: .utf8),
                let value = Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
             {

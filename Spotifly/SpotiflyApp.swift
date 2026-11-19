@@ -52,10 +52,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// from `applicationWillTerminate`, the report never got out before the process
     /// ended, so the next launch mirrored the track from wherever Spotify last heard of
     /// it, often its start.
-    /// Two seconds at most, since a PutState on a dead network waits fifteen.
+    /// Two seconds at most, since a PutState on a dead network waits fifteen. Soloist, when it
+    /// is this Mac's player, leaves Spotify Connect meanwhile, and its process ends with the app's.
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
         Task {
+            async let soloist: Void = SoloistEngine.shared.stop()
             await SpotifyPlayer.shutdown()
+            await soloist
             allowTermination()
         }
         Task {
