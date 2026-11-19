@@ -231,7 +231,7 @@ final class AuthViewModel {
 
         await PlaybackViewModel.shared.shutdownForLogout()
         await SoloistEngine.shared.forgetLogin()
-        await SpotifyPlayer.clearStreamingCredentials()
+        await SpotifyPlayer.clearCredentials()
         isSignedIn = false
     }
 }

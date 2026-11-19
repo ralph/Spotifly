@@ -74,7 +74,7 @@ public actor LibrespotClient {
     /// plays for this Mac, so the device registers hidden, as one that cannot play does
     /// (`SpircController.buildDevice`), and the session needs only the token
     /// (`LibrespotSession.connect`).
-    func initialize(httpCredentials: SpotifyCredentials) async throws {
+    func initialize(credentials: SpotifyCredentials) async throws {
         shuttingDown = false
         let generation = lifecycleGeneration
 
@@ -91,7 +91,7 @@ public actor LibrespotClient {
         session = newSession
         subscribeToSession(newSession)
 
-        try await newSession.connect(signing: httpCredentials)
+        try await newSession.connect(signing: credentials)
 
         // A logout or shutdown landed while we were connecting; everything
         // below would sign a signed-out account back in. Abandon instead.
@@ -174,7 +174,7 @@ public actor LibrespotClient {
     }
 
     /// Reconnects the session it has, for an account still signed in: a logout forgets the
-    /// session's credentials (`clearStreamingCredentials`), so a signed-out account is never
+    /// session's credentials (`clearCredentials`), so a signed-out account is never
     /// reconnected.
     private func runRecovery() async {
         defer { flags.withLock { $0.recovering = false } }
@@ -194,7 +194,7 @@ public actor LibrespotClient {
 
     /// Forgets the account's credentials, the session's, which a recovery reconnects with, so
     /// nothing can sign back in.
-    public func clearStreamingCredentials() async {
+    public func clearCredentials() async {
         lifecycleGeneration += 1
         await session?.forgetCredentials()
     }

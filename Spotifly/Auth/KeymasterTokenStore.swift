@@ -19,7 +19,7 @@ nonisolated protocol KeymasterTokenStoring: Sendable {
     func clear()
 }
 
-/// The real store, in the same keychain service the Web API half uses.
+/// The real store: the keychain, under `KeychainManager`'s keymaster service.
 nonisolated struct KeymasterKeychainStore: KeymasterTokenStoring {
     func load() -> KeymasterTokens? {
         KeychainManager.loadKeymasterTokens()
