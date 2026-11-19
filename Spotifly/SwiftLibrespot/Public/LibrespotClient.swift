@@ -135,25 +135,14 @@ public actor LibrespotClient {
 
     // MARK: - Lifecycle
 
-    /// Builds a full session: accesspoint login, dealer socket, Spirc
-    /// registration, and the audio pipeline. With `playsHere` false, as while
-    /// Spotify's Soloist plays for this Mac, only the dealer and Spirc: the
-    /// device registers hidden, as one that cannot play does, and the
-    /// session needs no accesspoint and no pipeline (`LibrespotSession.connect`).
-    ///
-    /// Credentials are resolved inside: a previously captured reusable login
-    /// comes first, falling back to a fresh bearer from `httpCredentials`. A
-    /// successful token login stores its reusable credentials for next time.
-    /// `volume` (0–1) is the one this Mac registers at, as Spotify Connect
-    /// shows it to other devices.
+    /// Builds the session: the dealer socket and the Spirc registration. Spotify's Soloist
+    /// plays for this Mac, so the device registers hidden, as one that cannot play does, and
+    /// the session needs no accesspoint and no pipeline (`LibrespotSession.connect`).
     func initialize(
         httpCredentials: SpotifyCredentials,
         usernameProvider: @escaping @Sendable () async -> String?,
         contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])? = nil,
-        volume: Double,
-        playsHere: Bool = true,
     ) async throws {
-        logicalVolume = Self.logicalVolume(volume)
         self.httpCredentials = httpCredentials
         self.usernameProvider = usernameProvider
         self.contextRowUids = contextRowUids
@@ -172,7 +161,7 @@ public actor LibrespotClient {
         }
 
         var registered = deviceInfo
-        registered.supportsPlayback = deviceInfo.supportsPlayback && playsHere
+        registered.supportsPlayback = false
         let newSession = LibrespotSession(deviceInfo: registered)
         session = newSession
         subscribeToSession(newSession)

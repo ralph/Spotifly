@@ -9,8 +9,9 @@ import SwiftUI
 
 struct SpeakersView: View {
     @Environment(PlayerModel.self) private var player
-    @Environment(AuthViewModel.self) private var authViewModel
     @Environment(PlaybackViewModel.self) private var playbackViewModel
+    @Environment(\.openSettings) private var openSettings
+    @AppStorage(SoloistEngine.setUpKey) private var soloistIsSetUp = false
 
     var body: some View {
         Form {
@@ -28,48 +29,22 @@ struct SpeakersView: View {
                     }
                 }
 
-                // Without a usable local player this Mac never registers with
-                // Spotify Connect, so it is genuinely absent from the list above.
-                // That absence is the indicator; this row is the way back.
-                //
-                // Keyed on whether playback actually works, not on whether a
-                // stored login exists: revoked or stale credentials leave the
-                // login in place while every initialization fails, and keying on the
-                // login would hide the only way to recover from exactly that.
-                if playbackViewModel.localPlayback == .needsAuthorization {
-                    // Stays enabled while the grant waits, and cancels it instead of
-                    // starting a second one. A browser tab closed without authorizing
-                    // sends nothing at all, so without this the row spun until the
-                    // listener's timeout with no way back to it.
+                // Soloist is what this Mac plays with, so without it this Mac is absent from
+                // the list above: the session's own device registers hidden. That absence is
+                // the indicator; this row is the way to Settings, where it is set up.
+                if !soloistIsSetUp {
                     Button {
-                        if authViewModel.isAuthorizingStreaming {
-                            authViewModel.cancelStreamingAuthorization()
-                        } else {
-                            authViewModel.startStreamingAuthorization()
-                        }
+                        openSettings()
                     } label: {
                         HStack {
-                            if authViewModel.isAuthorizingStreaming {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "laptopcomputer.slash")
-                                    .foregroundStyle(.secondary)
-                            }
-                            Text(
-                                authViewModel.isAuthorizingStreaming
-                                    ? "speakers.enable_this_mac_cancel"
-                                    : "speakers.enable_this_mac",
-                            )
+                            Image(systemName: "laptopcomputer.slash")
+                                .foregroundStyle(.secondary)
+                            Text("speakers.set_up_soloist")
                             Spacer()
                         }
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                } else if playbackViewModel.localPlayback == .needsPremium {
-                    // Registered hidden, so absent too, and nothing here enables it.
-                    Label("speakers.this_mac_needs_premium", systemImage: "laptopcomputer.slash")
-                        .foregroundStyle(.secondary)
                 }
             } header: {
                 Text("speakers.spotify_connect")
@@ -152,8 +127,8 @@ struct SpeakerRow: View {
         }
     }
 
-    /// The active device's volume: `PlaybackViewModel.sliderVolume`, this Mac's or the remote
-    /// device's, greyed where the device controls its own.
+    /// The active device's volume: `PlaybackViewModel.sliderVolume`, greyed where the device
+    /// controls its own.
     private var volume: some View {
         let percent = playbackViewModel.sliderVolume
         return Slider(

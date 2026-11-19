@@ -126,7 +126,6 @@
 "error.load_playlists" = "Failed to load playlists";
 "error.load_albums" = "Failed to load albums";
 "error.load_artists" = "Failed to load artists";
-"error.no_playback_device" = "This Mac is not connected to Spotify, so it cannot start playback elsewhere";
 "error.player_not_ready" = "The player did not connect to Spotify in time";
 "error.player_not_initialized" = "The player is not connected to Spotify";
 "error.album_not_found" = "Spotify can't find this album. It may not be available in your country.";
@@ -230,9 +229,6 @@
 "preferences.shortcuts" = "Shortcuts";
 "preferences.shortcut.sidebar" = "Show/Hide Sidebar";
 "preferences.shortcut.space" = "Space";
-"preferences.streaming_quality" = "Streaming Quality";
-"preferences.gapless_playback" = "Gapless Playback";
-"preferences.restart_note" = "Changes take effect when playback restarts.";
 
 /* Album Context Menu & Alerts */
 "album.remove.title" = "Remove from Library";
@@ -322,19 +318,8 @@
 // The grant: signing in on the login screen, re-authorizing playback everywhere else
 "auth.connect_cancel" = "Waiting for your browser — cancel";
 "auth.connect_failed" = "Could not connect to Spotify. Please try again.";
-"speakers.enable_this_mac" = "Enable this Mac";
-"speakers.enable_this_mac_cancel" = "Cancel authorization";
-"playback.needs_authorization_title" = "Enable playback on this Mac?";
-"playback.needs_authorization_message" = "There is no device to play on. Authorize streaming to play here, or start playback on another device first.";
-"playback.needs_authorization_authorize" = "Authorize";
 "playback.needs_premium" = "Playing on this Mac needs Spotify Premium.";
-"playback.needs_premium_title" = "Playing on this Mac needs Spotify Premium";
-"playback.needs_premium_message" = "Your library, search and playlists work as usual. To play music on this Mac, log out and log in with a Premium account.";
-"speakers.this_mac_needs_premium" = "This Mac plays only for Premium accounts";
-"common.ok" = "OK";
 "common.cancel" = "Cancel";
-"auth.enable_playback_failed_title" = "This Mac was not enabled";
-"auth.enable_playback_wrong_account" = "That Spotify account is not the one you are signed in with. Sign the browser into the same account and try again.";
 "soloist.status" = "Status";
 "soloist.status.off" = "Off";
 "soloist.status.installing" = "Downloading from Spotify…";
@@ -342,15 +327,19 @@
 "soloist.status.pairing" = "Choose “Spotifly” once in the Spotify app on your phone, on the same network.";
 "soloist.status.ready" = "Ready";
 "soloist.status.playing" = "Playing";
-"soloist.turn_off" = "Use the Built-in Player";
 "soloist.key" = "Soloist Key";
 "soloist.get_key" = "Get a Key from Spotify";
 "soloist.use" = "Download and Use";
 "soloist.footer" = "Soloist is Spotify's own player. Spotifly downloads it from Spotify and runs it; it plays to this Mac's sound output.";
 "soloist.not_ready" = "Soloist is not ready yet. See Settings → Playback.";
+"soloist.set_up_title" = "Set Up Soloist";
+"soloist.set_up_message" = "This Mac plays through Spotify's Soloist, which you set up once in Settings. Until then, start playback on another device.";
+"soloist.open_settings" = "Open Settings";
+"soloist.change_key" = "Use This Key";
+"speakers.set_up_soloist" = "Set Up Soloist to Play on This Mac";
 "soloist.error.download %lld" = "Spotify's download server answered %lld.";
 "soloist.error.unpack" = "Soloist could not be unpacked or started.";
 "soloist.error.signature" = "The download is not signed by Spotify, so it was not run.";
 "soloist.error.expired" = "Spotify's Soloist build has expired. Try again later.";
 "soloist.error.no_key" = "Enter your Soloist key.";
-"soloist.error.keeps_stopping" = "Soloist keeps stopping. Check the key, then turn it off and on again.";
+"soloist.error.keeps_stopping" = "Soloist keeps stopping. Check the key, and enter it again.";

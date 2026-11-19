@@ -13,10 +13,10 @@ struct LoggedInView: View {
     let onLogout: () -> Void
 
     @Environment(WindowState.self) private var windowState
-    @Environment(AuthViewModel.self) private var authViewModel
     @Environment(PlayerModel.self) private var player
 
     @Environment(PlaybackViewModel.self) private var playbackViewModel
+    @Environment(\.openSettings) private var openSettings
 
     /// Where this window is, which goes with it.
     @State private var navigationCoordinator: NavigationCoordinator
@@ -100,25 +100,6 @@ struct LoggedInView: View {
         }
         .background(windowState.isMiniPlayerMode ? Color(NSColor.windowBackgroundColor) : Color.clear)
         .background(MouseNavigationButtons(coordinator: navigationCoordinator))
-        // A grant started in here, from Speakers or the play alert, that did not take: refused
-        // for another account, or failed. It waits for OK, since the grant finishes in the
-        // browser, where a passing message in the bar would be missed; and it is on the window
-        // rather than the content, which the mini player does not show.
-        .alert(
-            "auth.enable_playback_failed_title",
-            isPresented: Binding(
-                get: { authViewModel.errorMessage != nil },
-                set: {
-                    if !$0 {
-                        authViewModel.errorMessage = nil
-                    }
-                },
-            ),
-        ) {
-            Button("common.ok", role: .cancel) {}
-        } message: {
-            Text(authViewModel.errorMessage ?? "")
-        }
         // Inside the environment below, so the modifier reads the services from it.
         .modifier(LoggedInLifecycleModifier())
         .environment(session: session)
@@ -175,31 +156,19 @@ struct LoggedInView: View {
         .overlay(alignment: .bottom) {
             NowPlayingBarView()
         }
-        // Raised only when a play request had nowhere to go: no local player and no active
-        // remote device. With a device active, playback goes there and nothing is asked.
+        // Raised only when a play request had nowhere to go: Soloist, which plays for this Mac,
+        // is not set up, and no other device is active. With a device active, playback goes
+        // there and nothing is asked.
         .alert(
-            "playback.needs_authorization_title",
-            isPresented: Bindable(playbackViewModel).needsStreamingAuthorization,
+            "soloist.set_up_title",
+            isPresented: Bindable(playbackViewModel).needsSoloist,
         ) {
-            Button("playback.needs_authorization_authorize") {
-                // Through the view model, so the grant this starts can be cancelled from
-                // Speakers — the alert is gone by the time the browser answers.
-                authViewModel.startStreamingAuthorization()
+            Button("soloist.open_settings") {
+                openSettings()
             }
             Button("common.cancel", role: .cancel) {}
         } message: {
-            Text("playback.needs_authorization_message")
-        }
-        // Raised by the first play this Mac cannot start because the account is not Premium.
-        // Everything else still works, so this is a notice rather than a screen of its own.
-        .alert(
-            "playback.needs_premium_title",
-            isPresented: Bindable(playbackViewModel).showsPremiumNotice,
-        ) {
-            Button("auth.logout", action: onLogout)
-            Button("common.ok", role: .cancel) {}
-        } message: {
-            Text("playback.needs_premium_message")
+            Text("soloist.set_up_message")
         }
     }
 

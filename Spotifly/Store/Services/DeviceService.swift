@@ -62,16 +62,9 @@ final class DeviceService {
         let revisionBeforeTransfer = player.clusterRevision
         player.setActiveDevice(device.id)
 
-        // Check if target is our local device
-        let isLocalDevice = device.id == player.ownDeviceId
-
-        let accepted = if isLocalDevice {
-            // Transfer TO local - use Spirc's native transfer
-            await SpotifyPlayer.transferToLocal()
-        } else {
-            // Transfer FROM local to remote device
-            await SpotifyPlayer.transferPlayback(to: device.id)
-        }
+        // One way for every device, this Mac's too: it is Soloist (`PlayerModel.thisMacDeviceId`),
+        // listed like any other, while the session's own device is hidden and plays nothing.
+        let accepted = await SpotifyPlayer.transferPlayback(to: device.id)
 
         // The transfer can fail: no local device id yet, or connect-state refusing the
         // command. Roll the optimistic update back rather than leaving the UI showing a

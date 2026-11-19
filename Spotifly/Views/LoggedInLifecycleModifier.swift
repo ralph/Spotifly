@@ -35,8 +35,8 @@ struct LoggedInLifecycleModifier: ViewModifier {
 
                 #if DEBUG
                     // Headless test scaffolding: SPOTIFLY_DEBUG_AUTOPLAY=1 starts
-                    // a fixed album shortly after launch so the Swift playback
-                    // stack can be exercised without touching the UI. A
+                    // a fixed album shortly after launch, where a play goes, so
+                    // playback can be exercised without touching the UI. A
                     // spotify: uri instead of 1 plays that.
                     if let autoplay = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_AUTOPLAY"] {
                         let uri = autoplay.hasPrefix("spotify:") ? autoplay : "spotify:album:1LVj9ljlwsn2DOsXkRDOeI"
@@ -59,10 +59,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                             }
 
                             // SPOTIFLY_DEBUG_NEXT_AFTER=<seconds>: skip twice, a
-                            // few seconds apart. This is the transition worth
-                            // driving headlessly — a track change tears the decode
-                            // thread down and closes the decoder out from under it,
-                            // and a full track is too long to wait for.
+                            // few seconds apart, as a full track is too long to wait for.
                             if let nextAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_NEXT_AFTER"],
                                let seconds = Double(nextAfter)
                             {
@@ -72,20 +69,6 @@ struct LoggedInLifecycleModifier: ViewModifier {
                                     playbackViewModel.next()
                                 }
                             }
-                        }
-                    }
-
-                    // SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER=<seconds>: pull playback
-                    // to this device, as picking it in Speakers does. With a second
-                    // instance under another SPOTIFLY_DEBUG_DEVICE_ID, a handover
-                    // runs both ways on one Mac.
-                    if let transferAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER"],
-                       let seconds = Double(transferAfter)
-                    {
-                        Task { @MainActor in
-                            try? await Task.sleep(for: .seconds(seconds))
-                            debugLog("DebugAutoplay", "Pulling playback here")
-                            _ = await SpotifyPlayer.transferToLocal()
                         }
                     }
 
@@ -149,8 +132,8 @@ struct LoggedInLifecycleModifier: ViewModifier {
                     }
 
                     // SPOTIFLY_DEBUG_QUEUE_AFTER=<seconds>: queue a track, then an
-                    // album, through the path the context menus use — locally when
-                    // this device plays, as Connect commands when another one does.
+                    // album, through the path the context menus use: Connect commands to
+                    // the device that plays.
                     if let queueAfter = ProcessInfo.processInfo.environment["SPOTIFLY_DEBUG_QUEUE_AFTER"],
                        let seconds = Double(queueAfter)
                     {
@@ -176,7 +159,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
             // The connect, which the session's start makes (`AuthViewModel.startSession`), asked
             // for again too, if it failed. It was asked again by this window's task, after the two
             // loads, which tried at once after a failure, offline as well, and never again.
-            .retryingWhenNetworkReturns(if: playbackViewModel.localPlayback == .needsAuthorization) {
+            .retryingWhenNetworkReturns(if: !playbackViewModel.isInitialized) {
                 await playbackViewModel.initializeIfNeeded()
             }
     }
@@ -186,7 +169,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
         private func debugPlaybackSummary() -> String {
             "uri=\(playbackViewModel.currentTrackUri ?? "nil") at \(playbackViewModel.interpolatedPositionMs)ms, "
                 + "playing=\(playbackViewModel.isPlaying), model playing=\(PlayerModel.shared.playback?.isPlaying == true), "
-                + "active=\(SpotifyPlayer.isActiveDevice)"
+                + "active=\(player.activeDeviceId ?? "nobody")"
         }
     #endif
 }

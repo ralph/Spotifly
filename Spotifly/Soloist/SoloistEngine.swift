@@ -8,14 +8,15 @@
 import Darwin
 import Foundation
 
-/// Spotify's Soloist, run as a child process, is this Mac's player once the user has chosen it.
+/// Spotify's Soloist, run as a child process, is this Mac's player, once the user has set it up
+/// with a key. There is no other: nothing plays on this Mac without it.
 ///
 /// Soloist is a Spotify Connect receiver that plays with Spotify's own engine and needs no audio
 /// keys. Spotifly starts it, and controls it like any other Connect device: plays and commands
 /// go over connect-state, and what it plays, and whether it is active, comes back in the
 /// cluster. Its loopback WebSocket only says what the cluster cannot: whether it is paired.
-/// Spotifly's own Connect device then registers hidden (`SpotifyPlayer.initialize`), so the
-/// account sees one device for this Mac, named `deviceName`.
+/// Spotifly's own Connect device registers hidden (`SpotifyPlayer.initialize`), so the account
+/// sees one device for this Mac, named `deviceName`.
 ///
 /// `plans/open/soloist-playback.md` has the research behind it.
 @MainActor
@@ -41,14 +42,15 @@ final class SoloistEngine {
     /// The name the account's device lists show for this Mac.
     static let deviceName = "Spotifly"
 
-    /// Whether the user chose Soloist as this Mac's player, in `UserDefaults`.
-    nonisolated static let chosenKey = "soloistEngine"
+    /// Whether the user set Soloist up, in `UserDefaults`. Named for when it was a choice
+    /// beside the built-in player, which a set-up Mac keeps.
+    nonisolated static let setUpKey = "soloistEngine"
 
-    nonisolated static var isChosen: Bool {
-        UserDefaults.standard.bool(forKey: chosenKey)
+    nonisolated static var isSetUp: Bool {
+        UserDefaults.standard.bool(forKey: setUpKey)
     }
 
-    /// The device to play on: Soloist, while it is chosen and ready.
+    /// The device to play on: Soloist, while it is set up and ready.
     var readyDeviceId: String? {
         status == .ready ? deviceId : nil
     }
@@ -80,10 +82,11 @@ final class SoloistEngine {
         }
     }
 
-    // MARK: - Choosing it
+    // MARK: - Setting it up
 
-    /// Stores the key, makes Soloist this Mac's player, and starts it. This Mac's own device
-    /// registers again meanwhile, hidden, so the account does not list two players for it.
+    /// Stores the key, sets Soloist up, and starts it, again if it was running: a changed key
+    /// takes effect only at a start. The key goes to Soloist as it starts, so the one running
+    /// is stopped first.
     func choose(key: String) async {
         do {
             try KeychainManager.saveSoloistKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -91,24 +94,15 @@ final class SoloistEngine {
             status = .failed(error.localizedDescription)
             return
         }
-        UserDefaults.standard.set(true, forKey: Self.chosenKey)
+        UserDefaults.standard.set(true, forKey: Self.setUpKey)
         restartsInARow = 0
-        async let started: Void = start()
-        await PlaybackViewModel.shared.forceReinitialize()
-        await started
-    }
-
-    /// Back to the built-in player.
-    func turnOff() async {
-        UserDefaults.standard.set(false, forKey: Self.chosenKey)
         await stop()
-        status = .off
-        await PlaybackViewModel.shared.forceReinitialize()
+        await start()
     }
 
-    /// Starts Soloist if it is chosen and not running: installs or renews the build first.
+    /// Starts Soloist if it is set up and not running: installs or renews the build first.
     func start() async {
-        guard Self.isChosen, process == nil, !isStarting else { return }
+        guard Self.isSetUp, process == nil, !isStarting else { return }
         guard let key = KeychainManager.loadSoloistKey(), !key.isEmpty else {
             status = .failed(String(localized: "soloist.error.no_key"))
             return
@@ -157,14 +151,13 @@ final class SoloistEngine {
         let process = Process()
         process.executableURL = executable
         // The key can only be passed as an argument (soloist#12): `ps` shows it to local users.
-        // `-i` is the volume of Soloist's very first start; afterwards it keeps its own.
+        // No volume: Soloist starts at its own default, 40, and keeps its own after that.
         process.arguments = [
             "-n", Self.deviceName,
             "-k", key,
             "-D", Self.data.path,
             "-C", Self.root.appending(path: "cache").path,
             "-z", "512",
-            "-i", String(Int((PlaybackViewModel.savedVolume * 100).rounded())),
             "-w", "127.0.0.1:0",
         ]
         process.standardInput = FileHandle.nullDevice
@@ -217,8 +210,8 @@ final class SoloistEngine {
         }
     }
 
-    /// Stops the child: on quit (`AppDelegate`), when the user turns Soloist off, and when a
-    /// start fails. A moment to leave Spotify Connect cleanly, then it goes regardless. A crash
+    /// Stops the child: on quit (`AppDelegate`), when the user enters a key, and when a start
+    /// fails. A moment to leave Spotify Connect cleanly, then it goes regardless. A crash
     /// of the app leaves it running, and the next start stops it (`stopLeftoverChild`).
     func stop() async {
         socket?.cancel()

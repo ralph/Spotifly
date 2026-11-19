@@ -124,27 +124,19 @@ enum SpotifyPlayer {
 
     // MARK: - Lifecycle
 
-    /// Initializes the player: accesspoint login, dealer socket, Spirc
-    /// registration, audio pipeline.
+    /// Initializes the session that controls playback: the dealer socket and the Spirc
+    /// registration of a hidden device that does not play. Spotify's Soloist plays for this
+    /// Mac (`SoloistEngine`).
     ///
-    /// Every connect goes through here, from `PlaybackViewModel`'s lifecycle:
-    /// the saved volume is applied first, at the output and as the one this Mac
-    /// registers at on Spotify Connect, and the client is told where its
-    /// credentials come from — the stored reusable login from an earlier grant if there is
-    /// one, else a fresh keymaster token, with the client token spclient
-    /// requires.
-    /// - Parameter volume: this Mac's volume, 0–1.
+    /// Every connect goes through here, from `PlaybackViewModel`'s lifecycle, and the client is
+    /// told where its credentials come from: a fresh keymaster token, with the client token
+    /// spclient requires.
     @SpotifyPlayerActor
-    static func initialize(volume: Double) async throws {
-        // At the output up front, so the first moments of audio do not play at full volume.
-        setOutputVolume(volume)
+    static func initialize() async throws {
         try await LibrespotClient.shared.initialize(
             httpCredentials: .live,
             usernameProvider: { await KeymasterSession.shared.username },
             contextRowUids: { uri in await albumRowUids(uri) },
-            volume: volume,
-            // Spotify's Soloist plays for this Mac once chosen (`SoloistEngine`).
-            playsHere: !SoloistEngine.isChosen,
         )
     }
 
@@ -333,32 +325,18 @@ enum SpotifyPlayer {
 
     // MARK: - Transfer
 
-    /// Takes over playback that is running on another Connect device.
-    /// - Returns: `true` if the transfer was accepted.
-    static func transferToLocal() async -> Bool {
-        // Naming this device on both sides is how librespot pulls playback to
-        // itself; the backend derives the source from the session anyway.
-        await transfer(to: localDeviceId())
-    }
-
-    /// Hands playback from this device to another one.
+    /// Hands playback to a Connect device, Soloist included, from whichever device holds it.
+    ///
+    /// Goes over connect-state, beside every other Connect command this app sends. It used to
+    /// go to `PUT /me/player` on `api.spotify.com` with the keymaster token, which cannot work:
+    /// that grant uses the desktop client id, and Spotify answers it with 429 on every Web API
+    /// endpoint.
     /// - Parameter deviceId: The target device ID to transfer playback to
     /// - Returns: `true` if the transfer was accepted.
     static func transferPlayback(to deviceId: String) async -> Bool {
-        await transfer(to: deviceId)
-    }
-
-    /// This device's Connect id, as the cluster knows it.
-    private static func localDeviceId() -> String? {
-        LibrespotClient.shared.currentConnectionState?.deviceId.flatMap { $0.isEmpty ? nil : $0 }
-    }
-
-    /// Both transfers go over connect-state, beside every other Connect command
-    /// this app sends. They used to go to `PUT /me/player` on `api.spotify.com`
-    /// with the keymaster token, which cannot work: that grant uses the desktop
-    /// client id, and Spotify answers it with 429 on every Web API endpoint.
-    private static func transfer(to deviceId: String?) async -> Bool {
-        guard let from = localDeviceId(), let deviceId, !deviceId.isEmpty else {
+        // The session's own device, which the backend does not check; it derives the source
+        // from the session.
+        guard let from = LibrespotClient.shared.currentConnectionState?.deviceId, !from.isEmpty, !deviceId.isEmpty else {
             debugLog("SpotifyPlayer", "Transfer skipped: no local device id yet")
             return false
         }

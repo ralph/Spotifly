@@ -14,10 +14,8 @@ final class AuthViewModel {
     /// Whether this Mac holds a grant — which is the whole of being signed in now.
     ///
     /// There used to be two: a dashboard OAuth that gated the app, and a streaming grant that
-    /// gated playback. One authorization writes both halves of what is left, so this is read
-    /// from `KeymasterSession`, the half every request needs. librespot's stored login is the
-    /// *other* half, and it is deliberately not consulted here: a grant whose accesspoint
-    /// connect failed still browses, and the app already has a way to offer playback again.
+    /// gated playback. One authorization is left, read from `KeymasterSession`, which every
+    /// request needs.
     ///
     /// Signed in, the account's session starts (`startSession`). Signed out, whatever the way,
     /// it ends: the logout, a grant found revoked, and a launch that finds no grant.
@@ -37,9 +35,8 @@ final class AuthViewModel {
 
     /// Starts the account's session and hands it to playback at once: the queue service follows
     /// the player, `PlaybackViewModel` reads the track's metadata and the favorite toggle through
-    /// it, and the player connects, so this Mac is on Spotify Connect without waiting for a
-    /// window or the requests a window makes. Nothing for a grant renewed while signed in, whose
-    /// session goes on (`authorizeStreaming` connects it).
+    /// it, and the player connects, so the devices and what they play are there without waiting
+    /// for a window or the requests a window makes.
     ///
     /// Here, as the account signs in, rather than in the first window's task, which ran after
     /// its first frame, and so after the connect a sign-in starts: a report arriving in between
@@ -57,9 +54,9 @@ final class AuthViewModel {
     var errorMessage: String?
     var isLoading = true
 
-    /// Runs the one grant the app has. Named for what it enables rather than for signing in,
-    /// because it is reachable from three places — this screen, the Speakers row and the play
-    /// alert — and only the first of them is a login.
+    /// Runs the one grant the app has: the sign-in. Named for what it once also enabled, this
+    /// Mac's own playback, which the Speakers row and the play alert offered again until
+    /// Soloist became the only player.
     var isAuthorizingStreaming = false
     /// The grant in flight, held so it can be cancelled. Not observed by any view.
     @ObservationIgnored private var streamingAuthorization: Task<Void, Never>?
@@ -103,8 +100,7 @@ final class AuthViewModel {
         }
     }
 
-    /// Runs the app's grant: the sign-in on the login screen, and the way back to being a
-    /// playback device everywhere else.
+    /// Runs the app's grant: the sign-in on the login screen.
     ///
     /// Blocks on the user finishing an authorization in their browser, so it can take a
     /// while; `isAuthorizingStreaming` drives the progress the UI shows meanwhile.
@@ -144,8 +140,9 @@ final class AuthViewModel {
         do {
             try await KeymasterSession.shared.adopt(tokens)
         } catch let KeymasterSessionError.otherAccount(held, granted) {
+            // Only a grant still held refuses another account's, and signed out there is none.
             debugLog("AuthViewModel", "Streaming grant rejected: account \(granted) is not the signed-in account \(held)")
-            errorMessage = String(localized: "auth.enable_playback_wrong_account")
+            errorMessage = String(localized: "auth.connect_failed")
             return
         } catch {
             // The keychain refused the tokens, which `KeymasterSession` holds for this launch
@@ -164,23 +161,15 @@ final class AuthViewModel {
             return
         }
 
-        let renewing = sessions.current != nil
+        // The session connects as it starts (`startSession`).
         isSignedIn = true
-        // A sign-in's session connects as it starts (`startSession`). A renewed grant's was
-        // started before, so it is connected here, for the Speakers row or the play alert that
-        // offered the grant, whose progress lasts until it is done. One caller each: a second
-        // that waited for a connect that failed would build again at once. A connect that
-        // fails is said in the now-playing bar, as any other is, and Speakers offers it again.
-        if renewing {
-            await PlaybackViewModel.shared.initializeIfNeeded()
-        }
     }
 
     /// Starts the grant and keeps hold of it, so it can be abandoned.
     ///
     /// The task lives here rather than in the view because the view that started it can be
-    /// torn down — switching away from Speakers, or the login step giving way to the app —
-    /// while the browser round-trip is still outstanding.
+    /// torn down — the login step giving way to the app — while the browser round-trip is
+    /// still outstanding.
     func startStreamingAuthorization() {
         guard streamingAuthorization == nil else { return }
 
@@ -225,10 +214,8 @@ final class AuthViewModel {
     /// mid-outage is exactly when that matters — and is cleared again by
     /// `LibrespotClient.initialize`. It goes through the playback lifecycle rather than
     /// straight to the client: tearing the session down behind `PlaybackViewModel` leaves
-    /// `isInitialized` true,
-    /// since the connection subscription deliberately does not clear it on a disconnect, so
-    /// the app would hide the re-authorization affordance and keep aiming plays at a player
-    /// that no longer exists.
+    /// `isInitialized` true, since the connection subscription deliberately does not clear it
+    /// on a disconnect, so the app would keep aiming plays at a session that no longer exists.
     ///
     /// Only then are the credentials removed — the keymaster tokens in the keychain and
     /// librespot's AP credentials, which are a file and would otherwise let the next launch

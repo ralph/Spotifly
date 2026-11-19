@@ -70,19 +70,14 @@ struct AccountTypeTests {
 
 @MainActor
 struct PlaybackTargetTests {
-    @Test func `this Mac takes a play, even while a phone is active`() {
-        #expect(PlaybackViewModel.playbackTarget(local: .ready, activeDeviceId: "phone") == .local)
+    /// Until Soloist is ready, the device that plays takes a play, so a phone still plays while
+    /// Soloist starts, or before it is set up.
+    @Test func `with Soloist not ready, a play goes to the active device`() {
+        #expect(PlaybackViewModel.playbackTarget(activeDeviceId: "phone", soloist: .notReady) == .remote(deviceId: "phone"))
+        #expect(PlaybackViewModel.playbackTarget(activeDeviceId: "phone", soloist: .notSetUp) == .remote(deviceId: "phone"))
     }
 
-    @Test func `for an account that may not play here, a play goes to the active device`() {
-        #expect(PlaybackViewModel.playbackTarget(local: .needsPremium, activeDeviceId: "phone") == .remote(deviceId: "phone"))
-    }
-
-    @Test func `for an account that may not play here, with nothing active, the play says Premium`() {
-        #expect(PlaybackViewModel.playbackTarget(local: .needsPremium, activeDeviceId: nil) == .needsPremium)
-    }
-
-    @Test func `without a session, with nothing active, the play asks for authorization`() {
-        #expect(PlaybackViewModel.playbackTarget(local: .needsAuthorization, activeDeviceId: nil) == .needsAuthorization)
+    @Test func `with nothing active and Soloist not set up, the play asks for Soloist`() {
+        #expect(PlaybackViewModel.playbackTarget(activeDeviceId: nil, soloist: .notSetUp) == .needsSoloist)
     }
 }

@@ -264,9 +264,10 @@ nonisolated struct SpclientAPI: Sendable {
     /// volume rather than among the player commands, and no body in the plain
     /// case — librespot passes `None` for the optional `TransferRequest`.
     ///
-    /// **Naming the same device on both sides pulls playback here** from
-    /// whichever device holds it, which is how librespot takes over, and how
-    /// `transferToLocal` is expressed.
+    /// **The backend does not check `from`**: naming the same device on both
+    /// sides pulls playback to it from whichever device holds it, which is how
+    /// librespot takes over. With nobody active it hands `to` the last playback,
+    /// which is how Play starts Soloist (`PlaybackViewModel.resume`).
     ///
     /// This replaces a `PUT /me/player` on `api.spotify.com`, which could never
     /// have worked: the only token this app holds comes from the desktop client

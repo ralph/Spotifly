@@ -78,20 +78,16 @@ final class PlayerModel {
         devices.first { $0.isActive }
     }
 
-    /// The active device's id, unless it is this Mac: what the bar's volume slider moves then.
-    var activeRemoteDeviceId: String? {
-        activeDeviceId == ownDeviceId ? nil : activeDeviceId
-    }
-
-    /// This Mac's Connect id: the session's own device, which commands are sent from.
+    /// The session's own Connect id, which commands are sent from. A hidden device that never
+    /// plays; see `thisMacDeviceId`.
     var ownDeviceId: String? {
         connection?.deviceId
     }
 
-    /// The device that plays for this Mac: Spotify's Soloist once chosen (`SoloistEngine`),
-    /// whose session device is hidden then; the session's own device otherwise.
+    /// The device that plays for this Mac: Spotify's Soloist (`SoloistEngine`), once it has
+    /// started. The session's own device is hidden and plays nothing.
     var thisMacDeviceId: String? {
-        SoloistEngine.isChosen ? SoloistEngine.shared.deviceId : ownDeviceId
+        SoloistEngine.shared.deviceId
     }
 
     /// Whether this Mac plays: its player is the active device.
