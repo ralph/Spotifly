@@ -670,7 +670,7 @@ final class PlaybackViewModel {
 
     /// A row of the queue, as a double-click names it: which list, where in it, and its track.
     enum QueueRow {
-        case previous(index: Int, trackUri: String, uid: String?)
+        case previous(index: Int, trackUri: String)
         case current
         /// One of the next tracks, with its row's uid where it has one.
         case next(index: Int, trackUri: String, uid: String?)
@@ -688,7 +688,7 @@ final class PlaybackViewModel {
             }
         case let .next(_, uri, uid):
             skip(.skipNext(to: uri, uid: uid))
-        case let .previous(_, uri, _):
+        case let .previous(_, uri):
             skip(.play(uri: player.queue?.context ?? uri, trackUri: uri))
         }
     }

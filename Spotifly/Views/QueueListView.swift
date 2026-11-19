@@ -58,7 +58,7 @@ struct QueueListView: View {
 
         func append(_ entry: QueueEntry, _ track: Track, _ play: PlaybackViewModel.QueueRow) {
             var id: String = switch play {
-            case let .previous(index, _, _): entry.uid ?? "p\(index)"
+            case let .previous(index, _): entry.uid ?? "p\(index)"
             case .current: entry.uid ?? "current"
             case let .next(index, _, _): entry.uid ?? "n\(index)"
             }
@@ -88,7 +88,7 @@ struct QueueListView: View {
 
         for (index, entry) in queue.previousTracks.enumerated() {
             if let track = store.tracks[entry.trackId] {
-                append(entry, track, .previous(index: index, trackUri: track.uri, uid: entry.uid))
+                append(entry, track, .previous(index: index, trackUri: track.uri))
             }
         }
         if let entry = queue.currentTrack, let track = store.tracks[entry.trackId] {
