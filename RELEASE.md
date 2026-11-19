@@ -156,7 +156,9 @@ The Release configuration includes:
 - **Architecture**: arm64 only (Apple Silicon)
 - **Code Signing**: Automatic with Developer ID
 - **Hardened Runtime**: Enabled
-- **App Sandbox**: Enabled
+- **App Sandbox**: Off since the change for Spotify's Soloist, which a sandboxed app cannot
+  start (`plans/open/soloist-playback.md`). The first launch moves what the app kept in the
+  old container out of it (`ContainerMigration`)
 
 ### Code Signing and Notarization
 

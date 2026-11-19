@@ -23,34 +23,29 @@ public nonisolated struct StoredLogin: Codable, Sendable {
     }
 }
 
-/// Reads and writes the stored login. One file, app-container protected —
-/// the same trust model librespot's own credential cache uses.
+/// Reads and writes the stored login, which lives in the keychain beside the keymaster grant.
+///
+/// It was `credentials.json` in Application Support, which the App Sandbox container kept
+/// from other apps. Without the sandbox any process of the user could read that file, so it
+/// moved; `ContainerMigration` brings an existing one across once.
 ///
 /// Not thread-safe by itself; all callers reach it through the client actor.
 public nonisolated struct StoredCredentialsStore {
-    private let fileURL: URL
-
-    public init(directory: URL? = nil) {
-        let base = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Spotifly", isDirectory: true)
-        fileURL = base.appendingPathComponent("credentials.json")
-    }
+    public init() {}
 
     public func load() -> StoredLogin? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? JSONDecoder().decode(StoredLogin.self, from: data)
+        KeychainManager.loadStoredLogin()
     }
 
     public func save(_ login: StoredLogin) {
         do {
-            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(login).write(to: fileURL, options: .atomic)
+            try KeychainManager.saveStoredLogin(login)
         } catch {
             debugLog("StoredCredentials", "Could not persist login: \(error)")
         }
     }
 
     public func clear() {
-        try? FileManager.default.removeItem(at: fileURL)
+        KeychainManager.clearStoredLogin()
     }
 }
