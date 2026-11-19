@@ -2,7 +2,7 @@
 "app.name" = "Spotifly";
 
 /* Authentication */
-"auth.connect.description" = "Connect your Spotify account to get started. This authorizes Spotifly in your browser and makes this Mac available as a Spotify Connect device.";
+"auth.connect.description" = "Connect your Spotify account to get started. This authorizes Spotifly in your browser. To play on this Mac, set up Soloist in Settings afterwards: it makes this Mac a Spotify Connect device.";
 "auth.connect.button" = "Connect with Spotify";
 "auth.loading" = "Loading...";
 "auth.logout" = "Log Out";

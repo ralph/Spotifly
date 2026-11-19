@@ -153,7 +153,8 @@ public actor LibrespotClient {
 
     // MARK: - Sleep / Wake / Recovery
 
-    /// Disconnects without forgetting anything; `forceReconnect` revives it.
+    /// Disconnects without forgetting anything, before the Mac sleeps; `forceReconnectSync`
+    /// revives it on wake.
     public func disconnect() {
         debugLog("LibrespotClient", "Disconnect requested")
         Task { await session?.disconnect() }

@@ -30,9 +30,7 @@ final class DeviceService {
 
     // MARK: - Playback Transfer
 
-    /// Transfer playback to a specific device.
-    /// Uses native Spotify Connect protocol for seamless handoff.
-    /// Returns true if transfer succeeded (caller should activate Connect mode)
+    /// Transfers playback to `device` over connect-state, and answers whether Spotify took it.
     ///
     /// Every speaker row launches its own task, so two taps can call this concurrently.
     /// Each attempt optimistically marks its target active and undoes that if the transfer
@@ -66,8 +64,8 @@ final class DeviceService {
         // listed like any other, while the session's own device is hidden and plays nothing.
         let accepted = await transfer(to: device.id)
 
-        // The transfer can fail: no local device id yet, or connect-state refusing the
-        // command. Roll the optimistic update back rather than leaving the UI showing a
+        // The transfer can fail: no session to send it from yet, or connect-state refusing
+        // the command. Roll the optimistic update back rather than leaving the UI showing a
         // device that never became active, and report the failure to the caller.
         guard accepted else {
             debugLog("DeviceService", "Transfer to \(device.name) was rejected")
@@ -98,7 +96,7 @@ final class DeviceService {
         // The session's own device, which the backend does not check; it derives the source
         // from the session.
         guard let from = player.ownDeviceId, !from.isEmpty, !deviceId.isEmpty else {
-            debugLog("DeviceService", "Transfer skipped: no local device id yet")
+            debugLog("DeviceService", "Transfer skipped: no session to send it from yet")
             return false
         }
 

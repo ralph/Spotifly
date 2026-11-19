@@ -52,9 +52,10 @@ final class PlaybackViewModel {
         var trackUri: String
         /// `trackUri`'s id, parsed once with the report rather than on each read.
         var trackId: String?
-        /// Playing and not paused, for this Mac's player and for a device it mirrors alike.
+        /// Whether the active device plays, as the cluster reports it; Soloist is one like any
+        /// other.
         var isPlaying: Bool
-        /// Zero until the stream reports this track's length, and never the previous track's:
+        /// Zero until the cluster reports this track's length, and never the previous track's:
         /// a report that names none keeps the one this track had, or none on a new track.
         /// `clampedToTrack` and `positionAnchor(forPosition:takenAt:)` rely on it.
         var durationMs: UInt32
@@ -112,7 +113,7 @@ final class PlaybackViewModel {
     /// Whether the error's five seconds ran out while it was held.
     private var errorMessageExpired = false
 
-    /// Length of the current track, as the stream reports it; see `ShownPlayback.durationMs`.
+    /// Length of the current track, as the cluster reports it; see `ShownPlayback.durationMs`.
     /// The position that goes with it is derived from the anchor rather than stored alongside;
     /// see `interpolatedPositionMs`.
     private var trackDurationMs: UInt32 {
@@ -946,7 +947,7 @@ final class PlaybackViewModel {
         return now.timeIntervalSince(willSleepAt) < sleepPauseWindow
     }
 
-    /// Title published while no logical track resolves.
+    /// Title published while no track resolves.
     ///
     /// The app claims the media controls at init by publishing a Now Playing entry, and
     /// that claim is only as good as the entry: removing the title outright leaves a
@@ -954,8 +955,8 @@ final class PlaybackViewModel {
     /// intact between tracks, after logout, and while metadata is still loading.
     private static let unresolvedTrackTitle = "Spotifly"
 
-    /// The id of the track the bar shows: the *logical* track, whose store entry owns the
-    /// displayed metadata. The decoded audio item may be a relinked alternative with another id.
+    /// The id of the track the bar shows, as the cluster names it, whose store entry holds the
+    /// displayed metadata.
     var currentTrackId: String? {
         shown?.trackId
     }
@@ -967,18 +968,18 @@ final class PlaybackViewModel {
     }
 
     /// The current track's length as the bar's scrubber and Control Center show it, or nil
-    /// while none is known; see `displayedDuration(streamMs:storedMs:)`.
+    /// while none is known; see `displayedDuration(reportedMs:storedMs:)`.
     var displayedDurationMs: UInt32? {
-        Self.displayedDuration(streamMs: trackDurationMs, storedMs: currentTrack?.durationMs)
+        Self.displayedDuration(reportedMs: trackDurationMs, storedMs: currentTrack?.durationMs)
     }
 
-    /// The stream's length, which is authoritative, or the store's until the stream has one: a
-    /// new track starts without it (`handlePlaybackStateUpdate`), and the store's bridges that
-    /// gap, so the first frames show a length. Nil while neither is known. The store is asked
-    /// only then, as the scrubber reads this on each tick.
-    nonisolated static func displayedDuration(streamMs: UInt32, storedMs: @autoclosure () -> Int?) -> UInt32? {
-        if streamMs > 0 {
-            return streamMs
+    /// The length the cluster reports, which is authoritative, or the store's until it reports
+    /// one: a new track can start without it (`handlePlaybackStateUpdate`), and the store's
+    /// bridges that gap, so the first frames show a length. Nil while neither is known. The
+    /// store is asked only then, as the scrubber reads this on each tick.
+    nonisolated static func displayedDuration(reportedMs: UInt32, storedMs: @autoclosure () -> Int?) -> UInt32? {
+        if reportedMs > 0 {
+            return reportedMs
         }
         guard let storedMs = storedMs(), let stored = playbackMilliseconds(Int64(storedMs)), stored > 0
         else { return nil }
@@ -1082,8 +1083,8 @@ final class PlaybackViewModel {
     /// No title, artist, or artwork processing. Call on: seek, play/pause, drift correction, and
     /// every playback state update.
     ///
-    /// Duration belongs here even though it is metadata: a new track starts without the stream
-    /// duration, so a path that only wrote elapsed time would leave
+    /// Duration belongs here even though it is metadata: a new track can start without a
+    /// reported duration, so a path that only wrote elapsed time would leave
     /// the previous track's duration standing against the new track's position.
     func updateNowPlayingPosition() {
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
@@ -1190,8 +1191,8 @@ final class PlaybackViewModel {
             "Playback state update: playing=\(state.isPlaying), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
 
-        // Every report names its track: the mirror skips a cluster's without one, and this
-        // Mac's come from its queue. Track metadata (name, artist, etc.) comes from the queue.
+        // Every report names its track: the mirror skips a cluster's without one. Track
+        // metadata (name, artist, etc.) comes from the store.
         let trackChanged = state.trackUri != currentTrackUri
         // Connect snapshots carry these as signed 64-bit integers, so do not let a malformed
         // one turn a narrowing conversion into a process trap.
@@ -1208,7 +1209,7 @@ final class PlaybackViewModel {
             canRepeat: state.canRepeat,
         )
 
-        // Sync position anchor on state changes. When monitoring a remote device,
+        // Sync position anchor on state changes. Every device that plays is a remote one, and
         // position_ms is the position at timestamp_ms, which can be minutes old.
         if let posMs = Self.playbackMilliseconds(state.positionMs) {
             let anchor = positionAnchor(forPosition: state.positionMs, takenAt: state.timestampMs)

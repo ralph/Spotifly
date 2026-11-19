@@ -77,8 +77,8 @@ final class AuthViewModel {
 
         // A grant Spotify has refused cannot be retried into working, and `KeymasterSession`
         // has already forgotten it by the time this fires. What is left is the rest of logging
-        // out — the Spirc session still registered for that account, librespot's stored
-        // login, the login screen — and that is exactly what a deliberate logout does, so it
+        // out — the Spirc session still registered for that account, the keymaster tokens,
+        // the login screen — and that is exactly what a deliberate logout does, so it
         // runs the same path rather than a second one that could drift from it.
         // `receive(on:)` is load-bearing rather than tidy: the announcement is sent from
         // `KeymasterSession`'s own executor, and this closure is main-actor isolated like
