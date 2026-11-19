@@ -14,7 +14,6 @@ public actor SpircController {
     // MARK: - Properties
 
     private let deviceInfo: DeviceInfo
-    private let accesspoint: Accesspoint
     private let dealerConnection: DealerConnection
 
     private var playerState: SpircPlayerState?
@@ -134,12 +133,10 @@ public actor SpircController {
 
     public init(
         deviceInfo: DeviceInfo,
-        accesspoint: Accesspoint,
         dealerConnection: DealerConnection,
         volume: UInt32,
     ) {
         self.deviceInfo = deviceInfo
-        self.accesspoint = accesspoint
         self.dealerConnection = dealerConnection
         self.volume = volume
 
