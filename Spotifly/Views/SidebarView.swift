@@ -110,7 +110,7 @@ struct SidebarView: View {
             if item == .queue {
                 QueueRowLabel()
             } else {
-                Label(item.title, systemImage: item.icon)
+                Label { Text(item.title) } icon: { SidebarIcon(systemName: item.icon) }
             }
         }
     }
@@ -152,8 +152,34 @@ private struct QueueRowLabel: View {
     @Environment(PlayerModel.self) private var player
 
     var body: some View {
-        Label(NavigationItem.queue.title, systemImage: NavigationItem.queue.icon)
+        Label { Text(NavigationItem.queue.title) } icon: { SidebarIcon(systemName: NavigationItem.queue.icon) }
             .badge(player.queueEntries.nextTracks.count)
+    }
+}
+
+/// A row's icon, which picks its own colour: the accent in an active window, grey in an inactive
+/// one, and the primary colour on the selected row's accent background. Left to the system's
+/// tint, the icons of an active window dropped out, frame by frame, while Exposé animated it
+/// (macOS 27.2). A plain SwiftUI sidebar does the same, so it is not Spotifly's, and only an icon
+/// that follows `appearsActive` itself stayed put: how the label is built made no difference.
+private struct SidebarIcon: View {
+    let systemName: String
+    @Environment(\.appearsActive) private var appearsActive
+    @Environment(\.backgroundProminence) private var backgroundProminence
+
+    var body: some View {
+        Image(systemName: systemName)
+            .foregroundStyle(style)
+    }
+
+    private var style: AnyShapeStyle {
+        if backgroundProminence == .increased {
+            AnyShapeStyle(.primary)
+        } else if appearsActive {
+            AnyShapeStyle(Color.accentColor)
+        } else {
+            AnyShapeStyle(.secondary)
+        }
     }
 }
 
