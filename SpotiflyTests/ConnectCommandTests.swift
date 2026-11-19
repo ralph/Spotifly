@@ -1,8 +1,8 @@
 //
-//  StreamingAuthTests.swift
+//  ConnectCommandTests.swift
 //  SpotiflyTests
 //
-//  Playing to a remote device when this Mac is not a Connect device.
+//  The connect-state command bodies the app sends: plays and transport commands.
 //
 
 import Foundation

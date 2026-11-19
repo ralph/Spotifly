@@ -1,5 +1,5 @@
 //
-//  AccountTypeTests.swift
+//  PlaybackDeviceTests.swift
 //  SpotiflyTests
 //
 //  How this Mac's session registers on Spotify Connect, and where a play goes.
@@ -9,7 +9,7 @@ import Foundation
 @testable import Spotifly
 import Testing
 
-struct AccountTypeTests {
+struct HiddenDeviceTests {
     /// As the web player registers when it cannot play: Soloist plays for this Mac. Measured on
     /// 2026-09-29: a device registered this way got the cluster back, and the cluster did not
     /// list it.
