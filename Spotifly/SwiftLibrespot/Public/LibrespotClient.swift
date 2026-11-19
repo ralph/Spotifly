@@ -43,11 +43,6 @@ public actor LibrespotClient {
     /// album. A handover names its row by uid, and pathfinder's album answer has them.
     private var contextRowUids: (@Sendable (String) async -> [(uri: String, uid: String)])?
 
-    /// Whether this session plays here. Not while Spotify's Soloist plays for this Mac: the
-    /// session then only watches and commands, its device registers hidden, as one that
-    /// cannot play does, and it connects no accesspoint (`LibrespotSession.connect`).
-    private var playsHere = true
-
     /// Whether this Mac may play for the account, as the last login found.
     private var streams = true
 
@@ -141,7 +136,10 @@ public actor LibrespotClient {
     // MARK: - Lifecycle
 
     /// Builds a full session: accesspoint login, dealer socket, Spirc
-    /// registration, and the audio pipeline.
+    /// registration, and the audio pipeline. With `playsHere` false, as while
+    /// Spotify's Soloist plays for this Mac, only the dealer and Spirc: the
+    /// device registers hidden, as one that cannot play does, and the
+    /// session needs no accesspoint and no pipeline (`LibrespotSession.connect`).
     ///
     /// Credentials are resolved inside: a previously captured reusable login
     /// comes first, falling back to a fresh bearer from `httpCredentials`. A
@@ -159,7 +157,6 @@ public actor LibrespotClient {
         self.httpCredentials = httpCredentials
         self.usernameProvider = usernameProvider
         self.contextRowUids = contextRowUids
-        self.playsHere = playsHere
         shuttingDown = false
         let generation = lifecycleGeneration
 
@@ -397,7 +394,8 @@ public actor LibrespotClient {
 
     /// Creates SPClient and the audio pipeline for a new session. A reconnect
     /// keeps both: neither holds the socket, and the pipeline asks the session
-    /// for it each time it needs an audio key.
+    /// for it each time it needs an audio key. A session with no accesspoint,
+    /// one that does not play here, gets no pipeline.
     private func attachTransport() async {
         guard let httpCredentials, let session else { return }
 

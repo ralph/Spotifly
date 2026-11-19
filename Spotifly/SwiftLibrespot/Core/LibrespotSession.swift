@@ -108,7 +108,7 @@ public actor LibrespotSession {
             apResolver = APResolver()
             async let resolveTask = apResolver!.resolve()
 
-            let dh = deviceInfo.supportsPlayback ? try? DiffieHellman() : nil
+            let dh = try? DiffieHellman()
             resolvedEndpoints = try await resolveTask
 
             guard let dealerHost = resolvedEndpoints?.dealers.first else {
@@ -142,10 +142,8 @@ public actor LibrespotSession {
             }
 
             // Read before registering: this Mac is offered as a speaker only for an account
-            // that may stream here. Without an accesspoint nothing plays here to ask about.
-            if let accesspoint {
-                streams = await Self.streams(accountType: accesspoint.accountType(waitingUntil: accountTypeDeadline))
-            }
+            // that may stream here.
+            streams = await Self.streams(accountType: accesspoint?.accountType(waitingUntil: accountTypeDeadline))
             var device = deviceInfo
             device.supportsPlayback = deviceInfo.supportsPlayback && streams
 
@@ -217,8 +215,8 @@ public actor LibrespotSession {
         credentials = nil
     }
 
-    /// The accesspoint socket died on its own. Only a *connected* session
-    /// reacts: a disconnect already in flight owns the transition.
+    /// The accesspoint or dealer socket died on its own. Only a *connected*
+    /// session reacts: a disconnect already in flight owns the transition.
     func handleTransportLost() {
         guard state == .connected else { return }
         debugLog("LibrespotSession", "Transport lost")
