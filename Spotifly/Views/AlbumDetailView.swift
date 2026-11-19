@@ -84,7 +84,7 @@ struct AlbumDetailView: View {
                     sortable: false,
                 ) { row in
                     Task {
-                        await playbackViewModel.play(uriOrUrl: album.uri, trackIndex: row.number - 1, startingAtUri: row.track.uri)
+                        await playbackViewModel.play(uri: album.uri, trackIndex: row.number - 1, startingAtUri: row.track.uri)
                     }
                 }
             }
@@ -119,9 +119,9 @@ struct AlbumDetailView: View {
             }
         } actions: {
             PlayAndShuffleButtons {
-                Task { await playbackViewModel.play(uriOrUrl: album.uri) }
+                Task { await playbackViewModel.play(uri: album.uri) }
             } shuffle: {
-                Task { await playbackViewModel.playShuffled(uriOrUrl: album.uri, trackUris: tracks.map(\.uri)) }
+                Task { await playbackViewModel.playShuffled(uri: album.uri, trackUris: tracks.map(\.uri)) }
             }
             .disabled(tracks.isEmpty)
 

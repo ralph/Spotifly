@@ -440,22 +440,21 @@ final class PlaybackViewModel {
 
     /// Plays a track or a context, wherever `playbackDevice` says. A row in a list passes its
     /// index and its track, which the device starts at.
-    func play(uriOrUrl: String, trackIndex: Int? = nil, startingAtUri: String? = nil) async {
-        // One uri either way: the command's own context builder tells a track from a
-        // context, where the Web API needed the caller to split them into two fields.
-        await start(.play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex, trackUri: startingAtUri))
+    func play(uri: String, trackIndex: Int? = nil, startingAtUri: String? = nil) async {
+        // A track or a context alike: `ConnectCommand.Context` tells them apart.
+        await start(.play(uri: uri, trackIndex: trackIndex, trackUri: startingAtUri))
     }
 
     func playTrack(trackId: String) async {
-        await play(uriOrUrl: "spotify:track:\(trackId)")
+        await play(uri: "spotify:track:\(trackId)")
     }
 
     /// Plays a context shuffled, as the pages' Zufällig buttons do: shuffle on, then the context
     /// from a random one of `trackUris`. A device keeps shuffle across a new context, so the two
     /// commands end the same in either order.
-    func playShuffled(uriOrUrl: String, trackUris: [String]) async {
+    func playShuffled(uri: String, trackUris: [String]) async {
         guard let index = trackUris.indices.randomElement() else { return }
-        await play(uriOrUrl: uriOrUrl, trackIndex: index, startingAtUri: trackUris[index])
+        await play(uri: uri, trackIndex: index, startingAtUri: trackUris[index])
         // After the play, so the context that plays now is the one asked: one that refuses
         // shuffle, as a radio does, refused it while it still played. Set, not toggled: the
         // state shown may still be the old context's.
@@ -478,18 +477,7 @@ final class PlaybackViewModel {
             return
         }
         guard let trackId = SpotifyAPI.parseTrackURI(trackUri) else { return }
-        await play(uriOrUrl: "spotify:station:track:\(trackId)")
-    }
-
-    /// The uri a remote play request should name.
-    ///
-    /// **One uri, not two fields.** The Web API needed a play request split into `context_uri`
-    /// *or* `uris`, because sending a track as a context failed; connect-state takes one uri
-    /// and `ConnectCommand.Context` decides how to carry it. What survives from that split is
-    /// the normalization: `play(uriOrUrl:)` accepts an `open.spotify.com/track/ID` link as
-    /// readily as a uri, and only the uri form can be played.
-    static func remoteStartUri(for uriOrUrl: String) -> String {
-        SpotifyAPI.parseTrackURI(uriOrUrl).map { "spotify:track:\($0)" } ?? uriOrUrl
+        await play(uri: "spotify:station:track:\(trackId)")
     }
 
     /// Starts content on the device `playbackDevice` names, once the session is up. The

@@ -9,32 +9,6 @@ import Foundation
 @testable import Spotifly
 import Testing
 
-/// Turning a play request into the uri connect-state takes.
-///
-/// The Web API needed this split into `context_uri` *or* `uris`, because sending a track as a
-/// context failed. connect-state takes one uri and decides for itself — so what is left to get
-/// right is the normalization: `play(uriOrUrl:)` accepts a share link as readily as a uri, and
-/// only the uri form can be played.
-@MainActor
-struct RemoteStartUriTests {
-    @Test func `a track uri passes through`() {
-        #expect(PlaybackViewModel.remoteStartUri(for: "spotify:track:t1") == "spotify:track:t1")
-    }
-
-    @Test func `contexts pass through unchanged`() {
-        for uri in ["spotify:album:a1", "spotify:playlist:p1", "spotify:artist:ar1"] {
-            #expect(PlaybackViewModel.remoteStartUri(for: uri) == uri)
-        }
-    }
-
-    @Test func `a track URL becomes a track uri`() {
-        #expect(
-            PlaybackViewModel.remoteStartUri(for: "https://open.spotify.com/track/t1?si=abc")
-                == "spotify:track:t1",
-        )
-    }
-}
-
 /// The body that leaves the app, as text.
 private func encoded(_ command: ConnectCommand) throws -> String {
     let data = try JSONEncoder().encode(ConnectCommandEnvelope(command))

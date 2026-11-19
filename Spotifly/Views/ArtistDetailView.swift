@@ -119,7 +119,7 @@ struct ArtistDetailView: View {
             EmptyView()
         } actions: {
             PlayAndShuffleButtons {
-                Task { await playbackViewModel.play(uriOrUrl: artist.uri) }
+                Task { await playbackViewModel.play(uri: artist.uri) }
             }
 
             LibraryToggleButton(isOn: isFollowed, onTitle: "detail.following", offTitle: "detail.follow") {
