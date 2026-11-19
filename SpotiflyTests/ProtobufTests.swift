@@ -19,23 +19,12 @@ struct ProtobufTests {
         #expect(ProtobufWriter.message { $0.varint(field: 1, UInt64.max) }.hexString == "08ffffffffffffffffff01")
     }
 
-    @Test func `strings, nested messages and doubles`() {
+    @Test func `strings and nested messages`() {
         // The spec's "testing" string in field 2: 12 07 74 65 73 74 69 6e 67.
         #expect(ProtobufWriter.message { $0.string(field: 2, "testing") }.hexString == "120774657374696e67")
         #expect(ProtobufWriter.message { $0.message(field: 3) { $0.varint(field: 1, 150) } }.hexString == "1a03089601")
-        #expect(ProtobufWriter.message { $0.double(field: 9, 1.0) }.hexString == "49000000000000f03f")
         // Field numbers past 15 take a two-byte tag.
         #expect(ProtobufWriter.message { $0.bool(field: 16, true) }.hexString == "800101")
-    }
-
-    @Test func `a map is written in key order, one entry message per key`() {
-        let data = ProtobufWriter.message { $0.map(field: 3, ["b": "2", "a": "1"]) }
-
-        // 1a 06 { 0a 01 "a", 12 01 "1" }, then the same for "b".
-        #expect(data.hexString == "1a060a0161120131" + "1a060a0162120132")
-        let entries = ProtobufReader.fields(in: data).map(\.mapEntry)
-        #expect(entries.map(\.key) == ["a", "b"])
-        #expect(entries.map(\.value) == ["1", "2"])
     }
 
     @Test func `reading gives back what was written`() {
@@ -46,36 +35,26 @@ struct ProtobufTests {
                 $0.string(field: 1, "key")
                 $0.string(field: 2, "value")
             }
-            $0.double(field: 9, 1.5)
             $0.bool(field: 25, true)
         }
 
         let fields = ProtobufReader.fields(in: data)
 
-        #expect(fields.map(\.number) == [1, 2, 3, 9, 25])
+        #expect(fields.map(\.number) == [1, 2, 3, 25])
         #expect(fields[0].int64 == -5)
         #expect(fields[1].string == "spotify:track:abc")
         let entry = fields[2].mapEntry
         #expect(entry.key == "key")
         #expect(entry.value == "value")
-        #expect(fields[3].double == 1.5)
-        #expect(fields[4].bool)
+        #expect(fields[3].bool)
     }
 
-    /// The spec's zigzag table: 0 → 0, 1 → -1, 2 → 1, 3 → -2, 4294967294 → 2147483647.
-    @Test func `sint fields are zigzag-decoded`() {
-        let values: [UInt64] = [0, 1, 2, 3, 4_294_967_294]
-        let decoded = values.map { ProtobufField(number: 1, wireType: 0, value: $0, bytes: Data()).sint64 }
+    @Test func `fixed-width fields are skipped cleanly`() {
+        // Field 4, wire type 5 (fixed32), then field 9, wire type 1 (fixed64), then field 1 = 1.
+        let fields = ProtobufReader.fields(in: Data([0x25, 1, 2, 3, 4, 0x49, 1, 2, 3, 4, 5, 6, 7, 8, 0x08, 0x01]))
 
-        #expect(decoded == [0, -1, 1, -2, 2_147_483_647])
-    }
-
-    @Test func `a fixed32 field is skipped cleanly`() {
-        // Field 4, wire type 5, then field 1 = 1.
-        let fields = ProtobufReader.fields(in: Data([0x25, 1, 2, 3, 4, 0x08, 0x01]))
-
-        #expect(fields.map(\.number) == [4, 1])
-        #expect(fields[1].value == 1)
+        #expect(fields.map(\.number) == [4, 9, 1])
+        #expect(fields[2].value == 1)
     }
 
     @Test func `a truncated field ends the message instead of reading past it`() {

@@ -139,9 +139,7 @@ final class PlaybackViewModel {
     }
 
     /// Whether the slider moves nothing: no device is active, or the active one refuses volume
-    /// changes. An iPhone says so, as iOS will not let one app set system volume for another;
-    /// the app used to find out from the `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` its command got
-    /// back, after the user had dragged.
+    /// changes. An iPhone says so, as iOS will not let one app set system volume for another.
     var sliderRefused: Bool {
         player.activeDevice?.disableVolume ?? true
     }
@@ -440,22 +438,17 @@ final class PlaybackViewModel {
 
     /// Plays a track or a context, wherever `playbackDevice` says. A row in a list passes its
     /// index and its track, which the device starts at.
-    func play(uriOrUrl: String, trackIndex: Int? = nil, startingAtUri: String? = nil) async {
-        // One uri either way: the command's own context builder tells a track from a
-        // context, where the Web API needed the caller to split them into two fields.
-        await start(.play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex, trackUri: startingAtUri))
-    }
-
-    func playTrack(trackId: String) async {
-        await play(uriOrUrl: "spotify:track:\(trackId)")
+    func play(uri: String, trackIndex: Int? = nil, startingAtUri: String? = nil) async {
+        // A track or a context alike: `ConnectCommand.Context` tells them apart.
+        await start(.play(uri: uri, trackIndex: trackIndex, trackUri: startingAtUri))
     }
 
     /// Plays a context shuffled, as the pages' Zufällig buttons do: shuffle on, then the context
     /// from a random one of `trackUris`. A device keeps shuffle across a new context, so the two
     /// commands end the same in either order.
-    func playShuffled(uriOrUrl: String, trackUris: [String]) async {
+    func playShuffled(uri: String, trackUris: [String]) async {
         guard let index = trackUris.indices.randomElement() else { return }
-        await play(uriOrUrl: uriOrUrl, trackIndex: index, startingAtUri: trackUris[index])
+        await play(uri: uri, trackIndex: index, startingAtUri: trackUris[index])
         // After the play, so the context that plays now is the one asked: one that refuses
         // shuffle, as a radio does, refused it while it still played. Set, not toggled: the
         // state shown may still be the old context's.
@@ -473,32 +466,19 @@ final class PlaybackViewModel {
     func playRadio(trackUri: String) async {
         // A track Spotify will not play starts nothing, radio included, wherever it is
         // clicked: a search card, a row or its menu.
-        if let message = SpotifyAPI.parseTrackURI(trackUri).flatMap({ store?.tracks[$0] })?.unplayableMessage {
+        if let message = SpotifyURI.trackId(from: trackUri).flatMap({ store?.tracks[$0] })?.unplayableMessage {
             errorMessage = message
             return
         }
-        guard let trackId = SpotifyAPI.parseTrackURI(trackUri) else { return }
-        await play(uriOrUrl: "spotify:station:track:\(trackId)")
-    }
-
-    /// The uri a remote play request should name.
-    ///
-    /// **One uri, not two fields.** The Web API needed a play request split into `context_uri`
-    /// *or* `uris`, because sending a track as a context failed; connect-state takes one uri
-    /// and `ConnectCommand.Context` decides how to carry it. What survives from that split is
-    /// the normalization: `play(uriOrUrl:)` accepts an `open.spotify.com/track/ID` link as
-    /// readily as a uri, and only the uri form can be played.
-    static func remoteStartUri(for uriOrUrl: String) -> String {
-        SpotifyAPI.parseTrackURI(uriOrUrl).map { "spotify:track:\($0)" } ?? uriOrUrl
+        guard let trackId = SpotifyURI.trackId(from: trackUri) else { return }
+        await play(uri: "spotify:station:track:\(trackId)")
     }
 
     /// Starts content on the device `playbackDevice` names, once the session is up. The
     /// cluster reports what it plays, and the bar and the queue follow it through the player
     /// model.
     private func start(_ command: ConnectCommand) async {
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
+        await initializeIfNeeded()
 
         guard let deviceId = playbackDevice(activeDeviceId: player.activeDeviceId) else { return }
         guard let from = commandSource else {
@@ -519,9 +499,7 @@ final class PlaybackViewModel {
     }
 
     func addToQueue(uri: String) async {
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
+        await initializeIfNeeded()
 
         guard isInitialized else {
             errorMessage = String(localized: "error.player_not_initialized")
@@ -579,10 +557,8 @@ final class PlaybackViewModel {
     /// the bar mirrors, so it plays from there. While Soloist is not ready, or not set up, the
     /// command is explained as a play is (`playbackDevice`).
     ///
-    /// **That state used to be found out by asking**: the Web API answered 404 and the 404 was
-    /// caught. connect-state addresses the target in the *url*, so with nobody active there is
-    /// no url to build — the same condition, now a precondition instead of a round trip, and
-    /// one fewer request on a path the user is waiting on.
+    /// Nobody active is checked here, before any request: connect-state addresses the target in
+    /// the *url*, so with nobody active there is no url to build.
     ///
     /// `promisesPosition` marks the commands whose caller moves the display ahead of
     /// playback — skips and seeks — and so have a promise to withdraw if they fail. Any
@@ -671,13 +647,6 @@ final class PlaybackViewModel {
         handlePlaybackStateUpdate(player.playback)
     }
 
-    /// Who to address a volume command as, and to: the active device. Nil when nothing is
-    /// active.
-    private func connectRoute() -> (from: String, to: String)? {
-        guard let to = player.activeDeviceId, !to.isEmpty, let from = commandSource else { return nil }
-        return (from, to)
-    }
-
     func next() {
         skip(.next)
     }
@@ -697,7 +666,7 @@ final class PlaybackViewModel {
 
     /// A row of the queue, as a double-click names it: which list, where in it, and its track.
     enum QueueRow {
-        case previous(index: Int, trackUri: String, uid: String?)
+        case previous(index: Int, trackUri: String)
         case current
         /// One of the next tracks, with its row's uid where it has one.
         case next(index: Int, trackUri: String, uid: String?)
@@ -715,7 +684,7 @@ final class PlaybackViewModel {
             }
         case let .next(_, uri, uid):
             skip(.skipNext(to: uri, uid: uid))
-        case let .previous(_, uri, _):
+        case let .previous(_, uri):
             skip(.play(uri: player.queue?.context ?? uri, trackUri: uri))
         }
     }
@@ -933,7 +902,7 @@ final class PlaybackViewModel {
     /// takes it; the sleep stops that audio anyway.
     private func pauseFromMediaControls() {
         guard isPlaying else { return }
-        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), isActiveDevice: player.isPlayingHere) {
+        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), playsHere: player.isPlayingHere) {
             debugLog("PlaybackViewModel", "Pause ignored: the Mac is going to sleep, and another device plays")
             return
         }
@@ -942,8 +911,8 @@ final class PlaybackViewModel {
 
     /// Whether a pause is the sleep's: another device plays, and the system said it will sleep
     /// less than `sleepPauseWindow` ago and has not woken since.
-    nonisolated static func isSleepPause(willSleepAt: Date?, now: Date, isActiveDevice: Bool) -> Bool {
-        guard !isActiveDevice, let willSleepAt else { return false }
+    nonisolated static func isSleepPause(willSleepAt: Date?, now: Date, playsHere: Bool) -> Bool {
+        guard !playsHere, let willSleepAt else { return false }
         return now.timeIntervalSince(willSleepAt) < sleepPauseWindow
     }
 
@@ -1199,7 +1168,7 @@ final class PlaybackViewModel {
         let reportedDurationMs = Self.playbackMilliseconds(state.durationMs).flatMap { $0 > 0 ? $0 : nil }
         shown = ShownPlayback(
             trackUri: state.trackUri,
-            trackId: SpotifyAPI.parseTrackURI(state.trackUri),
+            trackId: SpotifyURI.trackId(from: state.trackUri),
             isPlaying: state.isPlaying,
             durationMs: reportedDurationMs ?? (trackChanged ? 0 : trackDurationMs),
             shuffle: state.shuffle,
@@ -1263,9 +1232,8 @@ final class PlaybackViewModel {
     /// Re-anchors the displayed position: `positionMs` is where playback is, `time` is the
     /// moment it was there.
     ///
-    /// The pair is one fact, and writing it in one place is the point: eleven call sites
-    /// used to assign it field by field, and had already drifted apart over whether the
-    /// position was capped at the track length.
+    /// The pair is one fact, written only here, so every caller caps the position at the track
+    /// length the same way.
     ///
     /// `time` defaults to now. A caller holding a snapshot that was true *earlier* — a
     /// cluster state carrying a timestamp — passes that moment instead, so
@@ -1338,10 +1306,8 @@ final class PlaybackViewModel {
     ///
     /// The bound reads `trackDurationMs` rather than taking a duration, so it is by
     /// construction the same length the display clamps against; its caller refreshes it from
-    /// the same snapshot before anchoring. This guard used to live only on the Web API path,
-    /// but staleness is a property of Spotify's timestamp, not of the endpoint that carried
-    /// it — cluster updates forward `player_state.timestamp` unchanged and can be minutes
-    /// old.
+    /// the same snapshot before anchoring. Cluster updates forward `player_state.timestamp`
+    /// unchanged, so it can be minutes old.
     private func positionAnchor(forPosition positionMs: Int64, takenAt timestampMs: Int64) -> PositionAnchor {
         let now = Self.positionClockNow()
         guard timestampMs > 0 else { return PositionAnchor(time: now, logSuffix: "") }
@@ -1394,13 +1360,17 @@ final class PlaybackViewModel {
         volumeSubscription = volumeSubject
             .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
             .sink { [weak self] newVolume in
-                guard let self, isInitialized, let route = connectRoute() else { return }
+                // To the active device only, never on to Soloist as a transport command goes: the
+                // drag was of the active device's volume, and a device that has gone inactive since
+                // has nothing to set.
+                guard let self, isInitialized, let to = player.activeDeviceId, !to.isEmpty,
+                      let from = commandSource else { return }
                 let percent = Int((newVolume * 100).rounded())
                 Task {
                     try? await SpclientAPI().setVolume(
                         percent: percent,
-                        from: route.from,
-                        to: route.to,
+                        from: from,
+                        to: to,
                     )
                 }
             }

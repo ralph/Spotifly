@@ -41,10 +41,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             endSearchEditing(onClickOf: event)
             return event
         }
-        // This Mac's player, if the user has set Soloist up. Not in the unit-test host.
-        if !SpotiflyApp.hostsUnitTests {
-            Task { await SoloistEngine.shared.start() }
-        }
     }
 
     /// Holds the quit until the session has shut down, whose disconnect takes its device off

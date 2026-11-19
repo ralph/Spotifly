@@ -113,7 +113,11 @@ struct UserProfileView: View {
         .confirmationDialog("profile.logout.title", isPresented: $showLogoutConfirmation) {
             Button("auth.logout", role: .destructive, action: onLogout)
         } message: {
-            Text("profile.logout.message")
+            if SoloistEngine.isSetUp {
+                Text("profile.logout.message_soloist")
+            } else {
+                Text("profile.logout.message")
+            }
         }
     }
 }

@@ -19,7 +19,6 @@ struct PlayerModelTests {
             name: id,
             type: "computer",
             isActive: false,
-            isPrivateSession: false,
             isRestricted: false,
             volumePercent: 50,
             disableVolume: disableVolume,

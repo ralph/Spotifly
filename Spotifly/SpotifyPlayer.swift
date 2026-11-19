@@ -96,14 +96,14 @@ enum SpotifyPlayer {
     /// told where its credentials come from: the keymaster grant, with the client token
     /// spclient requires.
     static func initialize() async throws {
-        try await LibrespotClient.shared.initialize(httpCredentials: .live)
+        try await LibrespotClient.shared.initialize(credentials: .live)
     }
 
     /// Removes the credentials so neither a recovery nor the next launch can connect the
     /// account that just logged out: the session's, and the keymaster tokens in the keychain,
     /// a long-lived refresh token for the signed-out account if left behind.
-    static func clearStreamingCredentials() async {
-        await LibrespotClient.shared.clearStreamingCredentials()
+    static func clearCredentials() async {
+        await LibrespotClient.shared.clearCredentials()
         await KeymasterSession.shared.clear()
     }
 }

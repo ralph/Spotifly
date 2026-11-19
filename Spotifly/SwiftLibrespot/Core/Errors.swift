@@ -18,13 +18,8 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
     /// A request the session makes to spclient was answered with an error, after its retries.
     case requestFailed(String, status: Int)
 
-    // MARK: - SPIRC/Connect Errors
-
-    case spircNotReady
-
     // MARK: - General Errors
 
-    case notInitialized
     case invalidState(String)
 
     public var errorDescription: String? {
@@ -33,10 +28,6 @@ public enum LibrespotError: Error, LocalizedError, Sendable, Equatable {
             "Connection failed: \(message)"
         case let .requestFailed(request, status):
             "\(request) failed: HTTP \(status)"
-        case .spircNotReady:
-            "SPIRC controller not ready"
-        case .notInitialized:
-            "Not initialized"
         case let .invalidState(message):
             "Invalid state: \(message)"
         }

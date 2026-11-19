@@ -42,8 +42,8 @@ final class SoloistEngine {
     /// The name the account's device lists show for this Mac.
     static let deviceName = "Spotifly"
 
-    /// Whether the user set Soloist up, in `UserDefaults`. Named for when it was a choice
-    /// beside the built-in player, which a set-up Mac keeps.
+    /// The `UserDefaults` key that records whether the user set Soloist up. Its stored name stays
+    /// as it is, so a Mac set up under it stays set up.
     nonisolated static let setUpKey = "soloistEngine"
 
     nonisolated static var isSetUp: Bool {
@@ -210,8 +210,8 @@ final class SoloistEngine {
         }
     }
 
-    /// Stops the child: on quit (`AppDelegate`), when the user enters a key, and when a start
-    /// fails. A moment to leave Spotify Connect cleanly, then it goes regardless. A crash
+    /// Stops the child: on quit (`AppDelegate`), on logout (`forgetLogin`), when the user enters
+    /// a key, and when a start fails. A moment to leave Spotify Connect cleanly, then it goes regardless. A crash
     /// of the app leaves it running, and the next start stops it (`stopLeftoverChild`).
     func stop() async {
         socket?.cancel()
@@ -225,6 +225,19 @@ final class SoloistEngine {
         if process.isRunning {
             kill(process.processIdentifier, SIGKILL)
         }
+    }
+
+    /// Stops the child and deletes its data, the stored login with it: on logout, so the next
+    /// account does not play through a Soloist still paired to this one. The key and the
+    /// build stay; the next start pairs anew.
+    func forgetLogin() async {
+        await stop()
+        for directory in [Self.data, Self.root.appending(path: "cache")] {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        deviceId = nil
+        restartsInARow = 0
+        status = .off
     }
 
     /// A child left over from a run of the app that did not stop it: Soloist refuses to share

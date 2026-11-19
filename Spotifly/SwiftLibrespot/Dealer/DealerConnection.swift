@@ -156,7 +156,7 @@ public actor DealerConnection {
     /// librespot sends these as `WsMessage::Text`.
     public func send(_ message: Data) async throws {
         guard let task = webSocketTask, isConnected else {
-            throw LibrespotError.notInitialized
+            throw LibrespotError.connectionFailed("Dealer not connected")
         }
 
         try await task.send(.string(String(decoding: message, as: UTF8.self)))
@@ -175,7 +175,7 @@ public actor DealerConnection {
     @discardableResult
     public func putState(_ request: PutStateRequestProto) async throws -> Cluster? {
         guard let connId = connectionId else {
-            throw LibrespotError.spircNotReady
+            throw LibrespotError.connectionFailed("No dealer connection id yet")
         }
 
         // `PUT https://{spclient}/connect-state/v1/devices/{device_id}`, with the
@@ -306,7 +306,7 @@ public actor DealerConnection {
         }
 
         defer {
-            Task { await self.sendReply(key: key, success: true) }
+            Task { await self.sendReply(key: key) }
         }
 
         if let uri = message.uri, uri.starts(with: "hm://connect-state/v1/cluster") {
@@ -343,8 +343,8 @@ public actor DealerConnection {
         return destination.prefix(result)
     }
 
-    /// Send a reply to a server request
-    private func sendReply(key: String, success: Bool) async {
+    /// Answers a server request as handled.
+    private func sendReply(key: String) async {
         struct ReplyMessage: Encodable {
             let type: String
             let key: String
@@ -358,7 +358,7 @@ public actor DealerConnection {
         let reply = ReplyMessage(
             type: "reply",
             key: key,
-            payload: ReplyPayload(success: success),
+            payload: ReplyPayload(success: true),
         )
 
         do {

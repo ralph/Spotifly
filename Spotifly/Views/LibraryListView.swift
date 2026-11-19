@@ -291,7 +291,7 @@ private struct LibraryRow<Entity: LibraryEntity>: View {
 
     private func play() {
         Task {
-            await playbackViewModel.play(uriOrUrl: entity.uri)
+            await playbackViewModel.play(uri: entity.uri)
         }
     }
 }

@@ -17,8 +17,7 @@ public struct ResolvedEndpoints: Sendable {
 public struct APResolver: Sendable {
     public nonisolated init() {}
 
-    /// Resolves the two the session uses: the dealer and spclient. Not the accesspoint, which
-    /// only the built-in player needed.
+    /// Resolves the two endpoint types the session uses: the dealer and spclient.
     public func resolve() async throws -> ResolvedEndpoints {
         let urlString = "https://apresolve.spotify.com?type=dealer&type=spclient"
         debugLog("APResolver", "[GET] \(urlString)")
