@@ -41,23 +41,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             endSearchEditing(onClickOf: event)
             return event
         }
-        // This Mac's player, if the user chose Soloist. Not in the unit-test host.
+        // This Mac's player, if the user has set Soloist up. Not in the unit-test host.
         if !SpotiflyApp.hostsUnitTests {
             Task { await SoloistEngine.shared.start() }
         }
     }
 
-    /// Holds the quit until the player has shut down: it tells Spotify where playback
-    /// stopped, and its disconnect takes this Mac off the other Connect devices. Sent
-    /// from `applicationWillTerminate`, the report never got out before the process
-    /// ended, so the next launch mirrored the track from wherever Spotify last heard of
-    /// it, often its start.
-    /// Two seconds at most, since a PutState on a dead network waits fifteen. Soloist, when it
-    /// is this Mac's player, leaves Spotify Connect meanwhile, and its process ends with the app's.
+    /// Holds the quit until the session has shut down, whose disconnect takes its device off
+    /// Spotify Connect, and Soloist, which plays for this Mac, has left it too: its process
+    /// ends with the app's. Two seconds at most, since a PutState on a dead network waits
+    /// fifteen.
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
         Task {
             async let soloist: Void = SoloistEngine.shared.stop()
-            await SpotifyPlayer.shutdown()
+            await LibrespotClient.shared.shutdown()
             await soloist
             allowTermination()
         }
@@ -89,10 +86,12 @@ struct SpotiflyApp: App {
 
     init() {
         // Before anything reads what the first launch outside the App Sandbox finds in the old
-        // container. `auth` is built after it for that reason. Not when hosting the tests,
-        // which must not move the developer's data.
+        // container. `auth` is built after it for that reason. The keychain copy of the
+        // built-in player's stored login goes with it, once. Not when hosting the tests,
+        // which must not move or delete the developer's data.
         if !Self.hostsUnitTests {
             ContainerMigration.runOnce()
+            KeychainManager.clearStoredLoginOnce()
         }
         _auth = State(initialValue: Self.hostsUnitTests ? nil : AuthViewModel())
 
@@ -104,8 +103,8 @@ struct SpotiflyApp: App {
         KeychainManager.purgeDashboardGrant()
     }
 
-    /// Hosting the unit tests (`TEST_HOST`), the app finds the developer's grant, stored login
-    /// and Connect device id, so its content would sign in and register as the Debug app the
+    /// Hosting the unit tests (`TEST_HOST`), the app finds the developer's grant and Connect
+    /// device id, so its content would sign in and register as the Debug app the
     /// developer has open. The tests need the app's code, not its window, nor the wake's rebuild
     /// in `PlaybackViewModel`, which a test that reaches the shared instance would set up.
     static let hostsUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil

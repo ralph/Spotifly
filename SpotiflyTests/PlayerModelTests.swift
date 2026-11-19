@@ -49,31 +49,23 @@ struct PlayerModelTests {
         let model = PlayerModel()
         var snapshot = cluster(active: "mac", revision: 1)
         snapshot.playback = PlaybackState(
-            isPlaying: true, isPaused: false, trackUri: "spotify:track:a", positionMs: 1000,
+            isPlaying: true, trackUri: "spotify:track:a", positionMs: 1000,
             durationMs: 2000, shuffle: false, repeatTrack: false, repeatContext: false, timestampMs: 1,
         )
         model.apply(snapshot)
 
-        snapshot.volume = 0.3
+        snapshot.queue = Self.queue
         let playbackNotified = notifies(reading: { _ = model.playback }) { model.apply(snapshot) }
         #expect(!playbackNotified)
-        #expect(model.volume == 0.3)
+        #expect(model.queue == Self.queue)
     }
 
-    /// Auto-advance can skip the same track twice in a row, on a playlist that repeats, and the
-    /// model passes on changes only.
-    @Test func `the same interruption twice is told twice`() {
-        let model = PlayerModel()
-        var snapshot = PlayerSnapshot()
-        snapshot.interruption = PlaybackInterruption(message: "Skipped, not available: “Girlfriend”", sequence: 1)
-        model.apply(snapshot)
-
-        snapshot.interruption = PlaybackInterruption(message: "Skipped, not available: “Girlfriend”", sequence: 2)
-        let notified = notifies(reading: { _ = model.interruption }) { model.apply(snapshot) }
-
-        #expect(notified)
-        #expect(model.interruption?.sequence == 2)
-    }
+    private static let queue = QueueState(
+        contextUri: "spotify:album:a",
+        currentTrack: QueueItem(uri: "spotify:track:a", provider: "context"),
+        nextTracks: [],
+        previousTracks: [],
+    )
 
     @Test func `a transfer's guess stands until the next cluster report`() {
         let model = PlayerModel()
@@ -82,7 +74,7 @@ struct PlayerModelTests {
 
         // A snapshot about something else carries the same report, and leaves the guess alone.
         var unrelated = cluster(active: "phone", revision: 1)
-        unrelated.volume = 0.5
+        unrelated.queue = Self.queue
         model.apply(unrelated)
         #expect(model.activeDeviceId == "stereo")
 
@@ -109,7 +101,7 @@ struct PlayerModelTests {
         model.apply(cluster(active: "phone", revision: 1))
 
         var unrelated = cluster(active: "phone", revision: 1)
-        unrelated.volume = 0.2
+        unrelated.queue = Self.queue
         model.apply(unrelated)
         #expect(model.clusterRevision == 1)
 
@@ -135,8 +127,8 @@ struct PlayerModelTests {
     @Test func `a connected session shows no stale error`() {
         let model = PlayerModel()
         let connected = LibrespotConnectionState(
-            sessionConnected: true, deviceId: "mac", deviceName: "Spotifly", reconnectAttempt: 0,
-            lastError: "Connection lost", connectedSinceMs: 1_000_000, streams: true,
+            sessionConnected: true, deviceId: "mac", deviceName: "Spotifly",
+            lastError: "Connection lost", connectedSinceMs: 1_000_000,
         )
         model.apply(PlayerSnapshot(connection: connected))
 

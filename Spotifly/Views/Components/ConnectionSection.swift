@@ -35,7 +35,6 @@ struct ConnectionSection: View {
                 }
 
                 DisclosureGroup("connection.details") {
-                    LabeledContent("connection.reconnect_attempts", value: "\(connection.reconnectAttempts)")
                     if let deviceId = connection.deviceId {
                         LabeledContent("connection.device_id") {
                             Text(verbatim: deviceId)

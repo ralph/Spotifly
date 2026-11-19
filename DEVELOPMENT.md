@@ -4,46 +4,44 @@ How Spotifly is put together, and how to build, run and debug it.
 
 ## Architecture
 
-Spotifly is a SwiftUI app with no dependencies outside Apple's SDKs except two C
-libraries it vendors for Ogg Vorbis decoding. Everything else it needs from Spotify —
-signing in, the library, search, playback and Spotify Connect — it speaks itself, in
-Swift.
+Spotifly is a SwiftUI app with no dependencies outside Apple's SDKs. It plays no audio
+itself: Spotify's Soloist, which it downloads from Spotify and runs as a child process, is
+this Mac's player. Everything else it needs from Spotify — signing in, the library, search
+and Spotify Connect — it speaks itself, in Swift.
 
 ```
  SwiftUI views ── view models ── AppStore + services (Store/)
                                       │
-        ┌─────────────────────────────┼──────────────────────────────┐
-        │                             │                              │
-  Auth/                        PartnerAPI/                    SpotifyPlayer (facade)
-  one OAuth grant,             pathfinder GraphQL and               │
-  loopback redirect            spclient REST                  SwiftLibrespot/
-                                                               LibrespotClient
-                                                               ├── LibrespotSession
-                                                               │   ├── Accesspoint (TCP, Shannon cipher)
-                                                               │   ├── DealerConnection (WebSocket)
-                                                               │   └── SpircController (Connect state)
-                                                               └── AudioPipeline ──▶ AudioOutput
+   ┌──────────────────┬───────────────┴──────┬──────────────────────────┐
+   │                  │                      │                          │
+   Auth/              PartnerAPI/            SpotifyPlayer (facade)     Soloist/
+   one OAuth grant,   pathfinder GraphQL,    │                          SoloistEngine runs
+   loopback redirect  spclient REST and      SwiftLibrespot/            Spotify's Soloist,
+                      connect-state          LibrespotClient            the player, as a
+                      commands               └── LibrespotSession       child process
+                                                 ├── DealerConnection (WebSocket)
+                                                 └── SpircController (hidden device)
 ```
 
 | Where | What it does |
 |---|---|
-| `Spotifly/Auth/` | One OAuth grant (PKCE) against Spotify's own desktop client id, redirected to a one-shot listener on a loopback port. That single token signs in to the accesspoint, which hands back credentials for reconnecting, and is the bearer for every HTTP API; tokens live in the keychain. |
-| `Spotifly/PartnerAPI/` | The APIs Spotify's own clients use: pathfinder GraphQL at `api-partner.spotify.com` for the library, search and pages, and spclient REST. The public Web API is not used. |
+| `Spotifly/Auth/` | One OAuth grant (PKCE) against Spotify's own desktop client id, redirected to a one-shot listener on a loopback port. That single token is the bearer for every HTTP API and the dealer; tokens live in the keychain. |
+| `Spotifly/PartnerAPI/` | The APIs Spotify's own clients use: pathfinder GraphQL at `api-partner.spotify.com` for the library, search and pages, and spclient REST. Every play, transport command and transfer goes over spclient's connect-state (`SpclientAPI.swift`). The public Web API is not used. |
 | `Spotifly/Store/` | The normalized `AppStore` and the services that fill it, and `PlayerModel`, which holds what the UI shows of the player — see `AGENTS.md`. |
-| `Spotifly/SpotifyPlayer.swift` | The static facade the app sends playback commands through, backed by `LibrespotClient.shared`. The client publishes its state as snapshots, which `PlayerModel` applies on the main actor. |
-| `Spotifly/SwiftLibrespot/` | Playback and Spotify Connect. A Swift port of [librespot](https://github.com/librespot-org/librespot)'s protocol handling, which is where the type names come from. |
-| `…/Network/` | Accesspoint resolution, the TCP connection with its Diffie-Hellman handshake and Shannon cipher, and the spclient HTTP client (metadata, `storage-resolve`, connect-state). |
-| `…/Dealer/`, `…/Connect/` | The dealer WebSocket, and `SpircController`, which publishes this device's state to the Connect cluster and turns remote commands into player calls. |
-| `…/Audio/` | `AudioPipeline`: metadata, then the audio key (over the accesspoint) and the CDN URL side by side, the download, AES-128-CTR through CommonCrypto, and Vorbis decoding into the `AudioOutput`, a chunk at a time, each one awaited. The next track is fetched ahead and, with gapless playback on, decoded straight after the current one. |
+| `Spotifly/SpotifyPlayer.swift` | The static facade over `LibrespotClient.shared`: the session's lifecycle, transfers, and the tracks an album or playlist queues as. The client publishes its state as snapshots, which `PlayerModel` applies on the main actor. Plays and commands do not go through it: `PlaybackViewModel` sends them over connect-state, to the active device or to Soloist. |
+| `Spotifly/Soloist/` | `SoloistEngine` runs Spotify's Soloist, the only player, as a child process, with the key the user enters in Settings → Playback, from Spotify's Soloist dashboard. `SoloistInstaller` downloads it from Spotify and checks that Spotify signed it. Soloist is a Connect device like any other; its loopback WebSocket only says whether it is paired. See `plans/done/soloist-playback.md`. |
+| `Spotifly/SwiftLibrespot/` | Spotify Connect, as a controller. A Swift port of [librespot](https://github.com/librespot-org/librespot)'s protocol handling, which is where the type names come from. It plays nothing. |
+| `…/Core/`, `…/Public/` | `LibrespotSession` owns the dealer and Spirc for one login. `LibrespotClient` mirrors the cluster into `PlayerSnapshot`s, with the device list, and recovers the session after sleep or a lost connection. |
+| `…/Network/` | `APResolver`, for the dealer and spclient endpoints, and `SPClient`, spclient's context resolver, which says what tracks an album or playlist queues as. |
+| `…/Dealer/`, `…/Connect/` | The dealer WebSocket, which pushes the cluster and whose requests are answered without being acted on, and `SpircController`, which registers this session's hidden device and keeps it on the cluster with a heartbeat. |
 | `…/Proto/` | A small hand-written protobuf reader and writer, and the messages built with it. |
-| `Spotifly/AudioOutput.swift` | The output: an `AVPlayer` playing the pushed PCM as one CAF stream served by a resource loader, whose `enqueue` suspends until the player wants more audio — the only pacing there is. It is the built-in player's output; Spatial Audio is allowed for stereo. See `plans/done/avplayer-output.md`. |
-| `Spotifly/Vendor/` | libogg 1.3.5 and libvorbis 1.3.7, unmodified, compiled by Xcode — see `Vendor/README.md`. |
 
 ## Prerequisites
 
 - Xcode 27 or later, for the macOS 27 SDK
 - macOS 27 or later
-- A Spotify Premium account to play anything
+- A Spotify Premium account, and a key from Spotify's Soloist dashboard for Settings →
+  Playback, to play on this Mac
 
 ## Building
 
@@ -74,7 +72,7 @@ Debug builds log to stderr through `debugLog`, which compiles away in Release. R
 binary directly to read it, and filter by module — `AGENTS.md` lists the prefixes:
 
 ```bash
-"$(xcodebuild -scheme Spotifly -showBuildSettings 2>/dev/null | awk '/ BUILT_PRODUCTS_DIR /{print $3}')/Spotifly.app/Contents/MacOS/Spotifly" 2>&1 | grep -E 'AudioPipeline|SpircController'
+"$(xcodebuild -scheme Spotifly -showBuildSettings 2>/dev/null | awk '/ BUILT_PRODUCTS_DIR /{print $3}')/Spotifly.app/Contents/MacOS/Spotifly" 2>&1 | grep -E 'Soloist|SpircController'
 ```
 
 Debug builds also read a few environment variables that drive playback without the UI:
@@ -86,18 +84,16 @@ Debug builds also read a few environment variables that drive playback without t
 | `SPOTIFLY_DEBUG_NEXT_AFTER=<s>` | With autoplay: skips twice, that far apart |
 | `SPOTIFLY_DEBUG_QUEUE_AFTER=<s>` | Queues a track, then an album |
 | `SPOTIFLY_DEBUG_OPEN=<uri>` | Opens a `spotify:album:`, `spotify:artist:` or `spotify:playlist:` page, for an id nothing in the app leads to |
-| `SPOTIFLY_DEBUG_DEVICE_ID=<id>` | Registers under another Connect device id, so a second instance is a second device |
-| `SPOTIFLY_DEBUG_ACCOUNT_TYPE=free` | Runs the account as that type, as if the accesspoint had named it: `free` hides this Mac from Connect and turns its playback off |
-| `SPOTIFLY_DEBUG_TRANSFER_HERE_AFTER=<s>` | Pulls playback to this instance |
+| `SPOTIFLY_DEBUG_DEVICE_ID=<id>` | Registers the hidden device under another id, so a second instance is a second controller |
 | `SPOTIFLY_DEBUG_TRANSFER_TO=<name>` with `SPOTIFLY_DEBUG_TRANSFER_TO_AFTER=<s>` | Hands playback to the named device |
-| `SPOTIFLY_DEBUG_DROP_AP_AFTER=<s>` | Drops the accesspoint socket that long after login, as a reset from Spotify does |
 | `SPOTIFLY_DEBUG_REINIT_AFTER=<s>` | Rebuilds the session as Speakers → Reconnect does, and logs the bar's track before and after |
-| `SPOTIFLY_DEBUG_RESUME_AFTER=<s>` | Presses Play, as the bar's button does; on another device's track, mirrored, that takes it over |
+| `SPOTIFLY_DEBUG_RESUME_AFTER=<s>` | Presses Play, as the bar's button does: a resume on the active device, or with none, a transfer of the last playback to Soloist |
 
-Connect only shows its problems with a second device: another instance under
-`SPOTIFLY_DEBUG_DEVICE_ID`, or Spotify's web player.
+Connect only shows its problems with a second device, such as Spotify's web player. A
+second instance under `SPOTIFLY_DEBUG_DEVICE_ID` is not a second player: it runs Soloist
+from the same folder, and stops the first instance's Soloist to start its own.
 
-Two things to know about signing in:
+Three things to know about signing in:
 
 - **One grant per account.** Spotify keeps a single live refresh token per account and
   client id, and rotates it on every refresh. Anything else signed in with the same
@@ -106,9 +102,12 @@ Two things to know about signing in:
 - **Release and development builds share a data container.** A Developer ID build and a
   locally signed one have different signatures, so whichever runs second makes macOS ask
   whether it may use the other's data, and it sits waiting on that alert.
+- **Soloist signs in on its own**, through Connect pairing: choose "Spotifly" once in the
+  Spotify app on a phone on the same network. It keeps that login in its data folder,
+  `~/Library/Application Support/Spotifly/Soloist/`.
 
 ## Performance
 
-[`docs/cpu-benchmark.md`](docs/cpu-benchmark.md) records where the CPU goes while
-playing and while paused, against 1.2.7, the last release before the Swift stack, with
-the scripts to repeat it.
+[`docs/cpu-benchmark.md`](docs/cpu-benchmark.md) records where the CPU went while
+playing and while paused with the built-in player, which is gone. Soloist now plays in its
+own process.

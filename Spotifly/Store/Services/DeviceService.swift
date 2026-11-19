@@ -30,9 +30,7 @@ final class DeviceService {
 
     // MARK: - Playback Transfer
 
-    /// Transfer playback to a specific device.
-    /// Uses native Spotify Connect protocol for seamless handoff.
-    /// Returns true if transfer succeeded (caller should activate Connect mode)
+    /// Transfers playback to `device` over connect-state, and answers whether Spotify took it.
     ///
     /// Every speaker row launches its own task, so two taps can call this concurrently.
     /// Each attempt optimistically marks its target active and undoes that if the transfer
@@ -62,19 +60,12 @@ final class DeviceService {
         let revisionBeforeTransfer = player.clusterRevision
         player.setActiveDevice(device.id)
 
-        // Check if target is our local device
-        let isLocalDevice = device.id == player.ownDeviceId
+        // One way for every device, this Mac's too: it is Soloist (`PlayerModel.thisMacDeviceId`),
+        // listed like any other, while the session's own device is hidden and plays nothing.
+        let accepted = await transfer(to: device.id)
 
-        let accepted = if isLocalDevice {
-            // Transfer TO local - use Spirc's native transfer
-            await SpotifyPlayer.transferToLocal()
-        } else {
-            // Transfer FROM local to remote device
-            await SpotifyPlayer.transferPlayback(to: device.id)
-        }
-
-        // The transfer can fail: no local device id yet, or connect-state refusing the
-        // command. Roll the optimistic update back rather than leaving the UI showing a
+        // The transfer can fail: no session to send it from yet, or connect-state refusing
+        // the command. Roll the optimistic update back rather than leaving the UI showing a
         // device that never became active, and report the failure to the caller.
         guard accepted else {
             debugLog("DeviceService", "Transfer to \(device.name) was rejected")
@@ -92,6 +83,30 @@ final class DeviceService {
         // Nothing to schedule: the transfer changes the cluster, and the cluster pushes the
         // new device list and active device back on its own.
         return true
+    }
+
+    /// Hands playback to a Connect device, Soloist included, from whichever device holds it.
+    ///
+    /// Goes over connect-state, beside every other Connect command this app sends. It used to
+    /// go to `PUT /me/player` on `api.spotify.com` with the keymaster token, which cannot work:
+    /// that grant uses the desktop client id, and Spotify answers it with 429 on every Web API
+    /// endpoint.
+    /// - Returns: `true` if the transfer was accepted.
+    private func transfer(to deviceId: String) async -> Bool {
+        // The session's own device, which the backend does not check; it derives the source
+        // from the session.
+        guard let from = player.ownDeviceId, !from.isEmpty, !deviceId.isEmpty else {
+            debugLog("DeviceService", "Transfer skipped: no session to send it from yet")
+            return false
+        }
+
+        do {
+            try await SpclientAPI().transferPlayback(from: from, to: deviceId)
+            return true
+        } catch {
+            debugLog("DeviceService", "Transfer to \(deviceId) failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     // MARK: - Helpers

@@ -21,7 +21,7 @@ struct PreferencesView: View {
 
             Tab("preferences.playback", systemImage: "speaker.wave.3") {
                 PlaybackSettingsView()
-                    .settingsPage(height: 380)
+                    .settingsPage(height: 280)
             }
 
             Tab("preferences.shortcuts", systemImage: "command") {
@@ -70,36 +70,11 @@ private struct GeneralSettingsView: View {
 
 // MARK: - Playback
 
+/// What plays on this Mac: Spotify's Soloist, the only player, whose one setting here is its key.
+/// The built-in player's quality and gapless switches went with it.
 private struct PlaybackSettingsView: View {
-    @AppStorage("streamingBitrate") private var bitrateRawValue: Int = 1
-    @AppStorage("gaplessPlayback") private var gaplessEnabled: Bool = true
-
-    private var selectedBitrate: SpotifyPlayer.Bitrate {
-        SpotifyPlayer.Bitrate(rawValue: UInt8(bitrateRawValue)) ?? .normal
-    }
-
     var body: some View {
         Form {
-            Section {
-                Picker("preferences.streaming_quality", selection: Binding(
-                    get: { selectedBitrate },
-                    // The player stores it, and the storage tells this view.
-                    set: { SpotifyPlayer.setBitrate($0) },
-                )) {
-                    ForEach(SpotifyPlayer.Bitrate.allCases) { bitrate in
-                        Text(verbatim: "\(bitrate.kilobitsPerSecond) kbit/s")
-                            .tag(bitrate)
-                    }
-                }
-
-                Toggle("preferences.gapless_playback", isOn: Binding(
-                    get: { gaplessEnabled },
-                    set: { SpotifyPlayer.setGapless($0) },
-                ))
-            } footer: {
-                Text("preferences.restart_note")
-            }
-
             SoloistSection()
         }
         .formStyle(.grouped)
@@ -108,32 +83,30 @@ private struct PlaybackSettingsView: View {
 }
 
 /// Spotify's Soloist as this Mac's player: the key, the download, and where it stands
-/// (`SoloistEngine`).
+/// (`SoloistEngine`). Once set up, the key can be changed, which restarts Soloist with it.
 private struct SoloistSection: View {
-    @AppStorage(SoloistEngine.chosenKey) private var isChosen = false
+    @AppStorage(SoloistEngine.setUpKey) private var isSetUp = false
     @State private var key = ""
     private let engine = SoloistEngine.shared
 
     var body: some View {
         Section {
-            if isChosen {
+            if isSetUp {
                 LabeledContent("soloist.status") {
                     Text(statusText)
                         .foregroundStyle(isFailed ? .red : .secondary)
                 }
-                Button("soloist.turn_off") {
-                    Task { await engine.turnOff() }
+            }
+            SecureField("soloist.key", text: $key)
+            HStack {
+                Link("soloist.get_key", destination: URL(string: "https://developer.spotify.com/dashboard/soloist")!)
+                Spacer()
+                Button(isSetUp ? "soloist.change_key" : "soloist.use") {
+                    let entered = key
+                    key = ""
+                    Task { await engine.choose(key: entered) }
                 }
-            } else {
-                SecureField("soloist.key", text: $key)
-                HStack {
-                    Link("soloist.get_key", destination: URL(string: "https://developer.spotify.com/dashboard/soloist")!)
-                    Spacer()
-                    Button("soloist.use") {
-                        Task { await engine.choose(key: key) }
-                    }
-                    .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
+                .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         } header: {
             Text(verbatim: "Spotify Soloist")

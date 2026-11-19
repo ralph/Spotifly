@@ -2,11 +2,13 @@
 //  SpotifyPlayer.swift
 //  Spotifly
 //
-//  The playback facade the app speaks to.
+//  What the Connect session publishes, and the two calls that bind it to the account.
 //
-//  A static namespace over `LibrespotClient.shared` for commands and the few
-//  reads that must be synchronous. What the UI shows of the player it reads
-//  from `PlayerModel`, which the client's snapshots feed.
+//  The snapshot types the client yields, and `SpotifyPlayer`, which starts the session with
+//  the keymaster grant and forgets it at logout. Everything else goes to
+//  `LibrespotClient.shared` directly. What the UI shows of the player it reads from
+//  `PlayerModel`, which the client's snapshots feed. Playback commands go over connect-state
+//  (`PlaybackViewModel`), to Soloist or another device.
 //
 
 import Foundation
@@ -17,13 +19,9 @@ nonisolated struct QueueItem: Equatable {
     let uri: String
     /// Track provider: "context", "queue", "autoplay", or "unavailable"
     let provider: String
-    /// The row's uid, which a jump to it names: the cluster's, while another device plays,
-    /// and this client's own otherwise (`PlaybackQueue`). A row with none goes by its position
-    /// and its track.
+    /// The row's uid, as the cluster names it, which a jump to it names. A row with none goes
+    /// by its position and its track.
     var uid: String?
-    /// Left out of the queue other devices show, as the delimiter this client reports between
-    /// two rounds of a context; see `ProvidedTrack.isHidden`.
-    var hidden = false
 }
 
 /// The queue around the current track, and the context it plays from.
@@ -34,7 +32,7 @@ nonisolated struct QueueState: Equatable {
     let nextTracks: [QueueItem]
     /// What played before the current track, in play order: the most recent last.
     let previousTracks: [QueueItem]
-    /// The context's own name: the resolver's locally, the cluster's while another device plays.
+    /// The context's own name, as the cluster gives it.
     var contextName: String?
 
     /// The context the queue plays from, or nil for a bare list of tracks.
@@ -43,10 +41,9 @@ nonisolated struct QueueState: Equatable {
     }
 }
 
-/// Playback state as reported by the local player or a remote command.
+/// Playback state as the cluster reports it, for whichever device plays.
 nonisolated struct PlaybackState: Equatable {
     let isPlaying: Bool
-    let isPaused: Bool
     let trackUri: String
     let positionMs: Int64
     let durationMs: Int64
@@ -55,8 +52,7 @@ nonisolated struct PlaybackState: Equatable {
     let repeatContext: Bool
     /// Timestamp (ms since epoch) when positionMs was recorded - for computing current position
     let timestampMs: Int64
-    /// Whether Next goes anywhere. Always for this Mac, where Next on a context's last track
-    /// goes back to its first, paused; for another device, unless its `restrictions` say no.
+    /// Whether Next goes anywhere: unless the device's `restrictions` say no.
     var canSkipNext = true
     /// Whether shuffle may be switched on: not on a station, whose context does not allow it.
     var canShuffle = true
@@ -64,39 +60,19 @@ nonisolated struct PlaybackState: Equatable {
     var canRepeat = true
 }
 
-/// Playback that went past a track, or stopped, over an error.
-///
-/// Auto-advance, a remote command and a pipeline error are started by the client, not by a
-/// call from the app, so their errors have no caller to be thrown to. They reach the
-/// now-playing bar this way. A play the app started comes this way too, and throws the same
-/// text, which `PlaybackViewModel.errorMessage` takes once.
-nonisolated struct PlaybackInterruption: Equatable {
-    /// What the now-playing bar says. A message about a track puts the reason before the
-    /// track's name, because the bar cuts off what does not fit, and the name can go.
-    let message: String
-    /// Tells one interruption from the next, counted on the snapshot as `clusterRevision` is.
-    /// The model passes on changes only, so without it the same track skipped twice in a row
-    /// would be told once.
-    let sequence: Int
-}
-
 /// Connection state of the streaming session.
 nonisolated struct LibrespotConnectionState: Equatable {
     let sessionConnected: Bool
     let deviceId: String?
     let deviceName: String
-    let reconnectAttempt: UInt32
     let lastError: String?
     let connectedSinceMs: UInt64?
-    /// Whether this Mac may play for the account: false for an account Spotify named other
-    /// than Premium at login, or refused for want of it. See `LibrespotSession.streams`.
-    let streams: Bool
 }
 
 /// Everything the player tells the app, as of one moment.
 ///
 /// The client yields one on every change, to the one consumer that shows them:
-/// `PlayerModel`. The facade's synchronous reads use the latest one.
+/// `PlayerModel`. The client's synchronous reads use the latest one.
 nonisolated struct PlayerSnapshot: Equatable {
     var connection: LibrespotConnectionState?
     /// The Connect devices; nil until the first cluster has arrived.
@@ -106,332 +82,28 @@ nonisolated struct PlayerSnapshot: Equatable {
     /// Counts the cluster reports, so the model can let a fresh one overrule a
     /// transfer's guess even when it names the device it named before.
     var clusterRevision = 0
-    /// Whichever device is playing: this one, or another one, mirrored.
+    /// Whichever device is playing, mirrored from the cluster.
     var playback: PlaybackState?
     var queue: QueueState?
-    /// The tracks playback found Spotify withholds this login, which no list had said.
-    var withheld: Set<String> = []
-    /// The logical Connect volume, 0–1; nil until one has been set.
-    var volume: Double?
-    /// The latest interruption. It stays until the next one, so a consumer that falls behind
-    /// and gets a later snapshot still sees it.
-    var interruption: PlaybackInterruption?
 }
 
 enum SpotifyPlayer {
-    /// The one audio output, which the client's pipeline plays into. Volume and pacing live in it.
-    nonisolated static let audioOutput = AudioOutput()
-
-    // MARK: - Lifecycle
-
-    /// Initializes the player: accesspoint login, dealer socket, Spirc
-    /// registration, audio pipeline.
+    /// Initializes the session that controls playback: the dealer socket and the Spirc
+    /// registration of a hidden device that does not play. Spotify's Soloist plays for this
+    /// Mac (`SoloistEngine`).
     ///
-    /// Every connect goes through here, from `PlaybackViewModel`'s lifecycle:
-    /// the saved volume is applied first, at the output and as the one this Mac
-    /// registers at on Spotify Connect, and the client is told where its
-    /// credentials come from — the stored reusable login from an earlier grant if there is
-    /// one, else a fresh keymaster token, with the client token spclient
-    /// requires.
-    /// - Parameter volume: this Mac's volume, 0–1.
-    @SpotifyPlayerActor
-    static func initialize(volume: Double) async throws {
-        // At the output up front, so the first moments of audio do not play at full volume.
-        setOutputVolume(volume)
-        try await LibrespotClient.shared.initialize(
-            httpCredentials: .live,
-            usernameProvider: { await KeymasterSession.shared.username },
-            contextRowUids: { uri in await albumRowUids(uri) },
-            volume: volume,
-            // Spotify's Soloist plays for this Mac once chosen (`SoloistEngine`).
-            playsHere: !SoloistEngine.isChosen,
-        )
+    /// Every connect goes through here, from `PlaybackViewModel`'s lifecycle, and the client is
+    /// told where its credentials come from: the keymaster grant, with the client token
+    /// spclient requires.
+    static func initialize() async throws {
+        try await LibrespotClient.shared.initialize(httpCredentials: .live)
     }
 
-    /// An album's row uids from pathfinder; nothing for anything else, or when it does not answer.
-    private nonisolated static func albumRowUids(_ uri: String) async -> [(uri: String, uid: String)] {
-        guard let id = SpotifyURI.id(from: uri, kind: "album"),
-              let album = try? await PartnerAPI().album(id: id)
-        else { return [] }
-        return album.rowUids
-    }
-
-    /// Shuts down, which takes this device off Spotify Connect. Call this when the app is
-    /// quitting.
-    ///
-    /// Awaitable so callers can order it against a rebuild of the same global player, and
-    /// so the quit can wait for it.
-    static func shutdown() async {
-        await LibrespotClient.shared.shutdown()
-    }
-
-    /// Leaves Spotify Connect, then releases everything and clears every
-    /// replaying publisher.
-    ///
-    /// The replay subjects are right within a session and wrong across a
-    /// logout: the next account's services must not be handed the previous
-    /// account's devices, queue or playback state. Subscribers treat nil as
-    /// "nothing to say".
-    nonisolated static func shutdownAndCleanup() async {
-        await LibrespotClient.shared.shutdownAndCleanup()
-    }
-
-    /// Disconnects without preventing future reconnection.
-    /// Use this before system sleep - the device disappears from Spotify immediately,
-    /// but forceReconnect() can still bring it back on wake.
-    static func disconnect() {
-        Task { await LibrespotClient.shared.disconnect() }
-    }
-
-    /// Asks the client to reconnect, without tearing down what it already has.
-    ///
-    /// Preferred over `PlaybackViewModel.forceReinitialize` wherever a session may exist:
-    /// reinitialize runs a destructive cleanup first, which invalidates any reconnect loop
-    /// currently working the problem.
-    @discardableResult
-    static func forceReconnect() -> LibrespotClient.ForceReconnectOutcome {
-        LibrespotClient.shared.forceReconnectSync()
-    }
-
-    /// Tells playback which tracks Spotify will not play, from what the app's lists said, so
-    /// that it steps over them instead of loading each to find out.
-    static func setUnplayable(_ uris: Set<String>) {
-        Task { await LibrespotClient.shared.setUnplayable(uris) }
-    }
-
-    // MARK: - Synchronous State
-
-    /// Whether the session is currently connected and ready for playback commands.
-    static var isSessionConnected: Bool {
-        LibrespotClient.shared.currentConnectionState?.sessionConnected == true
-    }
-
-    /// Whether this device is the active Spotify Connect device. When it is not,
-    /// transport controls go to the one that is, over connect-state.
-    static var isActiveDevice: Bool {
-        LibrespotClient.shared.isActiveDeviceFlagValue
-    }
-
-    /// The current playback position in milliseconds.
-    /// This is the actual audible position, not an estimate.
-    static var positionMs: UInt32 {
-        UInt32(min(UInt64(UInt32.max), LibrespotClient.shared.positionMsCached))
-    }
-
-    // MARK: - Playback Commands
-
-    /// Plays content by its Spotify URI or URL.
-    /// Supports tracks, albums, playlists, artists, and station contexts.
-    /// - Parameters:
-    ///   - uriOrUrl: Spotify URI or URL (e.g., "spotify:album:xxx")
-    ///   - trackIndex: Where in a context to start; nil for its start.
-    ///   - startingAtUri: The track to start on; with an index, it decides which track plays.
-    @SpotifyPlayerActor
-    static func play(uriOrUrl: String, trackIndex: Int? = nil, startingAtUri: String? = nil) async throws {
-        try await LibrespotClient.shared.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex, startingAtUri: startingAtUri)
-    }
-
-    /// Plays a track by its Spotify track ID.
-    @SpotifyPlayerActor
-    static func playTrack(trackId: String) async throws {
-        try await play(uriOrUrl: "spotify:track:\(trackId)")
-    }
-
-    /// Plays multiple tracks in sequence.
-    /// - Parameter trackUris: Array of Spotify track URIs
-    @SpotifyPlayerActor
-    static func playTracks(_ trackUris: [String]) async throws {
-        try await LibrespotClient.shared.playTracks(trackUris)
-    }
-
-    /// Pauses playback.
-    static func pause() {
-        Task { await LibrespotClient.shared.pause() }
-    }
-
-    /// Resumes playback, or takes over another device's track the bar mirrors.
-    static func resume() async throws {
-        try await LibrespotClient.shared.resume()
-    }
-
-    /// Skips to the next track in the queue.
-    static func next() async throws {
-        try await LibrespotClient.shared.next()
-    }
-
-    /// Skips to the previous track in the queue.
-    static func previous() async throws {
-        try await LibrespotClient.shared.previous()
-    }
-
-    /// Plays one of the queue's next tracks, keeping the queue.
-    static func skip(toNext position: Int?, uri: String, uid: String?) async throws {
-        try await LibrespotClient.shared.skip(toNext: position, uri: uri, uid: uid)
-    }
-
-    /// Plays one of the queue's previous tracks, keeping the queue.
-    static func skip(toPrevious index: Int, uri: String, uid: String?) async throws {
-        try await LibrespotClient.shared.skip(toPrevious: index, uri: uri, uid: uid)
-    }
-
-    /// Seeks to the given position in milliseconds.
-    static func seek(positionMs: UInt32) async throws {
-        try await LibrespotClient.shared.seek(positionMs: positionMs)
-    }
-
-    /// Sets the playback volume (0.0 - 1.0).
-    /// Reports the logical Connect volume; see `setOutputVolume` for the gain path.
-    static func setVolume(_ volume: Double) {
-        Task { await LibrespotClient.shared.setVolume(volume) }
-    }
-
-    /// Applies playback volume at the audio output for an immediate,
-    /// buffer-independent response. The slider value is passed through a
-    /// logarithmic taper so the perceived loudness curve matches librespot's.
-    nonisolated static func setOutputVolume(_ volume: Double) {
-        audioOutput.setVolume(Float(librespotLogAttenuation(volume)))
-    }
-
-    /// Mirrors librespot's default `VolumeCtrl::Log(60 dB)` mapping
-    /// (`playback/src/mixer/mappings.rs`): `attenuation = exp(ln(r) * v) / r`,
-    /// where `r = db_to_ratio(60) = 10^(60/20) = 1000`. Zero and full are
-    /// special-cased to true mute / unity, matching librespot.
-    private nonisolated static func librespotLogAttenuation(_ volume: Double) -> Double {
-        let v = max(0, min(1, volume))
-        if v <= 0 {
-            return 0
-        }
-        if v >= 1 {
-            return 1
-        }
-        let dbRatio = 1000.0
-        return exp(log(dbRatio) * v) / dbRatio
-    }
-
-    /// Enables or disables shuffle on the local player.
-    static func setShuffle(_ enabled: Bool) {
-        Task { await LibrespotClient.shared.setShuffle(enabled) }
-    }
-
-    /// Sets repeat on the local player.
-    static func setRepeat(_ mode: PlaybackQueue.RepeatMode) {
-        Task { await LibrespotClient.shared.setRepeat(mode) }
-    }
-
-    // MARK: - Streaming Credentials
-
-    /// Removes the cached streaming credentials so the next launch cannot connect the
-    /// account that just logged out.
-    ///
-    /// Clears both halves of the grant. The reusable AP credentials live in the app
-    /// container; the keymaster tokens are a keychain item Swift owns. Forgetting only the
-    /// first would leave a long-lived refresh token for the signed-out account behind.
+    /// Removes the credentials so neither a recovery nor the next launch can connect the
+    /// account that just logged out: the session's, and the keymaster tokens in the keychain,
+    /// a long-lived refresh token for the signed-out account if left behind.
     static func clearStreamingCredentials() async {
         await LibrespotClient.shared.clearStreamingCredentials()
         await KeymasterSession.shared.clear()
     }
-
-    // MARK: - Transfer
-
-    /// Takes over playback that is running on another Connect device.
-    /// - Returns: `true` if the transfer was accepted.
-    static func transferToLocal() async -> Bool {
-        // Naming this device on both sides is how librespot pulls playback to
-        // itself; the backend derives the source from the session anyway.
-        await transfer(to: localDeviceId())
-    }
-
-    /// Hands playback from this device to another one.
-    /// - Parameter deviceId: The target device ID to transfer playback to
-    /// - Returns: `true` if the transfer was accepted.
-    static func transferPlayback(to deviceId: String) async -> Bool {
-        await transfer(to: deviceId)
-    }
-
-    /// This device's Connect id, as the cluster knows it.
-    private static func localDeviceId() -> String? {
-        LibrespotClient.shared.currentConnectionState?.deviceId.flatMap { $0.isEmpty ? nil : $0 }
-    }
-
-    /// Both transfers go over connect-state, beside every other Connect command
-    /// this app sends. They used to go to `PUT /me/player` on `api.spotify.com`
-    /// with the keymaster token, which cannot work: that grant uses the desktop
-    /// client id, and Spotify answers it with 429 on every Web API endpoint.
-    private static func transfer(to deviceId: String?) async -> Bool {
-        guard let from = localDeviceId(), let deviceId, !deviceId.isEmpty else {
-            debugLog("SpotifyPlayer", "Transfer skipped: no local device id yet")
-            return false
-        }
-
-        do {
-            try await SpclientAPI().transferPlayback(from: from, to: deviceId)
-            return true
-        } catch {
-            debugLog("SpotifyPlayer", "Transfer to \(deviceId) failed: \(error.localizedDescription)")
-            return false
-        }
-    }
-
-    /// Adds an item to the queue.
-    /// - Parameter uri: The Spotify URI to add to the queue (track, episode, etc.)
-    static func addToQueue(uri: String) {
-        Task { await LibrespotClient.shared.addToQueue(uri: uri) }
-    }
-
-    /// The tracks queueing `uri` means: the track, or an album's or playlist's tracks.
-    static func queueableTracks(for uri: String) async throws -> [String] {
-        try await LibrespotClient.shared.queueableTracks(for: uri)
-    }
-
-    // MARK: - Playback Settings
-
-    /// Streaming bitrate options
-    enum Bitrate: UInt8, CaseIterable, Identifiable {
-        case low = 0
-        case normal = 1 // the default
-        case high = 2
-
-        var id: UInt8 {
-            rawValue
-        }
-
-        /// The rate in kbit/s, which the settings name it by.
-        var kilobitsPerSecond: Int {
-            switch self {
-            case .low: 96
-            case .normal: 160
-            case .high: 320
-            }
-        }
-    }
-
-    /// Sets the streaming bitrate. Takes effect on the next track load.
-    static func setBitrate(_ bitrate: Bitrate) {
-        UserDefaults.standard.set(bitrate.rawValue, forKey: "streamingBitrate")
-        Task { await LibrespotClient.shared.applyPlaybackSettings() }
-    }
-
-    /// The stored bitrate setting, defaulting to normal. `nonisolated` so the
-    /// client can read it while applying the setting to a new pipeline.
-    nonisolated static var bitrate: Bitrate {
-        Bitrate(rawValue: UInt8(UserDefaults.standard.object(forKey: "streamingBitrate") as? Int ?? 1)) ?? .normal
-    }
-
-    /// Sets gapless playback: the next track decoded into the sink behind the
-    /// current one. Takes effect at the next track change.
-    static func setGapless(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: "gaplessPlayback")
-        Task { await LibrespotClient.shared.applyPlaybackSettings() }
-    }
-
-    /// The stored gapless setting, defaulting to on. `nonisolated` like
-    /// `bitrate`: applying it to a new pipeline must not wait for the main thread.
-    nonisolated static var gapless: Bool {
-        UserDefaults.standard.object(forKey: "gaplessPlayback") as? Bool ?? true
-    }
-}
-
-@globalActor
-actor SpotifyPlayerActor {
-    static let shared = SpotifyPlayerActor()
 }

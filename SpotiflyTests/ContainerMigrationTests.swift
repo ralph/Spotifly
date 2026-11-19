@@ -40,8 +40,8 @@ struct ContainerMigrationTests {
         try data.write(to: credentialsFile)
     }
 
-    private func migrate(saveLogin: (StoredLogin) throws -> Void = { _ in }) {
-        ContainerMigration.runOnce(defaults: defaults, domain: domain, container: container, saveLogin: saveLogin)
+    private func migrate() {
+        ContainerMigration.runOnce(defaults: defaults, domain: domain, container: container)
     }
 
     init() {
@@ -80,17 +80,14 @@ struct ContainerMigrationTests {
         #expect(defaults.object(forKey: "later") == nil)
     }
 
-    @Test func `the stored login moves into the keychain and the file goes`() throws {
+    /// A reusable login in plain text, which nothing reads any more.
+    @Test func `the stored login is deleted`() throws {
         defer { cleanUp() }
-        let login = StoredLogin(username: "someone", authData: Data([1, 2, 3]), authType: 1)
-        try writeCredentials(JSONEncoder().encode(login))
-        var saved: StoredLogin?
+        // What is in it does not matter: it is not read.
+        try writeCredentials(Data("a stored login".utf8))
 
-        migrate { saved = $0 }
+        migrate()
 
-        #expect(saved?.username == "someone")
-        #expect(saved?.authData == Data([1, 2, 3]))
-        #expect(saved?.authType == 1)
         #expect(!FileManager.default.fileExists(atPath: credentialsFile.path))
     }
 
@@ -99,23 +96,19 @@ struct ContainerMigrationTests {
         let plist = container.appending(path: "Library/Preferences/\(domain).plist")
         try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("not a plist".utf8).write(to: plist)
-        try writeCredentials(Data("not json".utf8))
-        var saveCalled = false
 
-        migrate { _ in saveCalled = true }
+        migrate()
 
-        #expect(!saveCalled)
         #expect(defaults.bool(forKey: ContainerMigration.doneKey))
         #expect(defaults.persistentDomain(forName: domain)?.keys.sorted() == [ContainerMigration.doneKey])
     }
 
     @Test func `a Mac that never ran the sandboxed app is only marked done`() {
         defer { cleanUp() }
-        var saveCalled = false
 
-        migrate { _ in saveCalled = true }
+        migrate()
 
-        #expect(!saveCalled)
         #expect(defaults.bool(forKey: ContainerMigration.doneKey))
+        #expect(defaults.persistentDomain(forName: domain)?.keys.sorted() == [ContainerMigration.doneKey])
     }
 }

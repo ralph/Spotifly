@@ -30,18 +30,18 @@ struct PlaybackMillisecondsTests {
 
 /// The length the scrubber and Control Center show, one rule for both.
 struct DisplayedDurationTests {
-    @Test func `the stream's length wins over the store's`() {
-        #expect(PlaybackViewModel.displayedDuration(streamMs: 215_205, storedMs: 215_000) == 215_205)
+    @Test func `the reported length wins over the store's`() {
+        #expect(PlaybackViewModel.displayedDuration(reportedMs: 215_205, storedMs: 215_000) == 215_205)
     }
 
-    /// A new track starts without the stream's length; the store's bridges the gap.
-    @Test func `the store's length stands in until the stream has one`() {
-        #expect(PlaybackViewModel.displayedDuration(streamMs: 0, storedMs: 215_000) == 215_000)
+    /// A new track can start without a reported length; the store's bridges the gap.
+    @Test func `the store's length stands in until one is reported`() {
+        #expect(PlaybackViewModel.displayedDuration(reportedMs: 0, storedMs: 215_000) == 215_000)
     }
 
     @Test func `with neither known there is no length`() {
-        #expect(PlaybackViewModel.displayedDuration(streamMs: 0, storedMs: nil) == nil)
-        #expect(PlaybackViewModel.displayedDuration(streamMs: 0, storedMs: 0) == nil)
+        #expect(PlaybackViewModel.displayedDuration(reportedMs: 0, storedMs: nil) == nil)
+        #expect(PlaybackViewModel.displayedDuration(reportedMs: 0, storedMs: 0) == nil)
     }
 }
 

@@ -223,7 +223,7 @@ nonisolated struct ConnectCommand: Encodable, Sendable {
 
     /// Sets repeat, as the web player's repeat button does: `set_options` with both flags, and
     /// repeat-one with the context's flag on too (captured from open.spotify.com on 2026-10-21).
-    static func repeatMode(_ mode: PlaybackQueue.RepeatMode) -> ConnectCommand {
+    static func repeatMode(_ mode: RepeatMode) -> ConnectCommand {
         ConnectCommand(endpoint: .setOptions, repeatingContext: mode != .off, repeatingTrack: mode == .track)
     }
 

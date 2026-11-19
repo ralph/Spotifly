@@ -67,14 +67,6 @@ struct PathfinderAlbumTests {
         #expect(album.firstArtist?.profile?.name == "Daft Punk")
     }
 
-    /// A handover names an album's row by the uid pathfinder lists beside it.
-    @Test func `each row's uid is kept with its track, in order`() throws {
-        let album = try decodeDiscovery()
-
-        #expect(album.rowUids.map(\.uri) == ["spotify:track:0DiWol3AO6WpXZgp0goxAV", "spotify:track:3H3cOQ6LBLSvmcaV7QkZEu"])
-        #expect(album.rowUids.map(\.uid) == ["a1", "a2"])
-    }
-
     /// `tracksV2`, not `tracks`. The other album operation, `getAlbumNameAndTracks`, uses the
     /// same key for items holding nothing but a `uri`, so reading the wrong one yields a track
     /// list with no names or durations rather than an error.

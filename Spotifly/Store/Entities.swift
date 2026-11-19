@@ -370,10 +370,7 @@ struct SpotifyConnection: Equatable, Encodable {
     let deviceName: String
     let isConnected: Bool
     let connectedSince: Date?
-    let reconnectAttempts: UInt32
     let lastError: String?
-    /// Whether this Mac may play for the account. See `LibrespotConnectionState.streams`.
-    let streams: Bool
 }
 
 // MARK: - Queue Models

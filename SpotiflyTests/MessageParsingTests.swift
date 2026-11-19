@@ -13,88 +13,6 @@ import Testing
 // (`librespot/protocol/proto/`), not captured from a live session. The tests check that each
 // reader follows the schema's field numbers and nesting — not what Spotify actually sends.
 
-/// `keyexchange.proto` and `authentication.proto`.
-struct AccesspointMessageParsingTests {
-    @Test func `a Diffie-Hellman challenge is read through its nesting`() {
-        let gs = Data(repeating: 0xAB, count: 96)
-        let signature = Data(repeating: 0xCD, count: 256)
-        let data = ProtobufWriter.message {
-            $0.message(field: 10) { challenge in
-                challenge.message(field: 10) { loginCryptoChallenge in
-                    loginCryptoChallenge.message(field: 10) { diffieHellman in
-                        diffieHellman.bytes(field: 10, gs)
-                        diffieHellman.varint(field: 20, 0) // server_signature_key
-                        diffieHellman.bytes(field: 30, signature)
-                    }
-                }
-                challenge.message(field: 20) { _ in } // fingerprint_challenge
-                challenge.message(field: 30) { _ in } // pow_challenge
-                challenge.message(field: 40) { _ in } // crypto_challenge
-                challenge.bytes(field: 50, Data(repeating: 0x01, count: 16)) // server_nonce
-            }
-        }
-
-        let response = APResponseMessage.parse(from: data)
-
-        #expect(response.challenge?.gs == gs)
-        #expect(response.challenge?.gsSignature == signature)
-        #expect(response.loginFailed == nil)
-    }
-
-    @Test func `a challenge without a Diffie-Hellman part is no challenge`() {
-        let data = ProtobufWriter.message {
-            $0.message(field: 10) { $0.message(field: 10) { _ in } }
-        }
-
-        #expect(APResponseMessage.parse(from: data).challenge == nil)
-    }
-
-    @Test func `a refusal carries its error code and description`() {
-        let data = ProtobufWriter.message {
-            $0.message(field: 30) { loginFailed in
-                loginFailed.varint(field: 10, 12) // BadCredentials
-                loginFailed.string(field: 40, "wrong password")
-            }
-        }
-
-        let response = APResponseMessage.parse(from: data)
-
-        #expect(response.challenge == nil)
-        #expect(response.loginFailed?.errorCode == .badCredentials)
-        #expect(response.loginFailed?.errorDescription == "wrong password")
-    }
-
-    @Test func `an unknown error code reads as a protocol error`() {
-        let data = ProtobufWriter.message {
-            $0.message(field: 30) { $0.varint(field: 10, 99) }
-        }
-
-        #expect(APResponseMessage.parse(from: data).loginFailed?.errorCode == .protocolError)
-    }
-
-    @Test func `the welcome yields the reusable credentials`() throws {
-        let data = ProtobufWriter.message {
-            $0.string(field: 10, "someone")
-            $0.varint(field: 20, 0) // account_type_logged_in
-            $0.varint(field: 25, 0) // credentials_type_logged_in
-            $0.varint(field: 30, 1) // AUTHENTICATION_STORED_SPOTIFY_CREDENTIALS
-            $0.bytes(field: 40, Data([9, 8, 7]))
-        }
-
-        let welcome = try APWelcome.parse(from: data)
-
-        #expect(welcome.canonicalUsername == "someone")
-        #expect(welcome.reusableAuthCredentialsType == .storedSpotifyCredentials)
-        #expect(welcome.reusableAuthCredentials == Data([9, 8, 7]))
-    }
-
-    @Test func `a welcome without a username is an error`() {
-        let data = ProtobufWriter.message { $0.bytes(field: 40, Data([9, 8, 7])) }
-
-        #expect(throws: LibrespotError.self) { try APWelcome.parse(from: data) }
-    }
-}
-
 /// `connect.proto` and `player.proto`.
 struct ConnectMessageParsingTests {
     @Test func `a cluster update is read through its cluster, player state and device map`() throws {
@@ -181,27 +99,24 @@ struct ConnectMessageParsingTests {
         #expect(next.disallowsSkippingNext)
     }
 
-    /// This Mac reports a station's restrictions as its context's and its own, where the web
-    /// player playing one sent them too (2026-10-02).
-    @Test func `restrictions are written at player.proto's numbers, and read back`() {
-        var state = PlayerState()
-        state.contextRestrictions = .radio
-        state.restrictions = .radio
+    /// A station's restrictions, as the web player playing one sent them (2026-10-02): its
+    /// context's at field 4 and its own at 17, each reason at its field's number.
+    @Test func `restrictions are read at player.proto's numbers`() {
+        let radio = ProtobufWriter.message {
+            $0.string(field: 8, "radio")
+            $0.string(field: 10, "radio")
+        }
+        let state = PlayerState.parse(from: ProtobufWriter.message {
+            $0.bytes(field: 4, radio)
+            $0.bytes(field: 17, radio)
+        })
 
-        let fields = ProtobufReader.fields(in: state.serialize())
-        let written = { (number: Int) in fields.last(number)?.fields.map { "\($0.number)=\($0.string)" } }
-        #expect(written(4) == ["8=radio", "10=radio"])
-        #expect(written(17) == ["8=radio", "10=radio"])
-
-        let read = PlayerState.parse(from: state.serialize())
-        #expect(read.contextRestrictions == .radio)
-        #expect(read.restrictions == .radio)
-        #expect(!read.disallowsSkippingNext)
-    }
-
-    @Test func `a context without restrictions writes none`() {
-        let fields = ProtobufReader.fields(in: PlayerState().serialize())
-        #expect(!fields.contains { $0.number == 4 || $0.number == 17 })
+        #expect(state.contextRestrictions == .radio)
+        #expect(state.restrictions == .radio)
+        #expect(!state.restrictions.allowsShuffle)
+        #expect(!state.restrictions.allows(.context))
+        #expect(state.restrictions.allows(.track))
+        #expect(!state.disallowsSkippingNext)
     }
 
     @Test func `the context fields are read at player.proto's numbers`() {
@@ -223,31 +138,6 @@ struct ConnectMessageParsingTests {
         #expect(state.playbackSpeed == 1.5)
         #expect(state.contextMetadata == ["zeta": "1", "alpha": "2"])
         #expect(state.queueRevision == "revision")
-    }
-
-    @Test func `the context fields are written at player.proto's numbers`() {
-        var state = PlayerState()
-        state.contextUrl = "context://spotify:album:abc"
-        state.index = ContextIndex(page: 1, track: 7)
-        state.playbackSpeed = 1.5
-        state.contextMetadata = ["zeta": "1", "alpha": "2"]
-        state.queueRevision = "revision"
-
-        let fields = ProtobufReader.fields(in: state.serialize())
-
-        #expect(fields.map(\.number) == [1, 3, 6, 9, 10, 11, 21, 21, 24, 25])
-        #expect(fields.last(3)?.string == "context://spotify:album:abc")
-        #expect(fields.last(6)?.fields.last(1)?.value == 1)
-        #expect(fields.last(6)?.fields.last(2)?.value == 7)
-        #expect(fields.last(9)?.double == 1.5)
-        #expect(fields.filter { $0.number == 21 }.map(\.mapEntry.key) == ["alpha", "zeta"])
-        #expect(fields.last(24)?.string == "revision")
-    }
-
-    @Test func `left at their defaults, the context fields stay off the wire`() {
-        let fields = ProtobufReader.fields(in: PlayerState().serialize())
-
-        #expect(fields.map(\.number) == [1, 10, 11, 25])
     }
 
     /// `Capabilities.disable_volume` is field 13 in connect.proto; `supported_types` is 9.
@@ -278,192 +168,17 @@ struct ConnectMessageParsingTests {
         #expect(hidden.hidden)
         #expect(!shown.hidden)
     }
-
-    @Test func `track metadata goes out in key order`() {
-        var track = ProvidedTrack(uri: "spotify:track:abc")
-        track.metadata = ["c": "3", "a": "1", "b": "2"]
-
-        let fields = ProtobufReader.fields(in: track.serialize())
-
-        #expect(fields.filter { $0.number == 3 }.map(\.mapEntry.key) == ["a", "b", "c"])
-    }
 }
 
-/// `metadata.proto`, and `extended_metadata.proto` with `entity_extension_data.proto`.
-@MainActor
+/// The context resolver's answer, which is JSON despite the protobuf `Accept`.
 struct SPClientParsingTests {
-    /// `Track.file (12)`: `AudioFile { 1: file_id, 2: format }`, the id twenty bytes of `id`.
-    static func file(_ track: inout ProtobufWriter, id: UInt8, format: Int) {
-        track.message(field: 12) {
-            $0.bytes(field: 1, Data(repeating: id, count: 20))
-            $0.varint(field: 2, format)
-        }
-    }
-
-    /// A `Track` wrapped the way the extended-metadata endpoint answers with one, or, without
-    /// one, the way it answers for an entity it has none of.
-    static func extendedMetadataResponse(track: Data?, status: Int = 200) -> Data {
-        ProtobufWriter.message {
-            $0.message(field: 2) { array in // extended_metadata
-                array.varint(field: 2, 10) // extension_kind: TRACK_V4
-                array.message(field: 3) { entry in // extension_data
-                    entry.message(field: 1) { $0.varint(field: 1, status) } // header.status_code
-                    entry.string(field: 2, "spotify:track:abc") // entity_uri
-                    if let track {
-                        entry.message(field: 3) { any in // google.protobuf.Any
-                            any.string(field: 1, "type.googleapis.com/spotify.metadata.Track")
-                            any.bytes(field: 2, track)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private static func ids(_ files: [SPClient.TrackMetadata.AudioFile]) -> [UInt8] {
-        files.map { $0.fileId.first ?? 0 }
-    }
-
-    private static func parse(_ track: Data) -> SPClient.TrackMetadata? {
-        SPClient.parseTrackResponse(extendedMetadataResponse(track: track))
-    }
-
-    @Test func `the extended-metadata answer yields the wrapped track's files`() throws {
-        let track = ProtobufWriter.message {
-            $0.string(field: 2, "Song") // name
-            Self.file(&$0, id: 1, format: 1) // OGG_VORBIS_160
-            Self.file(&$0, id: 2, format: 2) // OGG_VORBIS_320
-        }
-
-        let files = try #require(Self.parse(track)).files
-
-        #expect(Self.ids(files) == [1, 2])
-        #expect(files.map(\.format) == [.oggVorbis160, .oggVorbis320])
-    }
-
-    /// Measured on 2026-09-29: the wrapped `Track` names the track and says how long it is, which
-    /// is why `/metadata/4` is no longer asked.
-    @Test func `the wrapped track carries its name and duration`() throws {
-        let track = ProtobufWriter.message {
-            $0.string(field: 2, "Not Bad for New Jersey")
-            $0.varint(field: 7, 430_410) // sint32 215205, as measured
-            Self.file(&$0, id: 1, format: 1)
-        }
-
-        let metadata = try #require(Self.parse(track))
-
-        #expect(metadata.name == "Not Bad for New Jersey")
-        #expect(metadata.durationMs == 215_205)
-    }
-
-    /// A track that does not exist: HTTP 200, a 404 in the entity's header, and no `Track`,
-    /// measured with `spotify:track:0000000000000000000000`.
-    @Test func `an entity without a track is none`() {
-        #expect(SPClient.parseTrackResponse(Self.extendedMetadataResponse(track: nil, status: 404)) == nil)
-    }
-
-    /// "Girlfriend", which Spotify withholds in DE, measured the same day: a `Track` with its name,
-    /// its duration and a restriction (11), and no files, of its own or an alternative's. So it
-    /// still reads as withheld, and auto-advance still steps over it.
-    @Test func `a withheld track has its name and no files`() throws {
-        let track = ProtobufWriter.message {
-            $0.string(field: 2, "Girlfriend (feat. Dâm-Funk)")
-            $0.varint(field: 7, 402_146) // sint32 201073
-            $0.message(field: 11) { $0.string(field: 2, "") } // restriction
-        }
-
-        let metadata = try #require(Self.parse(track))
-
-        #expect(metadata.name == "Girlfriend (feat. Dâm-Funk)")
-        #expect(metadata.files.isEmpty)
-    }
-
-    @Test func `a relinked track's files come from its alternative`() throws {
-        let track = ProtobufWriter.message {
-            $0.string(field: 2, "Song")
-            $0.message(field: 13) { alternative in
-                Self.file(&alternative, id: 3, format: 0) // OGG_VORBIS_96
-            }
-        }
-
-        let metadata = try #require(Self.parse(track))
-
-        #expect(Self.ids(metadata.files) == [3])
-        #expect(metadata.files.map(\.format) == [.oggVorbis96])
-        #expect(metadata.name == "Song")
-    }
-
-    /// `Track.duration` is a `sint32`. The wire value here is the one a live `/metadata/4`
-    /// answer carried for "Pearls" on 2026-09-26, read raw as 403518 ms; the decoder counted
-    /// 8,897,582 frames of it at 44.1 kHz, which is 201.76 s. It is the same `Track` message
-    /// extended metadata wraps.
-    @Test func `the duration is read as the zigzag sint32 it is`() throws {
-        let track = ProtobufWriter.message { $0.varint(field: 7, 403_518) }
-
-        #expect(try #require(Self.parse(track)).durationMs == 201_759)
-    }
-
-    @Test func `own files win over the alternative's`() throws {
-        let track = ProtobufWriter.message {
-            Self.file(&$0, id: 1, format: 1)
-            $0.message(field: 13) { Self.file(&$0, id: 3, format: 0) }
-        }
-
-        #expect(try Self.ids(#require(Self.parse(track)).files) == [1])
-    }
-
-    @Test func `unnamed formats are dropped before falling back to the alternative`() throws {
-        let track = ProtobufWriter.message {
-            Self.file(&$0, id: 1, format: 16) // FLAC_FLAC, which AudioFormat does not name
-            $0.message(field: 13) { Self.file(&$0, id: 3, format: 0) }
-        }
-
-        #expect(try Self.ids(#require(Self.parse(track)).files) == [3])
-    }
-
-    /// Found in review. Dropped before the empty check, a track with nothing but such formats
-    /// read as having no files at all, which is how Spotify withholds a track, so auto-advance
-    /// skipped it and the bar called it unavailable.
-    @Test func `unnamed formats are kept when they are all there is`() throws {
-        let track = ProtobufWriter.message {
-            Self.file(&$0, id: 1, format: 16) // FLAC_FLAC
-        }
-
-        let files = try #require(Self.parse(track)).files
-
-        #expect(Self.ids(files) == [1])
-        #expect(files.map(\.format) == [.unknown])
-    }
-
-    @Test func `a file without an id is skipped`() throws {
-        let track = ProtobufWriter.message {
-            $0.message(field: 12) { $0.varint(field: 2, 1) }
-        }
-
-        #expect(try #require(Self.parse(track)).files.isEmpty)
-    }
-
-    @Test func `a context resolve answer names its context`() {
+    @Test func `a context resolve answer lists its tracks`() {
         // The shape measured for Liked Songs on 2026-09-30, cut to one track.
         let json = #"{"metadata":{"format_list_type":"liked-songs","context_description":"Lieblingssongs"},"pages":[{"tracks":[{"uri":"spotify:track:2vaVAZtZ6p2bC1gBrUwrPA","uid":"95942ae3715ec9d21e76"}]}]}"#
 
-        let report = SPClient.parseContextReport(Data(json.utf8))
+        let report = SpclientAPI.parseContextReport(Data(json.utf8))
 
-        #expect(report.metadata == ["format_list_type": "liked-songs", "context_description": "Lieblingssongs"])
         #expect(report.tracks == ["spotify:track:2vaVAZtZ6p2bC1gBrUwrPA"])
-        #expect(report.uids == ["95942ae3715ec9d21e76"])
-    }
-
-    /// An album's answer, as measured for "Cold Fact", has no uids.
-    @Test func `a context resolve answer without uids keeps a nil beside each track`() {
-        let json = #"{"pages":[{"tracks":[{"uri":"spotify:track:a"},{"uri":"spotify:track:b"}]}]}"#
-
-        #expect(SPClient.parseContextReport(Data(json.utf8)).uids == [nil, nil])
-    }
-
-    @Test func `a context resolve answer with an empty description names nothing`() {
-        let json = #"{"metadata":{"context_description":""},"pages":[{"tracks":[{"uri":"spotify:track:a"}]}]}"#
-
-        #expect(SPClient.parseContextReport(Data(json.utf8)).metadata.contextName == nil)
+        #expect(report.nextPageUrl == nil)
     }
 }

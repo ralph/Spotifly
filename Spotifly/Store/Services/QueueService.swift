@@ -2,9 +2,8 @@
 //  QueueService.swift
 //  Spotifly
 //
-//  Keeps the store holding metadata for every track the player's queue names, and the
-//  store and playback agreeing on which tracks will not play. The queue itself is the
-//  player's: `PlayerModel.queueEntries`.
+//  Keeps the store holding metadata for every track the player's queue names. The queue
+//  itself is the player's: `PlayerModel.queueEntries`.
 //
 
 import Foundation
@@ -16,11 +15,7 @@ final class QueueService {
     private let trackService: TrackService
     private let player: PlayerModel
     private let network: NetworkMonitor
-    /// Tells playback which tracks the lists said will not play; injected for tests.
-    private let setUnplayable: @MainActor (Set<String>) -> Void
     private var queueObservation: Task<Void, Never>?
-    private var withheldObservation: Task<Void, Never>?
-    private var unplayableObservation: Task<Void, Never>?
     private var networkObservation: Task<Void, Never>?
 
     /// Identifies this instance and the store it holds in the log. A session makes one, so a
@@ -37,7 +32,6 @@ final class QueueService {
         trackService: TrackService,
         player: PlayerModel = .shared,
         network: NetworkMonitor = .shared,
-        setUnplayable: @escaping @MainActor (Set<String>) -> Void = SpotifyPlayer.setUnplayable,
     ) {
         Self.instanceCount += 1
         tag = "[svc#\(Self.instanceCount) store:\(storeTag(store))]"
@@ -45,16 +39,12 @@ final class QueueService {
         self.trackService = trackService
         self.player = player
         self.network = network
-        self.setUnplayable = setUnplayable
     }
 
     /// The observations hold the service weakly, but would otherwise wait on what they watch
-    /// until its next change: the player and the network outlive a logout, and withheld tracks
-    /// can go unchanged until the app quits.
+    /// until its next change: the player and the network outlive a logout.
     isolated deinit {
         queueObservation?.cancel()
-        withheldObservation?.cancel()
-        unplayableObservation?.cancel()
         networkObservation?.cancel()
     }
 
@@ -76,28 +66,6 @@ final class QueueService {
                 let contextInfo = queue?.context.map { " context=\($0)," } ?? ""
                 log("Queue updated from the player:\(contextInfo) prev=\(rows.previousTracks.count), current=\(rows.currentTrack != nil ? 1 : 0), next=\(rows.nextTracks.count)")
                 hydrate()
-            }
-        }
-
-        // What playback found withheld, which no list said, is greyed. As it stands too, so the
-        // store of a new login starts from the player's set.
-        withheldObservation = Task { [weak self, player] in
-            for await uris in Observations({ player.withheld }) {
-                guard let self else { return }
-                if !uris.isEmpty {
-                    log("Playback found \(uris.count) withheld, greying them")
-                }
-                store.setWithheld(uris)
-            }
-        }
-
-        // And the other way: playback steps over what the lists said will not play. As it
-        // stands too, which tells a new login's player an empty set, so nothing of the previous
-        // account's is left. Here rather than in a window, which the store outlives.
-        unplayableObservation = Task { [weak self, store] in
-            for await uris in Observations({ store.unplayableTrackUris }) {
-                guard let self else { return }
-                setUnplayable(uris)
             }
         }
 

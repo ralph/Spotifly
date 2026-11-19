@@ -58,27 +58,22 @@ nonisolated enum KeychainManager {
         delete(key: keymasterTokensKey, service: keymasterService)
     }
 
-    // MARK: - Stored accesspoint login
+    // MARK: - Stored accesspoint login, which no longer exists
 
     private static let storedLoginService = "com.spotifly.librespot"
     private static let storedLoginKey = "stored_login"
 
-    /// The reusable login `APWelcome` hands out (`StoredCredentialsStore`). It was a file in the
-    /// App Sandbox container until the app left the sandbox, where any process of the user
-    /// could have read it.
-    static func saveStoredLogin(_ login: StoredLogin) throws {
-        try save(key: storedLoginKey, data: JSONEncoder().encode(login), service: storedLoginService)
-    }
+    /// Set once the stored login has been deleted, so the launch after does not ask again.
+    static let storedLoginClearedKey = "clearedStoredLogin"
 
-    static func loadStoredLogin() -> StoredLogin? {
-        guard let data = load(key: storedLoginKey, service: storedLoginService) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(StoredLogin.self, from: data)
-    }
-
-    static func clearStoredLogin() {
+    /// Deletes the reusable accesspoint login the built-in player kept, which nothing reads
+    /// since Soloist became the only player, and which is a live credential for the account.
+    /// Once, at launch (`SpotiflyApp.init`), beside `ContainerMigration`, which deletes the file
+    /// an older version kept it in: nothing writes it any more, so once is enough.
+    static func clearStoredLoginOnce(defaults: UserDefaults = .standard) {
+        guard !defaults.bool(forKey: storedLoginClearedKey) else { return }
         delete(key: storedLoginKey, service: storedLoginService)
+        defaults.set(true, forKey: storedLoginClearedKey)
     }
 
     // MARK: - Soloist key

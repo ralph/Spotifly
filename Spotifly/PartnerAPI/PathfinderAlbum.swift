@@ -44,8 +44,6 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable, PathfinderEntityUn
     struct TrackList: Decodable, Sendable {
         struct Item: Decodable, Sendable {
             let track: PathfinderAlbumTrack?
-            /// The row's uid, which Connect names the row by, as a handover does.
-            let uid: String?
         }
 
         let items: [Item]?
@@ -79,14 +77,6 @@ nonisolated struct PathfinderAlbumUnion: Decodable, Sendable, PathfinderEntityUn
 
     var tracks: [PathfinderAlbumTrack] {
         (tracksV2?.items ?? []).compactMap(\.track)
-    }
-
-    /// Each row's track and uid, in the album's order.
-    var rowUids: [(uri: String, uid: String)] {
-        (tracksV2?.items ?? []).compactMap { item in
-            guard let uri = item.track?.uri, let uid = item.uid else { return nil }
-            return (uri, uid)
-        }
     }
 }
 

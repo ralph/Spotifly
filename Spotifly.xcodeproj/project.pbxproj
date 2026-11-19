@@ -32,31 +32,6 @@
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		CAA7B2FF2F04363800E959B5 /* Exceptions for "Spotifly" folder in "Spotifly" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			additionalCompilerFlagsByRelativePath = {
-				Vendor/libogg/src/bitwise.c = "-Wno-shorten-64-to-32";
-				Vendor/libogg/src/framing.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/analysis.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/bitrate.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/block.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/codebook.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/envelope.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/floor0.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/floor1.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/info.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/lookup.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/lpc.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/lsp.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/mapping0.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/mdct.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/psy.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/registry.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/res0.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/sharedbook.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/smallft.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/synthesis.c = "-Wno-shorten-64-to-32";
-				Vendor/libvorbis/lib/vorbisfile.c = "-Wno-shorten-64-to-32 -Wno-unused-variable -Wno-strict-prototypes";
-				Vendor/libvorbis/lib/window.c = "-Wno-shorten-64-to-32";
-			};
 			membershipExceptions = (
 				Info.plist,
 			);
@@ -448,11 +423,6 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/config",
-				);
 				INFOPLIST_FILE = Spotifly/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -485,8 +455,6 @@
 					Security,
 					"-framework",
 					CoreFoundation,
-					"-framework",
-					AVFAudio,
 				);
 				"OTHER_LDFLAGS[sdk=macosx*]" = (
 					"-framework",
@@ -495,16 +463,6 @@
 					Security,
 					"-framework",
 					CoreFoundation,
-					"-framework",
-					AudioToolbox,
-					"-framework",
-					AudioUnit,
-					"-framework",
-					CoreAudio,
-					"-framework",
-					AVFoundation,
-					"-framework",
-					CoreMedia,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -515,7 +473,6 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
@@ -540,11 +497,6 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/config",
-				);
 				INFOPLIST_FILE = Spotifly/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -577,8 +529,6 @@
 					Security,
 					"-framework",
 					CoreFoundation,
-					"-framework",
-					AVFAudio,
 				);
 				"OTHER_LDFLAGS[sdk=macosx*]" = (
 					"-framework",
@@ -587,16 +537,6 @@
 					Security,
 					"-framework",
 					CoreFoundation,
-					"-framework",
-					AudioToolbox,
-					"-framework",
-					AudioUnit,
-					"-framework",
-					CoreAudio,
-					"-framework",
-					AVFoundation,
-					"-framework",
-					CoreMedia,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -607,7 +547,6 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
@@ -626,11 +565,6 @@
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 89S4HZY343;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/config",
-				);
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.4.0;
@@ -641,7 +575,6 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
@@ -659,11 +592,6 @@
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 89S4HZY343;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/config",
-				);
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.4.0;
@@ -674,7 +602,6 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
@@ -691,11 +618,6 @@
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 89S4HZY343;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/config",
-				);
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.4.0;
@@ -706,7 +628,6 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
@@ -723,11 +644,6 @@
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 89S4HZY343;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/Spotifly/Vendor/libogg/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/libvorbis/include",
-					"$(PROJECT_DIR)/Spotifly/Vendor/config",
-				);
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.4.0;
@@ -738,7 +654,6 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/Spotifly/Vendor";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";

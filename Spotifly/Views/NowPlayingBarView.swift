@@ -311,7 +311,7 @@ struct NowPlayingBarView: View {
         .help(mode == .off && !playbackViewModel.canRepeat ? "repeat.unavailable" : repeatName(mode))
     }
 
-    private func repeatName(_ mode: PlaybackQueue.RepeatMode) -> LocalizedStringKey {
+    private func repeatName(_ mode: RepeatMode) -> LocalizedStringKey {
         switch mode {
         case .off: "repeat.off"
         case .context: "repeat.context"
@@ -477,10 +477,11 @@ private struct TrackProgress<Info: View>: View {
 
 // MARK: - Volume
 
-/// The icon and a 72 pt slider: what `PlaybackViewModel.sliderVolume` shows, this Mac's or the
-/// active device's. A device that controls its own volume greys it, and says so as the tooltip:
-/// a greyed-out slider says "not now", not that the device is the reason. A view of its own, so
-/// a drag or a device's report redraws this alone and not the bar.
+/// The icon and a 72 pt slider: what `PlaybackViewModel.sliderVolume` shows, the active device's
+/// volume. With no device active it is greyed. A device that controls its own volume greys it
+/// too, and says so as the tooltip: a greyed-out slider says "not now", not that the device is
+/// the reason. A view of its own, so a drag or a device's report redraws this alone and not the
+/// bar.
 private struct VolumeControl: View {
     @Environment(PlaybackViewModel.self) private var playbackViewModel
     @Environment(PlayerModel.self) private var player
@@ -513,10 +514,10 @@ private struct VolumeControl: View {
         .help(helpText(refused: refused))
     }
 
-    /// Why the slider is greyed, if it is.
+    /// Why the slider is greyed, if a device is the reason.
     private func helpText(refused: Bool) -> Text {
-        if refused {
-            Text("volume.device_controls_itself \(player.activeDevice?.name ?? "")")
+        if refused, let device = player.activeDevice {
+            Text("volume.device_controls_itself \(device.name)")
         } else {
             Text("volume.title")
         }

@@ -2,8 +2,8 @@
 //  Protobuf.swift
 //  Spotifly
 //
-//  The protobuf wire format, for every message the app speaks: the accesspoint
-//  handshake and login, connect-state, spclient metadata, and the client token.
+//  The protobuf wire format, for every message the app speaks: connect-state and
+//  the client token.
 //
 
 import Foundation

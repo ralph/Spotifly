@@ -27,12 +27,10 @@ final class PlaybackViewModel {
     /// the old account's service and store alive in this process-wide model.
     private weak var trackService: TrackService?
 
-    /// Set when a play request arrived with nowhere to serve it: no local player and no
-    /// active remote device. The view presents the Auth / Cancel alert on this.
-    var needsStreamingAuthorization = false
-    /// Raised by the first play this Mac cannot start because the account is not Premium,
-    /// for the notice that offers Logout.
-    var showsPremiumNotice = false
+    /// Set when a play request arrived with nowhere to serve it: Soloist, which plays for this
+    /// Mac, is not set up, and no other device is active. The view presents the alert that
+    /// opens Settings on this.
+    var needsSoloist = false
 
     var isLoading = false
 
@@ -54,14 +52,15 @@ final class PlaybackViewModel {
         var trackUri: String
         /// `trackUri`'s id, parsed once with the report rather than on each read.
         var trackId: String?
-        /// Playing and not paused, for this Mac's player and for a device it mirrors alike.
+        /// Whether the active device plays, as the cluster reports it; Soloist is one like any
+        /// other.
         var isPlaying: Bool
-        /// Zero until the stream reports this track's length, and never the previous track's:
+        /// Zero until the cluster reports this track's length, and never the previous track's:
         /// a report that names none keeps the one this track had, or none on a new track.
         /// `clampedToTrack` and `positionAnchor(forPosition:takenAt:)` rely on it.
         var durationMs: UInt32
         var shuffle: Bool
-        var repeatMode: PlaybackQueue.RepeatMode
+        var repeatMode: RepeatMode
         /// See `PlaybackState.canSkipNext`.
         var canSkipNext: Bool
         /// See `PlaybackState.canShuffle`.
@@ -114,71 +113,48 @@ final class PlaybackViewModel {
     /// Whether the error's five seconds ran out while it was held.
     private var errorMessageExpired = false
 
-    /// Length of the current track, as the stream reports it; see `ShownPlayback.durationMs`.
+    /// Length of the current track, as the cluster reports it; see `ShownPlayback.durationMs`.
     /// The position that goes with it is derived from the anchor rather than stored alongside;
     /// see `interpolatedPositionMs`.
     private var trackDurationMs: UInt32 {
         shown?.durationMs ?? 0
     }
 
-    /// This Mac's volume (0–1), and only this Mac's: what its output plays at, what it
-    /// registers at on Spotify Connect, and what is saved. A slider move made for another
-    /// device does not touch it (`setVolumeFromSlider`).
-    var volume: Double = 0.5 {
-        didSet {
-            // Apply the output gain immediately (not debounced) so local volume
-            // changes are audible at once instead of after the render buffer drains.
-            SpotifyPlayer.setOutputVolume(volume)
-            // Not sent back when it came from the client (`handleVolumeChange`).
-            guard !isSettingVolumeLocally else { return }
-            // Debounced on to the client, and saved there, so a drag is one request and one
-            // write rather than one a frame.
-            volumeSubject.send(volume)
-        }
-    }
-
-    /// What the bar's slider shows: the active remote device's volume while another device
-    /// plays, this Mac's otherwise.
+    /// What the bar's slider shows: the active device's volume, Soloist's while it plays for
+    /// this Mac, which keeps its own. Nothing while no device is active.
     ///
     /// Read from the player model, not kept: a copy kept up by the window's `onChange`s went
     /// stale in the mini player, which has none, and showed one device's volume while moving
     /// the other's. A drag shows its own value until the device reports a new volume.
     var sliderVolume: Double {
-        guard let deviceId = player.activeRemoteDeviceId else { return volume }
+        guard let deviceId = player.activeDeviceId else { return 0 }
         let reported = player.activeDevice?.volumePercent
-        if let dragged = draggedRemoteVolume, dragged.deviceId == deviceId,
+        if let dragged = draggedVolume, dragged.deviceId == deviceId,
            dragged.reportedPercent == reported
         {
             return dragged.volume
         }
         // Unknown only while the device list has not caught up with the active id.
-        return reported.map { Double($0) / 100 } ?? volume
+        return reported.map { Double($0) / 100 } ?? 0
     }
 
-    /// Whether the device the slider moves refuses volume changes. Only ever another device:
-    /// this Mac's volume is the app's own. An iPhone says so, as iOS will not let one app set
-    /// system volume for another; the app used to find out from the
-    /// `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` its command got back, after the user had dragged.
+    /// Whether the slider moves nothing: no device is active, or the active one refuses volume
+    /// changes. An iPhone says so, as iOS will not let one app set system volume for another;
+    /// the app used to find out from the `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` its command got
+    /// back, after the user had dragged.
     var sliderRefused: Bool {
-        player.activeRemoteDeviceId != nil && player.activeDevice?.disableVolume == true
+        player.activeDevice?.disableVolume ?? true
     }
 
-    /// Moves what the slider shows: the active remote device's volume while another device
-    /// plays, this Mac's otherwise.
-    ///
-    /// Both used to be written: `volume` followed a remote device's slider too, so this Mac's
-    /// output gain did, and taking playback back here had to restore it from what was saved.
+    /// Moves the active device's volume, which is what the slider shows.
     func setVolumeFromSlider(_ newVolume: Double) {
-        guard let deviceId = player.activeRemoteDeviceId else {
-            volume = newVolume
-            return
-        }
-        draggedRemoteVolume = DraggedVolume(
+        guard let deviceId = player.activeDeviceId, !sliderRefused else { return }
+        draggedVolume = DraggedVolume(
             deviceId: deviceId,
             volume: newVolume,
             reportedPercent: player.activeDevice?.volumePercent,
         )
-        remoteVolumeSubject.send(newVolume)
+        volumeSubject.send(newVolume)
     }
 
     /// Moves what the slider shows by `delta`, held to 0–1, as ⌘↑ and ⌘↓ do. A step at either
@@ -189,7 +165,7 @@ final class PlaybackViewModel {
         setVolumeFromSlider(stepped)
     }
 
-    /// A drag of another device's volume, which the slider shows ahead of the device's report.
+    /// A drag of the active device's volume, which the slider shows ahead of the device's report.
     private struct DraggedVolume {
         let deviceId: String
         let volume: Double
@@ -197,67 +173,35 @@ final class PlaybackViewModel {
         let reportedPercent: Int?
     }
 
-    private var draggedRemoteVolume: DraggedVolume?
+    private var draggedVolume: DraggedVolume?
 
     var isShuffleEnabled: Bool {
         shown?.shuffle ?? false
     }
 
-    var repeatMode: PlaybackQueue.RepeatMode {
+    var repeatMode: RepeatMode {
         shown?.repeatMode ?? .off
     }
 
-    /// Whether the client has completed at least one usable initialization.
-    /// This stays true through transient disconnects, because `LibrespotClient`
-    /// recovers from those itself.
-    private var isInitialized = false
+    /// Whether the client has completed at least one usable initialization: the session that
+    /// controls playback, wherever it plays. This stays true through transient disconnects,
+    /// because `LibrespotClient` recovers from those itself.
+    private(set) var isInitialized = false
 
-    /// Whether this Mac can play audio itself, and if not, what would change that.
-    nonisolated enum LocalPlayback: Equatable {
-        case ready
-        /// No usable session. Authorizing streaming is the fix.
-        case needsAuthorization
-        /// Spotify named the account other than Premium at login, or refused the login for
-        /// want of it. Nothing in the app fixes that; the library, search and other devices'
-        /// playback work as ever.
-        case needsPremium
-    }
-
-    /// Anything asking "is this Mac a playback device" wants this.
-    ///
-    /// Cached credentials existing on disk is not the same fact: they can be revoked or
-    /// stale, in which case initialization fails and the app must still offer to
-    /// re-authorize.
-    var localPlayback: LocalPlayback {
-        if player.connection?.streams == false {
-            return .needsPremium
-        }
-        return isInitialized ? .ready : .needsAuthorization
-    }
-
-    /// Whether this launch has raised the notice already.
-    private var hasShownPremiumNotice = false
-
-    /// Whether the session is up, and with it the cluster that reports another device's
-    /// playback.
+    /// Whether the session is up, and with it the cluster that reports the playback shown.
     private var isConnectionReady = false
 
-    /// Whether the displayed position runs on. A local track plays on while the session
-    /// reconnects, from the pipeline's memory; another device's position arrives over the
-    /// session, and holds while it is down.
+    /// Whether the displayed position runs on. It arrives over the session, from whichever
+    /// device plays, and holds while the session is down.
     private var positionRuns: Bool {
-        isPlaying && (isConnectionReady || SpotifyPlayer.isActiveDevice)
+        isPlaying && isConnectionReady
     }
 
     private var lastAlbumArtURL: String?
-    /// Flag to prevent feedback loop when we set volume locally
-    private var isSettingVolumeLocally = false
-    /// This Mac's volume changes, debounced on their way to the client
+    /// The active device's volume changes, debounced on their way to it
     private let volumeSubject = PassthroughSubject<Double, Never>()
-    /// The active remote device's, debounced on their way to it
-    private let remoteVolumeSubject = PassthroughSubject<Double, Never>()
-    /// Subscriptions for the two debounced volumes
-    private var volumeDebounceSubscriptions: Set<AnyCancellable> = []
+    /// Subscription for the debounced volume
+    private var volumeSubscription: AnyCancellable?
     /// Subject for debouncing seek requests
     private let seekSubject = PassthroughSubject<UInt32, Never>()
     /// Subscription for debounced seek operations
@@ -284,21 +228,16 @@ final class PlaybackViewModel {
 
     private init() {
         observePlayer()
-        setupVolumeDebounceSubscription()
+        setupVolumeSubscription()
         setupSeekSubscription()
         setupRemoteCommandCenter()
         observeSystemSleep()
-
-        volume = Self.savedVolume
 
         // Set initial Now Playing info to claim media controls
         var initialInfo: [String: Any] = [:]
         initialInfo[MPMediaItemPropertyTitle] = Self.unresolvedTrackTitle
         initialInfo[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = initialInfo
-
-        // Start position update timer
-        startPositionTimer()
     }
 
     /// Tears down and rebuilds the player even if it is already initialized.
@@ -308,10 +247,8 @@ final class PlaybackViewModel {
         await runInitialization(force: true)
     }
 
-    /// Initializes the player unless it is already up, or Spotify refused it for want of
-    /// Premium, as it would again. Reconnect in Speakers still tries.
+    /// Initializes the player unless it is already up.
     func initializeIfNeeded() async {
-        guard localPlayback != .needsPremium else { return }
         await runInitialization(force: false)
     }
 
@@ -328,11 +265,10 @@ final class PlaybackViewModel {
     /// clearing the auth state, so no login can start a rebuild until this has returned.
     func shutdownForLogout() async {
         // Invalidate an initialization in flight without waiting for it and without
-        // cancelling it. Waiting would hang the logout behind a stalled network setup;
-        // cancelling would be worse than useless, because `waitUntilReady` swallows it and
-        // would then spin on the main actor until its timeout. The run is left in place so a
-        // replacement login still serializes behind it — it just no longer owns the outcome,
-        // and tears down whatever it built once it notices the generation moved.
+        // cancelling it. Waiting would hang the logout behind a stalled network setup. The run
+        // is left in place so a replacement login still serializes behind it — it just no
+        // longer owns the outcome, and tears down whatever it built once it notices the
+        // generation moved.
         if let existing = logoutTask {
             await existing.value
             return
@@ -341,7 +277,6 @@ final class PlaybackViewModel {
         let task = Task { @MainActor in
             lifecycleGeneration &+= 1
             isInitialized = false
-            hasShownPremiumNotice = false
             isLoggingOut = true
             defer { isLoggingOut = false }
 
@@ -398,9 +333,6 @@ final class PlaybackViewModel {
         // back on Spotify Connect — and the lifecycle check inside `performInitialization`
         // would not catch it, because by then the bumped generation is the current one.
         guard generationBeforeWaiting == lifecycleGeneration, force || !isInitialized else { return }
-        // A run waited for that Spotify refused for want of Premium would be refused again;
-        // Reconnect in Speakers, which forces, still tries.
-        guard force || localPlayback != .needsPremium else { return }
 
         let task = Task { @MainActor in
             await performInitialization()
@@ -425,24 +357,18 @@ final class PlaybackViewModel {
         clearPlaybackState()
         let generation = lifecycleGeneration
         do {
-            try await SpotifyPlayer.initialize(volume: volume)
+            try await SpotifyPlayer.initialize()
 
-            // Readiness is the authoritative condition, not "initialize() returned". The
-            // old code set isInitialized as soon as `initialize()` returned and then polled
-            // Spirc while ignoring the timeout, so Swift could permanently believe the
-            // player was up while every Connect command failed — and initializeIfNeeded
-            // would then refuse to try again. Leaving the flag false on timeout means the
-            // next caller retries.
-            if await waitUntilReady() {
-                isInitialized = true
+            // The client publishes the connected session before it returns, so this reads
+            // what it built. A session that dropped since leaves the flag false, so the next
+            // caller retries, and the client's recovery is adopted if it gets there first
+            // (`adoptConnectedSession`).
+            isInitialized = LibrespotClient.shared.currentConnectionState?.sessionConnected == true
+            if isInitialized {
                 errorMessage = nil
             } else {
-                debugLog("PlaybackViewModel", "Player did not become ready within \(Self.readinessTimeout)")
-                errorMessage = String(localized: "error.player_not_ready")
+                debugLog("PlaybackViewModel", "Session dropped before initialization returned")
             }
-        } catch LibrespotError.premiumRequired {
-            // Said when a play is aimed here, as for a free account that logged in; the
-            // client published it.
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -468,7 +394,7 @@ final class PlaybackViewModel {
     /// Forgets after the teardown, whose last report has no playback: a report still on its
     /// way would otherwise put the track back, and one without playback keeps it.
     private func endSession() async {
-        await SpotifyPlayer.shutdownAndCleanup()
+        await LibrespotClient.shared.shutdownAndCleanup()
         clearPlaybackState()
     }
 
@@ -482,95 +408,42 @@ final class PlaybackViewModel {
         anchorPosition(0)
     }
 
-    /// How long to wait for the player to become usable after initialization.
-    private static let readinessTimeout: Duration = .seconds(5)
-
-    /// Polls until the client reports a connected session, or the timeout expires.
-    private func waitUntilReady() async -> Bool {
-        let deadline = ContinuousClock.now + Self.readinessTimeout
-        while ContinuousClock.now < deadline {
-            if SpotifyPlayer.isSessionConnected {
-                return true
-            }
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        return SpotifyPlayer.isSessionConnected
-    }
-
-    /// Where a play request should go.
-    enum PlaybackTarget: Equatable {
-        case local
-        case remote(deviceId: String)
-        case needsAuthorization
-        case needsPremium
-        /// Soloist is this Mac's player, and it is not running or not paired yet.
-        case soloistNotReady
-    }
-
-    /// Soloist's part in where to play (`SoloistEngine`).
-    enum SoloistPlayer: Equatable {
-        case notChosen
-        case ready(deviceId: String)
-        case notReady
-    }
-
-    /// Decides where to play.
+    /// The device a play goes to, or nil after saying why there is none.
     ///
-    /// Local wins when it exists; otherwise an active remote device serves the request over
-    /// connect-state. Only when neither exists is there anything to tell the user —
-    /// nagging about local streaming while a phone is playing would be noise — and what
-    /// depends on why this Mac cannot play.
+    /// Soloist plays for this Mac, so a ready Soloist takes every play, even while a phone is
+    /// active. Until it is ready, an active device serves the request, so a phone still plays
+    /// while Soloist starts. Only when neither exists is there anything to tell the user, and
+    /// what depends on whether Soloist is set up at all: the bar says it is not ready yet, or
+    /// the alert that opens Settings comes up.
     ///
-    /// Soloist, once chosen, is this Mac's player and takes local's place: plays go to it over
-    /// connect-state, active or not. While it is not ready, saying so is the answer; the
-    /// built-in player is not used behind its back.
-    nonisolated static func playbackTarget(
-        local: LocalPlayback,
+    /// The cluster is the only source of the active device, and it needs the dealer socket the
+    /// session holds: with no session there are no devices, and a play has nowhere to go but a
+    /// ready Soloist, which needs the session too, to send from (`commandSource`).
+    func playbackDevice(
         activeDeviceId: String?,
-        soloist: SoloistPlayer = .notChosen,
-    ) -> PlaybackTarget {
-        switch soloist {
-        case let .ready(deviceId):
-            return .remote(deviceId: deviceId)
-        case .notReady:
-            return .soloistNotReady
-        case .notChosen:
-            break
-        }
-        if local == .ready {
-            return .local
+        soloistIsSetUp: Bool = SoloistEngine.isSetUp,
+        soloistReadyId: String? = SoloistEngine.shared.readyDeviceId,
+    ) -> String? {
+        if soloistIsSetUp, let soloistReadyId {
+            return soloistReadyId
         }
         if let activeDeviceId {
-            return .remote(deviceId: activeDeviceId)
+            return activeDeviceId
         }
-        return local == .needsPremium ? .needsPremium : .needsAuthorization
+        if soloistIsSetUp {
+            errorMessage = String(localized: "soloist.not_ready")
+        } else {
+            needsSoloist = true
+        }
+        return nil
     }
 
-    /// Plays a track or a context. A row in a list passes its index and its track; see
-    /// `PlaybackQueue.start(in:index:uri:)`.
+    /// Plays a track or a context, wherever `playbackDevice` says. A row in a list passes its
+    /// index and its track, which the device starts at.
     func play(uriOrUrl: String, trackIndex: Int? = nil, startingAtUri: String? = nil) async {
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
-
-        let target = resolvedPlaybackTarget()
-        switch target {
-        case .local:
-            await startLocally {
-                try await SpotifyPlayer.play(uriOrUrl: uriOrUrl, trackIndex: trackIndex, startingAtUri: startingAtUri)
-            }
-
-        case let .remote(deviceId):
-            // One uri either way: the command's own context builder tells a track from a
-            // context, where the Web API needed the caller to split them into two fields.
-            await startRemotely(
-                .play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex, trackUri: startingAtUri),
-                deviceId: deviceId,
-            )
-
-        case .needsAuthorization, .needsPremium, .soloistNotReady:
-            explain(target)
-        }
+        // One uri either way: the command's own context builder tells a track from a
+        // context, where the Web API needed the caller to split them into two fields.
+        await start(.play(uri: Self.remoteStartUri(for: uriOrUrl), trackIndex: trackIndex, trackUri: startingAtUri))
     }
 
     func playTrack(trackId: String) async {
@@ -578,9 +451,8 @@ final class PlaybackViewModel {
     }
 
     /// Plays a context shuffled, as the pages' Zufällig buttons do: shuffle on, then the context
-    /// from a random one of `trackUris`. `PlaybackQueue.setContext` keeps shuffle across a new
-    /// context and shuffles around the starting row, so the two commands end the same in either
-    /// order, here and on another device.
+    /// from a random one of `trackUris`. A device keeps shuffle across a new context, so the two
+    /// commands end the same in either order.
     func playShuffled(uriOrUrl: String, trackUris: [String]) async {
         guard let index = trackUris.indices.randomElement() else { return }
         await play(uriOrUrl: uriOrUrl, trackIndex: index, startingAtUri: trackUris[index])
@@ -591,34 +463,13 @@ final class PlaybackViewModel {
     }
 
     func playTracks(_ trackUris: [String]) async {
-        if !isInitialized {
-            await initializeIfNeeded()
-        }
-
         // The one caller disables its button on an empty list, so this only guards `[0]`.
         guard !trackUris.isEmpty else { return }
-
-        let target = resolvedPlaybackTarget()
-        switch target {
-        case .local:
-            await startLocally {
-                try await SpotifyPlayer.playTracks(trackUris)
-            }
-
-        case let .remote(deviceId):
-            await startRemotely(
-                .play(trackUris: trackUris),
-                deviceId: deviceId,
-            )
-
-        case .needsAuthorization, .needsPremium, .soloistNotReady:
-            explain(target)
-        }
+        await start(.play(trackUris: trackUris))
     }
 
     /// Starts song radio: the track's station, a context like any other, played wherever `play`
-    /// plays. The built-in player resolves it as a context, and Spotify's Soloist took it over
-    /// connect-state on 2026-11-19.
+    /// plays. Spotify's Soloist took it over connect-state on 2026-11-19.
     func playRadio(trackUri: String) async {
         // A track Spotify will not play starts nothing, radio included, wherever it is
         // clicked: a search card, a row or its menu.
@@ -638,95 +489,20 @@ final class PlaybackViewModel {
     /// the normalization: `play(uriOrUrl:)` accepts an `open.spotify.com/track/ID` link as
     /// readily as a uri, and only the uri form can be played.
     static func remoteStartUri(for uriOrUrl: String) -> String {
-        if let id = trackId(from: uriOrUrl) {
-            return "spotify:track:\(id)"
-        }
-        return uriOrUrl
+        SpotifyAPI.parseTrackURI(uriOrUrl).map { "spotify:track:\($0)" } ?? uriOrUrl
     }
 
-    /// The track id in a Spotify track URI or link, if it is one.
-    private static func trackId(from uriOrUrl: String) -> String? {
-        if let range = uriOrUrl.range(of: "spotify:track:") {
-            return String(uriOrUrl[range.upperBound...])
-        }
-        guard let range = uriOrUrl.range(of: "open.spotify.com/track/") else { return nil }
-        let rest = uriOrUrl[range.upperBound...]
-        let id = rest.prefix { $0 != "?" && $0 != "/" && $0 != "#" }
-        return id.isEmpty ? nil : String(id)
-    }
-
-    /// Decides where to play.
-    ///
-    /// **There is no longer a device list to refresh before giving up.** This used to ask
-    /// `/me/player/devices` when it was about to answer "nowhere", because the device table is
-    /// pushed from the cluster and nothing pushes without a local session — so a phone that
-    /// started playing after launch was invisible until something asked.
-    ///
-    /// The cluster is now the only source, and it needs the dealer socket librespot holds, so
-    /// there is nothing left to ask. That narrows what this app can do for a user who declined
-    /// to enable playback on this Mac: with no session there are no devices, so playing to a
-    /// phone is no longer offered and `.needsAuthorization` is the honest answer. Enabling
-    /// playback is also the fix, which is what the alert already says.
-    private func resolvedPlaybackTarget() -> PlaybackTarget {
-        Self.playbackTarget(local: localPlayback, activeDeviceId: player.activeDeviceId, soloist: soloistPlayer)
-    }
-
-    private var soloistPlayer: SoloistPlayer {
-        guard SoloistEngine.isChosen else { return .notChosen }
-        return SoloistEngine.shared.readyDeviceId.map { .ready(deviceId: $0) } ?? .notReady
-    }
-
-    /// Says why a play found nowhere to go. Without a session, by offering to authorize.
-    /// For an account that may not play here, in the bar, and the first time also with the
-    /// notice, which offers Logout. The bar every time, because the mini player shows the
-    /// bar and not the notice.
-    private func explain(_ target: PlaybackTarget) {
-        switch target {
-        case .soloistNotReady:
-            errorMessage = String(localized: "soloist.not_ready")
-        case .needsAuthorization:
-            needsStreamingAuthorization = true
-        case .needsPremium:
-            errorMessage = LibrespotError.premiumRequired.localizedDescription
-            if !hasShownPremiumNotice {
-                hasShownPremiumNotice = true
-                showsPremiumNotice = true
-            }
-        case .local, .remote:
-            break
-        }
-    }
-
-    /// Runs a local Spirc start and folds its outcome into `isLoading` / `errorMessage`.
-    ///
-    /// `play` and `playTracks` differ only in the call they make, so the state-keeping around it
-    /// is written once. The remote half is `startRemotely` below.
-    private func startLocally(_ start: @MainActor () async throws -> Void) async {
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            try await start()
-            // The track, whether it plays and where are the player's reports, which anchor the
-            // position as they come: every load ends in one that says playing or paused, and
-            // the start returns between the first and that one (measured).
-        } catch is CancellationError {
-            // Another start overtook this one; it reports for itself.
-        } catch {
-            errorMessage = error.localizedDescription
+    /// Starts content on the device `playbackDevice` names, once the session is up. The
+    /// cluster reports what it plays, and the bar and the queue follow it through the player
+    /// model.
+    private func start(_ command: ConnectCommand) async {
+        if !isInitialized {
+            await initializeIfNeeded()
         }
 
-        isLoading = false
-    }
-
-    /// Starts content on a remote device. The cluster reports what it plays, and the bar and
-    /// the queue follow it through the player model.
-    private func startRemotely(
-        _ command: ConnectCommand,
-        deviceId: String,
-    ) async {
-        guard let from = player.ownDeviceId, !from.isEmpty else {
-            errorMessage = String(localized: "error.no_playback_device")
+        guard let deviceId = playbackDevice(activeDeviceId: player.activeDeviceId) else { return }
+        guard let from = commandSource else {
+            errorMessage = String(localized: "error.player_not_initialized")
             return
         }
 
@@ -754,26 +530,14 @@ final class PlaybackViewModel {
 
         errorMessage = nil
 
-        // Queued where playback is. While another device plays, the queue on screen is its
-        // queue, mirrored — adding to this Mac's own, which nothing was playing from, changed
-        // nothing anyone could see or hear. connect-state queues one track per command, so an
-        // album or playlist goes as its tracks, in order.
-        let issued = sendTransportCommand(
-            "addToQueue()",
-            local: { SpotifyPlayer.addToQueue(uri: uri) },
-            remote: { from, to in
-                for track in try await SpotifyPlayer.queueableTracks(for: uri) {
-                    try await SpclientAPI().sendCommand(.addToQueue(trackUri: track), from: from, to: to)
-                }
-            },
-        )
-
-        // With nobody active and no session there is nothing to command, but the local queue
-        // does not need one: it is what playback continues from once the session is back.
-        // Nothing continues from it for an account that does not stream here.
-        if !issued, localPlayback != .needsPremium {
-            SpotifyPlayer.addToQueue(uri: uri)
-        }
+        // Queued where playback is: the queue on screen is the active device's, mirrored.
+        // connect-state queues one track per command, so an album or playlist goes as its
+        // tracks, in order.
+        sendTransportCommand("addToQueue()", send: { from, to in
+            for track in try await SpclientAPI().queueableTracks(for: uri, deviceId: from) {
+                try await SpclientAPI().sendCommand(.addToQueue(trackUri: track), from: from, to: to)
+            }
+        })
     }
 
     // MARK: - Session
@@ -786,79 +550,88 @@ final class PlaybackViewModel {
         self.trackService = trackService
     }
 
-    // MARK: - Playback Control (via Spirc or connect-state)
+    // MARK: - Playback Control (via connect-state)
 
-    /// Issues a transport command locally when Spotifly is the active device, and through
-    /// connect-state otherwise. Returns whether the command was issued at all.
+    /// The session's own device, which every command is sent from; nil without a session, when
+    /// nothing can be sent.
     ///
-    /// While this device is active the command goes to the local player even mid-reconnect:
-    /// the pipeline plays on from memory and needs no session to pause, resume or seek, and
-    /// a track it has to fetch for Next or Previous waits for the session to come back.
+    /// The backend does not validate that segment — it derives the source from the session,
+    /// which is why librespot's transfer passes its own id for both sides — so this is an
+    /// identifier for their logs rather than a routing decision.
+    private var commandSource: String? {
+        guard let id = player.ownDeviceId, !id.isEmpty else { return nil }
+        return id
+    }
+
+    /// Sends a transport command over connect-state to the active device, or with nobody
+    /// active to Soloist, which plays for this Mac. Returns whether the command was issued at
+    /// all.
     ///
-    /// With nobody active and no session, nothing is issued, and the callers that move the
-    /// UI optimistically must not do so for a command that never happened, hence the
-    /// `Bool` rather than a plain dispatch. Both branches report a failure through
-    /// `errorMessage`; the resulting playback state is left to what the client publishes.
+    /// With nowhere to send it, nothing is issued, and the callers that move the UI
+    /// optimistically must not do so for a command that never happened, hence the `Bool`
+    /// rather than a plain dispatch. A failure is reported through `errorMessage`; the
+    /// resulting playback state is left to what the cluster reports.
     ///
-    /// `isActiveDevice` is two-valued and the cluster is not: Spotifly is active, another
-    /// device is, or **nobody** is. The third state is reached routinely — waking from sleep
-    /// gets there, because the session that comes back registers itself as inactive and the
-    /// cluster update that answers then names nobody at all.
+    /// The cluster names one active device or **nobody**, and nobody is reached routinely: a
+    /// paused device drops out after a while, and Soloist starts out inactive. With nobody
+    /// active, a command goes to Soloist, as a play does, and `idleSoloist` stands in for it
+    /// where Soloist must first take the state over: Play hands it the last playback, which
+    /// the bar mirrors, so it plays from there. While Soloist is not ready, or not set up, the
+    /// command is explained as a play is (`playbackDevice`).
     ///
     /// **That state used to be found out by asking**: the Web API answered 404 and the 404 was
     /// caught. connect-state addresses the target in the *url*, so with nobody active there is
     /// no url to build — the same condition, now a precondition instead of a round trip, and
     /// one fewer request on a path the user is waiting on.
     ///
-    /// The local fallback acts on what is loaded here. A paused pipeline still holds its track,
-    /// and plays, seeks or skips from where it stopped. With nothing loaded, the client takes
-    /// over the track another device left, which the bar mirrors, as the web player does with
-    /// nobody active (`LibrespotClient.takeOverMirror`): Play plays it, a seek loads it paused
-    /// where the seek went, Previous restarts it paused, or within its first 3 s plays the track
-    /// before it, and Next plays on from it. With nobody active there is no role to take from
-    /// another client. The playing state that follows is reported to Spirc as this device being
-    /// active, which takes the Connect role with it.
-    ///
     /// `promisesPosition` marks the commands whose caller moves the display ahead of
     /// playback — skips and seeks — and so have a promise to withdraw if they fail. Any
     /// other command leaves a promise standing, including one a seek still in flight made.
     @discardableResult
     private func sendTransportCommand(
-        _ name: String,
+        _ command: ConnectCommand,
         promisesPosition: Bool = false,
-        local: @escaping () async throws -> Void,
-        remote: @escaping (_ from: String, _ to: String) async throws -> Void,
+        idleSoloist: ((_ from: String, _ soloist: String) async throws -> Void)? = nil,
         declined: @escaping (SpclientError) -> Void = { _ in },
     ) -> Bool {
-        let command: () async throws -> Void
-        if SpotifyPlayer.isActiveDevice {
-            command = local
-        } else if let route = connectRoute() {
-            command = { try await remote(route.from, route.to) }
-        } else if SoloistEngine.isChosen {
-            // Nothing active, and Spotify's Soloist is this Mac's player: the command is its, as
-            // it would be the built-in player's otherwise, and nobody's while it is not ready.
-            guard case let .ready(deviceId) = soloistPlayer, let from = player.ownDeviceId else {
-                explain(.soloistNotReady)
-                return false
-            }
-            command = { try await remote(from, deviceId) }
-        } else if SpotifyPlayer.isSessionConnected {
-            // Nothing out there to command, so command ourselves. The playback state that
-            // follows is reported to Spirc as this device being active, so the Connect role
-            // comes back with it — which is what pressing a transport control with no device
-            // active asks for. Unless this Mac may not play for the account.
-            guard localPlayback != .needsPremium else {
-                debugLog("PlaybackViewModel", "\(name) had no active device, and this account does not stream here")
-                explain(.needsPremium)
-                return false
-            }
-            debugLog("PlaybackViewModel", "\(name) had no active device - running locally")
-            command = local
+        sendTransportCommand(
+            command.endpoint.rawValue,
+            promisesPosition: promisesPosition,
+            send: { try await SpclientAPI().sendCommand(command, from: $0, to: $1) },
+            idleSoloist: idleSoloist,
+            declined: declined,
+        )
+    }
+
+    /// `sendTransportCommand(_:)` for what is more than one command, as queueing an album is,
+    /// one per track. `name` names it in the log.
+    @discardableResult
+    private func sendTransportCommand(
+        _ name: String,
+        promisesPosition: Bool = false,
+        send remote: @escaping (_ from: String, _ to: String) async throws -> Void,
+        idleSoloist: ((_ from: String, _ soloist: String) async throws -> Void)? = nil,
+        declined: @escaping (SpclientError) -> Void = { _ in },
+    ) -> Bool {
+        let send: (_ from: String, _ to: String) async throws -> Void
+        let to: String
+        if let active = player.activeDeviceId, !active.isEmpty {
+            send = remote
+            to = active
         } else {
-            debugLog("PlaybackViewModel", "\(name) dropped - no active device and session not connected")
+            guard let soloist = playbackDevice(activeDeviceId: nil) else {
+                debugLog("PlaybackViewModel", "\(name) had no active device, and Soloist is not ready")
+                return false
+            }
+            debugLog("PlaybackViewModel", "\(name) had no active device - sending it to Soloist")
+            send = idleSoloist ?? remote
+            to = soloist
+        }
+        guard let from = commandSource else {
+            debugLog("PlaybackViewModel", "\(name) dropped - session not connected")
             return false
         }
+        let command = { try await send(from, to) }
 
         Task {
             // Where the caller moved the display ahead of playback for this command.
@@ -887,42 +660,36 @@ final class PlaybackViewModel {
 
     /// Puts the display back where playback is, after a command that moved it ahead failed.
     ///
-    /// Nothing reports back a command that did not happen, and another device's position is
-    /// not drift-checked, so the display stayed where the command had promised. It used to be
-    /// put back by chance, when the next cluster push re-sent the unchanged playback state;
-    /// the player model passes on only what changed. Left alone once a newer command has
-    /// moved the display, or a measurement has replaced the promise.
+    /// Nothing reports back a command that did not happen, so the display stayed where the
+    /// command had promised. It used to be put back by chance, when the next cluster push
+    /// re-sent the unchanged playback state; the player model passes on only what changed.
+    /// Left alone once a newer command has moved the display, or a measurement has replaced
+    /// the promise.
     private func withdraw(_ promise: Double?) {
         guard let promise, optimisticAnchorTime == promise else { return }
         debugLog("PlaybackViewModel", "Withdrawing the position a failed command promised")
         handlePlaybackStateUpdate(player.playback)
     }
 
-    /// Who to address a connect-state command as, and to. Nil when nothing is active.
-    ///
-    /// `from` is our own device id. The backend does not validate that segment — it derives the
-    /// source from the session, which is why librespot's transfer passes its own id for both
-    /// sides — so this is an identifier for their logs rather than a routing decision.
+    /// Who to address a volume command as, and to: the active device. Nil when nothing is
+    /// active.
     private func connectRoute() -> (from: String, to: String)? {
-        guard let to = player.activeDeviceId, !to.isEmpty,
-              let from = player.ownDeviceId, !from.isEmpty
-        else { return nil }
-
+        guard let to = player.activeDeviceId, !to.isEmpty, let from = commandSource else { return nil }
         return (from, to)
     }
 
     func next() {
-        skip("next()", local: { try await SpotifyPlayer.next() }, remote: .next)
+        skip(.next)
     }
 
     /// Previous track, or the start of this one, so the bar enables it whenever a track is loaded.
     ///
-    /// With no earlier track, restarting is what pressing it means, and the local player does
-    /// exactly that. A remote device does not: `skip_prev` comes back `403 no_prev_track`,
-    /// which left the button enabled and doing nothing while an error banner blamed Spotify.
-    /// So the refusal is answered with the seek it stood for.
+    /// With no earlier track, restarting is what pressing it means. A Connect device does not
+    /// do that: `skip_prev` comes back `403 no_prev_track`, which left the button enabled and
+    /// doing nothing while an error banner blamed Spotify. So the refusal is answered with the
+    /// seek it stood for.
     func previous() {
-        skip("previous()", local: { try await SpotifyPlayer.previous() }, remote: .previous) { [weak self] error in
+        skip(.previous) { [weak self] error in
             guard error.isNoPreviousTrack else { return }
             self?.seek(to: 0)
         }
@@ -946,35 +713,19 @@ final class PlaybackViewModel {
             if !isPlaying {
                 resume()
             }
-        case let .next(index, uri, uid):
-            skip(
-                "skip(toNext:)",
-                local: { try await SpotifyPlayer.skip(toNext: index, uri: uri, uid: uid) },
-                remote: .skipNext(to: uri, uid: uid),
-            )
-        case let .previous(index, uri, uid):
-            skip(
-                "skip(toPrevious:)",
-                local: { try await SpotifyPlayer.skip(toPrevious: index, uri: uri, uid: uid) },
-                remote: .play(uri: player.queue?.context ?? uri, trackUri: uri),
-            )
+        case let .next(_, uri, uid):
+            skip(.skipNext(to: uri, uid: uid))
+        case let .previous(_, uri, _):
+            skip(.play(uri: player.queue?.context ?? uri, trackUri: uri))
         }
     }
 
     /// A command that moves to another track, whose start the display shows at once.
     private func skip(
-        _ name: String,
-        local: @escaping () async throws -> Void,
-        remote command: ConnectCommand,
+        _ command: ConnectCommand,
         declined: @escaping (SpclientError) -> Void = { _ in },
     ) {
-        guard sendTransportCommand(
-            name,
-            promisesPosition: true,
-            local: local,
-            remote: { try await SpclientAPI().sendCommand(command, from: $0, to: $1) },
-            declined: declined,
-        ) else {
+        guard sendTransportCommand(command, promisesPosition: true, declined: declined) else {
             return
         }
 
@@ -987,32 +738,27 @@ final class PlaybackViewModel {
         anchorPosition(positionMs, optimistic: true)
         updateNowPlayingPosition()
 
-        // Debounce the actual seek operation to avoid flooding Spirc/API with requests
+        // Debounce the actual seek operation to avoid flooding the API with requests
         seekSubject.send(positionMs)
     }
 
     func pause() {
-        // The client publishes the paused state; nothing is asserted here.
-        sendTransportCommand(
-            "pause()",
-            local: { SpotifyPlayer.pause() },
-            remote: { try await SpclientAPI().sendCommand(.pause, from: $0, to: $1) },
-        )
+        // The cluster reports the paused state; nothing is asserted here.
+        sendTransportCommand(.pause)
     }
 
+    /// Resumes the active device, or with nobody active hands Soloist the last playback, which
+    /// the bar mirrors: a transfer moves that state to Soloist and plays it there.
     func resume() {
         guard sendTransportCommand(
-            "resume()",
-            local: { try await SpotifyPlayer.resume() },
-            remote: { try await SpclientAPI().sendCommand(.resume, from: $0, to: $1) },
+            .resume,
+            idleSoloist: { try await SpclientAPI().transferPlayback(from: $0, to: $1) },
         ) else {
             return
         }
 
-        // Deliberately no syncPositionAnchor() here: the position we already hold is correct
-        // from the paused state, since only the clock restarts. On the Rust path it was
-        // worse than redundant — that player reported 0 for a moment after a resume, so
-        // syncing would have thrown the position away.
+        // The position we already hold is correct from the paused state, since only the clock
+        // restarts.
         restartPositionClock()
         updateNowPlayingPosition()
     }
@@ -1022,23 +768,12 @@ final class PlaybackViewModel {
     }
 
     func setShuffle(_ enabled: Bool) {
-        let targetShuffle = enabled
-
-        sendTransportCommand(
-            "toggleShuffle()",
-            local: { SpotifyPlayer.setShuffle(targetShuffle) },
-            remote: { try await SpclientAPI().sendCommand(.shuffle(targetShuffle), from: $0, to: $1) },
-        )
+        sendTransportCommand(.shuffle(enabled))
     }
 
     /// Steps repeat on to its next mode; see `RepeatMode.next`.
     func cycleRepeat() {
-        let target = repeatMode.next
-        sendTransportCommand(
-            "cycleRepeat()",
-            local: { SpotifyPlayer.setRepeat(target) },
-            remote: { try await SpclientAPI().sendCommand(.repeatMode(target), from: $0, to: $1) },
-        )
+        sendTransportCommand(.repeatMode(repeatMode.next))
     }
 
     /// Whether Next goes anywhere; see `PlaybackState.canSkipNext`.
@@ -1168,14 +903,14 @@ final class PlaybackViewModel {
     private func systemWillSleep() {
         systemWillSleepAt = Date()
         debugLog("PlaybackViewModel", "System will sleep, disconnecting from Spotify")
-        SpotifyPlayer.disconnect()
+        Task { await LibrespotClient.shared.disconnect() }
     }
 
-    /// Reconnects rather than rebuilds; see `SpotifyPlayer.forceReconnect`. A rebuild that then
+    /// Reconnects rather than rebuilds; see `LibrespotClient.forceReconnectSync`. A rebuild that then
     /// failed would also leave nothing retrying.
     private func systemDidWake() {
         systemWillSleepAt = nil
-        switch SpotifyPlayer.forceReconnect() {
+        switch LibrespotClient.shared.forceReconnectSync() {
         case .started, .alreadyRecovering:
             debugLog("PlaybackViewModel", "System wake detected, reconnect under way")
         case .noSession:
@@ -1212,7 +947,7 @@ final class PlaybackViewModel {
         return now.timeIntervalSince(willSleepAt) < sleepPauseWindow
     }
 
-    /// Title published while no logical track resolves.
+    /// Title published while no track resolves.
     ///
     /// The app claims the media controls at init by publishing a Now Playing entry, and
     /// that claim is only as good as the entry: removing the title outright leaves a
@@ -1220,8 +955,8 @@ final class PlaybackViewModel {
     /// intact between tracks, after logout, and while metadata is still loading.
     private static let unresolvedTrackTitle = "Spotifly"
 
-    /// The id of the track the bar shows: the *logical* track, whose store entry owns the
-    /// displayed metadata. The decoded audio item may be a relinked alternative with another id.
+    /// The id of the track the bar shows, as the cluster names it, whose store entry holds the
+    /// displayed metadata.
     var currentTrackId: String? {
         shown?.trackId
     }
@@ -1233,18 +968,18 @@ final class PlaybackViewModel {
     }
 
     /// The current track's length as the bar's scrubber and Control Center show it, or nil
-    /// while none is known; see `displayedDuration(streamMs:storedMs:)`.
+    /// while none is known; see `displayedDuration(reportedMs:storedMs:)`.
     var displayedDurationMs: UInt32? {
-        Self.displayedDuration(streamMs: trackDurationMs, storedMs: currentTrack?.durationMs)
+        Self.displayedDuration(reportedMs: trackDurationMs, storedMs: currentTrack?.durationMs)
     }
 
-    /// The stream's length, which is authoritative, or the store's until the stream has one: a
-    /// new track starts without it (`handlePlaybackStateUpdate`), and the store's bridges that
-    /// gap, so the first frames show a length. Nil while neither is known. The store is asked
-    /// only then, as the scrubber reads this on each tick.
-    nonisolated static func displayedDuration(streamMs: UInt32, storedMs: @autoclosure () -> Int?) -> UInt32? {
-        if streamMs > 0 {
-            return streamMs
+    /// The length the cluster reports, which is authoritative, or the store's until it reports
+    /// one: a new track can start without it (`handlePlaybackStateUpdate`), and the store's
+    /// bridges that gap, so the first frames show a length. Nil while neither is known. The
+    /// store is asked only then, as the scrubber reads this on each tick.
+    nonisolated static func displayedDuration(reportedMs: UInt32, storedMs: @autoclosure () -> Int?) -> UInt32? {
+        if reportedMs > 0 {
+            return reportedMs
         }
         guard let storedMs = storedMs(), let stored = playbackMilliseconds(Int64(storedMs)), stored > 0
         else { return nil }
@@ -1348,8 +1083,8 @@ final class PlaybackViewModel {
     /// No title, artist, or artwork processing. Call on: seek, play/pause, drift correction, and
     /// every playback state update.
     ///
-    /// Duration belongs here even though it is metadata: a new track starts without the stream
-    /// duration, so a path that only wrote elapsed time would leave
+    /// Duration belongs here even though it is metadata: a new track can start without a
+    /// reported duration, so a path that only wrote elapsed time would leave
     /// the previous track's duration standing against the new track's position.
     func updateNowPlayingPosition() {
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
@@ -1359,13 +1094,11 @@ final class PlaybackViewModel {
 
     // MARK: - Player State
 
-    /// Follows the connection, the playback state, the volume and the interruptions in the
-    /// player model. Each observation gives the value as it stands, then every change, on the
-    /// main actor.
+    /// Follows the connection and the playback state in the player model. Each observation
+    /// gives the value as it stands, then every change, on the main actor.
     ///
-    /// The playback state is how external control shows up: a phone pausing *this* device
-    /// sends a Connect command over the dealer, which pauses the pipeline, whose state
-    /// arrives here exactly as a local pause would.
+    /// The playback state is the cluster's, mirrored from whichever device plays, Soloist
+    /// included: a pause from a phone arrives here exactly as one sent from this Mac.
     private func observePlayer() {
         Task { [weak self, player] in
             for await _ in Observations({ player.connection }) {
@@ -1377,25 +1110,10 @@ final class PlaybackViewModel {
                 self?.handlePlaybackStateUpdate(state)
             }
         }
-        Task { [weak self, player] in
-            for await volume in Observations({ player.volume }) {
-                if let volume {
-                    self?.handleVolumeChange(volume)
-                }
-            }
-        }
-        Task { [weak self, player] in
-            for await interruption in Observations({ player.interruption }) {
-                if let interruption {
-                    self?.errorMessage = interruption.message
-                }
-            }
-        }
     }
 
     /// Takes a session the client brought up on its own as this model's, rather than
-    /// rebuilding it: a recovery after an explicit initialization failed. Reads the client
-    /// itself, since the snapshot that says it is up can still be on its way.
+    /// rebuilding it: a recovery after an explicit initialization failed.
     ///
     /// Do not clear `isInitialized` on a not-ready snapshot: a transient disconnect belongs
     /// to `LibrespotClient`'s auto-recovery, and clearing it would make the next user
@@ -1417,45 +1135,23 @@ final class PlaybackViewModel {
         errorMessage = nil
     }
 
-    /// Brings `isConnectionReady` in line with the client, freezing another device's position
-    /// when it drops.
-    ///
-    /// Reads the live flags rather than trusting the delivered snapshot, which may already
-    /// be stale by the time it arrives.
-    ///
-    /// Called on every connection change *and* once a second from the drift check.
-    /// The second caller is deliberate: display interpolation now depends on this flag, so
-    /// a single missed callback would leave the progress bar stopped during healthy
-    /// playback — a more visible failure than the drift this prevents. Re-reading the flags
-    /// on the timer makes that self-heal within a second, and routing both callers through
-    /// here means the timer can never flip the flag without also freezing the position.
+    /// Brings `isConnectionReady` in line with the player model's connection, freezing the
+    /// position when it drops. Called on every change of it, which the snapshot stream never
+    /// drops: a consumer that falls behind gets the newest snapshot, not none.
     private func syncConnectionReadiness() {
-        let isReady = SpotifyPlayer.isSessionConnected
+        let isReady = player.connection?.isConnected == true
         guard isReady != isConnectionReady else { return }
 
-        // Another device's position holds while the session is down.
-        if !isReady, !SpotifyPlayer.isActiveDevice {
+        // The position arrives over the session, so it holds while the session is down.
+        if !isReady {
             freezePositionClock()
             debugLog("PlaybackViewModel", "Connection not ready, position frozen at \(positionAnchorMs)ms")
         }
         isConnectionReady = isReady
     }
 
-    /// This Mac's logical Connect volume as the client published it: set here and echoed
-    /// back, or changed from another device. Moves the slider without sending it back.
-    private func handleVolumeChange(_ newVolume: Double) {
-        debugLog("PlaybackViewModel", "Volume published: \(newVolume)")
-        // The echo of a volume set here is no change.
-        guard newVolume != volume else { return }
-        // Set flag to prevent feedback loop
-        isSettingVolumeLocally = true
-        volume = newVolume
-        isSettingVolumeLocally = false
-        saveVolume()
-    }
-
     /// Subscribe to debounced seek requests
-    /// Debounces rapid seek events (e.g., slider scrubbing) to avoid flooding Spirc with requests
+    /// Debounces rapid seek events (e.g., slider scrubbing) to avoid flooding the API with requests
     private func setupSeekSubscription() {
         seekSubscription = seekSubject
             .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
@@ -1466,18 +1162,13 @@ final class PlaybackViewModel {
 
     /// Perform the actual seek operation (called after debouncing)
     private func performSeek(to positionMs: UInt32) {
-        let issued = sendTransportCommand(
-            "performSeek",
-            promisesPosition: true,
-            local: { try await SpotifyPlayer.seek(positionMs: positionMs) },
-            remote: { try await SpclientAPI().sendCommand(.seek(toMs: Int(positionMs)), from: $0, to: $1) },
-        )
+        let issued = sendTransportCommand(.seek(toMs: Int(positionMs)), promisesPosition: true)
 
         // seek(to:) already moved the anchor so scrubbing feels immediate. If the command
-        // could not be issued at all, re-sync from the real position instead of leaving the
-        // UI parked at a position playback never reached.
+        // could not be issued at all, go back to where the cluster says playback is instead of
+        // leaving the UI parked at a position playback never reached.
         if !issued {
-            syncPositionAnchor()
+            handlePlaybackStateUpdate(player.playback)
             updateNowPlayingPosition()
         }
     }
@@ -1485,8 +1176,7 @@ final class PlaybackViewModel {
     /// Handle a playback state published by the client.
     private func handlePlaybackStateUpdate(_ state: PlaybackState?) {
         guard let state else {
-            // Nothing plays here any more: a load failed, a context had nothing left to play,
-            // another device took over, or the session went. The bar keeps the track, and the
+            // Nothing is reported any more: the session went. The bar keeps the track, and the
             // clock stops where it had got to.
             if isPlaying {
                 freezePositionClock()
@@ -1498,11 +1188,11 @@ final class PlaybackViewModel {
 
         debugLog(
             "PlaybackViewModel",
-            "Playback state update: playing=\(state.isPlaying), paused=\(state.isPaused), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
+            "Playback state update: playing=\(state.isPlaying), position=\(state.positionMs)ms, duration=\(state.durationMs)ms, shuffle=\(state.shuffle), uri=\(state.trackUri)",
         )
 
-        // Every report names its track: the mirror skips a cluster's without one, and this
-        // Mac's come from its queue. Track metadata (name, artist, etc.) comes from the queue.
+        // Every report names its track: the mirror skips a cluster's without one. Track
+        // metadata (name, artist, etc.) comes from the store.
         let trackChanged = state.trackUri != currentTrackUri
         // Connect snapshots carry these as signed 64-bit integers, so do not let a malformed
         // one turn a narrowing conversion into a process trap.
@@ -1519,7 +1209,7 @@ final class PlaybackViewModel {
             canRepeat: state.canRepeat,
         )
 
-        // Sync position anchor on state changes. When monitoring a remote device,
+        // Sync position anchor on state changes. Every device that plays is a remote one, and
         // position_ms is the position at timestamp_ms, which can be minutes old.
         if let posMs = Self.playbackMilliseconds(state.positionMs) {
             let anchor = positionAnchor(forPosition: state.positionMs, takenAt: state.timestampMs)
@@ -1555,7 +1245,6 @@ final class PlaybackViewModel {
     // UI reads interpolatedPositionMs (computed)
     private var positionAnchorMs: UInt32 = 0
     private var positionAnchorTime: Double = PlaybackViewModel.positionClockNow()
-    private var driftCorrectionTask: Task<Void, Never>?
 
     /// Now, in seconds, on the clock that every anchor time is read from and compared with.
     ///
@@ -1565,16 +1254,6 @@ final class PlaybackViewModel {
     nonisolated static func positionClockNow() -> Double {
         Double(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000
     }
-
-    /// How far the display may disagree with the player before the disagreement means something.
-    private static let positionDisagreementMs: Int64 = 500
-
-    /// How long an optimistic anchor is given to be confirmed before it is treated as a
-    /// command that never happened. Long enough to cover the 150 ms seek debounce and the
-    /// round trip after it — measured at ~25 ms from the seek to the state that answered it,
-    /// on the Rust path — and it restarts on each drag update, so a long scrub extends it
-    /// rather than outliving it.
-    private static let optimisticAnchorGrace: Double = 1.0
 
     /// When the anchor was last written by a transport command rather than by a
     /// measurement, and so is a promise about where playback is *going*. Cleared by the
@@ -1594,8 +1273,8 @@ final class PlaybackViewModel {
     ///
     /// `optimistic` marks the anchors that transport commands write ahead of playback, to
     /// keep scrubbing and skipping responsive. Those are promises rather than
-    /// measurements, and `checkDriftAndSync` has to know the difference — so every other
-    /// caller, all of which anchor something measured, clears the mark by writing.
+    /// measurements, and `withdraw` has to know the difference — so every other caller, all
+    /// of which anchor something measured, clears the mark by writing.
     private func anchorPosition(
         _ positionMs: UInt32,
         at time: Double = PlaybackViewModel.positionClockNow(),
@@ -1611,8 +1290,8 @@ final class PlaybackViewModel {
     ///
     /// Resume is the only caller: it moves neither the position nor its truth, just the
     /// clock. Going through `anchorPosition` instead would re-assign the position to
-    /// itself and, worse, clear the optimistic mark — telling `checkDriftAndSync` that a
-    /// seek made while paused had been confirmed, when resuming confirms nothing.
+    /// itself and, worse, clear the optimistic mark — telling `withdraw` that a seek made
+    /// while paused had been confirmed, when resuming confirms nothing.
     private func restartPositionClock() {
         positionAnchorTime = Self.positionClockNow()
     }
@@ -1662,7 +1341,7 @@ final class PlaybackViewModel {
     /// the same snapshot before anchoring. This guard used to live only on the Web API path,
     /// but staleness is a property of Spotify's timestamp, not of the endpoint that carried
     /// it — cluster updates forward `player_state.timestamp` unchanged and can be minutes
-    /// old, while local callbacks stamp the current time and compensate by nothing.
+    /// old.
     private func positionAnchor(forPosition positionMs: Int64, takenAt timestampMs: Int64) -> PositionAnchor {
         let now = Self.positionClockNow()
         guard timestampMs > 0 else { return PositionAnchor(time: now, logSuffix: "") }
@@ -1692,98 +1371,6 @@ final class PlaybackViewModel {
         trackDurationMs > 0 ? min(positionMs, trackDurationMs) : positionMs
     }
 
-    /// Runs the drift check once a second for the lifetime of the view model.
-    ///
-    /// Once a second, not every frame: the UI interpolates its own position through
-    /// `TimelineView`, so this exists only to pull that clock back to the player's reality.
-    private func startPositionTimer() {
-        driftCorrectionTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled, let self else { return }
-                checkDriftAndSync()
-            }
-        }
-    }
-
-    /// Re-anchors at the local player's position, for a seek that could not be issued.
-    private func syncPositionAnchor() {
-        let playerPosition = SpotifyPlayer.positionMs
-        // Don't overwrite a valid position with 0: the player says 0 while nothing is loaded
-        // here, as after another device took playback.
-        if playerPosition == 0, positionAnchorMs > 0 {
-            debugLog("PlaybackViewModel", "syncPositionAnchor: skipping - playerPosition=0 but have valid anchor=\(positionAnchorMs)")
-            return
-        }
-        debugLog("PlaybackViewModel", "syncPositionAnchor: playerPosition=\(playerPosition), was positionAnchorMs=\(positionAnchorMs)")
-        anchorPosition(playerPosition)
-    }
-
-    /// Called every second to check for drift and sync state
-    private func checkDriftAndSync() {
-        // Readiness gates interpolation, so recover here from a callback that never arrived
-        // rather than leaving the progress bar stopped until the next one does.
-        syncConnectionReadiness()
-
-        // Check for significant drift from the player's position - only when active device
-        // Remote playback position is interpolated from cluster timestamp, not real-time.
-        // A local track plays on through a reconnect, so this runs while disconnected too.
-        guard isPlaying, SpotifyPlayer.isActiveDevice else { return }
-
-        // Compare even when the reported value did not change: a frozen value is precisely
-        // the signal that must pull a still-running Swift clock back to reality.
-        //
-        // The two directions are not the same measurement, so they do not share a
-        // threshold:
-        //
-        // - **Display ahead of the player** means our clock kept running while playback
-        //   stopped producing, which is the stall this check exists for. Half a second is
-        //   plenty.
-        // - **Display behind the player** is left alone. That gap used to be the render
-        //   buffer: the Rust path reported where the *decoder* was, always in front of what
-        //   was audible, and correcting to it jumped the bar forward into audio nobody had
-        //   heard yet — the fight with the Spirc position that made the bar jitter through a
-        //   context's first track. `AudioPipeline` reports the audible position now
-        //   (`AudioOutput.playedFrames`), so that buffer no longer sits between
-        //   the two. The direction is still not corrected, which has not been re-measured
-        //   against the new clock.
-        //
-        // The exception in both directions is an anchor a transport command wrote ahead of
-        // playback. That is a promise, not a measurement, and the two disagree by design
-        // until the command lands — so nothing can be judged inside the grace window. Past
-        // it, an optimistic anchor that no measurement has confirmed is one playback never
-        // carried out: `performSeek` rolls back a command it could not *issue*, and
-        // `withdraw` one that failed, but a command that returned having done nothing — a
-        // seek before there is a pipeline to reach — says so to nobody. Then either
-        // direction is evidence, because the display is somewhere playback never went.
-        let playerPosition = SpotifyPlayer.positionMs
-        let displayedPosition = interpolatedPositionMs
-        let displayedLead = Int64(displayedPosition) - Int64(playerPosition)
-
-        let unconfirmedFor = optimisticAnchorTime.map { Self.positionClockNow() - $0 }
-        let correct = switch unconfirmedFor {
-        case let .some(elapsed) where elapsed < Self.optimisticAnchorGrace: false
-        case .some: abs(displayedLead) > Self.positionDisagreementMs
-        case .none: displayedLead > Self.positionDisagreementMs
-        }
-
-        // One grace window, one verdict. A measurement clears the mark by arriving,
-        // but nothing guarantees one does: a rejected command produces no callback,
-        // and a command issued while paused or while a remote device held the floor is
-        // not judged here at all. Expiring the mark on the tick that judges it is what
-        // stops it outliving its command — otherwise it sits set for the session, and
-        // the buffer lead that turns up later reads as evidence of a lost seek.
-        if let unconfirmedFor, unconfirmedFor >= Self.optimisticAnchorGrace {
-            optimisticAnchorTime = nil
-        }
-
-        if correct {
-            debugLog("PlaybackViewModel", "Drift correction: \(displayedPosition) -> \(playerPosition)")
-            anchorPosition(playerPosition)
-            updateNowPlayingPosition()
-        }
-    }
-
     // MARK: - Favorite Management
 
     /// Toggles the current track's favorite status, for the now-playing bar's heart and the Like
@@ -1798,30 +1385,13 @@ final class PlaybackViewModel {
         }
     }
 
-    // MARK: - Volume Persistence
+    // MARK: - Volume
 
-    private func saveVolume() {
-        UserDefaults.standard.set(volume, forKey: "playbackVolume")
-    }
-
-    /// This Mac's volume as it was last saved, or half when it never was.
-    static var savedVolume: Double {
-        let saved = UserDefaults.standard.double(forKey: "playbackVolume")
-        return saved > 0 ? saved : 0.5
-    }
-
-    /// Debounces the slider, so a drag does not flood Spirc or spclient with requests.
-    private func setupVolumeDebounceSubscription() {
-        // This Mac's, whether it plays, waits or is not up yet: the client keeps it, reports
-        // it on Connect, and registers each session at it.
-        volumeSubject
-            .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
-            .sink { [weak self] newVolume in
-                SpotifyPlayer.setVolume(newVolume)
-                self?.saveVolume()
-            }
-            .store(in: &volumeDebounceSubscriptions)
-        remoteVolumeSubject
+    /// Debounces the slider on its way to the active device, so a drag does not flood
+    /// spclient with requests. The device keeps its own volume, Soloist included, and reports
+    /// it in the cluster.
+    private func setupVolumeSubscription() {
+        volumeSubscription = volumeSubject
             .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
             .sink { [weak self] newVolume in
                 guard let self, isInitialized, let route = connectRoute() else { return }
@@ -1834,6 +1404,5 @@ final class PlaybackViewModel {
                     )
                 }
             }
-            .store(in: &volumeDebounceSubscriptions)
     }
 }

@@ -10,9 +10,12 @@ Spotify client for macOS (and maybe later iPad and iOS).
 - **Target Platforms**: Latest Apple OSes only — macOS 27 is the deployment target (iOS and
   visionOS are listed at 27 too)
 - **UI Framework**: SwiftUI
-- **Playback and Spotify Connect**: Swift, in `Spotifly/SwiftLibrespot/`, ported from
-  librespot, which is where its type names come from. Ogg Vorbis decoding is the vendored C
-  libvorbis in `Spotifly/Vendor/`. `DEVELOPMENT.md` has the architecture.
+- **Playback and Spotify Connect**: Spotify's Soloist plays, run as a child process by
+  `Spotifly/Soloist/SoloistEngine.swift` and set up in Settings → Playback with a key from
+  Spotify's Soloist dashboard. Connect is Swift, in `Spotifly/SwiftLibrespot/`, ported from
+  librespot, which is where its type names come from: a hidden device that mirrors the
+  cluster and plays nothing. Plays and commands go over connect-state
+  (`PartnerAPI/SpclientAPI.swift`). `DEVELOPMENT.md` has the architecture.
 
 ## Development Guidelines
 
@@ -131,8 +134,8 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
 
 **PlayerModel** (`Store/PlayerModel.swift`)
 - What the UI shows of the player: the connection, the Connect devices and the active one,
-  the playback state, the queue with its context, the volume, and the last track playback
-  skipped or stopped at over an error (`PlaybackInterruption`)
+  and the playback state and the queue with its context, mirrored from the cluster for
+  whichever device plays, Soloist included
 - Fed by `LibrespotClient.snapshots`: one `PlayerSnapshot` per change, and a slow main thread
   gets the newest rather than a backlog. The client never waits for the UI
 - Views read it via `@Environment(PlayerModel.self)`. `QueueService` and `PlaybackViewModel`
@@ -142,7 +145,9 @@ The app uses a normalized state store pattern (similar to Pinia/Redux) for data 
   same `apply` as `queue`, and the store holds only the tracks' metadata, which `QueueService`
   asks for on every change of the queue and again when the network returns. No copy of the
   queue is kept anywhere else, so its rows and its context come from one snapshot
-- Commands still go through the static `SpotifyPlayer` facade
+- Plays and commands go over connect-state from `PlaybackViewModel`, to the active device or
+  to Soloist (`SpclientAPI`). `SpotifyPlayer` only starts the session for the account and
+  clears its credentials at logout
 
 **Entities** (`Store/Entities.swift`)
 - Unified data models: `Track`, `Album`, `Artist`, `Playlist`, `Device`
@@ -225,15 +230,16 @@ filtering on the module prefix:
 
 ```bash
 ./path/to/Spotifly.app/Contents/MacOS/Spotifly 2>&1 \
-  | grep -E 'SpircController|DealerConnection|LibrespotSession'
+  | grep -E 'SpircController|DealerConnection|LibrespotSession|Soloist'
 ```
 
 - `SpircController` — registration, PutState reasons, the cluster it is answered with
-- `DealerConnection` — the WebSocket: connection id, cluster pushes, remote commands, pings
-- `Accesspoint` — the TCP connection to Spotify: connect, handshake, login, audio keys
-- `LibrespotSession`, `LibrespotClient` — session lifecycle, recovery, command dispatch
-- `AudioPipeline`, `AudioOutput` — track loads, decoding, position, end of track; the player's
-  loader requests, seeks and stalls
+- `DealerConnection` — the WebSocket: connection id, cluster pushes, the requests it answers
+  without acting on, pings
+- `LibrespotSession`, `LibrespotClient` — session lifecycle, recovery, the playback mirrored
+  from the cluster
+- `PlaybackViewModel` — where each play and command goes: the active device or Soloist
+- `Soloist` — the download, the child process starting and exiting, and its own output
 
 ## Plans
 

@@ -2,7 +2,7 @@
 "app.name" = "Spotifly";
 
 /* Authentication */
-"auth.connect.description" = "Verbinde deinen Spotify-Account, um zu beginnen. Damit autorisierst du Spotifly im Browser und machst diesen Mac als Spotify-Connect-Gerät verfügbar.";
+"auth.connect.description" = "Verbinde deinen Spotify-Account, um zu beginnen. Damit autorisierst du Spotifly im Browser. Um auf diesem Mac abzuspielen, richte danach Soloist in den Einstellungen ein: Es macht diesen Mac zum Spotify-Connect-Gerät.";
 "auth.connect.button" = "Mit Spotify verbinden";
 "auth.loading" = "Lädt...";
 "auth.logout" = "Abmelden";
@@ -126,8 +126,6 @@
 "error.load_playlists" = "Laden der Playlists fehlgeschlagen";
 "error.load_albums" = "Laden der Alben fehlgeschlagen";
 "error.load_artists" = "Laden der Künstler fehlgeschlagen";
-"error.no_playback_device" = "Dieser Mac ist nicht mit Spotify verbunden und kann die Wiedergabe daher nicht anderswo starten";
-"error.player_not_ready" = "Der Player hat sich nicht rechtzeitig mit Spotify verbunden";
 "error.player_not_initialized" = "Der Player ist nicht mit Spotify verbunden";
 "error.album_not_found" = "Album wurde nicht gefunden. Vielleicht ist es in deinem Land nicht verfügbar.";
 "error.artist_not_found" = "Künstler wurde nicht gefunden.";
@@ -137,7 +135,6 @@
 "error.playlist_failed" = "Spotify konnte diese Playlist nicht laden.";
 "error.track_unavailable %@" = "Auf Spotify nicht verfügbar: „%@“";
 "error.track_unavailable_in_country %@" = "In deinem Land nicht verfügbar: „%@“";
-"playback.skipped_unavailable %@" = "Übersprungen, nicht verfügbar: „%@“";
 
 /* Empty States */
 "empty.select_item" = "Wähle ein Element aus der Seitenleiste";
@@ -230,9 +227,6 @@
 "preferences.shortcuts" = "Kurzbefehle";
 "preferences.shortcut.sidebar" = "Seitenleiste ein-/ausblenden";
 "preferences.shortcut.space" = "Leertaste";
-"preferences.streaming_quality" = "Streaming-Qualität";
-"preferences.gapless_playback" = "Lückenlose Wiedergabe";
-"preferences.restart_note" = "Änderungen werden bei Neustart der Wiedergabe wirksam.";
 
 /* Album Context Menu & Alerts */
 "album.remove.title" = "Aus Bibliothek entfernen";
@@ -275,7 +269,6 @@
 
 /* Connection Status */
 "connection.status" = "Status";
-"connection.reconnect_attempts" = "Wiederverbindungsversuche";
 "connection.device_id" = "Geräte-ID";
 "connection.reconnect" = "Neu verbinden";
 "connection.no_data" = "Keine Verbindungsdaten";
@@ -322,19 +315,7 @@
 // Die Autorisierung: Anmeldung auf dem Login-Screen, Wiedergabe-Freigabe überall sonst
 "auth.connect_cancel" = "Warte auf deinen Browser — abbrechen";
 "auth.connect_failed" = "Verbindung zu Spotify fehlgeschlagen. Bitte versuche es erneut.";
-"speakers.enable_this_mac" = "Diesen Mac aktivieren";
-"speakers.enable_this_mac_cancel" = "Autorisierung abbrechen";
-"playback.needs_authorization_title" = "Wiedergabe auf diesem Mac aktivieren?";
-"playback.needs_authorization_message" = "Es ist kein Gerät zum Abspielen verfügbar. Autorisiere das Streaming, um hier abzuspielen, oder starte die Wiedergabe zuerst auf einem anderen Gerät.";
-"playback.needs_authorization_authorize" = "Autorisieren";
-"playback.needs_premium" = "Wiedergabe auf diesem Mac nur mit Spotify Premium.";
-"playback.needs_premium_title" = "Wiedergabe auf diesem Mac nur mit Spotify Premium";
-"playback.needs_premium_message" = "Bibliothek, Suche und Playlists funktionieren wie gewohnt. Um auf diesem Mac Musik abzuspielen, melde dich ab und mit einem Premium-Konto wieder an.";
-"speakers.this_mac_needs_premium" = "Dieser Mac spielt nur für Premium-Konten";
-"common.ok" = "OK";
 "common.cancel" = "Abbrechen";
-"auth.enable_playback_failed_title" = "Dieser Mac wurde nicht aktiviert";
-"auth.enable_playback_wrong_account" = "Dieses Spotify-Konto ist nicht das, mit dem du angemeldet bist. Melde dich im Browser mit demselben Konto an und versuche es erneut.";
 "soloist.status" = "Status";
 "soloist.status.off" = "Aus";
 "soloist.status.installing" = "Wird von Spotify geladen …";
@@ -342,15 +323,19 @@
 "soloist.status.pairing" = "Wähle „Spotifly“ einmal in der Spotify-App auf deinem Handy, im selben Netzwerk.";
 "soloist.status.ready" = "Bereit";
 "soloist.status.playing" = "Spielt";
-"soloist.turn_off" = "Eingebauten Player verwenden";
 "soloist.key" = "Soloist-Key";
 "soloist.get_key" = "Key bei Spotify holen";
 "soloist.use" = "Laden und verwenden";
 "soloist.footer" = "Soloist ist Spotifys eigener Player. Spotifly lädt ihn von Spotify und startet ihn; er spielt über die Tonausgabe dieses Macs.";
 "soloist.not_ready" = "Soloist ist noch nicht bereit. Siehe Einstellungen → Wiedergabe.";
+"soloist.set_up_title" = "Soloist einrichten";
+"soloist.set_up_message" = "Dieser Mac spielt über Spotifys Soloist, den du einmal in den Einstellungen einrichtest. Bis dahin starte die Wiedergabe auf einem anderen Gerät.";
+"soloist.open_settings" = "Einstellungen öffnen";
+"soloist.change_key" = "Diesen Key verwenden";
+"speakers.set_up_soloist" = "Soloist einrichten, um auf diesem Mac zu spielen";
 "soloist.error.download %lld" = "Spotifys Download-Server antwortete mit %lld.";
 "soloist.error.unpack" = "Soloist ließ sich nicht entpacken oder starten.";
 "soloist.error.signature" = "Der Download ist nicht von Spotify signiert und wurde deshalb nicht gestartet.";
 "soloist.error.expired" = "Spotifys Soloist-Version ist abgelaufen. Versuche es später noch einmal.";
 "soloist.error.no_key" = "Gib deinen Soloist-Key ein.";
-"soloist.error.keeps_stopping" = "Soloist beendet sich immer wieder. Prüfe den Key und schalte Soloist aus und wieder ein.";
+"soloist.error.keeps_stopping" = "Soloist beendet sich immer wieder. Prüfe den Key und gib ihn erneut ein.";
