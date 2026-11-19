@@ -69,7 +69,7 @@ struct SleepPauseTests {
         #expect(PlaybackViewModel.isSleepPause(
             willSleepAt: willSleepAt,
             now: willSleepAt.addingTimeInterval(0.5),
-            isActiveDevice: false,
+            playsHere: false,
         ))
     }
 
@@ -77,7 +77,7 @@ struct SleepPauseTests {
         #expect(!PlaybackViewModel.isSleepPause(
             willSleepAt: willSleepAt,
             now: willSleepAt.addingTimeInterval(0.5),
-            isActiveDevice: true,
+            playsHere: true,
         ))
     }
 
@@ -86,12 +86,12 @@ struct SleepPauseTests {
         #expect(!PlaybackViewModel.isSleepPause(
             willSleepAt: willSleepAt,
             now: willSleepAt.addingTimeInterval(60),
-            isActiveDevice: false,
+            playsHere: false,
         ))
     }
 
     /// The wake clears the mark: a pause pressed just after a short sleep is the user's.
     @Test func `a pause after the wake goes through`() {
-        #expect(!PlaybackViewModel.isSleepPause(willSleepAt: nil, now: willSleepAt, isActiveDevice: false))
+        #expect(!PlaybackViewModel.isSleepPause(willSleepAt: nil, now: willSleepAt, playsHere: false))
     }
 }

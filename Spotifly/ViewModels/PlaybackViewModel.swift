@@ -906,7 +906,7 @@ final class PlaybackViewModel {
     /// takes it; the sleep stops that audio anyway.
     private func pauseFromMediaControls() {
         guard isPlaying else { return }
-        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), isActiveDevice: player.isPlayingHere) {
+        if Self.isSleepPause(willSleepAt: systemWillSleepAt, now: Date(), playsHere: player.isPlayingHere) {
             debugLog("PlaybackViewModel", "Pause ignored: the Mac is going to sleep, and another device plays")
             return
         }
@@ -915,8 +915,8 @@ final class PlaybackViewModel {
 
     /// Whether a pause is the sleep's: another device plays, and the system said it will sleep
     /// less than `sleepPauseWindow` ago and has not woken since.
-    nonisolated static func isSleepPause(willSleepAt: Date?, now: Date, isActiveDevice: Bool) -> Bool {
-        guard !isActiveDevice, let willSleepAt else { return false }
+    nonisolated static func isSleepPause(willSleepAt: Date?, now: Date, playsHere: Bool) -> Bool {
+        guard !playsHere, let willSleepAt else { return false }
         return now.timeIntervalSince(willSleepAt) < sleepPauseWindow
     }
 
