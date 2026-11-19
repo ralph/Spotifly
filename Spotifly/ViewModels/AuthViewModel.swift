@@ -47,6 +47,9 @@ final class AuthViewModel {
         let session = sessions.start()
         PlaybackViewModel.shared.attach(store: session.store, trackService: session.trackService)
         Task { await PlaybackViewModel.shared.initializeIfNeeded() }
+        // This Mac's player, if the user has set Soloist up: it plays for the signed-in account,
+        // so it starts with its session, and `logout()` makes it forget the account.
+        Task { await SoloistEngine.shared.start() }
     }
 
     /// Why the last grant did not take: on the login screen while signed out, and as an alert
@@ -228,6 +231,7 @@ final class AuthViewModel {
         errorMessage = nil
 
         await PlaybackViewModel.shared.shutdownForLogout()
+        await SoloistEngine.shared.forgetLogin()
         await SpotifyPlayer.clearStreamingCredentials()
         isSignedIn = false
     }

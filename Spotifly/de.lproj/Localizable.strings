@@ -310,6 +310,7 @@
 "profile.logout" = "Abmelden …";
 "profile.logout.title" = "Von Spotify abmelden?";
 "profile.logout.message" = "Du kannst dich jederzeit wieder anmelden.";
+"profile.logout.message_soloist" = "Du kannst dich jederzeit wieder anmelden. Soloist vergisst dein Konto: Danach wählst du ihn einmal in einer Spotify-App aus, wie beim ersten Mal.";
 
 // Die Autorisierung: Anmeldung auf dem Login-Screen, Wiedergabe-Freigabe überall sonst
 "auth.connect_cancel" = "Warte auf deinen Browser — abbrechen";
