@@ -18,14 +18,14 @@ import Foundation
 /// **These hashes are vendored, and they rot.** They are the SHA-256 of the query text
 /// Spotify's web client ships, so a new web client release eventually retires the old ones and
 /// the request starts failing (`PersistedQueryNotFound`). The live web player is the upstream to
-/// watch. As harvested on 2026-09-29, every value below matches
-/// `open.spotifycdn.com/cdn/build/web-player/web-player.dea0f59e.js` (the searches:
-/// `xpui-routes-search.36497941.js`), where each operation is constructed as
+/// watch. As harvested on 2026-11-19, every value below matches
+/// `open.spotifycdn.com/cdn/build/web-player/web-player.4644e692.js` (the searches:
+/// `xpui-routes-search.91186a55.js`), where each operation is constructed as
 /// `new n.l(name, "query", sha256Hash, null)` — grep that shape for the operation name. The
-/// exception is `queryArtistDiscographyAll`, which no loaded script names in that shape; its
-/// hash was read off the request the web player sends when an artist's discography opens. The
-/// first values came from libspot (`pathfinder/pfrequest/operations.go`) and
-/// `libspot-probe/harvest-hashes.sh`.
+/// exceptions are `queryArtistDiscographyAll` and `userTopContent`, which no loaded script names
+/// in that shape; their hashes were read off the requests the web player sends when an artist's
+/// discography and the listener's profile open. The first values came from libspot
+/// (`pathfinder/pfrequest/operations.go`) and `libspot-probe/harvest-hashes.sh`.
 ///
 /// A harvested hash is a *candidate* until the service answers it, and a retired one is not
 /// necessarily dead. On 2026-09-29 every hash this replaced was still accepted, so the refresh
@@ -35,6 +35,14 @@ import Foundation
 /// fields on albums, `meV2` beside `albumUnion`). The web client also sends variables this app
 /// does not (`includeAlbumPreReleases`, `includeEpisodeContentRatingsV2: true`, a smaller
 /// `limit`); none of them turned out to be required.
+///
+/// The refresh on 2026-11-19 changed six hashes (album, artist overview, playlist, the playlist
+/// and library mutations, home) and was checked the same way, from the web player's own session.
+/// The old ones were all still accepted. The reads answered with the same fields under both,
+/// and the new documents only add some: `mediaType` and audio associations on album tracks,
+/// `playlistAudioAttributes` (bpm, key) and `itemV3` on playlist items. The mutations were sent
+/// with no variables, so nothing was written; both hashes named the same required variables,
+/// which are the ones this app sends.
 nonisolated struct PathfinderOperation: Sendable, Equatable {
     let name: String
     let sha256Hash: String
@@ -74,7 +82,7 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     /// `PartnerAPIError.notFound`.
     static let getAlbum = PathfinderOperation(
         name: "getAlbum",
-        sha256Hash: "6a74b456cd1735c9193d9e8ec8cc5184cad7ce13572210315229db3975964361",
+        sha256Hash: "0b6ce3511e1b02e4a40fa95440f992acbe85080eb308af9194322d708fc1914f",
     )
 
     /// Who the artist is: name and images. Also carries a *sample* of the discography, which
@@ -83,7 +91,7 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     /// all".
     static let queryArtistOverview = PathfinderOperation(
         name: "queryArtistOverview",
-        sha256Hash: "9f8134ef565e78621f1e1793555bd6633c5ac144ae0f89604ed3ae3f80b3c8e6",
+        sha256Hash: "eafb1620d783ece118e72fbfede2b0064483e029d3c1aafafa1c2de0e25a89e7",
     )
 
     /// Every release by an artist, in one list, with no profile beside it.
@@ -113,7 +121,7 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     )
 
     private static let playlistQueryHash =
-        "243c0ba2736f16da721e3a227004bbcdb8df6c846f198bd478172e00aa1faf42"
+        "21ea11a6ac75a5f3e01fd365d29c18e0a4a8b7dc09f89bbb5d73910190c6acaf"
 
     /// The playlist mutations, which likewise share one hash and differ by name.
     ///
@@ -140,7 +148,7 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     )
 
     private static let playlistMutationHash =
-        "47b2a1234b17748d332dd0431534f22450e9ecbb3d5ddcdacbd83368636a0990"
+        "b907ad6b088d5bf7680fa81198996d58398c2d55dfcdf59fcc959e0be98a418a"
 
     /// The user's library — playlists, albums and followed artists — selected by `filters`.
     ///
@@ -175,7 +183,7 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
 
     /// Shared with pin/unpin, which this app does not use.
     private static let libraryMutationHash =
-        "1ad0d40b3c09660d818b9e770eb1e84745dfbe941df159a64f8772b6fa2bfc3a"
+        "896ebcb47815681340860d121cb5d494e157e2a78d3950385cd54e0393c67148"
 
     /// Spotify's own start page: a greeting and a list of titled shelves.
     ///
@@ -188,7 +196,7 @@ nonisolated struct PathfinderOperation: Sendable, Equatable {
     /// items and a highlight colour to `homeChips`.
     static let home = PathfinderOperation(
         name: "home",
-        sha256Hash: "76243c78b0e20ecdbe41b794dec8cbe73f75e585b0a7201b8d2e84578412847a",
+        sha256Hash: "5fb7da7a03ee2776c0670856609cb85a189a3cecc36cc160b91cde79063b9cf1",
     )
 
     /// The listener's most played tracks and artists over a time range, which the web player's
