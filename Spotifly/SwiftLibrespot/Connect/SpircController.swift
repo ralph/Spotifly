@@ -31,9 +31,6 @@ public actor SpircController {
     /// How often state is republished while nothing happens.
     private static let heartbeatInterval: Duration = .seconds(30)
 
-    /// The last PutState asked for, which the next one waits for.
-    private var publishing: Task<Void, Never>?
-
     // MARK: - Publishers
 
     private nonisolated(unsafe) let clusterStateSubject = CurrentValueSubject<ClusterState?, Never>(nil)
@@ -47,7 +44,6 @@ public actor SpircController {
     public struct ClusterState: Sendable {
         public let activeDeviceId: String?
         public let devices: [ConnectedDevice]
-        public let timestamp: UInt64
         /// What the active device is playing, as it last reported it.
         public let playerState: PlayerState?
 
@@ -115,21 +111,15 @@ public actor SpircController {
 
     // MARK: - State Publishing
 
-    /// Republishes our device state to the cluster, once the PutState before it has been
-    /// answered: the heartbeat.
+    /// Republishes our device state to the cluster: the heartbeat.
     ///
-    /// One at a time, and each request is built only when it goes. PutStates are separate
-    /// HTTP requests, and the cluster keeps whichever it handles last. librespot's Spirc
-    /// awaits each PutState in its loop the same way.
-    func publishState() async {
-        let previous = publishing
-        let next = Task {
-            await previous?.value
-            guard isReady else { return }
-            await send(buildPutStateRequest())
-        }
-        publishing = next
-        await next.value
+    /// The heartbeat is the only sender after registration, and it awaits each PutState before
+    /// sleeping again, so none overtakes the one before it: they are separate HTTP requests, and
+    /// the cluster keeps whichever it handles last. librespot's Spirc awaits each PutState in its
+    /// loop the same way.
+    private func publishState() async {
+        guard isReady else { return }
+        await send(buildPutStateRequest())
     }
 
     private func startHeartbeat() {
@@ -239,14 +229,9 @@ public actor SpircController {
         dealerPushes?.cancel()
         dealerPushes = Task { [weak self] in
             for await update in pushes {
-                await self?.handleClusterUpdate(update)
+                await self?.adopt(update.cluster)
             }
         }
-    }
-
-    private func handleClusterUpdate(_ update: ClusterUpdateProto) async {
-        debugLog("SpircController", "Cluster update received")
-        adopt(update.cluster)
     }
 
     /// Takes a cluster — pushed by the dealer or returned by PutState — as the
@@ -269,7 +254,6 @@ public actor SpircController {
         clusterStateSubject.send(ClusterState(
             activeDeviceId: cluster.activeDeviceId,
             devices: devices,
-            timestamp: cluster.transferDataTimestamp,
             playerState: cluster.playerState,
         ))
     }
