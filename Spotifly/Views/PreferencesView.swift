@@ -71,7 +71,6 @@ private struct GeneralSettingsView: View {
 // MARK: - Playback
 
 /// What plays on this Mac: Spotify's Soloist, the only player, whose one setting here is its key.
-/// The built-in player's quality and gapless switches went with it.
 private struct PlaybackSettingsView: View {
     var body: some View {
         Form {

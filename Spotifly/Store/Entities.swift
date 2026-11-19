@@ -354,9 +354,8 @@ nonisolated struct Device: Identifiable, Hashable, Encodable {
     /// followed from the protobuf through the cluster's device list to here without a reader
     /// having to notice where the sense inverts.
     ///
-    /// An iPhone sets it — iOS will not let an app change system volume for another app — and
-    /// the app used to find out only by sending the command and getting
-    /// `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` back, after the user had already dragged the slider.
+    /// An iPhone sets it: iOS will not let an app change system volume for another app. The
+    /// slider reads it (`PlaybackViewModel.sliderRefused`) and does not move for such a device.
     var disableVolume: Bool = false
 }
 

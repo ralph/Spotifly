@@ -42,8 +42,8 @@ final class SoloistEngine {
     /// The name the account's device lists show for this Mac.
     static let deviceName = "Spotifly"
 
-    /// Whether the user set Soloist up, in `UserDefaults`. Named for when it was a choice
-    /// beside the built-in player, which a set-up Mac keeps.
+    /// The `UserDefaults` key that records whether the user set Soloist up. Its stored name stays
+    /// as it is, so a Mac set up under it stays set up.
     nonisolated static let setUpKey = "soloistEngine"
 
     nonisolated static var isSetUp: Bool {

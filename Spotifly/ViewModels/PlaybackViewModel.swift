@@ -139,9 +139,7 @@ final class PlaybackViewModel {
     }
 
     /// Whether the slider moves nothing: no device is active, or the active one refuses volume
-    /// changes. An iPhone says so, as iOS will not let one app set system volume for another;
-    /// the app used to find out from the `400 DEVICE_DOES_NOT_SUPPORT_COMMAND` its command got
-    /// back, after the user had dragged.
+    /// changes. An iPhone says so, as iOS will not let one app set system volume for another.
     var sliderRefused: Bool {
         player.activeDevice?.disableVolume ?? true
     }
@@ -559,10 +557,8 @@ final class PlaybackViewModel {
     /// the bar mirrors, so it plays from there. While Soloist is not ready, or not set up, the
     /// command is explained as a play is (`playbackDevice`).
     ///
-    /// **That state used to be found out by asking**: the Web API answered 404 and the 404 was
-    /// caught. connect-state addresses the target in the *url*, so with nobody active there is
-    /// no url to build — the same condition, now a precondition instead of a round trip, and
-    /// one fewer request on a path the user is waiting on.
+    /// Nobody active is checked here, before any request: connect-state addresses the target in
+    /// the *url*, so with nobody active there is no url to build.
     ///
     /// `promisesPosition` marks the commands whose caller moves the display ahead of
     /// playback — skips and seeks — and so have a promise to withdraw if they fail. Any
@@ -1236,9 +1232,8 @@ final class PlaybackViewModel {
     /// Re-anchors the displayed position: `positionMs` is where playback is, `time` is the
     /// moment it was there.
     ///
-    /// The pair is one fact, and writing it in one place is the point: eleven call sites
-    /// used to assign it field by field, and had already drifted apart over whether the
-    /// position was capped at the track length.
+    /// The pair is one fact, written only here, so every caller caps the position at the track
+    /// length the same way.
     ///
     /// `time` defaults to now. A caller holding a snapshot that was true *earlier* — a
     /// cluster state carrying a timestamp — passes that moment instead, so
@@ -1311,10 +1306,8 @@ final class PlaybackViewModel {
     ///
     /// The bound reads `trackDurationMs` rather than taking a duration, so it is by
     /// construction the same length the display clamps against; its caller refreshes it from
-    /// the same snapshot before anchoring. This guard used to live only on the Web API path,
-    /// but staleness is a property of Spotify's timestamp, not of the endpoint that carried
-    /// it — cluster updates forward `player_state.timestamp` unchanged and can be minutes
-    /// old.
+    /// the same snapshot before anchoring. Cluster updates forward `player_state.timestamp`
+    /// unchanged, so it can be minutes old.
     private func positionAnchor(forPosition positionMs: Int64, takenAt timestampMs: Int64) -> PositionAnchor {
         let now = Self.positionClockNow()
         guard timestampMs > 0 else { return PositionAnchor(time: now, logSuffix: "") }
