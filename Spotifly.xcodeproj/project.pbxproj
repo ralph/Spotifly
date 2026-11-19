@@ -440,33 +440,8 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.4.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SystemConfiguration,
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
-				);
-				"OTHER_LDFLAGS[sdk=iphone*]" = (
-					"-framework",
-					SystemConfiguration,
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
-				);
-				"OTHER_LDFLAGS[sdk=macosx*]" = (
-					"-framework",
-					SystemConfiguration,
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -514,33 +489,8 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.4.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SystemConfiguration,
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
-				);
-				"OTHER_LDFLAGS[sdk=iphone*]" = (
-					"-framework",
-					SystemConfiguration,
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
-				);
-				"OTHER_LDFLAGS[sdk=macosx*]" = (
-					"-framework",
-					SystemConfiguration,
-					"-framework",
-					Security,
-					"-framework",
-					CoreFoundation,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = rvdh.Spotifly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
