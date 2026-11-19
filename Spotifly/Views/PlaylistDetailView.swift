@@ -169,7 +169,7 @@ struct PlaylistDetailView: View {
                     reorder: isOwner ? { @MainActor @Sendable uid, index in move(uid: uid, toInsertionIndex: index) } : nil,
                 ) { row in
                     Task {
-                        await playbackViewModel.play(uriOrUrl: playlist.uri, trackIndex: row.number - 1, startingAtUri: row.track.uri)
+                        await playbackViewModel.play(uri: playlist.uri, trackIndex: row.number - 1, startingAtUri: row.track.uri)
                     }
                 }
             }
@@ -205,7 +205,7 @@ struct PlaylistDetailView: View {
             PlayAndShuffleButtons {
                 playAllTracks()
             } shuffle: {
-                Task { await playbackViewModel.playShuffled(uriOrUrl: playlist.uri, trackUris: tracks.map(\.uri)) }
+                Task { await playbackViewModel.playShuffled(uri: playlist.uri, trackUris: tracks.map(\.uri)) }
             }
             .disabled(tracks.isEmpty)
 
@@ -342,7 +342,7 @@ struct PlaylistDetailView: View {
         Task {
             // Use playlist URI to load via Spirc.load(LoadRequest::from_context_uri())
             // This properly loads the playlist context instead of individual tracks
-            await playbackViewModel.play(uriOrUrl: playlist.uri)
+            await playbackViewModel.play(uri: playlist.uri)
         }
     }
 }

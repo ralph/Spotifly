@@ -61,7 +61,7 @@ struct FavoritesListView: View {
                         Task {
                             // The playlist the list was read from; see `LikedSongs`.
                             await playbackViewModel.play(
-                                uriOrUrl: LikedSongs.uri,
+                                uri: LikedSongs.uri,
                                 trackIndex: row.number - 1,
                                 startingAtUri: row.track.uri,
                             )
@@ -118,9 +118,9 @@ struct FavoritesListView: View {
             ))
         } actions: {
             PlayAndShuffleButtons {
-                Task { await playbackViewModel.play(uriOrUrl: LikedSongs.uri) }
+                Task { await playbackViewModel.play(uri: LikedSongs.uri) }
             } shuffle: {
-                Task { await playbackViewModel.playShuffled(uriOrUrl: LikedSongs.uri, trackUris: tracks.map(\.uri)) }
+                Task { await playbackViewModel.playShuffled(uri: LikedSongs.uri, trackUris: tracks.map(\.uri)) }
             }
             .disabled(tracks.isEmpty)
         }

@@ -422,7 +422,6 @@ extension SpircController.ClusterState.ConnectedDevice {
             name: name,
             type: deviceType.apiName,
             isActive: isActive,
-            isPrivateSession: false,
             isRestricted: false,
             // Zero is a volume, not a missing one. Reporting nil for it made a
             // muted device indistinguishable from one that never said.

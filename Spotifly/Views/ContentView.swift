@@ -52,20 +52,20 @@ struct ContentView: View {
             // a browser tab closed without authorizing sends nothing, so this is the only
             // way back from the wait short of the listener's timeout.
             Button {
-                if viewModel.isAuthorizingStreaming {
-                    viewModel.cancelStreamingAuthorization()
+                if viewModel.isAuthorizing {
+                    viewModel.cancelAuthorization()
                 } else {
-                    viewModel.startStreamingAuthorization()
+                    viewModel.startAuthorization()
                 }
             } label: {
                 HStack {
-                    if viewModel.isAuthorizingStreaming {
+                    if viewModel.isAuthorizing {
                         ProgressView()
                             .progressViewStyle(.circular)
                             .scaleEffect(0.8)
                     }
                     Text(
-                        viewModel.isAuthorizingStreaming
+                        viewModel.isAuthorizing
                             ? "auth.connect_cancel"
                             : "auth.connect.button",
                     )

@@ -225,7 +225,7 @@ private struct LoggedInContextToolbarActions: View {
 
             Menu {
                 Button("action.play", systemImage: "play.fill") {
-                    Task { await playbackViewModel.play(uriOrUrl: uri) }
+                    Task { await playbackViewModel.play(uri: uri) }
                 }
                 if canQueue {
                     Button("track.menu.play_next", systemImage: "text.line.first.and.arrowtriangle.forward") {

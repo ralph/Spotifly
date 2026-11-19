@@ -43,7 +43,7 @@ struct LoggedInLifecycleModifier: ViewModifier {
                         Task { @MainActor in
                             try? await Task.sleep(for: .seconds(5))
                             debugLog("DebugAutoplay", "Starting \(uri)")
-                            await playbackViewModel.play(uriOrUrl: uri)
+                            await playbackViewModel.play(uri: uri)
 
                             // SPOTIFLY_DEBUG_PAUSE_AFTER=<seconds>: pause through the
                             // same PlaybackViewModel path the buttons use, then resume.

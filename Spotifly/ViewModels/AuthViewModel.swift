@@ -57,14 +57,13 @@ final class AuthViewModel {
     var errorMessage: String?
     var isLoading = true
 
-    /// Runs the one grant the app has: the sign-in. Named for what it once also enabled, this
-    /// Mac's own playback, which the Speakers row and the play alert offered again until
-    /// Soloist became the only player.
-    var isAuthorizingStreaming = false
+    /// Whether the sign-in's grant is in flight, waiting on the browser; the login screen shows
+    /// progress and offers Cancel meanwhile.
+    var isAuthorizing = false
     /// The grant in flight, held so it can be cancelled. Not observed by any view.
-    @ObservationIgnored private var streamingAuthorization: Task<Void, Never>?
+    @ObservationIgnored private var authorizationTask: Task<Void, Never>?
 
-    /// Names the run that owns `streamingAuthorization`, so a run that has been abandoned
+    /// Names the run that owns `authorizationTask`, so a run that has been abandoned
     /// cannot release a handle belonging to the one that replaced it.
     private var authorizationRun: UInt64 = 0
 
@@ -106,10 +105,10 @@ final class AuthViewModel {
     /// Runs the app's grant: the sign-in on the login screen.
     ///
     /// Blocks on the user finishing an authorization in their browser, so it can take a
-    /// while; `isAuthorizingStreaming` drives the progress the UI shows meanwhile.
-    func authorizeStreaming() async {
-        isAuthorizingStreaming = true
-        defer { isAuthorizingStreaming = false }
+    /// while; `isAuthorizing` drives the progress the UI shows meanwhile.
+    func authorize() async {
+        isAuthorizing = true
+        defer { isAuthorizing = false }
 
         errorMessage = nil
 
@@ -126,17 +125,17 @@ final class AuthViewModel {
         } catch where isCancellation(error) {
             // The user closed the browser tab or pressed Cancel, during the browser wait or the
             // token exchange after it. They asked for this, so there is nothing to report.
-            debugLog("AuthViewModel", "Streaming authorization cancelled")
+            debugLog("AuthViewModel", "Authorization cancelled")
             return
         } catch {
-            debugLog("AuthViewModel", "Streaming authorization failed: \(error)")
+            debugLog("AuthViewModel", "Authorization failed: \(error)")
             errorMessage = String(localized: "auth.connect_failed")
             return
         }
 
         // Logged out while the browser had the grant: nothing was written, and nothing is.
         guard startedAt == authLifecycle else {
-            debugLog("AuthViewModel", "Streaming grant abandoned: logged out mid-flight")
+            debugLog("AuthViewModel", "Grant abandoned: logged out mid-flight")
             return
         }
 
@@ -144,13 +143,13 @@ final class AuthViewModel {
             try await KeymasterSession.shared.adopt(tokens)
         } catch let KeymasterSessionError.otherAccount(held, granted) {
             // Only a grant still held refuses another account's, and signed out there is none.
-            debugLog("AuthViewModel", "Streaming grant rejected: account \(granted) is not the signed-in account \(held)")
+            debugLog("AuthViewModel", "Grant rejected: account \(granted) is not the signed-in account \(held)")
             errorMessage = String(localized: "auth.connect_failed")
             return
         } catch {
             // The keychain refused the tokens, which `KeymasterSession` holds for this launch
             // all the same.
-            debugLog("AuthViewModel", "Streaming grant not saved: \(error)")
+            debugLog("AuthViewModel", "Grant not saved: \(error)")
             isSignedIn = await KeymasterSession.shared.hasGrant
             errorMessage = String(localized: "auth.connect_failed")
             return
@@ -159,7 +158,7 @@ final class AuthViewModel {
         // A logout that landed while the tokens were written cleared the keychain before or
         // after them; this run undoes its own write either way.
         guard startedAt == authLifecycle else {
-            debugLog("AuthViewModel", "Streaming grant abandoned: logged out while it was saved")
+            debugLog("AuthViewModel", "Grant abandoned: logged out while it was saved")
             await KeymasterSession.shared.clear()
             return
         }
@@ -173,27 +172,27 @@ final class AuthViewModel {
     /// The task lives here rather than in the view because the view that started it can be
     /// torn down — the login step giving way to the app — while the browser round-trip is
     /// still outstanding.
-    func startStreamingAuthorization() {
-        guard streamingAuthorization == nil else { return }
+    func startAuthorization() {
+        guard authorizationTask == nil else { return }
 
         authorizationRun &+= 1
         let run = authorizationRun
-        streamingAuthorization = Task { [weak self] in
-            await self?.authorizeStreaming()
-            self?.finishStreamingAuthorization(run)
+        authorizationTask = Task { [weak self] in
+            await self?.authorize()
+            self?.finishAuthorization(run)
         }
     }
 
     /// Releases the handle, but only if it is still this run's.
     ///
-    /// `authorizeStreaming` clears `isAuthorizingStreaming` on its way out, which is what turns
+    /// `authorize` clears `isAuthorizing` on its way out, which is what turns
     /// the button back into "Connect" — and the hop back to this task body is a window in which
     /// a press can start the next run. Releasing unconditionally there drops the *new* run's
     /// handle, leaving it uncancellable and letting a further press start a second grant beside
     /// it. Narrow, but it is the invariant the rest of the app already holds to.
-    private func finishStreamingAuthorization(_ run: UInt64) {
+    private func finishAuthorization(_ run: UInt64) {
         guard run == authorizationRun else { return }
-        streamingAuthorization = nil
+        authorizationTask = nil
     }
 
     /// Abandons a grant waiting on the browser.
@@ -201,9 +200,9 @@ final class AuthViewModel {
     /// Only possible now that Swift owns the flow: librespot's listener had no timeout and
     /// no cancellation, so closing the browser tab left the enable affordance spinning with
     /// no way back to it.
-    func cancelStreamingAuthorization() {
-        streamingAuthorization?.cancel()
-        streamingAuthorization = nil
+    func cancelAuthorization() {
+        authorizationTask?.cancel()
+        authorizationTask = nil
     }
 
     /// Logs out: tears the librespot session down, removes both credentials, and leaves the
@@ -224,7 +223,7 @@ final class AuthViewModel {
     /// keychain, which would otherwise let the next launch connect the account that just logged
     /// out. After the teardown, so no live session can use them again.
     func logout() async {
-        // Invalidates any streaming grant still deciding, so it cannot resume into the
+        // Invalidates any grant still in flight, so it cannot resume into the
         // session this is tearing down.
         authLifecycle &+= 1
         // A grant's refusal belongs to the session it was refused in, not to the login screen.

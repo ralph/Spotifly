@@ -198,7 +198,6 @@ private extension Device {
             name: name,
             type: type,
             isActive: active,
-            isPrivateSession: isPrivateSession,
             isRestricted: isRestricted,
             volumePercent: volumePercent,
             disableVolume: disableVolume,
